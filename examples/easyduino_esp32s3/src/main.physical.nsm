@@ -23,10 +23,7 @@ physical for EasyduinoEsp32s3 {
         // The outline: 25.86 x 63.8972 mm (`[outline]` of the table: x 127.105 to 152.965, y
         // 58.6514 to 122.5486; four lines, no arcs, so square corners). Their file draws it
         // with four `Edge.Cuts` lines inside the footprint of U2; ours is drawn here.
-        .outline: Outline {
-            .width &= 25.86mm
-            .height &= 63.8972mm
-        }
+        .outline: Outline { .width &= 25.86mm; .height &= 63.8972mm }
     }
 
     // The holes: the table lists four, `J1` at (130.19, 117.32) and (135.97, 117.32) and `J2`

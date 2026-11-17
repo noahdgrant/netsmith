@@ -7,10 +7,7 @@ import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x2
 
 board Bare {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-        .min_track &= 0.15mm..
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm; .min_track &= 0.15mm.. }
     .header: Header1x2
 }
 ```
@@ -40,10 +37,7 @@ import std::parts::connector::Header1x2
 import std::parts::passive::Color
 
 board Dark {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-        .stackup.mask_colour &= Color::Black
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm; .stackup.mask_colour &= Color::Black }
     .header: Header1x2
 }
 ```
@@ -57,13 +51,8 @@ import std::parts::passive::Resistor
 import std::sources::Rail
 
 board Marks {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-        .min_test_point_edge &= 4mm..
-    }
-    .supply: Rail {
-        .pos.net &= "5V"
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm; .min_test_point_edge &= 4mm.. }
+    .supply: Rail { .pos.net &= "5V" }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .tp: TestPoint
     .supply.pos ~> .r1 ~> .supply.neg
@@ -79,14 +68,8 @@ import std::parts::passive::Resistor
 import std::sources::Rail
 
 board Thin {
-    .process: FourLayer {
-        .stackup.thickness &= 1.2mm
-        .inner1.net &= "GND"
-        .inner2.net &= "5V"
-    }
-    .supply: Rail {
-        .pos.net &= "5V"
-    }
+    .process: FourLayer { .stackup.thickness &= 1.2mm; .inner1.net &= "GND"; .inner2.net &= "5V" }
+    .supply: Rail { .pos.net &= "5V" }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
 }
@@ -100,13 +83,8 @@ import std::parts::passive::Resistor
 import std::sources::Rail
 
 board Sheets {
-    .process: JlcFourLayer04161H7628C {
-        .inner1.net &= "GND"
-        .inner2.net &= "5V"
-    }
-    .supply: Rail {
-        .pos.net &= "5V"
-    }
+    .process: JlcFourLayer04161H7628C { .inner1.net &= "GND"; .inner2.net &= "5V" }
+    .supply: Rail { .pos.net &= "5V" }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
 }
@@ -119,10 +97,7 @@ import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x2
 
 board Gold {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-        .finish &= "ENIG"
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm; .finish &= "ENIG" }
     .header: Header1x2
 }
 ```
@@ -141,9 +116,7 @@ board Six {
         .inner3.use &= "signal"
         .inner4.net &= "5V"
     }
-    .supply: Rail {
-        .pos.net &= "5V"
-    }
+    .supply: Rail { .pos.net &= "5V" }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
 }
@@ -199,9 +172,7 @@ board Dense {
         .inner3.net &= "5V"
         .inner4.use &= "signal"
     }
-    .supply: Rail {
-        .pos.net &= "5V"
-    }
+    .supply: Rail { .pos.net &= "5V" }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
 }
@@ -213,18 +184,16 @@ A four-layer board has room for one build-up layer on each face:
 import std::mfg::jlcpcb::HdiFourLayer
 
 board Deep {
-    .process: HdiFourLayer {
-        .hdi_order &= 2
-    }
+    .process: HdiFourLayer { .hdi_order &= 2 }
 }
 ```
 
 ```text
 error: contradiction on `process.hdi_order`: it is already 1, which does not overlap 2
-  --> main.nsm:5:9
+  --> main.nsm:4:30
   |
-5 |         .hdi_order &= 2
-  |         ^^^^^^^^^^^^^^^
+4 |     .process: HdiFourLayer { .hdi_order &= 2 }
+  |                              ^^^^^^^^^^^^^^^
 ```
 
 A board of eight or ten layers is made on ACME's process, `std::mfg::acme::EightLayer` (`.inner1` to `.inner6`) or `std::mfg::acme::TenLayer` (`.inner1` to `.inner8`). ACME is a fictional fabricator (ADR 0112). Its numbers were chosen, not sourced, and stand for no real fabricator's capability: the rules are JLCPCB's multilayer rows, and each build-up is a symmetric 1.6 mm stack of common prepregs and cores (`ACME-8L-1.6`, `ACME-10L-1.6`, listed in `std/mfg/acme.nsm`). The inner layers are planes or signal layers, as above. `fab` writes the package as for any process: a Gerber for each copper layer, the stackup in the board file, the 3D scene. `fab-notes.txt` says the process is fictional and the package is not for ordering, and `project order` refuses an order that names the board. See `examples/ten_layer.nsm`.
@@ -243,9 +212,7 @@ board Eight {
         .inner5.use &= "signal"
         .inner6.net &= "5V"
     }
-    .supply: Rail {
-        .pos.net &= "5V"
-    }
+    .supply: Rail { .pos.net &= "5V" }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
 }
@@ -263,18 +230,16 @@ Misuse.
 import std::mfg::jlcpcb::TwoLayer
 
 board Thick {
-    .process: TwoLayer {
-        .stackup.thickness &= 3mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 3mm }
 }
 ```
 
 ```text
 error: contradiction on `process.stackup.thickness`: it is already 400um..2mm, which does not overlap 3mm
-  --> main.nsm:5:9
+  --> main.nsm:4:26
   |
-5 |         .stackup.thickness &= 3mm
-  |         ^^^^^^^^^^^^^^^^^^^^^^^^^
+4 |     .process: TwoLayer { .stackup.thickness &= 3mm }
+  |                          ^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ```nsm fails
@@ -283,14 +248,8 @@ import std::parts::passive::Resistor
 import std::sources::Rail
 
 board Planes {
-    .process: FourLayer {
-        .stackup.thickness &= 1.6mm
-        .inner1.net &= "VCC"
-        .inner2.net &= "GND"
-    }
-    .supply: Rail {
-        .pos.net &= "5V"
-    }
+    .process: FourLayer { .stackup.thickness &= 1.6mm; .inner1.net &= "VCC"; .inner2.net &= "GND" }
+    .supply: Rail { .pos.net &= "5V" }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
 }
@@ -308,14 +267,8 @@ import std::parts::passive::Resistor
 import std::sources::Rail
 
 board Signal {
-    .process: FourLayer {
-        .inner1.net &= "GND"
-        .inner2.use &= "signal"
-        .inner2.net &= "5V"
-    }
-    .supply: Rail {
-        .pos.net &= "5V"
-    }
+    .process: FourLayer { .inner1.net &= "GND"; .inner2.use &= "signal"; .inner2.net &= "5V" }
+    .supply: Rail { .pos.net &= "5V" }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
 }
@@ -340,9 +293,7 @@ board Hasl {
         .inner3.use &= "signal"
         .inner4.net &= "5V"
     }
-    .supply: Rail {
-        .pos.net &= "5V"
-    }
+    .supply: Rail { .pos.net &= "5V" }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
 }
@@ -378,15 +329,10 @@ board Antenna {
     .power.p1.net &= "3V3"
     .power.p2.net &= "GND"
     /// The antenna line is a 50 ohm track.
-    .rf_line: TrackImpedance {
-        .impedance &= 50ohm
-    }
+    .rf_line: TrackImpedance { .impedance &= 50ohm }
     .rf_line.line ~ .rf.p1
     /// USB 2.0's data pair is 90 ohm between its tracks, which are 0.15 mm apart.
-    .usb_pair: PairImpedance {
-        .impedance &= 90ohm
-        .spacing &= 0.15mm
-    }
+    .usb_pair: PairImpedance { .impedance &= 90ohm; .spacing &= 0.15mm }
     .usb_pair.p ~ .usb.p1
     .usb_pair.n ~ .usb.p2
 }

@@ -840,7 +840,7 @@
         "text": "The 12 V input, supplied from outside the board.",
         "at": {
           "file": "buck_converter.nsm",
-          "line": 20
+          "line": 18
         },
         "anchors": [],
         "result": null
@@ -851,7 +851,7 @@
         "text": "The 3.3 V output and the load it carries.",
         "at": {
           "file": "buck_converter.nsm",
-          "line": 25
+          "line": 20
         },
         "anchors": [],
         "result": null

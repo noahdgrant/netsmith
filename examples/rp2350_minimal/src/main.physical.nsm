@@ -21,11 +21,7 @@ physical for Rp2350Minimal {
     case {
         // The outline: 52 x 51 mm (x 74 to 126, y 70 to 121 in their file) with 3 mm
         // corner arcs.
-        .outline: Outline {
-            .width &= 52mm
-            .height &= 51mm
-            .corner_radius &= 3mm
-        }
+        .outline: Outline { .width &= 52mm; .height &= 51mm; .corner_radius &= 3mm }
 
         // Four non-plated 2.75 mm holes (a row of the project's `kicad.toml`).
         .hole1: MountingHole { .package &= "M2.5" }
@@ -38,18 +34,8 @@ physical for Rp2350Minimal {
         // tray with 2 mm walls 0.5 mm off the outline and four 4 mm bosses that the board's
         // bottom face rests on: the floor (2 mm) and the bosses put the board's top face 7.6 mm
         // up. The lid's underside is 6.5 mm above the board's top face.
-        .base: CaseModel {
-            .file &= "../case/base.step"
-            .x &= -2.5mm
-            .y &= -2.5mm
-            .z &= -7.6mm
-        }
-        .lid: CaseModel {
-            .file &= "../case/lid.step"
-            .x &= -2.5mm
-            .y &= -2.5mm
-            .z &= 6.5mm
-        }
+        .base: CaseModel { .file &= "../case/base.step"; .x &= -2.5mm; .y &= -2.5mm; .z &= -7.6mm }
+        .lid: CaseModel { .file &= "../case/lid.step"; .x &= -2.5mm; .y &= -2.5mm; .z &= 6.5mm }
     }
 
     // Their MH1 to MH4: (86.03, 74), (113.97, 74), (113.97, 117.18), (86.03, 117.18).

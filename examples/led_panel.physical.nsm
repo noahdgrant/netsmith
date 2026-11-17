@@ -5,10 +5,6 @@ import std::pcb::Outline
 
 physical for LedTile {
     case {
-        .outline: Outline {
-            .width &= 40mm
-            .height &= 30mm
-            .corner_radius &= 0mm
-        }
+        .outline: Outline { .width &= 40mm; .height &= 30mm; .corner_radius &= 0mm }
     }
 }

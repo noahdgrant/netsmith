@@ -92,6 +92,54 @@ fn the_standard_library_is_formatted_and_comes_back_from_another_layout() {
     }
 }
 
+/// `src` with every block that holds something written over lines: a line end after each `{`
+/// and before each `}` that are not `{}`, and in place of each `; ` (outside strings and
+/// comments). Its line breaks are not the formatter's, which joins them again where they fit.
+fn exploded(src: &str) -> String {
+    let mut out = String::new();
+    for line in src.lines() {
+        let mut in_string = false;
+        let mut chars = line.chars().peekable();
+        let mut prev = ' ';
+        while let Some(c) = chars.next() {
+            if !in_string && c == '/' && chars.peek() == Some(&'/') {
+                out.push(c);
+                out.extend(chars.by_ref());
+                break;
+            }
+            if c == '"' {
+                in_string = !in_string;
+            }
+            if !in_string && c == '{' && chars.peek().is_some_and(|n| *n != '}') {
+                out.push_str("{\n");
+            } else if !in_string && c == '}' && prev != '{' {
+                out.push_str("\n}");
+            } else if !in_string && c == ';' {
+                out.push('\n');
+            } else {
+                out.push(c);
+            }
+            prev = c;
+        }
+        out.push('\n');
+    }
+    out
+}
+
+#[test]
+fn the_standard_library_comes_back_from_a_layout_with_every_block_over_lines() {
+    for path in std_files() {
+        let src = fs::read_to_string(&path).unwrap();
+        let name = path.display();
+        let messy = exploded(&src);
+        assert_eq!(
+            format(&messy).as_deref(),
+            Ok(src.as_str()),
+            "{name} with every block over lines does not format back"
+        );
+    }
+}
+
 #[test]
 fn indent_spaces_and_one_line_blocks() {
     assert_eq!(
@@ -103,6 +151,11 @@ fn indent_spaces_and_one_line_blocks() {
         fmt("board B {\n    .t &= -40C .. 85C\n    .x &= 2V ± 1% at -5mA\n    .y == .a.b - .c\n}\n"),
         "board B {\n    .t &= -40C..85C\n    .x &= 2V +/- 1% at -5mA\n    .y == .a.b - .c\n}\n"
     );
+    // An open range keeps a space before the `}` of its block.
+    assert_eq!(
+        fmt("board B {\n    .r: Rail {\n        .min_track &= 0.4mm..\n    }\n}\n"),
+        "board B {\n    .r: Rail { .min_track &= 0.4mm.. }\n}\n"
+    );
     kept("board B {\n    .c: 4 x Capacitor { .capacitance &= 100nF +/- 10% }\n    .c[3].package &= \"0603\"\n    .r: Buck<Lt8641> {}\n}\n");
     kept("#[series(E24, E96)]\npart P {\n    #[role(bias)]\n    .r: Resistor\n}\n");
 }
@@ -113,8 +166,53 @@ fn a_block_over_several_lines_has_a_statement_to_a_line() {
         fmt("board B { .a: R\n    .b: R; .c: R;\n    .d: R }\n"),
         "board B {\n    .a: R\n    .b: R\n    .c: R\n    .d: R\n}\n"
     );
-    // A block written over several lines stays so, however short.
-    kept("board B {\n    .r: R {\n        .x &= 1V\n    }\n}\n");
+    // The body of a definition or of a section is over lines, also when written on one.
+    assert_eq!(
+        fmt("part P { .a: R; support { .c: C } }\n"),
+        "part P {\n    .a: R\n    support {\n        .c: C\n    }\n}\n"
+    );
+    kept("interface I {}\n");
+}
+
+#[test]
+fn a_statement_or_block_over_several_lines_is_joined_when_it_fits() {
+    assert_eq!(
+        fmt("board B {\n    .r: R {\n        .x &= 1V\n\n        .y &= 2V\n    }  // the r\n}\n"),
+        "board B {\n    .r: R { .x &= 1V; .y &= 2V }  // the r\n}\n"
+    );
+    // A connection, a relation, a polygon, an import's names, a catalog's columns and a
+    // peripheral's functions.
+    assert_eq!(
+        fmt("import std::parts::passive::{\n    Resistor,\n    Led,\n}\nboard B {\n    .a ~>\n        .r ~>\n        .b\n    .x &=\n        3V +/-\n        5%\n}\n"),
+        "import std::parts::passive::{Led, Resistor}\n\nboard B {\n    .a ~> .r ~> .b\n    .x &= 3V +/- 5%\n}\n"
+    );
+    assert_eq!(
+        fmt("part P {\n    catalog c by .mpn {\n        .mpn,\n        .package\n    }\n    peripheral U as Uart {\n        U0TXD:output as tx\n        U0RXD:input as rx\n    }\n}\n"),
+        "part P {\n    catalog c by .mpn { .mpn, .package }\n    peripheral U as Uart { U0TXD:output as tx; U0RXD:input as rx }\n}\n"
+    );
+    assert_eq!(
+        fmt("physical for B {\n    case {\n        .outline: Outline {\n            polygon (0mm, 0mm) (25mm, 0mm)\n                (25mm, 15mm)\n        }\n    }\n}\n"),
+        "physical for B {\n    case {\n        .outline: Outline { polygon (0mm, 0mm) (25mm, 0mm) (25mm, 15mm) }\n    }\n}\n"
+    );
+    // Blocks in a block: the outer one does not fit, and the inner ones are joined.
+    let wide = "board B {\n    .reg: BuckConverter {\n        .vout: Rail {\n            .voltage &= 3.3V +/- 5%\n        }\n        .input_capacitor.capacitance &= 22uF +/- 10%\n        .output_capacitor.capacitance &= 47uF\n    }\n}\n";
+    assert_eq!(
+        fmt(wide),
+        "board B {\n    .reg: BuckConverter {\n        .vout: Rail { .voltage &= 3.3V +/- 5% }\n        .input_capacitor.capacitance &= 22uF +/- 10%\n        .output_capacitor.capacitance &= 47uF\n    }\n}\n"
+    );
+}
+
+#[test]
+fn a_comment_doc_comment_or_attribute_keeps_its_block_broken() {
+    kept("board B {\n    .r: R {\n        // the value\n        .x &= 1V\n    }\n}\n");
+    kept("board B {\n    .r: R {\n        .x &= 1V  // the value\n        .y &= 2V\n    }\n}\n");
+    kept("board B {\n    .r: R {\n        /// The value.\n        .x: S\n    }\n}\n");
+    kept("board B {\n    .r: R {\n        #[role(bias)]\n        .x: R\n    }\n}\n");
+    // Inside a statement that is not joined, what can be is.
+    assert_eq!(
+        fmt("board B {\n    .r: R {\n        // the value\n        .x: S {\n            .y &= 2V\n        }\n    }\n}\n"),
+        "board B {\n    .r: R {\n        // the value\n        .x: S { .y &= 2V }\n    }\n}\n"
+    );
 }
 
 #[test]
@@ -222,7 +320,7 @@ fn imports_are_sorted_as_the_editor_sorts_them_with_their_comments() {
 fn a_function_kind_touches_its_name_and_a_member_type_does_not() {
     assert_eq!(
         fmt("part P {\n    .a:R\n    peripheral U as Uart {\n        U0TXD:output as tx\n    }\n}\nmodule M<Ic:BuckIc> {}\n"),
-        "part P {\n    .a: R\n    peripheral U as Uart {\n        U0TXD:output as tx\n    }\n}\n\nmodule M<Ic: BuckIc> {}\n"
+        "part P {\n    .a: R\n    peripheral U as Uart { U0TXD:output as tx }\n}\n\nmodule M<Ic: BuckIc> {}\n"
     );
 }
 

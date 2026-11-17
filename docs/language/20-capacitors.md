@@ -11,10 +11,7 @@ import std::parts::passive::Capacitor
 import std::sources::Rail
 
 board Caps {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .bypass: Capacitor { .capacitance &= 100nF +/- 20% }
     .bulk: Capacitor { .effective_capacitance >= 1uF }
     .supply.pos ~> .bypass ~> .supply.neg
@@ -45,10 +42,7 @@ import std::parts::passive::{Capacitor, Resistor}
 import std::sources::Rail
 
 board NoBias {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .filter: Capacitor { .effective_capacitance >= 1uF }
     .supply.pos ~> .r1 ~> .filter ~> .supply.neg
@@ -57,10 +51,10 @@ board NoBias {
 
 ```text
 error: the `capacitor` catalog has nothing for `filter`, which needs nothing in particular (`filter.bias` is not known, so `filter.effective_capacitance` cannot be worked out: place `filter` between a rail's pos and neg, whose voltage is known, or state `filter.bias`)
-   --> main.nsm:10:5
-   |
-10 |     .filter: Capacitor { .effective_capacitance >= 1uF }
-   |     ^^^^^^^^^^^^^^^^^^
+  --> main.nsm:7:5
+  |
+7 |     .filter: Capacitor { .effective_capacitance >= 1uF }
+  |     ^^^^^^^^^^^^^^^^^^
 ```
 
 ```nsm fails
@@ -68,10 +62,7 @@ import std::parts::passive::Capacitor
 import std::sources::Rail
 
 board TooBig {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .bypass: Capacitor { .effective_capacitance >= 10mF }
     .supply.pos ~> .bypass ~> .supply.neg
 }
@@ -79,9 +70,9 @@ board TooBig {
 
 ```text
 error: no `capacitor` candidate satisfies `bypass`: the closest of the 36 that fit, 47uF 20% 6.3V X5R 0805 C16780, fails because bypass.effective_capacitance must always be at least 10mF, but 16.09uF..26.7uF is not always above 10mF (`bypass.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 25)
-  --> main.nsm:9:26
+  --> main.nsm:6:26
   |
-9 |     .bypass: Capacitor { .effective_capacitance >= 10mF }
+6 |     .bypass: Capacitor { .effective_capacitance >= 10mF }
   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -117,10 +108,7 @@ import std::parts::passive::{Capacitor, Dielectric}
 import std::sources::Rail
 
 board Classes {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .bypass: Capacitor {
         .capacitance &= 100nF +/- 20%
         .dielectric &= Dielectric::X7R
@@ -144,23 +132,17 @@ import std::parts::passive::{Capacitor, Dielectric}
 import std::sources::Rail
 
 board NoSuchClass {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
-    .bypass: Capacitor {
-        .capacitance &= 100nF +/- 20%
-        .dielectric &= Dielectric::C0G
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .bypass: Capacitor { .capacitance &= 100nF +/- 20%; .dielectric &= Dielectric::C0G }
     .supply.pos ~> .bypass ~> .supply.neg
 }
 ```
 
 ```text
 error: the `capacitor` catalog has nothing for `bypass`, which needs capacitance within 80nF..120nF and dielectric within Dielectric::C0G
-  --> main.nsm:9:5
+  --> main.nsm:6:5
   |
-9 |     .bypass: Capacitor {
+6 |     .bypass: Capacitor { .capacitance &= 100nF +/- 20%; .dielectric &= Dielectric::C0G }
   |     ^^^^^^^^^^^^^^^^^^
 ```
 
@@ -175,10 +157,7 @@ import std::parts::passive::CapacitorBank
 import std::sources::Rail
 
 board Bank {
-    .supply: Rail {
-        .voltage &= 5V
-        .pos.net &= "5V"
-    }
+    .supply: Rail { .voltage &= 5V; .pos.net &= "5V" }
     .bulk: CapacitorBank
     .bulk.total_effective_capacitance >= 60uF
     .bulk.max_voltage >= 6V
@@ -207,10 +186,7 @@ import std::parts::passive::CapacitorBank
 import std::sources::Rail
 
 board Short {
-    .supply: Rail {
-        .voltage &= 5V
-        .pos.net &= "5V"
-    }
+    .supply: Rail { .voltage &= 5V; .pos.net &= "5V" }
     .bulk: CapacitorBank { .count &= 1..2 }
     .bulk.total_effective_capacitance >= 10mF
     .supply.pos ~> .bulk ~> .supply.neg
@@ -219,10 +195,10 @@ board Short {
 
 ```text
 error: no `capacitor` candidate satisfies `bulk`: the closest of the 36 that fit, 2 x 47uF 20% 6.3V X5R 0805 C16780, fails because bulk.total_effective_capacitance must always be at least 10mF, but 21.86uF..32.81uF is not always above 10mF (`bulk.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 25)
-   --> main.nsm:10:5
-   |
-10 |     .bulk.total_effective_capacitance >= 10mF
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  --> main.nsm:7:5
+  |
+7 |     .bulk.total_effective_capacitance >= 10mF
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A bank is one choice: the capacitors of a bank are identical, and the ripple current each takes is not modelled (the catalog has no ripple rating), so it is not divided between them.

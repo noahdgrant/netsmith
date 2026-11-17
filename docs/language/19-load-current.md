@@ -16,17 +16,9 @@ module Stage {
 }
 
 board Supply {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .stage: Stage {
-        .vout.voltage &= 3.3V +/- 5%
-    }
-    .output: Rail {
-        .pos.net &= "3V3"
-        .current &= 0mA..50mA
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .stage: Stage { .vout.voltage &= 3.3V +/- 5% }
+    .output: Rail { .pos.net &= "3V3"; .current &= 0mA..50mA }
     .input ~ .stage.vin
     .stage.vout ~ .output
     .in_header: Header1x2
@@ -64,10 +56,7 @@ module Monitor {
 }
 
 board Sensor {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 3%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 3%; .pos.net &= "3V3" }
     .monitor: Monitor { .vin.current &= 0A..20uA }
     .supply ~ .monitor.vin
 }
@@ -88,10 +77,7 @@ module Monitor {
 }
 
 board Sensor {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 3%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 3%; .pos.net &= "3V3" }
     .monitor: Monitor { .vin.current &= 0A..10uA }
     .supply ~ .monitor.vin
 }
@@ -99,9 +85,9 @@ board Sensor {
 
 ```text
 error: the currents on net `3V3` do not add up: `-monitor.vin.current` must stay within -10uA..0A, but the others on it work out to -17.17uA..-15.84uA (all of them: `monitor.r_top.current` is 15.84uA..17.17uA, `-monitor.vin.current` is -10uA..0A)
-   --> main.nsm:17:25
+   --> main.nsm:14:25
    |
-17 |     .monitor: Monitor { .vin.current &= 0A..10uA }
+14 |     .monitor: Monitor { .vin.current &= 0A..10uA }
    |                         ^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -121,17 +107,9 @@ module Stage {
 }
 
 board Overload {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .stage: Stage {
-        .vout.voltage &= 3.3V +/- 5%
-    }
-    .output: Rail {
-        .pos.net &= "3V3"
-        .current &= 0mA..50A
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .stage: Stage { .vout.voltage &= 3.3V +/- 5% }
+    .output: Rail { .pos.net &= "3V3"; .current &= 0mA..50A }
     .input ~ .stage.vin
     .stage.vout ~ .output
     .in_header: Header1x2
@@ -253,10 +231,7 @@ module Sheet {
 }
 
 board Wrapped {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 3%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 3%; .pos.net &= "3V3" }
     .sheet: Sheet
     .supply ~ .sheet.vdd
 }
@@ -284,10 +259,7 @@ import std::parts::regulator::LinearRegulator
 import std::sources::Rail
 
 board Heaters {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
     .regulator: LinearRegulator { .vout.voltage &= 3.3V +/- 5% }
     .input ~ .regulator.vin
     .heater_a: Rail { .current &= 0mA..60mA }
@@ -312,10 +284,7 @@ import std::parts::regulator::LinearRegulator
 import std::sources::Rail
 
 board Heaters {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
     .regulator: LinearRegulator { .vout.voltage &= 3.3V +/- 5% }
     .input ~ .regulator.vin
     .heater_a: Rail { .current &= 0mA..60mA }
@@ -367,15 +336,8 @@ module Store {
 }
 
 board Inrush {
-    .input: Rail {
-        .voltage &= 9V..16V
-        .peak &= 24V
-        .pos.net &= "VIN"
-    }
-    .reg: Buck<Lmr16006y> {
-        .vout.pos.net &= "V3V3"
-        .vout.voltage &= 3.3V +/- 5%
-    }
+    .input: Rail { .voltage &= 9V..16V; .peak &= 24V; .pos.net &= "VIN" }
+    .reg: Buck<Lmr16006y> { .vout.pos.net &= "V3V3"; .vout.voltage &= 3.3V +/- 5% }
     .input ~ .reg.vin
     .load: Rail { .current &= 5mA..50mA }
     .reg.vout ~ .load

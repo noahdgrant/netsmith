@@ -310,9 +310,8 @@ generic Zener {
 
     .package: Package
     catalog zener {
-        .zener_voltage, .max_power, .package,
-        .test_current optional, .temperature_coefficient optional,
-        .leakage_current optional, .leakage_test_voltage optional
+        .zener_voltage, .max_power, .package, .test_current optional,
+        .temperature_coefficient optional, .leakage_current optional, .leakage_test_voltage optional
     }
 }
 
@@ -427,7 +426,10 @@ generic Tvs {
     bridge .cathode ~> .anode
 
     .package: Package
-    catalog tvs { .standoff_voltage, .clamping_voltage, .peak_pulse_current, .package, .breakdown_voltage optional }
+    catalog tvs {
+        .standoff_voltage, .clamping_voltage, .peak_pulse_current, .package,
+        .breakdown_voltage optional
+    }
 }
 
 /// A bidirectional TVS diode: two avalanche junctions back to back, so it stands off the same
@@ -503,5 +505,8 @@ generic TvsBidirectional {
     bridge .a1 ~> .a2
 
     .package: Package
-    catalog tvs_bidirectional { .standoff_voltage, .clamping_voltage, .peak_pulse_current, .package, .breakdown_voltage optional }
+    catalog tvs_bidirectional {
+        .standoff_voltage, .clamping_voltage, .peak_pulse_current, .package,
+        .breakdown_voltage optional
+    }
 }

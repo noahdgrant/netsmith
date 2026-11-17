@@ -75,18 +75,9 @@ import std::sources::Rail
 import src::ldo9::Ldo9
 
 board LdoBoard {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .u: Ldo9 {
-        .package &= "DFN-8-EP"
-        .vout.voltage &= 3.3V +/- 5%
-    }
-    .output: Rail {
-        .pos.net &= "3V3"
-        .current &= 0mA..50mA
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .u: Ldo9 { .package &= "DFN-8-EP"; .vout.voltage &= 3.3V +/- 5% }
+    .output: Rail { .pos.net &= "3V3"; .current &= 0mA..50mA }
     .input ~ .u.vin
     .u.vout ~ .output
 
@@ -120,14 +111,9 @@ import std::sources::Rail
 import src::ldo9::Ldo9
 
 board EnLeftOpen {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
     .u: Ldo9 { .package &= "DFN-8-EP" }
-    .output: Rail {
-        .pos.net &= "3V3"
-    }
+    .output: Rail { .pos.net &= "3V3" }
     .input ~ .u.vin
     .u.vout ~ .output
     .u.sense ~ .u.vout.pos
@@ -136,10 +122,10 @@ board EnLeftOpen {
 
 ```text
 error: `u.en` is an input that must be connected (pad 6, `EN`), but nothing else is on its net
-   --> main.nsm:10:5
-   |
-10 |     .u: Ldo9 { .package &= "DFN-8-EP" }
-   |     ^^^^^^^^
+  --> main.nsm:7:5
+  |
+7 |     .u: Ldo9 { .package &= "DFN-8-EP" }
+  |     ^^^^^^^^
 ```
 
 The message points at the line that declares the part, and names the pad and the datasheet name so you can find the pin on the datasheet.
@@ -183,14 +169,9 @@ import std::sources::Rail
 import src::ldo9::Ldo9
 
 board SenseOnTheInput {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
     .u: Ldo9 { .package &= "DFN-8-EP" }
-    .output: Rail {
-        .pos.net &= "3V3"
-    }
+    .output: Rail { .pos.net &= "3V3" }
     .input ~ .u.vin
     .u.vout ~ .output
     .u.sense ~ .u.vin.pos
@@ -214,14 +195,9 @@ import std::sources::Rail
 import src::ldo9::Ldo9
 
 board NoConnectUsed {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
     .u: Ldo9 { .package &= "DFN-8-EP" }
-    .output: Rail {
-        .pos.net &= "3V3"
-    }
+    .output: Rail { .pos.net &= "3V3" }
     .input ~ .u.vin
     .u.vout ~ .output
     .u.sense ~ .u.vout.pos
@@ -232,10 +208,10 @@ board NoConnectUsed {
 
 ```text
 error: `u.nc` is a no_connect pin (pad 5, `NC`) but it is on net `3V3` with `output.pos`, `u.sense`, `u.vout.pos`
-   --> main.nsm:10:5
-   |
-10 |     .u: Ldo9 { .package &= "DFN-8-EP" }
-   |     ^^^^^^^^
+  --> main.nsm:7:5
+  |
+7 |     .u: Ldo9 { .package &= "DFN-8-EP" }
+  |     ^^^^^^^^
 ```
 
 A pin that the package does not have, connected:
@@ -246,14 +222,9 @@ import std::sources::Rail
 import src::ldo9::Ldo9
 
 board SenseInTheSmallPackage {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
     .u: Ldo9 { .package &= "SOT-23-5" }
-    .output: Rail {
-        .pos.net &= "3V3"
-    }
+    .output: Rail { .pos.net &= "3V3" }
     .input ~ .u.vin
     .u.vout ~ .output
     .u.sense ~ .u.vout.pos
@@ -263,10 +234,10 @@ board SenseInTheSmallPackage {
 
 ```text
 error: `u.sense` (`SENSE`) does not exist in package `SOT-23-5` of `Ldo9`, but the board connects it; the packages that have it: `DFN-8-EP`
-   --> main.nsm:10:5
-   |
-10 |     .u: Ldo9 { .package &= "SOT-23-5" }
-   |     ^^^^^^^^
+  --> main.nsm:7:5
+  |
+7 |     .u: Ldo9 { .package &= "SOT-23-5" }
+  |     ^^^^^^^^
 ```
 
 Leave the sense pin out and the same board is fine in the SOT-23-5: the tie is skipped there. A package is text, because a package's name has dashes and parentheses (`"SOT-23-5"`, `"VSON-10(2x3)"`) and a size is a number (`"0603"`), but it is checked (ADR 0118). In a package the part has no table for, the message is at the statement, lists the tables the part has and names the nearest:
@@ -334,15 +305,9 @@ import std::sources::Rail
 import src::en_ldo::EnLdo
 
 board EnBoard {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
     .u: EnLdo { .package &= "SOT-353" }
-    .output: Rail {
-        .pos.net &= "3V3"
-        .current &= 0mA..50mA
-    }
+    .output: Rail { .pos.net &= "3V3"; .current &= 0mA..50mA }
     .input ~ .u.vin
     .u.vout ~ .output
     .u.en ~ .u.vin.pos
@@ -453,10 +418,7 @@ import std::sources::Rail
 import src::mcu::Mcu32
 
 board Uart {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Mcu32 { .package &= "QFN-32" }
     .load: Resistor
     .supply ~ .u.vdd
@@ -475,11 +437,7 @@ import std::sources::Rail
 import src::mcu::Mcu32
 
 board QuotedFunction {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-        .neg.net &= "GND"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3"; .neg.net &= "GND" }
     .u: Mcu32 { .package &= "QFN-32" }
     .load: Resistor
     .supply ~ .u.vdd
@@ -491,9 +449,9 @@ board QuotedFunction {
 
 ```text
 error: the function of `u.pa2` is a name from the pin table of its part, not text: write `UART1_TX`, without quotes
-   --> main.nsm:17:24
+   --> main.nsm:13:24
    |
-17 |     .u.pa2.function &= "UART1_TX"
+13 |     .u.pa2.function &= "UART1_TX"
    |                        ^^^^^^^^^^
 ```
 
@@ -504,10 +462,7 @@ import std::sources::Rail
 import src::mcu::Mcu32
 
 board NoFunction {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Mcu32 { .package &= "QFN-32" }
     .load: Resistor
     .supply ~ .u.vdd
@@ -518,10 +473,10 @@ board NoFunction {
 
 ```text
 error: `u.pa2` has several functions (GPIO, UART1_TX, SPI1_SCK) and is connected: choose one with `.u.pa2.function &= GPIO`
-   --> main.nsm:11:5
-   |
-11 |     .u: Mcu32 { .package &= "QFN-32" }
-   |     ^^^^^^^^^
+  --> main.nsm:8:5
+  |
+8 |     .u: Mcu32 { .package &= "QFN-32" }
+  |     ^^^^^^^^^
 ```
 
 A function that the pin does not offer, a misspelt one (the nearest function of the part is named), and one function on two pins:
@@ -533,10 +488,7 @@ import std::sources::Rail
 import src::mcu::Mcu32
 
 board WrongFunction {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Mcu32 { .package &= "QFN-32" }
     .load: Resistor
     .supply ~ .u.vdd
@@ -548,9 +500,9 @@ board WrongFunction {
 
 ```text
 error: `u.pa2` cannot be `I2C1_SDA`; its functions are GPIO, UART1_TX, SPI1_SCK
-   --> main.nsm:16:5
+   --> main.nsm:13:5
    |
-16 |     .u.pa2.function &= I2C1_SDA
+13 |     .u.pa2.function &= I2C1_SDA
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -561,11 +513,7 @@ import std::sources::Rail
 import src::mcu::Mcu32
 
 board MisspeltFunction {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-        .neg.net &= "GND"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3"; .neg.net &= "GND" }
     .u: Mcu32 { .package &= "QFN-32" }
     .load: Resistor
     .supply ~ .u.vdd
@@ -577,9 +525,9 @@ board MisspeltFunction {
 
 ```text
 error: `u.pa2` cannot be `UART1TX`; its functions are GPIO, UART1_TX, SPI1_SCK; did you mean `UART1_TX`?
-   --> main.nsm:17:5
+   --> main.nsm:13:5
    |
-17 |     .u.pa2.function &= UART1TX
+13 |     .u.pa2.function &= UART1TX
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -590,10 +538,7 @@ import std::sources::Rail
 import src::mcu::Mcu32
 
 board OneFunctionTwice {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Mcu32 { .package &= "QFN-32" }
     .load: Resistor
     .load2: Resistor
@@ -608,9 +553,9 @@ board OneFunctionTwice {
 
 ```text
 error: function `UART1_TX` is chosen on both `u.pa2` and `u.pb6`
-   --> main.nsm:19:5
+   --> main.nsm:16:5
    |
-19 |     .u.pb6.function &= UART1_TX
+16 |     .u.pb6.function &= UART1_TX
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -758,10 +703,7 @@ import std::sources::Rail
 import src::hub::Hub
 
 board Forwarded {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .hub: Hub
     .load: Resistor
     .supply ~ .hub.supply
@@ -779,10 +721,7 @@ import std::sources::Rail
 import src::hub::HubWithoutEquation
 
 board Ignored {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .hub: HubWithoutEquation
     .load: Resistor
     .supply ~ .hub.supply
@@ -798,9 +737,9 @@ error: `hub.mcu.pa2` has several functions (GPIO, UART1_TX, SPI1_SCK) and is con
 20 |     .mcu: Mcu32 { .package &= "QFN-32" }
    |     ^^^^^^^^^^^
 error: `hub.scl.function` is stated, but `hub.scl` is a pin of module `HubWithoutEquation` and nothing passes it to a pin of a part, so it has no effect; inside `HubWithoutEquation`, write `.mcu.pa2.function == .scl.function`
-   --> main.nsm:15:5
+   --> main.nsm:12:5
    |
-15 |     .hub.scl.function &= UART1_TX
+12 |     .hub.scl.function &= UART1_TX
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1464,10 +1403,7 @@ import src::zmcubus::Zmcubus
 import src::zparts::Zflash
 
 board AnyPin {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Zmcubus
     .flash: Zflash
     .supply ~ .u.vdd
@@ -1491,10 +1427,7 @@ import src::zmcubus::Zmcubus
 import src::zparts::Zflash
 
 board NoMosi {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Zmcubus
     .flash: Zflash
     .supply ~ .u.vdd
@@ -1510,15 +1443,15 @@ board NoMosi {
 
 ```text
 error: `.u.SPIM0 ~ .flash.spi` joins the line `mosi` of `SPIM0`, but no pin of `u` is `SPIM0_MOSI`: choose it on a pin that offers it and has no function chosen, `u.p01` (`.u.p01.function &= SPIM0_MOSI`)
-   --> main.nsm:18:5
+   --> main.nsm:15:5
    |
-18 |     .u.SPIM0 ~ .flash.spi
+15 |     .u.SPIM0 ~ .flash.spi
    |     ^^^^^^^^^^^^^^^^^^^^^
 error: `flash.spi.mosi` is an input that must be connected (pad 5, `DI`), but nothing else is on its net
-   --> main.nsm:12:5
-   |
-12 |     .flash: Zflash
-   |     ^^^^^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .flash: Zflash
+  |     ^^^^^^^^^^^^^^
 ```
 
 A board that joins the pins by hand is judged the same way. With the pins of `mosi` and `miso` joined to the wrong lines of the flash, the rules find it, naming the pins:
@@ -1530,10 +1463,7 @@ import src::zmcubus::Zmcubus
 import src::zparts::Zflash
 
 board Crossed {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Zmcubus
     .flash: Zflash
     .supply ~ .u.vdd
@@ -1552,15 +1482,15 @@ board Crossed {
 
 ```text
 error: net `net-flash.spi.miso` joins two different lines of a `Spi`: `miso` (`flash.spi.miso`) and `mosi` (`u.p01`); a `Spi` joins `miso` to `miso` and `mosi` to `mosi`, and `u.p01` is on the net of `miso`
-   --> main.nsm:12:5
-   |
-12 |     .flash: Zflash
-   |     ^^^^^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .flash: Zflash
+  |     ^^^^^^^^^^^^^^
 error: net `net-flash.spi.mosi` joins two different lines of a `Spi`: `miso` (`u.p02`) and `mosi` (`flash.spi.mosi`); a `Spi` joins `miso` to `miso` and `mosi` to `mosi`, and `flash.spi.mosi` is on the net of `miso`
-   --> main.nsm:12:5
-   |
-12 |     .flash: Zflash
-   |     ^^^^^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .flash: Zflash
+  |     ^^^^^^^^^^^^^^
 ```
 
 A function of a peripheral that disagrees with its line is refused in the part:
@@ -1598,10 +1528,7 @@ import src::zmcubus::Zmcubus
 import src::zparts::Zflash
 
 board AnySpi {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Zmcubus
     .flash: Zflash
     .supply ~ .u.vdd
@@ -1641,10 +1568,7 @@ import std::sources::Rail
 import src::zmcubus::Zmcubus
 
 board NoUart {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Zmcubus
     .supply ~ .u.vdd
     .dbg: .u.Uart
@@ -1653,10 +1577,10 @@ board NoUart {
 
 ```text
 error: `dbg` asks `u` (`Zmcubus`) for the end of a `Uart`, but no peripheral of `Zmcubus` is one; a part says that a peripheral is an end of a bus with `peripheral NAME as Uart { ... }` (ADR 0064)
-   --> main.nsm:12:14
-   |
-12 |     .dbg: .u.Uart
-   |              ^^^^
+  --> main.nsm:9:14
+  |
+9 |     .dbg: .u.Uart
+  |              ^^^^
 ```
 
 ### Counts, functions and pins that share

@@ -98,35 +98,18 @@ module BuckSupply {
 
 board TwoBuck {
     /// Made by JLCPCB's two-layer process, on a board 1.6 mm thick.
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 
     /// The 12 V supply, from outside the board: 9 V to 16 V.
-    .input: Rail {
-        .voltage &= 9V..16V
-        .pos.net &= "VIN_RAW"
-    }
+    .input: Rail { .voltage &= 9V..16V; .pos.net &= "VIN_RAW" }
     /// The input after the reverse-polarity diode.
-    .vin: Rail {
-        .voltage &= 8.3V..15.8V
-        .pos.net &= "VIN"
-    }
+    .vin: Rail { .voltage &= 8.3V..15.8V; .pos.net &= "VIN" }
     /// The 5 V rail, made by the first buck stage and the load it carries.
-    .out_5v: Rail {
-        .pos.net &= "5V"
-        .current &= 0mA..1500mA
-    }
+    .out_5v: Rail { .pos.net &= "5V"; .current &= 0mA..1500mA }
     /// The 3.3 V rail, made by the second buck stage.
-    .out_3v3: Rail {
-        .pos.net &= "3V3"
-        .current &= 0mA..1500mA
-    }
+    .out_3v3: Rail { .pos.net &= "3V3"; .current &= 0mA..1500mA }
     /// The quiet 3.3 V rail, made from the 5 V rail by the linear regulator.
-    .out_3v3a: Rail {
-        .pos.net &= "3V3A"
-        .current &= 0mA..50mA
-    }
+    .out_3v3a: Rail { .pos.net &= "3V3A"; .current &= 0mA..50mA }
 
     /// A Schottky diode in series: a supply connected the wrong way round is blocked.
     .reverse_diode: Schottky { .current &= 0A..3A }

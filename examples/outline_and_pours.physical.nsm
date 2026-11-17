@@ -6,11 +6,7 @@ import std::pcb::{Cutout, Keepout, Outline}
 physical for OutlineAndPours {
     case {
         /// 50 by 36 mm, with rounded corners.
-        .outline: Outline {
-            .width &= 50mm
-            .height &= 36mm
-            .corner_radius &= 3mm
-        }
+        .outline: Outline { .width &= 50mm; .height &= 36mm; .corner_radius &= 3mm }
 
         /// A rounded slot cut through the board, 6 mm in from the left edge.
         .slot: Cutout {
@@ -30,9 +26,7 @@ physical for OutlineAndPours {
         .fiducial2: Fiducial
 
         /// Text on the silkscreen, placed like any other part.
-        .revision: Label {
-            .text &= "REV A"
-        }
+        .revision: Label { .text &= "REV A" }
     }
 
     /// No copper and no parts on the top layer where the antenna is, 18 mm along the top edge.

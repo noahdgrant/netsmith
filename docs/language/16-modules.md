@@ -16,10 +16,7 @@ module Indicator {
 }
 
 board Lamp {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .lamp: Indicator
     .input ~ .lamp.supply
     .header: Header1x2
@@ -52,15 +49,8 @@ module Indicator {
 }
 
 board Brighter {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-        .neg.net &= "GND"
-    }
-    .lamp: Indicator {
-        .led.current &= 8mA..15mA
-        .r1.package &= "0603"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .lamp: Indicator { .led.current &= 8mA..15mA; .r1.package &= "0603" }
     .input ~ .lamp.supply
 }
 ```
@@ -107,11 +97,7 @@ module Stage {
 }
 
 board Bounded {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-        .neg.net &= "GND"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
     .stage: Stage { .r1.resistance &= 10kohm +/- 1% }
     .input ~ .stage.supply
     .stage.r_value >= 1kohm

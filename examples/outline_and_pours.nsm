@@ -49,22 +49,12 @@ board OutlineAndPours {
 
     /// The input rail is supplied from outside the board, and carries up to an amp: its nets
     /// are drawn at least 0.4 mm wide, and so is the ground they return on.
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-        .min_track &= 0.4mm..
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN"; .min_track &= 0.4mm.. }
 
-    .stage: LdoStage {
-        .vout.voltage &= 3.3V +/- 5%
-    }
+    .stage: LdoStage { .vout.voltage &= 3.3V +/- 5% }
 
     /// What the outside world draws from the output.
-    .output: Rail {
-        .pos.net &= "3V3"
-        .current &= 0mA..50mA
-        .min_track &= 0.3mm..
-    }
+    .output: Rail { .pos.net &= "3V3"; .current &= 0mA..50mA; .min_track &= 0.3mm.. }
 
     .input ~ .stage.vin
     .stage.vout ~ .output

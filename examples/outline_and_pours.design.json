@@ -642,7 +642,7 @@
         "text": "Mounting holes go in the corners of the outline, and so do the fiducials.",
         "at": {
           "file": "outline_and_pours.physical.nsm",
-          "line": 25
+          "line": 21
         },
         "anchors": [
           "hole1"
@@ -666,7 +666,7 @@
         "text": "What the outside world draws from the output.",
         "at": {
           "file": "outline_and_pours.nsm",
-          "line": 63
+          "line": 57
         },
         "anchors": [],
         "result": null
@@ -677,7 +677,7 @@
         "text": "Text on the silkscreen, placed like any other part.",
         "at": {
           "file": "outline_and_pours.physical.nsm",
-          "line": 33
+          "line": 29
         },
         "anchors": [
           "revision"

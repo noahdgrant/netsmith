@@ -404,7 +404,7 @@
         "text": "The board runs from a 3.3 V rail and exposes one logic input.",
         "at": {
           "file": "status_indicator.nsm",
-          "line": 38
+          "line": 32
         },
         "anchors": [],
         "result": null
@@ -415,7 +415,7 @@
         "text": "The rail comes in through one header, and the enable signal through another.",
         "at": {
           "file": "status_indicator.nsm",
-          "line": 45
+          "line": 37
         },
         "anchors": [
           "power_in"

@@ -6109,23 +6109,23 @@
               "field": "x",
               "lo": 3.45,
               "hi": 3.45,
-              "source": "src/main.physical.nsm:19"
+              "source": "src/main.physical.nsm:16"
             },
             {
               "field": "y",
               "lo": 10.15,
               "hi": 10.15,
-              "source": "src/main.physical.nsm:20"
+              "source": "src/main.physical.nsm:17"
             },
             {
               "field": "rotation",
               "lo": 270.0,
               "hi": 270.0,
-              "source": "src/main.physical.nsm:23"
+              "source": "src/main.physical.nsm:20"
             }
           ],
           "side": "bottom",
-          "side_source": "src/main.physical.nsm:24"
+          "side_source": "src/main.physical.nsm:21"
         },
         {
           "path": "swd",
@@ -6135,23 +6135,23 @@
               "field": "x",
               "lo": 82.5,
               "hi": 82.5,
-              "source": "src/main.physical.nsm:31"
+              "source": "src/main.physical.nsm:28"
             },
             {
               "field": "y",
               "lo": 21.3,
               "hi": 21.3,
-              "source": "src/main.physical.nsm:32"
+              "source": "src/main.physical.nsm:29"
             },
             {
               "field": "rotation",
               "lo": 0.0,
               "hi": 0.0,
-              "source": "src/main.physical.nsm:33"
+              "source": "src/main.physical.nsm:30"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:34"
+          "side_source": "src/main.physical.nsm:31"
         },
         {
           "path": "usb",
@@ -6161,39 +6161,39 @@
               "field": "x",
               "lo": 97.405,
               "hi": 97.405,
-              "source": "src/main.physical.nsm:26"
+              "source": "src/main.physical.nsm:23"
             },
             {
               "field": "y",
               "lo": 12.0,
               "hi": 12.0,
-              "source": "src/main.physical.nsm:27"
+              "source": "src/main.physical.nsm:24"
             },
             {
               "field": "rotation",
               "lo": 90.0,
               "hi": 90.0,
-              "source": "src/main.physical.nsm:28"
+              "source": "src/main.physical.nsm:25"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:29"
+          "side_source": "src/main.physical.nsm:26"
         }
       ],
       "offsets": [],
       "line_texts": {
-        "src/main.physical.nsm:19": ".slot.place.x &= 3.45mm",
-        "src/main.physical.nsm:20": ".slot.place.y &= 10.15mm",
-        "src/main.physical.nsm:23": ".slot.place.rotation &= 270",
-        "src/main.physical.nsm:24": ".slot.place.side &= \"bottom\"",
-        "src/main.physical.nsm:26": ".usb.place.x &= 97.405mm",
-        "src/main.physical.nsm:27": ".usb.place.y &= 12mm",
-        "src/main.physical.nsm:28": ".usb.place.rotation &= 90",
-        "src/main.physical.nsm:29": ".usb.place.side &= \"top\"",
-        "src/main.physical.nsm:31": ".swd.place.x &= 82.5mm",
-        "src/main.physical.nsm:32": ".swd.place.y &= 21.3mm",
-        "src/main.physical.nsm:33": ".swd.place.rotation &= 0",
-        "src/main.physical.nsm:34": ".swd.place.side &= \"top\""
+        "src/main.physical.nsm:16": ".slot.place.x &= 3.45mm",
+        "src/main.physical.nsm:17": ".slot.place.y &= 10.15mm",
+        "src/main.physical.nsm:20": ".slot.place.rotation &= 270",
+        "src/main.physical.nsm:21": ".slot.place.side &= \"bottom\"",
+        "src/main.physical.nsm:23": ".usb.place.x &= 97.405mm",
+        "src/main.physical.nsm:24": ".usb.place.y &= 12mm",
+        "src/main.physical.nsm:25": ".usb.place.rotation &= 90",
+        "src/main.physical.nsm:26": ".usb.place.side &= \"top\"",
+        "src/main.physical.nsm:28": ".swd.place.x &= 82.5mm",
+        "src/main.physical.nsm:29": ".swd.place.y &= 21.3mm",
+        "src/main.physical.nsm:30": ".swd.place.rotation &= 0",
+        "src/main.physical.nsm:31": ".swd.place.side &= \"top\""
       }
     },
     "interfaces": [
@@ -6600,7 +6600,7 @@
         "text": "Behind the input inductor: the converter's input.",
         "at": {
           "file": "src/main.nsm",
-          "line": 277
+          "line": 267
         },
         "anchors": [],
         "result": null
@@ -7324,7 +7324,7 @@
         "text": "The slot's 5 V logic supply (A12, B12), from the backplane's buck.",
         "at": {
           "file": "src/main.nsm",
-          "line": 264
+          "line": 261
         },
         "anchors": [],
         "result": null
@@ -7335,7 +7335,7 @@
         "text": "The 3.3 V of the LP2985: the microcontroller, the comparator, the I2C pull-ups.",
         "at": {
           "file": "src/main.nsm",
-          "line": 269
+          "line": 263
         },
         "anchors": [],
         "result": null
@@ -7463,7 +7463,7 @@
         "text": "The port's VBUS, on the receptacle.",
         "at": {
           "file": "src/main.nsm",
-          "line": 299
+          "line": 278
         },
         "anchors": [],
         "result": null
@@ -7513,7 +7513,7 @@
         "text": "Behind the shunt R27, ahead of the MOSFET Q4.",
         "at": {
           "file": "src/main.nsm",
-          "line": 295
+          "line": 276
         },
         "anchors": [],
         "result": null
@@ -7537,7 +7537,7 @@
         "text": "The two back-to-back MOSFETs' common source.",
         "at": {
           "file": "src/main.nsm",
-          "line": 291
+          "line": 274
         },
         "anchors": [],
         "result": null
@@ -7587,7 +7587,7 @@
         "text": "Behind the fuse.",
         "at": {
           "file": "src/main.nsm",
-          "line": 273
+          "line": 265
         },
         "anchors": [],
         "result": null
@@ -7598,7 +7598,7 @@
         "text": "Behind the output shunt R28.",
         "at": {
           "file": "src/main.nsm",
-          "line": 287
+          "line": 272
         },
         "anchors": [],
         "result": null
@@ -7609,7 +7609,7 @@
         "text": "The converter's output, the USB-PD contract's voltage (the converter makes 0.8 V to 22 V; the blade is offered 5 V to 21 V by its firmware).",
         "at": {
           "file": "src/main.nsm",
-          "line": 282
+          "line": 270
         },
         "anchors": [],
         "result": null
@@ -7724,7 +7724,7 @@
         "text": ".port_trip_current == .protector.ocp_threshold / .port_shunt.resistance",
         "at": {
           "file": "src/main.nsm",
-          "line": 326
+          "line": 303
         },
         "anchors": [
           "protector",
@@ -7738,7 +7738,7 @@
         "text": ".q_port_a.gate_source_voltage == .protector.gate_drive",
         "at": {
           "file": "src/main.nsm",
-          "line": 320
+          "line": 297
         },
         "anchors": [
           "q_port_a",
@@ -7752,7 +7752,7 @@
         "text": ".q_port_b.gate_source_voltage == .protector.gate_drive",
         "at": {
           "file": "src/main.nsm",
-          "line": 321
+          "line": 298
         },
         "anchors": [
           "q_port_b",

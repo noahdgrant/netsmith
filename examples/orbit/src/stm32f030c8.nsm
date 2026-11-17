@@ -51,14 +51,8 @@ import std::bus::{I2c, I2cRole, Uart}
 part Stm32F030C8 {
     .designator &= "U"
 
-    peripheral USART1 as Uart {
-        USART1_TX:output as tx
-        USART1_RX:input as rx
-    }
-    peripheral I2C1 as I2c I2cRole::Controller {
-        I2C1_SCL as scl
-        I2C1_SDA as sda
-    }
+    peripheral USART1 as Uart { USART1_TX:output as tx; USART1_RX:input as rx }
+    peripheral I2C1 as I2c I2cRole::Controller { I2C1_SCL as scl; I2C1_SDA as sda }
 
     pins "LQFP-48(7x7)" {
         //  pin     kind           name             pads

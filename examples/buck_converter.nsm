@@ -12,20 +12,12 @@ import std::sources::Rail
 
 board BuckConverterExample {
     /// Made by JLCPCB's two-layer process, on a board 1.6 mm thick.
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 
     /// The 12 V input, supplied from outside the board.
-    .v12: Rail {
-        .voltage &= 12V +/- 5%
-        .pos.net &= "12V"
-    }
+    .v12: Rail { .voltage &= 12V +/- 5%; .pos.net &= "12V" }
     /// The 3.3 V output and the load it carries.
-    .v3v3: Rail {
-        .pos.net &= "3V3"
-        .current &= 0mA..500mA
-    }
+    .v3v3: Rail { .pos.net &= "3V3"; .current &= 0mA..500mA }
 
     .reg: BuckConverter { .vout.voltage &= 3.3V +/- 5% }
     .v12 ~ .reg.vin

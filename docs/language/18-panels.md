@@ -14,13 +14,8 @@ board Tile {
         // Copper at least 0.4 mm from the edge, as a V-cut needs.
         .min_edge_clearance &= 0.4mm..
     }
-    .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
-    .led: Led {
-        .current &= 5mA..15mA
-    }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
+    .led: Led { .current &= 5mA..15mA }
     .r1: Resistor {}
     .power_in: Header1x2
     .supply.pos ~ .power_in.p1
@@ -30,11 +25,7 @@ board Tile {
 
 panel TilePanel {
     .cell: Tile
-    .fab: VCutPanel {
-        .columns &= 3
-        .rows &= 2
-        .rail &= 5mm
-    }
+    .fab: VCutPanel { .columns &= 3; .rows &= 2; .rail &= 5mm }
 }
 ```
 
@@ -45,11 +36,7 @@ import std::pcb::Outline
 
 physical for Tile {
     case {
-        .outline: Outline {
-            .width &= 40mm
-            .height &= 30mm
-            .corner_radius &= 0mm
-        }
+        .outline: Outline { .width &= 40mm; .height &= 30mm; .corner_radius &= 0mm }
     }
 }
 ```
@@ -88,9 +75,7 @@ board Tile {
 
 panel P {
     .cell: Tile
-    .fab: VCutPanel {
-        .rows &= 2
-    }
+    .fab: VCutPanel { .rows &= 2 }
 }
 ```
 
@@ -111,10 +96,7 @@ board Tile {
 
 panel P {
     .cell: Tile
-    .fab: VCutPanel {
-        .columns &= 2
-        .rows &= 2
-    }
+    .fab: VCutPanel { .columns &= 2; .rows &= 2 }
     .r1: Resistor {}
     .cell.supply ~ .cell.supply
 }
@@ -122,13 +104,13 @@ panel P {
 
 ```text
 error: a panel holds the board it repeats and its fabricator's panel rules, but `Resistor` is a part
-   --> main.nsm:15:10
+   --> main.nsm:12:10
    |
-15 |     .r1: Resistor {}
+12 |     .r1: Resistor {}
    |          ^^^^^^^^
 error: a panel joins nothing: it repeats one board in a grid, and the boards stay apart
-   --> main.nsm:16:5
+   --> main.nsm:13:5
    |
-16 |     .cell.supply ~ .cell.supply
+13 |     .cell.supply ~ .cell.supply
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```

@@ -63,10 +63,7 @@ part Esp32S3Wroom1 {
     .vdd.voltage >= 3.0V
     .vdd.voltage <= 3.6V
 
-    peripheral UART0 as Uart {
-        U0TXD:output as tx
-        U0RXD:input as rx
-    }
+    peripheral UART0 as Uart { U0TXD:output as tx; U0RXD:input as rx }
 
     pins "SMD, 25.5x18mm" {
         //  pin     kind           name     pads

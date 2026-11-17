@@ -71,20 +71,12 @@ board Rp2350Minimal {
     // ---- The rails ----
 
     /// USB's VBUS, the only input. 5 V +/- 5% is USB's 4.75 V to 5.25 V.
-    .vbus: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VBUS"
-    }
+    .vbus: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VBUS" }
     /// The IO supply, from the regulator.
-    .v3v3: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "+3V3"
-    }
+    .v3v3: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "+3V3" }
     /// The core supply, made by the MCU's own switching regulator with the inductor and a
     /// capacitor. Its voltage is the chip's choice (the datasheet's), and nothing here states it.
-    .v1v1: Rail {
-        .pos.net &= "+1V1"
-    }
+    .v1v1: Rail { .pos.net &= "+1V1" }
 
     .usb.vbus ~ .vbus.pos
     .usb.gnd ~ .vbus.neg
@@ -105,10 +97,7 @@ board Rp2350Minimal {
     .mcu.vreg_pgnd ~ .vbus.neg
 
     /// The inductor of the core regulator, from the chip's switch node to the core rail.
-    .core_inductor: Inductor {
-        .inductance &= 3.3uH +/- 20%
-        .package &= "0806"
-    }
+    .core_inductor: Inductor { .inductance &= 3.3uH +/- 20%; .package &= "0806" }
     .mcu.vreg_lx ~ .core_inductor.b
     .core_inductor.a ~ .v1v1.pos
 

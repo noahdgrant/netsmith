@@ -187,9 +187,7 @@ module TestRow {
 }
 
 board EnclosureSensor {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 
     // Power: USB-C in, 3.3 V out.
     .usb: UsbCPower {
@@ -202,16 +200,10 @@ board EnclosureSensor {
     .usb.cc1 ~> .rd1 ~> .usb.vbus.neg
     .usb.cc2 ~> .rd2 ~> .usb.vbus.neg
 
-    .ldo: LdoStage {
-        .vout.voltage &= 3.3V +/- 5%
-    }
+    .ldo: LdoStage { .vout.voltage &= 3.3V +/- 5% }
     .usb.vbus ~ .ldo.vin
 
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-        .current &= 0mA..100mA
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3"; .current &= 0mA..100mA }
     .ldo.vout ~ .supply
 
     // The controller stand-in, its bus, and a write-protect switch.

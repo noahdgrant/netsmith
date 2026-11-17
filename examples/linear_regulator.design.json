@@ -441,7 +441,7 @@
         "text": "The input rail is supplied from outside the board.",
         "at": {
           "file": "linear_regulator.nsm",
-          "line": 38
+          "line": 36
         },
         "anchors": [],
         "result": null
@@ -452,7 +452,7 @@
         "text": "What the outside world draws from the output.",
         "at": {
           "file": "linear_regulator.nsm",
-          "line": 48
+          "line": 41
         },
         "anchors": [],
         "result": null

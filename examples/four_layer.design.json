@@ -466,7 +466,7 @@
         "text": "The input rail is supplied from outside the board.",
         "at": {
           "file": "four_layer.nsm",
-          "line": 41
+          "line": 38
         },
         "anchors": [],
         "result": null
@@ -477,7 +477,7 @@
         "text": "What the outside world draws from the output.",
         "at": {
           "file": "four_layer.nsm",
-          "line": 51
+          "line": 43
         },
         "anchors": [],
         "result": null

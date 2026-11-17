@@ -104,7 +104,10 @@ part Header1x2 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A single-row header with 4 pins, `p1` to `p4`, pin N on pad N.
@@ -126,7 +129,10 @@ part Header1x4 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A single-row header with 8 pins, `p1` to `p8`, pin N on pad N.
@@ -152,7 +158,10 @@ part Header1x8 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A single-row header with 10 pins, `p1` to `p10`, pin N on pad N.
@@ -180,7 +189,10 @@ part Header1x10 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A single-row socket with 2 positions, `p1` to `p2`, position N on pad N. It is the
@@ -201,7 +213,10 @@ part Socket1x2 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A single-row socket with 4 positions, `p1` to `p4`, position N on pad N. It is the
@@ -224,7 +239,10 @@ part Socket1x4 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A single-row socket with 8 positions, `p1` to `p8`, position N on pad N. It is the
@@ -251,7 +269,10 @@ part Socket1x8 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A single-row socket with 10 positions, `p1` to `p10`, position N on pad N. It is the
@@ -280,7 +301,10 @@ part Socket1x10 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A two-row header with 6 pins, `p1` to `p6`, pin N on pad N. Which pins are in which
@@ -305,7 +329,10 @@ part Header2x3 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A two-row header with 10 pins, `p1` to `p10`, pin N on pad N. Which pins are in which
@@ -334,7 +361,10 @@ part Header2x5 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A two-row header with 20 pins, `p1` to `p20`, pin N on pad N. Which pins are in which
@@ -373,7 +403,10 @@ part Header2x10 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A coaxial (RF) connector: a centre conductor and a shield. `.impedance` is the connector's

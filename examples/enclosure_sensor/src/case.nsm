@@ -9,18 +9,8 @@ import std::pcb::{Cutout, Outline}
 enclosure SensorCase {
     // The outline: 90 x 62 mm with 3 mm rounded corners, and one cutout, a slot for a strap,
     // 8 x 4 mm, with its corner 30 mm in and 44 mm down.
-    .outline: Outline {
-        .width &= 90mm
-        .height &= 62mm
-        .corner_radius &= 3mm
-    }
-    .strap: Cutout {
-        .x &= 30mm
-        .y &= 44mm
-        .width &= 8mm
-        .height &= 4mm
-        .corner_radius &= 1mm
-    }
+    .outline: Outline { .width &= 90mm; .height &= 62mm; .corner_radius &= 3mm }
+    .strap: Cutout { .x &= 30mm; .y &= 44mm; .width &= 8mm; .height &= 4mm; .corner_radius &= 1mm }
 
     // Four mounting holes, 4.5 mm in from each corner. A hole whose place is stated is put
     // there and not in a corner.

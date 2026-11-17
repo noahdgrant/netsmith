@@ -131,7 +131,10 @@ generic Capacitor {
     bridge .a ~> .b
 
     .package: Package
-    catalog capacitor { .capacitance, .effective_capacitance, .max_voltage, .package, .dielectric optional, .esr optional }
+    catalog capacitor {
+        .capacitance, .effective_capacitance, .max_voltage, .package, .dielectric optional,
+        .esr optional
+    }
 }
 
 /// Identical capacitors in parallel in one place, whose number the solver chooses or a module
@@ -192,7 +195,10 @@ generic CapacitorBank {
     bridge .a ~> .b
 
     .package: Package
-    catalog capacitor { .capacitance, .effective_capacitance, .max_voltage, .package, .dielectric optional, .esr optional }
+    catalog capacitor {
+        .capacitance, .effective_capacitance, .max_voltage, .package, .dielectric optional,
+        .esr optional
+    }
 }
 
 /// A colour, as a listing, a datasheet or a fabricator's order form names it: the colour an LED
@@ -258,7 +264,9 @@ generic Led {
     dc diode .anode .cathode .forward_voltage
 
     .package: Package
-    catalog led { .color, .forward_voltage, .package, .max_forward_current optional, .test_current optional }
+    catalog led {
+        .color, .forward_voltage, .package, .max_forward_current optional, .test_current optional
+    }
 }
 
 /// An inductor. `.inductance` is the marked value with its tolerance. `.saturation_current`
@@ -304,7 +312,9 @@ generic Inductor {
     dc resistor .a .b .dc_resistance
 
     .package: Package
-    catalog inductor { .inductance, .saturation_current, .dc_resistance, .package, .rms_current optional }
+    catalog inductor {
+        .inductance, .saturation_current, .dc_resistance, .package, .rms_current optional
+    }
 }
 
 /// A ferrite bead: a lossy inductor that blocks high frequencies. `.impedance` is the
@@ -336,7 +346,9 @@ generic FerriteBead {
     dc resistor .a .b .dc_resistance
 
     .package: Package
-    catalog ferrite_bead { .impedance, .impedance_frequency, .rated_current, .dc_resistance, .package }
+    catalog ferrite_bead {
+        .impedance, .impedance_frequency, .rated_current, .dc_resistance, .package
+    }
 }
 
 /// A quartz crystal with two terminals. `.frequency` is the nominal frequency and its

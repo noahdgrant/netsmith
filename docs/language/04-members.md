@@ -7,14 +7,8 @@ import std::parts::passive::Capacitor
 import std::sources::Rail
 
 board Members {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
-    .bypass: Capacitor {
-        .effective_capacitance >= 1uF
-        .max_voltage >= supply.voltage * 2
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .bypass: Capacitor { .effective_capacitance >= 1uF; .max_voltage >= supply.voltage * 2 }
     .supply.pos ~> .bypass ~> .supply.neg
 }
 ```
@@ -108,10 +102,7 @@ import std::parts::passive::Capacitor
 import std::sources::Rail
 
 board Groups {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     /// The decoupling of the supply, one by each supply pin.
     .decoupling: 4 x Capacitor { .capacitance &= 100nF +/- 10% }
     .decoupling[3].package &= "0603"
@@ -182,11 +173,7 @@ import std::parts::passive::{Capacitor, Resistor}
 import std::sources::Rail
 
 board Shape {
-    .supply: Rail {
-        .voltage &= 3.3V
-        .pos.net &= "3V3"
-        .neg.net &= "GND"
-    }
+    .supply: Rail { .voltage &= 3.3V; .pos.net &= "3V3"; .neg.net &= "GND" }
     .r: Resistor
     .decoupling: 2 x Capacitor { .capacitance &= 100nF +/- 10% }
     .supply.pos ~> .r ~> .decoupling ~> .supply.neg
@@ -195,10 +182,10 @@ board Shape {
 
 ```text
 error: `.decoupling` is a group of 2, and a group in a chain stands alone between the chain's two ends, each member in parallel (`.v.pos ~> .decoupling ~> .v.neg`); join one member by its index, `.decoupling[0]` to `.decoupling[1]`
-   --> main.nsm:12:26
-   |
-12 |     .supply.pos ~> .r ~> .decoupling ~> .supply.neg
-   |                          ^^^^^^^^^^^
+  --> main.nsm:8:26
+  |
+8 |     .supply.pos ~> .r ~> .decoupling ~> .supply.neg
+  |                          ^^^^^^^^^^^
 ```
 
 ```nsm fails

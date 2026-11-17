@@ -8,11 +8,12 @@
 //! - 4 spaces of indent for each block, and 100 columns. A line that continues a statement (after
 //!   a connection or relation operator, inside parentheses, a polygon's next corners) is indented
 //!   one more than the statement's first line.
-//! - The line breaks are the author's, as gofmt keeps them: a block written on one line stays on
-//!   one line (`.reg: BuckConverter { .vout.voltage &= 3.3V +/- 5% }`) and a block written over
-//!   several stays so. A `;` between statements of a block written over several lines becomes a
-//!   line end, and a statement after a `{` that opens such a block goes to the next line.
-//! - A line longer than 100 columns is broken: a block written on one line goes over several, one
+//! - The line breaks are the formatter's, as rustfmt makes them: a statement or a block written
+//!   over several lines is joined onto one line when it fits (the statements of a block parted by
+//!   `;`), and broken only when it does not. The body of a definition or of a section (`pins`,
+//!   `lines`, `support`, ...) is always one statement to a line, and a statement or block with a
+//!   comment, a doc comment or an attribute inside it stays broken (see [`join`]).
+//! - A line longer than 100 columns is broken: a block on the line goes over several, one
 //!   statement to a line (this is how a long `n x kind` statement breaks: in its block, never
 //!   between the count and the kind); then a connection breaks after each `~`, `~>` or `?~`, a
 //!   relation after its operator and its value after `+/-`, `+`, `-`, `*` or `/`; a polygon
@@ -31,7 +32,7 @@
 //!   the order of its paths, with one blank line between two groups. The names in an import's
 //!   braces are sorted. A comment above an import moves with it.
 
-use crate::ast::File;
+use crate::ast::{DefKind, File};
 use crate::error::{ParseError, Span};
 use crate::lexer::{Tok, lex_keeping_comments};
 use crate::parser::parse;
@@ -251,7 +252,7 @@ impl Line {
 fn layout(src: &str) -> Result<String, ParseError> {
     let lines = source_lines(src)?;
     let lines = split_blocks(lines);
-    let lines = indent(lines);
+    let lines = indent(join(&indent(lines)));
     let mut out: Vec<Line> = Vec::new();
     for line in lines {
         out.extend(break_long(line));
@@ -346,7 +347,12 @@ fn split_blocks(lines: Vec<Line>) -> Vec<Line> {
         };
         while let Some((j, t)) = toks.next() {
             if t.opens() {
-                let here = closed_on[i][j] == Some(i);
+                // The body of a definition or of a section is over lines, also when it was
+                // written on one (an empty one, `{}`, aside).
+                let item = t.is(&Tok::LBrace)
+                    && opens_item(&piece)
+                    && !toks.peek().is_some_and(|(_, next)| next.is(&Tok::RBrace));
+                let here = closed_on[i][j] == Some(i) && !item;
                 let block = t.is(&Tok::LBrace) && !here;
                 if here {
                     local.push(true);
@@ -401,6 +407,142 @@ fn split_blocks(lines: Vec<Line>) -> Vec<Line> {
         out.extend(pieces);
     }
     out
+}
+
+/// The words that begin a definition (`board`, `part`, ... and a physical file's `physical`) or
+/// a section of one (`pins`, `lines`, `support`, `layout`, `defaults`, `case`): a block whose
+/// statements are always one to a line, as rustfmt lays out the body of a function.
+fn is_item_word(word: &str) -> bool {
+    DefKind::from_keyword(word).is_some()
+        || matches!(
+            word,
+            "physical" | "pins" | "lines" | "support" | "layout" | "defaults" | "case"
+        )
+}
+
+/// Whether a `{` after the tokens `head` of a statement opens the body of a definition or of a
+/// section: whether the statement, past its attributes (`#[series(E24)]`), begins with one of
+/// their words.
+fn opens_item(head: &[T]) -> bool {
+    let mut k = 0;
+    while head.get(k).is_some_and(|t| t.is(&Tok::HashBracket)) {
+        let mut depth = 0usize;
+        while let Some(t) = head.get(k) {
+            k += 1;
+            if t.opens() {
+                depth += 1;
+            } else if t.closes() {
+                depth -= 1;
+                if depth == 0 {
+                    break;
+                }
+            }
+        }
+    }
+    head.get(k)
+        .is_some_and(|t| matches!(&t.tok, Some(Tok::Ident(w)) if is_item_word(w)))
+}
+
+/// Each statement and block written over several lines joined onto one line (issue #1103: the
+/// line breaks are the formatter's, not the author's), which [`break_long`] breaks again when it
+/// is longer than [`WIDTH`], as it breaks a line written so: what fits is on one line, and what
+/// does not is laid out the same however it was written. What is not joined: the body of a
+/// definition or of a section, and a statement or block with a comment, a doc comment or an
+/// attribute inside it (a comment is never moved onto a line with code); a block that is not
+/// joined keeps its `{` line and its `}` line, and what is in it is joined in its turn.
+fn join(lines: &[Line]) -> Vec<Line> {
+    let mut out = Vec::with_capacity(lines.len());
+    join_range(lines, &mut out);
+    out
+}
+
+fn join_range(lines: &[Line], out: &mut Vec<Line>) {
+    let mut k = 0;
+    while k < lines.len() {
+        // The statement that begins on line `k`: up to the line that closes what it opens, and
+        // the lines that go on with it.
+        let depth = lines[k].depth;
+        let mut e = k;
+        while e + 1 < lines.len() && (lines[e].depth_after > depth || lines[e + 1].cont) {
+            e += 1;
+        }
+        let unit = &lines[k..=e];
+        if e > k
+            && let Some((joined, in_parens)) = joined(unit)
+            && (!in_parens || width(&joined) <= WIDTH)
+        {
+            // Joined however long: `break_long` breaks it again where the width needs, as it
+            // breaks a line written so. Only a line end inside parentheses, which it does not
+            // break, is kept when the line would be too long.
+            out.push(joined);
+            k = e + 1;
+            continue;
+        }
+        out.push(lines[k].clone());
+        join_range(&lines[k + 1..=e], out);
+        k = e + 1;
+    }
+}
+
+/// The lines of one statement on one line, with a `;` between two statements of a block, and
+/// whether a line end was inside parentheses or brackets; `None` when they may not be joined.
+fn joined(unit: &[Line]) -> Option<(Line, bool)> {
+    let last = unit.len() - 1;
+    for (n, line) in unit.iter().enumerate() {
+        let first = line.first()?;
+        if (n < last && line.comment.is_some())
+            || first.is(&Tok::HashBracket)
+            || line.toks.iter().any(T::is_doc)
+            || (line.toks.last().is_some_and(|t| t.is(&Tok::LBrace)) && opens_item(&line.toks))
+        {
+            return None;
+        }
+    }
+    let mut toks: Vec<T> = Vec::new();
+    // The brackets open, each with whether it is a `{` (whose statements a `;` parts).
+    let mut open: Vec<bool> = Vec::new();
+    let mut in_parens = false;
+    for (n, line) in unit.iter().enumerate() {
+        if n > 0 {
+            in_parens |= open.last() == Some(&false);
+            let prev = toks.last().expect("a line of code has a token");
+            let next = &line.toks[0];
+            let between_statements = open.last() == Some(&true)
+                && !line.cont
+                && !prev.opens()
+                && !prev.is(&Tok::Comma)
+                && !prev.tok.as_ref().is_some_and(continues)
+                && !next.closes()
+                && !next.is(&Tok::Comma);
+            if between_statements {
+                toks.push(T {
+                    tok: Some(Tok::Semi),
+                    text: ";".into(),
+                    space: false,
+                });
+            }
+        }
+        for (j, t) in line.toks.iter().enumerate() {
+            if t.opens() {
+                open.push(t.is(&Tok::LBrace));
+            } else if t.closes() {
+                open.pop();
+            }
+            let mut t = t.clone();
+            if j == 0 && n > 0 {
+                // A line end is white space.
+                t.space = true;
+            }
+            toks.push(t);
+        }
+    }
+    let line = Line {
+        toks: sort_import_names(toks),
+        comment: unit[last].comment.clone(),
+        depth_after: unit[last].depth_after,
+        ..unit[0].clone()
+    };
+    Some((line, in_parens))
 }
 
 /// The names in the braces of an import on one line, sorted, with no `,` after the last.
@@ -566,7 +708,8 @@ fn space(toks: &[T], i: usize, ctx: Ctx) -> bool {
         return true;
     }
     if matches!(p, Tok::DotDot) {
-        return false;
+        // A range open at its top touches its `..`, and its block's `}` does not: `{ .x &= 1V.. }`.
+        return matches!(n, Tok::RBrace);
     }
     if matches!(n, Tok::DotDot) {
         return after.is_some_and(|a| a.is(&Tok::LeadingDot));
@@ -783,8 +926,8 @@ fn fill(line: Line, can_break: impl Fn(&[T], usize) -> bool, already_cont: bool)
 }
 
 /// A block written on `line` in braces, over several lines: the line up to its `{`, each of its
-/// statements one level in, and its `}` with the rest of the line. `None` when the line has no
-/// such block, or its braces hold a list (of names, of columns) rather than statements.
+/// statements one level in (or, for a list of names or columns parted by `,`, as many of them to
+/// a line as fit), and its `}` with the rest of the line. `None` when the line has no such block.
 fn expand_block(line: &Line) -> Option<Vec<Line>> {
     let toks = &line.toks;
     let top = top_level(toks);
@@ -810,7 +953,8 @@ fn expand_block(line: &Line) -> Option<Vec<Line>> {
             matches!(t, Tok::Semi | Tok::Colon | Tok::Eq) || is_connection(t) || is_relation(t)
         })
     });
-    if !statements || inner.is_empty() {
+    let list = !statements && inner_top.iter().any(|&k| inner[k].is(&Tok::Comma));
+    if inner.is_empty() {
         return None;
     }
     let mut out = vec![Line {
@@ -818,6 +962,24 @@ fn expand_block(line: &Line) -> Option<Vec<Line>> {
         comment: None,
         ..line.clone()
     }];
+    if list {
+        // A list (a catalog's columns, an import's names): as many to a line as fit, broken
+        // after a `,`.
+        out.extend(fill(
+            inner_line(line, inner.to_vec()),
+            |toks, k| toks[k - 1].is(&Tok::Comma),
+            true,
+        ));
+        out.push(Line {
+            toks: toks[close..].to_vec(),
+            comment: line.comment.clone(),
+            blank: false,
+            cont: false,
+            indent: line.indent,
+            ..line.clone()
+        });
+        return Some(out);
+    }
     let mut piece = Vec::new();
     for (k, t) in inner.iter().enumerate() {
         if inner_top.contains(&k) && t.is(&Tok::Semi) {

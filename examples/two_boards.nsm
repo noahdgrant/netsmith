@@ -38,26 +38,16 @@ module LdoStage {
 /// Turns the 5 V it is given into 3.3 V for the other board.
 board PowerBoard {
     /// Made by JLCPCB's two-layer process, on a board 1.6 mm thick.
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 
     /// The input rail is supplied from outside the system.
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
 
-    .stage: LdoStage {
-        .vout.voltage &= 3.3V +/- 5%
-    }
+    .stage: LdoStage { .vout.voltage &= 3.3V +/- 5% }
 
     /// What the rest of the system draws from the output: up to 50 mA, the most this
     /// board is built to give.
-    .output: Rail {
-        .pos.net &= "3V3"
-        .current &= 0mA..50mA
-    }
+    .output: Rail { .pos.net &= "3V3"; .current &= 0mA..50mA }
 
     .input ~ .stage.vin
     .stage.vout ~ .output
@@ -73,18 +63,12 @@ board PowerBoard {
 /// A status LED that runs from 3.3 V.
 board LedBoard {
     /// Made by JLCPCB's two-layer process, on a board 1.6 mm thick.
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 
     /// Supplied by the other board, through this socket.
-    .input: Rail {
-        .pos.net &= "3V3"
-    }
+    .input: Rail { .pos.net &= "3V3" }
 
-    .led: Led {
-        .current &= 5mA..20mA
-    }
+    .led: Led { .current &= 5mA..20mA }
     .r1: Resistor {}
 
     .power_in: Socket1x2

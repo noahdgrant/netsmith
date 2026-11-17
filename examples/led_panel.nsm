@@ -18,14 +18,9 @@ board LedTile {
         // Copper stays 0.4 mm from the edge, as a V-cut needs.
         .min_edge_clearance &= 0.4mm..
     }
-    .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
 
-    .led: Led {
-        .current &= 5mA..15mA
-    }
+    .led: Led { .current &= 5mA..15mA }
 
     .r1: Resistor {}
 
@@ -40,9 +35,5 @@ board LedTile {
 /// Six `LedTile` boards, three across and two down, with 5 mm rails.
 panel LedPanel {
     .cell: LedTile
-    .fab: VCutPanel {
-        .columns &= 3
-        .rows &= 2
-        .rail &= 5mm
-    }
+    .fab: VCutPanel { .columns &= 3; .rows &= 2; .rail &= 5mm }
 }

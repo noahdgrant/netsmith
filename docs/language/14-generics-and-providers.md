@@ -411,14 +411,8 @@ import std::parts::regulator::BuckConverter
 import std::sources::Rail
 
 board PowerBoard {
-    .input: Rail {
-        .voltage &= 12V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "3V3"
-        .current &= 0mA..500mA
-    }
+    .input: Rail { .voltage &= 12V +/- 5%; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "3V3"; .current &= 0mA..500mA }
 
     .reg: BuckConverter { .vout.voltage &= 3.3V +/- 5% }
     .input ~ .reg.vin
@@ -477,14 +471,8 @@ import std::sources::Rail
 import src::zbk9::Zbk9  // not used by name: brings the IC in scope
 
 board PowerBoard {
-    .input: Rail {
-        .voltage &= 36V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "3V3"
-        .current &= 0mA..1A
-    }
+    .input: Rail { .voltage &= 36V +/- 5%; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "3V3"; .current &= 0mA..1A }
 
     .reg: BuckConverter { .vout.voltage &= 3.3V +/- 5% }
     .input ~ .reg.vin
@@ -540,16 +528,8 @@ import std::sources::Rail
 import src::zbk2::Zbk2
 
 board Probed {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-        .neg.net &= "GND"
-    }
-    .output: Rail {
-        .pos.net &= "1V8"
-        .neg.net &= "GND"
-        .current &= 0mA..1A
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN"; .neg.net &= "GND" }
+    .output: Rail { .pos.net &= "1V8"; .neg.net &= "GND"; .current &= 0mA..1A }
     .reg: Buck<Zbk2> { .vout.voltage &= 1.8V +/- 3% }
     .tp_en: TestPoint
 
@@ -629,10 +609,7 @@ import std::parts::connector::Header1x2
 
 board Heavy {
     /// 2 oz copper, for a board that carries a few amperes.
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-        .stackup.copper_weight &= 2
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm; .stackup.copper_weight &= 2 }
     .header: Header1x2
 }
 ```
@@ -648,10 +625,7 @@ import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x2
 
 board Heavier {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-        .stackup.copper_weight &= 3.5
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm; .stackup.copper_weight &= 3.5 }
     .header: Header1x2
 }
 ```
@@ -664,7 +638,7 @@ error: no TwoLayer provider satisfies `process` at main.nsm:5: none of the 2 in 
     contradiction on `process.stackup.copper_weight`: it is already 2, which does not overlap 3.5
   --> main.nsm:5:5
   |
-5 |     .process: TwoLayer {
+5 |     .process: TwoLayer { .stackup.thickness &= 1.6mm; .stackup.copper_weight &= 3.5 }
   |     ^^^^^^^^^^^^^^^^^^
 ```
 

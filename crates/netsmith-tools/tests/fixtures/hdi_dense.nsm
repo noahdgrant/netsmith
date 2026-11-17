@@ -32,9 +32,7 @@ board Dense {
         .inner3.net &= "5V"
         .inner4.use &= "signal"
     }
-    .supply: Rail {
-        .pos.net &= "5V"
-    }
+    .supply: Rail { .pos.net &= "5V" }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
 }

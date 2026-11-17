@@ -3235,7 +3235,7 @@
         "text": "The 12 V supply, from outside the board: 9 V to 16 V.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 106
+          "line": 104
         },
         "anchors": [],
         "result": null
@@ -3246,7 +3246,7 @@
         "text": "The 3.3 V rail, made by the second buck stage.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 121
+          "line": 110
         },
         "anchors": [],
         "result": null
@@ -3257,7 +3257,7 @@
         "text": "The quiet 3.3 V rail, made from the 5 V rail by the linear regulator.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 126
+          "line": 112
         },
         "anchors": [],
         "result": null
@@ -3268,7 +3268,7 @@
         "text": "The 5 V rail, made by the first buck stage and the load it carries.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 116
+          "line": 108
         },
         "anchors": [],
         "result": null
@@ -3279,7 +3279,7 @@
         "text": "The input and each output leave through a header of their own.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 153
+          "line": 136
         },
         "anchors": [
           "power_in"
@@ -3292,7 +3292,7 @@
         "text": "A Schottky diode in series: a supply connected the wrong way round is blocked.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 132
+          "line": 115
         },
         "anchors": [
           "reverse_diode"
@@ -3305,7 +3305,7 @@
         "text": "A TVS diode across the input: a surge is clamped under what the ICs survive.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 134
+          "line": 117
         },
         "anchors": [
           "surge"
@@ -3318,7 +3318,7 @@
         "text": "The input after the reverse-polarity diode.",
         "at": {
           "file": "two_buck.nsm",
-          "line": 111
+          "line": 106
         },
         "anchors": [],
         "result": null
@@ -3329,7 +3329,7 @@
         "text": ".input_light_resistor.current == (.vin.voltage - .input_light.forward_voltage) / .input_light_resistor.resistance",
         "at": {
           "file": "two_buck.nsm",
-          "line": 178
+          "line": 161
         },
         "anchors": [
           "input_light_resistor",
@@ -3344,7 +3344,7 @@
         "text": ".ldo_light_resistor.current == (.out_3v3a.voltage - .ldo_light.forward_voltage) / .ldo_light_resistor.resistance",
         "at": {
           "file": "two_buck.nsm",
-          "line": 183
+          "line": 166
         },
         "anchors": [
           "ldo_light_resistor",

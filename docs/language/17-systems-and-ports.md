@@ -18,17 +18,9 @@ module Stage {
 
 /// Turns the 5 V it is given into 3.3 V for another board.
 board Source {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .stage: Stage {
-        .vout.voltage &= 3.3V +/- 5%
-    }
-    .output: Rail {
-        .pos.net &= "3V3"
-        .current &= 0mA..50mA
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .stage: Stage { .vout.voltage &= 3.3V +/- 5% }
+    .output: Rail { .pos.net &= "3V3"; .current &= 0mA..50mA }
     .input ~ .stage.vin
     .stage.vout ~ .output
     .in_header: Header1x2
@@ -40,9 +32,7 @@ board Source {
 }
 
 board Lamp {
-    .input: Rail {
-        .pos.net &= "3V3"
-    }
+    .input: Rail { .pos.net &= "3V3" }
     .led: Led { .current &= 5mA..20mA }
     .r1: Resistor
     .in_header: Header1x2
@@ -195,9 +185,7 @@ part SerialChip {
 /// Both sockets have the same pinout, 1 GND, 2 3V3, 3 to 6 the SPI bus (the card is the
 /// slave), 7 and 8 the UART (7 is the controller's `tx`), 9 3V3 and 10 GND.
 board Carrier {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 
     /// Supplied from outside the system.
     .supply: Rail {
@@ -207,19 +195,13 @@ board Carrier {
         .min_track &= 0.5mm..
     }
     /// What the carrier gives to its cards, through a fuse: up to 500 mA.
-    .cards: Rail {
-        .pos.net &= "3V3_CARDS"
-        .min_track &= 0.5mm..
-        .current &= 0mA..500mA
-    }
+    .cards: Rail { .pos.net &= "3V3_CARDS"; .min_track &= 0.5mm..; .current &= 0mA..500mA }
     .fuse: Fuse
     .supply.pos ~> .fuse ~> .cards.pos
     // The fuse drops a little of the supply; the cards get what is left.
     .cards.voltage == .supply.voltage - .fuse.drop
 
-    .mcu: Controller {
-        .vdd.current &= 20mA..60mA
-    }
+    .mcu: Controller { .vdd.current &= 20mA..60mA }
     .supply ~ .mcu.vdd
 
     .slot_a: Socket1x10
@@ -244,14 +226,9 @@ board Carrier {
 
 /// A card with a sensor on SPI. Its header goes into the carrier's first socket.
 board SensorCard {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 
-    .supply: Rail {
-        .pos.net &= "3V3_CARD"
-        .current &= -30mA..-5mA
-    }
+    .supply: Rail { .pos.net &= "3V3_CARD"; .current &= -30mA..-5mA }
     .sensor: SpiSensor
     .supply ~ .sensor.vdd
 
@@ -269,14 +246,9 @@ board SensorCard {
 /// A card with a UART chip. Its header goes into the carrier's second socket. The UART
 /// crosses: the card's `tx` is on contact 8, where the controller has its `rx`.
 board SerialCard {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 
-    .supply: Rail {
-        .pos.net &= "3V3_CARD"
-        .current &= -60mA..-10mA
-    }
+    .supply: Rail { .pos.net &= "3V3_CARD"; .current &= -60mA..-10mA }
     .chip: SerialChip
     .supply ~ .chip.vdd
 
@@ -511,21 +483,14 @@ import std::parts::connector::{Header1x2, Socket1x2}
 import std::sources::Rail
 
 board Carrier {
-    .out: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-        .current &= 0mA..100mA
-    }
+    .out: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3"; .current &= 0mA..100mA }
     .slot: Socket1x2
     .out.neg ~ .slot.p1
     .out.pos ~ .slot.p2
 }
 
 board Card {
-    .supply: Rail {
-        .pos.net &= "3V3"
-        .current &= -50mA..-10mA
-    }
+    .supply: Rail { .pos.net &= "3V3"; .current &= -50mA..-10mA }
     .j1: Header1x2
     .supply.neg ~ .j1.p1
     .supply.pos ~ .j1.p2
@@ -541,9 +506,9 @@ system Kit {
 
 ```text
 error: `.carrier.out` and `.card.supply` are already joined by the mate of `.carrier.slot` and `.card.j1` at contacts 1, 2; the mate derives this join, so remove this one (a port join is for ports that no connector carries)
-   --> main.nsm:29:5
+   --> main.nsm:22:5
    |
-29 |     .carrier.out ~ .card.supply
+22 |     .carrier.out ~ .card.supply
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -584,16 +549,8 @@ import std::parts::connector::{Header1x4, Socket1x4}
 import std::sources::Rail
 
 board Carrier {
-    .a: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "RAIL_A"
-        .min_track &= 0.5mm..
-    }
-    .b: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "RAIL_B"
-        .min_track &= 0.5mm..
-    }
+    .a: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "RAIL_A"; .min_track &= 0.5mm.. }
+    .b: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "RAIL_B"; .min_track &= 0.5mm.. }
     .slot: Socket1x4
     .a.neg ~ .slot.p1
     .a.pos ~ .slot.p2
@@ -602,14 +559,8 @@ board Carrier {
 }
 
 board Card {
-    .a: Rail {
-        .pos.net &= "RAIL_A"
-        .min_track &= 0.5mm..
-    }
-    .b: Rail {
-        .pos.net &= "RAIL_B"
-        .min_track &= 0.5mm..
-    }
+    .a: Rail { .pos.net &= "RAIL_A"; .min_track &= 0.5mm.. }
+    .b: Rail { .pos.net &= "RAIL_B"; .min_track &= 0.5mm.. }
     .j1: Header1x4
     .a.neg ~ .j1.p1
     .a.pos ~ .j1.p2
@@ -729,10 +680,7 @@ import std::sources::Rail
 
 board Carrier {
     .main: Rail
-    .iso: Rail {
-        .isolated &= "isolated DC-DC"
-        .neg.net &= "ISO_GND"
-    }
+    .iso: Rail { .isolated &= "isolated DC-DC"; .neg.net &= "ISO_GND" }
     .slot_a: Socket1x2
     .slot_b: Socket1x2
     .main.neg ~ .slot_a.p1
@@ -771,10 +719,7 @@ import std::sources::Rail
 
 board Carrier {
     .main: Rail { .neg.net &= "GND" }
-    .iso: Rail {
-        .isolated &= "isolated DC-DC"
-        .neg.net &= "ISO_GND"
-    }
+    .iso: Rail { .isolated &= "isolated DC-DC"; .neg.net &= "ISO_GND" }
     .slot_a: Socket1x2
     .slot_b: Socket1x2
     .main.neg ~ .slot_a.p1
@@ -804,9 +749,9 @@ system Kit {
 
 ```text
 error: the mates of `.carrier.slot_a` and `.card.j1`, `.carrier.slot_b` and `.card.j2` join `carrier.ISO_GND`, the ground of the isolated rail `.carrier.iso` (isolated DC-DC), to `carrier.GND`, another ground of `carrier`, through the grounds of other boards (the ground group card.GND + carrier.GND + carrier.ISO_GND); an isolated ground meets no other ground of its board, so the contacts on one side of the barrier need a ground of their own on the other board
-   --> main.nsm:33:5
+   --> main.nsm:30:5
    |
-33 |     .carrier.slot_b.mating ~ .card.j2.mating
+30 |     .carrier.slot_b.mating ~ .card.j2.mating
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 

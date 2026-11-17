@@ -263,7 +263,7 @@
         "text": "The supply comes in through this header.",
         "at": {
           "file": "led.nsm",
-          "line": 24
+          "line": 17
         },
         "anchors": [
           "power_in"
@@ -276,7 +276,7 @@
         "text": ".led.current == (.supply.voltage - .led.forward_voltage) / .r1.resistance",
         "at": {
           "file": "led.nsm",
-          "line": 28
+          "line": 21
         },
         "anchors": [
           "led",

@@ -74,8 +74,8 @@ error: block comments do not exist; use `//`
 The rules.
 
 - **Indent and width.** 4 spaces for each level of a block, and 100 columns to a line. A line that goes on with the statement of the line before (after a connection or relation operator, inside parentheses, the next corners of a polygon) is indented one level more than the statement's first line.
-- **Line breaks are the author's.** A block written on one line stays on one line when it fits, `.reg: BuckConverter { .vout.voltage &= 3.3V +/- 5% }`, and a block written over several lines stays so. In a block written over several lines, each statement is on a line of its own: a `;` between two statements becomes a line end, a statement after the `{` goes to the next line, and a `;` at the end of a line goes.
-- **A line that is too long.** A line longer than 100 columns is broken, in this order. A block written on the line goes over several lines, one statement to a line: this is how a long `n x kind` statement breaks, in its block and never between the count and the kind. Then a connection breaks after each of its `~`, `~>` and `?~`, every operand after the first on a line of its own; a relation breaks after its operator (`&=`, `?=`, `==`, `>=`, `<=`), and a value that is still too long after `+/-`, `+`, `-`, `*` or `/`, as late as the width allows; a polygon breaks before a corner. A newline is allowed only after an operator, so a break is never before one. A comment does not count toward the width and is never broken, and a line that has no place to break (a long name, a long string) stays long.
+- **Line breaks are the formatter's.** A statement or a block written over several lines is joined onto one line when it fits, as rustfmt joins them, and is broken only when it does not: `.reg: BuckConverter { .vout.voltage &= 3.3V +/- 5% }`, `.supply.pos ~> .r1 ~> .led ~> .supply.neg`. The statements of a joined block are parted by `;`. Three things are never joined. The body of a definition (`board`, `part`, `module`, `interface`, `enum`, ..., and a physical file's `physical for`) and of a section of one (`pins`, `lines`, `support`, `layout`, `defaults`, `case`) is always one statement to a line, also when it was written on one line (an empty one, `{}`, aside), as rustfmt lays out the body of a function. A statement or block with a comment, a doc comment or an attribute inside it stays broken, since a comment is never moved onto a line with code (a comment at the end of its last line stays at the end of the joined line). And a block that does not fit keeps its `{` line and its `}` line, one statement to a line, while each statement in it is joined in its turn. A `;` at the end of a line goes.
+- **A line that is too long.** A line longer than 100 columns is broken, in this order. A block on the line goes over several lines, one statement to a line: this is how a long `n x kind` statement breaks, in its block and never between the count and the kind. A list in braces (a catalog's columns, an import's names) goes over several lines too, as many of its entries to a line as fit, broken after a `,`. Then a connection breaks after each of its `~`, `~>` and `?~`, every operand after the first on a line of its own; a relation breaks after its operator (`&=`, `?=`, `==`, `>=`, `<=`), and a value that is still too long after `+/-`, `+`, `-`, `*` or `/`, as late as the width allows; a polygon breaks before a corner. A newline is allowed only after an operator, so a break is never before one. A comment does not count toward the width and is never broken, and a line that has no place to break (a long name, a long string) stays long.
 - **Spaces.** One space between two tokens, and around an operator. None inside brackets (`(x, y)`, `[2]`, `#[role(bias)]`, and an import's braces, `{Capacitor, Resistor}`), before `,`, `;`, `:` and `.`, around `::` and `<` `>`, or between a sign and its number (`-40C`). A block's braces on one line have a space inside them, `{ .x &= 1V }`. A range has no spaces around `..` (`0mA..500mA`); a range of rows has them, `row .pads.tp1 .. .pads.tp12`. One space after `,` and after the `:` of a member's type; a function's kind touches its name, `UART1_TX:output`. `±` is written `+/-`.
 - **Tables.** The rows of a `pins` table are aligned in columns: the pin, its kind, its name and its pads (the pads one column, each pad one space from the next), with what follows one space apart. The rows of a `lines` block are aligned by the line and its direction. A blank line starts a new table.
 - **Comments.** A comment at the end of a line has two spaces before it. A comment alone on a line, a `///` and a `//!` take the indent of the block they are in. The text of a comment is kept as written: the formatter never wraps or joins comments.
@@ -92,10 +92,7 @@ import std::sources::Rail
 
 /// Bulk and decoupling capacitors on a 3.3 V rail.
 board Laid {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .decoupling: 4 x Capacitor { .capacitance &= 100nF +/- 10% }  // one by each supply pin
     .bulk: 2 x Capacitor {
         .capacitance &= 22uF +/- 10%
@@ -108,7 +105,7 @@ board Laid {
 }
 ```
 
-The group `.bulk` was written on one line, `.bulk: 2 x Capacitor { .capacitance &= 22uF +/- 10%; .package &= "CASE-A-3216-18"; .max_voltage >= 6.3V }`, which is 109 columns at its indent: the formatter gave its block one line to each statement. A connection too long for one line is broken after its operators:
+The rail `.supply` may be written over three lines, and the formatter joins it. The group `.bulk` on one line, `.bulk: 2 x Capacitor { .capacitance &= 22uF +/- 10%; .package &= "CASE-A-3216-18"; .max_voltage >= 6.3V }`, is 109 columns at its indent: the formatter gives its block one line to each statement, however it was written. A connection too long for one line is broken after its operators:
 
 ```nsm-fragment
     .usb_connector.vbus.pos ~>

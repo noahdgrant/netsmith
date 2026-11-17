@@ -2403,13 +2403,13 @@
               "field": "x",
               "lo": 4.5,
               "hi": 4.5,
-              "source": "src/case.nsm:31"
+              "source": "src/case.nsm:21"
             },
             {
               "field": "y",
               "lo": 4.5,
               "hi": 4.5,
-              "source": "src/case.nsm:32"
+              "source": "src/case.nsm:22"
             }
           ],
           "side": null,
@@ -2423,13 +2423,13 @@
               "field": "x",
               "lo": 85.5,
               "hi": 85.5,
-              "source": "src/case.nsm:33"
+              "source": "src/case.nsm:23"
             },
             {
               "field": "y",
               "lo": 4.5,
               "hi": 4.5,
-              "source": "src/case.nsm:34"
+              "source": "src/case.nsm:24"
             }
           ],
           "side": null,
@@ -2443,13 +2443,13 @@
               "field": "x",
               "lo": 4.5,
               "hi": 4.5,
-              "source": "src/case.nsm:35"
+              "source": "src/case.nsm:25"
             },
             {
               "field": "y",
               "lo": 57.5,
               "hi": 57.5,
-              "source": "src/case.nsm:36"
+              "source": "src/case.nsm:26"
             }
           ],
           "side": null,
@@ -2463,13 +2463,13 @@
               "field": "x",
               "lo": 85.5,
               "hi": 85.5,
-              "source": "src/case.nsm:37"
+              "source": "src/case.nsm:27"
             },
             {
               "field": "y",
               "lo": 57.5,
               "hi": 57.5,
-              "source": "src/case.nsm:38"
+              "source": "src/case.nsm:28"
             }
           ],
           "side": null,
@@ -3048,14 +3048,14 @@
         "enclosure_sensor.physical.nsm:73": ".pads.place.side &= \"top\"",
         "enclosure_sensor.physical.nsm:74": ".pads.tp1.place.y >= .outline.height - 8mm",
         "enclosure_sensor.physical.nsm:75": "row .pads.tp1 .. .pads.tp12 along x pitch 2.54mm +/- 0.05mm",
-        "src/case.nsm:31": ".hole1.place.x &= 4.5mm",
-        "src/case.nsm:32": ".hole1.place.y &= 4.5mm",
-        "src/case.nsm:33": ".hole2.place.x &= 85.5mm",
-        "src/case.nsm:34": ".hole2.place.y &= 4.5mm",
-        "src/case.nsm:35": ".hole3.place.x &= 4.5mm",
-        "src/case.nsm:36": ".hole3.place.y &= 57.5mm",
-        "src/case.nsm:37": ".hole4.place.x &= 85.5mm",
-        "src/case.nsm:38": ".hole4.place.y &= 57.5mm"
+        "src/case.nsm:21": ".hole1.place.x &= 4.5mm",
+        "src/case.nsm:22": ".hole1.place.y &= 4.5mm",
+        "src/case.nsm:23": ".hole2.place.x &= 85.5mm",
+        "src/case.nsm:24": ".hole2.place.y &= 4.5mm",
+        "src/case.nsm:25": ".hole3.place.x &= 4.5mm",
+        "src/case.nsm:26": ".hole3.place.y &= 57.5mm",
+        "src/case.nsm:27": ".hole4.place.x &= 85.5mm",
+        "src/case.nsm:28": ".hole4.place.y &= 57.5mm"
       }
     },
     "interfaces": [

@@ -10,18 +10,11 @@ import std::sources::Rail
 
 board LedExample {
     /// Made by JLCPCB's two-layer process, on a board 1.6 mm thick.
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 
-    .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
 
-    .led: Led {
-        .current &= 5mA..15mA
-    }
+    .led: Led { .current &= 5mA..15mA }
 
     .r1: Resistor {}
 

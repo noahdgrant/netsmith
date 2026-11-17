@@ -256,49 +256,26 @@ board PowerManifoldCharger {
 
     /// The slot's main DC input (A2 to A7): 24 V nominal, +20 %/-15 % (the design's architecture
     /// notes, section 3), ahead of the fuse.
-    .slot_vin: Rail {
-        .voltage &= 20.4V..28.8V
-        .pos.net &= "VIN_PREFUSE"
-    }
+    .slot_vin: Rail { .voltage &= 20.4V..28.8V; .pos.net &= "VIN_PREFUSE" }
     /// The slot's 5 V logic supply (A12, B12), from the backplane's buck.
-    .v5: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "+5V"
-    }
+    .v5: Rail { .voltage &= 5V +/- 5%; .pos.net &= "+5V" }
     /// The 3.3 V of the LP2985: the microcontroller, the comparator, the I2C pull-ups.
-    .v3v3: Rail {
-        .pos.net &= "+3.3V"
-    }
+    .v3v3: Rail { .pos.net &= "+3.3V" }
     /// Behind the fuse.
-    .vin: Rail {
-        .pos.net &= "VIN"
-    }
+    .vin: Rail { .pos.net &= "VIN" }
     /// Behind the input inductor: the converter's input.
-    .emi_vin: Rail {
-        .pos.net &= "EMI_VIN"
-    }
+    .emi_vin: Rail { .pos.net &= "EMI_VIN" }
     /// The converter's output, the USB-PD contract's voltage (the converter makes 0.8 V to 22 V;
     /// the blade is offered 5 V to 21 V by its firmware).
-    .vout_conv: Rail {
-        .voltage &= 5V..21V
-        .pos.net &= "VOUT_CONV"
-    }
+    .vout_conv: Rail { .voltage &= 5V..21V; .pos.net &= "VOUT_CONV" }
     /// Behind the output shunt R28.
-    .vout: Rail {
-        .pos.net &= "VOUT"
-    }
+    .vout: Rail { .pos.net &= "VOUT" }
     /// The two back-to-back MOSFETs' common source.
-    .vbus_src: Rail {
-        .pos.net &= "VBUS_SRC"
-    }
+    .vbus_src: Rail { .pos.net &= "VBUS_SRC" }
     /// Behind the shunt R27, ahead of the MOSFET Q4.
-    .vbus_f: Rail {
-        .pos.net &= "VBUSf"
-    }
+    .vbus_f: Rail { .pos.net &= "VBUSf" }
     /// The port's VBUS, on the receptacle.
-    .vbus: Rail {
-        .pos.net &= "VBUS"
-    }
+    .vbus: Rail { .pos.net &= "VBUS" }
 
     // Nothing of a part is on the ground of these five rails, so `Rail`'s default of `GND` does
     // not reach them (it names a net only where a part is): each joins the ground of the rest.

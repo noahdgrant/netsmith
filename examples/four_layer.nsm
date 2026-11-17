@@ -32,26 +32,15 @@ module LdoStage {
 board FourLayerExample {
     /// Made by JLCPCB's four-layer process (1.6 mm). The first inner layer is the ground
     /// plane and the second is the 3.3 V plane.
-    .process: FourLayer {
-        .inner1.net &= "GND"
-        .inner2.net &= "3V3"
-    }
+    .process: FourLayer { .inner1.net &= "GND"; .inner2.net &= "3V3" }
 
     /// The input rail is supplied from outside the board.
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
 
-    .stage: LdoStage {
-        .vout.voltage &= 3.3V +/- 5%
-    }
+    .stage: LdoStage { .vout.voltage &= 3.3V +/- 5% }
 
     /// What the outside world draws from the output.
-    .output: Rail {
-        .pos.net &= "3V3"
-        .current &= 0mA..50mA
-    }
+    .output: Rail { .pos.net &= "3V3"; .current &= 0mA..50mA }
 
     .input ~ .stage.vin
     .stage.vout ~ .output

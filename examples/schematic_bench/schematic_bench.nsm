@@ -427,18 +427,10 @@ module TenConnector {
 }
 
 board SchematicBench {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 
-    .battery: Rail {
-        .voltage &= 3.7V +/- 10%
-        .pos.net &= "+VBATT_SAFE"
-    }
-    .rail_5v: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "+5V_in"
-    }
+    .battery: Rail { .voltage &= 3.7V +/- 10%; .pos.net &= "+VBATT_SAFE" }
+    .rail_5v: Rail { .voltage &= 5V +/- 5%; .pos.net &= "+5V_in" }
     .rail_3v3: Rail {
         .voltage &= 3.3V +/- 5%
         .pos.net &= "+3V3"
@@ -480,15 +472,8 @@ board SchematicBench {
     .modem.rts ~ .mcu.rts
     .modem.cts ~ .mcu.cts
 
-    .rail_3v8: Rail {
-        .voltage &= 3.8V +/- 5%
-        .pos.net &= "+3V8"
-    }
-    .rail_2v8: Rail {
-        .voltage &= 2.8V +/- 5%
-        .pos.net &= "+2V8"
-        .current &= 0mA..100mA
-    }
+    .rail_3v8: Rail { .voltage &= 3.8V +/- 5%; .pos.net &= "+3V8" }
+    .rail_2v8: Rail { .voltage &= 2.8V +/- 5%; .pos.net &= "+2V8"; .current &= 0mA..100mA }
     .ldo: LdoModule
     .ldo.vin ~ .rail_3v8
     .ldo.vout ~ .rail_2v8

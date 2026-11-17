@@ -19,9 +19,7 @@ module Sensor {
 }
 
 board Cased {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .power: Header1x2
     .sensor: Sensor
 }
@@ -33,17 +31,8 @@ import std::pcb::{Cutout, Keepout, Outline}
 physical for Cased {
     // The case: numbers from the case drawing.
     case {
-        .outline: Outline {
-            .width &= 40mm
-            .height &= 24mm
-            .corner_radius &= 1mm
-        }
-        .window: Cutout {
-            .x &= 30mm
-            .y &= 2mm
-            .width &= 6mm
-            .height &= 3mm
-        }
+        .outline: Outline { .width &= 40mm; .height &= 24mm; .corner_radius &= 1mm }
+        .window: Cutout { .x &= 30mm; .y &= 2mm; .width &= 6mm; .height &= 3mm }
     }
 
     // Case drawing, slot A: the header's body is 1.5 mm in from the left edge, centred.
@@ -85,13 +74,8 @@ import std::parts::connector::Header1x2
 import std::pcb::Outline
 
 board Old {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
-    .outline: Outline {
-        .width &= 40mm
-        .height &= 24mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .outline: Outline { .width &= 40mm; .height &= 24mm }
     .j: Header1x2
     .j.place.left &= 1.5mm
 }
@@ -99,15 +83,15 @@ board Old {
 
 ```text
 error: `.outline: Outline` is an outline, which is physical intent, and a board's circuit source does not hold it (ADR 0048); declare it in the `case { }` section of `physical for Old` in `main.physical.nsm`
-  --> main.nsm:9:15
+  --> main.nsm:7:15
   |
-9 |     .outline: Outline {
+7 |     .outline: Outline { .width &= 40mm; .height &= 24mm }
   |               ^^^^^^^
 error: `j.place.left` is a placement requirement, which is physical intent, and a board's circuit source does not state it (ADR 0048); put it in `physical for Old` in `main.physical.nsm`
-   --> main.nsm:14:5
-   |
-14 |     .j.place.left &= 1.5mm
-   |     ^^^^^^^^^^^^^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .j.place.left &= 1.5mm
+  |     ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 Misuse: a physical file that changes what a part is.
@@ -121,9 +105,7 @@ module Block {
 }
 
 board Wrong {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .b: Block
 }
 ```
@@ -154,9 +136,7 @@ Misuse: a unit for a board that is not there.
 import std::mfg::jlcpcb::TwoLayer
 
 board Right {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 }
 ```
 
@@ -184,18 +164,9 @@ import std::pcb::{Cutout, Keepout, Outline}
 
 enclosure SnapCase {
     // Drawing SC-1: the inside of the base.
-    .outline: Outline {
-        .width &= 40mm
-        .height &= 24mm
-        .corner_radius &= 1mm
-    }
+    .outline: Outline { .width &= 40mm; .height &= 24mm; .corner_radius &= 1mm }
     // Drawing SC-1: the window for the indicator.
-    .window: Cutout {
-        .x &= 30mm
-        .y &= 2mm
-        .width &= 6mm
-        .height &= 3mm
-    }
+    .window: Cutout { .x &= 30mm; .y &= 2mm; .width &= 6mm; .height &= 3mm }
     // Drawing SC-1: the lid's rib leaves 4 mm above the board along the right side.
     .rib: Keepout {
         .x &= 36mm
@@ -213,16 +184,12 @@ import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x2
 
 board Logger {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .power: Header1x2
 }
 
 board Relay {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .power: Header1x2
 }
 ```
@@ -242,9 +209,7 @@ physical for Relay {
     case SnapCase
     // What this board adds to the case: its name on the silkscreen.
     case {
-        .name: Label {
-            .text &= "RELAY"
-        }
+        .name: Label { .text &= "RELAY" }
     }
     .power.place.y >= .outline.height / 2 - 0.1mm
 }
@@ -263,16 +228,11 @@ import std::mfg::jlcpcb::TwoLayer
 import std::pcb::Outline
 
 enclosure Tray {
-    .outline: Outline {
-        .width &= 40mm
-        .height &= 24mm
-    }
+    .outline: Outline { .width &= 40mm; .height &= 24mm }
 }
 
 board Held {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 }
 ```
 
@@ -290,9 +250,7 @@ Misuse: a name that is no enclosure.
 import std::mfg::jlcpcb::TwoLayer
 
 board Held {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 }
 ```
 
@@ -375,17 +333,9 @@ import std::parts::connector::Header1x2
 import std::sources::Rail
 
 board Widths {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
-    .input: Rail {
-        .pos.net &= "VIN"
-        .min_track &= 0.8mm..
-    }
-    .output: Rail {
-        .pos.net &= "3V3"
-        .min_track &= 0.5mm..
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .input: Rail { .pos.net &= "VIN"; .min_track &= 0.8mm.. }
+    .output: Rail { .pos.net &= "3V3"; .min_track &= 0.5mm.. }
     .in: Header1x2
     .out: Header1x2
     .input.pos ~ .in.p1
@@ -407,18 +357,14 @@ import std::parts::connector::Header1x2
 import std::sources::Rail
 
 board Mains {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .line: Rail {
         .pos.net &= "HV"
         .neg.net &= "HV_RTN"
         .min_clearance &= 1mm..
         .min_track &= 0.5mm..
     }
-    .logic: Rail {
-        .pos.net &= "3V3"
-    }
+    .logic: Rail { .pos.net &= "3V3" }
     .hv: Header1x2
     .lv: Header1x2
     .line.pos ~ .hv.p1
@@ -447,16 +393,9 @@ import std::parts::passive::Resistor
 import std::sources::Rail
 
 board Unsized {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
-    .supply: Rail {
-        .voltage &= 12V
-        .pos.net &= "VIN"
-    }
-    .load: Rail {
-        .pos.net &= "VOUT"
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .supply: Rail { .voltage &= 12V; .pos.net &= "VIN" }
+    .load: Rail { .pos.net &= "VOUT" }
     .r: Resistor { .resistance &= 10kohm +/- 1% }
     .inlet: Header1x2
     .outlet: Header1x2
@@ -484,20 +423,10 @@ import std::parts::passive::Resistor
 import std::sources::Rail
 
 board Partial {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
-    .supply: Rail {
-        .voltage &= 12V
-        .pos.net &= "VIN"
-    }
-    .load: Rail {
-        .pos.net &= "VOUT"
-    }
-    .fan: Rail {
-        .pos.net &= "VOUT"
-        .current &= 0A..1.2A
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .supply: Rail { .voltage &= 12V; .pos.net &= "VIN" }
+    .load: Rail { .pos.net &= "VOUT" }
+    .fan: Rail { .pos.net &= "VOUT"; .current &= 0A..1.2A }
     .r: Resistor { .resistance &= 10kohm +/- 1% }
     .inlet: Header1x2
     .outlet: Header1x2
@@ -528,18 +457,9 @@ import std::parts::connector::Header1x2
 import std::sources::Rail
 
 board Heater {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
-    .load: Rail {
-        .pos.net &= "5V"
-        .current &= 0A..2A
-        .min_track &= 0.2mm..
-    }
-    .source: Rail {
-        .pos.net &= "5V"
-        .current &= -2A..0A
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .load: Rail { .pos.net &= "5V"; .current &= 0A..2A; .min_track &= 0.2mm.. }
+    .source: Rail { .pos.net &= "5V"; .current &= -2A..0A }
     .supply: Header1x2
     .out: Header1x2
     .supply.p1 ~ .source.pos
@@ -562,26 +482,11 @@ import std::parts::connector::Header1x2
 import std::sources::Rail
 
 board Shared {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
-    .source_a: Rail {
-        .pos.net &= "5V"
-        .current &= -2A..0A
-    }
-    .source_b: Rail {
-        .pos.net &= "3V3"
-        .current &= -1A..0A
-    }
-    .load_a: Rail {
-        .pos.net &= "5V"
-        .current &= 0A..2A
-        .min_track &= 1mm..
-    }
-    .load_b: Rail {
-        .pos.net &= "3V3"
-        .current &= 0A..1A
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .source_a: Rail { .pos.net &= "5V"; .current &= -2A..0A }
+    .source_b: Rail { .pos.net &= "3V3"; .current &= -1A..0A }
+    .load_a: Rail { .pos.net &= "5V"; .current &= 0A..2A; .min_track &= 1mm.. }
+    .load_b: Rail { .pos.net &= "3V3"; .current &= 0A..1A }
     .in_a: Header1x2
     .in_b: Header1x2
     .out_a: Header1x2
@@ -609,17 +514,9 @@ import std::parts::connector::Header1x2
 import std::sources::Rail
 
 board Charger {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
-    .load: Rail {
-        .pos.net &= "5V"
-        .current &= 0A..8A
-    }
-    .source: Rail {
-        .pos.net &= "5V"
-        .current &= -8A..0A
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .load: Rail { .pos.net &= "5V"; .current &= 0A..8A }
+    .source: Rail { .pos.net &= "5V"; .current &= -8A..0A }
     .supply: Header1x2
     .out: Header1x2
     .supply.p1 ~ .source.pos
@@ -634,10 +531,7 @@ import std::pcb::Outline
 
 physical for Charger {
     case {
-        .outline: Outline {
-            .width &= 60mm
-            .height &= 20mm
-        }
+        .outline: Outline { .width &= 60mm; .height &= 20mm }
     }
 }
 ```
@@ -683,9 +577,7 @@ import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x2
 
 board Shaped {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .header: Header1x2
 }
 ```
@@ -695,11 +587,7 @@ import std::pcb::{Cutout, Outline}
 
 physical for Shaped {
     case {
-        .outline: Outline {
-            .width &= 60mm
-            .height &= 0mm..40mm
-            .corner_radius &= 3mm
-        }
+        .outline: Outline { .width &= 60mm; .height &= 0mm..40mm; .corner_radius &= 3mm }
         .slot: Cutout {
             .x &= 5mm
             .y &= 8mm
@@ -731,9 +619,7 @@ Misuse.
 import std::mfg::jlcpcb::TwoLayer
 
 board Tiny {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 }
 ```
 
@@ -742,11 +628,7 @@ import std::pcb::Outline
 
 physical for Tiny {
     case {
-        .outline: Outline {
-            .width &= 3mm
-            .height &= 40mm
-            .corner_radius &= 2mm
-        }
+        .outline: Outline { .width &= 3mm; .height &= 40mm; .corner_radius &= 2mm }
     }
 }
 ```
@@ -764,9 +646,7 @@ import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x2
 
 board Ell {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .header: Header1x2
 }
 ```
@@ -780,8 +660,8 @@ physical for Ell {
         // radius at the top right and a 3 mm one at the bottom left, and a bulge on the
         // bottom edge.
         .outline: Outline {
-            polygon (0mm, 0mm) (25mm, 0mm) round 2mm (25mm, 15mm)
-                (40mm, 15mm) (40mm, 30mm) arc through (20mm, 34mm) (0mm, 30mm) round 3mm
+            polygon (0mm, 0mm) (25mm, 0mm) round 2mm (25mm, 15mm) (40mm, 15mm)
+                (40mm, 30mm) arc through (20mm, 34mm) (0mm, 30mm) round 3mm
         }
     }
 }
@@ -795,9 +675,7 @@ Misuse: a size beside the polygon, and a corner that is a range.
 import std::mfg::jlcpcb::TwoLayer
 
 board Sized {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 }
 ```
 
@@ -822,9 +700,7 @@ error: Sized: `outline.width` is stated beside the `polygon` of `outline`: the p
 import std::mfg::jlcpcb::TwoLayer
 
 board Loose {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 }
 ```
 
@@ -833,19 +709,17 @@ import std::pcb::Outline
 
 physical for Loose {
     case {
-        .outline: Outline {
-            polygon (0mm, 0mm) (40mm +/- 0.1mm, 0mm) (40mm, 30mm) (0mm, 30mm)
-        }
+        .outline: Outline { polygon (0mm, 0mm) (40mm +/- 0.1mm, 0mm) (40mm, 30mm) (0mm, 30mm) }
     }
 }
 ```
 
 ```text
 error: a corner of a `polygon` is one value, and `40mm +/- 0.1mm` is a range (39.9mm..40.1mm): the outline is what the case drawing says, so write the one number
-  --> main.physical.nsm:6:33
+  --> main.physical.nsm:5:49
   |
-6 |             polygon (0mm, 0mm) (40mm +/- 0.1mm, 0mm) (40mm, 30mm) (0mm, 30mm)
-  |                                 ^^^^^^^^^^^^^^
+5 |         .outline: Outline { polygon (0mm, 0mm) (40mm +/- 0.1mm, 0mm) (40mm, 30mm) (0mm, 30mm) }
+  |                                                 ^^^^^^^^^^^^^^
 ```
 
 Misuse: a fillet with no room on its edge.
@@ -854,9 +728,7 @@ Misuse: a fillet with no room on its edge.
 import std::mfg::jlcpcb::TwoLayer
 
 board Tight {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 }
 ```
 
@@ -988,9 +860,7 @@ part Radio {
 }
 
 board Wireless {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .radio: Radio
     .header: Header1x2
 }
@@ -1016,9 +886,7 @@ Misuse.
 import std::mfg::jlcpcb::TwoLayer
 
 board Open {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 }
 ```
 
@@ -1084,13 +952,8 @@ import std::parts::passive::Resistor
 import std::sources::Rail
 
 board Ribbed {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
-    .rail: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .rail: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .tall: Resistor { .resistance &= 15kohm +/- 1% }
     .flat: Resistor { .resistance &= 15kohm +/- 1% }
     .rail.pos ~> .tall ~> .rail.neg
@@ -1106,10 +969,7 @@ import std::pcb::{Keepout, Outline}
 
 physical for Ribbed {
     case {
-        .outline: Outline {
-            .width &= 40mm
-            .height &= 30mm
-        }
+        .outline: Outline { .width &= 40mm; .height &= 30mm }
     }
     // The case's lid has ribs over the top 18 mm: nothing taller than 3 mm there.
     .ribs: Keepout {
@@ -1138,9 +998,7 @@ import std::mfg::jlcpcb::TwoLayer
 import std::parts::passive::Resistor
 
 board Vague {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .r: Resistor { .resistance &= 15kohm +/- 1% }
     .r.height &= 2mm..5mm
 }
@@ -1185,13 +1043,8 @@ import std::parts::passive::Resistor
 import std::sources::Rail
 
 board Module {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
-    .rail: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .rail: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .module: Resistor { .resistance &= 15kohm +/- 1% }
     .low: Resistor { .resistance &= 15kohm +/- 1% }
     .rail.pos ~> .module ~> .rail.neg
@@ -1209,10 +1062,7 @@ import std::pcb::Outline
 
 physical for Module {
     case {
-        .outline: Outline {
-            .width &= 40mm
-            .height &= 30mm
-        }
+        .outline: Outline { .width &= 40mm; .height &= 30mm }
     }
 }
 ```
@@ -1230,9 +1080,7 @@ import std::mfg::jlcpcb::TwoLayer
 import std::parts::passive::Resistor
 
 board Flat {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .r: Resistor { .resistance &= 15kohm +/- 1% }
     .r.height &= 2mm
     .r.standoff &= 6mm
@@ -1262,18 +1110,9 @@ import std::parts::regulator::LinearRegulator
 import std::sources::Rail
 
 board Stacked {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-        .current &= 0mA..50mA
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .output: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3"; .current &= 0mA..50mA }
     .reg: LinearRegulator
     .reg.vin ~ .input
     .reg.vout ~ .output
@@ -1292,10 +1131,7 @@ import std::pcb::{Keepout, Outline}
 
 physical for Stacked {
     case {
-        .outline: Outline {
-            .width &= 24mm
-            .height &= 16mm
-        }
+        .outline: Outline { .width &= 24mm; .height &= 16mm }
     }
     // Case drawing (invented): the lid leaves 2.2 mm under the back of the board.
     .back_room: Keepout {
@@ -1331,18 +1167,9 @@ import std::parts::regulator::LinearRegulator
 import std::sources::Rail
 
 board Stacked {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-        .current &= 0mA..50mA
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .output: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3"; .current &= 0mA..50mA }
     .reg: LinearRegulator
     .reg.vin ~ .input
     .reg.vout ~ .output
@@ -1361,10 +1188,7 @@ import std::pcb::{Keepout, Outline}
 
 physical for Stacked {
     case {
-        .outline: Outline {
-            .width &= 24mm
-            .height &= 16mm
-        }
+        .outline: Outline { .width &= 24mm; .height &= 16mm }
     }
     // Case drawing (invented): the lid leaves 2.2 mm under the back of the board.
     .back_room: Keepout {
@@ -1391,7 +1215,7 @@ physical for Stacked {
 
 ```text
 error: Stacked: no placement meets every requirement of the physical file:
-  these lines cannot both hold: main.physical.nsm:22 `.socket.place.x &= 12mm +/- 0.02mm`; main.physical.nsm:23 `.socket.place.y &= 8mm +/- 0.02mm`; main.physical.nsm:21 `.socket.place.rotation &= 0`; main.physical.nsm:26 `.reg.place.x &= 14.75mm +/- 0.02mm`; main.physical.nsm:27 `.reg.place.y &= 8mm +/- 0.5mm`; main.physical.nsm:25 `.reg.place.rotation &= 0`; main.physical.nsm:24 `.reg.place.side &= "bottom"`; main.physical.nsm:29 `.socket.pin_protrusion &= 0.6mm`: they keep the courtyard of `reg` (U1) within x 12.83 to 16.67, y 5.8 to 10.2 mm, over a pad of `socket` (J1) (pins protruding 0.6 mm) by at least 0.02 x 0.775 mm wherever it is put, and the protrusion does not excuse that: `reg` (U1) stands 1.80 mm tall on pins that protrude 0.60 mm: 2.40 mm from the bottom face, and the keepout `back_room` allows 2.20 mm there (0.20 mm too much); cut the pins to protrude 0.40 mm or less, or use a lower part
+  these lines cannot both hold: main.physical.nsm:19 `.socket.place.x &= 12mm +/- 0.02mm`; main.physical.nsm:20 `.socket.place.y &= 8mm +/- 0.02mm`; main.physical.nsm:18 `.socket.place.rotation &= 0`; main.physical.nsm:23 `.reg.place.x &= 14.75mm +/- 0.02mm`; main.physical.nsm:24 `.reg.place.y &= 8mm +/- 0.5mm`; main.physical.nsm:22 `.reg.place.rotation &= 0`; main.physical.nsm:21 `.reg.place.side &= "bottom"`; main.physical.nsm:26 `.socket.pin_protrusion &= 0.6mm`: they keep the courtyard of `reg` (U1) within x 12.83 to 16.67, y 5.8 to 10.2 mm, over a pad of `socket` (J1) (pins protruding 0.6 mm) by at least 0.02 x 0.775 mm wherever it is put, and the protrusion does not excuse that: `reg` (U1) stands 1.80 mm tall on pins that protrude 0.60 mm: 2.40 mm from the bottom face, and the keepout `back_room` allows 2.20 mm there (0.20 mm too much); cut the pins to protrude 0.40 mm or less, or use a lower part
 ```
 
 The same refusal is made, with its own sentence at the end, when the covering part states no height (`state .reg.height`) or when the board house assembles it (`make U1 hand`). A part over the pads of a through-hole part that states no protrusion is the plain overlap, with a sentence that names the member to state. A part kind may bound the protrusion, and a board that states more breaks that claim, which is refused with the line of the bound:
@@ -1409,9 +1233,7 @@ part ShortPins {
 }
 
 board TooLong {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .j: ShortPins
     .j.pin_protrusion &= 5mm
 }
@@ -1570,9 +1392,7 @@ import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x2
 
 board Boxed {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .power: Header1x2
 }
 ```
@@ -1584,25 +1404,12 @@ import std::pcb::{CaseModel, Outline}
 physical for Boxed {
     case {
         // Case drawing BX-2, sheet 1: the inside of the base.
-        .outline: Outline {
-            .width &= 40mm
-            .height &= 24mm
-        }
+        .outline: Outline { .width &= 40mm; .height &= 24mm }
         // The base, modelled opening down: turned over, and the board rests on its bosses.
-        .shell: CaseModel {
-            .file &= "case/base.step"
-            .rx &= 180
-            .z &= -1.6mm
-        }
-        .lid: CaseModel {
-            .file &= "case/lid.step"
-            .color &= Color::Black
-        }
+        .shell: CaseModel { .file &= "case/base.step"; .rx &= 180; .z &= -1.6mm }
+        .lid: CaseModel { .file &= "case/lid.step"; .color &= Color::Black }
         // The plug that mates with the header, drawn where it sits and measured against nothing.
-        .plug: CaseModel {
-            .file &= "models/plug.step"
-            .check &= "none"
-        }
+        .plug: CaseModel { .file &= "models/plug.step"; .check &= "none" }
     }
 }
 ```
@@ -1647,9 +1454,7 @@ board Loose {
 import std::pcb::CaseModel
 
 physical for Loose {
-    .shell: CaseModel {
-        .file &= "case/base.step"
-    }
+    .shell: CaseModel { .file &= "case/base.step" }
 }
 ```
 
@@ -1657,7 +1462,7 @@ physical for Loose {
 error: a case model belongs in the `case { }` section of `physical for Loose`: wrap `.shell: CaseModel` in `case { ... }`
   --> main.physical.nsm:4:13
   |
-4 |     .shell: CaseModel {
+4 |     .shell: CaseModel { .file &= "case/base.step" }
   |             ^^^^^^^^^
 ```
 
@@ -1669,9 +1474,7 @@ A `Label` is silkscreen text: a part with no pins that is fitted by nobody, plac
 import std::mfg::jlcpcb::TwoLayer
 
 board Marked {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 }
 ```
 
@@ -1680,10 +1483,7 @@ import std::parts::mechanical::Label
 
 physical for Marked {
     case {
-        .revision: Label {
-            .text &= "REV A"
-            .text_height &= 1.2mm
-        }
+        .revision: Label { .text &= "REV A"; .text_height &= 1.2mm }
     }
 }
 ```
@@ -1702,9 +1502,7 @@ A `Logo` is a drawing printed on the silkscreen or etched in the copper, from a 
 import std::mfg::jlcpcb::TwoLayer
 
 board Branded {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 }
 ```
 
@@ -1713,15 +1511,8 @@ import std::parts::mechanical::Logo
 
 physical for Branded {
     case {
-        .mark: Logo {
-            .file &= "art/mark.svg"
-            .size &= 8mm
-        }
-        .etched: Logo {
-            .file &= "art/etched.dxf"
-            .size &= 6mm
-            .layer &= "copper"
-        }
+        .mark: Logo { .file &= "art/mark.svg"; .size &= 8mm }
+        .etched: Logo { .file &= "art/etched.dxf"; .size &= 6mm; .layer &= "copper" }
     }
 }
 ```
@@ -1737,15 +1528,11 @@ import std::parts::passive::Resistor
 
 module Sensor {
     .j: Header1x2
-    .r: Resistor {
-        .resistance &= 4.7kohm +/- 5%
-    }
+    .r: Resistor { .resistance &= 4.7kohm +/- 5% }
 }
 
 board Clean {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .uart: Header1x2
     .power: Header1x2
     .sensor: Sensor
@@ -1778,15 +1565,9 @@ import std::parts::connector::Header1x2
 import std::parts::passive::Resistor
 
 board Quiet {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
-    .r1: Resistor {
-        .resistance &= 10kohm +/- 5%
-    }
-    .r2: Resistor {
-        .resistance &= 4.7kohm +/- 5%
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .r1: Resistor { .resistance &= 10kohm +/- 5% }
+    .r2: Resistor { .resistance &= 4.7kohm +/- 5% }
     .j: Header1x2
 }
 ```
@@ -1814,9 +1595,7 @@ import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x2
 
 board Marked {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .uart: Header1x2
     .uart.silk_text &= "UART"
 }
@@ -1824,9 +1603,9 @@ board Marked {
 
 ```text
 error: `uart.silk_text` is what the silkscreen prints, which is physical intent, and a board's circuit source does not state it (ADR 0048); put it in `physical for Marked` in `main.physical.nsm`
-  --> main.nsm:9:5
+  --> main.nsm:7:5
   |
-9 |     .uart.silk_text &= "UART"
+7 |     .uart.silk_text &= "UART"
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1864,9 +1643,7 @@ module Sensor {
 }
 
 board Cased {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .power: Header1x2
     .sensor: Sensor
 }
@@ -1877,10 +1654,7 @@ import std::pcb::Outline
 
 physical for Cased {
     case {
-        .outline: Outline {
-            .width &= 40mm
-            .height &= 24mm
-        }
+        .outline: Outline { .width &= 40mm; .height &= 24mm }
     }
 
     // Case drawing, slot A: the header's body is 1.5 mm in from the left edge, turned, and
@@ -1909,9 +1683,7 @@ import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x2
 
 board Squeezed {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .j: Header1x2
 }
 ```
@@ -1936,9 +1708,7 @@ import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x2
 
 board Stretchy {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .j: Header1x2
 }
 ```
@@ -1948,10 +1718,7 @@ import std::pcb::Outline
 
 physical for Stretchy {
     case {
-        .outline: Outline {
-            .width &= 40mm
-            .height &= 20mm..30mm
-        }
+        .outline: Outline { .width &= 40mm; .height &= 20mm..30mm }
     }
     .j.place.y >= .outline.height / 2
 }
@@ -1971,9 +1738,7 @@ import std::parts::connector::Header1x2
 import std::parts::passive::Resistor
 
 board OneFace {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .j: Header1x2
     .r: Resistor {}
 }
@@ -1994,9 +1759,7 @@ import std::parts::connector::Header1x2
 import std::parts::passive::Resistor
 
 board OneFace {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .j: Header1x2
     .r: Resistor {}
 }
@@ -2031,9 +1794,7 @@ module Radio {
 }
 
 board Paired {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .radio: Radio
     .antenna: Header1x2
 }
@@ -2044,10 +1805,7 @@ import std::pcb::Outline
 
 physical for Paired {
     case {
-        .outline: Outline {
-            .width &= 50mm
-            .height &= 30mm
-        }
+        .outline: Outline { .width &= 50mm; .height &= 30mm }
     }
 
     // Datasheet figure 4: the two rows are 17.5 mm +/- 0.05 mm apart, centre to centre.
@@ -2079,9 +1837,7 @@ module Pads {
 }
 
 board Probed {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .pads: Pads
 }
 ```
@@ -2091,10 +1847,7 @@ import std::pcb::Outline
 
 physical for Probed {
     case {
-        .outline: Outline {
-            .width &= 50mm
-            .height &= 30mm
-        }
+        .outline: Outline { .width &= 50mm; .height &= 30mm }
     }
 
     // Test fixture drawing: the four pads are 5 mm apart on one line near the bottom edge.
@@ -2124,9 +1877,7 @@ module Pads {
 }
 
 board Gappy {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .pads: Pads
 }
 ```
@@ -2161,9 +1912,7 @@ module Radio {
 }
 
 board Docked {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .radio: Radio
     .antenna: Header1x2
 }
@@ -2182,10 +1931,7 @@ physical for Radio {
 
 physical for Docked {
     case {
-        .outline: Outline {
-            .width &= 50mm
-            .height &= 30mm
-        }
+        .outline: Outline { .width &= 50mm; .height &= 30mm }
     }
 
     // Case drawing, slot B: the dock row is 8 mm in from the left edge.
@@ -2212,9 +1958,7 @@ module Radio {
 }
 
 board Renamed {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .radio: Radio
 }
 ```
@@ -2246,9 +1990,7 @@ module Radio {
 }
 
 board Loose {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .radio: Radio
 }
 ```
@@ -2280,9 +2022,7 @@ import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x4
 
 board Plugged {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .j: Header1x4
 }
 ```
@@ -2292,10 +2032,7 @@ import std::pcb::Outline
 
 physical for Plugged {
     case {
-        .outline: Outline {
-            .width &= 40mm
-            .height &= 24mm
-        }
+        .outline: Outline { .width &= 40mm; .height &= 24mm }
     }
 
     // Case drawing, slot C: the header's body sticks 0.5 mm out of the left edge.
@@ -2319,9 +2056,7 @@ import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x4
 
 board Plugged {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .j: Header1x4
 }
 ```
@@ -2331,17 +2066,14 @@ import std::pcb::Outline
 
 physical for Plugged {
     case {
-        .outline: Outline {
-            .width &= 40mm
-            .height &= 24mm
-        }
+        .outline: Outline { .width &= 40mm; .height &= 24mm }
     }
     .j.place.x &= 1.3mm
 }
 ```
 
 ```text
-error: Plugged: `j` (J1) is not wholly inside the board outline: its courtyard is at least 0.50 mm past the left edge wherever its requirements put it, and the design does not say it may hang over an edge; to allow it past the left edge, require the body to reach it, for example `.j.place.left <= 0mm`; the lines that place it: main.physical.nsm:10 `.j.place.x &= 1.3mm`
+error: Plugged: `j` (J1) is not wholly inside the board outline: its courtyard is at least 0.50 mm past the left edge wherever its requirements put it, and the design does not say it may hang over an edge; to allow it past the left edge, require the body to reach it, for example `.j.place.left <= 0mm`; the lines that place it: main.physical.nsm:7 `.j.place.x &= 1.3mm`
 ```
 
 The next states an overhang that is too much: the header's pads end up 0.05 mm from the board edge, nearer than the process allows.
@@ -2351,9 +2083,7 @@ import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x4
 
 board Plugged {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .j: Header1x4
 }
 ```
@@ -2363,10 +2093,7 @@ import std::pcb::Outline
 
 physical for Plugged {
     case {
-        .outline: Outline {
-            .width &= 40mm
-            .height &= 24mm
-        }
+        .outline: Outline { .width &= 40mm; .height &= 24mm }
     }
     .j.place.left &= -1mm +/- 0.1mm
 }
@@ -2383,9 +2110,7 @@ import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x4
 
 board Plugged {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
     .j: Header1x4
 }
 ```
@@ -2395,10 +2120,7 @@ import std::pcb::Outline
 
 physical for Plugged {
     case {
-        .outline: Outline {
-            .width &= 40mm
-            .height &= 24mm
-        }
+        .outline: Outline { .width &= 40mm; .height &= 24mm }
     }
     .j.place.left &= -0.5mm +/- 0.1mm
     .j.place.y &= 5.1mm
@@ -2406,7 +2128,7 @@ physical for Plugged {
 ```
 
 ```text
-error: Plugged: `j` (J1) is not wholly inside the board outline: its courtyard is 0.52 mm past the top edge, and the design says it may hang over only the left edge (`j.place.left (main.physical.nsm:10)` allows -0.6 to -0.4 mm); to allow it past the top edge, require the body to reach it, for example `.j.place.top <= 0mm`
+error: Plugged: `j` (J1) is not wholly inside the board outline: its courtyard is 0.52 mm past the top edge, and the design says it may hang over only the left edge (`j.place.left (main.physical.nsm:7)` allows -0.6 to -0.4 mm); to allow it past the top edge, require the body to reach it, for example `.j.place.top <= 0mm`
 ```
 
 `netsmith board fab` measures every requirement on the board it made and prints a finding for each one not met, with the measured value, the window allowed and how far over it is. A violated requirement is an error that stops `fab`, like a design rules error; it is not a guideline, so `guidelines` and `--strict` do not govern it. `constraints = "warn"` under `[project]` in `netsmith.toml`, or `--constraints warn` for one run, lists them as warnings instead (`"error"` is the default). `board fab --constraints error|warn` wins over the manifest, so `--constraints error` stops `fab` even when the manifest says `warn`. `--allow-drc-violations` waives design rules, not requirements: with it, an unmet requirement still stops `fab` ("does not waive them"). The notes of the package count the requirements met, and say how many were not and that they are only warnings. Output of the check for a header moved by hand (this block is not run by the guide test):
@@ -2710,10 +2432,7 @@ import std::parts::passive::{Led, Resistor}
 import std::sources::Rail
 
 board HandPicked {
-    .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .led: Led { .current &= 5mA..15mA }
     // The solver would take a 330 ohm 0402 resistor; the bill of materials names this one.
     .r1: Resistor { .lcsc &= "C23151" }
@@ -2734,11 +2453,7 @@ import std::parts::passive::{Led, Resistor}
 import std::sources::Rail
 
 board NoSuchRow {
-    .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-        .neg.net &= "GND"
-    }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
     .led: Led { .current &= 5mA..15mA }
     .r1: Resistor { .lcsc &= "C0000000" }
     .supply.pos ~> .r1 ~> .led ~> .supply.neg
@@ -2747,10 +2462,10 @@ board NoSuchRow {
 
 ```text
 error: `r1` is held by `.lcsc &= "C0000000"` to a row of the `resistor` catalog, and the catalog has no row with the LCSC number C0000000: no other row was tried for it; change the narrowing to a number the catalog has, or remove it to let the solver pick
-   --> main.nsm:11:21
-   |
-11 |     .r1: Resistor { .lcsc &= "C0000000" }
-   |                     ^^^^^^^^^^^^^^^^^^^
+  --> main.nsm:7:21
+  |
+7 |     .r1: Resistor { .lcsc &= "C0000000" }
+  |                     ^^^^^^^^^^^^^^^^^^^
 ```
 
 Two narrowings of one part's `.lcsc` that differ are a `contradiction`, as any two narrowings of one text are, and `.lcsc` on a part that picks from no catalog (a `Switch`) is an error at the narrowing. The editor solves with the hand picks too, since they are the source.

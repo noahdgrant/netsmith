@@ -30,10 +30,7 @@ import std::sources::Rail
 import src::power::Bypassed
 
 board Filtered {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .filter: Bypassed
     .supply ~ .filter.rail
 }
@@ -86,10 +83,7 @@ import std::parts::passive::{Capacitor, Resistor}
 import std::sources::Rail
 
 board Pull {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .r: Resistor { .resistance &= 10kohm +/- 5% }
     .supply.pos ~> .r ~> .supply.neg
 }

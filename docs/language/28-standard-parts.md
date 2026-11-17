@@ -24,10 +24,7 @@ import std::parts::diode::Zener
 import std::sources::Rail
 
 board Conducts {
-    .input: Rail {
-        .voltage &= 12V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 12V +/- 5%; .pos.net &= "VIN" }
     .z: Zener { .zener_voltage &= 3.1V..3.5V }
     .input.pos ~> .z ~> .input.neg
 }
@@ -68,10 +65,7 @@ import std::sources::Rail
 
 board PinClamp {
     .environment: Environment { .temperature &= -40degC..125degC }
-    .input: Rail {
-        .voltage &= 24V +/- 10%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 24V +/- 10%; .pos.net &= "VIN" }
     .r: Resistor { .resistance &= 2.2kohm +/- 1% }
     .z: Zener { .zener_voltage &= 13V..16V }
     .z.bias == .z.voltage_over_temperature
@@ -89,15 +83,9 @@ import std::parts::passive::Resistor
 import std::sources::Rail
 
 board PinClamp {
-    .input: Rail {
-        .voltage &= 24V +/- 10%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 24V +/- 10%; .pos.net &= "VIN" }
     .r: Resistor { .resistance &= 2.2kohm +/- 1% }
-    .z: Zener {
-        .zener_voltage &= 13V..16V
-        .temperature_shift &= -65K..100K
-    }
+    .z: Zener { .zener_voltage &= 13V..16V; .temperature_shift &= -65K..100K }
     .z.bias == .z.voltage_over_temperature
     .z.current == (.input.voltage - .z.voltage_over_temperature) / .r.resistance
     .z.voltage_over_temperature <= 18V
@@ -113,15 +101,9 @@ import std::parts::passive::Resistor
 import std::sources::Rail
 
 board PinClamp {
-    .input: Rail {
-        .voltage &= 24V +/- 10%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 24V +/- 10%; .pos.net &= "VIN" }
     .r: Resistor { .resistance &= 2.2kohm +/- 1% }
-    .z: Zener {
-        .zener_voltage &= 13V..16V
-        .temperature_shift &= -65K..100K
-    }
+    .z: Zener { .zener_voltage &= 13V..16V; .temperature_shift &= -65K..100K }
     .z.bias == .z.voltage_over_temperature
     .z.current == (.input.voltage - .z.voltage_over_temperature) / .r.resistance
     .z.voltage_over_temperature <= 10V
@@ -131,9 +113,9 @@ board PinClamp {
 
 ```text
 error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C15 15V 500mW Zener SOD-123 C2104, fails because z.voltage_over_temperature must always be at most 10V, but 12.95V..16.9V is not always below 10V
-   --> main.nsm:17:5
+   --> main.nsm:11:5
    |
-17 |     .z.voltage_over_temperature <= 10V
+11 |     .z.voltage_over_temperature <= 10V
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -145,14 +127,8 @@ import std::parts::passive::Fuse
 import std::sources::Rail
 
 board Protected {
-    .input: Rail {
-        .voltage &= 12V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .load: Rail {
-        .current &= 100mA..400mA
-        .pos.net &= "VFUSED"
-    }
+    .input: Rail { .voltage &= 12V +/- 5%; .pos.net &= "VIN" }
+    .load: Rail { .current &= 100mA..400mA; .pos.net &= "VFUSED" }
     .fuse: Fuse { .rated_current &= 1A }
     .tvs: Tvs { .protected_limit &= 36V }
     .input.pos ~> .fuse ~> .load.pos
@@ -168,10 +144,7 @@ import std::parts::diode::Tvs
 import std::sources::Rail
 
 board Standoff {
-    .input: Rail {
-        .voltage &= 12V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 12V +/- 5%; .pos.net &= "VIN" }
     .tvs: Tvs { .protected_limit &= 14V }
     .input.pos ~> .tvs ~> .input.neg
 }
@@ -179,9 +152,9 @@ board Standoff {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 10 that fit, SMAJ12A 12V TVS SMA C113957, fails because tvs.bias must always be at most tvs.standoff_voltage, but 11.4V..12.6V is not always below 12V
-    --> std/parts/diode.nsm:424:5
+    --> std/parts/diode.nsm:423:5
     |
-424 |     .bias <= .standoff_voltage
+423 |     .bias <= .standoff_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -192,11 +165,7 @@ import std::parts::diode::Tvs
 import std::sources::Rail
 
 board Margin {
-    .input: Rail {
-        .voltage &= 12V +/- 5%
-        .peak &= 16V
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 12V +/- 5%; .peak &= 16V; .pos.net &= "VIN" }
     .tvs: Tvs {}
     .tvs.breakdown_voltage >= .input.peak * 3
     .input.pos ~> .tvs ~> .input.neg
@@ -205,10 +174,10 @@ board Margin {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 1 that fit, SMDJ36A 36V TVS SMC C108363, fails because tvs.breakdown_voltage must always be at least (input.peak * 3), but 40V is not always above 48V (rows with an empty cell are never offered, since a part with no stated rating cannot be shown to stay within it: 9 for `breakdown_voltage`)
-   --> main.nsm:11:5
-   |
-11 |     .tvs.breakdown_voltage >= .input.peak * 3
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  --> main.nsm:7:5
+  |
+7 |     .tvs.breakdown_voltage >= .input.peak * 3
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A `TvsBidirectional` is the TVS diode for a line that swings both ways or may be wired backwards, such as a power input on a vehicle (ADR 0089). It is two junctions back to back, so it has no anode and no cathode: its pins are `a1` and `a2` (KiCad's `Device:D_TVS`, drawn with two opposed triangles, where `Tvs` is drawn with the Zener symbol), and it is the same either way round. Its fields and checks are those of `Tvs`, read for either direction: the rail across it must stay under the stand-off, and the clamp under `.protected_limit`. Like a capacitor it takes the rail's voltage as its `.bias` whichever pin is on `pos`, so there is no wrong way to wire it. The standard `tvs_bidirectional` catalog has two Littelfuse rows, the SMDJ12CA and the SMDJ36CA (SMC), each with its minimum breakdown voltage from the datasheet table. The 12 V rail below reaches 12.6 V, so the picker passes over the SMDJ12CA (12 V stand-off) and chooses the SMDJ36CA, whichever way the diode is drawn into the chain:
@@ -218,10 +187,7 @@ import std::parts::diode::TvsBidirectional
 import std::sources::Rail
 
 board Input {
-    .input: Rail {
-        .voltage &= 12V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 12V +/- 5%; .pos.net &= "VIN" }
     .tvs: TvsBidirectional { .protected_limit &= 60V }
     .input.neg ~> .tvs ~> .input.pos
 }
@@ -234,10 +200,7 @@ import std::parts::diode::{Diode, Zener}
 import std::sources::Rail
 
 board Clamp {
-    .input: Rail {
-        .voltage &= 12V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 12V +/- 5%; .pos.net &= "VIN" }
     .z: Zener { .zener_voltage &= 11V..13V }
     .z.bias <= .z.zener_voltage
     .d: Diode { .max_reverse_voltage &= 10V }
@@ -248,25 +211,25 @@ board Clamp {
 
 ```text
 error: the `diode` catalog has nothing for `d`, which needs max_reverse_voltage within 10V
-   --> main.nsm:11:5
-   |
-11 |     .d: Diode { .max_reverse_voltage &= 10V }
-   |     ^^^^^^^^^
+  --> main.nsm:8:5
+  |
+8 |     .d: Diode { .max_reverse_voltage &= 10V }
+  |     ^^^^^^^^^
 error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C12 12V 500mW Zener SOD-123 C43491, fails because z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 11.4V..12.7V
-   --> main.nsm:10:5
-   |
-10 |     .z.bias <= .z.zener_voltage
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  --> main.nsm:7:5
+  |
+7 |     .z.bias <= .z.zener_voltage
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: d.bias must always be at most d.max_reverse_voltage, but 11.4V..12.6V is not always below 10V
     --> std/parts/diode.nsm:104:5
     |
 104 |     .bias <= .max_reverse_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 11V..13V
-   --> main.nsm:10:5
-   |
-10 |     .z.bias <= .z.zener_voltage
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  --> main.nsm:7:5
+  |
+7 |     .z.bias <= .z.zener_voltage
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A diode wired the wrong way round across a rail conducts and is a short, and a rating of the voltage it blocks cannot see that by itself. The bias of one is negative, so the part's relation on `.bias` fails and names it. Here the rectifier has its anode on `pos`, and the Zener its anode on `pos` too. The rectifier's check compares with its `.forward_voltage`, which every row of the `diode` catalog states, so a `Diode` is picked from rows and no row of it can be wired this way round:
@@ -276,10 +239,7 @@ import std::parts::diode::{Diode, Zener}
 import std::sources::Rail
 
 board Reversed {
-    .input: Rail {
-        .voltage &= 12V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 12V +/- 5%; .pos.net &= "VIN" }
     .d: Diode
     .z: Zener { .zener_voltage &= 4.7V..5.5V }
     .input.pos ~> .d ~> .input.neg
@@ -315,18 +275,15 @@ An LED that is asked to carry more than any red row allows:
 import std::parts::passive::{Color, Led}
 
 board Bright {
-    .led: Led {
-        .color &= Color::Red
-        .current &= 30mA
-    }
+    .led: Led { .color &= Color::Red; .current &= 30mA }
 }
 ```
 
 ```text
 error: no `led` candidate satisfies `led`: the closest of the 3 that fit, KT-0603R RED LED 0603 C2286, fails because led.current must always be at most led.max_forward_current, but 30mA is not always below 25mA
-    --> std/parts/passive.nsm:256:5
+    --> std/parts/passive.nsm:262:5
     |
-256 |     .current <= .max_forward_current
+262 |     .current <= .max_forward_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -344,10 +301,7 @@ A 10 ohm resistor that carries 100 A dissipates 100 kW, far more than any surfac
 import std::parts::passive::Resistor
 
 board Hot {
-    .r: Resistor {
-        .resistance &= 10ohm +/- 1%
-        .current &= 100A
-    }
+    .r: Resistor { .resistance &= 10ohm +/- 1%; .current &= 100A }
 }
 ```
 
@@ -395,14 +349,8 @@ import std::parts::regulator::FeedbackDivider
 import std::sources::Rail
 
 board Adjustable {
-    .divider: FeedbackDivider {
-        .vref &= 1.0V +/- 1%
-        .vout &= 3.8V +/- 3%
-        .current <= 1mA
-    }
-    .out: Rail {
-        .pos.net &= "VOUT"
-    }
+    .divider: FeedbackDivider { .vref &= 1.0V +/- 1%; .vout &= 3.8V +/- 3%; .current <= 1mA }
+    .out: Rail { .pos.net &= "VOUT" }
     .divider.top ~ .out.pos
     .divider.bottom ~ .out.neg
     .out.voltage == .divider.vout
@@ -416,13 +364,8 @@ import std::parts::regulator::FeedbackDivider
 import std::sources::Rail
 
 board TooTight {
-    .divider: FeedbackDivider {
-        .vref &= 1.0V +/- 1%
-        .vout &= 3.8V +/- 1%
-    }
-    .out: Rail {
-        .pos.net &= "VOUT"
-    }
+    .divider: FeedbackDivider { .vref &= 1.0V +/- 1%; .vout &= 3.8V +/- 1% }
+    .out: Rail { .pos.net &= "VOUT" }
     .divider.top ~ .out.pos
     .divider.bottom ~ .out.neg
     .out.voltage == .divider.vout
@@ -452,9 +395,7 @@ board SizedDivider {
         .current <= 1mA
         .package &= "0603"
     }
-    .out: Rail {
-        .pos.net &= "VOUT"
-    }
+    .out: Rail { .pos.net &= "VOUT" }
     .divider.top ~ .out.pos
     .divider.bottom ~ .out.neg
     .out.voltage == .divider.vout
@@ -510,14 +451,8 @@ import std::sources::Rail
 import src::zbk2::Zbk2
 
 board Converter {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "1V8"
-        .current &= 0mA..1A
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "1V8"; .current &= 0mA..1A }
     .reg: Buck<Zbk2> { .vout.voltage &= 1.8V +/- 3% }
 
     .input ~ .reg.vin
@@ -554,18 +489,9 @@ import std::sources::Rail
 import src::zbk2::Zbk2
 
 board TooMuchMargin {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "1V8"
-        .current &= 0mA..1A
-    }
-    .reg: Buck<Zbk2> {
-        .vout.voltage &= 1.8V +/- 3%
-        .voltage_margin &= 5
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "1V8"; .current &= 0mA..1A }
+    .reg: Buck<Zbk2> { .vout.voltage &= 1.8V +/- 3%; .voltage_margin &= 5 }
 
     .input ~ .reg.vin
     .reg.vout ~ .output
@@ -600,14 +526,8 @@ import std::sources::Rail
 import src::zbk2::Zbk2
 
 board Overload {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "1V8"
-        .current &= 0mA..3A
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "1V8"; .current &= 0mA..3A }
     .reg: Buck<Zbk2> { .vout.voltage &= 1.8V +/- 3% }
 
     .input ~ .reg.vin
@@ -670,14 +590,8 @@ import std::sources::Rail
 import src::zbk7::Zbk7
 
 board HighInput {
-    .input: Rail {
-        .voltage &= 12V..35V
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "5V"
-        .current &= 0mA..1A
-    }
+    .input: Rail { .voltage &= 12V..35V; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "5V"; .current &= 0mA..1A }
     .reg: Buck<Zbk7> { .vout.voltage &= 5V +/- 6% }
 
     .input ~ .reg.vin
@@ -704,19 +618,9 @@ import std::sources::Rail
 import src::zbk2::Zbk2
 
 board Quiet {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "1V8"
-        .current &= 0mA..1A
-    }
-    .reg: Buck<Zbk2> {
-        .vout.voltage &= 1.8V +/- 3%
-        .output_esr &= 5mohm
-        .output_ripple <= 20mV
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "1V8"; .current &= 0mA..1A }
+    .reg: Buck<Zbk2> { .vout.voltage &= 1.8V +/- 3%; .output_esr &= 5mohm; .output_ripple <= 20mV }
 
     .input ~ .reg.vin
     .reg.vout ~ .output
@@ -732,14 +636,8 @@ import std::sources::Rail
 import src::zbk2::Zbk2
 
 board TooQuiet {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "1V8"
-        .current &= 0mA..1A
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "1V8"; .current &= 0mA..1A }
     .reg: Buck<Zbk2> {
         .vout.voltage &= 1.8V +/- 3%
         .output_cap.count &= 1
@@ -769,18 +667,9 @@ import std::sources::Rail
 import src::zbk2::Zbk2
 
 board NoEsr {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "1V8"
-        .current &= 0mA..1A
-    }
-    .reg: Buck<Zbk2> {
-        .vout.voltage &= 1.8V +/- 3%
-        .output_ripple <= 20mV
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "1V8"; .current &= 0mA..1A }
+    .reg: Buck<Zbk2> { .vout.voltage &= 1.8V +/- 3%; .output_ripple <= 20mV }
 
     .input ~ .reg.vin
     .reg.vout ~ .output
@@ -801,14 +690,8 @@ import std::sources::Rail
 import src::zbk2::Zbk2
 
 board RowEsr {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "1V8"
-        .current &= 0mA..1A
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "1V8"; .current &= 0mA..1A }
     .reg: Buck<Zbk2> {
         .vout.voltage &= 1.8V +/- 3%
         .output_cap.mpn &= "ACME-C47U"
@@ -866,18 +749,9 @@ import std::sources::Rail
 import src::zbk4::Zbk4
 
 board Quick {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "1V8"
-        .current &= 0mA..1A
-    }
-    .reg: Buck<Zbk4> {
-        .vout.voltage &= 1.8V +/- 3%
-        .soft_start_time <= 5ms
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "1V8"; .current &= 0mA..1A }
+    .reg: Buck<Zbk4> { .vout.voltage &= 1.8V +/- 3%; .soft_start_time <= 5ms }
 
     .input ~ .reg.vin
     .reg.vout ~ .output
@@ -893,18 +767,9 @@ import std::sources::Rail
 import src::zbk4::Zbk4
 
 board TooSlow {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "1V8"
-        .current &= 0mA..1A
-    }
-    .reg: Buck<Zbk4> {
-        .vout.voltage &= 1.8V +/- 3%
-        .soft_start_time <= 3ms
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "1V8"; .current &= 0mA..1A }
+    .reg: Buck<Zbk4> { .vout.voltage &= 1.8V +/- 3%; .soft_start_time <= 3ms }
 
     .input ~ .reg.vin
     .reg.vout ~ .output
@@ -913,10 +778,10 @@ board TooSlow {
 
 ```text
 error: reg.soft_start_time must always be at most 3ms, but 2ms..4ms is not always below 3ms
-   --> main.nsm:17:9
-   |
-17 |         .soft_start_time <= 3ms
-   |         ^^^^^^^^^^^^^^^^^^^^^^^
+  --> main.nsm:9:54
+  |
+9 |     .reg: Buck<Zbk4> { .vout.voltage &= 1.8V +/- 3%; .soft_start_time <= 3ms }
+  |                                                      ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 With `Zbk2`, which states no time, the same bound is not evaluated: the converter's member has no value, and the bound is listed as such.
@@ -928,18 +793,9 @@ import std::sources::Rail
 import src::zbk2::Zbk2
 
 board NoTime {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "1V8"
-        .current &= 0mA..1A
-    }
-    .reg: Buck<Zbk2> {
-        .vout.voltage &= 1.8V +/- 3%
-        .soft_start_time <= 5ms
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "1V8"; .current &= 0mA..1A }
+    .reg: Buck<Zbk2> { .vout.voltage &= 1.8V +/- 3%; .soft_start_time <= 5ms }
 
     .input ~ .reg.vin
     .reg.vout ~ .output
@@ -953,15 +809,8 @@ import std::parts::regulator::{Buck, Lmr16006y}
 import std::sources::Rail
 
 board Derated {
-    .input: Rail {
-        .voltage &= 9V..16V
-        .peak &= 24V
-        .pos.net &= "VIN"
-    }
-    .reg: Buck<Lmr16006y> {
-        .vout.pos.net &= "V3V3"
-        .vout.voltage &= 3.3V +/- 5%
-    }
+    .input: Rail { .voltage &= 9V..16V; .peak &= 24V; .pos.net &= "VIN" }
+    .reg: Buck<Lmr16006y> { .vout.pos.net &= "V3V3"; .vout.voltage &= 3.3V +/- 5% }
     .input ~ .reg.vin
     .load: Rail { .current &= 5mA..50mA }
     .reg.vout ~ .load
@@ -980,15 +829,8 @@ import std::sources::Rail
 import src::zbk2::Zbk2
 
 board TooClose {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .peak &= 5.5V
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "1V8"
-        .current &= 0mA..1A
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .peak &= 5.5V; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "1V8"; .current &= 0mA..1A }
     .reg: Buck<Zbk2> { .vout.voltage &= 1.8V +/- 3% }
 
     .input ~ .reg.vin
@@ -999,9 +841,9 @@ board TooClose {
 
 ```text
 error: input.peak must always be at most (reg.max_input_voltage * 0.8), but 5.5V is not always below 4.8V
-   --> main.nsm:20:5
+   --> main.nsm:13:5
    |
-20 |     .input.peak <= .reg.max_input_voltage * 0.8
+13 |     .input.peak <= .reg.max_input_voltage * 0.8
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1059,15 +901,8 @@ import std::parts::regulator::{Buck, Lmr16006y}
 import std::sources::Rail
 
 board Sleepy {
-    .input: Rail {
-        .voltage &= 9V..16V
-        .peak &= 24V
-        .pos.net &= "VIN"
-    }
-    .reg: Buck<Lmr16006y> {
-        .vout.pos.net &= "V3V3"
-        .vout.voltage &= 3.3V +/- 5%
-    }
+    .input: Rail { .voltage &= 9V..16V; .peak &= 24V; .pos.net &= "VIN" }
+    .reg: Buck<Lmr16006y> { .vout.pos.net &= "V3V3"; .vout.voltage &= 3.3V +/- 5% }
     .load: Rail { .current &= 0A..5uA }
 
     .input ~ .reg.vin
@@ -1086,15 +921,8 @@ import std::parts::regulator::{Buck, Lt8641}
 import std::sources::Rail
 
 board Converter {
-    .input: Rail {
-        .voltage &= 9V..16V
-        .peak &= 36V
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "3V3"
-        .current &= 0A..2A
-    }
+    .input: Rail { .voltage &= 9V..16V; .peak &= 36V; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "3V3"; .current &= 0A..2A }
     .reg: Buck<Lt8641> { .vout.voltage &= 3.3V +/- 4% }
 
     .input ~ .reg.vin
@@ -1131,15 +959,8 @@ import std::parts::regulator::{Buck, Lt8641}
 import std::sources::Rail
 
 board Converter {
-    .input: Rail {
-        .voltage &= 9V..16V
-        .peak &= 36V
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "3V3"
-        .current &= 0A..2A
-    }
+    .input: Rail { .voltage &= 9V..16V; .peak &= 36V; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "3V3"; .current &= 0A..2A }
     .reg: Buck<Lt8641> { .vout.voltage &= 3.3V +/- 4% }
 
     .input ~ .reg.vin
@@ -1154,19 +975,9 @@ import std::parts::regulator::{Buck, Lt8641}
 import std::sources::Rail
 
 board Converter {
-    .input: Rail {
-        .voltage &= 9V..16V
-        .peak &= 36V
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "3V3"
-        .current &= 0A..2A
-    }
-    .reg: Buck<Lt8641> {
-        .vout.voltage &= 3.3V +/- 4%
-        .soft_start_time <= 8ms
-    }
+    .input: Rail { .voltage &= 9V..16V; .peak &= 36V; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "3V3"; .current &= 0A..2A }
+    .reg: Buck<Lt8641> { .vout.voltage &= 3.3V +/- 4%; .soft_start_time <= 8ms }
 
     .input ~ .reg.vin
     .reg.vout ~ .output
@@ -1180,19 +991,9 @@ import std::parts::regulator::{Buck, Lt8641}
 import std::sources::Rail
 
 board Converter {
-    .input: Rail {
-        .voltage &= 9V..16V
-        .peak &= 36V
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "3V3"
-        .current &= 0A..2A
-    }
-    .reg: Buck<Lt8641> {
-        .vout.voltage &= 3.3V +/- 4%
-        .soft_start_time <= 5ms
-    }
+    .input: Rail { .voltage &= 9V..16V; .peak &= 36V; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "3V3"; .current &= 0A..2A }
+    .reg: Buck<Lt8641> { .vout.voltage &= 3.3V +/- 4%; .soft_start_time <= 5ms }
 
     .input ~ .reg.vin
     .reg.vout ~ .output
@@ -1201,10 +1002,10 @@ board Converter {
 
 ```text
 error: reg.soft_start_time must always be at most 5ms, but 2.769ms..7.334ms is not always below 5ms
-   --> main.nsm:16:9
-   |
-16 |         .soft_start_time <= 5ms
-   |         ^^^^^^^^^^^^^^^^^^^^^^^
+  --> main.nsm:7:56
+  |
+7 |     .reg: Buck<Lt8641> { .vout.voltage &= 3.3V +/- 4%; .soft_start_time <= 5ms }
+  |                                                        ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 The part states the absolute maximum of four pins besides VIN, from its Absolute Maximum Ratings (p.2): `BIAS` 25 V, `EN/UV` 65 V, `TR/SS` 4 V and `SYNC/MODE` 6 V, each at the end of the pin's row (`.tr_ss passive "TR/SS" "16" abs_max 4V`, ADR 0124), measured from the part's ground `GND`, so the solver compares the voltage of the pin's net with the limit as it does for any `Logic` input (ADR 0046). A board that ties `SYNC/MODE` or `TR/SS` to a 9 V to 16 V input is refused with the net, the limit and the field that states it (`net `VIN` reaches 16V above its ground `GND` ... but `u.sync_mode.abs_max` is 6V`). A pin left to float is not judged, and one with only a soft-start capacitor on it is a `not evaluated` note, since nothing sets its voltage. `PG` (42 V) and `FB` (4 V) have limits too and state none, for the reasons in the part's doc comment and ADR 0095.
@@ -1228,14 +1029,8 @@ import std::parts::passive::Fuse
 import std::sources::Rail
 
 board Budget {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .load: Rail {
-        .current &= 100mA..1kA
-        .pos.net &= "VFUSED"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .load: Rail { .current &= 100mA..1kA; .pos.net &= "VFUSED" }
     .fuse: Fuse {}
     .input.pos ~> .fuse ~> .load.pos
     .input.neg ~ .load.neg
@@ -1244,9 +1039,9 @@ board Budget {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
-    --> std/parts/passive.nsm:437:5
+    --> std/parts/passive.nsm:449:5
     |
-437 |     .current <= .rated_current
+449 |     .current <= .rated_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1255,14 +1050,8 @@ import std::parts::passive::Inductor
 import std::sources::Rail
 
 board Saturates {
-    .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .l: Inductor {
-        .inductance &= 2.2uH +/- 30%
-        .current &= 500A
-    }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .l: Inductor { .inductance &= 2.2uH +/- 30%; .current &= 500A }
     .supply.pos ~ .l.a
     .supply.neg ~ .l.b
 }
@@ -1270,9 +1059,9 @@ board Saturates {
 
 ```text
 error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758, fails because l.current must always be at most l.saturation_current, but 500A is not always below 3.6A
-    --> std/parts/passive.nsm:300:5
+    --> std/parts/passive.nsm:308:5
     |
-300 |     .current <= .saturation_current
+308 |     .current <= .saturation_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1297,15 +1086,8 @@ import std::parts::passive::Fuse
 import std::sources::Rail
 
 board Interrupts {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .peak &= 5.5V
-        .pos.net &= "VIN"
-    }
-    .load: Rail {
-        .current &= 10mA..100mA
-        .pos.net &= "VFUSED"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .peak &= 5.5V; .pos.net &= "VIN" }
+    .load: Rail { .current &= 10mA..100mA; .pos.net &= "VFUSED" }
     .fuse: Fuse {}
     .input.pos ~> .fuse ~> .load.pos
     .input.neg ~ .load.neg
@@ -1319,15 +1101,8 @@ import std::parts::passive::Fuse
 import std::sources::Rail
 
 board Arcs {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .peak &= 5kV
-        .pos.net &= "VIN"
-    }
-    .load: Rail {
-        .current &= 10mA..100mA
-        .pos.net &= "VFUSED"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .peak &= 5kV; .pos.net &= "VIN" }
+    .load: Rail { .current &= 10mA..100mA; .pos.net &= "VFUSED" }
     .fuse: Fuse {}
     .input.pos ~> .fuse ~> .load.pos
     .input.neg ~ .load.neg
@@ -1336,9 +1111,9 @@ board Arcs {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.supply_peak must always be at most fuse.rated_voltage, but 5kV is not always below 125V
-    --> std/parts/passive.nsm:438:5
+    --> std/parts/passive.nsm:450:5
     |
-438 |     .supply_peak <= .rated_voltage
+450 |     .supply_peak <= .rated_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1350,16 +1125,8 @@ import std::parts::passive::Fuse
 import std::sources::Rail
 
 board Protected {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .peak &= 5.5V
-        .reverse_peak &= 60V
-        .pos.net &= "VIN"
-    }
-    .load: Rail {
-        .current &= 10mA..100mA
-        .pos.net &= "VPROTECTED"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .peak &= 5.5V; .reverse_peak &= 60V; .pos.net &= "VIN" }
+    .load: Rail { .current &= 10mA..100mA; .pos.net &= "VPROTECTED" }
     .fuse: Fuse { .rated_current &= 1A }
     .d: Schottky { .max_reverse_voltage &= 100V }
     .input.pos ~> .fuse ~> .d ~> .load.pos
@@ -1375,16 +1142,8 @@ import std::parts::passive::Fuse
 import std::sources::Rail
 
 board Overloaded {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .peak &= 5.5V
-        .reverse_peak &= 60V
-        .pos.net &= "VIN"
-    }
-    .load: Rail {
-        .current &= 10mA..100mA
-        .pos.net &= "VPROTECTED"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .peak &= 5.5V; .reverse_peak &= 60V; .pos.net &= "VIN" }
+    .load: Rail { .current &= 10mA..100mA; .pos.net &= "VPROTECTED" }
     .fuse: Fuse { .rated_current &= 3A }
     .d: Schottky { .max_forward_current &= 1A }
     .input.pos ~> .fuse ~> .d ~> .load.pos
@@ -1418,18 +1177,9 @@ import std::parts::transistor::NMosfet
 import std::sources::Rail
 
 board Switch {
-    .supply: Rail {
-        .voltage &= 12V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .logic: Rail {
-        .voltage &= 0.3V +/- 5%
-        .pos.net &= "V0V3"
-    }
-    .q: NMosfet {
-        .drain_source_voltage &= supply.voltage
-        .gate_source_voltage &= logic.voltage
-    }
+    .supply: Rail { .voltage &= 12V +/- 5%; .pos.net &= "VIN" }
+    .logic: Rail { .voltage &= 0.3V +/- 5%; .pos.net &= "V0V3" }
+    .q: NMosfet { .drain_source_voltage &= supply.voltage; .gate_source_voltage &= logic.voltage }
     .q.gate ~ .logic.pos
     .q.source ~ .supply.neg
     .q.drain ~ .supply.pos
@@ -1451,14 +1201,8 @@ import std::parts::transistor::NMosfet
 import std::sources::Rail
 
 board Switch {
-    .supply: Rail {
-        .voltage &= 12V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .logic: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "V3V3"
-    }
+    .supply: Rail { .voltage &= 12V +/- 5%; .pos.net &= "VIN" }
+    .logic: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "V3V3" }
     .q: NMosfet {
         .drain_source_voltage &= supply.voltage
         .gate_source_voltage &= logic.voltage
@@ -1496,10 +1240,7 @@ import std::parts::transistor::PMosfet
 import std::sources::Rail
 
 board HighSide {
-    .supply: Rail {
-        .voltage &= 36V +/- 5%
-        .pos.net &= "V36"
-    }
+    .supply: Rail { .voltage &= 36V +/- 5%; .pos.net &= "V36" }
     .q: PMosfet {
         .drain_source_voltage &= supply.voltage
         .gate_source_voltage &= 10V
@@ -1522,10 +1263,7 @@ import std::parts::transistor::PMosfet
 import std::sources::Rail
 
 board HighSide {
-    .supply: Rail {
-        .voltage &= 100V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .supply: Rail { .voltage &= 100V +/- 5%; .pos.net &= "VIN" }
     .q: PMosfet {
         .drain_source_voltage &= supply.voltage
         .gate_source_voltage &= supply.voltage
@@ -1539,9 +1277,9 @@ board HighSide {
 
 ```text
 error: no `p_mosfet` candidate satisfies `q`: the closest of the 4 that fit, ZP-40 40V 4A P-MOSFET, fails because q.drain_source_voltage must always be at most q.max_drain_source_voltage, but 95V..105V is not always below 40V
-    --> std/parts/transistor.nsm:146:5
+    --> std/parts/transistor.nsm:149:5
     |
-146 |     .drain_source_voltage <= .max_drain_source_voltage
+149 |     .drain_source_voltage <= .max_drain_source_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1623,17 +1361,11 @@ part SmallLdo provides LinearRegulator {
 }
 
 board Island {
-    .supply: Rail {
-        .voltage &= 4.5V..5.5V
-        .pos.net &= "VIN"
-    }
+    .supply: Rail { .voltage &= 4.5V..5.5V; .pos.net &= "VIN" }
     .reg: SmallLdo
     .supply.pos ~ .reg.vin.pos
     .supply.neg ~ .reg.vin.neg
-    .load: Rail {
-        .current &= 20mA..50mA
-        .pos.net &= "V33"
-    }
+    .load: Rail { .current &= 20mA..50mA; .pos.net &= "V33" }
     .reg.vout ~ .load
 }
 ```
@@ -1799,24 +1531,18 @@ import std::parts::passive::Capacitor
 import std::sources::Rail
 
 board Derate {
-    .input: Rail {
-        .voltage &= 400V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .bulk: Capacitor {
-        .capacitance &= 47uF +/- 20%
-        .max_voltage >= .bias * 1.5
-    }
+    .input: Rail { .voltage &= 400V +/- 5%; .pos.net &= "VIN" }
+    .bulk: Capacitor { .capacitance &= 47uF +/- 20%; .max_voltage >= .bias * 1.5 }
     .input.pos ~> .bulk ~> .input.neg
 }
 ```
 
 ```text
 error: no `capacitor` candidate satisfies `bulk`: the closest of the 1 that fit, 47uF 20% 6.3V X5R 0805 C16780, fails because bulk.max_voltage must always be at least (bulk.bias * 1.5), but 6.3V is not always above 570V..630V
-   --> main.nsm:11:9
-   |
-11 |         .max_voltage >= .bias * 1.5
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  --> main.nsm:6:54
+  |
+6 |     .bulk: Capacitor { .capacitance &= 47uF +/- 20%; .max_voltage >= .bias * 1.5 }
+  |                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A capacitor across no rail has no bias to rate: state `.bias`, or place it between a rail's `pos` and `neg`.
@@ -1833,10 +1559,7 @@ import std::parts::passive::Resistor
 import std::sources::Rail
 
 board UsbPowered {
-    .usb: UsbCPower {
-        .vbus.voltage &= 5V +/- 5%
-        .vbus.pos.net &= "VBUS"
-    }
+    .usb: UsbCPower { .vbus.voltage &= 5V +/- 5%; .vbus.pos.net &= "VBUS" }
     .system: Rail { .current &= 0mA..400mA }
     .usb.vbus ~ .system
     .rd1: Resistor { .resistance &= 5.1kohm +/- 1% }
@@ -1853,10 +1576,7 @@ import std::parts::connector::UsbCSink
 import std::sources::Rail
 
 board UsbDevice {
-    .usb: UsbCSink {
-        .cc1_rd.package &= "0402"
-        .cc2_rd.package &= "0402"
-    }
+    .usb: UsbCSink { .cc1_rd.package &= "0402"; .cc2_rd.package &= "0402" }
     .usb.vbus.voltage &= 5V +/- 5%
     .usb.vbus.pos.net &= "VBUS"
     .system: Rail { .current &= 0mA..400mA }
@@ -1872,10 +1592,7 @@ import std::parts::passive::Resistor
 import std::sources::Rail
 
 board Mechanical {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
     .screw: PlatedHole
@@ -2023,15 +1740,9 @@ module Protection {
 }
 
 board Powered {
-    .plug: Plug {
-        .supply.voltage &= 4.75V..5.25V
-        .supply.pos.net &= "VIN"
-    }
+    .plug: Plug { .supply.voltage &= 4.75V..5.25V; .supply.pos.net &= "VIN" }
     .protection: Protection
-    .load: Rail {
-        .pos.net &= "OUT"
-        .current &= 100mA..300mA
-    }
+    .load: Rail { .pos.net &= "OUT"; .current &= 100mA..300mA }
     .plug.supply ~ .protection.vin
     .protection.vout ~ .load
     .protection.vout.voltage >= 4.5V
@@ -2040,9 +1751,9 @@ board Powered {
 
 ```text
 error: protection.vout.voltage must always be at least 4.5V, but 4.22V..4.94V is not always above 4.5V (the DC analysis puts `protection.vout.voltage` at 4.22V..4.94V, its high end with plug.supply at 5.25V, protection.diode conducting at 300mV, load at 100mA, its low end with plug.supply at 4.75V, protection.diode conducting at 500mV, load at 300mA)
-   --> main.nsm:67:5
+   --> main.nsm:61:5
    |
-67 |     .protection.vout.voltage >= 4.5V
+61 |     .protection.vout.voltage >= 4.5V
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -2102,16 +1813,10 @@ part Converter {
 }
 
 board Started {
-    .plug: Plug {
-        .supply.voltage &= 4V..5.5V
-        .supply.pos.net &= "VIN"
-    }
+    .plug: Plug { .supply.voltage &= 4V..5.5V; .supply.pos.net &= "VIN" }
     .link: Link { .resistance &= 0.2ohm }
     .reg: Converter { .efficiency &= 0.9; .vout.voltage &= 3.3V }
-    .load: Rail {
-        .pos.net &= "V33"
-        .current &= 1A
-    }
+    .load: Rail { .pos.net &= "V33"; .current &= 1A }
     .input_cap: Capacitor { .effective_capacitance >= 4uF }
     .plug.supply.pos ~> .link ~> .reg.vin.pos
     .plug.supply.neg ~ .reg.vin.neg
@@ -2139,15 +1844,8 @@ part Plug {
 }
 
 board Clamped {
-    .plug: Plug {
-        .supply.voltage &= 9V..16V
-        .supply.peak &= 58V
-        .supply.pos.net &= "VIN"
-    }
-    .out: Rail {
-        .pos.net &= "OUT"
-        .current &= 0A..200uA
-    }
+    .plug: Plug { .supply.voltage &= 9V..16V; .supply.peak &= 58V; .supply.pos.net &= "VIN" }
+    .out: Rail { .pos.net &= "OUT"; .current &= 0A..200uA }
     .plug.supply.neg ~ .out.neg
     .r: Resistor
     .clamp: Zener
@@ -2170,10 +1868,7 @@ import std::parts::passive::{Led, Resistor}
 import std::sources::Rail
 
 board Lit {
-    .supply: Rail {
-        .voltage &= 5V
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 5V; .pos.net &= "VCC" }
     .top: Resistor { .resistance &= 1kohm +/- 1% }
     .bottom: Resistor { .resistance &= 2kohm +/- 1% }
     .led: Led { .current &= 1mA..3mA; .forward_voltage &= 1.8V..2.4V }
@@ -2222,14 +1917,8 @@ part LowSideSwitch {
 }
 
 board Switched {
-    .main: Rail {
-        .voltage &= 12V
-        .pos.net &= "VIN"
-    }
-    .logic: Rail {
-        .voltage &= 3.3V +/- 3%
-        .pos.net &= "3V3"
-    }
+    .main: Rail { .voltage &= 12V; .pos.net &= "VIN" }
+    .logic: Rail { .voltage &= 3.3V +/- 3%; .pos.net &= "3V3" }
     .mcu: Mcu
     .pd: Resistor { .resistance &= 10kohm +/- 1% }
     .q: LowSideSwitch { .gate_threshold &= 1V..2.5V; .on_resistance &= 50mohm..100mohm }
@@ -2255,10 +1944,7 @@ part Mcu {
 }
 
 board Fused {
-    .supply: Rail {
-        .voltage &= 9V..16V
-        .pos.net &= "VIN"
-    }
+    .supply: Rail { .voltage &= 9V..16V; .pos.net &= "VIN" }
     .fuse: Fuse { .rated_current &= 1A; .current &= 0A..100mA }
     .mcu: Mcu { .vdd.current &= 50mA..300mA }
     .supply.pos ~> .fuse ~> .mcu.vdd.pos
@@ -2268,9 +1954,9 @@ board Fused {
 
 ```text
 error: `fuse.current` is stated 0A..100mA, but the DC analysis of the circuit around it finds 50mA..300mA: at most 300mA at the high end with mcu.vdd at 300mA
-   --> main.nsm:13:41
+   --> main.nsm:10:41
    |
-13 |     .fuse: Fuse { .rated_current &= 1A; .current &= 0A..100mA }
+10 |     .fuse: Fuse { .rated_current &= 1A; .current &= 0A..100mA }
    |                                         ^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -2288,10 +1974,7 @@ module Load {
 }
 
 board Claim {
-    .supply: Rail {
-        .voltage &= 12V
-        .pos.net &= "VIN"
-    }
+    .supply: Rail { .voltage &= 12V; .pos.net &= "VIN" }
     .r: Resistor { .resistance &= 100ohm +/- 1% }
     .load: Load { .vin.voltage &= 1.7V..3.6V }
     .supply.pos ~> .r ~> .load.vin.pos
@@ -2309,9 +1992,9 @@ error: `load.led.current` is stated 10mA..20mA, but the DC analysis of the circu
 7 |     .led: Led { .current &= 10mA..20mA }
   |                 ^^^^^^^^^^^^^^^^^^^^^^
 error: `r.current` is inconsistent: the solver worked it out as 10mA..20mA, but the DC analysis of the circuit around it finds 95.04mA..103.1mA, and the two share no value (the least the circuit gives, with r at 101Ω, load.led conducting at 2.4V)
-   --> main.nsm:16:5
+   --> main.nsm:13:5
    |
-16 |     .r: Resistor { .resistance &= 100ohm +/- 1% }
+13 |     .r: Resistor { .resistance &= 100ohm +/- 1% }
    |     ^^^^^^^^^^^^
 ```
 
@@ -2343,16 +2026,10 @@ part Converter {
 }
 
 board Starved {
-    .supply: Rail {
-        .voltage &= 12V
-        .pos.net &= "VIN"
-    }
+    .supply: Rail { .voltage &= 12V; .pos.net &= "VIN" }
     .link: Link { .resistance &= 10ohm }
     .reg: Converter { .efficiency &= 0.9; .vout.voltage &= 5V }
-    .out: Rail {
-        .pos.net &= "5V"
-        .current &= 1A
-    }
+    .out: Rail { .pos.net &= "5V"; .current &= 1A }
     .supply.pos ~> .link ~> .reg.vin.pos
     .supply.neg ~ .reg.vin.neg
     .reg.vout ~ .out
@@ -2361,9 +2038,9 @@ board Starved {
 
 ```text
 error: the source cannot give what `reg` asks (5W at its output, efficiency 90 %): its input falls to 0V and no operating point exists
-   --> main.nsm:31:5
+   --> main.nsm:28:5
    |
-31 |     .reg: Converter { .efficiency &= 0.9; .vout.voltage &= 5V }
+28 |     .reg: Converter { .efficiency &= 0.9; .vout.voltage &= 5V }
    |     ^^^^^^^^^^^^^^^
 ```
 
@@ -2395,17 +2072,10 @@ part Converter {
 }
 
 board Small {
-    .supply: Rail {
-        .voltage &= 9V..16V
-        .current &= -500mA..0A
-        .pos.net &= "VIN"
-    }
+    .supply: Rail { .voltage &= 9V..16V; .current &= -500mA..0A; .pos.net &= "VIN" }
     .link: Link { .resistance &= 0.1ohm }
     .reg: Converter { .efficiency &= 0.9; .vout.voltage &= 5V }
-    .out: Rail {
-        .pos.net &= "5V"
-        .current &= 2A
-    }
+    .out: Rail { .pos.net &= "5V"; .current &= 2A }
     .supply.pos ~> .link ~> .reg.vin.pos
     .supply.neg ~ .reg.vin.neg
     .reg.vout ~ .out
@@ -2416,7 +2086,7 @@ board Small {
 error: `supply.current` is stated -500mA..0A, so the supply `supply` gives at most 500mA, but the DC analysis finds the loads on its net drawing at least 697.5mA and up to 1.252A, the least with supply at 16V
    --> main.nsm:26:5
    |
-26 |     .supply: Rail {
+26 |     .supply: Rail { .voltage &= 9V..16V; .current &= -500mA..0A; .pos.net &= "VIN" }
    |     ^^^^^^^^^^^^^
 ```
 
@@ -2451,14 +2121,8 @@ part Pad {
 }
 
 board Divided {
-    .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC5"
-    }
-    .core: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC5" }
+    .core: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .pad: Pad
     .top: Resistor { .resistance &= 10kohm +/- 1% }
     .bottom: Resistor { .resistance &= 20kohm +/- 1% }
@@ -2505,10 +2169,7 @@ part Receiver {
 }
 
 board Agree {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .a: Driver
     .b: Receiver
     .supply ~ .a.vdd
@@ -2552,14 +2213,8 @@ part Receiver {
 }
 
 board Mismatch {
-    .low: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
-    .high: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC5"
-    }
+    .low: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .high: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC5" }
     .a: Driver
     .b: Receiver
     .low ~ .a.vdd
@@ -2570,9 +2225,9 @@ board Mismatch {
 
 ```text
 error: net `net-a.out.line`: `a.out.voh` is 3.035V..3.365V but `b.in.vih` needs 3.325V..3.675V: a high of 3.035V is not always read as a high, which takes 3.675V
-   --> main.nsm:41:5
+   --> main.nsm:35:5
    |
-41 |     .a: Driver
+35 |     .a: Driver
    |     ^^^^^^^^^^
 ```
 
@@ -2585,13 +2240,8 @@ import std::parts::logic::Sn74lvc1g04
 import std::sources::Rail
 
 board Inverters {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u1: Sn74lvc1g04 { .package &= "SOT-23-5" }
     .u2: Sn74lvc1g04 { .package &= "SOT-23-5" }
     .j: Header1x2
@@ -2617,17 +2267,9 @@ import std::parts::mcu::Attiny13a
 import std::sources::Rail
 
 board Dimmer {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
-    .logic_supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
-    .mcu_supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "5V"
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .logic_supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .mcu_supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "5V" }
     .inv: Sn74lvc1g04 { .package &= "SOT-23-5" }
     .mcu: Attiny13a { .package &= "SOIC-8" }
     .j: Header1x2
@@ -2643,14 +2285,14 @@ board Dimmer {
 
 ```text
 error: net `net-inv.y.line`: `inv.y.voh` is 3.035V..3.365V but `mcu.pb2.vih` needs 2.85V..3.15V: a high of 3.035V is not always read as a high, which takes 3.15V
-   --> main.nsm:19:5
+   --> main.nsm:11:5
    |
-19 |     .inv: Sn74lvc1g04 { .package &= "SOT-23-5" }
+11 |     .inv: Sn74lvc1g04 { .package &= "SOT-23-5" }
    |     ^^^^^^^^^^^^^^^^^
 error: net `net-inv.y.line` reaches 5.25V above its ground `GND` (`mcu.pb2.line`, a line of `mcu.pb2.reference`) but `inv.y.line.abs_max` is 3.635V..3.965V: it must not exceed 3.635V
-   --> main.nsm:19:5
+   --> main.nsm:11:5
    |
-19 |     .inv: Sn74lvc1g04 { .package &= "SOT-23-5" }
+11 |     .inv: Sn74lvc1g04 { .package &= "SOT-23-5" }
    |     ^^^^^^^^^^^^^^^^^
 ```
 
@@ -2714,10 +2356,7 @@ part Enabled {
 }
 
 board Behind {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .a: Driver
     .b: Receiver
     .q: Enabled
@@ -2766,10 +2405,7 @@ part Receiver {
 }
 
 board Halved {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .a: Driver
     .b: Receiver
     .r: Resistor { .resistance &= 10kohm +/- 1% }
@@ -2783,9 +2419,9 @@ board Halved {
 
 ```text
 error: net `net-b.in.line`: with `a.out` driving high, the DC analysis holds the line at 1.477V..1.75V through `r` from net `net-a.out.line` but `b.in.vih` needs 2.194V..2.426V: a high of 1.478V is not always read as a high, which takes 2.426V
-   --> main.nsm:39:5
+   --> main.nsm:36:5
    |
-39 |     .b: Receiver
+36 |     .b: Receiver
    |     ^^^^^^^^^^^^
 ```
 
@@ -2832,14 +2468,8 @@ part Fet {
 }
 
 board Translated {
-    .low: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
-    .high: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "5V"
-    }
+    .low: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .high: Rail { .voltage &= 5V +/- 5%; .pos.net &= "5V" }
     .a: BusPin
     .b: BusPin
     .ra: Resistor { .resistance &= 10kohm +/- 1% }
@@ -2857,9 +2487,9 @@ board Translated {
 
 ```text
 error: net `net-a.io.line`: with `b.io` driving low and every driver of net `net-a.io.line` letting go of it, the DC analysis holds the line at -1nV..1.299V through `q` from net `net-b.io.line` but `a.io.vil` allows 940.5mV..1.04V: a low of 1.299V is not always read as a low, which takes 940.5mV
-   --> main.nsm:49:5
+   --> main.nsm:43:5
    |
-49 |     .a: BusPin
+43 |     .a: BusPin
    |     ^^^^^^^^^^
 ```
 
@@ -2902,10 +2532,7 @@ part Receiver {
 }
 
 board OneSupply {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .a: Mic
     .b: Receiver
     .supply ~ .a.vdd
@@ -2949,10 +2576,7 @@ part Receiver {
 }
 
 board OneSupply {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .a: Weak
     .b: Receiver
     .supply ~ .a.vdd
@@ -2963,9 +2587,9 @@ board OneSupply {
 
 ```text
 error: net `net-a.out.line`: `a.out.voh` is 0.65 x `a.vdd.voltage` but `b.in.vih` needs 0.7 x `b.vdd.voltage`, the same supply voltage: a high of 0.65 x the supply is not always read as a high, which takes 0.7 x the supply
-   --> main.nsm:37:5
+   --> main.nsm:34:5
    |
-37 |     .a: Weak
+34 |     .a: Weak
    |     ^^^^^^^^
 ```
 
@@ -3014,14 +2638,8 @@ part Sensor {
 }
 
 board Telemetry {
-    .battery: Rail {
-        .voltage &= 3.8V +/- 5%
-        .pos.net &= "VBAT"
-    }
-    .io: Rail {
-        .voltage &= 1.8V +/- 5%
-        .pos.net &= "1V8"
-    }
+    .battery: Rail { .voltage &= 3.8V +/- 5%; .pos.net &= "VBAT" }
+    .io: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8" }
     .m: Modem
     .s: Sensor
     .battery ~ .m.vbat
@@ -3063,14 +2681,8 @@ part Sensor {
 }
 
 board Telemetry {
-    .battery: Rail {
-        .voltage &= 3.8V +/- 5%
-        .pos.net &= "VBAT"
-    }
-    .io: Rail {
-        .voltage &= 1.8V +/- 5%
-        .pos.net &= "1V8"
-    }
+    .battery: Rail { .voltage &= 3.8V +/- 5%; .pos.net &= "VBAT" }
+    .io: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8" }
     .m: Modem
     .s: Sensor
     .battery ~ .m.vbat
@@ -3081,9 +2693,9 @@ board Telemetry {
 
 ```text
 error: net `net-m.status.line` reaches 1.8V above its ground `GND` (`m.status.line`, a line that states a swing of 0V..1.8V) but `s.in.line.abs_max` is 1V: it must not exceed 1V
-   --> main.nsm:40:5
+   --> main.nsm:34:5
    |
-40 |     .s: Sensor
+34 |     .s: Sensor
    |     ^^^^^^^^^^
 ```
 
@@ -3122,14 +2734,8 @@ part Sensor {
 }
 
 board Telemetry {
-    .battery: Rail {
-        .voltage &= 3.8V +/- 5%
-        .pos.net &= "VBAT"
-    }
-    .io: Rail {
-        .voltage &= 1.8V +/- 5%
-        .pos.net &= "1V8"
-    }
+    .battery: Rail { .voltage &= 3.8V +/- 5%; .pos.net &= "VBAT" }
+    .io: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8" }
     .m: Modem
     .s: Sensor
     .battery ~ .m.vbat
@@ -3140,9 +2746,9 @@ board Telemetry {
 
 ```text
 error: net `net-m.status.line`: `m.status.voh` (not stated: the top of its swing, `m.status.swing`) is 1.8V but `s.in.vih` needs 1.9V: a high of 1.8V is not always read as a high, which takes 1.9V
-   --> main.nsm:41:5
+   --> main.nsm:35:5
    |
-41 |     .m: Modem
+35 |     .m: Modem
    |     ^^^^^^^^^
 ```
 
@@ -3176,10 +2782,7 @@ part Driver {
 }
 
 board Stated {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Driver
     .supply ~ .u.vdd
 }
@@ -3204,10 +2807,7 @@ part Driver {
 }
 
 board B {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Driver
     .supply ~ .u.vdd
 }
@@ -3238,10 +2838,7 @@ part Driver {
 }
 
 board B {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Driver
     .supply ~ .u.vdd
 }
@@ -3275,10 +2872,7 @@ part Driver {
 }
 
 board B {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Driver
     .supply ~ .u.vdd
 }
@@ -3338,20 +2932,10 @@ import std::sources::Rail
 import src::sensor::Sensor
 
 board Sensing {
-    .low: Rail {
-        .voltage &= 1.8V +/- 5%
-        .pos.net &= "1V8"
-    }
-    .high: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .low: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8" }
+    .high: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .sensor: Sensor
-    .u: LevelTranslator {
-        .vcc_peak &= 3.6V
-        .a_peak &= 1.98V
-        .output_current &= 1mA
-    }
+    .u: LevelTranslator { .vcc_peak &= 3.6V; .a_peak &= 1.98V; .output_current &= 1mA }
     .sensor.vdd ~ .low
     .u.vcc ~ .high
     .sensor.out.line ~ .u.a.line
@@ -3367,20 +2951,10 @@ import std::sources::Rail
 import src::sensor::Sensor
 
 board Sensing {
-    .low: Rail {
-        .voltage &= 0.5V +/- 5%
-        .pos.net &= "0V5"
-    }
-    .high: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .low: Rail { .voltage &= 0.5V +/- 5%; .pos.net &= "0V5" }
+    .high: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .sensor: Sensor
-    .u: LevelTranslator {
-        .vcc_peak &= 3.6V
-        .a_peak &= 0.55V
-        .output_current &= 1mA
-    }
+    .u: LevelTranslator { .vcc_peak &= 3.6V; .a_peak &= 0.55V; .output_current &= 1mA }
     .sensor.vdd ~ .low
     .u.vcc ~ .high
     .sensor.out.line ~ .u.a.line
@@ -3389,10 +2963,10 @@ board Sensing {
 
 ```text
 error: net `net-sensor.out.line`: `sensor.out.voh` is 275mV..325mV but `u.a.vih` needs 1.1V: a high of 275mV is not always read as a high, which takes 1.1V
-   --> main.nsm:15:5
-   |
-15 |     .sensor: Sensor
-   |     ^^^^^^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .sensor: Sensor
+  |     ^^^^^^^^^^^^^^^
 ```
 
 ### Logic levels of a bus
@@ -3503,14 +3077,8 @@ import std::sources::Rail
 import src::zlevels::{Zproc, Zsense}
 
 board Mismatch {
-    .s3: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
-    .s18: Rail {
-        .voltage &= 1.8V +/- 5%
-        .pos.net &= "1V8"
-    }
+    .s3: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .s18: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8" }
     .proc: Zproc
     .sense: Zsense
     .s3 ~ .proc.vdd
@@ -3522,25 +3090,25 @@ board Mismatch {
 
 ```text
 error: net `net-proc.spi.miso`: `sense.spi.levels.voh` is 1.51V..1.69V but `proc.spi.levels.vih` needs 2.194V..2.426V: a high of 1.51V is not always read as a high, which takes 2.426V
-   --> main.nsm:15:5
-   |
-15 |     .sense: Zsense
-   |     ^^^^^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .sense: Zsense
+  |     ^^^^^^^^^^^^^^
 error: net `net-proc.spi.sclk` reaches 3.465V above its ground `GND` (`proc.spi.sclk`, a line of `proc.spi.levels.reference`) but `sense.spi.sclk.abs_max` is 2.1V: it must not exceed 2.1V
-   --> main.nsm:15:5
-   |
-15 |     .sense: Zsense
-   |     ^^^^^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .sense: Zsense
+  |     ^^^^^^^^^^^^^^
 error: net `net-proc.spi.mosi` reaches 3.465V above its ground `GND` (`proc.spi.mosi`, a line of `proc.spi.levels.reference`) but `sense.spi.mosi.abs_max` is 2.1V: it must not exceed 2.1V
-   --> main.nsm:15:5
-   |
-15 |     .sense: Zsense
-   |     ^^^^^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .sense: Zsense
+  |     ^^^^^^^^^^^^^^
 error: net `net-proc.spi.cs` reaches 3.465V above its ground `GND` (`proc.spi.cs`, a line of `proc.spi.levels.reference`) but `sense.spi.cs.abs_max` is 2.1V: it must not exceed 2.1V
-   --> main.nsm:15:5
-   |
-15 |     .sense: Zsense
-   |     ^^^^^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .sense: Zsense
+  |     ^^^^^^^^^^^^^^
 ```
 
 A translator between the two supplies is a part with a bus on each side. The board joins the processor to its `a` side and the sensor to its `b` side, and neither message appears, because each side's levels are judged on its own rail:
@@ -3551,14 +3119,8 @@ import std::sources::Rail
 import src::zlevels::{Zproc, Zsense, Zshift}
 
 board Translated {
-    .s3: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
-    .s18: Rail {
-        .voltage &= 1.8V +/- 5%
-        .pos.net &= "1V8"
-    }
+    .s3: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .s18: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8" }
     .proc: Zproc
     .shift: Zshift
     .sense: Zsense
@@ -3637,10 +3199,7 @@ import std::sources::Rail
 import src::zi2c::{Zihost, Zitarget}
 
 board Pulled {
-    .s3: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .s3: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .m: Zihost
     .t: Zitarget
     .pullups: I2cPullups { .resistance &= 4.7kohm +/- 5% }
@@ -3661,14 +3220,8 @@ import std::sources::Rail
 import src::zi2c::{Zihost, Zitarget}
 
 board PulledLow {
-    .s3: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
-    .s18: Rail {
-        .voltage &= 1.8V +/- 5%
-        .pos.net &= "1V8"
-    }
+    .s3: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .s18: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8" }
     .m: Zihost
     .t: Zitarget
     .pullups: I2cPullups { .resistance &= 4.7kohm +/- 5% }
@@ -3792,10 +3345,7 @@ import std::sources::Rail
 import src::devices::{Controller, Sensor, SpiMaster, SpiSlave, Uart32}
 
 board Buses {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .ctl: Controller
     .sensor: Sensor
     .master: SpiMaster
@@ -3829,9 +3379,7 @@ board Buses {
     .prog.p6 ~ .ctl.swd.swo
 
     // The USB port.
-    .usb: UsbC2 {
-        .usb.vbus.voltage &= 5V +/- 5%
-    }
+    .usb: UsbC2 { .usb.vbus.voltage &= 5V +/- 5% }
     .ctl.usb ~ .usb.usb
 }
 ```
@@ -3844,10 +3392,7 @@ import std::sources::Rail
 import src::devices::Uart32
 
 board Straight {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .a: Uart32
     .b: Uart32
     .supply ~ .a.vdd
@@ -3864,10 +3409,7 @@ import std::sources::Rail
 import src::devices::Uart32
 
 board SameLine {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .a: Uart32
     .b: Uart32
     .supply ~ .a.vdd
@@ -3879,15 +3421,15 @@ board SameLine {
 
 ```text
 error: net `net-a.uart.rx` joins `rx` to `rx` (`a.uart.rx`, `b.uart.rx`): `rx` crosses `tx` in a `Uart`, so it is joined to the other end's `tx`; write `.a.uart.rx ~ .b.uart.tx`, or join the two interfaces with `.a.uart ~ .b.uart`, which crosses `tx` to `rx` and `rts` to `cts`
-   --> main.nsm:10:5
-   |
-10 |     .a: Uart32
-   |     ^^^^^^^^^^
+  --> main.nsm:7:5
+  |
+7 |     .a: Uart32
+  |     ^^^^^^^^^^
 error: net `net-a.uart.tx` joins `tx` to `tx` (`a.uart.tx`, `b.uart.tx`): `tx` crosses `rx` in a `Uart`, so it is joined to the other end's `rx`; write `.a.uart.tx ~ .b.uart.rx`, or join the two interfaces with `.a.uart ~ .b.uart`, which crosses `tx` to `rx` and `rts` to `cts`
-   --> main.nsm:10:5
-   |
-10 |     .a: Uart32
-   |     ^^^^^^^^^^
+  --> main.nsm:7:5
+  |
+7 |     .a: Uart32
+  |     ^^^^^^^^^^
 ```
 
 A receive line left open:
@@ -3898,10 +3440,7 @@ import std::sources::Rail
 import src::devices::Uart32
 
 board OneWay {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .a: Uart32
     .b: Uart32
     .supply ~ .a.vdd
@@ -3912,10 +3451,10 @@ board OneWay {
 
 ```text
 error: `a.uart.rx` is an input that must be connected (pad 4, `RX`), but nothing else is on its net
-   --> main.nsm:10:5
-   |
-10 |     .a: Uart32
-   |     ^^^^^^^^^^
+  --> main.nsm:7:5
+  |
+7 |     .a: Uart32
+  |     ^^^^^^^^^^
 ```
 
 Two masters on one SPI bus:
@@ -3926,10 +3465,7 @@ import std::sources::Rail
 import src::devices::SpiMaster
 
 board TwoMasters {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .a: SpiMaster
     .b: SpiMaster
     .supply ~ .a.vdd
@@ -3940,25 +3476,25 @@ board TwoMasters {
 
 ```text
 error: net `net-a.spi.cs` has two outputs: `a.spi.cs`, `b.spi.cs`
-   --> main.nsm:10:5
-   |
-10 |     .a: SpiMaster
-   |     ^^^^^^^^^^^^^
+  --> main.nsm:7:5
+  |
+7 |     .a: SpiMaster
+  |     ^^^^^^^^^^^^^
 error: net `net-a.spi.miso` has only inputs (`a.spi.miso`, `b.spi.miso`): nothing drives it, so it floats; join an output, a bidirectional pin or a rail to it, or a pull resistor
-   --> main.nsm:10:5
-   |
-10 |     .a: SpiMaster
-   |     ^^^^^^^^^^^^^
+  --> main.nsm:7:5
+  |
+7 |     .a: SpiMaster
+  |     ^^^^^^^^^^^^^
 error: net `net-a.spi.mosi` has two outputs: `a.spi.mosi`, `b.spi.mosi`
-   --> main.nsm:10:5
-   |
-10 |     .a: SpiMaster
-   |     ^^^^^^^^^^^^^
+  --> main.nsm:7:5
+  |
+7 |     .a: SpiMaster
+  |     ^^^^^^^^^^^^^
 error: net `net-a.spi.sclk` has two outputs: `a.spi.sclk`, `b.spi.sclk`
-   --> main.nsm:10:5
-   |
-10 |     .a: SpiMaster
-   |     ^^^^^^^^^^^^^
+  --> main.nsm:7:5
+  |
+7 |     .a: SpiMaster
+  |     ^^^^^^^^^^^^^
 ```
 
 A net whose part pins are all `input` has nothing that drives it, and is refused with the net and the pins (an enable pin wired to another enable pin). An `output`, a `bidirectional` pin, a `power` pin, a `passive` pin (a pull resistor, a connector), a rail the board declares, or a port of the board itself each count as a driver, and so does a pin of a part that has no pin table, which the checker knows nothing about (ADR 0044).
@@ -3971,10 +3507,7 @@ import std::sources::Rail
 import src::devices::Sensor
 
 board NoPullups {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .a: Sensor
     .b: Sensor
     .supply ~ .a.vdd
@@ -3985,15 +3518,15 @@ board NoPullups {
 
 ```text
 error: net `net-a.i2c.scl` carries the scl line of an I2C bus (`a.i2c.scl`, `b.i2c.scl`) and has no pull-up: no resistor joins it to the positive pin of a rail; add `std::bus::I2cPullups` to the bus, or a resistor from a rail's `pos` to the line
-   --> main.nsm:10:5
-   |
-10 |     .a: Sensor
-   |     ^^^^^^^^^^
+  --> main.nsm:7:5
+  |
+7 |     .a: Sensor
+  |     ^^^^^^^^^^
 error: net `net-a.i2c.sda` carries the sda line of an I2C bus (`a.i2c.sda`, `b.i2c.sda`) and has no pull-up: no resistor joins it to the positive pin of a rail; add `std::bus::I2cPullups` to the bus, or a resistor from a rail's `pos` to the line
-   --> main.nsm:10:5
-   |
-10 |     .a: Sensor
-   |     ^^^^^^^^^^
+  --> main.nsm:7:5
+  |
+7 |     .a: Sensor
+  |     ^^^^^^^^^^
 ```
 
 In a `system`, a line that goes out through a connector is followed through the mates (ADR 0040) to the board behind it, contact N to contact N, and on through any connector there. The bus is judged as one: it needs a pull-up on the board that has it or on any board it reaches, and a pull-up on either side of a mate satisfies it. If none has one, the error names the connectors the line passed (`carrier.j`, `card.h`) and is reported once for the line. A line that reaches a connector the system does not mate, or a port of a board, goes somewhere this check cannot see and is not judged, as is a board checked alone behind its own connector (ADR 0090).
@@ -4074,10 +3607,7 @@ import std::sources::Rail
 import src::zicap::{Zcc, Zct}
 
 board FastBus {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .ctl: Zcc
     .sensor: Zct
     .pullups: I2cPullups { .resistance &= 4.7kohm +/- 5% }
@@ -4100,10 +3630,7 @@ import std::sources::Rail
 import src::zicap::{Zcc, Zct}
 
 board TooSlow {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .ctl: Zcc
     .sensor: Zct
     .pullups: I2cPullups { .resistance &= 4.7kohm +/- 5% }
@@ -4119,9 +3646,9 @@ board TooSlow {
 
 ```text
 error: pullups.rise_time must always be at most 200ns, but 124.8ns..221.7ns is not always below 200ns
-   --> main.nsm:20:5
+   --> main.nsm:17:5
    |
-20 |     .pullups.rise_time <= 200ns
+17 |     .pullups.rise_time <= 200ns
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -4134,10 +3661,7 @@ import std::sources::Rail
 import src::zicap::{Zcc, Zcn}
 
 board NoPinFigure {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .ctl: Zcc
     .sensor: Zcn
     .pullups: I2cPullups { .resistance &= 4.7kohm +/- 5% }
@@ -4215,10 +3739,7 @@ import std::sources::Rail
 import src::ziol::{Zlc, Zlt}
 
 board WeakestDriver {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .ctl: Zlc
     .sensor: Zlt
     .pullups: I2cPullups { .resistance &= 4.7kohm +/- 5% }
@@ -4239,10 +3760,7 @@ import std::sources::Rail
 import src::ziol::{Zlc, Zlt}
 
 board TooStrong {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .ctl: Zlc
     .sensor: Zlt
     .pullups: I2cPullups { .resistance &= 800ohm +/- 5% }
@@ -4256,9 +3774,9 @@ board TooStrong {
 
 ```text
 error: pullups.resistance must always be at least ((pullups.supply.voltage - sensor.i2c.levels.vol) / sensor.i2c.sink_current), but 760Ω..840Ω is not always above 911.6Ω..1.022kΩ
-   --> main.nsm:13:5
+   --> main.nsm:10:5
    |
-13 |     .pullups: I2cPullups { .resistance &= 800ohm +/- 5% }
+10 |     .pullups: I2cPullups { .resistance &= 800ohm +/- 5% }
    |     ^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -4379,10 +3897,7 @@ import std::sources::Rail
 import src::zparts::{Zcpu, Zflash, Zimu}
 
 board Sensors {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .cpu: Zcpu
     .flash: Zflash
     .imu: Zimu
@@ -4406,10 +3921,7 @@ import std::sources::Rail
 import src::zparts::{Zcpu, Zflash, Zimu}
 
 board Swapped {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .cpu: Zcpu
     .flash: Zflash
     .imu: Zimu
@@ -4427,15 +3939,15 @@ board Swapped {
 
 ```text
 error: net `net-cpu.spi.miso` joins two different lines of a `Spi`: `miso` (`cpu.spi.miso`, `flash.spi.miso`) and `mosi` (`imu.spi.mosi`); a `Spi` joins `miso` to `miso` and `mosi` to `mosi`, and `imu.spi.mosi` is on the net of `miso`
-   --> main.nsm:10:5
-   |
-10 |     .cpu: Zcpu
-   |     ^^^^^^^^^^
+  --> main.nsm:7:5
+  |
+7 |     .cpu: Zcpu
+  |     ^^^^^^^^^^
 error: net `net-cpu.spi.mosi` joins two different lines of a `Spi`: `miso` (`imu.spi.miso`) and `mosi` (`cpu.spi.mosi`, `flash.spi.mosi`); a `Spi` joins `miso` to `miso` and `mosi` to `mosi`, and `imu.spi.miso` is on the net of `mosi`
-   --> main.nsm:10:5
-   |
-10 |     .cpu: Zcpu
-   |     ^^^^^^^^^^
+  --> main.nsm:7:5
+  |
+7 |     .cpu: Zcpu
+  |     ^^^^^^^^^^
 ```
 
 Two masters on one bus are one message for the pair of interfaces, and the rules of a net say nothing more about the nets it names:
@@ -4446,10 +3958,7 @@ import std::sources::Rail
 import src::zparts::{Zcpu, Zflash}
 
 board TwoMasters {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .cpu: Zcpu
     .host: Zcpu
     .flash: Zflash
@@ -4463,10 +3972,10 @@ board TwoMasters {
 
 ```text
 error: `cpu.spi` and `host.spi` are both `SpiRole::Master` on one `Spi` bus, and `Spi` allows 1 `Master` on a bus: they are on one bus through `net-cpu.spi.cs` (`cpu.spi.cs`, `flash.spi.cs` and `host.spi.cs`); the slave on it is `flash.spi`; give `host.spi` a bus of its own
-   --> main.nsm:11:5
-   |
-11 |     .host: Zcpu
-   |     ^^^^^^^^^^^
+  --> main.nsm:8:5
+  |
+8 |     .host: Zcpu
+  |     ^^^^^^^^^^^
 ```
 
 Each slave has a select of its own. The select of the IMU joined to the flash's, which is on the net of the master's `cs`:
@@ -4477,10 +3986,7 @@ import std::sources::Rail
 import src::zparts::{Zcpu, Zflash, Zimu}
 
 board SharedSelect {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .cpu: Zcpu
     .flash: Zflash
     .imu: Zimu
@@ -4498,10 +4004,10 @@ board SharedSelect {
 
 ```text
 error: net `net-cpu.spi.cs` carries the `cs` of two slaves, `flash.spi.cs` and `imu.spi.cs`: `Spi` gives each slave a `cs` of its own (`cs` is `single` for `SpiRole::Slave`); join `.imu.spi.cs` to a pin of its own
-   --> main.nsm:11:5
-   |
-11 |     .flash: Zflash
-   |     ^^^^^^^^^^^^^^
+  --> main.nsm:8:5
+  |
+8 |     .flash: Zflash
+  |     ^^^^^^^^^^^^^^
 ```
 
 A row that contradicts the role names the datasheet's pin, so that the author reads the page:
@@ -4527,10 +4033,7 @@ part Zimu {
 }
 
 board Wrong {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .imu: Zimu
     .supply ~ .imu.vdd
 }
@@ -4538,9 +4041,9 @@ board Wrong {
 
 ```text
 error: `imu.spi.mosi` is an output in the table of `Zimu`, but `SpiRole::Slave` makes `mosi` an input of `Spi`; either the datasheet's `SDI` pin is not an output, or the role is the other one
-   --> main.nsm:25:5
+   --> main.nsm:22:5
    |
-25 |     .imu: Zimu
+22 |     .imu: Zimu
    |     ^^^^^^^^^^
 ```
 
@@ -4552,10 +4055,7 @@ import std::sources::Rail
 import src::zparts::{Zcpu, Zflash}
 
 board OpenMiso {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .cpu: Zcpu
     .flash: Zflash
     .supply ~ .cpu.vdd
@@ -4568,10 +4068,10 @@ board OpenMiso {
 
 ```text
 error: `flash.spi.miso` is a tri_state output that must be connected (pad 2, `DO`): `SpiRole::Slave` of `Spi` requires it, and nothing else is on its net
-   --> main.nsm:11:5
-   |
-11 |     .flash: Zflash
-   |     ^^^^^^^^^^^^^^
+  --> main.nsm:8:5
+  |
+8 |     .flash: Zflash
+  |     ^^^^^^^^^^^^^^
 ```
 
 A part whose table is older than the roles may write every pin `bidirectional`. It is accepted, and a guideline (ADR 0030, `guidelines = "warn"`, an error under `--strict`) asks for the honest kind:
@@ -4608,10 +4108,7 @@ module FlashCard {
 }
 
 board WithCard {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .cpu: Zcpu
     .card: FlashCard
     .supply ~ .cpu.vdd
@@ -4654,15 +4151,10 @@ import std::sources::Rail
 import src::usbparts::Zdongle
 
 board Dongle {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .dongle: Zdongle
     .supply ~ .dongle.vdd
-    .jack: UsbC2 {
-        .usb.vbus.voltage &= 5V +/- 5%
-    }
+    .jack: UsbC2 { .usb.vbus.voltage &= 5V +/- 5% }
     .dongle.usb ~ .jack.usb
 }
 ```
@@ -4720,10 +4212,7 @@ import std::sources::Rail
 import src::clocked::{Zflash, Zimu}
 
 board TooFast {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .flash: Zflash
     .imu: Zimu
     .supply ~ .flash.vdd
@@ -4735,10 +4224,10 @@ board TooFast {
 
 ```text
 error: bus `flash.spi` is joined at 20MHz, which `imu` (`Zimu`) does not allow: its limit `imu.spi.frequency` is at most 10MHz; `flash` (`Zflash`) allows 33MHz, so the bus runs at 10MHz at most
-   --> main.nsm:11:5
-   |
-11 |     .imu: Zimu
-   |     ^^^^^^^^^^
+  --> main.nsm:8:5
+  |
+8 |     .imu: Zimu
+  |     ^^^^^^^^^^
 ```
 
 The interfaces that the nets show to be on one bus hold one clock, whether the board joined them with `~` or one pin at a time, so the board states the clock on any one of them. A bus whose parts state limits and whose board states no clock is not a pass: the build says so as a note, `not evaluated: the clock of bus `flash.spi` is not stated, so the limits on it are not checked (...); state the clock the board runs`.
@@ -4784,10 +4273,7 @@ part Zthree {
 }
 
 board Modes {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .a: Zone
     .b: Zthree
     .supply ~ .a.vdd
@@ -4831,18 +4317,12 @@ part ResetGate {
 }
 
 board Reset {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .gate: ResetGate
     .supply ~ .gate.vcc
 
     // The reset line is held high by 10 kohm and is low a tenth of the time at most.
-    .pull: PullUp {
-        .resistor.resistance &= 10kohm +/- 5%
-        .line_low &= 0..0.1
-    }
+    .pull: PullUp { .resistor.resistance &= 10kohm +/- 5%; .line_low &= 0..0.1 }
     .supply ~ .pull.supply
     .pull.line ~ .gate.reset_n
 }
@@ -4855,10 +4335,7 @@ import std::bus::PullUp
 import std::sources::Rail
 
 board Forgetful {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .pull: PullUp
     .supply ~ .pull.supply
 }
@@ -4890,18 +4367,12 @@ part SizedGate {
 }
 
 board Sized {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .gate: SizedGate
     .supply ~ .gate.vcc
 
     // The same pull-up as above, in the 0402 package.
-    .pull: PullUp {
-        .resistor.resistance &= 10kohm +/- 1%
-        .resistor.package &= "0402"
-    }
+    .pull: PullUp { .resistor.resistance &= 10kohm +/- 1%; .resistor.package &= "0402" }
     .supply ~ .pull.supply
     .pull.line ~ .gate.reset_n
 }
@@ -4933,18 +4404,12 @@ part EnableGate {
 }
 
 board Enable {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .gate: EnableGate
     .supply ~ .gate.vcc
 
     // The enable line is held low by 100 kohm and is high a tenth of the time at most.
-    .pull: PullDown {
-        .resistor.resistance &= 100kohm +/- 5%
-        .line_high &= 0..0.1
-    }
+    .pull: PullDown { .resistor.resistance &= 100kohm +/- 5%; .line_high &= 0..0.1 }
     .supply ~ .pull.reference
     .pull.line ~ .gate.enable
 }
@@ -4957,10 +4422,7 @@ import std::bus::PullDown
 import std::sources::Rail
 
 board Forgetful {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .pull: PullDown
     .supply ~ .pull.reference
 }

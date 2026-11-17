@@ -22,10 +22,7 @@ import std::parts::passive::{Capacitor, Resistor}
 import std::sources::Rail
 
 board Units {
-    .rail: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .rail: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .r1: Resistor { .resistance &= 4.7kohm +/- 1% }
     .r2: Resistor { .resistance &= 100ohm +/- 5ohm }
     .r3: Resistor { .resistance &= 900ohm..1.1kohm }
@@ -136,10 +133,7 @@ import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x2
 
 board Bare {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-        .min_track &= 0.15mm..
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm; .min_track &= 0.15mm.. }
     .header: Header1x2
 }
 ```
@@ -176,10 +170,7 @@ import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x2
 
 board TooFine {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-        .min_track &= ..0.05mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm; .min_track &= ..0.05mm }
     .header: Header1x2
 }
 ```
@@ -192,7 +183,7 @@ error: no TwoLayer provider satisfies `process` at main.nsm:5: none of the 2 in 
     contradiction on `process.min_track`: it is already 160um.., which does not overlap ..50um
   --> main.nsm:5:5
   |
-5 |     .process: TwoLayer {
+5 |     .process: TwoLayer { .stackup.thickness &= 1.6mm; .min_track &= ..0.05mm }
   |     ^^^^^^^^^^^^^^^^^^
 ```
 
@@ -228,11 +219,7 @@ part Gate {
 }
 
 board Counted {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-        .current &= -1uA..0A
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3"; .current &= -1uA..0A }
     .gate: Gate { .max_supply_current &= 750nA }
     .supply ~ .gate.vcc
 }
@@ -256,11 +243,7 @@ part Gate {
 }
 
 board Counted {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-        .current &= -500nA..0A
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3"; .current &= -500nA..0A }
     .gate: Gate { .max_supply_current &= 750nA }
     .supply ~ .gate.vcc
 }
@@ -268,8 +251,8 @@ board Counted {
 
 ```text
 error: the currents on net `3V3` do not add up: `supply.current` must stay within -500nA..0A, but the others on it work out to -750nA..0A (all of them: `gate.vcc.current` is 0A..750nA, `supply.current` is -500nA..0A)
-   --> main.nsm:19:9
+   --> main.nsm:16:65
    |
-19 |         .current &= -500nA..0A
-   |         ^^^^^^^^^^^^^^^^^^^^^^
+16 |     .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3"; .current &= -500nA..0A }
+   |                                                                 ^^^^^^^^^^^^^^^^^^^^^^
 ```

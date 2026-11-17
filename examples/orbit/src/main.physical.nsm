@@ -21,11 +21,7 @@ physical for Orbit {
     case {
         // The outline: 50 x 50 mm (x 124 to 174, y 70 to 120 in their file) with 5 mm corner
         // arcs.
-        .outline: Outline {
-            .width &= 50mm
-            .height &= 50mm
-            .corner_radius &= 5mm
-        }
+        .outline: Outline { .width &= 50mm; .height &= 50mm; .corner_radius &= 5mm }
 
         // Their H1 to H4 are KiCad's `MountingHole_*_Pad_Via`: a plated drilled pad (5 mm
         // around a 2.5 mm drill, 4.4 mm around the M2 one's 2.2 mm) with a ring of eight 0.8 mm

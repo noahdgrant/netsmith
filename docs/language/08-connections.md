@@ -7,10 +7,7 @@ import std::parts::passive::{Led, Resistor}
 import std::sources::Rail
 
 board Chains {
-    .supply: Rail {
-        .voltage &= 5V
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 5V; .pos.net &= "VCC" }
     .a: Resistor
     .b: Resistor
     .led: Led
@@ -65,11 +62,7 @@ part Chip {
 }
 
 board Pinout {
-    .supply: Rail {
-        .voltage &= 3.3V
-        .pos.net &= "3V3"
-        .neg.net &= "GND"
-    }
+    .supply: Rail { .voltage &= 3.3V; .pos.net &= "3V3"; .neg.net &= "GND" }
     .header: Header
     .chip: Chip
     .supply ~ .chip.vdd
@@ -116,11 +109,7 @@ part Chip {
 }
 
 board Pinout {
-    .supply: Rail {
-        .voltage &= 3.3V
-        .pos.net &= "3V3"
-        .neg.net &= "GND"
-    }
+    .supply: Rail { .voltage &= 3.3V; .pos.net &= "3V3"; .neg.net &= "GND" }
     .header: Header
     .chip: Chip
     .supply ~ .chip.vdd
@@ -131,9 +120,9 @@ board Pinout {
 
 ```text
 error: these members have no member of the same name on the other side: `.header.gpio5` (did you mean `gpio5 = io5`?), `.chip.io5`; give each a partner with a rename, `{ a = b }`, or leave it out with `except { a }`
-   --> main.nsm:35:5
+   --> main.nsm:31:5
    |
-35 |     .header ~ .chip { gpio4 = io4 } except { gnd vdd }
+31 |     .header ~ .chip { gpio4 = io4 } except { gnd vdd }
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -161,11 +150,7 @@ part Chip {
 }
 
 board Supplies {
-    .supply: Rail {
-        .voltage &= 3.3V
-        .pos.net &= "3V3"
-        .neg.net &= "GND"
-    }
+    .supply: Rail { .voltage &= 3.3V; .pos.net &= "3V3"; .neg.net &= "GND" }
     .chip: Chip
     .other: PinSupply
     .supply ~ .chip.vdd
@@ -175,9 +160,9 @@ board Supplies {
 
 ```text
 error: `.other.vdd` is a pin and `.chip.vdd` is a `Rail`; `~` joins a pin to a pin and an interface to an interface, so rename one or leave it out with `except`
-   --> main.nsm:30:5
+   --> main.nsm:26:5
    |
-30 |     .other ~ .chip
+26 |     .other ~ .chip
    |     ^^^^^^^^^^^^^^
 ```
 
@@ -209,11 +194,7 @@ part Chip {
 }
 
 board Pinout {
-    .supply: Rail {
-        .voltage &= 3.3V
-        .pos.net &= "3V3"
-        .neg.net &= "GND"
-    }
+    .supply: Rail { .voltage &= 3.3V; .pos.net &= "3V3"; .neg.net &= "GND" }
     .header: Header
     .chip: Chip
     .supply ~ .chip.vdd
@@ -224,9 +205,9 @@ board Pinout {
 
 ```text
 error: the rename's right side is a member of `.chip`, and `io44` is not a pin or an interface of it; did you mean `io4`?
-   --> main.nsm:35:31
+   --> main.nsm:31:31
    |
-35 |     .header ~ .chip { gpio4 = io44; gpio5 = io5 } except { gnd vdd }
+31 |     .header ~ .chip { gpio4 = io44; gpio5 = io5 } except { gnd vdd }
    |                               ^^^^
 ```
 
@@ -258,11 +239,7 @@ part Chip {
 }
 
 board Pinout {
-    .supply: Rail {
-        .voltage &= 3.3V
-        .pos.net &= "3V3"
-        .neg.net &= "GND"
-    }
+    .supply: Rail { .voltage &= 3.3V; .pos.net &= "3V3"; .neg.net &= "GND" }
     .header: Header
     .chip: Chip
     .supply ~ .chip.vdd
@@ -273,9 +250,9 @@ board Pinout {
 
 ```text
 error: `except` leaves out `vd`, but neither `.header` nor `.chip` has a pin or an interface of that name; did you mean `vdd`?
-   --> main.nsm:35:63
+   --> main.nsm:31:63
    |
-35 |     .header ~ .chip { gpio4 = io4; gpio5 = io5 } except { gnd vd }
+31 |     .header ~ .chip { gpio4 = io4; gpio5 = io5 } except { gnd vd }
    |                                                               ^^
 ```
 
