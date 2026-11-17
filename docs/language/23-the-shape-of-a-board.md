@@ -1529,6 +1529,7 @@ board Boxed {
 ```
 
 ```nsm-physical
+import std::parts::passive::Color
 import std::pcb::{CaseModel, Outline}
 
 physical for Boxed {
@@ -1546,6 +1547,7 @@ physical for Boxed {
         }
         .lid: CaseModel {
             .file &= "case/lid.step"
+            .color &= Color::Black
         }
         // The plug that mates with the header, drawn where it sits and measured against nothing.
         .plug: CaseModel {
@@ -1575,8 +1577,10 @@ error: Boxed: case_collision: J1 (`power`), 9.00 mm tall (stated), is inside the
 The file is found as a part's model is: a path outside the project, an absolute path, or one stated in two folders that names two files is an error. A maker's license often keeps a case's file out of a public repository, so a file that is not there leaves the fit unchecked: a warning from `build`, `check` and `fab`, and an error that stops `fab` when constraints are strict (`constraints = "error"` in `netsmith.toml`, or `fab --constraints error`; `--allow-drc-violations` does not waive it), as a part of unknown height under a limit is:
 
 ```text
-warning: Boxed: `shell.file` names `src/case/base.step` (src/boxed.physical.nsm:12), and there is no such file, so the board's fit in its case model `shell` is not checked; add the file, or leave it out on a machine that may not have it
+warning: Boxed: `shell.file` names `src/case/base.step` (src/boxed.physical.nsm:13), and there is no such file, so the board's fit in its case model `shell` is not checked; add the file, or leave it out on a machine that may not have it
 ```
+
+**A model's colour (issue #756).** Every case model is drawn in one grey, see-through, unless something gives it a colour. A STEP file that styles its faces (a CAD program writes the colour of a body or a face into the file) is drawn in them: each solid, or each run of faces, in the file's own colour, still see-through, or opaque with `render --case solid` and the editor's `Solid` toggle. A board that wants another colour states `.color` on the model, a variant of the same `Color` an LED's `.color` and a board's solder mask are (`import std::parts::passive::Color`, `.lid.color &= Color::Black`; `Red`, `Green`, `Blue`, `Yellow`, `White`, `Black`, `Purple`): it replaces every colour of that file, for that model only, and changes no check, no height and no finding. A model that states none, and whose file has no colours, is drawn as it always was, so a design file and a picture of a board that states none are unchanged. `board3d --json` lists the stated `color` of a model and the `file_colours` its file has (as `#rrggbb`). Which model is drawn at all is a separate choice: `render --case hidden:lid` and the editor's checkbox for each model (`docs/BOARD3D.md`).
 
 **A model that is only a drawing.** (`.plug` above.) A board often shows a model that is not its case: the connector it mates with, a neighbouring module, a bracket, a cable. Such a model touches the board where it is meant to (a plug's contact tails end on the board's face, a through-hole part's pins go through it), so `case_collision` would stop `fab` for a collision that is meant. Declare it as a `CaseModel` and state `.check &= "none"`: it is placed and drawn as a case model is, in the 3D view and in `render`, and nothing is measured against it (no `case_collision`, `case_clearance`, `case_reach` or `case_boss`, and its solids do not count as a boss for a hole). `.check` is `"fit"` (the default) or `"none"`, and any other word is refused; `board3d --json` lists the model with `"checked": false`. A file that is not there or not readable still gives a `case_unchecked` finding, which says the model is not drawn.
 
