@@ -96,6 +96,7 @@ fn errors(board: &Board) -> Vec<String> {
         neck_reach: netsmith_router::route::NECK_REACH,
         via_counts: board.via_counts(),
         track_angle: true,
+        round_track_angle: None,
         marks: None,
         stackup: None,
     };

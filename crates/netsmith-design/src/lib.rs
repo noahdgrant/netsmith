@@ -877,6 +877,14 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
             },
             None => None,
         },
+        // Unstated in the library; a board may state it. A lower bound, so the bottom.
+        min_round_track_angle: match model.field_at("process.min_round_track_angle") {
+            Some(f) => match &model.field(f).domain {
+                Domain::Quantity(q) => Some(end("min_round_track_angle", q, false)),
+                _ => None,
+            },
+            None => None,
+        },
         track_width_tolerance: number("track_width_tolerance"),
         hole_plating: mm("hole_plating"),
         finish: text(find("finish")),

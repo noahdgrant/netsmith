@@ -2830,6 +2830,7 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
         neck_reach: netsmith_router::route::NECK_REACH,
         via_counts: board.via_counts(),
         track_angle: true,
+        round_track_angle: board.process.min_round_track_angle,
         marks: Some(marks_of(board)),
         stackup: Some(netsmith_geom::DrcStackup {
             layers: board.process.stackup.layers as usize,
@@ -3431,7 +3432,7 @@ mod tests {
 
     /// The fields of a process that are not a rule the router and the design rules check keep,
     /// each with the reason (issue #431).
-    const NOT_A_COPPER_RULE: [(&str, &str); 33] = [
+    const NOT_A_COPPER_RULE: [(&str, &str); 34] = [
         (
             "finish",
             "the surface finish, a word for the notes and the order",
@@ -3527,6 +3528,10 @@ mod tests {
         (
             "fine_pitch",
             "the pitch of an ultra-fine-pitch part, to the finish advice, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
+        (
+            "min_round_track_angle",
+            "the angle at which a track may leave round copper, unstated by every process and judged on the routed board by `acid_trap` only where a board states it: the router draws none of it; `a_round_track_angle_a_board_states_reaches_the_check` proves the check keeps it",
         ),
     ];
 
@@ -3642,6 +3647,7 @@ mod tests {
             npth_slot: Some(rules.npth_slot),
             npth_drill: Some(rules.npth_drill),
             pad_ring: Some(rules.min_annular_ring),
+            round_track_angle: p.min_round_track_angle,
             marks: Some(netsmith_geom::DrcMarks {
                 min_fiducials: p.min_fiducials as usize,
                 fiducial_diameter: p.fiducial_diameter,
@@ -3699,6 +3705,27 @@ mod tests {
             assert_eq!(after.0, base.0, "`{narrowed}` changes the router's rules");
             assert_ne!(after.1, base.1, "`{narrowed}` does not reach the check");
         }
+    }
+
+    /// The angle a track may leave round copper at (`.process.min_round_track_angle`) is stated
+    /// by no process, so a board that states it changes what the check is given and leaves the
+    /// router's rules as they were; one that does not changes neither.
+    #[test]
+    fn a_round_track_angle_a_board_states_reaches_the_check() {
+        let base = what_is_kept(&process("TwoLayer", &[])).unwrap();
+        assert!(base.1.contains("round_track_angle: None"), "{}", base.1);
+        let stated = what_is_kept(&process(
+            "TwoLayer",
+            &[".min_round_track_angle &= 60".to_string()],
+        ))
+        .unwrap();
+        assert_eq!(stated.0, base.0, "the router's rules changed");
+        assert_ne!(stated.1, base.1, "it does not reach the check");
+        assert!(
+            stated.1.contains("round_track_angle: Some(60.0)"),
+            "{}",
+            stated.1
+        );
     }
 
     /// Every rule a process states reaches both the router and the design rules check: a
