@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Which of CI's jobs a change needs. Reads the changed paths (one per line, from the repository's
-# root) on stdin and prints `rust=`, `kicad=`, `recipes=`, `no_kicad=`, `locks=`, `designs=` and `desktop=` as `true` or `false`, and `crates=`; the
+# root) on stdin and prints `rust=`, `kicad=`, `recipes=`, `no_kicad=`, `locks=`, `designs=`, `desktop=` and `kicad_lookup=` as `true` or `false`, and `crates=`; the
 # `changes` job of .github/workflows/ci.yml writes them to its outputs. `fmt` always runs, so it has
 # no flag.
 #   rust     clippy and the tests: anything a build or a test reads.
@@ -79,6 +79,14 @@
 #            toolchain, rustfmt.toml and clippy.toml, a path nothing here knows); not std/, data/ or examples/, which the shell
 #            never reads. A change to desktop/ alone turns no other job on: `build` runs to make the
 #            binary, of netsmith-cli only (`crates=netsmith-cli`, as for the recipes).
+#   kicad_lookup  the `kicad-lookup` job (issue #791): KiCad 9 installed on an Ubuntu, a macOS and a Windows
+#            runner, and the lookup of KiCad's libraries (`netsmith_kicad::install`) tested against the
+#            real folders there. It compiles and runs the netsmith-kicad crate alone, on the three
+#            systems, so it follows only the lookup and its tests: install.rs, the crate's lib.rs
+#            (what it exports), its manifest, the `locate` example and tests/real_install.rs; not
+#            the rest of the crate, the other crates, std/, data/, examples/ or prose. It needs
+#            no `build`. What CI does (the workflows, the actions, scripts/, the toolchain, the
+#            manifests) runs it with everything else.
 #
 # What a test file is, and why it is the one narrowing of `kicad`. A file of tests runs in `test`
 # and again in `kicad`; the second run differs only for a test that asks for KiCad. So a change
@@ -126,13 +134,13 @@ root="${CI_CHANGES_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 # mapping only, and `build_with` takes the libraries as an argument.)
 KICAD_TOKENS='KicadCli|kicad-cli|KICAD_CLI|\.envs?\(|(set_var|env::var)\("(NETSMITH_)?KICAD|_VARIABLE|Search::machine\(|locate\(Kind::|locate_runnable|kicad_libraries_installed|skip_without_kicad_libraries|Libraries::(standard|for_project)\(|::installed\(|netsmith_pipeline::build\b|netsmith_pipeline::\{([^}]*[ ])?build[,} ]|^[[:space:]]+build,?$|common::erc::|Workspace|CARGO_BIN_EXE|Command::new|skipped: no KiCad'
 
-rust=false kicad=false recipes=false no_kicad=false locks=false designs=false desktop=false
+rust=false kicad=false recipes=false no_kicad=false locks=false designs=false desktop=false kicad_lookup=false
 # The crates the change touches, for `crates=`; `wide` once a path outside the crates turns `rust` on
 # and names no crate. `mapped` is the crates a path outside crates/ names (worked out for each path).
 crates="" wide=false mapped=""
 all() { rust=true kicad=true recipes=true no_kicad=true locks=true designs=true; }
 # What CI does and what every build reads: the jobs of `all` and the desktop shell's.
-everything() { all; desktop=true; }
+everything() { all; desktop=true; kicad_lookup=true; }
 
 # Whether a file of tests asks for KiCad: it is unreadable here, or names one of the tokens.
 asks_for_kicad() {
@@ -289,6 +297,11 @@ while IFS= read -r path; do
         crates/netsmith-editor/web/* | crates/netsmith-editor/tests/*) ;;
         crates/netsmith-editor/* | crates/netsmith-workspace/src/* | crates/netsmith-cli/src/commands/editor.rs | crates/netsmith-cli/src/commands/common.rs) desktop=true ;;
     esac
+    # The lookup of KiCad's libraries and its real-install test, which the `kicad-lookup` job runs on
+    # three systems (the rest of the crate has its tests in `test` and `kicad`).
+    case "$path" in
+        crates/netsmith-kicad/src/install.rs | crates/netsmith-kicad/src/lib.rs | crates/netsmith-kicad/Cargo.toml | crates/netsmith-kicad/examples/locate.rs | crates/netsmith-kicad/tests/real_install.rs) kicad_lookup=true ;;
+    esac
     if [ "$rust" = true ]; then
         case "$path" in
             crates/*/*) crate="${path#crates/}"; crate="${crate%%/*}"
@@ -321,4 +334,5 @@ echo "no_kicad=$no_kicad"
 echo "locks=$locks"
 echo "designs=$designs"
 echo "desktop=$desktop"
+echo "kicad_lookup=$kicad_lookup"
 echo "crates=$crates"

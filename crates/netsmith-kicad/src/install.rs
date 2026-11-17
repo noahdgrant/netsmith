@@ -42,13 +42,16 @@
 //! generators make (ADR 0043), builds with no KiCad install.
 //!
 //! **Verification.** netsmith is tested with KiCad 9; 8 is a fallback that nobody has tried. The
-//! WSL place is the only one tried on a real install (Windows KiCad 9.0). The Linux, macOS,
-//! Windows, snap and flatpak places follow the layouts those packages are known to use and are
-//! tested only against invented install trees ([`Search::under`]); the machine this was written on
-//! had no Linux, snap or flatpak KiCad, and the snap and flatpak paths are the least certain. The
-//! owner accepted the ADR on 2026-11-04 with these lookups still unverified, and they stay so
-//! until someone runs them on a real Linux, macOS, snap or flatpak install (issue #6; a person must
-//! do it, checklist in issue #10).
+//! `kicad-lookup` job of CI (issue #791) installs KiCad 9.0 on a real Ubuntu, macOS and Windows
+//! runner and checks that the lookup, with nothing set, finds both folders and the stock
+//! libraries in them: on Linux beside `kicad-cli` (`/usr/bin`, from the `kicad` package), on macOS
+//! and Windows through the usual places (`/Applications/KiCad/KiCad.app/Contents/SharedSupport`,
+//! `%ProgramFiles%\KiCad\9.0\share\kicad`: `kicad-cli` is on no `PATH` there). The WSL place was
+//! tried by hand on a Windows KiCad 9.0. The snap and flatpak places, and the places of a KiCad
+//! 8, follow the layouts those packages are known to use and are tested only against invented
+//! install trees ([`Search::under`]); the snap and flatpak ones are the least certain. A real
+//! snap, flatpak or Mac or Windows machine of a person stays with issue #6 (checklist in issue
+//! #10).
 //!
 //! **Finding the program** ([`Search::kicad_cli`], which `netsmith_fab::KicadCliExe::locate`
 //! calls, so `fab`, the editor and the tests all agree) takes the first of: `$KICAD_CLI` (used
@@ -423,10 +426,10 @@ impl Search {
     /// KiCad versions in [`VERSIONS`] order where the place carries one. The text is the
     /// system.
     ///
-    /// Verified on a real install: only Windows KiCad 9 seen from WSL. The Linux, macOS,
-    /// Windows, snap and flatpak places are the layouts the packages are known to use and
-    /// have not been checked on a real install; the snap and flatpak ones are the least
-    /// certain.
+    /// Verified on a real install of KiCad 9 (the `kicad-lookup` job of CI): the macOS and
+    /// Windows places, and Linux through `kicad-cli`; and by hand Windows seen from WSL. The
+    /// snap and flatpak places are the layouts the packages are known to use and have not been
+    /// checked on a real install; they are the least certain.
     pub fn usual_places(&self, kind: Kind) -> Vec<(&'static str, PathBuf)> {
         let folder = kind.folder();
         let mut places = vec![
@@ -898,7 +901,8 @@ mod tests {
             .with_home(&home)
             .with_program_files(t.path().join("PF"));
         let e = search.find(Kind::Symbols).unwrap_err();
-        let text = e.to_string();
+        // Windows joins a place with `\`: the places below are read with `/` on every system.
+        let text = e.to_string().replace('\\', "/");
         assert!(
             text.starts_with("no KiCad symbol libraries found"),
             "{text}"
@@ -932,7 +936,11 @@ mod tests {
         let t = tree();
         program(&t.path().join("tools/bin/kicad-cli"));
         let search = Search::under(t.path()).with_path(vec![t.path().join("tools/bin")]);
-        let text = search.find(Kind::Footprints).unwrap_err().to_string();
+        let text = search
+            .find(Kind::Footprints)
+            .unwrap_err()
+            .to_string()
+            .replace('\\', "/");
         assert!(text.contains("tools/share/kicad/footprints"), "{text}");
         assert!(text.contains("(beside "), "{text}");
         assert!(text.contains("tools/SharedSupport/footprints"), "{text}");
