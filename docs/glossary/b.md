@@ -23,6 +23,10 @@ _Avoid_: Project default, global default, house style, scoped default
 The box of a part that a placement requirement measures: the outline its footprint draws on the fabrication layer (`F.Fab`), else its courtyard, after the part is turned. Not the footprint's origin, which the layout file's `at` is.
 _Avoid_: Footprint box, bounding box
 
+**Body diode**:
+The diode inside a MOSFET across its channel, from the source to the drain of an N-channel part (`NMosfet`) and from the drain to the source of a P-channel one. Its `.body_diode_voltage` is the datasheet's drain-source diode forward voltage (VSD) at its test current, the most the diode drops at the small current of a logic line. The DC analysis takes a MOSFET as a switch and leaves the diode out, except where the levels check judges a level that crosses the channel (a translator between two buses, #1045): a part that states it has the diode there, and the low that pulls the drain down then turns the channel on; one that does not leaves that low a note.
+_Avoid_: Intrinsic diode, parasitic diode (as a field)
+
 **Boundary**:
 A part with a `bridge` and no `dc` statement. A DC analysis cannot see through it, so it ends the network there and says which part and pin it stopped at, and the currents that depend on it stay not evaluated (ADR 0076).
 _Avoid_: Black box, unmodelled part

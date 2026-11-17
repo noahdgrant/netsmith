@@ -70,6 +70,12 @@ generic NMosfet {
     .drain_source_voltage: Voltage
     /// The gate-source voltage while on. A design states it.
     .gate_source_voltage: Voltage
+    /// The most forward voltage of the body diode, from the source to the drain: the datasheet's
+    /// drain-source diode forward voltage (VSD) at its test current. A design states it where a
+    /// level crosses the channel (a translator between two buses), and the DC analysis then
+    /// puts the diode in the circuit the levels check reads; unset, that low is a note. Nothing
+    /// else reads it.
+    .body_diode_voltage: Voltage
     /// Through-current, drain to source.
     #[role(current)]
     .current: Current
@@ -129,6 +135,9 @@ generic PMosfet {
     .drain_source_voltage: Voltage
     /// The magnitude of the gate-source voltage while on. A design states it.
     .gate_source_voltage: Voltage
+    /// The most forward voltage of the body diode, from the drain to the source, as for
+    /// `NMosfet`.
+    .body_diode_voltage: Voltage
     /// Through-current, source to drain.
     #[role(current)]
     .current: Current

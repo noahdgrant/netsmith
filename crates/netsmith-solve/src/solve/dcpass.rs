@@ -41,10 +41,10 @@
 //! enclose the circuit's range) and `dc_disagree` (a worked-out current the analysis cannot
 //! share is an error that names both ranges).
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 
-use netsmith_check::{Domain, FieldId, FieldKind, InstId};
+use netsmith_check::{Domain, FieldId, FieldKind, InstId, Model, PinKind};
 use netsmith_quantity::{Dimension, Quantity};
 
 use crate::catalog::Value;
@@ -199,46 +199,126 @@ fn open_drain_reads(planned: &dc::Planned, reads: &mut NetReads) {
     }
 }
 
-/// The voltage of each free net of an island with each logic pin that `wanted` lists held driving
-/// high and held driving low (#850): what a receiver behind a series part sees. Only a pin that
-/// drives both ways; an island that has no consistent combination in either state gives nothing.
-fn driven_reads(planned: &dc::Planned, wanted: &BTreeSet<InstId>, reads: &mut NetReads) {
+/// The voltage of a net of an island with each logic pin that `wanted` lists held driving high
+/// and held driving low, and every pin on that net letting go of it (#850, #1045): what a
+/// receiver behind a series part sees. A pin that cannot drive high (open drain) gives as its
+/// high the net's voltage with every pin on its own net and on this one letting go. For each
+/// MOSFET that `wanted` lists between the two nets the two states are solved again with its
+/// channel held on. A state with no consistent combination gives nothing.
+fn driven_reads(
+    model: &Model,
+    planned: &dc::Planned,
+    wanted: &BTreeMap<(InstId, usize), BTreeSet<InstId>>,
+    reads: &mut NetReads,
+) {
     let Some(ground) = planned.ground else { return };
+    let node_of = |net: usize| planned.free_nets.iter().position(|&n| n == net);
+    let pin_node = |element: usize| match planned.island.elements[element].kind {
+        dc::net::Kind::Pin { node, .. } => Some(node),
+        _ => None,
+    };
     for &(pin, element) in &planned.pins {
-        if !wanted.contains(&pin) {
-            continue;
-        }
         let dc::net::Kind::Pin {
-            high: Some(_),
-            low: Some(_),
+            node: own,
+            high,
+            low,
             ..
         } = planned.island.elements[element].kind
         else {
             continue;
         };
-        let solve = |high: bool| {
-            let report = planned
-                .island
-                .driving(element, high)
-                .analyze(dc::MAX_COMBINATIONS)
-                .ok()?;
-            (report.consistent > 0).then_some(report)
-        };
-        let (Some(up), Some(down)) = (solve(true), solve(false)) else {
+        if low.is_none() {
             continue;
-        };
-        for (k, &net) in planned.free_nets.iter().enumerate() {
-            let range = |report: &dc::Report| {
+        }
+        for ((_, near), parts) in wanted.range((pin, 0)..=(pin, usize::MAX)) {
+            let Some(k) = node_of(*near) else { continue };
+            // The MOSFETs between: with a stated body diode, in the island; without, solved again
+            // held on below.
+            let mosfets: Vec<(InstId, usize, Option<f64>)> = parts
+                .iter()
+                .filter_map(|&part| {
+                    let name = model.path_of(part);
+                    let e = planned.island.elements.iter().position(|x| {
+                        x.name == name && matches!(x.kind, dc::net::Kind::Mosfet { .. })
+                    })?;
+                    Some((part, e, body_diode(model, part)))
+                })
+                .collect();
+            let mut base = planned.island.clone();
+            for &(_, e, vf) in &mosfets {
+                if let Some(vf) = vf {
+                    base = base.with_body_diode(e, vf);
+                }
+            }
+            for &(_, e) in &planned.pins {
+                if e != element && pin_node(e) == Some(k) {
+                    base = base.letting_go(e);
+                }
+            }
+            // An `open_drain` pin leaves its high to the circuit whatever it states (#460).
+            let idle = high.is_none() || model.pin_kind(pin) == Some(PinKind::OpenDrain);
+            let high_island = if idle {
+                let mut island = base.letting_go(element);
+                for &(_, e) in &planned.pins {
+                    if pin_node(e) == Some(own) {
+                        island = island.letting_go(e);
+                    }
+                }
+                island
+            } else {
+                base.driving(element, true)
+            };
+            let low_island = base.driving(element, false);
+            let range = |island: &dc::net::Island| {
+                let report = island.analyze(dc::MAX_COMBINATIONS).ok()?;
+                if report.consistent == 0 {
+                    return None;
+                }
                 let r = report.range(Which::NodeVoltage(k));
                 (!r.is_empty() && r.lo.is_finite() && r.hi.is_finite())
                     .then(|| widen(Dimension::VOLTAGE, r.lo, r.hi))
             };
-            if let (Some(high), Some(low)) = (range(&up), range(&down)) {
-                reads
-                    .driven
-                    .insert((pin, net), Driven { ground, high, low });
-            }
+            let (Some(up), Some(down)) = (range(&high_island), range(&low_island)) else {
+                continue;
+            };
+            let on = mosfets
+                .iter()
+                .filter(|m| m.2.is_none())
+                .map(|&(part, e, _)| {
+                    (
+                        part,
+                        range(&high_island.conducting(e)),
+                        range(&low_island.conducting(e)),
+                    )
+                })
+                .collect();
+            reads.driven.insert(
+                (pin, *near),
+                Driven {
+                    ground,
+                    high: up,
+                    low: down,
+                    idle,
+                    on,
+                },
+            );
         }
+    }
+}
+
+/// The most forward voltage of a MOSFET's body diode, when the part states it
+/// (`.body_diode_voltage`, the datasheet's VSD at its test current) as a finite voltage above zero.
+fn body_diode(model: &Model, part: InstId) -> Option<f64> {
+    let netsmith_check::Member::Field(f) = model.member(part, "body_diode_voltage")? else {
+        return None;
+    };
+    match &model.field(f).domain {
+        Domain::Quantity(q)
+            if q.dim() == Dimension::VOLTAGE && q.hi().is_finite() && q.hi() > 0.0 =>
+        {
+            Some(q.hi())
+        }
+        _ => None,
     }
 }
 
@@ -315,7 +395,11 @@ impl Solver<'_> {
                             let (lo, hi) = widen(Dimension::VOLTAGE, r.lo, r.hi);
                             reads.volts.insert(net, (ground, lo, hi));
                         }
-                        driven_reads(&planned, &series, &mut reads);
+                    }
+                    // What a receiver behind a series part sees (#850), also in an island with an
+                    // open-drain pin, whose lines are read and nothing written (#1045).
+                    if solved_any {
+                        driven_reads(&self.model, &planned, &series, &mut reads);
                     }
                     // The most that flows into each net the island solved, over every corner
                     // (amendment 8), unless an inferred open-drain pin is in it.
