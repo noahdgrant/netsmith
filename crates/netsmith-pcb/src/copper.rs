@@ -94,6 +94,8 @@ pub struct Copper {
     pub mask: Vec<MaskOpenings>,
     /// The silkscreen of the front (`F.SilkS`) and then of the back (`B.SilkS`).
     pub silk: Vec<SilkInk>,
+    /// The board's shape as its `Edge.Cuts` has it: the outline, and the cutouts as holes.
+    pub edge: Area,
 }
 
 /// The copper of one layer.
@@ -423,6 +425,14 @@ pub fn copper(board: &Board) -> Result<Copper, CopperError> {
         holes,
         mask,
         silk,
+        edge: Area {
+            outer: outline.outer.iter().copied().map(pt).collect(),
+            holes: outline
+                .cutouts
+                .iter()
+                .map(|c| c.iter().copied().map(pt).collect())
+                .collect(),
+        },
     })
 }
 

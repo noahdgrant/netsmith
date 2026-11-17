@@ -88,7 +88,7 @@ fn net_colour(index: usize) -> &'static str {
 }
 
 /// The path of an arc through three points, or `None` if they are in a line.
-fn arc_path(start: Pt, mid: Pt, end: Pt) -> Option<String> {
+pub(crate) fn arc_path(start: Pt, mid: Pt, end: Pt) -> Option<String> {
     let d =
         2.0 * (start.x * (mid.y - end.y) + mid.x * (end.y - start.y) + end.x * (start.y - mid.y));
     if d.abs() < 1e-9 {
