@@ -10,7 +10,7 @@ use super::common::{libraries, no_boards, target};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "`view schematic` draws the schematic the editor shows (the schematic layout file beside the source, `<stem>.sch.toml`, is honoured) and writes it with netsmith's own writers, with no KiCad and no browser: the same source gives the same bytes, and the bytes the editor's export and `board fab` write. A PDF has a page for each sheet (a module's box of a board of more than 16 parts; one sheet for a smaller board), each page sized to its sheet, with the sheet's name, the board's, the project's and the release of netsmith in its title block; its text can be searched. A system's PDF has the system's own sheet (its boards and their joins), then each member's sheets. The PNG is drawn by netsmith's own rasterizer at 10 pixels a millimetre (fewer for a drawing more than 8192 pixels long); the SVG is the editor's. The path written is printed."
+    after_long_help = "`view schematic` draws the schematic the editor shows (the schematic layout file beside the source, `<stem>.sch.toml`, is honoured) and writes it with netsmith's own writers, with no KiCad and no browser: the same source gives the same bytes, and the bytes the editor's export and `board fab` write. A PDF has a page for each sheet (a module's box of a board of more than 16 parts; one sheet for a smaller board), each page sized to its sheet, with the sheet's name (and the project's `revision` beside it, when `netsmith.toml` has one), the board's, the project's and the release of netsmith in its title block; its text can be searched. A system's PDF has the system's own sheet (its boards and their joins), then each member's sheets. The PNG is drawn by netsmith's own rasterizer at 10 pixels a millimetre (fewer for a drawing more than 8192 pixels long); the SVG is the editor's. The path written is printed."
 )]
 pub struct Args {
     /// The source file; with none, the project's boards.
@@ -73,7 +73,6 @@ pub fn run(args: Args) -> ExitCode {
         Ok(l) => l,
         Err(code) => return code,
     };
-    let project = target.project.as_ref().map(|p| p.manifest.name.clone());
     let mut found: Vec<String> = Vec::new();
     for source in &target.files {
         let text = match fs::read_to_string(&source.path) {
@@ -133,7 +132,7 @@ pub fn run(args: Args) -> ExitCode {
         };
         found.extend(names);
         let Some(picked) = picked else { continue };
-        let inputs = Inputs::of(&source.path, project.as_deref());
+        let inputs = Inputs::of(&source.path, target.project.as_ref());
         return write(&args, &picked, &libraries, &inputs);
     }
     match args.board.as_deref() {
@@ -228,16 +227,14 @@ fn write(
                 Some(name) => one_sheet(&all, name),
             };
             chosen.and_then(|svgs| match sheet {
-                None => schematic::export::pdf(
-                    &format!("{label} schematic"),
-                    &svgs,
-                    &schematic::heading(inputs.project.as_deref()),
-                ),
+                None => {
+                    schematic::export::pdf(&format!("{label} schematic"), &svgs, &inputs.heading())
+                }
                 Some(name) => schematic::export::pdf_sheet(
                     &format!("{label} schematic"),
                     svgs[0],
                     name,
-                    &schematic::heading(inputs.project.as_deref()),
+                    &inputs.heading(),
                 ),
             })
         }

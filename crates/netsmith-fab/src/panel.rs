@@ -1244,7 +1244,7 @@ pub fn build(spec: &Spec, cell: &CellInput, options: &Options) -> Result<PanelPa
         // The cell's requirements on where parts go (ADR 0045) are measured on the cell's own
         // board, by its package; in the panel's frame their numbers would be shifted.
         &[],
-        options.process.as_deref(),
+        (options.process.as_deref(), options.revision.as_deref()),
         &extras,
         &options.trim,
     );

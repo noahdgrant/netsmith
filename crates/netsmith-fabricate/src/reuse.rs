@@ -196,6 +196,12 @@ pub fn key(inputs: &Inputs) -> Option<String> {
             schematic.project.as_deref().unwrap_or("").as_bytes(),
         );
     }
+    // The revision is the notes' first line, with or without the schematic PDF (issue #1134).
+    put(
+        &mut hash,
+        "revision",
+        options.revision.as_deref().unwrap_or("").as_bytes(),
+    );
     // The STEP models and the case models, read from disk.
     for (name, file) in built
         .design

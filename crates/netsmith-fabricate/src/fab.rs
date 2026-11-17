@@ -225,6 +225,9 @@ pub struct FabOptions {
     /// the source and the project's name. `None` draws it with no layout file and names no
     /// project.
     pub schematic: Option<crate::schematic::Inputs>,
+    /// The project's revision (`revision` in `netsmith.toml`, issue #1134): the first line of
+    /// `fab-notes.txt` says it. `None` says none.
+    pub revision: Option<String>,
     /// Where the files of the target are, to find the STEP models its parts are drawn from
     /// (ADR 0108) and its case models (ADR 0109): a path outside the project stops `fab`, a
     /// file that is not there is a warning (a case model's, an error with `strict_heights`).
@@ -384,6 +387,7 @@ impl Default for FabOptions {
             step: true,
             pdf: true,
             schematic: None,
+            revision: None,
             models: None,
             place_seeds: crate::layout::DEFAULT_PLACE_SEEDS,
             place_budget: netsmith_core::job::Limit::default(),
@@ -1569,6 +1573,7 @@ fn fab_board(
             process: Some(board.process_note()),
             extras,
             fit: fit_of(&built.sourcing),
+            revision: options.revision.clone(),
             // The design's requirements on where parts go (ADR 0045): an error that stops
             // the package, or a warning with `constraints = "warn"`.
             constraints: netsmith_pipeline::constraints::of_design(

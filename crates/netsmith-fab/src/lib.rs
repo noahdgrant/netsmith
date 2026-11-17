@@ -145,6 +145,9 @@ pub struct Options {
     /// the notes (see `netsmith_pcb::Board::process_note`). The board file does not carry
     /// it, so the caller that made the board says it.
     pub process: Option<String>,
+    /// The project's revision (issue #1134): the first line of the notes says it, `fab-notes
+    /// for <name>, revision <revision>`.
+    pub revision: Option<String>,
     /// Lines the caller adds to the notes, after the process: what the board needs of the
     /// fabricator beyond its standard process.
     pub extras: Vec<String>,
@@ -634,7 +637,7 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         &placed,
         (drc, &drc_report),
         &outcomes,
-        options.process.as_deref(),
+        (options.process.as_deref(), options.revision.as_deref()),
         &extras,
         &options.trim,
     );
@@ -692,11 +695,14 @@ fn notes(
     placed: &cpl::Cpl,
     (drc, report): (DrcOutcome, &DrcReport),
     constraints: &[ConstraintOutcome],
-    process: Option<&str>,
+    (process, revision): (Option<&str>, Option<&str>),
     extras: &[String],
     trim: &[String],
 ) -> String {
-    let mut lines = vec![format!("fab-notes for {name}")];
+    let mut lines = vec![match revision {
+        Some(revision) => format!("fab-notes for {name}, revision {revision}"),
+        None => format!("fab-notes for {name}"),
+    }];
     if let Some(process) = process {
         lines.push(format!("process: {process}"));
     }

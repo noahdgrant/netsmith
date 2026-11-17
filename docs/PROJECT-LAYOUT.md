@@ -23,13 +23,16 @@ The manifest's `top_level` lists the files whose boards and systems the no-argum
 ```toml
 [project]
 name = "my-project"
+revision = "A"
 top_level = ["src/main.nsm"]
 out = "out"
 fab = "fab"
 kicad = 9
 ```
 
-Two more keys are optional, and orders (below) are tables beside `[project]`. `catalogs` lists the project's CSV catalog files (`catalogs/`), and `assembly = "fab"`, `"hand"` or `"none"` is the default for who assembles every part of every board that its kind, its catalog row or the board does not speak for (ADR 0028; the order is in `docs/LANGUAGE.md`, "Who assembles a part"). It is one default for the whole project, not one for each board.
+`revision` is optional (`netsmith project init` does not write it): the revision of the project's boards, text on one line of up to 32 characters. The schematic PDF's title block shows `Rev A`, and `fab-notes.txt` and an order's `order.txt` begin with it; file names do not carry it. It is one revision for the project, not one for each board.
+
+Two other keys are optional, and orders (below) are tables beside `[project]`. `catalogs` lists the project's CSV catalog files (`catalogs/`), and `assembly = "fab"`, `"hand"` or `"none"` is the default for who assembles every part of every board that its kind, its catalog row or the board does not speak for (ADR 0028; the order is in `docs/LANGUAGE.md`, "Who assembles a part"). It is one default for the whole project, not one for each board.
 
 ## Several boards in one project
 
@@ -110,7 +113,7 @@ Each key is a board as its output folder is named: `Board`, or `System/member` f
 
 ```text
 fab/orders/devkit/
-├── order.txt                  boards, layers, size, thickness, hand-solder parts, the combined bill of
+├── order.txt                  begins with the project's revision (when it has one); boards, layers, size, thickness, hand-solder parts, the combined bill of
 │                              materials (priced at the whole order's quantity when a [supply] provider
 │                              is set), "before you order" notes of each board, the unverified items
 ├── order-bom.csv              LCSC number, value, footprint, quantity (copies x parts, no spares), used on

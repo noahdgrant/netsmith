@@ -57,7 +57,8 @@
 //!   order then copies that package ([`Reuse::From`](crate::fab::Reuse), issue #841; `reuse` says
 //!   how a package is known to be fresh) and the board's [`Fabricated::stages_run`] is 0. A board
 //!   of a system and a panel are always made again.
-//! - **`order.txt`**, for a person: the number of board designs and of boards; for each board its
+//! - **`order.txt`**, for a person: with a `revision` in the manifest (issue #1134), a first line
+//!   `<project>, revision <revision>`; the number of board designs and of boards; for each board its
 //!   copies, copper layers, size in mm, thickness (or "thickness open"), the surface
 //!   finish (the process's `.finish`, `finish HASL lead-free`, which the order form has to match:
 //!   `std::mfg::jlcpcb` gives each process the finishes JLCPCB offers and the one it defaults to,
@@ -1040,8 +1041,12 @@ pub fn fab_order(
             layout: Some(crate::layout::layout_path(&source.path)),
             schematic: Some(crate::schematic::Inputs::of(
                 &source.path,
-                target.project.as_ref().map(|p| p.manifest.name.as_str()),
+                target.project.as_ref(),
             )),
+            revision: target
+                .project
+                .as_ref()
+                .and_then(|p| p.manifest.revision.clone()),
             lock: using,
             pin_map_source: Some(source.stable_name(target.project.as_ref())),
             // An order is a release: a seed that would change stops it (issue #458).
@@ -1085,7 +1090,16 @@ pub fn fab_order(
         .iter()
         .map(|(s, f)| (s.clone(), &f.facts, f.notes.as_str()))
         .collect();
-    let summary = summary_text(&order.name, &listed, &bom);
+    let mut summary = summary_text(&order.name, &listed, &bom);
+    // The project's revision comes first (issue #1134): it is one for all the boards of the order.
+    if let Some(project) = &target.project
+        && let Some(revision) = &project.manifest.revision
+    {
+        summary = format!(
+            "{}, revision {revision}\n\n{summary}",
+            project.manifest.name
+        );
+    }
     let mut files = Vec::new();
     for (name, text) in [(SUMMARY_FILE, summary.clone()), (BOM_FILE, bom_csv(&bom))] {
         let path = dir.join(name);

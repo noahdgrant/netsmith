@@ -10,6 +10,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use netsmith_pipeline::{Built, Libraries};
+
+use crate::project::Project;
 use netsmith_view::{HintFinding, LayoutHints};
 
 pub use netsmith_view::export::{self, ExportError, Format, Heading};
@@ -20,10 +22,12 @@ pub fn pdf_name(board: &str) -> String {
 }
 
 /// What every title block of a project's schematic says besides the sheet and the board: the
-/// project's name and the release of netsmith that drew it.
-pub fn heading(project: Option<&str>) -> Heading {
+/// project's name, its revision (`revision` in `netsmith.toml`, issue #1134) and the release of
+/// netsmith that drew it.
+pub fn heading(project: Option<&str>, revision: Option<&str>) -> Heading {
     Heading {
         project: project.map(str::to_string),
+        revision: revision.map(str::to_string),
         release: format!("netsmith {}", env!("CARGO_PKG_VERSION")),
     }
 }
@@ -36,15 +40,23 @@ pub struct Inputs {
     pub layout: PathBuf,
     /// The project's name, for the title blocks.
     pub project: Option<String>,
+    /// The project's revision, for the title blocks.
+    pub revision: Option<String>,
 }
 
 impl Inputs {
-    /// The inputs of a source file of a project named `project`.
-    pub fn of(source: &Path, project: Option<&str>) -> Inputs {
+    /// The inputs of a source file of `project` (none for a file outside any project).
+    pub fn of(source: &Path, project: Option<&Project>) -> Inputs {
         Inputs {
             layout: netsmith_view::schematic_hints_path(source),
-            project: project.map(str::to_string),
+            project: project.map(|p| p.manifest.name.clone()),
+            revision: project.and_then(|p| p.manifest.revision.clone()),
         }
+    }
+
+    /// The heading these inputs give a title block.
+    pub fn heading(&self) -> Heading {
+        heading(self.project.as_deref(), self.revision.as_deref())
     }
 }
 
@@ -117,7 +129,7 @@ pub fn pdf(
         svgs.push(svg);
     }
     let svgs: Vec<&str> = svgs.iter().map(String::as_str).collect();
-    let heading = heading(inputs.and_then(|i| i.project.as_deref()));
+    let heading = inputs.map_or_else(|| heading(None, None), Inputs::heading);
     let bytes = netsmith_view::export::pdf(title, &svgs, &heading).map_err(|e| e.to_string())?;
     Ok((bytes, said))
 }
@@ -502,7 +514,7 @@ pub fn write_system_pdf(
             svgs.push(svg);
         }
         let svgs: Vec<&str> = svgs.iter().map(String::as_str).collect();
-        let heading = heading(inputs.and_then(|i| i.project.as_deref()));
+        let heading = inputs.map_or_else(|| heading(None, None), Inputs::heading);
         let bytes =
             netsmith_view::export::pdf(&format!("{} schematic", system.name), &svgs, &heading)
                 .map_err(|e| e.to_string())?;

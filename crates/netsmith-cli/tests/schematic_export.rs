@@ -297,3 +297,89 @@ fn walk(dir: &Path) -> Vec<PathBuf> {
     }
     out
 }
+
+#[test]
+fn a_revision_in_the_manifest_is_in_the_title_block_the_fab_notes_and_the_order() {
+    let dir = netsmith_testkit::TempDir::new("revision");
+    std::fs::create_dir(dir.join("src")).unwrap();
+    std::fs::write(dir.join("src/main.nsm"), NOTHING_TO_ROUTE).unwrap();
+    let manifest = |key: &str| {
+        std::fs::write(
+            dir.join("netsmith.toml"),
+            format!("[project]\nname = \"p\"\n{key}\n[order.one.boards]\nLonely = 1\n"),
+        )
+        .unwrap();
+    };
+    let first_line = |file: PathBuf| {
+        let text = std::fs::read_to_string(file).unwrap();
+        text.lines().next().unwrap().to_string()
+    };
+    let shown = |pdf: PathBuf| -> Vec<String> {
+        page_texts(&std::fs::read(pdf).unwrap())
+            .into_iter()
+            .flatten()
+            .collect()
+    };
+
+    // With a revision: `Rev B` beside the sheet's name, "Drawn by netsmith" stays, and the notes
+    // and the order begin with it; the files keep their names.
+    manifest("revision = \"B\"\n");
+    ok(&netsmith_in(&dir, &["board", "fab", "--out", "fab-b"]));
+    let pdf = dir.join("fab-b/Lonely/Lonely-schematic.pdf");
+    let texts = shown(pdf.clone());
+    assert!(texts.iter().any(|t| t == "Rev B"), "{texts:?}");
+    assert!(texts.iter().any(|t| t.starts_with("Drawn by netsmith ")));
+    assert_eq!(
+        first_line(dir.join("fab-b/Lonely/fab-notes.txt")),
+        "fab-notes for Lonely, revision B"
+    );
+    for kept in ["bom.csv", "cpl.csv", "Lonely-gerbers.zip"] {
+        assert!(dir.join("fab-b/Lonely").join(kept).is_file(), "{kept}");
+    }
+    // `view schematic` and the order say the same.
+    let drawn = dir.join("drawn.pdf");
+    ok(&netsmith_in(
+        &dir,
+        &["view", "schematic", "--picture", drawn.to_str().unwrap()],
+    ));
+    assert_eq!(std::fs::read(&pdf).unwrap(), std::fs::read(&drawn).unwrap());
+    ok(&netsmith_in(&dir, &["project", "order", "one", "--out", "order-b"]));
+    assert_eq!(
+        first_line(dir.join("order-b/orders/one/order.txt")),
+        "p, revision B"
+    );
+    let notes = walk(&dir.join("order-b"))
+        .into_iter()
+        .find(|f| f.ends_with("fab-notes.txt"))
+        .expect("the order's package has notes");
+    assert_eq!(first_line(notes), "fab-notes for Lonely, revision B");
+
+    // Without one: no `Rev`, and the first lines are as they were.
+    manifest("");
+    ok(&netsmith_in(&dir, &["board", "fab", "--out", "fab-none"]));
+    let texts = shown(dir.join("fab-none/Lonely/Lonely-schematic.pdf"));
+    assert!(texts.iter().all(|t| !t.starts_with("Rev ")), "{texts:?}");
+    assert_eq!(
+        first_line(dir.join("fab-none/Lonely/fab-notes.txt")),
+        "fab-notes for Lonely"
+    );
+    ok(&netsmith_in(&dir, &["project", "order", "one", "--out", "order-none"]));
+    assert!(
+        first_line(dir.join("order-none/orders/one/order.txt")).starts_with("order one: "),
+    );
+
+    // A revision that is over 32 characters, or not on one line, is refused with its line.
+    for (key, why) in [
+        (format!("revision = \"{}\"\n", "x".repeat(33)), "is 33 characters"),
+        ("revision = \"A\\nB\"\n".to_string(), "one line"),
+    ] {
+        manifest(&key);
+        let run = netsmith_in(&dir, &["board", "fab", "--out", "fab-bad"]);
+        assert!(!run.status.success());
+        let said = String::from_utf8_lossy(&run.stderr);
+        assert!(
+            said.contains("netsmith.toml:3: revision ") && said.contains(why),
+            "{said}"
+        );
+    }
+}

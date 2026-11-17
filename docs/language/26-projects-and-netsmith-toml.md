@@ -20,6 +20,7 @@ Only `name` is required.
 |---|---|
 | `name` | The project name. |
 | `netsmith` | Optional. The netsmith release the project is written for, such as `"0.2.0"`; `project init` writes the running one. A failed check of a project of another release, or of none, ends with a note that points to `docs/MIGRATING.md` (above). A value that is not three whole numbers is refused. |
+| `revision` | Optional. The revision of the project's boards: text on one line, up to 32 characters (`"A"`, `"1.2"`, a tag), as `netsmith` is a key of this table (issue #1134). The title block of every page of the schematic PDF shows `Rev A` beside the sheet's name (with "Drawn by netsmith ..." still in it), the first line of each board's `fab-notes.txt` is `fab-notes for <board>, revision A`, and an order's `order.txt` begins `<project>, revision A`. It is one revision for the project, not one for each board: the boards of a project all say it. No file name carries it (the Gerber zip, `bom.csv` and `cpl.csv` keep theirs), `project init` does not write it, and a manifest without it gives the output it gave before. A value that is empty, over 32 characters or not on one line is refused with the manifest's line. |
 | `top_level` | The files that hold boards or systems. `top_level = []` is a project of modules only: `build` and `fab` with no file then say `error: this project has no boards`. |
 | `out` | Where `netsmith board build` writes. |
 | `fab` | Where `netsmith board fab` writes. |

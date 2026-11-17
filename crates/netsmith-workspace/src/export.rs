@@ -45,16 +45,19 @@ impl Workspace {
             }
             None => vec![svg_of(board)?],
         };
-        let project = self
-            .target()
-            .project
-            .as_ref()
-            .map(|p| p.manifest.name.clone());
+        let target = self.target();
+        let heading = schematic::heading(
+            target.project.as_ref().map(|p| p.manifest.name.as_str()),
+            target
+                .project
+                .as_ref()
+                .and_then(|p| p.manifest.revision.as_deref()),
+        );
         let title = format!("{board} schematic");
         let bytes = match format {
             Format::Pdf => {
                 let svgs: Vec<&str> = svgs.iter().map(String::as_str).collect();
-                export::pdf(&title, &svgs, &schematic::heading(project.as_deref()))
+                export::pdf(&title, &svgs, &heading)
             }
             Format::Svg => export::svg_of(&svgs[0], None).map(String::into_bytes),
             Format::Png => export::png(&svgs[0], None),

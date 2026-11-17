@@ -434,7 +434,7 @@ fn the_schematic_exports_as_the_command_line_writes_it() {
     let pdf = editor.schematic_export(board, "pdf").unwrap();
     assert_eq!(pdf.name, "TwoBoards-led-schematic.pdf");
     assert_eq!(pdf.content_type, "application/pdf");
-    let heading = netsmith_fabricate::schematic::heading(Some("demo"));
+    let heading = netsmith_fabricate::schematic::heading(Some("demo"), None);
     assert_eq!(
         pdf.bytes,
         netsmith_fabricate::schematic::export::pdf("TwoBoards/led schematic", &[&svg], &heading)
