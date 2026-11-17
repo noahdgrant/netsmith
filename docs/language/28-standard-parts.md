@@ -322,9 +322,9 @@ board Bright {
 
 ```text
 error: no `led` candidate satisfies `led`: the closest of the 3 that fit, KT-0603R RED LED 0603 C2286, fails because led.current must always be at most led.max_forward_current, but 30mA is not always below 25mA
-    --> std/parts/passive.nsm:251:5
+    --> std/parts/passive.nsm:256:5
     |
-251 |     .current <= .max_forward_current
+256 |     .current <= .max_forward_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1235,9 +1235,9 @@ board Budget {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
-    --> std/parts/passive.nsm:432:5
+    --> std/parts/passive.nsm:437:5
     |
-432 |     .current <= .rated_current
+437 |     .current <= .rated_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1261,9 +1261,9 @@ board Saturates {
 
 ```text
 error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758, fails because l.current must always be at most l.saturation_current, but 500A is not always below 3.6A
-    --> std/parts/passive.nsm:295:5
+    --> std/parts/passive.nsm:300:5
     |
-295 |     .current <= .saturation_current
+300 |     .current <= .saturation_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1327,9 +1327,9 @@ board Arcs {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.supply_peak must always be at most fuse.rated_voltage, but 5kV is not always below 125V
-    --> std/parts/passive.nsm:433:5
+    --> std/parts/passive.nsm:438:5
     |
-433 |     .supply_peak <= .rated_voltage
+438 |     .supply_peak <= .rated_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 

@@ -369,12 +369,12 @@ impl Theme {
 
 /// The solder mask tones of a board's stated colour (issue #771, `std::parts::passive::Color`):
 /// the top face's mask over bare laminate and the mask over copper, in the light picture.
-/// `Green` is the default tone's own. The bottom face's mask is a little darker than the top's,
+/// `Green` is not here: the palette's own tone is green, so a board that states it is drawn as
+/// one that states none. The bottom face's mask is a little darker than the top's,
 /// as it is in the default palette, and the dark picture dims each tone, as the default
 /// palette's green is dimmed. A word that is not a mask colour has no tones.
 fn mask_tones(colour: &str) -> Option<([u8; 3], [u8; 3])> {
     Some(match colour {
-        "Green" => ([38, 120, 72], [74, 158, 98]),
         "Red" => ([176, 40, 44], [208, 78, 80]),
         "Blue" => ([36, 76, 160], [72, 114, 196]),
         "Yellow" => ([214, 176, 40], [236, 204, 84]),

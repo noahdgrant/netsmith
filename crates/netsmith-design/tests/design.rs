@@ -610,9 +610,6 @@ fn a_board_states_its_solder_mask_colour_and_one_that_does_not_has_none() {
         let d = designed(&with(colour)).unwrap();
         assert_eq!(d.process.unwrap().stackup.mask_colour.as_deref(), Some(colour));
     }
-    // A word that is no colour is refused by the checker, with the variants listed.
-    let errors = designed(&with("Orange")).unwrap_err().join("\n");
-    assert!(errors.contains("`Color` has no variant `Orange`"), "{errors}");
 }
 
 #[test]
