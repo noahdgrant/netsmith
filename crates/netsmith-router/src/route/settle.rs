@@ -78,7 +78,7 @@ impl<'a> Router<'a> {
             let on = self.stack.via_layers(via);
             if !others
                 .iter()
-                .filter(|o| o.layers.meets(on))
+                .filter(|o| via.span.is_none() || o.layers.meets(on))
                 .all(|o| o.form.distance(via.at) - radius >= apart(o))
             {
                 return Err(Unsettled::Clearance);
