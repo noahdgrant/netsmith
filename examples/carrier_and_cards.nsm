@@ -12,10 +12,10 @@
 //! whole; they have no KiCad symbol, so this file is checked and solved but not exported.
 
 import std::bus::{Spi, SpiRole, Uart}
+import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::{Header1x10, Socket1x10}
 import std::parts::passive::Fuse
 import std::sources::Rail
-import std::mfg::jlcpcb::TwoLayer
 
 /// A controller with a UART and an SPI master. Invented; not a real part.
 part Controller {
@@ -60,10 +60,10 @@ part SerialChip {
     .uart: Uart
 
     pins {
-        .vdd.pos  power  "VDD"  "1"
-        .vdd.neg  power  "VSS"  "2"
-        .uart.tx  output "TX"   "3"
-        .uart.rx  input  "RX"   "4"
+        .vdd.pos power  "VDD" "1"
+        .vdd.neg power  "VSS" "2"
+        .uart.tx output "TX"  "3"
+        .uart.rx input  "RX"  "4"
     }
 }
 
@@ -73,9 +73,7 @@ part SerialChip {
 /// Both sockets have the same pinout, 1 GND, 2 3V3, 3 to 6 the SPI bus (the card is the
 /// slave), 7 and 8 the UART (7 is the controller's `tx`), 9 3V3 and 10 GND.
 board Carrier {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 
     /// Supplied from outside the system.
     .supply: Rail {
@@ -85,19 +83,13 @@ board Carrier {
         .min_track &= 0.5mm..
     }
     /// What the carrier gives to its cards, through a fuse: up to 500 mA.
-    .cards: Rail {
-        .pos.net &= "3V3_CARDS"
-        .min_track &= 0.5mm..
-        .current &= 0mA..500mA
-    }
+    .cards: Rail { .pos.net &= "3V3_CARDS"; .min_track &= 0.5mm..; .current &= 0mA..500mA }
     .fuse: Fuse
     .supply.pos ~> .fuse ~> .cards.pos
     // The fuse drops a little of the supply; the cards get what is left.
     .cards.voltage == .supply.voltage - .fuse.drop
 
-    .mcu: Controller {
-        .vdd.current &= 20mA..60mA
-    }
+    .mcu: Controller { .vdd.current &= 20mA..60mA }
     .supply ~ .mcu.vdd
 
     .slot_a: Socket1x10
@@ -122,14 +114,9 @@ board Carrier {
 
 /// A card with a sensor on SPI. Its header goes into the carrier's first socket.
 board SensorCard {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 
-    .supply: Rail {
-        .pos.net &= "3V3_CARD"
-        .current &= -30mA..-5mA
-    }
+    .supply: Rail { .pos.net &= "3V3_CARD"; .current &= -30mA..-5mA }
     .sensor: SpiSensor
     .supply ~ .sensor.vdd
 
@@ -147,14 +134,9 @@ board SensorCard {
 /// A card with a UART chip. Its header goes into the carrier's second socket. The UART
 /// crosses: the card's `tx` is on contact 8, where the controller has its `rx`.
 board SerialCard {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 
-    .supply: Rail {
-        .pos.net &= "3V3_CARD"
-        .current &= -60mA..-10mA
-    }
+    .supply: Rail { .pos.net &= "3V3_CARD"; .current &= -60mA..-10mA }
     .chip: SerialChip
     .supply ~ .chip.vdd
 

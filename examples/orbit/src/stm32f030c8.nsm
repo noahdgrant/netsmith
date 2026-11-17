@@ -51,62 +51,56 @@ import std::bus::{I2c, I2cRole, Uart}
 part Stm32F030C8 {
     .designator &= "U"
 
-    peripheral USART1 as Uart {
-        USART1_TX:output as tx
-        USART1_RX:input  as rx
-    }
-    peripheral I2C1 as I2c I2cRole::Controller {
-        I2C1_SCL as scl
-        I2C1_SDA as sda
-    }
+    peripheral USART1 as Uart { USART1_TX:output as tx; USART1_RX:input as rx }
+    peripheral I2C1 as I2c I2cRole::Controller { I2C1_SCL as scl; I2C1_SDA as sda }
 
     pins "LQFP-48(7x7)" {
         //  pin     kind           name             pads
-        .vdd     power          "VDD"            "1" "24" "48"
-        .pc13    bidirectional  "PC13"           "2"   fn GPIO
-        .pc14    bidirectional  "PC14-OSC32_IN"  "3"   fn GPIO OSC32_IN
-        .pc15    bidirectional  "PC15-OSC32_OUT" "4"   fn GPIO OSC32_OUT
-        .pf0     bidirectional  "PF0-OSC_IN"     "5"   fn GPIO OSC_IN
-        .pf1     bidirectional  "PF1-OSC_OUT"    "6"   fn GPIO OSC_OUT
-        .nrst    bidirectional  "NRST"           "7"
-        .vssa    power          "VSSA"           "8"
-        .vdda    power          "VDDA"           "9"
-        .pa0     bidirectional  "PA0"            "10"  fn GPIO
-        .pa1     bidirectional  "PA1"            "11"  fn GPIO
-        .pa2     bidirectional  "PA2"            "12"  fn GPIO
-        .pa3     bidirectional  "PA3"            "13"  fn GPIO
-        .pa4     bidirectional  "PA4"            "14"  fn GPIO
-        .pa5     bidirectional  "PA5"            "15"  fn GPIO
-        .pa6     bidirectional  "PA6"            "16"  fn GPIO
-        .pa7     bidirectional  "PA7"            "17"  fn GPIO
-        .pb0     bidirectional  "PB0"            "18"  fn GPIO
-        .pb1     bidirectional  "PB1"            "19"  fn GPIO
-        .pb2     bidirectional  "PB2"            "20"  fn GPIO
-        .pb10    bidirectional  "PB10"           "21"  fn GPIO
-        .pb11    bidirectional  "PB11"           "22"  fn GPIO
-        .vss     power          "VSS"            "23" "47"
-        .pb12    bidirectional  "PB12"           "25"  fn GPIO
-        .pb13    bidirectional  "PB13"           "26"  fn GPIO
-        .pb14    bidirectional  "PB14"           "27"  fn GPIO
-        .pb15    bidirectional  "PB15"           "28"  fn GPIO
-        .pa8     bidirectional  "PA8"            "29"  fn GPIO
-        .pa9     bidirectional  "PA9"            "30"  fn GPIO USART1_TX
-        .pa10    bidirectional  "PA10"           "31"  fn GPIO USART1_RX
-        .pa11    bidirectional  "PA11"           "32"  fn GPIO
-        .pa12    bidirectional  "PA12"           "33"  fn GPIO
-        .pa13    bidirectional  "PA13"           "34"  fn GPIO SWDIO
-        .pf6     bidirectional  "PF6"            "35"  fn GPIO
-        .pf7     bidirectional  "PF7"            "36"  fn GPIO
-        .pa14    bidirectional  "PA14"           "37"  fn GPIO SWCLK
-        .pa15    bidirectional  "PA15"           "38"  fn GPIO
-        .pb3     bidirectional  "PB3"            "39"  fn GPIO
-        .pb4     bidirectional  "PB4"            "40"  fn GPIO
-        .pb5     bidirectional  "PB5"            "41"  fn GPIO
-        .pb6     bidirectional  "PB6"            "42"  fn GPIO I2C1_SCL
-        .pb7     bidirectional  "PB7"            "43"  fn GPIO I2C1_SDA
-        .boot0   input          "BOOT0"          "44"
-        .pb8     bidirectional  "PB8"            "45"  fn GPIO
-        .pb9     bidirectional  "PB9"            "46"  fn GPIO
+        .vdd   power         "VDD"            "1" "24" "48"
+        .pc13  bidirectional "PC13"           "2"  fn GPIO
+        .pc14  bidirectional "PC14-OSC32_IN"  "3"  fn GPIO OSC32_IN
+        .pc15  bidirectional "PC15-OSC32_OUT" "4"  fn GPIO OSC32_OUT
+        .pf0   bidirectional "PF0-OSC_IN"     "5"  fn GPIO OSC_IN
+        .pf1   bidirectional "PF1-OSC_OUT"    "6"  fn GPIO OSC_OUT
+        .nrst  bidirectional "NRST"           "7"
+        .vssa  power         "VSSA"           "8"
+        .vdda  power         "VDDA"           "9"
+        .pa0   bidirectional "PA0"            "10" fn GPIO
+        .pa1   bidirectional "PA1"            "11" fn GPIO
+        .pa2   bidirectional "PA2"            "12" fn GPIO
+        .pa3   bidirectional "PA3"            "13" fn GPIO
+        .pa4   bidirectional "PA4"            "14" fn GPIO
+        .pa5   bidirectional "PA5"            "15" fn GPIO
+        .pa6   bidirectional "PA6"            "16" fn GPIO
+        .pa7   bidirectional "PA7"            "17" fn GPIO
+        .pb0   bidirectional "PB0"            "18" fn GPIO
+        .pb1   bidirectional "PB1"            "19" fn GPIO
+        .pb2   bidirectional "PB2"            "20" fn GPIO
+        .pb10  bidirectional "PB10"           "21" fn GPIO
+        .pb11  bidirectional "PB11"           "22" fn GPIO
+        .vss   power         "VSS"            "23" "47"
+        .pb12  bidirectional "PB12"           "25" fn GPIO
+        .pb13  bidirectional "PB13"           "26" fn GPIO
+        .pb14  bidirectional "PB14"           "27" fn GPIO
+        .pb15  bidirectional "PB15"           "28" fn GPIO
+        .pa8   bidirectional "PA8"            "29" fn GPIO
+        .pa9   bidirectional "PA9"            "30" fn GPIO USART1_TX
+        .pa10  bidirectional "PA10"           "31" fn GPIO USART1_RX
+        .pa11  bidirectional "PA11"           "32" fn GPIO
+        .pa12  bidirectional "PA12"           "33" fn GPIO
+        .pa13  bidirectional "PA13"           "34" fn GPIO SWDIO
+        .pf6   bidirectional "PF6"            "35" fn GPIO
+        .pf7   bidirectional "PF7"            "36" fn GPIO
+        .pa14  bidirectional "PA14"           "37" fn GPIO SWCLK
+        .pa15  bidirectional "PA15"           "38" fn GPIO
+        .pb3   bidirectional "PB3"            "39" fn GPIO
+        .pb4   bidirectional "PB4"            "40" fn GPIO
+        .pb5   bidirectional "PB5"            "41" fn GPIO
+        .pb6   bidirectional "PB6"            "42" fn GPIO I2C1_SCL
+        .pb7   bidirectional "PB7"            "43" fn GPIO I2C1_SDA
+        .boot0 input         "BOOT0"          "44"
+        .pb8   bidirectional "PB8"            "45" fn GPIO
+        .pb9   bidirectional "PB9"            "46" fn GPIO
     }
 
     .package: Package

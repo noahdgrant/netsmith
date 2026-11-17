@@ -2,12 +2,14 @@
 
 pub mod ast;
 pub mod error;
+pub mod format;
 mod group;
 mod lexer;
 mod parser;
 mod printer;
 
 pub use error::{ParseError, Span, floor_boundary};
+pub use format::{FormatError, format};
 pub use group::expand_groups;
 pub use parser::{MAX_GROUP, parse, parse_expr};
 

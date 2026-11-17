@@ -7,9 +7,7 @@ import std::parts::passive::Resistor
 import std::sources::Rail
 
 board Named {
-    .supply: Rail {
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .pos.net &= "VCC" }
     .r1: Resistor
     .supply.pos ~> .r1 ~> .supply.neg
 }
@@ -51,8 +49,8 @@ error: `stage.supply.pos.net` names a net, and only a board names nets: set it w
 ```
 
 ```nsm fails
-import std::sources::Rail
 import std::parts::passive::Resistor
+import std::sources::Rail
 
 board Disagree {
     .supply: Rail { .pos.net &= "A" }
@@ -80,10 +78,7 @@ import std::sources::Rail
 
 board TwoGrounds {
     .digital: Rail { .pos.net &= "3V3" }
-    .analog: Rail {
-        .pos.net &= "3V3A"
-        .neg.net &= "AGND"
-    }
+    .analog: Rail { .pos.net &= "3V3A"; .neg.net &= "AGND" }
     .r1: Resistor
     .r2: Resistor
     .digital.pos ~> .r1 ~> .digital.neg

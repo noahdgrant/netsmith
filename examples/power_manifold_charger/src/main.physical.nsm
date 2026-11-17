@@ -10,10 +10,7 @@ import std::pcb::Outline
 
 physical for PowerManifoldCharger {
     case {
-        .outline: Outline {
-            .width &= 101.2mm
-            .height &= 24mm
-        }
+        .outline: Outline { .width &= 101.2mm; .height &= 24mm }
     }
 
     .slot.place.x &= 3.45mm

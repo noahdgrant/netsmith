@@ -452,7 +452,7 @@
         "text": "The input rail is supplied from outside the system.",
         "at": {
           "file": "two_boards.nsm",
-          "line": 46
+          "line": 44
         },
         "anchors": [],
         "result": null
@@ -463,7 +463,7 @@
         "text": "What the rest of the system draws from the output: up to 50 mA, the most this board is built to give.",
         "at": {
           "file": "two_boards.nsm",
-          "line": 57
+          "line": 50
         },
         "anchors": [],
         "result": null
@@ -769,7 +769,7 @@
         "text": "A status LED that runs from 3.3 V.",
         "at": {
           "file": "two_boards.nsm",
-          "line": 74
+          "line": 64
         },
         "anchors": [],
         "result": null
@@ -780,7 +780,7 @@
         "text": "Supplied by the other board, through this socket.",
         "at": {
           "file": "two_boards.nsm",
-          "line": 81
+          "line": 69
         },
         "anchors": [
           "led",
@@ -795,7 +795,7 @@
         "text": ".led.current == (.input.voltage - .led.forward_voltage) / .r1.resistance",
         "at": {
           "file": "two_boards.nsm",
-          "line": 94
+          "line": 78
         },
         "anchors": [
           "led",

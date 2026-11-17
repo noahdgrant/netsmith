@@ -242,6 +242,8 @@ export const api = {
   fabOrder: (name: string, allow = false) =>
     post<OrderReport>(`/api/order?${q(allow ? { name, allow: '1' } : { name })}`),
   orderDownloadUrl: (name: string, file: string) => `/api/order/download?${q({ name, file })}`,
+  /** The text in the layout `netsmith project fmt` writes; a 422 says where a text does not parse. */
+  format: (text: string) => post<string>('/api/format', { text }),
   definition: (path: string, text: string, offset: number) =>
     post<Definition | null>('/api/definition', { path, text, offset }),
   downloadUrl: (board: string, file: string) => `/api/download?${q({ board, file })}`,

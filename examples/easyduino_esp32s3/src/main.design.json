@@ -3559,23 +3559,23 @@
               "field": "x",
               "lo": 16.795,
               "hi": 16.795,
-              "source": "src/main.physical.nsm:59"
+              "source": "src/main.physical.nsm:56"
             },
             {
               "field": "y",
               "lo": 34.5486,
               "hi": 34.5486,
-              "source": "src/main.physical.nsm:60"
+              "source": "src/main.physical.nsm:57"
             },
             {
               "field": "rotation",
               "lo": 180.0,
               "hi": 180.0,
-              "source": "src/main.physical.nsm:61"
+              "source": "src/main.physical.nsm:58"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:62"
+          "side_source": "src/main.physical.nsm:59"
         },
         {
           "path": "headers",
@@ -3585,23 +3585,23 @@
               "field": "x",
               "lo": 12.93,
               "hi": 12.93,
-              "source": "src/main.physical.nsm:69"
+              "source": "src/main.physical.nsm:66"
             },
             {
               "field": "y",
               "lo": 27.76996,
               "hi": 27.76996,
-              "source": "src/main.physical.nsm:70"
+              "source": "src/main.physical.nsm:67"
             },
             {
               "field": "rotation",
               "lo": 0.0,
               "hi": 0.0,
-              "source": "src/main.physical.nsm:71"
+              "source": "src/main.physical.nsm:68"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:72"
+          "side_source": "src/main.physical.nsm:69"
         },
         {
           "path": "reset",
@@ -3611,23 +3611,23 @@
               "field": "x",
               "lo": 9.195,
               "hi": 9.195,
-              "source": "src/main.physical.nsm:55"
+              "source": "src/main.physical.nsm:52"
             },
             {
               "field": "y",
               "lo": 34.5486,
               "hi": 34.5486,
-              "source": "src/main.physical.nsm:56"
+              "source": "src/main.physical.nsm:53"
             },
             {
               "field": "rotation",
               "lo": 0.0,
               "hi": 0.0,
-              "source": "src/main.physical.nsm:57"
+              "source": "src/main.physical.nsm:54"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:58"
+          "side_source": "src/main.physical.nsm:55"
         },
         {
           "path": "usb_native.receptacle",
@@ -3637,29 +3637,29 @@
               "field": "x",
               "lo": 19.845,
               "hi": 19.845,
-              "source": "src/main.physical.nsm:47"
+              "source": "src/main.physical.nsm:44"
             },
             {
               "field": "y",
               "lo": 61.2736,
               "hi": 61.2736,
-              "source": "src/main.physical.nsm:48"
+              "source": "src/main.physical.nsm:45"
             },
             {
               "field": "bottom",
               "lo": 63.8972,
               "hi": "inf",
-              "source": "src/main.physical.nsm:49"
+              "source": "src/main.physical.nsm:46"
             },
             {
               "field": "rotation",
               "lo": 0.0,
               "hi": 0.0,
-              "source": "src/main.physical.nsm:50"
+              "source": "src/main.physical.nsm:47"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:51"
+          "side_source": "src/main.physical.nsm:48"
         },
         {
           "path": "usb_uart.receptacle",
@@ -3669,55 +3669,55 @@
               "field": "x",
               "lo": 5.975,
               "hi": 5.975,
-              "source": "src/main.physical.nsm:42"
+              "source": "src/main.physical.nsm:39"
             },
             {
               "field": "y",
               "lo": 61.2736,
               "hi": 61.2736,
-              "source": "src/main.physical.nsm:43"
+              "source": "src/main.physical.nsm:40"
             },
             {
               "field": "bottom",
               "lo": 63.8972,
               "hi": "inf",
-              "source": "src/main.physical.nsm:44"
+              "source": "src/main.physical.nsm:41"
             },
             {
               "field": "rotation",
               "lo": 0.0,
               "hi": 0.0,
-              "source": "src/main.physical.nsm:45"
+              "source": "src/main.physical.nsm:42"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:46"
+          "side_source": "src/main.physical.nsm:43"
         }
       ],
       "offsets": [],
       "line_texts": {
-        "src/main.physical.nsm:42": ".usb_uart.receptacle.place.x &= 5.975mm",
-        "src/main.physical.nsm:43": ".usb_uart.receptacle.place.y &= 61.2736mm",
-        "src/main.physical.nsm:44": ".usb_uart.receptacle.place.bottom >= .outline.height",
-        "src/main.physical.nsm:45": ".usb_uart.receptacle.place.rotation &= 0",
-        "src/main.physical.nsm:46": ".usb_uart.receptacle.place.side &= \"top\"",
-        "src/main.physical.nsm:47": ".usb_native.receptacle.place.x &= 19.845mm",
-        "src/main.physical.nsm:48": ".usb_native.receptacle.place.y &= 61.2736mm",
-        "src/main.physical.nsm:49": ".usb_native.receptacle.place.bottom >= .outline.height",
-        "src/main.physical.nsm:50": ".usb_native.receptacle.place.rotation &= 0",
-        "src/main.physical.nsm:51": ".usb_native.receptacle.place.side &= \"top\"",
-        "src/main.physical.nsm:55": ".reset.place.x &= 9.195mm",
-        "src/main.physical.nsm:56": ".reset.place.y &= 34.5486mm",
-        "src/main.physical.nsm:57": ".reset.place.rotation &= 0",
-        "src/main.physical.nsm:58": ".reset.place.side &= \"top\"",
-        "src/main.physical.nsm:59": ".boot.place.x &= 16.795mm",
-        "src/main.physical.nsm:60": ".boot.place.y &= 34.5486mm",
-        "src/main.physical.nsm:61": ".boot.place.rotation &= 180",
-        "src/main.physical.nsm:62": ".boot.place.side &= \"top\"",
-        "src/main.physical.nsm:69": ".headers.place.x &= 12.93mm",
-        "src/main.physical.nsm:70": ".headers.place.y &= 27.76996mm",
-        "src/main.physical.nsm:71": ".headers.place.rotation &= 0",
-        "src/main.physical.nsm:72": ".headers.place.side &= \"top\""
+        "src/main.physical.nsm:39": ".usb_uart.receptacle.place.x &= 5.975mm",
+        "src/main.physical.nsm:40": ".usb_uart.receptacle.place.y &= 61.2736mm",
+        "src/main.physical.nsm:41": ".usb_uart.receptacle.place.bottom >= .outline.height",
+        "src/main.physical.nsm:42": ".usb_uart.receptacle.place.rotation &= 0",
+        "src/main.physical.nsm:43": ".usb_uart.receptacle.place.side &= \"top\"",
+        "src/main.physical.nsm:44": ".usb_native.receptacle.place.x &= 19.845mm",
+        "src/main.physical.nsm:45": ".usb_native.receptacle.place.y &= 61.2736mm",
+        "src/main.physical.nsm:46": ".usb_native.receptacle.place.bottom >= .outline.height",
+        "src/main.physical.nsm:47": ".usb_native.receptacle.place.rotation &= 0",
+        "src/main.physical.nsm:48": ".usb_native.receptacle.place.side &= \"top\"",
+        "src/main.physical.nsm:52": ".reset.place.x &= 9.195mm",
+        "src/main.physical.nsm:53": ".reset.place.y &= 34.5486mm",
+        "src/main.physical.nsm:54": ".reset.place.rotation &= 0",
+        "src/main.physical.nsm:55": ".reset.place.side &= \"top\"",
+        "src/main.physical.nsm:56": ".boot.place.x &= 16.795mm",
+        "src/main.physical.nsm:57": ".boot.place.y &= 34.5486mm",
+        "src/main.physical.nsm:58": ".boot.place.rotation &= 180",
+        "src/main.physical.nsm:59": ".boot.place.side &= \"top\"",
+        "src/main.physical.nsm:66": ".headers.place.x &= 12.93mm",
+        "src/main.physical.nsm:67": ".headers.place.y &= 27.76996mm",
+        "src/main.physical.nsm:68": ".headers.place.rotation &= 0",
+        "src/main.physical.nsm:69": ".headers.place.side &= \"top\""
       }
     },
     "interfaces": [
@@ -3915,7 +3915,7 @@
         "text": "The auto-reset pair. `.dtr` and `.rts` go to the bridge's DTR and RTS, `.en` to the module's EN and `.boot` to its GPIO0.",
         "at": {
           "file": "src/auto_reset.nsm",
-          "line": 17
+          "line": 18
         },
         "anchors": [],
         "result": null
@@ -3926,7 +3926,7 @@
         "text": "SW2, BOOT: pulls GPIO0 to ground.",
         "at": {
           "file": "src/main.nsm",
-          "line": 85
+          "line": 83
         },
         "anchors": [
           "boot"
@@ -3939,7 +3939,7 @@
         "text": "The USB-UART bridge (U3), on the first receptacle.",
         "at": {
           "file": "src/main.nsm",
-          "line": 56
+          "line": 57
         },
         "anchors": [
           "bridge"
@@ -3952,7 +3952,7 @@
         "text": "R11: pulls the bridge's reset line up to VBUS.",
         "at": {
           "file": "src/main.nsm",
-          "line": 142
+          "line": 135
         },
         "anchors": [],
         "result": null
@@ -3963,7 +3963,7 @@
         "text": "C3: the decoupling of the bridge's own 3.3 V (VDD), which the board does not use as a supply (the author's notes: it gives 100 mA only).",
         "at": {
           "file": "src/main.nsm",
-          "line": 138
+          "line": 131
         },
         "anchors": [
           "bridge_vdd_cap"
@@ -3976,7 +3976,7 @@
         "text": "C4 and C8 on EN (the module's 100 nF for power-up timing, and the second), C9 on GPIO0.",
         "at": {
           "file": "src/main.nsm",
-          "line": 201
+          "line": 188
         },
         "anchors": [
           "en_100n[0]"
@@ -3989,7 +3989,7 @@
         "text": "R1: EN's 10 kohm pull-up (Espressif's circuit; the module needs EN driven).",
         "at": {
           "file": "src/main.nsm",
-          "line": 165
+          "line": 158
         },
         "anchors": [],
         "result": null
@@ -4000,7 +4000,7 @@
         "text": "The development board's two 22-pin headers (U2), hand-soldered.",
         "at": {
           "file": "src/main.nsm",
-          "line": 81
+          "line": 79
         },
         "anchors": [
           "headers"
@@ -4013,7 +4013,7 @@
         "text": "The module (U1): 4 MB of flash, PCB antenna.",
         "at": {
           "file": "src/main.nsm",
-          "line": 54
+          "line": 55
         },
         "anchors": [
           "mcu"
@@ -4026,7 +4026,7 @@
         "text": "D1: lit from VBUS through R6.",
         "at": {
           "file": "src/main.nsm",
-          "line": 172
+          "line": 165
         },
         "anchors": [
           "power_led"
@@ -4039,7 +4039,7 @@
         "text": "The 3.3 V regulator (U5), an AMS1117-3.3 in a SOT-223 (a row of the project's catalog).",
         "at": {
           "file": "src/main.nsm",
-          "line": 58
+          "line": 59
         },
         "anchors": [
           "regulator"
@@ -4052,7 +4052,7 @@
         "text": "SW1, RESET: pulls EN to ground.",
         "at": {
           "file": "src/main.nsm",
-          "line": 83
+          "line": 81
         },
         "anchors": [
           "reset"
@@ -4065,7 +4065,7 @@
         "text": "R10: holds the bridge's SUSPENDb output low.",
         "at": {
           "file": "src/main.nsm",
-          "line": 146
+          "line": 139
         },
         "anchors": [],
         "result": null
@@ -4076,7 +4076,7 @@
         "text": "J2: the receptacle of the module's own USB.",
         "at": {
           "file": "src/main.nsm",
-          "line": 76
+          "line": 74
         },
         "anchors": [],
         "result": null
@@ -4087,7 +4087,7 @@
         "text": "J1: the receptacle of the bridge.",
         "at": {
           "file": "src/main.nsm",
-          "line": 71
+          "line": 72
         },
         "anchors": [],
         "result": null
@@ -4098,7 +4098,7 @@
         "text": "D2 and D3: each receptacle's VBUS reaches VBUS through a Schottky diode (anode on the receptacle), so the two supplies cannot feed each other. ROHM RB161QS-40.",
         "at": {
           "file": "src/main.nsm",
-          "line": 108
+          "line": 101
         },
         "anchors": [
           "usb_uart_diode"
@@ -4111,7 +4111,7 @@
         "text": "D4: GPIO38 through R9.",
         "at": {
           "file": "src/main.nsm",
-          "line": 179
+          "line": 169
         },
         "anchors": [
           "user_led"
@@ -4124,7 +4124,7 @@
         "text": "The 3.3 V of the regulator: the module's supply and the header's 3.3 V pins.",
         "at": {
           "file": "src/main.nsm",
-          "line": 101
+          "line": 97
         },
         "anchors": [],
         "result": null
@@ -4135,7 +4135,7 @@
         "text": "C5, C7 and C10: the module's 100 nF and 22 uF on 3.3 V, and the regulator's output capacitor (22 uF).",
         "at": {
           "file": "src/main.nsm",
-          "line": 198
+          "line": 185
         },
         "anchors": [
           "v3v3_100n"
@@ -4148,7 +4148,7 @@
         "text": "VBUS behind the two diodes: the bridge's supply, the regulator's input and the header's 5 V pin.",
         "at": {
           "file": "src/main.nsm",
-          "line": 97
+          "line": 95
         },
         "anchors": [],
         "result": null
@@ -4159,7 +4159,7 @@
         "text": "C1 and C2: the bridge's VBUS input, 1 uF and 100 nF (CP2102N datasheet, as the author's notes say).",
         "at": {
           "file": "src/main.nsm",
-          "line": 192
+          "line": 179
         },
         "anchors": [
           "vbus_1u"
@@ -4172,7 +4172,7 @@
         "text": "C6: the regulator's input, 22 uF tantalum.",
         "at": {
           "file": "src/main.nsm",
-          "line": 195
+          "line": 182
         },
         "anchors": [
           "vbus_22u"
@@ -4185,7 +4185,7 @@
         "text": ".power_led_resistor.current == (.vbus.voltage - .power_led.forward_voltage) / .power_led_resistor.resistance",
         "at": {
           "file": "src/main.nsm",
-          "line": 177
+          "line": 167
         },
         "anchors": [
           "power_led_resistor",

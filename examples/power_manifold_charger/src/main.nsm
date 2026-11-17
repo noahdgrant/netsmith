@@ -17,6 +17,13 @@
 //! connector and of the microcontroller is joined to the pin the design joins it to: the
 //! board states no request that the pin optimizer (ADR 0101) could move.
 
+import std::mfg::jlcpcb::FourLayer
+import std::parts::connector::ProgrammingPads6
+import std::parts::diode::Tvs
+import std::parts::mechanical::TestPoint
+import std::parts::passive::{Capacitor, Color, FerriteBead, Fuse, Inductor, Led, Resistor}
+import std::sources::Rail
+
 import src::antc1608_ntc::Antc1608Ntc
 import src::bsc059n04ls6::Bsc059n04ls6
 import src::gt_usb_7004::GtUsb7004
@@ -27,12 +34,6 @@ import src::tcpp02_m18::Tcpp02M18
 import src::tlv7022::Tlv7022
 import src::tps55288::Tps55288
 import src::usblc6_2sc6::Usblc62sc6
-import std::mfg::jlcpcb::FourLayer
-import std::parts::connector::ProgrammingPads6
-import std::parts::diode::Tvs
-import std::parts::mechanical::TestPoint
-import std::parts::passive::{Capacitor, Color, FerriteBead, Fuse, Inductor, Led, Resistor}
-import std::sources::Rail
 
 board PowerManifoldCharger {
     defaults {
@@ -79,7 +80,11 @@ board PowerManifoldCharger {
     /// F1: 8A
     .fuse: Fuse { .rated_current &= 8A; .package &= "2410" }
     /// FB1: BLM18KG601SN1D
-    .vcc_bead: FerriteBead { .impedance &= 600ohm +/- 25%; .impedance_frequency &= 100MHz; .package &= "0603" }
+    .vcc_bead: FerriteBead {
+        .impedance &= 600ohm +/- 25%
+        .impedance_frequency &= 100MHz
+        .package &= "0603"
+    }
     /// R28: R010
     .output_shunt: Resistor { .resistance &= 10mohm +/- 1%; .package &= "1206" }
     /// R27: R007
@@ -251,49 +256,26 @@ board PowerManifoldCharger {
 
     /// The slot's main DC input (A2 to A7): 24 V nominal, +20 %/-15 % (the design's architecture
     /// notes, section 3), ahead of the fuse.
-    .slot_vin: Rail {
-        .voltage &= 20.4V..28.8V
-        .pos.net &= "VIN_PREFUSE"
-    }
+    .slot_vin: Rail { .voltage &= 20.4V..28.8V; .pos.net &= "VIN_PREFUSE" }
     /// The slot's 5 V logic supply (A12, B12), from the backplane's buck.
-    .v5: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "+5V"
-    }
+    .v5: Rail { .voltage &= 5V +/- 5%; .pos.net &= "+5V" }
     /// The 3.3 V of the LP2985: the microcontroller, the comparator, the I2C pull-ups.
-    .v3v3: Rail {
-        .pos.net &= "+3.3V"
-    }
+    .v3v3: Rail { .pos.net &= "+3.3V" }
     /// Behind the fuse.
-    .vin: Rail {
-        .pos.net &= "VIN"
-    }
+    .vin: Rail { .pos.net &= "VIN" }
     /// Behind the input inductor: the converter's input.
-    .emi_vin: Rail {
-        .pos.net &= "EMI_VIN"
-    }
+    .emi_vin: Rail { .pos.net &= "EMI_VIN" }
     /// The converter's output, the USB-PD contract's voltage (the converter makes 0.8 V to 22 V;
     /// the blade is offered 5 V to 21 V by its firmware).
-    .vout_conv: Rail {
-        .voltage &= 5V..21V
-        .pos.net &= "VOUT_CONV"
-    }
+    .vout_conv: Rail { .voltage &= 5V..21V; .pos.net &= "VOUT_CONV" }
     /// Behind the output shunt R28.
-    .vout: Rail {
-        .pos.net &= "VOUT"
-    }
+    .vout: Rail { .pos.net &= "VOUT" }
     /// The two back-to-back MOSFETs' common source.
-    .vbus_src: Rail {
-        .pos.net &= "VBUS_SRC"
-    }
+    .vbus_src: Rail { .pos.net &= "VBUS_SRC" }
     /// Behind the shunt R27, ahead of the MOSFET Q4.
-    .vbus_f: Rail {
-        .pos.net &= "VBUSf"
-    }
+    .vbus_f: Rail { .pos.net &= "VBUSf" }
     /// The port's VBUS, on the receptacle.
-    .vbus: Rail {
-        .pos.net &= "VBUS"
-    }
+    .vbus: Rail { .pos.net &= "VBUS" }
 
     // Nothing of a part is on the ground of these five rails, so `Rail`'s default of `GND` does
     // not reach them (it names a net only where a part is): each joins the ground of the rest.

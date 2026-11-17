@@ -3,14 +3,11 @@
 `~` puts two pins on one net, or joins two interfaces of the same kind: their pins pair by name and their values become equal. Between two other ports (parts, modules, interfaces of different kinds) it joins their members by name (below). `~>` runs a series chain from a pin through parts to another pin. Each part in a chain needs a `bridge`.
 
 ```nsm
-import std::parts::passive::{Resistor, Led}
+import std::parts::passive::{Led, Resistor}
 import std::sources::Rail
 
 board Chains {
-    .supply: Rail {
-        .voltage &= 5V
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 5V; .pos.net &= "VCC" }
     .a: Resistor
     .b: Resistor
     .led: Led
@@ -65,11 +62,7 @@ part Chip {
 }
 
 board Pinout {
-    .supply: Rail {
-        .voltage &= 3.3V
-        .pos.net &= "3V3"
-        .neg.net &= "GND"
-    }
+    .supply: Rail { .voltage &= 3.3V; .pos.net &= "3V3"; .neg.net &= "GND" }
     .header: Header
     .chip: Chip
     .supply ~ .chip.vdd
@@ -116,11 +109,7 @@ part Chip {
 }
 
 board Pinout {
-    .supply: Rail {
-        .voltage &= 3.3V
-        .pos.net &= "3V3"
-        .neg.net &= "GND"
-    }
+    .supply: Rail { .voltage &= 3.3V; .pos.net &= "3V3"; .neg.net &= "GND" }
     .header: Header
     .chip: Chip
     .supply ~ .chip.vdd
@@ -131,9 +120,9 @@ board Pinout {
 
 ```text
 error: these members have no member of the same name on the other side: `.header.gpio5` (did you mean `gpio5 = io5`?), `.chip.io5`; give each a partner with a rename, `{ a = b }`, or leave it out with `except { a }`
-   --> main.nsm:35:5
+   --> main.nsm:31:5
    |
-35 |     .header ~ .chip { gpio4 = io4 } except { gnd vdd }
+31 |     .header ~ .chip { gpio4 = io4 } except { gnd vdd }
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -161,11 +150,7 @@ part Chip {
 }
 
 board Supplies {
-    .supply: Rail {
-        .voltage &= 3.3V
-        .pos.net &= "3V3"
-        .neg.net &= "GND"
-    }
+    .supply: Rail { .voltage &= 3.3V; .pos.net &= "3V3"; .neg.net &= "GND" }
     .chip: Chip
     .other: PinSupply
     .supply ~ .chip.vdd
@@ -175,9 +160,9 @@ board Supplies {
 
 ```text
 error: `.other.vdd` is a pin and `.chip.vdd` is a `Rail`; `~` joins a pin to a pin and an interface to an interface, so rename one or leave it out with `except`
-   --> main.nsm:30:5
+   --> main.nsm:26:5
    |
-30 |     .other ~ .chip
+26 |     .other ~ .chip
    |     ^^^^^^^^^^^^^^
 ```
 
@@ -209,11 +194,7 @@ part Chip {
 }
 
 board Pinout {
-    .supply: Rail {
-        .voltage &= 3.3V
-        .pos.net &= "3V3"
-        .neg.net &= "GND"
-    }
+    .supply: Rail { .voltage &= 3.3V; .pos.net &= "3V3"; .neg.net &= "GND" }
     .header: Header
     .chip: Chip
     .supply ~ .chip.vdd
@@ -224,9 +205,9 @@ board Pinout {
 
 ```text
 error: the rename's right side is a member of `.chip`, and `io44` is not a pin or an interface of it; did you mean `io4`?
-   --> main.nsm:35:31
+   --> main.nsm:31:31
    |
-35 |     .header ~ .chip { gpio4 = io44; gpio5 = io5 } except { gnd vdd }
+31 |     .header ~ .chip { gpio4 = io44; gpio5 = io5 } except { gnd vdd }
    |                               ^^^^
 ```
 
@@ -258,11 +239,7 @@ part Chip {
 }
 
 board Pinout {
-    .supply: Rail {
-        .voltage &= 3.3V
-        .pos.net &= "3V3"
-        .neg.net &= "GND"
-    }
+    .supply: Rail { .voltage &= 3.3V; .pos.net &= "3V3"; .neg.net &= "GND" }
     .header: Header
     .chip: Chip
     .supply ~ .chip.vdd
@@ -273,9 +250,9 @@ board Pinout {
 
 ```text
 error: `except` leaves out `vd`, but neither `.header` nor `.chip` has a pin or an interface of that name; did you mean `vdd`?
-   --> main.nsm:35:63
+   --> main.nsm:31:63
    |
-35 |     .header ~ .chip { gpio4 = io4; gpio5 = io5 } except { gnd vd }
+31 |     .header ~ .chip { gpio4 = io4; gpio5 = io5 } except { gnd vd }
    |                                                               ^^
 ```
 
@@ -292,9 +269,9 @@ The current is the one a statement of the design narrowed (here the LED's window
 A resistor drops its current times its resistance, and a diode or an LED its forward voltage. The relation is that of every diode conducting. A supply that could fall below the forward voltages makes the current negative at that end, and an LED's `.current >= 0mA` refuses it: an LED that may stay dark is a fault. So an LED's current window picks its resistor, and the board writes no equation:
 
 ```nsm solve report
-import std::parts::passive::{Resistor, Led}
-import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::{Led, Resistor}
+import std::sources::Rail
 
 board Indicator {
     .process: TwoLayer
@@ -319,8 +296,8 @@ The 120 ohm resistor keeps the LED between 5 mA and 15 mA with the supply anywhe
 A part that is not a `dc resistor` or a `dc diode` the way the chain runs through it (a part with no `dc` statement, a MOSFET, a diode turned round) leaves the current free, because the chain cannot say what it drops. A part of the chain whose value nothing else limits is then an unconstrained pick, and the finding names the part that stopped the chain:
 
 ```nsm evaluate warns
-import std::parts::passive::Resistor
 import std::parts::diode::Zener
+import std::parts::passive::Resistor
 import std::sources::Rail
 
 board Reference {
@@ -341,10 +318,10 @@ A Zener in breakdown is not a DC element yet (a decision of its own, ADR 0076), 
 A chain may start on a logic pin that drives it high: the `.line` of a part's `Logic` (an output, a tri-state or a bidirectional pin), with nothing else on its net but the chain. The pin is at least its `voh` and at most its reference rail's voltage, so the relation's source is the range `.voh .. .reference.voltage`. A chain may also end on a pin that sinks it low (an open-drain pin too), which is at most its `vol`: `0V .. .vol`. The level must be stated at the current its datasheet measures it at (`.gpio.voh &= .vdd.voltage - 0.4V at 8mA`, see "Logic levels and absolute maximums"): the level holds only up to that load, so the chain's current is at most it, and a window above it is refused at the level's line. A GPIO that drives an LED picks its resistor from the LED's window:
 
 ```nsm evaluate
-import std::parts::passive::{Resistor, Led}
 import std::logic::Logic
-import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::{Led, Resistor}
+import std::sources::Rail
 
 part Mcu {
     .designator &= "U"
@@ -354,9 +331,9 @@ part Mcu {
     .gpio.voh &= .vdd.voltage - 0.4V at 8mA
     .gpio.vol &= 0.4V at 8mA
     pins {
-        .vdd.pos    power  "VDD" "1"
-        .vdd.neg    power  "GND" "2"
-        .gpio.line  output "IO"  "3"
+        .vdd.pos   power  "VDD" "1"
+        .vdd.neg   power  "GND" "2"
+        .gpio.line output "IO"  "3"
     }
 }
 
@@ -403,8 +380,8 @@ error: `.header` cannot be used in a `~>` chain: `Header1x2` has no `bridge`
 ```
 
 ```nsm fails
-import std::sources::Rail
 import std::logic::Logic
+import std::sources::Rail
 
 board Mismatch {
     .supply: Rail
@@ -452,8 +429,8 @@ A part may offer a join of two of its pins that a board replaces, as `?=` offers
 ```nsm
 part Chip {
     pins {
-        .vin passive "VIN" "1"
-        .gnd passive "GND" "2"
+        .vin  passive "VIN"  "1"
+        .gnd  passive "GND"  "2"
         .mode passive "MODE" "3"
     }
     .mode ?~ .gnd

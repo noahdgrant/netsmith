@@ -4,9 +4,10 @@
 //! from in a comment above the line; here the comment says what the line asks for. Where the
 //! parts end up is not here: it is the placer's, and the same inputs give the same board.
 
-import src::case::SensorCase
 import std::parts::mechanical::Fiducial
 import std::pcb::Keepout
+
+import src::case::SensorCase
 
 physical for EnclosureSensor {
     // 1. The case: the outline, the strap slot and the four mounting holes are the case's, in

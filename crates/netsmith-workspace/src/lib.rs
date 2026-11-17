@@ -1815,6 +1815,24 @@ impl Backend for Workspace {
         self.git_file_at(rev, path)
     }
 
+    fn format(&self, text: &str) -> Result<String, ApiError> {
+        netsmith_lang::format(text).map_err(|e| match e {
+            netsmith_lang::FormatError::Parse(p) => {
+                let (line, column) = p.line_col(text);
+                let (line, column) = (line.to_string(), column.to_string());
+                ApiError::unprocessable(
+                    format!(
+                        "{line}:{column}: {}; a file that does not parse is not formatted",
+                        p.message
+                    ),
+                    "does_not_parse",
+                    &[("line", &line), ("column", &column)],
+                )
+            }
+            changed => ApiError::internal(changed.to_string()),
+        })
+    }
+
     fn definition(
         &self,
         path: &str,

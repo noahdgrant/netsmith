@@ -4,11 +4,11 @@
 //! Three inner layers are ground planes and one a 3.3 V plane; the other four are signal
 //! layers, which the router draws on as on the outer layers (issue #833).
 
+import std::mfg::acme::TenLayer
 import std::parts::connector::Header1x2
 import std::parts::passive::Capacitor
 import std::parts::regulator::LinearRegulator
 import std::sources::Rail
-import std::mfg::acme::TenLayer
 
 board TenLayerExample {
     /// Made by ACME's ten-layer process (1.6 mm, build-up ACME-10L-1.6), which is fictional.
@@ -24,23 +24,16 @@ board TenLayerExample {
     }
 
     /// The input rail is supplied from outside the board.
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
     /// What the outside world draws from the output.
-    .output: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-        .current &= 0mA..50mA
-    }
+    .output: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3"; .current &= 0mA..50mA }
 
     .regulator: LinearRegulator
-    .input_cap:  Capacitor { .effective_capacitance >= 1uF }
+    .input_cap: Capacitor { .effective_capacitance >= 1uF }
     .output_cap: Capacitor { .effective_capacitance >= 4.7uF }
     .input ~ .regulator.vin
     .regulator.vout ~ .output
-    .input_cap.max_voltage  >= .input.voltage * 1.5
+    .input_cap.max_voltage >= .input.voltage * 1.5
     .output_cap.max_voltage >= .output.voltage * 1.5
     .input.pos ~> .input_cap ~> .input.neg
     .output.pos ~> .output_cap ~> .output.neg

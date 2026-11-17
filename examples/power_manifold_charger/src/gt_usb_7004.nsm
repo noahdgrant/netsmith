@@ -24,15 +24,15 @@ import std::parts::connector::{Connector, UsbCSourceReceptacle}
 part GtUsb7004 provides UsbCSourceReceptacle, Connector {
     pins "SMD" {
         //  pin       kind           name      pads
-        .vbus.pos power         "VBUS"    "A4" "A9" "B4" "B9"
-        .vbus.neg power         "GND"     "A1" "A12" "B1" "B12"
-        .cc1      passive       "CC1"     "A5"
-        .cc2      passive       "CC2"     "B5"
-        .dp       bidirectional "D+"      "A6" "B6"
-        .dm       bidirectional "D-"      "A7" "B7"
-        .sbu1     passive       "SBU1"    "A8"
-        .sbu2     passive       "SBU2"    "B8"
-        .shell    passive       "SHELL"   "S1"
+        .vbus.pos power         "VBUS"  "A4" "A9" "B4" "B9"
+        .vbus.neg power         "GND"   "A1" "A12" "B1" "B12"
+        .cc1      passive       "CC1"   "A5"
+        .cc2      passive       "CC2"   "B5"
+        .dp       bidirectional "D+"    "A6" "B6"
+        .dm       bidirectional "D-"    "A7" "B7"
+        .sbu1     passive       "SBU1"  "A8"
+        .sbu2     passive       "SBU2"  "B8"
+        .shell    passive       "SHELL" "S1"
     }
 
     catalog gt_usb_7004 by .mpn { .mpn, .package }

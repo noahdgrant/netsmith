@@ -33,7 +33,9 @@ const CHAPTER: &str = "docs/language/27-commands.md";
 enum Way {
     /// The commands, by their words, that do what the route does with the same code.
     Command(&'static [&'static str]),
-    /// The command that will, and the issue that builds it.
+    /// The command that will, and the issue that builds it. No route is pending now; the variant
+    /// stays for the next route that comes before its command.
+    #[allow(dead_code)]
     Pending(&'static str, u32),
     /// Why the route is the page's alone.
     PageOnly(&'static str),
@@ -76,6 +78,7 @@ const ROUTES: &[(&str, Way)] = &[
     ("POST /api/fs/create-dir", PageOnly(FILES)),
     ("POST /api/fs/rename", PageOnly(FILES)),
     ("POST /api/fs/delete", PageOnly(FILES)),
+    ("POST /api/format", Command(&["project fmt"])),
     (
         "POST /api/definition",
         PageOnly("where a name is defined, for a click in the page's source editor; an agent searches the sources"),

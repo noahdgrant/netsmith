@@ -138,10 +138,7 @@ module Pullup {
 }
 
 board Probe {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .hold: Pulldown
     .supply ~ .hold.input
 }
@@ -162,10 +159,7 @@ import std::parts::passive::Resistor
 import std::sources::Rail
 
 board probe_board {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .R1: Resistor { .resistance &= 10kohm +/- 5% }
     .supply.pos ~> .R1 ~> .supply.neg
 }
@@ -173,5 +167,5 @@ board probe_board {
 
 ```text
 main.nsm:4:7: lint.naming: `probe_board` is a board, whose name is `CamelCase` in the guide; call it `ProbeBoard`
-main.nsm:9:6: lint.naming: `.R1` is a member, whose name is `snake_case` in the guide; call it `.r1`
+main.nsm:6:6: lint.naming: `.R1` is a member, whose name is `snake_case` in the guide; call it `.r1`
 ```

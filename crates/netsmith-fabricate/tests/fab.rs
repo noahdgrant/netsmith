@@ -556,7 +556,7 @@ fn the_six_layer_example_agrees_with_kicads_own_plot() {
 #[test]
 fn a_four_layer_board_that_does_not_name_its_planes_is_refused_before_any_file_is_written() {
     let dir = out("four-layer-unnamed");
-    let source = FOUR_LAYER.replace("        .inner1.net &= \"GND\"\n", "");
+    let source = FOUR_LAYER.replace(".inner1.net &= \"GND\"; ", "");
     let err = fab(
         "four.nsm",
         &source,

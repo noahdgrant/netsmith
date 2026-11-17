@@ -34,11 +34,11 @@ import std::sources::Rail
 
 /// A fixed-output LDO. Illustrative; not a real part.
 part Ldo9 {
-    .vin:  Rail
+    .vin: Rail
     .vout: Rail
-    .vin.neg ~ .vout.neg          // `vout.neg` needs no row: it is joined to `vin.neg`
+    .vin.neg ~ .vout.neg  // `vout.neg` needs no row: it is joined to `vin.neg`
 
-    .dropout:     Voltage
+    .dropout: Voltage
     .max_current: Current
     .vin.voltage >= .vout.voltage + .dropout
     .vin.current == -.vout.current
@@ -46,19 +46,19 @@ part Ldo9 {
 
     pins "DFN-8-EP" {
         //  pin        kind        name     pads
-        .vout.pos      power       "OUT"    "1" "2"
-        .sense         input       "SENSE"  "3"
-        .vin.neg       power       "GND"    "4" "9"
-        .nc            no_connect  "NC"     "5"
-        .en            input       "EN"     "6"
-        .vin.pos       power       "IN"     "7" "8"
+        .vout.pos power      "OUT"   "1" "2"
+        .sense    input      "SENSE" "3"
+        .vin.neg  power      "GND"   "4" "9"
+        .nc       no_connect "NC"    "5"
+        .en       input      "EN"    "6"
+        .vin.pos  power      "IN"    "7" "8"
     }
     pins "SOT-23-5" {
-        .vin.pos       power       "IN"     "1"
-        .vin.neg       power       "GND"    "2"
-        .en            input       "EN"     "3"
-        .nc            no_connect  "NC"     "4"
-        .vout.pos      power       "OUT"    "5"
+        .vin.pos  power      "IN"  "1"
+        .vin.neg  power      "GND" "2"
+        .en       input      "EN"  "3"
+        .nc       no_connect "NC"  "4"
+        .vout.pos power      "OUT" "5"
     }
     tie .sense ~ .vout.pos
 
@@ -70,27 +70,19 @@ part Ldo9 {
 A board for it. `build` would stop at export, because `kicad.toml` has no row for `Ldo9`, so this block is checked and not built.
 
 ```nsm
-import src::ldo9::Ldo9
 import std::sources::Rail
 
+import src::ldo9::Ldo9
+
 board LdoBoard {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .u: Ldo9 {
-        .package &= "DFN-8-EP"
-        .vout.voltage &= 3.3V +/- 5%
-    }
-    .output: Rail {
-        .pos.net &= "3V3"
-        .current &= 0mA..50mA
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .u: Ldo9 { .package &= "DFN-8-EP"; .vout.voltage &= 3.3V +/- 5% }
+    .output: Rail { .pos.net &= "3V3"; .current &= 0mA..50mA }
     .input ~ .u.vin
     .u.vout ~ .output
 
-    .u.sense ~ .u.vout.pos     // the part ties these
-    .u.en ~ .u.vin.pos         // always on
+    .u.sense ~ .u.vout.pos  // the part ties these
+    .u.en ~ .u.vin.pos  // always on
 }
 ```
 
@@ -114,18 +106,14 @@ Messages.
 A pin that must be connected and is not:
 
 ```nsm fails
-import src::ldo9::Ldo9
 import std::sources::Rail
 
+import src::ldo9::Ldo9
+
 board EnLeftOpen {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
     .u: Ldo9 { .package &= "DFN-8-EP" }
-    .output: Rail {
-        .pos.net &= "3V3"
-    }
+    .output: Rail { .pos.net &= "3V3" }
     .input ~ .u.vin
     .u.vout ~ .output
     .u.sense ~ .u.vout.pos
@@ -134,9 +122,9 @@ board EnLeftOpen {
 
 ```text
 error: `u.en` is an input that must be connected (pad 6, `EN`), but nothing else is on its net
-  --> main.nsm:9:5
+  --> main.nsm:7:5
   |
-9 |     .u: Ldo9 { .package &= "DFN-8-EP" }
+7 |     .u: Ldo9 { .package &= "DFN-8-EP" }
   |     ^^^^^^^^
 ```
 
@@ -147,7 +135,7 @@ A pin that a module brings out to a port is connected only when the board connec
 ```nsm fails
 part Switch {
     pins {
-        .en input "EN" "1"
+        .en input         "EN" "1"
         .io bidirectional "IO" "2"
     }
 }
@@ -176,18 +164,14 @@ A board that does not use the port says so with `unused` when it is an interface
 A tie that the board does not make:
 
 ```nsm fails
-import src::ldo9::Ldo9
 import std::sources::Rail
 
+import src::ldo9::Ldo9
+
 board SenseOnTheInput {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
     .u: Ldo9 { .package &= "DFN-8-EP" }
-    .output: Rail {
-        .pos.net &= "3V3"
-    }
+    .output: Rail { .pos.net &= "3V3" }
     .input ~ .u.vin
     .u.vout ~ .output
     .u.sense ~ .u.vin.pos
@@ -206,18 +190,14 @@ error: `u.sense` must be on the same net as `u.vout.pos` (`Ldo9` ties them), but
 A `no_connect` pin that has something on its net:
 
 ```nsm fails
-import src::ldo9::Ldo9
 import std::sources::Rail
 
+import src::ldo9::Ldo9
+
 board NoConnectUsed {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
     .u: Ldo9 { .package &= "DFN-8-EP" }
-    .output: Rail {
-        .pos.net &= "3V3"
-    }
+    .output: Rail { .pos.net &= "3V3" }
     .input ~ .u.vin
     .u.vout ~ .output
     .u.sense ~ .u.vout.pos
@@ -228,27 +208,23 @@ board NoConnectUsed {
 
 ```text
 error: `u.nc` is a no_connect pin (pad 5, `NC`) but it is on net `3V3` with `output.pos`, `u.sense`, `u.vout.pos`
-  --> main.nsm:9:5
+  --> main.nsm:7:5
   |
-9 |     .u: Ldo9 { .package &= "DFN-8-EP" }
+7 |     .u: Ldo9 { .package &= "DFN-8-EP" }
   |     ^^^^^^^^
 ```
 
 A pin that the package does not have, connected:
 
 ```nsm fails
-import src::ldo9::Ldo9
 import std::sources::Rail
 
+import src::ldo9::Ldo9
+
 board SenseInTheSmallPackage {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
     .u: Ldo9 { .package &= "SOT-23-5" }
-    .output: Rail {
-        .pos.net &= "3V3"
-    }
+    .output: Rail { .pos.net &= "3V3" }
     .input ~ .u.vin
     .u.vout ~ .output
     .u.sense ~ .u.vout.pos
@@ -258,17 +234,18 @@ board SenseInTheSmallPackage {
 
 ```text
 error: `u.sense` (`SENSE`) does not exist in package `SOT-23-5` of `Ldo9`, but the board connects it; the packages that have it: `DFN-8-EP`
-  --> main.nsm:9:5
+  --> main.nsm:7:5
   |
-9 |     .u: Ldo9 { .package &= "SOT-23-5" }
+7 |     .u: Ldo9 { .package &= "SOT-23-5" }
   |     ^^^^^^^^
 ```
 
 Leave the sense pin out and the same board is fine in the SOT-23-5: the tie is skipped there. A package is text, because a package's name has dashes and parentheses (`"SOT-23-5"`, `"VSON-10(2x3)"`) and a size is a number (`"0603"`), but it is checked (ADR 0118). In a package the part has no table for, the message is at the statement, lists the tables the part has and names the nearest:
 
 ```nsm fails
-import src::ldo9::Ldo9
 import std::sources::Rail
+
+import src::ldo9::Ldo9
 
 board UnknownPackage {
     .input: Rail { .pos.net &= "VIN" }
@@ -279,9 +256,9 @@ board UnknownPackage {
 
 ```text
 error: `u` is a `Ldo9` in package `SOT23-5`, which has no pin table; its tables are for `DFN-8-EP`, `SOT-23-5`; did you mean "SOT-23-5"?
-  --> main.nsm:6:16
+  --> main.nsm:7:16
   |
-6 |     .u: Ldo9 { .package &= "SOT23-5" }
+7 |     .u: Ldo9 { .package &= "SOT23-5" }
   |                ^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -303,17 +280,17 @@ import std::sources::Rail
 /// A fixed-output LDO with an enable pin that survives 6 V, in two packages with the same
 /// pads. Illustrative; not a real part.
 part EnLdo {
-    .vin:  Rail
+    .vin: Rail
     .vout: Rail
     .vin.neg ~ .vout.neg
     .vin.current == -.vout.current
 
     pins "SOT-23-5" "SOT-353" {
-        .vin.pos   power  "IN"   "1"
-        .vin.neg   power  "GND"  "2"
-        .en        input  "EN"   "3" abs_max 6V
-        .nc        no_connect "NC" "4"
-        .vout.pos  power  "OUT"  "5"
+        .vin.pos  power      "IN"  "1"
+        .vin.neg  power      "GND" "2"
+        .en       input      "EN"  "3" abs_max 6V
+        .nc       no_connect "NC"  "4"
+        .vout.pos power      "OUT" "5"
     }
 
     .package: Package
@@ -323,19 +300,14 @@ part EnLdo {
 A board in either package checks:
 
 ```nsm
-import src::en_ldo::EnLdo
 import std::sources::Rail
 
+import src::en_ldo::EnLdo
+
 board EnBoard {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
     .u: EnLdo { .package &= "SOT-353" }
-    .output: Rail {
-        .pos.net &= "3V3"
-        .current &= 0mA..50mA
-    }
+    .output: Rail { .pos.net &= "3V3"; .current &= 0mA..50mA }
     .input ~ .u.vin
     .u.vout ~ .output
     .u.en ~ .u.vin.pos
@@ -350,8 +322,8 @@ import std::sources::Rail
 part Twice {
     .vin: Rail
     pins "SOT-23-5" "SOT-23-5" {
-        .vin.pos  power "IN"  "1"
-        .vin.neg  power "GND" "2"
+        .vin.pos power "IN"  "1"
+        .vin.neg power "GND" "2"
     }
     .package: Package
 }
@@ -370,18 +342,18 @@ A limit with no rail ground in its table to measure from:
 ```nsm fails
 part NoGround {
     pins {
-        .gnd  power "GND" "1"
-        .en   input "EN"  "2" abs_max 6V
+        .gnd power "GND" "1"
+        .en  input "EN"  "2" abs_max 6V
     }
 }
 ```
 
 ```text
 error: the limits of `.en` are measured from the part's ground, the `neg` of its rail, and this table has no rail's `neg` to be it; name the pin they are measured from, such as `abs_max 65V from .gnd`
-  --> main.nsm:4:31
+  --> main.nsm:4:30
   |
-4 |         .en   input "EN"  "2" abs_max 6V
-  |                               ^^^^^^^
+4 |         .en  input "EN"  "2" abs_max 6V
+  |                              ^^^^^^^
 ```
 
 The statement form of a limit is refused, with the row that says it:
@@ -396,9 +368,9 @@ part Statement {
     .in.reference ~ .vdd
     .in.line.abs_max &= 3.6V
     pins {
-        .vdd.pos  power "VDD" "1"
-        .vdd.neg  power "GND" "2"
-        .in.line  input "IN"  "3"
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+        .in.line input "IN"  "3"
     }
 }
 ```
@@ -440,15 +412,13 @@ part Mcu32 {
 ```
 
 ```nsm
-import src::mcu::Mcu32
 import std::parts::passive::Resistor
 import std::sources::Rail
 
+import src::mcu::Mcu32
+
 board Uart {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Mcu32 { .package &= "QFN-32" }
     .load: Resistor
     .supply ~ .u.vdd
@@ -461,16 +431,13 @@ board Uart {
 A function is written as the pin table writes it after `fn`, a bare name with no quotes (ADR 0118): `.u.pa2.function &= UART1_TX`. A function is a name of the part's pin table, not a variant of an enum, so it needs no import. A module passes a choice on with an equation of two functions (below), never with text. A quoted function is refused, and the message says what to write:
 
 ```nsm fails
-import src::mcu::Mcu32
 import std::parts::passive::Resistor
 import std::sources::Rail
 
+import src::mcu::Mcu32
+
 board QuotedFunction {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-        .neg.net &= "GND"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3"; .neg.net &= "GND" }
     .u: Mcu32 { .package &= "QFN-32" }
     .load: Resistor
     .supply ~ .u.vdd
@@ -482,22 +449,20 @@ board QuotedFunction {
 
 ```text
 error: the function of `u.pa2` is a name from the pin table of its part, not text: write `UART1_TX`, without quotes
-   --> main.nsm:16:24
+   --> main.nsm:13:24
    |
-16 |     .u.pa2.function &= "UART1_TX"
+13 |     .u.pa2.function &= "UART1_TX"
    |                        ^^^^^^^^^^
 ```
 
 ```nsm fails
-import src::mcu::Mcu32
 import std::parts::passive::Resistor
 import std::sources::Rail
 
+import src::mcu::Mcu32
+
 board NoFunction {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Mcu32 { .package &= "QFN-32" }
     .load: Resistor
     .supply ~ .u.vdd
@@ -508,24 +473,22 @@ board NoFunction {
 
 ```text
 error: `u.pa2` has several functions (GPIO, UART1_TX, SPI1_SCK) and is connected: choose one with `.u.pa2.function &= GPIO`
-   --> main.nsm:10:5
-   |
-10 |     .u: Mcu32 { .package &= "QFN-32" }
-   |     ^^^^^^^^^
+  --> main.nsm:8:5
+  |
+8 |     .u: Mcu32 { .package &= "QFN-32" }
+  |     ^^^^^^^^^
 ```
 
 A function that the pin does not offer, a misspelt one (the nearest function of the part is named), and one function on two pins:
 
 ```nsm fails
-import src::mcu::Mcu32
 import std::parts::passive::Resistor
 import std::sources::Rail
 
+import src::mcu::Mcu32
+
 board WrongFunction {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Mcu32 { .package &= "QFN-32" }
     .load: Resistor
     .supply ~ .u.vdd
@@ -537,23 +500,20 @@ board WrongFunction {
 
 ```text
 error: `u.pa2` cannot be `I2C1_SDA`; its functions are GPIO, UART1_TX, SPI1_SCK
-   --> main.nsm:15:5
+   --> main.nsm:13:5
    |
-15 |     .u.pa2.function &= I2C1_SDA
+13 |     .u.pa2.function &= I2C1_SDA
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ```nsm fails
-import src::mcu::Mcu32
 import std::parts::passive::Resistor
 import std::sources::Rail
 
+import src::mcu::Mcu32
+
 board MisspeltFunction {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-        .neg.net &= "GND"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3"; .neg.net &= "GND" }
     .u: Mcu32 { .package &= "QFN-32" }
     .load: Resistor
     .supply ~ .u.vdd
@@ -565,22 +525,20 @@ board MisspeltFunction {
 
 ```text
 error: `u.pa2` cannot be `UART1TX`; its functions are GPIO, UART1_TX, SPI1_SCK; did you mean `UART1_TX`?
-   --> main.nsm:16:5
+   --> main.nsm:13:5
    |
-16 |     .u.pa2.function &= UART1TX
+13 |     .u.pa2.function &= UART1TX
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ```nsm fails
-import src::mcu::Mcu32
 import std::parts::passive::Resistor
 import std::sources::Rail
 
+import src::mcu::Mcu32
+
 board OneFunctionTwice {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Mcu32 { .package &= "QFN-32" }
     .load: Resistor
     .load2: Resistor
@@ -595,9 +553,9 @@ board OneFunctionTwice {
 
 ```text
 error: function `UART1_TX` is chosen on both `u.pa2` and `u.pb6`
-   --> main.nsm:18:5
+   --> main.nsm:16:5
    |
-18 |     .u.pb6.function &= UART1_TX
+16 |     .u.pb6.function &= UART1_TX
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -615,8 +573,9 @@ part Mcu8 {
 ```
 
 ```nsm
-import src::mcu8::Mcu8
 import std::parts::passive::Resistor
+
+import src::mcu8::Mcu8
 
 board GpioOnTwoPins {
     .u: Mcu8
@@ -662,8 +621,9 @@ part Zmcu6 {
 ```
 
 ```nsm
-import src::zmcu6::Zmcu6
 import std::parts::passive::Resistor
+
+import src::zmcu6::Zmcu6
 
 board Thermometer {
     .u: Zmcu6
@@ -710,8 +670,9 @@ error: `.p02` has two channels of `ANALOG`, `AIN0` and `AIN8`; a pin is one chan
 A module hides the parts inside it, so a board cannot write `.hub.mcu.pa2.function`. A module that wants its board to choose a function on a pin it exports passes the choice on with the equation `.mcu.pa2.function == .scl.function`, inside the module: the part's pin takes the function that the board states on the module's pin, and every check of the part applies to it as if the board had written it.
 
 ```nsm module=src::hub
-import src::mcu::Mcu32
 import std::sources::Rail
+
+import src::mcu::Mcu32
 
 /// Invented: a microcontroller with one pin exported, and the choice of its function passed on.
 module Hub {
@@ -736,15 +697,13 @@ module HubWithoutEquation {
 ```
 
 ```nsm
-import src::hub::Hub
 import std::parts::passive::Resistor
 import std::sources::Rail
 
+import src::hub::Hub
+
 board Forwarded {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .hub: Hub
     .load: Resistor
     .supply ~ .hub.supply
@@ -756,15 +715,13 @@ board Forwarded {
 `.function &=` on a pin of a module that no such equation reads has no effect, and it is an error, with the equation to write in the module:
 
 ```nsm fails
-import src::hub::HubWithoutEquation
 import std::parts::passive::Resistor
 import std::sources::Rail
 
+import src::hub::HubWithoutEquation
+
 board Ignored {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .hub: HubWithoutEquation
     .load: Resistor
     .supply ~ .hub.supply
@@ -775,14 +732,14 @@ board Ignored {
 
 ```text
 error: `hub.mcu.pa2` has several functions (GPIO, UART1_TX, SPI1_SCK) and is connected: choose one with `.mcu.pa2.function &= GPIO`
-   --> src/hub.nsm:19:5
+   --> src/hub.nsm:20:5
    |
-19 |     .mcu: Mcu32 { .package &= "QFN-32" }
+20 |     .mcu: Mcu32 { .package &= "QFN-32" }
    |     ^^^^^^^^^^^
 error: `hub.scl.function` is stated, but `hub.scl` is a pin of module `HubWithoutEquation` and nothing passes it to a pin of a part, so it has no effect; inside `HubWithoutEquation`, write `.mcu.pa2.function == .scl.function`
-   --> main.nsm:14:5
+   --> main.nsm:12:5
    |
-14 |     .hub.scl.function &= UART1_TX
+12 |     .hub.scl.function &= UART1_TX
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -899,8 +856,9 @@ part Zmcu {
 A console on one unit and a sensor on the other, each with a function chosen on each pin as before:
 
 ```nsm
-import src::zmcu::Zmcu
 import std::parts::connector::Header1x4
+
+import src::zmcu::Zmcu
 
 board Sensors {
     .u: Zmcu
@@ -919,8 +877,9 @@ board Sensors {
 A third interface on a unit that is in use is refused. The message names the part, the shared resource, both uses with their functions and lines, and whether another unit is free; the error points at the second use, in path order. Here the sensor went on the unit the console uses:
 
 ```nsm fails
-import src::zmcu::Zmcu
 import std::parts::connector::Header1x4
+
+import src::zmcu::Zmcu
 
 board Crowded {
     .u: Zmcu
@@ -937,10 +896,10 @@ board Crowded {
 ```
 
 ```text
-error: `u` (`Zmcu`) uses UARTE0 and TWIM0, which share `SERIAL0` and run one at a time: UARTE0 on `u.p00` as UARTE0_TX (main.nsm:11) and on `u.p01` as UARTE0_RX (main.nsm:12), TWIM0 on `u.p02` as TWIM0_SCL (main.nsm:13) and on `u.p03` as TWIM0_SDA (main.nsm:14); the other shared resources of `Zmcu`: `SERIAL1` has nothing in use
-   --> main.nsm:13:5
+error: `u` (`Zmcu`) uses UARTE0 and TWIM0, which share `SERIAL0` and run one at a time: UARTE0 on `u.p00` as UARTE0_TX (main.nsm:12) and on `u.p01` as UARTE0_RX (main.nsm:13), TWIM0 on `u.p02` as TWIM0_SCL (main.nsm:14) and on `u.p03` as TWIM0_SDA (main.nsm:15); the other shared resources of `Zmcu`: `SERIAL1` has nothing in use
+   --> main.nsm:14:5
    |
-13 |     .u.p02.function &= TWIM0_SCL
+14 |     .u.p02.function &= TWIM0_SCL
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1039,8 +998,9 @@ part Zmcu2 {
 One row for each pin, and no row grows with the peripherals. The application core's console on `.p02`, the network core's on `.p03` and a fast SPI on its dedicated pins:
 
 ```nsm
-import src::zmcu2::Zmcu2
 import std::parts::connector::Header1x8
+
+import src::zmcu2::Zmcu2
 
 board Cores {
     .u: Zmcu2
@@ -1061,8 +1021,9 @@ board Cores {
 A function on a pin that does not offer it says where it is offered, and what the pin offers. A peripheral on a class has too many functions to list on every pin, so the message names the peripherals. A dedicated function on the wrong pin, and a network-core line on a pin that the network core does not own:
 
 ```nsm fails
-import src::zmcu2::Zmcu2
 import std::parts::connector::Header1x8
+
+import src::zmcu2::Zmcu2
 
 board WrongPin {
     .u: Zmcu2
@@ -1074,15 +1035,16 @@ board WrongPin {
 
 ```text
 error: `u.p01` cannot be `HSSPI_SCK`; that function is offered only on `u.p04`; `u.p01` offers APP_GPIO, NET_GPIO and the lines of the peripherals on those pins: UARTE0, TWIM0, NETUART
-  --> main.nsm:8:5
+  --> main.nsm:9:5
   |
-8 |     .u.p01.function &= HSSPI_SCK
+9 |     .u.p01.function &= HSSPI_SCK
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ```nsm fails
-import src::zmcu2::Zmcu2
 import std::parts::connector::Header1x8
+
+import src::zmcu2::Zmcu2
 
 board WrongCore {
     .u: Zmcu2
@@ -1094,9 +1056,9 @@ board WrongCore {
 
 ```text
 error: `u.p02` cannot be `NETUART_TX`; that function is offered on every pin that lists `NET_GPIO`; `u.p02` offers APP_GPIO and the lines of the peripherals on those pins: UARTE0, TWIM0
-  --> main.nsm:8:5
+  --> main.nsm:9:5
   |
-8 |     .u.p02.function &= NETUART_TX
+9 |     .u.p02.function &= NETUART_TX
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1162,8 +1124,9 @@ part Zmcu4 {
 ```
 
 ```nsm
-import src::zmcu4::Zmcu4
 import std::parts::passive::Resistor
+
+import src::zmcu4::Zmcu4
 
 board Sensors {
     .u: Zmcu4
@@ -1214,8 +1177,9 @@ The file has one table for each board and one entry for each request, keyed by t
 A request that cannot be served says which of its needs fails. A capability that nothing offers:
 
 ```nsm fails
-import src::zmcu4::Zmcu4
 import std::parts::passive::Resistor
+
+import src::zmcu4::Zmcu4
 
 board NoPwm {
     .u: Zmcu4
@@ -1227,17 +1191,18 @@ board NoPwm {
 
 ```text
 error: `dim` asks for PWM on `u` (`Zmcu4`), and no pin of `Zmcu4` offers it; the functions its rows and peripherals offer are GPIO, ANALOG, UARTE0_TX, UARTE0_RX, UARTE1_TX and UARTE1_RX
-  --> main.nsm:7:14
+  --> main.nsm:8:14
   |
-7 |     .dim: .u.PWM
+8 |     .dim: .u.PWM
   |              ^^^
 ```
 
 Every pin that offers it taken, here by the source and by the request served before it (`vbat` comes before `vin`):
 
 ```nsm fails
-import src::zmcu4::Zmcu4
 import std::parts::passive::Resistor
+
+import src::zmcu4::Zmcu4
 
 board TooManyAnalog {
     .u: Zmcu4
@@ -1254,18 +1219,19 @@ board TooManyAnalog {
 ```
 
 ```text
-error: `vin` asks for ANALOG on `u`, and every pin that offers it is taken: `u.p02` by the source (connected to `a.a`, function GPIO chosen at main.nsm:12), `u.p03` by `vbat` (new)
-  --> main.nsm:9:5
-  |
-9 |     .vin: .u.ANALOG
-  |     ^^^^^^^^^^^^^^^
+error: `vin` asks for ANALOG on `u`, and every pin that offers it is taken: `u.p02` by the source (connected to `a.a`, function GPIO chosen at main.nsm:13), `u.p03` by `vbat` (new)
+   --> main.nsm:10:5
+   |
+10 |     .vin: .u.ANALOG
+   |     ^^^^^^^^^^^^^^^
 ```
 
 A request for a function of a peripheral that a `shared` resource already gives to another unit:
 
 ```nsm fails
-import src::zmcu4::Zmcu4
 import std::parts::passive::Resistor
+
+import src::zmcu4::Zmcu4
 
 board TwoUarts {
     .u: Zmcu4
@@ -1280,10 +1246,10 @@ board TwoUarts {
 
 ```text
 error: `modem` asks for UARTE1_TX on `u`, and no free pin can serve it: `UARTS` allows 1 of UARTE0 and UARTE1 at a time: UARTE0 is used on `u.p00` (`console`) as UARTE0_TX; UARTE1 is used on `u.p01` (this request) as UARTE1_TX
-  --> main.nsm:9:5
-  |
-9 |     .modem: .u.UARTE1_TX
-  |     ^^^^^^^^^^^^^^^^^^^^
+   --> main.nsm:10:5
+   |
+10 |     .modem: .u.UARTE1_TX
+   |     ^^^^^^^^^^^^^^^^^^^^
 ```
 
 The rules about a pin run on the result as they do on a pin the source names: a function that disagrees with its net is the usual "two outputs" error, once, at the request. A class (`GPIO` above, a function that rows list and a peripheral is `on`) can be chosen on any number of pins of a part.
@@ -1291,8 +1257,9 @@ The rules about a pin run on the result as they do on a pin the source names: a 
 Several requests may ask for a function that rows list on more than one pin (`ANALOG` above), and each gets a pin of its own among the pins that offer it, in the same order as for any request:
 
 ```nsm
-import src::zmcu4::Zmcu4
 import std::parts::passive::Resistor
+
+import src::zmcu4::Zmcu4
 
 board TwoSensors {
     .u: Zmcu4
@@ -1411,9 +1378,9 @@ part Zmcubus {
     .vdd: Rail
 
     peripheral SPIM0 on APP_GPIO as Spi SpiRole::Master {
-        SPIM0_SCK:output  as sclk
+        SPIM0_SCK:output as sclk
         SPIM0_MOSI:output as mosi
-        SPIM0_MISO:input  as miso
+        SPIM0_MISO:input as miso
     }
 
     pins {
@@ -1430,15 +1397,13 @@ part Zmcubus {
 The board joins the peripheral to the other end as a bus, with `~` between the peripheral and an interface of its bus (ADR 0129). The peripheral is named by its part and its name, `.u.SPIM0`, as a pin request names a function. Each line of the peripheral is the pin on which the board chose its function, so the functions say which pins, and the join says which bus: `.u.SPIM0 ~ .flash.spi` joins `u.p00` to `flash.spi.sclk`, `u.p01` to `mosi` and `u.p02` to `miso`, the nets three `~` lines would make, with their names. A `Uart`'s join crosses `tx` and `rx`, as `~` between two `Uart`s does. The master joined to the flash of the previous section builds, with the select on a plain pin of the processor:
 
 ```nsm evaluate
-import src::zmcubus::Zmcubus
-import src::zparts::Zflash
 import std::sources::Rail
 
+import src::zmcubus::Zmcubus
+import src::zparts::Zflash
+
 board AnyPin {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Zmcubus
     .flash: Zflash
     .supply ~ .u.vdd
@@ -1456,15 +1421,13 @@ board AnyPin {
 The pins are joined after every statement is read, so the functions may come after the join. The join chooses no function: a function offered on several pins would have no answer, and the board, or the pin file, says which pin. A line of the peripheral whose function no pin has chosen is an error at the join, with the pins that offer it, unless the role's `lines` makes the line `optional`: a master's `cs` then joins nothing, and a select that reaches the slave through a link is the board's to join. A line that only the interface has (the `rts` and `cts` of a `Uart`, against a peripheral of `tx` and `rx`) joins nothing. The other side is an interface of the peripheral's bus or another such peripheral; a pin, a part, an interface of another kind and a peripheral that names no bus are refused. A peripheral has no values, so the join equates none: the clock is stated on the interface at the other end. A peripheral is no member of its part, so a chain or `~>` with one, a rename map and `except` are refused.
 
 ```nsm fails
-import src::zmcubus::Zmcubus
-import src::zparts::Zflash
 import std::sources::Rail
 
+import src::zmcubus::Zmcubus
+import src::zparts::Zflash
+
 board NoMosi {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Zmcubus
     .flash: Zflash
     .supply ~ .u.vdd
@@ -1480,29 +1443,27 @@ board NoMosi {
 
 ```text
 error: `.u.SPIM0 ~ .flash.spi` joins the line `mosi` of `SPIM0`, but no pin of `u` is `SPIM0_MOSI`: choose it on a pin that offers it and has no function chosen, `u.p01` (`.u.p01.function &= SPIM0_MOSI`)
-   --> main.nsm:17:5
+   --> main.nsm:15:5
    |
-17 |     .u.SPIM0 ~ .flash.spi
+15 |     .u.SPIM0 ~ .flash.spi
    |     ^^^^^^^^^^^^^^^^^^^^^
 error: `flash.spi.mosi` is an input that must be connected (pad 5, `DI`), but nothing else is on its net
-   --> main.nsm:11:5
-   |
-11 |     .flash: Zflash
-   |     ^^^^^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .flash: Zflash
+  |     ^^^^^^^^^^^^^^
 ```
 
 A board that joins the pins by hand is judged the same way. With the pins of `mosi` and `miso` joined to the wrong lines of the flash, the rules find it, naming the pins:
 
 ```nsm fails
-import src::zmcubus::Zmcubus
-import src::zparts::Zflash
 import std::sources::Rail
 
+import src::zmcubus::Zmcubus
+import src::zparts::Zflash
+
 board Crossed {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Zmcubus
     .flash: Zflash
     .supply ~ .u.vdd
@@ -1521,15 +1482,15 @@ board Crossed {
 
 ```text
 error: net `net-flash.spi.miso` joins two different lines of a `Spi`: `miso` (`flash.spi.miso`) and `mosi` (`u.p01`); a `Spi` joins `miso` to `miso` and `mosi` to `mosi`, and `u.p01` is on the net of `miso`
-   --> main.nsm:11:5
-   |
-11 |     .flash: Zflash
-   |     ^^^^^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .flash: Zflash
+  |     ^^^^^^^^^^^^^^
 error: net `net-flash.spi.mosi` joins two different lines of a `Spi`: `miso` (`u.p02`) and `mosi` (`flash.spi.mosi`); a `Spi` joins `miso` to `miso` and `mosi` to `mosi`, and `flash.spi.mosi` is on the net of `miso`
-   --> main.nsm:11:5
-   |
-11 |     .flash: Zflash
-   |     ^^^^^^^^^^^^^^
+  --> main.nsm:9:5
+  |
+9 |     .flash: Zflash
+  |     ^^^^^^^^^^^^^^
 ```
 
 A function of a peripheral that disagrees with its line is refused in the part:
@@ -1561,15 +1522,13 @@ error: `SPIM0_MISO` is an output in `peripheral SPIM0`, but `SpiRole::Master` ma
 A board that does not care which peripheral of a processor carries a bus asks for the end of the bus, and the tool picks the peripheral and its pins (#788). The type of the request is the part and the name of the bus: `.flash_bus: .u.Spi` asks `u` for one of its peripherals that is an end of an `Spi` (`peripheral SPIM0 on APP_GPIO as Spi SpiRole::Master`, above) and a pin for each line of it. The request is no pin. It stands for the peripheral it got, and joins as a peripheral does, with `~` to an interface of its bus, line by line with the bus's crossings:
 
 ```nsm evaluate
-import src::zmcubus::Zmcubus
-import src::zparts::Zflash
 import std::sources::Rail
 
+import src::zmcubus::Zmcubus
+import src::zparts::Zflash
+
 board AnySpi {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Zmcubus
     .flash: Zflash
     .supply ~ .u.vdd
@@ -1604,14 +1563,12 @@ The entry holds while its peripheral is an end of the bus that nothing else uses
 A part with no peripheral that is an end of the bus cannot serve the request:
 
 ```nsm fails
-import src::zmcubus::Zmcubus
 import std::sources::Rail
 
+import src::zmcubus::Zmcubus
+
 board NoUart {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Zmcubus
     .supply ~ .u.vdd
     .dbg: .u.Uart
@@ -1620,10 +1577,10 @@ board NoUart {
 
 ```text
 error: `dbg` asks `u` (`Zmcubus`) for the end of a `Uart`, but no peripheral of `Zmcubus` is one; a part says that a peripheral is an end of a bus with `peripheral NAME as Uart { ... }` (ADR 0064)
-   --> main.nsm:11:14
-   |
-11 |     .dbg: .u.Uart
-   |              ^^^^
+  --> main.nsm:9:14
+  |
+9 |     .dbg: .u.Uart
+  |              ^^^^
 ```
 
 ### Counts, functions and pins that share
@@ -1660,8 +1617,9 @@ part Zmcu3 {
 Two UARTs and one of the reference pins is fine:
 
 ```nsm
-import src::zmcu3::Zmcu3
 import std::parts::connector::Header1x4
+
+import src::zmcu3::Zmcu3
 
 board TwoUarts {
     .u: Zmcu3
@@ -1678,8 +1636,9 @@ board TwoUarts {
 A third UART is more than the limit. The message counts the members in use, names each with its uses, and lists what the resource has; it points at the first use of the member that goes over:
 
 ```nsm fails
-import src::zmcu3::Zmcu3
 import std::parts::connector::Header1x4
+
+import src::zmcu3::Zmcu3
 
 board ThreeUarts {
     .u: Zmcu3
@@ -1694,18 +1653,19 @@ board ThreeUarts {
 ```
 
 ```text
-error: `u` (`Zmcu3`) uses 3 of the peripherals of `UARTS`, which allows 2 at a time: UARTE0 on `u.p00` as UARTE0_TX (main.nsm:10), UARTE1 on `u.p01` as UARTE1_TX (main.nsm:11), UARTE2 on `u.p02` as UARTE2_TX (main.nsm:12); `UARTS` lists UARTE0, UARTE1 and UARTE2
-   --> main.nsm:12:5
+error: `u` (`Zmcu3`) uses 3 of the peripherals of `UARTS`, which allows 2 at a time: UARTE0 on `u.p00` as UARTE0_TX (main.nsm:11), UARTE1 on `u.p01` as UARTE1_TX (main.nsm:12), UARTE2 on `u.p02` as UARTE2_TX (main.nsm:13); `UARTS` lists UARTE0, UARTE1 and UARTE2
+   --> main.nsm:13:5
    |
-12 |     .u.p02.function &= UARTE2_TX
+13 |     .u.p02.function &= UARTE2_TX
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 Two pins that cannot both be used, each named with how it is in use:
 
 ```nsm fails
-import src::zmcu3::Zmcu3
 import std::parts::connector::Header1x4
+
+import src::zmcu3::Zmcu3
 
 board TwoReferences {
     .u: Zmcu3
@@ -1718,10 +1678,10 @@ board TwoReferences {
 ```
 
 ```text
-error: `u.p10` and `u.p11` of `Zmcu3` are both in use, but they share `REFERENCE`, which allows 1 at a time: `u.p10` as APP_GPIO (main.nsm:9) and `u.p11` as UARTE0_TX (main.nsm:10)
-   --> main.nsm:10:5
+error: `u.p10` and `u.p11` of `Zmcu3` are both in use, but they share `REFERENCE`, which allows 1 at a time: `u.p10` as APP_GPIO (main.nsm:10) and `u.p11` as UARTE0_TX (main.nsm:11)
+   --> main.nsm:11:5
    |
-10 |     .u.p11.function &= UARTE0_TX
+11 |     .u.p11.function &= UARTE0_TX
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1753,7 +1713,7 @@ Two outputs on one net would fight, so the checker refuses them. An output and a
 ```nsm fails
 part Driver {
     pins {
-        .out output "OUT" "1"
+        .out output  "OUT" "1"
         .gnd passive "GND" "2"
     }
 }
@@ -1851,16 +1811,16 @@ Two `tri_state` outputs and a receiver on one net build. A part whose datasheet 
 part Zrom {
     pins {
         // Page 8: DO is high impedance while /CS is high.
-        .do  tri_state "DO"  "1"
-        .cs  input     "/CS" "2" optional
+        .do tri_state "DO"  "1"
+        .cs input     "/CS" "2" optional
     }
 }
 
 part Zgyro {
     pins {
         // The datasheet draws SDO as an output and says nothing about CS.
-        .do  output "SDO" "1"
-        .cs  input  "CS"  "2" optional
+        .do output "SDO" "1"
+        .cs input  "CS"  "2" optional
     }
 }
 

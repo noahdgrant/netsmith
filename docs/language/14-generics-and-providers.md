@@ -46,8 +46,8 @@ import src::rf::CoaxReceptacle
 part AcmeMicroCoax provides CoaxReceptacle {
     pins {
         //  pin     kind     name      pads
-        .signal     passive  "SIGNAL"  "1"
-        .shield     passive  "GND"     "2" "3"
+        .signal passive "SIGNAL" "1"
+        .shield passive "GND"    "2" "3"
     }
     .max_frequency &= 6GHz
 
@@ -69,8 +69,8 @@ import src::rf::CoaxReceptacle
 /// ACME-BC-1, a through-hole receptacle, DC to 1 GHz. Invented.
 part AcmeBasicCoax provides CoaxReceptacle {
     pins {
-        .signal     passive  "SIGNAL"  "1"
-        .shield     passive  "GND"     "2" "3"
+        .signal passive "SIGNAL" "1"
+        .shield passive "GND"    "2" "3"
     }
     .max_frequency &= 1GHz
 
@@ -92,13 +92,13 @@ import src::rf::CoaxReceptacle
 /// A receptacle whose pin and top frequency have other names. Invented.
 part OtherCoax provides CoaxReceptacle {
     pins {
-        .rf      passive  "RF"   "1"
-        .shield  passive  "GND"  "2"
+        .rf     passive "RF"  "1"
+        .shield passive "GND" "2"
     }
-    .signal ~ .rf               // the generic's name for the pin this table calls .rf
+    .signal ~ .rf  // the generic's name for the pin this table calls .rf
     .fmax: Frequency
     .fmax &= 3GHz
-    .max_frequency == .fmax     // the generic's name for the value this part calls .fmax
+    .max_frequency == .fmax  // the generic's name for the value this part calls .fmax
 
     .package: Package
     catalog other_coax { .mpn, .package }
@@ -119,10 +119,11 @@ Rules.
 A board or module declares a member with the generic's type and puts requirements on it. The import of a provider's file is what makes the provider a candidate: it is not named in the board.
 
 ```nsm evaluate picks catalogs=coax
-import src::rf::CoaxReceptacle
-import src::parts::acme_basic_coax::AcmeBasicCoax   // not used by name: brings its file's providers in scope
-import src::parts::acme_micro_coax::AcmeMicroCoax   // the same
 import std::parts::mechanical::TestPoint
+
+import src::parts::acme_basic_coax::AcmeBasicCoax  // not used by name: brings its file's providers in scope
+import src::parts::acme_micro_coax::AcmeMicroCoax  // the same
+import src::rf::CoaxReceptacle
 
 module AntennaFeed {
     .signal: Pin
@@ -136,7 +137,7 @@ module AntennaFeed {
 
 board Radio {
     .feed: AntennaFeed
-    .tp_signal: TestPoint   // the module's ports must be connected: a port left open is no connection
+    .tp_signal: TestPoint  // the module's ports must be connected: a port left open is no connection
     .tp_gnd: TestPoint
     .feed.signal ~ .tp_signal.p1
     .feed.gnd ~ .tp_gnd.p1
@@ -168,9 +169,9 @@ The last line changes only the type. Every other line that mentions `.rf` still 
 A part number picks the provider whose catalog has the row, and passes over the ones that do not:
 
 ```nsm evaluate picks catalogs=coax
-import src::rf::CoaxReceptacle
 import src::parts::acme_basic_coax::AcmeBasicCoax
 import src::parts::acme_micro_coax::AcmeMicroCoax
+import src::rf::CoaxReceptacle
 
 board Radio {
     .signal: Pin
@@ -188,9 +189,9 @@ rf is a CoaxReceptacle: picked AcmeMicroCoax; passed over AcmeBasicCoax (`rf` is
 When no provider works, one error at the line of the use says so in a headline (the generic, the use and its line) and lists the providers in scope, in the order they were tried, each with the first requirement it failed and the numbers. A provider whose own pick from its catalog failed has the closest candidate and the requirement as a sub-list under it. The closest provider (the trial with the fewest failures; ties in candidate order) is marked. `--format json` carries the same text in the finding's `message`, with the lines separated by newlines:
 
 ```nsm fails catalogs=coax
-import src::rf::CoaxReceptacle
 import src::parts::acme_basic_coax::AcmeBasicCoax
 import src::parts::acme_micro_coax::AcmeMicroCoax
+import src::rf::CoaxReceptacle
 
 board Radio {
     .signal: Pin
@@ -240,8 +241,8 @@ error: `rf` is a `CoaxReceptacle`, and no part or module in the files this file 
 A use reaches only what the generic declares:
 
 ```nsm fails catalogs=coax
-import src::rf::CoaxReceptacle
 import src::parts::acme_micro_coax::AcmeMicroCoax
+import src::rf::CoaxReceptacle
 
 board Radio {
     .signal: Pin
@@ -350,24 +351,24 @@ generic Limited {
     .designator &= "U"
     pins {
         .gnd passive required
-        .in input abs_max 6V from .gnd
+        .in  input   abs_max 6V from .gnd
     }
 }
 
 part Loose provides Limited {
     pins {
         .gnd passive "GND" "1"
-        .in input "IN" "2" abs_max 7V from .gnd
+        .in  input   "IN"  "2" abs_max 7V from .gnd
     }
 }
 ```
 
 ```text
 error: `.in` has `abs_max 7V` here, but `Limited`, which `Loose` provides, limits it with `abs_max 6V`: a provider's limit is at least as strict as its generic's, so `abs_max` is at most 6V
-   --> main.nsm:12:28
+   --> main.nsm:12:32
    |
-12 |         .in input "IN" "2" abs_max 7V from .gnd
-   |                            ^^^^^^^
+12 |         .in  input   "IN"  "2" abs_max 7V from .gnd
+   |                                ^^^^^^^
 ```
 
 ### A module that provides a generic
@@ -410,14 +411,8 @@ import std::parts::regulator::BuckConverter
 import std::sources::Rail
 
 board PowerBoard {
-    .input: Rail {
-        .voltage &= 12V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "3V3"
-        .current &= 0mA..500mA
-    }
+    .input: Rail { .voltage &= 12V +/- 5%; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "3V3"; .current &= 0mA..500mA }
 
     .reg: BuckConverter { .vout.voltage &= 3.3V +/- 5% }
     .input ~ .reg.vin
@@ -454,11 +449,11 @@ part Zbk9 provides BuckIc {
     .vin.current == -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)
 
     pins {
-        .vin.pos   power   "VIN"  "1" "2"
-        .vin.neg   power   "GND"  "3" "9"
-        .sw.pos    power   "SW"   "4" "5"
-        .fb        input   "FB"   "6"
-        .en        input   "EN"   "7"
+        .vin.pos power "VIN" "1" "2"
+        .vin.neg power "GND" "3" "9"
+        .sw.pos  power "SW"  "4" "5"
+        .fb      input "FB"  "6"
+        .en      input "EN"  "7"
     }
 
     support {
@@ -471,18 +466,13 @@ From 36 V at 1 A no standard IC serves: the `Lmr16006y` takes the input but give
 
 ```nsm evaluate picks
 import std::parts::regulator::BuckConverter
-import src::zbk9::Zbk9   // not used by name: brings the IC in scope
 import std::sources::Rail
 
+import src::zbk9::Zbk9  // not used by name: brings the IC in scope
+
 board PowerBoard {
-    .input: Rail {
-        .voltage &= 36V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .output: Rail {
-        .pos.net &= "3V3"
-        .current &= 0mA..1A
-    }
+    .input: Rail { .voltage &= 36V +/- 5%; .pos.net &= "VIN" }
+    .output: Rail { .pos.net &= "3V3"; .current &= 0mA..1A }
 
     .reg: BuckConverter { .vout.voltage &= 3.3V +/- 5% }
     .input ~ .reg.vin
@@ -531,22 +521,15 @@ error: `en` is not declared by `BuckIc`, the bound of the type parameter `Ic`; a
 The board that names the IC knows its pins. Here a test point probes the enable pin of `Zbk2`, which `Buck` does not wire and `BuckIc` does not declare:
 
 ```nsm
-import src::zbk2::Zbk2
 import std::parts::mechanical::TestPoint
 import std::parts::regulator::Buck
 import std::sources::Rail
 
+import src::zbk2::Zbk2
+
 board Probed {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-        .neg.net &= "GND"
-    }
-    .output: Rail {
-        .pos.net &= "1V8"
-        .neg.net &= "GND"
-        .current &= 0mA..1A
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN"; .neg.net &= "GND" }
+    .output: Rail { .pos.net &= "1V8"; .neg.net &= "GND"; .current &= 0mA..1A }
     .reg: Buck<Zbk2> { .vout.voltage &= 1.8V +/- 3% }
     .tp_en: TestPoint
 
@@ -560,6 +543,7 @@ A board that lets the solver pick the IC cannot join its pins, since which pins 
 
 ```nsm fails
 import std::parts::regulator::BuckConverter
+
 import src::zbk2::Zbk2
 
 board Unknown {
@@ -570,17 +554,17 @@ board Unknown {
 
 ```text
 error: `ic` is not declared by `BuckConverter`: this use picks its IC through the generic, so the IC and its pins are not known here, and a join reaches the pins of a module's IC only where the IC is named, as in `Buck<Lmr16006y>`; name it as the type, or join what `BuckConverter` declares
-  --> main.nsm:6:10
+  --> main.nsm:7:10
   |
-6 |     .reg.ic.en ~ .reg.vin.pos
+7 |     .reg.ic.en ~ .reg.vin.pos
   |          ^^
 ```
 
 The argument provides the bound:
 
 ```nsm fails
-import std::parts::regulator::Buck
 import std::parts::passive::Resistor
+import std::parts::regulator::Buck
 
 board Wrong {
     .reg: Buck<Resistor>
@@ -620,15 +604,12 @@ A generic with no `pins` table and no catalog may be provided by interfaces too:
 The standard library's use of it is the manufacturing process (ADR 0113). `std::mfg::jlcpcb::TwoLayer` is a generic, and each copper weight JLCPCB gives every rule for is a provider, `JlcTwoLayer1oz` and `JlcTwoLayer2oz`, which state the rules that depend on the weight (track, space, annular ring, mask bridge) and the weight itself. A board narrows the weight and the pick follows:
 
 ```nsm evaluate picks
-import std::parts::connector::Header1x2
 import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
 
 board Heavy {
     /// 2 oz copper, for a board that carries a few amperes.
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-        .stackup.copper_weight &= 2
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm; .stackup.copper_weight &= 2 }
     .header: Header1x2
 }
 ```
@@ -640,14 +621,11 @@ process is a TwoLayer: picked JlcTwoLayer2oz; passed over JlcTwoLayer1oz (contra
 A narrowing of a use that its provider's own statement contradicts is a mistake of the check, which used to stop the build before any pick. Inside a use with more than one provider it is not the end: the build tries the other providers, as it does for a relation the solver finds false, and stops only when none has what the board asks for, naming each:
 
 ```nsm fails
-import std::parts::connector::Header1x2
 import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
 
 board Heavier {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-        .stackup.copper_weight &= 3.5
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm; .stackup.copper_weight &= 3.5 }
     .header: Header1x2
 }
 ```
@@ -660,7 +638,7 @@ error: no TwoLayer provider satisfies `process` at main.nsm:5: none of the 2 in 
     contradiction on `process.stackup.copper_weight`: it is already 2, which does not overlap 3.5
   --> main.nsm:5:5
   |
-5 |     .process: TwoLayer {
+5 |     .process: TwoLayer { .stackup.thickness &= 1.6mm; .stackup.copper_weight &= 3.5 }
   |     ^^^^^^^^^^^^^^^^^^
 ```
 
@@ -678,8 +656,8 @@ import std::parts::passive::Resistor
 /// PTF-10K, an invented 10 kohm thin-film resistor with a tolerance of 0.1 %.
 part PrecisionThinFilm provides Resistor {
     pins {
-        .a  passive  "A"  "1"
-        .b  passive  "B"  "2"
+        .a passive "A" "1"
+        .b passive "B" "2"
     }
     catalog precision_thin_film { .resistance, .max_power, .package }
 }
@@ -693,8 +671,9 @@ PTF-10K,10kohm +/- 0.1%,125mW,0402,Extended,https://example.invalid/ptf-10k.pdf
 The standard rows and series come first, because the generic is first in the order. A design that they serve never reaches the provider, and one that they cannot serve, here a resistor good to 0.1 %, is tried with it:
 
 ```nsm evaluate picks catalogs=thin
-import src::parts::precision_thin_film::PrecisionThinFilm   // not used by name: brings the provider in scope
 import std::parts::passive::Resistor
+
+import src::parts::precision_thin_film::PrecisionThinFilm  // not used by name: brings the provider in scope
 
 board Reference {
     .r1: Resistor { .resistance &= 10kohm +/- 0.1% }

@@ -104,7 +104,10 @@ part Header1x2 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A single-row header with 4 pins, `p1` to `p4`, pin N on pad N.
@@ -126,7 +129,10 @@ part Header1x4 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A single-row header with 8 pins, `p1` to `p8`, pin N on pad N.
@@ -152,22 +158,25 @@ part Header1x8 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A single-row header with 10 pins, `p1` to `p10`, pin N on pad N.
 #[assembly(hand)]
 part Header1x10 provides Connector {
     pins {
-        .p1 passive "P1" "1"
-        .p2 passive "P2" "2"
-        .p3 passive "P3" "3"
-        .p4 passive "P4" "4"
-        .p5 passive "P5" "5"
-        .p6 passive "P6" "6"
-        .p7 passive "P7" "7"
-        .p8 passive "P8" "8"
-        .p9 passive "P9" "9"
+        .p1  passive "P1"  "1"
+        .p2  passive "P2"  "2"
+        .p3  passive "P3"  "3"
+        .p4  passive "P4"  "4"
+        .p5  passive "P5"  "5"
+        .p6  passive "P6"  "6"
+        .p7  passive "P7"  "7"
+        .p8  passive "P8"  "8"
+        .p9  passive "P9"  "9"
         .p10 passive "P10" "10"
     }
 
@@ -180,7 +189,10 @@ part Header1x10 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A single-row socket with 2 positions, `p1` to `p2`, position N on pad N. It is the
@@ -201,7 +213,10 @@ part Socket1x2 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A single-row socket with 4 positions, `p1` to `p4`, position N on pad N. It is the
@@ -224,7 +239,10 @@ part Socket1x4 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A single-row socket with 8 positions, `p1` to `p8`, position N on pad N. It is the
@@ -251,7 +269,10 @@ part Socket1x8 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A single-row socket with 10 positions, `p1` to `p10`, position N on pad N. It is the
@@ -259,15 +280,15 @@ part Socket1x8 provides Connector {
 #[assembly(hand)]
 part Socket1x10 provides Connector {
     pins {
-        .p1 passive "P1" "1"
-        .p2 passive "P2" "2"
-        .p3 passive "P3" "3"
-        .p4 passive "P4" "4"
-        .p5 passive "P5" "5"
-        .p6 passive "P6" "6"
-        .p7 passive "P7" "7"
-        .p8 passive "P8" "8"
-        .p9 passive "P9" "9"
+        .p1  passive "P1"  "1"
+        .p2  passive "P2"  "2"
+        .p3  passive "P3"  "3"
+        .p4  passive "P4"  "4"
+        .p5  passive "P5"  "5"
+        .p6  passive "P6"  "6"
+        .p7  passive "P7"  "7"
+        .p8  passive "P8"  "8"
+        .p9  passive "P9"  "9"
         .p10 passive "P10" "10"
     }
 
@@ -280,7 +301,10 @@ part Socket1x10 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A two-row header with 6 pins, `p1` to `p6`, pin N on pad N. Which pins are in which
@@ -305,7 +329,10 @@ part Header2x3 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A two-row header with 10 pins, `p1` to `p10`, pin N on pad N. Which pins are in which
@@ -313,15 +340,15 @@ part Header2x3 provides Connector {
 #[assembly(hand)]
 part Header2x5 provides Connector {
     pins {
-        .p1 passive "P1" "1"
-        .p2 passive "P2" "2"
-        .p3 passive "P3" "3"
-        .p4 passive "P4" "4"
-        .p5 passive "P5" "5"
-        .p6 passive "P6" "6"
-        .p7 passive "P7" "7"
-        .p8 passive "P8" "8"
-        .p9 passive "P9" "9"
+        .p1  passive "P1"  "1"
+        .p2  passive "P2"  "2"
+        .p3  passive "P3"  "3"
+        .p4  passive "P4"  "4"
+        .p5  passive "P5"  "5"
+        .p6  passive "P6"  "6"
+        .p7  passive "P7"  "7"
+        .p8  passive "P8"  "8"
+        .p9  passive "P9"  "9"
         .p10 passive "P10" "10"
     }
 
@@ -334,7 +361,10 @@ part Header2x5 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A two-row header with 20 pins, `p1` to `p20`, pin N on pad N. Which pins are in which
@@ -342,15 +372,15 @@ part Header2x5 provides Connector {
 #[assembly(hand)]
 part Header2x10 provides Connector {
     pins {
-        .p1 passive "P1" "1"
-        .p2 passive "P2" "2"
-        .p3 passive "P3" "3"
-        .p4 passive "P4" "4"
-        .p5 passive "P5" "5"
-        .p6 passive "P6" "6"
-        .p7 passive "P7" "7"
-        .p8 passive "P8" "8"
-        .p9 passive "P9" "9"
+        .p1  passive "P1"  "1"
+        .p2  passive "P2"  "2"
+        .p3  passive "P3"  "3"
+        .p4  passive "P4"  "4"
+        .p5  passive "P5"  "5"
+        .p6  passive "P6"  "6"
+        .p7  passive "P7"  "7"
+        .p8  passive "P8"  "8"
+        .p9  passive "P9"  "9"
         .p10 passive "P10" "10"
         .p11 passive "P11" "11"
         .p12 passive "P12" "12"
@@ -373,7 +403,10 @@ part Header2x10 provides Connector {
     }
 
     .package: Package
-    catalog header { .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current, .mating.seat optional }
+    catalog header {
+        .mating.gender, .mating.pitch, .mating.rows, .mating.positions, .mating.pin_current,
+        .mating.seat optional
+    }
 }
 
 /// A coaxial (RF) connector: a centre conductor and a shield. `.impedance` is the connector's
@@ -600,22 +633,22 @@ part Obd2M provides Connector {
 
     pins {
         //  pin         kind           name          pad
-        .p1             bidirectional  "1"           "1"
-        .j1850_bus_pos  bidirectional  "J1850BUS+"   "2"
-        .p3             bidirectional  "3"           "3"
-        .vbatt.neg      power          "CHASGND"     "4"
-        .signal_gnd     power          "SIGGND"      "5"  optional
-        .can_high       bidirectional  "CANHIGH"     "6"
-        .iso_k          bidirectional  "ISOK-LINE"   "7"
-        .p8             bidirectional  "8"           "8"
-        .p9             bidirectional  "9"           "9"
-        .j1850_bus      bidirectional  "J1850BUS"    "10"
-        .p11            bidirectional  "11"          "11"
-        .p12            bidirectional  "12"          "12"
-        .p13            bidirectional  "13"          "13"
-        .can_low        bidirectional  "CANLOW"      "14"
-        .iso_l          bidirectional  "ISOL-LINE"   "15"
-        .vbatt.pos      power          "BATTPOWER"   "16"
+        .p1            bidirectional "1"         "1"
+        .j1850_bus_pos bidirectional "J1850BUS+" "2"
+        .p3            bidirectional "3"         "3"
+        .vbatt.neg     power         "CHASGND"   "4"
+        .signal_gnd    power         "SIGGND"    "5" optional
+        .can_high      bidirectional "CANHIGH"   "6"
+        .iso_k         bidirectional "ISOK-LINE" "7"
+        .p8            bidirectional "8"         "8"
+        .p9            bidirectional "9"         "9"
+        .j1850_bus     bidirectional "J1850BUS"  "10"
+        .p11           bidirectional "11"        "11"
+        .p12           bidirectional "12"        "12"
+        .p13           bidirectional "13"        "13"
+        .can_low       bidirectional "CANLOW"    "14"
+        .iso_l         bidirectional "ISOL-LINE" "15"
+        .vbatt.pos     power         "BATTPOWER" "16"
     }
 
     .package: Package

@@ -38,10 +38,7 @@ module Lamp {
 }
 
 board Bounded {
-    .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .lamp: Lamp
     .supply ~ .lamp.supply
     .lamp.balance_resistance >= 20kohm
@@ -111,10 +108,7 @@ module Timer {
 }
 
 board Probe {
-    .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .timer: Timer
     .timer.supply ~ .supply
     .timer.fsw &= 0.9MHz..1.1MHz
@@ -139,14 +133,8 @@ import std::sources::Rail
 
 board Behind {
     .process: TwoLayer { .stackup.thickness &= 1.6mm }
-    .supply: Rail {
-        .voltage &= 5V
-        .pos.net &= "VIN"
-    }
-    .load: Rail {
-        .pos.net &= "VLOAD"
-        .current &= 0mA..100mA
-    }
+    .supply: Rail { .voltage &= 5V; .pos.net &= "VIN" }
+    .load: Rail { .pos.net &= "VLOAD"; .current &= 0mA..100mA }
     .supply.neg ~ .load.neg
     .z_diode: Schottky {}
     .supply.pos ~> .z_diode ~> .load.pos
@@ -247,10 +235,7 @@ ACME-R100T,100ohm +/- 1%,62.5mW,0402,0.00005,Basic,https://example.invalid/acme-
 import std::parts::passive::Resistor
 
 board Stable {
-    .r1: Resistor {
-        .resistance &= 100ohm +/- 1%
-        .temperature_coefficient <= 0.0001
-    }
+    .r1: Resistor { .resistance &= 100ohm +/- 1%; .temperature_coefficient <= 0.0001 }
 }
 ```
 
@@ -265,10 +250,7 @@ With only the standard rows, the same limit has nothing to pick, and the message
 import std::parts::passive::Resistor
 
 board Unstated {
-    .r1: Resistor {
-        .resistance &= 100ohm +/- 1%
-        .temperature_coefficient <= 0.0001
-    }
+    .r1: Resistor { .resistance &= 100ohm +/- 1%; .temperature_coefficient <= 0.0001 }
 }
 ```
 
@@ -276,7 +258,7 @@ board Unstated {
 error: the `resistor` catalog has nothing for `r1`, which needs resistance within 99Ω..101Ω (rows with an empty cell are never offered, since a part with no stated rating cannot be shown to stay within it: 219 for `temperature_coefficient`)
   --> main.nsm:4:5
   |
-4 |     .r1: Resistor {
+4 |     .r1: Resistor { .resistance &= 100ohm +/- 1%; .temperature_coefficient <= 0.0001 }
   |     ^^^^^^^^^^^^^
 ```
 
@@ -289,14 +271,12 @@ MCU32-B,QFN-32,Extended,1.45,120,2026-10-31,https://example.invalid/mcu32-b.pdf
 ```
 
 ```nsm fails catalogs=ic
-import src::mcu::Mcu32
 import std::sources::Rail
 
+import src::mcu::Mcu32
+
 board WhichMcu {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Mcu32 { .package &= "QFN-32" }
     .supply ~ .u.vdd
     .u.nrst ~ .supply.pos
@@ -305,23 +285,21 @@ board WhichMcu {
 
 ```text
 error: `u` is an `Mcu32`; name the part with .mpn: MCU32-A, MCU32-B
-  --> main.nsm:9:5
+  --> main.nsm:7:5
   |
-9 |     .u: Mcu32 { .package &= "QFN-32" }
+7 |     .u: Mcu32 { .package &= "QFN-32" }
   |     ^^^^^^^^^
 ```
 
 A name is needed only when the board must choose. `.mpn &= "MCU32-B"` picks that row (a hand pick, _A hand pick_ below; `.lcsc &=` would too):
 
 ```nsm evaluate catalogs=ic
-import src::mcu::Mcu32
 import std::sources::Rail
 
+import src::mcu::Mcu32
+
 board NamedMcu {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Mcu32 { .mpn &= "MCU32-B" }
     .supply ~ .u.vdd
     .u.nrst ~ .supply.pos
@@ -336,14 +314,12 @@ MCU32-A,QFN-32,Extended,1.20,300,2026-10-31,https://example.invalid/mcu32-a.pdf
 ```
 
 ```nsm evaluate catalogs=ic_one
-import src::mcu::Mcu32
 import std::sources::Rail
 
+import src::mcu::Mcu32
+
 board OnlyMcu {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Mcu32
     .supply ~ .u.vdd
     .u.nrst ~ .supply.pos
@@ -359,14 +335,12 @@ MCU32-B,QFN-48,Extended,1.45,120,2026-10-31,https://example.invalid/mcu32-b.pdf
 ```
 
 ```nsm evaluate catalogs=ic_pair
-import src::mcu::Mcu32
 import std::sources::Rail
 
+import src::mcu::Mcu32
+
 board NarrowedMcu {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .u: Mcu32 { .package &= "QFN-32" }
     .supply ~ .u.vdd
     .u.nrst ~ .supply.pos
@@ -422,10 +396,7 @@ A design that states the column, by a bound, an `&=`, a `~` or a balance of curr
 import src::zfuse::Zfuse
 
 board Surge {
-    .f1: Zfuse {
-        .rated_current &= 1A
-        .surge_current >= 5A
-    }
+    .f1: Zfuse { .rated_current &= 1A; .surge_current >= 5A }
 }
 ```
 
@@ -435,10 +406,7 @@ With the file that has no `surge_current` column it has nothing to pick, and the
 import src::zfuse::Zfuse
 
 board Surge {
-    .f1: Zfuse {
-        .rated_current &= 1A
-        .surge_current >= 5A
-    }
+    .f1: Zfuse { .rated_current &= 1A; .surge_current >= 5A }
 }
 ```
 
@@ -446,7 +414,7 @@ board Surge {
 error: the `zfuse` catalog has nothing for `f1`, which needs rated_current within 1A (rows with an empty cell are never offered, since a part with no stated rating cannot be shown to stay within it: 1 for `surge_current`)
   --> main.nsm:4:5
   |
-4 |     .f1: Zfuse {
+4 |     .f1: Zfuse { .rated_current &= 1A; .surge_current >= 5A }
   |     ^^^^^^^^^^
 ```
 
@@ -548,10 +516,7 @@ import std::parts::passive::Resistor
 import std::sources::Rail
 
 board TooTight {
-    .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .top: Resistor {}
     .bottom: Resistor { .resistance &= 10kohm +/- 1% }
     .out: Rail { .voltage &= 3.3V +/- 5% }
@@ -564,9 +529,9 @@ board TooTight {
 
 ```text
 error: no combination of candidates satisfies `bottom` and `top` together: the closest, bottom = 10kΩ 1% 0603 C25804 and top = 5.1kΩ 1% 0603 C23186, fails because `out.voltage` must stay within 3.135V..3.465V, but ((supply.voltage * bottom.resistance) / (top.resistance + bottom.resistance)) works out to 3.124V..3.501V
-   --> main.nsm:15:5
+   --> main.nsm:12:5
    |
-15 |     .out.voltage == .supply.voltage * .bottom.resistance / (.top.resistance + .bottom.resistance)
+12 |     .out.voltage == .supply.voltage * .bottom.resistance / (.top.resistance + .bottom.resistance)
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 

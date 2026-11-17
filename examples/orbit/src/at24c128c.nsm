@@ -38,14 +38,14 @@ part At24C128C {
 
     pins "SOIC-8" {
         //  pin   kind           name   pads
-        .a0    input          "A0"   "1"
-        .a1    input          "A1"   "2"
-        .a2    input          "A2"   "3"
-        .gnd   power          "GND"  "4"
+        .a0      input         "A0"  "1"
+        .a1      input         "A1"  "2"
+        .a2      input         "A2"  "3"
+        .gnd     power         "GND" "4"
         .i2c.sda bidirectional "SDA" "5"
         .i2c.scl input         "SCL" "6"
-        .wp    input          "WP"   "7"
-        .vcc   power          "VCC"  "8"
+        .wp      input         "WP"  "7"
+        .vcc     power         "VCC" "8"
     }
 
     .package: Package

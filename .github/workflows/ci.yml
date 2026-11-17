@@ -547,7 +547,8 @@ jobs:
   # The examples' pick locks (ADR 0100): scripts/check-example-locks.sh runs `netsmith project lock --check`
   # over every example with no KiCad, and fails when a lock is stale or missing. It builds the same
   # debug binary as `no-kicad`, so it shares the cache. The job also lints every example
-  # (scripts/check-example-lint.sh, issue #1104).
+  # (scripts/check-example-lint.sh, issue #1104) and checks that the examples and std/ are formatted
+  # (scripts/check-example-fmt.sh, issue #1103).
   locks:
     needs: [changes, build]
     if: needs.changes.outputs.locks == 'true'
@@ -563,6 +564,9 @@ jobs:
       - name: Test the lint script
         run: scripts/check-example-lint-test
 
+      - name: Test the fmt script
+        run: scripts/check-example-fmt-test
+
       # The netsmith binary the `build` job built, at target/debug/netsmith.
       - uses: actions/download-artifact@v4
         with:
@@ -577,6 +581,11 @@ jobs:
       # is what turns this job on.
       - name: Every example lints with no finding
         run: scripts/check-example-lint.sh target/debug/netsmith
+
+      # Every example and every file of std/ is formatted (issue #1103): `netsmith project fmt
+      # --check`, which the parser and the formatter (netsmith-lang) decide.
+      - name: Every example and std/ is formatted
+        run: scripts/check-example-fmt.sh target/debug/netsmith
 
   # The examples' design files (issue #609): scripts/check-example-designs.sh builds every example
   # with `--emit-design`, with no KiCad, and fails when a committed `<stem>.design.json` is stale or

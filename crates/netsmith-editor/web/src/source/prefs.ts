@@ -43,6 +43,9 @@ export const nextCommentFont = (id: CommentFont): CommentFont => COMMENT_FONTS[(
 export const vimMode = kept('netsmith.source.vim.v1', false);
 /** Ctrl+S sorts the imports of an `.nsm` file first, in one undoable change. Autosave never does: it would move a line being typed. */
 export const sortImportsOnSave = kept('netsmith.source.sortImportsOnSave.v1', false);
+/** Ctrl+S formats an `.nsm` file first (as `netsmith project fmt` does, imports sorted too), in one undoable change. Autosave never
+ * does: it would move the line being typed. */
+export const formatOnSave = kept('netsmith.source.formatOnSave.v1', false);
 /** A saved file is analysed at once, as the server does by itself (the default). Off, the project is read and checked again only when asked
  * (the Rebuild button, Ctrl+B): a file saved meanwhile leaves the views on the last reading, and the status bar says so. */
 export const rebuildOnSave = kept('netsmith.source.rebuildOnSave.v1', true);

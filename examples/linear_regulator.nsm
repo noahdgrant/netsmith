@@ -1,54 +1,44 @@
 //! A 5 V input regulated down to 3.3 V, with a capacitor on each side of the regulator.
 
+import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::Header1x2
 import std::parts::passive::Capacitor
 import std::parts::regulator::LinearRegulator
 import std::sources::Rail
-import std::mfg::jlcpcb::TwoLayer
 
 /// A linear regulator with a capacitor on its input and on its output.
 module LdoStage {
-    .vin:  Rail
+    .vin: Rail
     .vout: Rail
 
-    .regulator:  LinearRegulator
+    .regulator: LinearRegulator
     // What each capacitor must still have in use, after the voltage across it and its tolerance
     // have taken their share.
-    .input_cap:  Capacitor { .effective_capacitance >= 1uF }
+    .input_cap: Capacitor { .effective_capacitance >= 1uF }
     .output_cap: Capacitor { .effective_capacitance >= 4.7uF }
 
     .vin ~ .regulator.vin
     .regulator.vout ~ .vout
 
     // A capacitor must be rated for at least one and a half times the rail it sits on.
-    .input_cap.max_voltage  >= .vin.voltage * 1.5
+    .input_cap.max_voltage >= .vin.voltage * 1.5
     .output_cap.max_voltage >= .vout.voltage * 1.5
 
-    .vin.pos  ~> .input_cap  ~> .vin.neg
+    .vin.pos ~> .input_cap ~> .vin.neg
     .vout.pos ~> .output_cap ~> .vout.neg
 }
 
 board RegulatorExample {
     /// Made by JLCPCB's two-layer process, on a board 1.6 mm thick.
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 
     /// The input rail is supplied from outside the board.
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VIN"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
 
-    .stage: LdoStage {
-        .vout.voltage &= 3.3V +/- 5%
-    }
+    .stage: LdoStage { .vout.voltage &= 3.3V +/- 5% }
 
     /// What the outside world draws from the output.
-    .output: Rail {
-        .pos.net &= "3V3"
-        .current &= 0mA..50mA
-    }
+    .output: Rail { .pos.net &= "3V3"; .current &= 0mA..50mA }
 
     .input ~ .stage.vin
     .stage.vout ~ .output

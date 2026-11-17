@@ -13,10 +13,7 @@ import std::sources::Rail
 
 board Clock {
     .environment: Environment { .temperature &= -40degC..85degC }
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC" }
     .xtal: Crystal { .frequency &= 16MHz +/- 30ppm }
     .xtal.a ~ .supply.pos
     .xtal.b ~ .supply.neg
@@ -32,10 +29,7 @@ import std::sources::Rail
 
 board Hot {
     .environment: Environment { .temperature &= -40degC..125degC }
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC" }
     .xtal: Crystal { .frequency &= 16MHz +/- 30ppm }
     .xtal.a ~ .supply.pos
     .xtal.b ~ .supply.neg
@@ -44,10 +38,10 @@ board Hot {
 
 ```text
 error: the `crystal` catalog has nothing for `xtal`, which needs frequency within 15.9995MHz..16.0005MHz (15 rows were left out because the temperatures they state do not cover the board's environment, `.environment.temperature` 233.15 K to 398.15 K (-40degC to 125degC): a row's `temp_min` and `temp_max` are its datasheet's)
-   --> main.nsm:11:5
-   |
-11 |     .xtal: Crystal { .frequency &= 16MHz +/- 30ppm }
-   |     ^^^^^^^^^^^^^^
+  --> main.nsm:8:5
+  |
+8 |     .xtal: Crystal { .frequency &= 16MHz +/- 30ppm }
+  |     ^^^^^^^^^^^^^^
 ```
 
 ### Named environments
@@ -72,10 +66,7 @@ import std::sources::Rail
 
 board Dash {
     .environment: Automotive {}
-    .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
 }
@@ -95,10 +86,7 @@ import std::sources::Rail
 
 board Probe {
     .environment: Environment { .temperature &= -40degC..85degC }
-    .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .led: Led { .current &= 5mA..15mA }
     .r1: Resistor {}
     .supply.pos ~> .r1 ~> .led ~> .supply.neg
@@ -119,10 +107,7 @@ import std::sources::Rail
 
 board Warm {
     .environment: Environment { .temperature &= -40degC..85degC }
-    .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .led: Led { .current &= 5mA..15mA }
     .led.temp_min &= -40degC
     .led.temp_max &= 75degC
@@ -149,10 +134,7 @@ import std::sources::Rail
 
 board Hot {
     .environment: Environment { .temperature &= -40degC..125degC }
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .c: Capacitor { .capacitance &= 33.3nF +/- 10% }
     .supply.pos ~> .c ~> .supply.neg
 }
@@ -160,10 +142,10 @@ board Hot {
 
 ```text
 error: the `capacitor` catalog has nothing for `c`, which needs capacitance within 29.97nF..36.63nF (15 rows were left out because the temperatures they state do not cover the board's environment, `.environment.temperature` 233.15 K to 398.15 K (-40degC to 125degC): a row's `temp_min` and `temp_max` are its datasheet's; a row that states no temperature of its own is judged by the range of its dielectric class (X5R), which is the class's and not its datasheet's: add `temp_min` and `temp_max` to the row to say its own)
-   --> main.nsm:11:5
-   |
-11 |     .c: Capacitor { .capacitance &= 33.3nF +/- 10% }
-   |     ^^^^^^^^^^^^^
+  --> main.nsm:8:5
+  |
+8 |     .c: Capacitor { .capacitance &= 33.3nF +/- 10% }
+  |     ^^^^^^^^^^^^^
 ```
 
 - **A board with no environment is not judged** and says nothing: no check, no finding. The same holds for a board of a project whose manifest names none.
@@ -200,10 +182,7 @@ board Dash {
         .temperature &= -40degC..85degC
         .qualification &= Qualification::Aec
     }
-    .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .r1: Resistor { .resistance &= 1kohm +/- 1% }
     .supply.pos ~> .r1 ~> .supply.neg
 }
@@ -225,23 +204,17 @@ board Rectifier {
         .temperature &= -40degC..85degC
         .qualification &= Qualification::Aec
     }
-    .supply: Rail {
-        .voltage &= 12V +/- 5%
-        .pos.net &= "VIN"
-    }
-    .d: Schottky {
-        .max_reverse_voltage &= 100V
-        .max_forward_current &= 3A
-    }
+    .supply: Rail { .voltage &= 12V +/- 5%; .pos.net &= "VIN" }
+    .d: Schottky { .max_reverse_voltage &= 100V; .max_forward_current &= 3A }
     .supply.pos ~> .d ~> .supply.neg
 }
 ```
 
 ```text
 error: the `schottky` catalog has nothing for `d`, which needs max_reverse_voltage within 100V and max_forward_current within 3A (1 row was left out because it says it is not qualified (`None`) and the board's `.environment.qualification` requires `Aec`: a row's `qualification` is its datasheet's)
-   --> main.nsm:14:5
+   --> main.nsm:11:5
    |
-14 |     .d: Schottky {
+11 |     .d: Schottky { .max_reverse_voltage &= 100V; .max_forward_current &= 3A }
    |     ^^^^^^^^^^^^
 ```
 

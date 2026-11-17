@@ -34,20 +34,20 @@ fn parses_the_led_example() {
     assert_eq!(file.imports.len(), 4);
     assert_eq!(
         names(&file.imports[0].path),
-        ["std", "parts", "connector", "Header1x2"]
-    );
-    assert!(file.imports[0].names.is_none());
-    assert_eq!(names(&file.imports[1].path), ["std", "parts", "passive"]);
-    assert_eq!(
-        names(file.imports[1].names.as_ref().unwrap()),
-        ["Resistor", "Led"]
-    );
-    assert_eq!(names(&file.imports[2].path), ["std", "sources", "Rail"]);
-    assert!(file.imports[2].names.is_none());
-    assert_eq!(
-        names(&file.imports[3].path),
         ["std", "mfg", "jlcpcb", "TwoLayer"]
     );
+    assert!(file.imports[0].names.is_none());
+    assert_eq!(
+        names(&file.imports[1].path),
+        ["std", "parts", "connector", "Header1x2"]
+    );
+    assert_eq!(names(&file.imports[2].path), ["std", "parts", "passive"]);
+    assert_eq!(
+        names(file.imports[2].names.as_ref().unwrap()),
+        ["Led", "Resistor"]
+    );
+    assert_eq!(names(&file.imports[3].path), ["std", "sources", "Rail"]);
+    assert!(file.imports[3].names.is_none());
 
     let design = &file.definitions[0];
     assert_eq!(design.name.name, "LedExample");
@@ -89,10 +89,10 @@ fn canonical_form_of_the_example_is_exact_and_stable() {
     assert_eq!(
         once,
         "\
-import std::parts::connector::Header1x2
-import std::parts::passive::{Resistor, Led}
-import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::parts::passive::{Led, Resistor}
+import std::sources::Rail
 
 board LedExample {
     /// Made by JLCPCB's two-layer process, on a board 1.6 mm thick.

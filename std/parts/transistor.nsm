@@ -89,7 +89,10 @@ generic NMosfet {
     dc nmos .gate .drain .source .gate_threshold .on_resistance
 
     .package: Package
-    catalog n_mosfet { .max_drain_source_voltage, .max_drain_current, .max_gate_source_voltage, .gate_threshold, .on_resistance, .package, .on_resistance_vgs optional }
+    catalog n_mosfet {
+        .max_drain_source_voltage, .max_drain_current, .max_gate_source_voltage, .gate_threshold,
+        .on_resistance, .package, .on_resistance_vgs optional
+    }
 }
 
 /// A P-channel enhancement MOSFET. Current flows from source to drain. Voltages and currents
@@ -152,5 +155,8 @@ generic PMosfet {
     dc pmos .gate .drain .source .gate_threshold .on_resistance
 
     .package: Package
-    catalog p_mosfet { .max_drain_source_voltage, .max_drain_current, .max_gate_source_voltage, .gate_threshold, .on_resistance, .package, .on_resistance_vgs optional }
+    catalog p_mosfet {
+        .max_drain_source_voltage, .max_drain_current, .max_gate_source_voltage, .gate_threshold,
+        .on_resistance, .package, .on_resistance_vgs optional
+    }
 }

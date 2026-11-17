@@ -53,7 +53,9 @@
 #   locks    the `locks` job: scripts/check-example-locks.sh runs `netsmith project lock --check` over every
 #            example (ADR 0100), and scripts/check-example-lint.sh runs `netsmith project lint --strict`
 #            over them (issue #1104; the linter, netsmith-lint, reads the parser's and the checker's
-#            output and the catalogs, all of which turn `locks` on). A pick is what the solver, std/ and the catalogs in data/ say about
+#            output and the catalogs, all of which turn `locks` on), and scripts/check-example-fmt.sh
+#            runs `netsmith project fmt --check` over them and std/ (issue #1103; the formatter is in
+#            netsmith-lang, the parser's crate). A pick is what the solver, std/ and the catalogs in data/ say about
 #            the parts of an example, so it follows the same paths as `no_kicad`: the crates that
 #            are linked into the binary (the solver is netsmith-solve, the catalogs and the supply
 #            logic are netsmith-catalog, and the checker and the design stage change what it is asked), std/, examples/, data/ (the catalogs), and the

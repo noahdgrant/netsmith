@@ -41,6 +41,7 @@ Every board goes through the same steps. Do them in this order and say what each
 | Move a KiCad board into the project | `import port` | `netsmith-port-a-kicad-board` |
 | Split a repeated circuit into a module | | `netsmith-write-a-module` |
 | Report what is worth changing in the sources | `project lint` | `netsmith-write-nsm` |
+| Put the sources in the one layout of the language (CI checks it with `--check`) | `project fmt` | `netsmith-write-nsm` |
 
 `dev` is for developing netsmith, not for working in a project.
 

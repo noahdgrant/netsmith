@@ -47,7 +47,7 @@ interface Uart {
         .tx  output crosses .rx
         .rx  input
         .rts output crosses .cts optional
-        .cts input optional
+        .cts input  optional
     }
 }
 
@@ -98,14 +98,14 @@ interface Spi {
     lines SpiRole::Master limit 1 {
         .sclk output
         .mosi output
-        .miso input optional
+        .miso input  optional
         .cs   output optional
     }
     lines SpiRole::Slave {
         .sclk input
         .mosi input
         .miso output required
-        .cs   input single
+        .cs   input  single
     }
 }
 
@@ -236,7 +236,7 @@ interface Swd {
     lines SwdRole::Probe limit 1 {
         .swdio bidirectional
         .swclk output
-        .swo   input optional
+        .swo   input  optional
         .reset output optional
     }
     lines SwdRole::Target {

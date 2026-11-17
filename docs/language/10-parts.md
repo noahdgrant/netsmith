@@ -90,13 +90,9 @@ import std::parts::passive::Resistor
 
 board Assembly {
     /// Let the board house solder this header too.
-    .j1: Header1x2 {
-        .assembly &= AssemblyMode::Fab
-    }
+    .j1: Header1x2 { .assembly &= AssemblyMode::Fab }
     /// This resistor goes on by hand.
-    .r1: Resistor {
-        .assembly &= AssemblyMode::Hand
-    }
+    .r1: Resistor { .assembly &= AssemblyMode::Hand }
 }
 ```
 
@@ -104,7 +100,7 @@ board Assembly {
 
 ```nsm
 import std::parts::connector::Header1x2
-import std::parts::passive::{Resistor, Led}
+import std::parts::passive::{Led, Resistor}
 
 board DefaultAssembly {
     defaults {
@@ -113,9 +109,7 @@ board DefaultAssembly {
     /// By hand, from the line.
     .r1: Resistor
     /// The board house, because this part says so itself.
-    .r2: Resistor {
-        .assembly &= AssemblyMode::Fab
-    }
+    .r2: Resistor { .assembly &= AssemblyMode::Fab }
     /// The line is for resistors and not for LEDs.
     .d1: Led
     .j1: Header1x2
@@ -133,10 +127,7 @@ import std::parts::passive::Resistor
 
 board Shipped {
     /// A resistor that you buy yourself and ship to the board house.
-    .r1: Resistor {
-        .resistance &= 330ohm +/- 1%
-        .assembly &= AssemblyMode::Consigned
-    }
+    .r1: Resistor { .resistance &= 330ohm +/- 1%; .assembly &= AssemblyMode::Consigned }
 }
 ```
 
@@ -146,7 +137,7 @@ A board may narrow a part inside a module (ADR 0116), but a module that wants th
 
 ```nsm solve
 import std::parts::connector::Header1x2
-import std::parts::passive::{Resistor, Led}
+import std::parts::passive::{Led, Resistor}
 import std::sources::Rail
 
 /// An LED with its resistor. The board chooses who solders them.
@@ -161,19 +152,14 @@ module Indicator {
 }
 
 board Lamps {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .header: Header1x2
     .input.pos ~ .header.p1
     .input.neg ~ .header.p2
     /// Soldered by the board house, like any part.
     .fitted: Indicator
     /// Soldered by hand: the board narrows what the module offers.
-    .spare: Indicator {
-        .assembly_mode &= AssemblyMode::Hand
-    }
+    .spare: Indicator { .assembly_mode &= AssemblyMode::Hand }
     .input ~ .fitted.supply
     .input ~ .spare.supply
 }
@@ -234,9 +220,7 @@ board Letters {
     /// `U1`: a part that says nothing is an integrated circuit.
     .mcu: Chip
     /// `IC1`: the board says so, because the part does not.
-    .codec: Chip {
-        .designator &= "IC"
-    }
+    .codec: Chip { .designator &= "IC" }
 }
 ```
 
@@ -270,9 +254,7 @@ part Chip {
 }
 
 board Letters {
-    .mcu: Chip {
-        .designator &= "U1"
-    }
+    .mcu: Chip { .designator &= "U1" }
 }
 ```
 

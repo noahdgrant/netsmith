@@ -692,7 +692,7 @@
           "part": "reg.ic",
           "name": "feedback",
           "source": "SNVSA24, 11.1 Layout Guidelines, p.17",
-          "site": "std/parts/regulator.nsm:1057",
+          "site": "std/parts/regulator.nsm:1062",
           "statement": "near",
           "select": {
             "on": {
@@ -706,7 +706,7 @@
           "part": "reg.ic",
           "name": "inductor",
           "source": "SNVSA24, 11.1 Layout Guidelines, p.17",
-          "site": "std/parts/regulator.nsm:1061",
+          "site": "std/parts/regulator.nsm:1066",
           "statement": "near",
           "select": {
             "on": {
@@ -720,7 +720,7 @@
           "part": "reg.ic",
           "name": "input_cap",
           "source": "SNVSA24, 11.1 Layout Guidelines, p.17",
-          "site": "std/parts/regulator.nsm:1059",
+          "site": "std/parts/regulator.nsm:1064",
           "statement": "near",
           "select": {
             "bridging": {
@@ -840,7 +840,7 @@
         "text": "The 12 V input, supplied from outside the board.",
         "at": {
           "file": "buck_converter.nsm",
-          "line": 20
+          "line": 18
         },
         "anchors": [],
         "result": null
@@ -851,7 +851,7 @@
         "text": "The 3.3 V output and the load it carries.",
         "at": {
           "file": "buck_converter.nsm",
-          "line": 25
+          "line": 20
         },
         "anchors": [],
         "result": null

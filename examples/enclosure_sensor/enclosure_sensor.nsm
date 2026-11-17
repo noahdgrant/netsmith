@@ -10,12 +10,12 @@
 //! builds with no KiCad install; it is not a design to build.
 
 import std::bus::{I2c, I2cPullups, I2cRole}
+import std::mfg::jlcpcb::TwoLayer
 import std::parts::connector::{Coax, Socket1x10, UsbCPower}
 import std::parts::mechanical::TestPoint
 import std::parts::passive::{Capacitor, Color, Led, Resistor, Switch}
 import std::parts::regulator::LinearRegulator
 import std::sources::Rail
-import std::mfg::jlcpcb::TwoLayer
 
 /// The plug for the sensor head: sixteen pins in one row, 2.54 mm apart, so 40.6 mm long, on
 /// a horizontal pin header whose pins stick out at the side. Pin 1 is ground, pin 2 the 3.3 V
@@ -56,14 +56,14 @@ part Memory {
     .i2c.role &= I2cRole::Target
 
     pins "SOIC-8" {
-        .a0       input         "A0"  "1"
-        .a1       input         "A1"  "2"
-        .a2       input         "A2"  "3"
-        .vcc.neg  power         "GND" "4"
-        .i2c.sda  bidirectional "SDA" "5"
-        .i2c.scl  input         "SCL" "6"
-        .wp       input         "WP"  "7"
-        .vcc.pos  power         "VCC" "8"
+        .a0      input         "A0"  "1"
+        .a1      input         "A1"  "2"
+        .a2      input         "A2"  "3"
+        .vcc.neg power         "GND" "4"
+        .i2c.sda bidirectional "SDA" "5"
+        .i2c.scl input         "SCL" "6"
+        .wp      input         "WP"  "7"
+        .vcc.pos power         "VCC" "8"
     }
 
     .package: Package
@@ -96,20 +96,20 @@ part FlatCell {
 
 /// A linear regulator with a capacitor on its input and on its output.
 module LdoStage {
-    .vin:  Rail
+    .vin: Rail
     .vout: Rail
 
-    .regulator:  LinearRegulator
-    .input_cap:  Capacitor { .effective_capacitance >= 1uF }
+    .regulator: LinearRegulator
+    .input_cap: Capacitor { .effective_capacitance >= 1uF }
     .output_cap: Capacitor { .effective_capacitance >= 4.7uF }
 
     .vin ~ .regulator.vin
     .regulator.vout ~ .vout
 
-    .input_cap.max_voltage  >= .vin.voltage * 1.5
+    .input_cap.max_voltage >= .vin.voltage * 1.5
     .output_cap.max_voltage >= .vout.voltage * 1.5
 
-    .vin.pos  ~> .input_cap  ~> .vin.neg
+    .vin.pos ~> .input_cap ~> .vin.neg
     .vout.pos ~> .output_cap ~> .vout.neg
 }
 
@@ -137,7 +137,6 @@ module Indicators {
     .r_a: Resistor { .resistance &= 330ohm +/- 1% }
     .r_b: Resistor { .resistance &= 330ohm +/- 1% }
     .r_c: Resistor { .resistance &= 330ohm +/- 1% }
-
 
     .power.pos ~> .r_a ~> .led_a ~> .power.neg
     .power.pos ~> .r_b ~> .led_b ~> .power.neg
@@ -188,9 +187,7 @@ module TestRow {
 }
 
 board EnclosureSensor {
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 
     // Power: USB-C in, 3.3 V out.
     .usb: UsbCPower {
@@ -203,16 +200,10 @@ board EnclosureSensor {
     .usb.cc1 ~> .rd1 ~> .usb.vbus.neg
     .usb.cc2 ~> .rd2 ~> .usb.vbus.neg
 
-    .ldo: LdoStage {
-        .vout.voltage &= 3.3V +/- 5%
-    }
+    .ldo: LdoStage { .vout.voltage &= 3.3V +/- 5% }
     .usb.vbus ~ .ldo.vin
 
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-        .current &= 0mA..100mA
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3"; .current &= 0mA..100mA }
     .ldo.vout ~ .supply
 
     // The controller stand-in, its bus, and a write-protect switch.
@@ -244,11 +235,11 @@ board EnclosureSensor {
 
     // The test pads, one on each free pin of the plug.
     .pads: TestRow
-    .plug.p5  ~ .pads.s1
-    .plug.p6  ~ .pads.s2
-    .plug.p7  ~ .pads.s3
-    .plug.p8  ~ .pads.s4
-    .plug.p9  ~ .pads.s5
+    .plug.p5 ~ .pads.s1
+    .plug.p6 ~ .pads.s2
+    .plug.p7 ~ .pads.s3
+    .plug.p8 ~ .pads.s4
+    .plug.p9 ~ .pads.s5
     .plug.p10 ~ .pads.s6
     .plug.p11 ~ .pads.s7
     .plug.p12 ~ .pads.s8

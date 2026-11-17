@@ -22,13 +22,8 @@ module Lamp {
 }
 
 board Lamps {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
-    .lamp: Lamp {
-        .drive &= Drive::Dimmed
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
+    .lamp: Lamp { .drive &= Drive::Dimmed }
     .input ~ .lamp.supply
 }
 ```
@@ -44,8 +39,8 @@ board Lamps {
 A file that writes the same variants often imports them and writes them bare:
 
 ```nsm
+import std::parts::passive::Color::{Green, Red}
 import std::parts::passive::Led
-import std::parts::passive::Color::{Red, Green}
 
 board Signals {
     .fault: Led { .color &= Red }
@@ -59,18 +54,16 @@ A variant the enum does not have is refused where it is written, with the varian
 import std::parts::passive::Resistor
 
 board Solder {
-    .r1: Resistor {
-        .assembly &= AssemblyMode::Hnad
-    }
+    .r1: Resistor { .assembly &= AssemblyMode::Hnad }
 }
 ```
 
 ```text
 error: `AssemblyMode` has no variant `Hnad`; its variants are `AssemblyMode::Fab`, `AssemblyMode::Hand`, `AssemblyMode::None` and `AssemblyMode::Consigned`; did you mean `AssemblyMode::Hand`?
-  --> main.nsm:5:36
+  --> main.nsm:4:48
   |
-5 |         .assembly &= AssemblyMode::Hnad
-  |                                    ^^^^
+4 |     .r1: Resistor { .assembly &= AssemblyMode::Hnad }
+  |                                                ^^^^
 ```
 
 A bare variant that the file does not import is refused, with the two ways to write it:
@@ -97,16 +90,14 @@ Text where an enum belongs is refused, and says which variant it was meant to be
 import std::parts::passive::Resistor
 
 board Quoted {
-    .r1: Resistor {
-        .assembly &= "hand"
-    }
+    .r1: Resistor { .assembly &= "hand" }
 }
 ```
 
 ```text
 error: `r1.assembly` holds a variant of `AssemblyMode`, but this value is text; a variant of `AssemblyMode` is not written as text: write `AssemblyMode::Hand` (the variants are `AssemblyMode::Fab`, `AssemblyMode::Hand`, `AssemblyMode::None` and `AssemblyMode::Consigned`)
-  --> main.nsm:5:9
+  --> main.nsm:4:21
   |
-5 |         .assembly &= "hand"
-  |         ^^^^^^^^^^^^^^^^^^^
+4 |     .r1: Resistor { .assembly &= "hand" }
+  |                     ^^^^^^^^^^^^^^^^^^^
 ```

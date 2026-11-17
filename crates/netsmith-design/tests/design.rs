@@ -1085,8 +1085,8 @@ fn a_board_of_a_system_can_be_four_layer_and_its_planes_are_checked_against_its_
             "import std::mfg::jlcpcb::{TwoLayer, FourLayer}",
         )
         .replacen(
-            ".process: TwoLayer {\n        .stackup.thickness &= 1.6mm\n    }",
-            ".process: FourLayer {\n        .inner1.net &= \"GND\"\n        .inner2.net &= \"3V3\"\n    }",
+            ".process: TwoLayer { .stackup.thickness &= 1.6mm }",
+            ".process: FourLayer { .inner1.net &= \"GND\"; .inner2.net &= \"3V3\" }",
             1,
         );
     let c = check("t.nsm", &src, &Loader::std());

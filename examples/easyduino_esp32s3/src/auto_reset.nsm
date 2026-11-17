@@ -9,8 +9,9 @@
 //! lines to EN and GPIO0 are on the emitters, which is what the board's nets say, and the
 //! symbol of the reference calls pad 2 the collector. The README lists the question.
 
-import src::ss8050::Ss8050
 import std::parts::passive::Resistor
+
+import src::ss8050::Ss8050
 
 /// The auto-reset pair. `.dtr` and `.rts` go to the bridge's DTR and RTS, `.en` to the module's
 /// EN and `.boot` to its GPIO0.

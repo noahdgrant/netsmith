@@ -179,9 +179,9 @@ import std::mfg::stackup::{InnerLayer, Pour, Stackup}
 generic TwoLayer {
     /// Who makes it, and where the numbers are published.
     .fabricator: String
-    .source:     String
+    .source: String
     .fabricator &= "JLCPCB"
-    .source     &= "https://jlcpcb.com/capabilities/pcb-capabilities"
+    .source &= "https://jlcpcb.com/capabilities/pcb-capabilities"
 
     /// The narrowest track, by weight.
     .min_track: Length
@@ -361,8 +361,8 @@ generic TwoLayer {
     .finishes &= "HASL leaded, HASL lead-free, ENIG, OSP"
 
     .stackup: Stackup
-    .stackup.layers       &= 2
-    .stackup.thickness    &= 0.4mm..2mm
+    .stackup.layers &= 2
+    .stackup.thickness &= 0.4mm..2mm
 
     /// The pours on the outer layers, which the board names the nets of
     /// (`.process.top.net &= "GND"`).
@@ -460,9 +460,9 @@ interface JlcTwoLayer2oz provides TwoLayer {
 generic FourLayer {
     /// Who makes it, and where the numbers are published.
     .fabricator: String
-    .source:     String
+    .source: String
     .fabricator &= "JLCPCB"
-    .source     &= "https://jlcpcb.com/capabilities/pcb-capabilities"
+    .source &= "https://jlcpcb.com/capabilities/pcb-capabilities"
 
     /// The narrowest track.
     .min_track: Length
@@ -647,7 +647,7 @@ generic FourLayer {
     .finishes &= "HASL leaded, HASL lead-free, ENIG, OSP"
 
     .stackup: Stackup
-    .stackup.layers        &= 4
+    .stackup.layers &= 4
     .stackup.copper_weight &= 1
     // The numbers of JLCPCB's impedance calculator (issue #1007), from "Calculation Parameters
     // Used" in https://jlcpcb.com/help/article/User-Guide-to-the-JLCPCB-Impedance-Calculator
@@ -656,9 +656,9 @@ generic FourLayer {
     // = 0.04064 mm, base soldermask thickness (coating above substrate) 1.2 mil = 0.03048 mm,
     // soldermask dielectric constant 3.8. The guide says the values are for reference and some
     // were worked out from JLCPCB's test results.
-    .stackup.impedance_outer_copper    &= 0.04064mm
-    .stackup.impedance_mask_thickness  &= 0.03048mm
-    .stackup.impedance_mask_epsilon    &= 3.8
+    .stackup.impedance_outer_copper &= 0.04064mm
+    .stackup.impedance_mask_thickness &= 0.03048mm
+    .stackup.impedance_mask_epsilon &= 3.8
 
     /// The first and second inner layers, counted from the top: planes, or signal layers.
     /// The board says what each is and names the net of a plane.
@@ -827,9 +827,9 @@ interface JlcFourLayerE04201H7628 provides FourLayer {
 generic SixLayer {
     /// Who makes it, and where the numbers are published.
     .fabricator: String
-    .source:     String
+    .source: String
     .fabricator &= "JLCPCB"
-    .source     &= "https://jlcpcb.com/capabilities/pcb-capabilities"
+    .source &= "https://jlcpcb.com/capabilities/pcb-capabilities"
 
     /// The narrowest track.
     .min_track: Length
@@ -1015,7 +1015,7 @@ generic SixLayer {
     .finishes &= "ENIG, OSP"
 
     .stackup: Stackup
-    .stackup.layers        &= 6
+    .stackup.layers &= 6
     .stackup.copper_weight &= 1
     // The numbers of JLCPCB's impedance calculator (issue #1007), from "Calculation Parameters
     // Used" in https://jlcpcb.com/help/article/User-Guide-to-the-JLCPCB-Impedance-Calculator
@@ -1024,9 +1024,9 @@ generic SixLayer {
     // = 0.04064 mm, base soldermask thickness (coating above substrate) 1.2 mil = 0.03048 mm,
     // soldermask dielectric constant 3.8. The guide says the values are for reference and some
     // were worked out from JLCPCB's test results.
-    .stackup.impedance_outer_copper    &= 0.04064mm
-    .stackup.impedance_mask_thickness  &= 0.03048mm
-    .stackup.impedance_mask_epsilon    &= 3.8
+    .stackup.impedance_outer_copper &= 0.04064mm
+    .stackup.impedance_mask_thickness &= 0.03048mm
+    .stackup.impedance_mask_epsilon &= 3.8
 
     /// The four inner layers, counted from the top: planes, or signal layers. The board says
     /// what each is and names the net of a plane.
@@ -1207,9 +1207,9 @@ interface JlcSixLayerE06201H3313 provides SixLayer {
 interface HdiFourLayer {
     /// Who makes it, and where the numbers are published.
     .fabricator: String
-    .source:     String
+    .source: String
     .fabricator &= "JLCPCB"
-    .source     &= "https://jlcpcb.com/help/article/hdi-pcb-capabilities-faq"
+    .source &= "https://jlcpcb.com/help/article/hdi-pcb-capabilities-faq"
 
     /// The narrowest track: "3 mil / 3 mil" is the HDI pages' "min. trace width / spacing",
     /// 0.0762 mm. The space stays the multilayer rows' 0.1 mm pad to track clearance.
@@ -1398,8 +1398,8 @@ interface HdiFourLayer {
     /// this file). The thickness is at most 2.4 mm ("we can process HDI boards up to 2.4 mm
     /// thick"), and at least 0.5 mm ("0.5 mm is limited to 4-layer boards").
     .stackup: Stackup
-    .stackup.layers        &= 4
-    .stackup.thickness     &= 0.5mm..2.4mm
+    .stackup.layers &= 4
+    .stackup.thickness &= 0.5mm..2.4mm
 
     /// The 2 inner layers, counted from the top: planes, or signal layers. The board says
     /// what each is and names the net of a plane.
@@ -1475,9 +1475,9 @@ interface HdiFourLayer {
 interface HdiSixLayer {
     /// Who makes it, and where the numbers are published.
     .fabricator: String
-    .source:     String
+    .source: String
     .fabricator &= "JLCPCB"
-    .source     &= "https://jlcpcb.com/help/article/hdi-pcb-capabilities-faq"
+    .source &= "https://jlcpcb.com/help/article/hdi-pcb-capabilities-faq"
 
     /// The narrowest track: "3 mil / 3 mil" is the HDI pages' "min. trace width / spacing",
     /// 0.0762 mm. The space stays the multilayer rows' 0.1 mm pad to track clearance.
@@ -1667,8 +1667,8 @@ interface HdiSixLayer {
     /// this file). The thickness is at most 2.4 mm ("we can process HDI boards up to 2.4 mm
     /// thick"); the pages give a least thickness only for four layers.
     .stackup: Stackup
-    .stackup.layers        &= 6
-    .stackup.thickness     &= 0mm..2.4mm
+    .stackup.layers &= 6
+    .stackup.thickness &= 0mm..2.4mm
 
     /// The 4 inner layers, counted from the top: planes, or signal layers. The board says
     /// what each is and names the net of a plane.
@@ -1744,9 +1744,9 @@ interface HdiSixLayer {
 interface HdiEightLayer {
     /// Who makes it, and where the numbers are published.
     .fabricator: String
-    .source:     String
+    .source: String
     .fabricator &= "JLCPCB"
-    .source     &= "https://jlcpcb.com/help/article/hdi-pcb-capabilities-faq"
+    .source &= "https://jlcpcb.com/help/article/hdi-pcb-capabilities-faq"
 
     /// The narrowest track: "3 mil / 3 mil" is the HDI pages' "min. trace width / spacing",
     /// 0.0762 mm. The space stays the multilayer rows' 0.1 mm pad to track clearance.
@@ -1936,8 +1936,8 @@ interface HdiEightLayer {
     /// this file). The thickness is at most 2.4 mm ("we can process HDI boards up to 2.4 mm
     /// thick"); the pages give a least thickness only for four layers.
     .stackup: Stackup
-    .stackup.layers        &= 8
-    .stackup.thickness     &= 0mm..2.4mm
+    .stackup.layers &= 8
+    .stackup.thickness &= 0mm..2.4mm
 
     /// The 6 inner layers, counted from the top: planes, or signal layers. The board says
     /// what each is and names the net of a plane.
@@ -2038,9 +2038,9 @@ interface HdiEightLayer {
 interface VCutPanel {
     /// Who makes it, and where the numbers are published.
     .fabricator: String
-    .source:     String
+    .source: String
     .fabricator &= "JLCPCB"
-    .source     &= "https://jlcpcb.com/capabilities/pcb-capabilities"
+    .source &= "https://jlcpcb.com/capabilities/pcb-capabilities"
 
     /// Boards across the panel (the number of cells in a row).
     .columns: Number

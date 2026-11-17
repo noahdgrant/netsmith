@@ -55,34 +55,34 @@ part Cp2102n {
 
     pins "QFN-28-EP(5x5)" {
         //  pin       kind           name            pads
-        .dcd      input          "DCD"           "1" optional
-        .ri_clk   bidirectional  "RI/CLK"        "2"
-        .gnd      power          "GND"           "3" "29"
-        .dp       bidirectional  "D+"            "4"
-        .dm       bidirectional  "D-"            "5"
-        .vdd      power          "VDD"           "6"
-        .vregin   power          "VREGIN"        "7"
-        .vbus     input          "VBUS"          "8"
-        .rstb     bidirectional  "RSTb"          "9"
-        .nc       no_connect     "NC"            "10"
-        .suspendb output         "SUSPENDb"      "11"
-        .suspend  output         "SUSPEND"       "12"
-        .chren    output         "CHREN"         "13"
-        .chr1     output         "CHR1"          "14"
-        .chr0     output         "CHR0"          "15"
-        .gpio3    bidirectional  "GPIO.3/WAKEUP" "16"
-        .gpio2    bidirectional  "GPIO.2/RS485"  "17"
-        .gpio1    bidirectional  "GPIO.1/RXT"    "18"
-        .gpio0    bidirectional  "GPIO.0/TXT"    "19"
-        .gpio6    bidirectional  "GPIO.6"        "20"
-        .gpio5    bidirectional  "GPIO.5"        "21"
-        .gpio4    bidirectional  "GPIO.4"        "22"
-        .uart.cts input          "CTS"           "23" optional
-        .uart.rts output         "RTS"           "24"
-        .uart.rx  input          "RXD"           "25"
-        .uart.tx  output         "TXD"           "26"
-        .dsr      input          "DSR"           "27" optional
-        .dtr      output         "DTR"           "28"
+        .dcd      input         "DCD"           "1"  optional
+        .ri_clk   bidirectional "RI/CLK"        "2"
+        .gnd      power         "GND"           "3" "29"
+        .dp       bidirectional "D+"            "4"
+        .dm       bidirectional "D-"            "5"
+        .vdd      power         "VDD"           "6"
+        .vregin   power         "VREGIN"        "7"
+        .vbus     input         "VBUS"          "8"
+        .rstb     bidirectional "RSTb"          "9"
+        .nc       no_connect    "NC"            "10"
+        .suspendb output        "SUSPENDb"      "11"
+        .suspend  output        "SUSPEND"       "12"
+        .chren    output        "CHREN"         "13"
+        .chr1     output        "CHR1"          "14"
+        .chr0     output        "CHR0"          "15"
+        .gpio3    bidirectional "GPIO.3/WAKEUP" "16"
+        .gpio2    bidirectional "GPIO.2/RS485"  "17"
+        .gpio1    bidirectional "GPIO.1/RXT"    "18"
+        .gpio0    bidirectional "GPIO.0/TXT"    "19"
+        .gpio6    bidirectional "GPIO.6"        "20"
+        .gpio5    bidirectional "GPIO.5"        "21"
+        .gpio4    bidirectional "GPIO.4"        "22"
+        .uart.cts input         "CTS"           "23" optional
+        .uart.rts output        "RTS"           "24"
+        .uart.rx  input         "RXD"           "25"
+        .uart.tx  output        "TXD"           "26"
+        .dsr      input         "DSR"           "27" optional
+        .dtr      output        "DTR"           "28"
     }
 
     .package: Package

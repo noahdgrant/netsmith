@@ -7,10 +7,11 @@
 //! whose anode reaches `VBUS` through 1.5 kohm (R1), so the LED lights while the charger pulls
 //! `STAT` low. C8 (4.7 uF) is on `VBUS` and C7 (4.7 uF) on `+BATT`.
 
-import src::everlight_19_217::Everlight19217Ghc
-import src::mcp73831::Mcp73831
 import std::parts::passive::{Capacitor, Resistor}
 import std::sources::Rail
+
+import src::everlight_19_217::Everlight19217Ghc
+import src::mcp73831::Mcp73831
 
 /// A single-cell Li-Ion charger from USB. Join `.vbus` to the USB rail and `.vbatt` to the
 /// battery's rail.

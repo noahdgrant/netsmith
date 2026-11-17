@@ -16,10 +16,7 @@ import std::parts::passive::Resistor
 import std::sources::Rail
 
 board Divider {
-    .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .top: Resistor {}
     .bottom: Resistor { .resistance &= 10kohm +/- 1% }
     .out: Rail { .voltage &= 3.3V +/- 7% }
@@ -51,14 +48,8 @@ Rules.
 import std::sources::Rail
 
 board Ends {
-    .a: Rail {
-        .voltage &= 4V..6V
-        .pos.net &= "A"
-    }
-    .b: Rail {
-        .voltage &= 4.7V..5.5V
-        .pos.net &= "B"
-    }
+    .a: Rail { .voltage &= 4V..6V; .pos.net &= "A" }
+    .b: Rail { .voltage &= 4.7V..5.5V; .pos.net &= "B" }
     min(.a.voltage) <= max(.b.voltage)
 }
 ```
@@ -78,24 +69,18 @@ A rail that is surely above the other, and the mistakes in the call:
 import std::sources::Rail
 
 board Ends {
-    .a: Rail {
-        .voltage &= 12V
-        .pos.net &= "A"
-    }
-    .b: Rail {
-        .voltage &= 4.7V..5.5V
-        .pos.net &= "B"
-    }
+    .a: Rail { .voltage &= 12V; .pos.net &= "A" }
+    .b: Rail { .voltage &= 4.7V..5.5V; .pos.net &= "B" }
     min(.a.voltage) <= max(.b.voltage)
 }
 ```
 
 ```text
 error: min(a.voltage) must be at most max(b.voltage), but 12V is above 5.5V: no value of the two ranges meets it, so change one of them
-   --> main.nsm:12:5
-   |
-12 |     min(.a.voltage) <= max(.b.voltage)
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  --> main.nsm:6:5
+  |
+6 |     min(.a.voltage) <= max(.b.voltage)
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ```nsm fails
@@ -143,10 +128,7 @@ What the language can say is the centre of the range. A range is stored as its t
 import std::sources::Rail
 
 board Nominal {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "A"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "A" }
     nominal(.supply.voltage) >= 3.3V
     nominal(.supply.voltage) <= 3.4V
 }
@@ -163,10 +145,7 @@ A nominal below the bound, and a plain bound on the same field:
 import std::sources::Rail
 
 board Nominal {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "A"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "A" }
     nominal(.supply.voltage) >= 3.4V
     .supply.voltage >= 3.3V
 }
@@ -174,14 +153,14 @@ board Nominal {
 
 ```text
 error: nominal(supply.voltage) must be at least 3.4V, but 3.3V is below 3.4V: it compares the value a field is stated at, without its tolerance, so change the value or the bound
-  --> main.nsm:8:5
+  --> main.nsm:5:5
   |
-8 |     nominal(.supply.voltage) >= 3.4V
+5 |     nominal(.supply.voltage) >= 3.4V
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: supply.voltage must always be at least 3.3V, but 3.135V..3.465V is not always above 3.3V
-  --> main.nsm:9:5
+  --> main.nsm:6:5
   |
-9 |     .supply.voltage >= 3.3V
+6 |     .supply.voltage >= 3.3V
   |     ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -190,7 +169,7 @@ error: supply.voltage must always be at least 3.3V, but 3.135V..3.465V is not al
 A module or a part may give a field a value that a board can replace. It writes `.field ?= value`. `?=` is not a weaker `&=`: a narrowing only restricts, so a library that wants a value a board may change cannot say it with `&=`, and `&=` with a range the board then cannot leave would be a requirement. A default is an offer. The board accepts it by saying nothing, or replaces it by stating the field.
 
 ```nsm solve report
-import std::parts::passive::{Resistor, Led}
+import std::parts::passive::{Led, Resistor}
 import std::sources::Rail
 
 /// An LED with the resistor that sets its current.
@@ -206,19 +185,13 @@ module Lamp {
 }
 
 board Dim {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .lamp: Lamp
     .input ~ .lamp.supply
 }
 
 board Bright {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .lamp: Lamp { .current &= 6mA..9mA }
     .input ~ .lamp.supply
 }
@@ -286,10 +259,7 @@ module Sensor {
 }
 
 board Joined {
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .sensor: Sensor
     .input ~ .sensor.supply
 }
@@ -297,10 +267,10 @@ board Joined {
 
 ```text
 error: connected values disagree: `input.voltage` is 4.75V..5.25V but `sensor.supply.voltage` is 3.135V..3.465V
-   --> main.nsm:11:9
+   --> main.nsm:10:20
    |
-11 |         .voltage &= 5V +/- 5%
-   |         ^^^^^^^^^^^^^^^^^^^^^
+10 |     .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
+   |                    ^^^^^^^^^^^^^^^^^^^^^
 ```
 
 State the voltage on the sensor's supply, `.sensor.supply.voltage &= 5V +/- 5%`, and the default is dropped.
@@ -310,7 +280,7 @@ State the voltage on the sensor's supply, `.sensor.supply.voltage &= 5V +/- 5%`,
 A board that wants one package for all its resistors says it once, in a `defaults` block (issue #625, ADR 0128). Each line names a kind, one of its values and `?=`, and offers the value to every part or module of that kind on the board, at any depth inside its modules, that states nothing on the value itself.
 
 ```nsm solve report
-import std::parts::passive::{Resistor, Led}
+import std::parts::passive::{Led, Resistor}
 import std::sources::Rail
 
 /// An LED with the resistor that sets its current.
@@ -325,16 +295,10 @@ board Panel {
     defaults {
         Resistor.package ?= "0402"
     }
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .lamp: Lamp
     .input ~ .lamp.supply
-    .pull: Resistor {
-        .resistance &= 10kohm +/- 5%
-        .package &= "0603"
-    }
+    .pull: Resistor { .resistance &= 10kohm +/- 5%; .package &= "0603" }
     .input.pos ~> .pull ~> .input.neg
 }
 ```
@@ -400,22 +364,15 @@ board Pulls {
     defaults {
         Resistor.package ?= "0402"
     }
-    .input: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-        .neg.net &= "GND"
-    }
-    .pull: Resistor {
-        .resistance &= 10kohm +/- 5%
-        .package &= "0402"
-    }
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .pull: Resistor { .resistance &= 10kohm +/- 5%; .package &= "0402" }
     .input.pos ~> .pull ~> .input.neg
 }
 ```
 
 ```text
-main.nsm:11:9: lint.redundant: `.neg.net &= "GND"` says what the default at std/sources.nsm:95 already gives; delete it
-main.nsm:15:9: lint.redundant: `.package &= "0402"` says what the default at main.nsm:6 already gives; delete it
+main.nsm:8:62: lint.redundant: `.neg.net &= "GND"` says what the default at std/sources.nsm:95 already gives; delete it
+main.nsm:9:53: lint.redundant: `.package &= "0402"` says what the default at main.nsm:6 already gives; delete it
 ```
 
 A part that provides the standard `Connector` has its `#[kind(connector)]`:
@@ -464,10 +421,7 @@ module Lamp {
 }
 
 board Plain {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC" }
     .lamp: Lamp
     .supply ~ .lamp.supply
     .pull: Resistor
@@ -497,10 +451,7 @@ module Lamp {
 }
 
 board Stated {
-    .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .lamp: Lamp
     .supply ~ .lamp.supply
     .lamp.balance_resistance &= 10kohm..100kohm
@@ -537,10 +488,7 @@ module Divider {
 }
 
 board RatioOnly {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC" }
     .divider: Divider
     .divider.supply ~ .supply
 }
@@ -750,14 +698,12 @@ part Receptacle {
 A board with no USB port says so, and builds with neither note:
 
 ```nsm evaluate
-import src::processor::Processor
 import std::sources::Rail
 
+import src::processor::Processor
+
 board Sensor {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .processor: Processor
     .supply ~ .processor.vdd
     unused .processor.usb
@@ -776,14 +722,12 @@ What the statement does, for the interface it names and everything inside it:
 The statement says that nothing on the board uses the interface. A board that also uses it contradicts itself, and the error shows both lines: the connection, and the line of the `unused` statement. A pin of the interface that is on a net with a pin of another part, a series fuse, resistor or ferrite bead that leads from it to such a pin (below), an interface joined to another with `~`, and a function chosen on a pin of it are all uses:
 
 ```nsm fails
-import src::processor::{Processor, Receptacle}
 import std::sources::Rail
 
+import src::processor::{Processor, Receptacle}
+
 board Contradiction {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .processor: Processor
     .jack: Receptacle
     .supply ~ .processor.vdd
@@ -794,24 +738,22 @@ board Contradiction {
 ```
 
 ```text
-error: `processor.usb.dm` is connected here to `jack.usb.dm` (net `net-jack.usb.dm`), but `processor.usb` is stated `unused` at main.nsm:14: the interface is either used or not; remove the connection, or remove `unused`
-   --> main.nsm:13:5
+error: `processor.usb.dm` is connected here to `jack.usb.dm` (net `net-jack.usb.dm`), but `processor.usb` is stated `unused` at main.nsm:12: the interface is either used or not; remove the connection, or remove `unused`
+   --> main.nsm:11:5
    |
-13 |     .processor.usb ~ .jack.usb
+11 |     .processor.usb ~ .jack.usb
    |     ^^^^^^^^^^^^^^
 ```
 
 A test pad does not use the interface. A part with passive pins only (a test pad, a header) brings a net out and uses nothing, and neither does a return to ground: **unused means that nothing on the board uses the interface**, not that nothing is connected to it. A module's own USB pads, which the board names and brings out to unpopulated test pads, can be stated unused, and the power view then has no net that nothing supplies for them:
 
 ```nsm evaluate
-import src::processor::{Pad, Processor}
 import std::sources::Rail
 
+import src::processor::{Pad, Processor}
+
 board Modem {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .processor: Processor
     .supply ~ .processor.vdd
     .tp_dp: Pad
@@ -827,15 +769,13 @@ board Modem {
 A fuse, a resistor or a ferrite bead in series from the interface to the rest of the board is a use, through however many of them: the part still feeds the board from the interface, and the interface's limits and the draw of its rails belong in the checks. The rest of the board is a net that has a pin of another part that is not `passive`. The error names the parts the use goes through and the pin it reaches:
 
 ```nsm fails
-import src::processor::{Processor, Receptacle}
 import std::parts::passive::Fuse
 import std::sources::Rail
 
+import src::processor::{Processor, Receptacle}
+
 board Behind {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .processor: Processor
     .jack: Receptacle
     .fuse: Fuse
@@ -847,25 +787,23 @@ board Behind {
 ```
 
 ```text
-error: `processor.usb.vbus.pos` is connected here through `fuse` (a `Fuse`) to `jack.usb.vbus.pos` (net `net-fuse.b`), but `processor.usb` is stated `unused` at main.nsm:16: the interface is either used or not; remove the connection, or remove `unused`
-   --> main.nsm:15:5
+error: `processor.usb.vbus.pos` is connected here through `fuse` (a `Fuse`) to `jack.usb.vbus.pos` (net `net-fuse.b`), but `processor.usb` is stated `unused` at main.nsm:14: the interface is either used or not; remove the connection, or remove `unused`
+   --> main.nsm:13:5
    |
-15 |     .processor.usb.vbus.pos ~> .fuse ~> .jack.usb.vbus.pos
+13 |     .processor.usb.vbus.pos ~> .fuse ~> .jack.usb.vbus.pos
    |     ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A pull to a rail that nothing on the board sources is no use. A series part whose far end is the return `neg`, or the `pos` of a rail of the board that nothing on the board sources (the supply, which comes from outside the board), only pulls the pin up or down: a pull-up or a pull-down on a pin of the interface does not make the pin used, although the supply's net has pins of other parts that are not passive. A rail that something on the board sources is not the supply, and a path to it is a use, as it was before: the rail is made or fed on the board, so the interface's pin feeds the board. A rail is sourced on the board when its `pos` net holds the output rail of a `dc linear_regulator` or `dc switching_regulator`, the rail of a `dc source`, or a pin whose table says it is an `output` (a charger's). A path from the pin to another part's pin that is not passive is still a use, also when the same pin has a pull as well. Here `.processor.usb.dp` has a pull-up to the supply and nothing else, and the board builds:
 
 ```nsm evaluate
-import src::processor::{Processor, Receptacle}
 import std::parts::passive::Resistor
 import std::sources::Rail
 
+import src::processor::{Processor, Receptacle}
+
 board Pulled {
-    .supply: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .processor: Processor
     .jack: Receptacle
     .pull_up: Resistor
@@ -878,19 +816,14 @@ board Pulled {
 The same pull to a rail that a regulator on the board makes is a use: `.vbus` is the regulator's output, so the pin feeds the board.
 
 ```nsm fails
-import src::processor::{Processor, Receptacle, Regulator}
 import std::parts::passive::Resistor
 import std::sources::Rail
 
+import src::processor::{Processor, Receptacle, Regulator}
+
 board Fed {
-    .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "5V"
-    }
-    .vbus: Rail {
-        .voltage &= 3.3V +/- 5%
-        .pos.net &= "3V3"
-    }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "5V" }
+    .vbus: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
     .regulator: Regulator
     .processor: Processor
     .jack: Receptacle
@@ -905,10 +838,10 @@ board Fed {
 ```
 
 ```text
-error: `processor.usb.dp` is connected here through `pull_up` (a `Resistor`) to `regulator.vout.pos` (net `3V3`), but `processor.usb` is stated `unused` at main.nsm:23: the interface is either used or not; remove the connection, or remove `unused`
-   --> main.nsm:22:5
+error: `processor.usb.dp` is connected here through `pull_up` (a `Resistor`) to `regulator.vout.pos` (net `3V3`), but `processor.usb` is stated `unused` at main.nsm:18: the interface is either used or not; remove the connection, or remove `unused`
+   --> main.nsm:17:5
    |
-22 |     .processor.usb.dp ~> .pull_up ~> .vbus.pos
+17 |     .processor.usb.dp ~> .pull_up ~> .vbus.pos
    |     ^^^^^^^^^^^^^^^^^
 ```
 
@@ -930,14 +863,8 @@ import std::parts::passive::Capacitor
 import std::sources::Rail
 
 board Odd {
-    .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
-    .c: Capacitor {
-        .capacitance &= 130nF +/- 10%
-        .max_voltage >= 12V
-    }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
+    .c: Capacitor { .capacitance &= 130nF +/- 10%; .max_voltage >= 12V }
     .supply.pos ~ .c.a
     .supply.neg ~ .c.b
 }
@@ -964,14 +891,9 @@ import std::sources::Rail
 
 board Circle {
     .process: TwoLayer { .stackup.thickness &= 1.6mm }
-    .supply: Rail {
-        .voltage &= 9V..16V
-        .pos.net &= "VBATT"
-    }
+    .supply: Rail { .voltage &= 9V..16V; .pos.net &= "VBATT" }
     .r1: Resistor { .resistance &= 10ohm +/- 1% }
-    .load: Rail {
-        .pos.net &= "VLOAD"
-    }
+    .load: Rail { .pos.net &= "VLOAD" }
     .supply.neg ~ .load.neg
     .supply.pos ~> .r1 ~> .load.pos
 
@@ -1021,14 +943,9 @@ module Divider {
 
 board Behind {
     .process: TwoLayer { .stackup.thickness &= 1.6mm }
-    .supply: Rail {
-        .voltage &= 14V..22V
-        .pos.net &= "VIN"
-    }
+    .supply: Rail { .voltage &= 14V..22V; .pos.net &= "VIN" }
     .series: Resistor { .resistance &= 68ohm +/- 1% }
-    .after: Rail {
-        .pos.net &= "AFTER"
-    }
+    .after: Rail { .pos.net &= "AFTER" }
     .supply.neg ~ .after.neg
     .supply.pos ~> .series ~> .after.pos
     .after.voltage == .supply.voltage - .series.drop
@@ -1074,14 +991,9 @@ module Divider {
 
 board Behind {
     .process: TwoLayer { .stackup.thickness &= 1.6mm }
-    .supply: Rail {
-        .voltage &= 14V..22V
-        .pos.net &= "VIN"
-    }
+    .supply: Rail { .voltage &= 14V..22V; .pos.net &= "VIN" }
     .series: Resistor { .resistance &= 68ohm +/- 1% }
-    .after: Rail {
-        .pos.net &= "AFTER"
-    }
+    .after: Rail { .pos.net &= "AFTER" }
     .supply.neg ~ .after.neg
     .supply.pos ~> .series ~> .after.pos
     .after.voltage == .supply.voltage - .series.drop
@@ -1089,10 +1001,7 @@ board Behind {
     .divider: Divider { .max_draw &= 40uA }
     .divider.mid.net &= "MID"
     .after ~ .divider.vin
-    .lamp: Rail {
-        .pos.net &= "AFTER"
-        .current &= 0A..4mA
-    }
+    .lamp: Rail { .pos.net &= "AFTER"; .current &= 0A..4mA }
     .after ~ .lamp
 }
 ```
@@ -1123,14 +1032,9 @@ module Divider {
 
 board Behind {
     .process: TwoLayer { .stackup.thickness &= 1.6mm }
-    .supply: Rail {
-        .voltage &= 14V..22V
-        .pos.net &= "VIN"
-    }
+    .supply: Rail { .voltage &= 14V..22V; .pos.net &= "VIN" }
     .series: Resistor { .resistance &= 68ohm +/- 1% }
-    .after: Rail {
-        .pos.net &= "AFTER"
-    }
+    .after: Rail { .pos.net &= "AFTER" }
     .supply.neg ~ .after.neg
     .supply.pos ~> .series ~> .after.pos
     .after.voltage == .supply.voltage - .series.drop
@@ -1138,10 +1042,7 @@ board Behind {
     .divider: Divider { .max_draw &= 40uA }
     .divider.mid.net &= "MID"
     .after ~ .divider.vin
-    .lamp: Rail {
-        .pos.net &= "AFTER"
-        .current &= 0A..4mA
-    }
+    .lamp: Rail { .pos.net &= "AFTER"; .current &= 0A..4mA }
     .after ~ .lamp
     .supply.current &= -8mA..0A
 }
@@ -1161,14 +1062,9 @@ import std::sources::Rail
 
 board Started {
     .process: TwoLayer { .stackup.thickness &= 1.6mm }
-    .supply: Rail {
-        .voltage &= 9V..16V
-        .pos.net &= "VBATT"
-    }
+    .supply: Rail { .voltage &= 9V..16V; .pos.net &= "VBATT" }
     .r1: Resistor { .resistance &= 10ohm +/- 1% }
-    .load: Rail {
-        .pos.net &= "VLOAD"
-    }
+    .load: Rail { .pos.net &= "VLOAD" }
     .supply.neg ~ .load.neg
     .supply.pos ~> .r1 ~> .load.pos
 

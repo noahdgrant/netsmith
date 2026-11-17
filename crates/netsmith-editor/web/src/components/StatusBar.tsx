@@ -53,7 +53,7 @@ import { useElapsed } from './JobProgress';
 import { type OutsideRun, dropOutside, outsideRuns } from '../pcb/liveState';
 import { Icon, SeverityIcon } from './Icons';
 import { settings } from '../settings';
-import { COMMENT_FONTS, FONT, autosave, commentFont, fontSize, hoverCards, inlineHints, outlineOpen, rebuildOnSave, resetEditorZoom, sortImportsOnSave, vimMode, wordWrap, zoomEditor } from '../source/prefs';
+import { COMMENT_FONTS, FONT, autosave, commentFont, fontSize, hoverCards, inlineHints, outlineOpen, formatOnSave, rebuildOnSave, resetEditorZoom, sortImportsOnSave, vimMode, wordWrap, zoomEditor } from '../source/prefs';
 import { chordText, find } from '../commands';
 import { CompareChip } from './CompareChip';
 import { SourceChangesItem } from './SourceChangesItem';
@@ -362,6 +362,7 @@ function SourceOptions({ close }: { close: () => void }) {
         {row('Word wrap', wordWrap.value, () => (wordWrap.value = !wordWrap.value), 'source.wrap.toggle', 'opt-wrap')}
         {row('Autosave', autosave.value, () => (autosave.value = !autosave.value), 'source.autosave.toggle', 'opt-autosave')}
         {row('Rebuild on save', rebuildOnSave.value, () => (rebuildOnSave.value = !rebuildOnSave.value), 'source.rebuild.toggle', 'opt-rebuild')}
+        {row('Format on save', formatOnSave.value, () => (formatOnSave.value = !formatOnSave.value), 'source.formatsave.toggle', 'opt-formatsave')}
         {row('Sort imports on save', sortImportsOnSave.value, () => (sortImportsOnSave.value = !sortImportsOnSave.value), 'source.sortsave.toggle', 'opt-sortsave')}
         {row('Vim keys', vimMode.value, () => (vimMode.value = !vimMode.value), 'source.vim.toggle', 'opt-vim')}
         {row('Outline', outlineOpen.value, () => (outlineOpen.value = !outlineOpen.value), 'source.outline.toggle', 'opt-outline')}

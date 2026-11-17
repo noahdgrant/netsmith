@@ -3,25 +3,18 @@
 `examples/led.nsm` is an LED on a 5 V supply with a resistor that sets its current. The solver picks the resistor.
 
 ```nsm solve report file=examples/led.nsm
-import std::parts::connector::Header1x2
-import std::parts::passive::{Resistor, Led}
-import std::sources::Rail
 import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::parts::passive::{Led, Resistor}
+import std::sources::Rail
 
 board LedExample {
     /// Made by JLCPCB's two-layer process, on a board 1.6 mm thick.
-    .process: TwoLayer {
-        .stackup.thickness &= 1.6mm
-    }
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
 
-    .supply: Rail {
-        .voltage &= 5V +/- 5%
-        .pos.net &= "VCC"
-    }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
 
-    .led: Led {
-        .current &= 5mA..15mA
-    }
+    .led: Led { .current &= 5mA..15mA }
 
     .r1: Resistor {}
 

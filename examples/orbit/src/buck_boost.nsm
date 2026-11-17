@@ -9,11 +9,12 @@
 //! = 0.5 V * 6.6 = 3.3 V. The divider is `std::parts::regulator::FeedbackDivider`, which writes
 //! that relation, with ORBIT's two resistors narrowed from outside it (ADR 0116).
 
-import src::tps63802::Tps63802
 import std::bus::PullUp
 import std::parts::passive::{Capacitor, Inductor}
 import std::parts::regulator::FeedbackDivider
 import std::sources::Rail
+
+import src::tps63802::Tps63802
 
 /// A battery to 3.3 V buck-boost converter. Join `.vin` to the battery's rail and `.vout` to
 /// the 3.3 V rail.

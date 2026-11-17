@@ -3606,23 +3606,23 @@
               "field": "x",
               "lo": 37.0,
               "hi": 37.0,
-              "source": "src/main.physical.nsm:63"
+              "source": "src/main.physical.nsm:59"
             },
             {
               "field": "y",
               "lo": 3.75,
               "hi": 3.75,
-              "source": "src/main.physical.nsm:64"
+              "source": "src/main.physical.nsm:60"
             },
             {
               "field": "rotation",
               "lo": 0.0,
               "hi": 0.0,
-              "source": "src/main.physical.nsm:65"
+              "source": "src/main.physical.nsm:61"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:66"
+          "side_source": "src/main.physical.nsm:62"
         },
         {
           "path": "boot_switch",
@@ -3632,23 +3632,23 @@
               "field": "x",
               "lo": 3.4,
               "hi": 3.4,
-              "source": "src/main.physical.nsm:85"
+              "source": "src/main.physical.nsm:81"
             },
             {
               "field": "y",
               "lo": 12.5,
               "hi": 12.5,
-              "source": "src/main.physical.nsm:86"
+              "source": "src/main.physical.nsm:82"
             },
             {
               "field": "rotation",
               "lo": 180.0,
               "hi": 180.0,
-              "source": "src/main.physical.nsm:87"
+              "source": "src/main.physical.nsm:83"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:88"
+          "side_source": "src/main.physical.nsm:84"
         },
         {
           "path": "header_east",
@@ -3658,32 +3658,6 @@
               "field": "x",
               "lo": 47.5,
               "hi": 47.5,
-              "source": "src/main.physical.nsm:75"
-            },
-            {
-              "field": "y",
-              "lo": 30.89,
-              "hi": 30.89,
-              "source": "src/main.physical.nsm:76"
-            },
-            {
-              "field": "rotation",
-              "lo": 0.0,
-              "hi": 0.0,
-              "source": "src/main.physical.nsm:77"
-            }
-          ],
-          "side": "top",
-          "side_source": "src/main.physical.nsm:78"
-        },
-        {
-          "path": "header_west",
-          "module": false,
-          "bounds": [
-            {
-              "field": "x",
-              "lo": 2.5,
-              "hi": 2.5,
               "source": "src/main.physical.nsm:71"
             },
             {
@@ -3703,6 +3677,32 @@
           "side_source": "src/main.physical.nsm:74"
         },
         {
+          "path": "header_west",
+          "module": false,
+          "bounds": [
+            {
+              "field": "x",
+              "lo": 2.5,
+              "hi": 2.5,
+              "source": "src/main.physical.nsm:67"
+            },
+            {
+              "field": "y",
+              "lo": 30.89,
+              "hi": 30.89,
+              "source": "src/main.physical.nsm:68"
+            },
+            {
+              "field": "rotation",
+              "lo": 0.0,
+              "hi": 0.0,
+              "source": "src/main.physical.nsm:69"
+            }
+          ],
+          "side": "top",
+          "side_source": "src/main.physical.nsm:70"
+        },
+        {
           "path": "hole1",
           "module": false,
           "bounds": [
@@ -3710,13 +3710,13 @@
               "field": "x",
               "lo": 46.0,
               "hi": 46.0,
-              "source": "src/main.physical.nsm:43"
+              "source": "src/main.physical.nsm:39"
             },
             {
               "field": "y",
               "lo": 4.0,
               "hi": 4.0,
-              "source": "src/main.physical.nsm:44"
+              "source": "src/main.physical.nsm:40"
             }
           ],
           "side": null,
@@ -3730,13 +3730,13 @@
               "field": "x",
               "lo": 4.0,
               "hi": 4.0,
-              "source": "src/main.physical.nsm:45"
+              "source": "src/main.physical.nsm:41"
             },
             {
               "field": "y",
               "lo": 4.0,
               "hi": 4.0,
-              "source": "src/main.physical.nsm:46"
+              "source": "src/main.physical.nsm:42"
             }
           ],
           "side": null,
@@ -3750,13 +3750,13 @@
               "field": "x",
               "lo": 4.0,
               "hi": 4.0,
-              "source": "src/main.physical.nsm:47"
+              "source": "src/main.physical.nsm:43"
             },
             {
               "field": "y",
               "lo": 46.0,
               "hi": 46.0,
-              "source": "src/main.physical.nsm:48"
+              "source": "src/main.physical.nsm:44"
             }
           ],
           "side": null,
@@ -3770,13 +3770,13 @@
               "field": "x",
               "lo": 46.0,
               "hi": 46.0,
-              "source": "src/main.physical.nsm:49"
+              "source": "src/main.physical.nsm:45"
             },
             {
               "field": "y",
               "lo": 46.0,
               "hi": 46.0,
-              "source": "src/main.physical.nsm:50"
+              "source": "src/main.physical.nsm:46"
             }
           ],
           "side": null,
@@ -3790,23 +3790,23 @@
               "field": "x",
               "lo": 46.6,
               "hi": 46.6,
-              "source": "src/main.physical.nsm:89"
+              "source": "src/main.physical.nsm:85"
             },
             {
               "field": "y",
               "lo": 12.5,
               "hi": 12.5,
-              "source": "src/main.physical.nsm:90"
+              "source": "src/main.physical.nsm:86"
             },
             {
               "field": "rotation",
               "lo": 0.0,
               "hi": 0.0,
-              "source": "src/main.physical.nsm:91"
+              "source": "src/main.physical.nsm:87"
             }
           ],
           "side": "top",
-          "side_source": "src/main.physical.nsm:92"
+          "side_source": "src/main.physical.nsm:88"
         },
         {
           "path": "reset_button",
@@ -3816,6 +3816,58 @@
               "field": "x",
               "lo": 37.5,
               "hi": 37.5,
+              "source": "src/main.physical.nsm:92"
+            },
+            {
+              "field": "y",
+              "lo": 44.5,
+              "hi": 44.5,
+              "source": "src/main.physical.nsm:93"
+            },
+            {
+              "field": "rotation",
+              "lo": 0.0,
+              "hi": 0.0,
+              "source": "src/main.physical.nsm:94"
+            }
+          ],
+          "side": "top",
+          "side_source": "src/main.physical.nsm:95"
+        },
+        {
+          "path": "usb",
+          "module": false,
+          "bounds": [
+            {
+              "field": "x",
+              "lo": 25.0,
+              "hi": 25.0,
+              "source": "src/main.physical.nsm:51"
+            },
+            {
+              "field": "y",
+              "lo": 5.0,
+              "hi": 5.0,
+              "source": "src/main.physical.nsm:52"
+            },
+            {
+              "field": "rotation",
+              "lo": 180.0,
+              "hi": 180.0,
+              "source": "src/main.physical.nsm:53"
+            }
+          ],
+          "side": "top",
+          "side_source": "src/main.physical.nsm:54"
+        },
+        {
+          "path": "user_button",
+          "module": false,
+          "bounds": [
+            {
+              "field": "x",
+              "lo": 12.5,
+              "hi": 12.5,
               "source": "src/main.physical.nsm:96"
             },
             {
@@ -3826,109 +3878,57 @@
             },
             {
               "field": "rotation",
-              "lo": 0.0,
-              "hi": 0.0,
+              "lo": 180.0,
+              "hi": 180.0,
               "source": "src/main.physical.nsm:98"
             }
           ],
           "side": "top",
           "side_source": "src/main.physical.nsm:99"
-        },
-        {
-          "path": "usb",
-          "module": false,
-          "bounds": [
-            {
-              "field": "x",
-              "lo": 25.0,
-              "hi": 25.0,
-              "source": "src/main.physical.nsm:55"
-            },
-            {
-              "field": "y",
-              "lo": 5.0,
-              "hi": 5.0,
-              "source": "src/main.physical.nsm:56"
-            },
-            {
-              "field": "rotation",
-              "lo": 180.0,
-              "hi": 180.0,
-              "source": "src/main.physical.nsm:57"
-            }
-          ],
-          "side": "top",
-          "side_source": "src/main.physical.nsm:58"
-        },
-        {
-          "path": "user_button",
-          "module": false,
-          "bounds": [
-            {
-              "field": "x",
-              "lo": 12.5,
-              "hi": 12.5,
-              "source": "src/main.physical.nsm:100"
-            },
-            {
-              "field": "y",
-              "lo": 44.5,
-              "hi": 44.5,
-              "source": "src/main.physical.nsm:101"
-            },
-            {
-              "field": "rotation",
-              "lo": 180.0,
-              "hi": 180.0,
-              "source": "src/main.physical.nsm:102"
-            }
-          ],
-          "side": "top",
-          "side_source": "src/main.physical.nsm:103"
         }
       ],
       "offsets": [],
       "line_texts": {
-        "src/main.physical.nsm:100": ".user_button.place.x &= 12.5mm",
-        "src/main.physical.nsm:101": ".user_button.place.y &= 44.5mm",
-        "src/main.physical.nsm:102": ".user_button.place.rotation &= 180",
-        "src/main.physical.nsm:103": ".user_button.place.side &= \"top\"",
-        "src/main.physical.nsm:43": ".hole1.place.x &= 46mm",
-        "src/main.physical.nsm:44": ".hole1.place.y &= 4mm",
-        "src/main.physical.nsm:45": ".hole2.place.x &= 4mm",
-        "src/main.physical.nsm:46": ".hole2.place.y &= 4mm",
-        "src/main.physical.nsm:47": ".hole3.place.x &= 4mm",
-        "src/main.physical.nsm:48": ".hole3.place.y &= 46mm",
-        "src/main.physical.nsm:49": ".hole4.place.x &= 46mm",
-        "src/main.physical.nsm:50": ".hole4.place.y &= 46mm",
-        "src/main.physical.nsm:55": ".usb.place.x &= 25mm",
-        "src/main.physical.nsm:56": ".usb.place.y &= 5mm",
-        "src/main.physical.nsm:57": ".usb.place.rotation &= 180",
-        "src/main.physical.nsm:58": ".usb.place.side &= \"top\"",
-        "src/main.physical.nsm:63": ".battery.place.x &= 37mm",
-        "src/main.physical.nsm:64": ".battery.place.y &= 3.75mm",
-        "src/main.physical.nsm:65": ".battery.place.rotation &= 0",
-        "src/main.physical.nsm:66": ".battery.place.side &= \"top\"",
-        "src/main.physical.nsm:71": ".header_west.place.x &= 2.5mm",
-        "src/main.physical.nsm:72": ".header_west.place.y &= 30.89mm",
-        "src/main.physical.nsm:73": ".header_west.place.rotation &= 0",
-        "src/main.physical.nsm:74": ".header_west.place.side &= \"top\"",
-        "src/main.physical.nsm:75": ".header_east.place.x &= 47.5mm",
-        "src/main.physical.nsm:76": ".header_east.place.y &= 30.89mm",
-        "src/main.physical.nsm:77": ".header_east.place.rotation &= 0",
-        "src/main.physical.nsm:78": ".header_east.place.side &= \"top\"",
-        "src/main.physical.nsm:85": ".boot_switch.place.x &= 3.4mm",
-        "src/main.physical.nsm:86": ".boot_switch.place.y &= 12.5mm",
-        "src/main.physical.nsm:87": ".boot_switch.place.rotation &= 180",
-        "src/main.physical.nsm:88": ".boot_switch.place.side &= \"top\"",
-        "src/main.physical.nsm:89": ".power_switch.place.x &= 46.6mm",
-        "src/main.physical.nsm:90": ".power_switch.place.y &= 12.5mm",
-        "src/main.physical.nsm:91": ".power_switch.place.rotation &= 0",
-        "src/main.physical.nsm:92": ".power_switch.place.side &= \"top\"",
-        "src/main.physical.nsm:96": ".reset_button.place.x &= 37.5mm",
-        "src/main.physical.nsm:97": ".reset_button.place.y &= 44.5mm",
-        "src/main.physical.nsm:98": ".reset_button.place.rotation &= 0",
-        "src/main.physical.nsm:99": ".reset_button.place.side &= \"top\""
+        "src/main.physical.nsm:39": ".hole1.place.x &= 46mm",
+        "src/main.physical.nsm:40": ".hole1.place.y &= 4mm",
+        "src/main.physical.nsm:41": ".hole2.place.x &= 4mm",
+        "src/main.physical.nsm:42": ".hole2.place.y &= 4mm",
+        "src/main.physical.nsm:43": ".hole3.place.x &= 4mm",
+        "src/main.physical.nsm:44": ".hole3.place.y &= 46mm",
+        "src/main.physical.nsm:45": ".hole4.place.x &= 46mm",
+        "src/main.physical.nsm:46": ".hole4.place.y &= 46mm",
+        "src/main.physical.nsm:51": ".usb.place.x &= 25mm",
+        "src/main.physical.nsm:52": ".usb.place.y &= 5mm",
+        "src/main.physical.nsm:53": ".usb.place.rotation &= 180",
+        "src/main.physical.nsm:54": ".usb.place.side &= \"top\"",
+        "src/main.physical.nsm:59": ".battery.place.x &= 37mm",
+        "src/main.physical.nsm:60": ".battery.place.y &= 3.75mm",
+        "src/main.physical.nsm:61": ".battery.place.rotation &= 0",
+        "src/main.physical.nsm:62": ".battery.place.side &= \"top\"",
+        "src/main.physical.nsm:67": ".header_west.place.x &= 2.5mm",
+        "src/main.physical.nsm:68": ".header_west.place.y &= 30.89mm",
+        "src/main.physical.nsm:69": ".header_west.place.rotation &= 0",
+        "src/main.physical.nsm:70": ".header_west.place.side &= \"top\"",
+        "src/main.physical.nsm:71": ".header_east.place.x &= 47.5mm",
+        "src/main.physical.nsm:72": ".header_east.place.y &= 30.89mm",
+        "src/main.physical.nsm:73": ".header_east.place.rotation &= 0",
+        "src/main.physical.nsm:74": ".header_east.place.side &= \"top\"",
+        "src/main.physical.nsm:81": ".boot_switch.place.x &= 3.4mm",
+        "src/main.physical.nsm:82": ".boot_switch.place.y &= 12.5mm",
+        "src/main.physical.nsm:83": ".boot_switch.place.rotation &= 180",
+        "src/main.physical.nsm:84": ".boot_switch.place.side &= \"top\"",
+        "src/main.physical.nsm:85": ".power_switch.place.x &= 46.6mm",
+        "src/main.physical.nsm:86": ".power_switch.place.y &= 12.5mm",
+        "src/main.physical.nsm:87": ".power_switch.place.rotation &= 0",
+        "src/main.physical.nsm:88": ".power_switch.place.side &= \"top\"",
+        "src/main.physical.nsm:92": ".reset_button.place.x &= 37.5mm",
+        "src/main.physical.nsm:93": ".reset_button.place.y &= 44.5mm",
+        "src/main.physical.nsm:94": ".reset_button.place.rotation &= 0",
+        "src/main.physical.nsm:95": ".reset_button.place.side &= \"top\"",
+        "src/main.physical.nsm:96": ".user_button.place.x &= 12.5mm",
+        "src/main.physical.nsm:97": ".user_button.place.y &= 44.5mm",
+        "src/main.physical.nsm:98": ".user_button.place.rotation &= 180",
+        "src/main.physical.nsm:99": ".user_button.place.side &= \"top\""
       }
     },
     "interfaces": [
@@ -4178,7 +4178,7 @@
         "text": "The battery connector, a JST PH with two contacts: pin 1 is ground, pin 2 the battery's plus.",
         "at": {
           "file": "src/main.nsm",
-          "line": 53
+          "line": 54
         },
         "anchors": [
           "battery"
@@ -4191,7 +4191,7 @@
         "text": "R2: 10 kohm from the switch's pad 1 to ground. ORBIT's pad 1 of R2 is on ground and its pad 2 on the switch, so this is a plain resistor with its pads joined that way and not a `PullDown` (which puts its resistor's pad 1 on the line): BOOT0's pad 1 is on the net of R2's pad 2 in ORBIT's board, and the parity checker compares the pad.",
         "at": {
           "file": "src/main.nsm",
-          "line": 142
+          "line": 135
         },
         "anchors": [
           "boot_pulldown"
@@ -4204,7 +4204,7 @@
         "text": "BOOT0: the slide switch that sets the MCU's BOOT0 pin. Its pad 2 is on 3.3 V, its pad 1 on a net with a 10 kohm resistor to ground, and its common pad on the MCU's BOOT0.",
         "at": {
           "file": "src/main.nsm",
-          "line": 137
+          "line": 130
         },
         "anchors": [
           "boot_switch"
@@ -4217,7 +4217,7 @@
         "text": "A battery to 3.3 V buck-boost converter. Join `.vin` to the battery's rail and `.vout` to the 3.3 V rail.",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 20
+          "line": 21
         },
         "anchors": [],
         "result": null
@@ -4228,7 +4228,7 @@
         "text": "R7 (`rtop`, from the output to `FB`) and R8 (`rbottom`, from `FB` to ground).",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 29
+          "line": 30
         },
         "anchors": [],
         "result": null
@@ -4239,7 +4239,7 @@
         "text": "U15: the TPS63802DLAR (LCSC C2845237).",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 25
+          "line": 26
         },
         "anchors": [
           "buck_boost.ic"
@@ -4252,7 +4252,7 @@
         "text": "L1: 0.47 uH.",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 27
+          "line": 28
         },
         "anchors": [
           "buck_boost.inductor"
@@ -4265,7 +4265,7 @@
         "text": "C14, the input capacitor.",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 36
+          "line": 37
         },
         "anchors": [
           "buck_boost.input_cap"
@@ -4278,7 +4278,7 @@
         "text": "C13, the output capacitor.",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 38
+          "line": 39
         },
         "anchors": [
           "buck_boost.output_cap"
@@ -4291,7 +4291,7 @@
         "text": "R6, the pull-up of the power-good output.",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 34
+          "line": 35
         },
         "anchors": [],
         "result": null
@@ -4302,7 +4302,7 @@
         "text": "A single-cell Li-Ion charger from USB. Join `.vbus` to the USB rail and `.vbatt` to the battery's rail.",
         "at": {
           "file": "src/charger.nsm",
-          "line": 17
+          "line": 18
         },
         "anchors": [],
         "result": null
@@ -4313,7 +4313,7 @@
         "text": "U1: the MCP73831T-2ACI/OT (4.2 V, LCSC C424093; ORBIT's schematic writes the value as `MCP73031`).",
         "at": {
           "file": "src/charger.nsm",
-          "line": 23
+          "line": 24
         },
         "anchors": [
           "charger.ic"
@@ -4326,7 +4326,7 @@
         "text": "R3, from `PROG` to ground: 2 kohm sets 500 mA.",
         "at": {
           "file": "src/charger.nsm",
-          "line": 25
+          "line": 26
         },
         "anchors": [
           "charger.rprog"
@@ -4339,7 +4339,7 @@
         "text": "D1, the charge status LED, green.",
         "at": {
           "file": "src/charger.nsm",
-          "line": 29
+          "line": 30
         },
         "anchors": [
           "charger.status_led"
@@ -4352,7 +4352,7 @@
         "text": "R1, the status LED's series resistor.",
         "at": {
           "file": "src/charger.nsm",
-          "line": 27
+          "line": 28
         },
         "anchors": [
           "charger.status_resistor"
@@ -4365,7 +4365,7 @@
         "text": "C7, on the battery side.",
         "at": {
           "file": "src/charger.nsm",
-          "line": 33
+          "line": 34
         },
         "anchors": [
           "charger.vbatt_cap"
@@ -4378,7 +4378,7 @@
         "text": "C8, on the USB side.",
         "at": {
           "file": "src/charger.nsm",
-          "line": 31
+          "line": 32
         },
         "anchors": [
           "charger.vbus_cap"
@@ -4391,7 +4391,7 @@
         "text": "U17: the AT24C128C; `A0` and `A1` high and `A2` low (address 0x53), write protect low.",
         "at": {
           "file": "src/main.nsm",
-          "line": 197
+          "line": 190
         },
         "anchors": [
           "eeprom"
@@ -4404,7 +4404,7 @@
         "text": "J2, the east header: ground, PB11, PB10, PB2, PB1, PB0, PA7 and PA6.",
         "at": {
           "file": "src/main.nsm",
-          "line": 57
+          "line": 58
         },
         "anchors": [
           "header_east"
@@ -4417,7 +4417,7 @@
         "text": "J1, the west header: ground, SWDIO, SWCLK, NRST, PC14, PA2, PA3 and 3.3 V.",
         "at": {
           "file": "src/main.nsm",
-          "line": 55
+          "line": 56
         },
         "anchors": [
           "header_west"
@@ -4430,7 +4430,7 @@
         "text": "R9 and R10: 2.2 kohm on each line to 3.3 V.",
         "at": {
           "file": "src/main.nsm",
-          "line": 208
+          "line": 201
         },
         "anchors": [],
         "result": null
@@ -4441,7 +4441,7 @@
         "text": "D2 and R4, on PA5.",
         "at": {
           "file": "src/main.nsm",
-          "line": 176
+          "line": 169
         },
         "anchors": [
           "led1"
@@ -4454,7 +4454,7 @@
         "text": "D3 and R5, on PA4.",
         "at": {
           "file": "src/main.nsm",
-          "line": 180
+          "line": 173
         },
         "anchors": [
           "led2"
@@ -4467,7 +4467,7 @@
         "text": "U16, the STM32F030C8. Every pin that a header or a part uses is named here, so none moves.",
         "at": {
           "file": "src/main.nsm",
-          "line": 101
+          "line": 94
         },
         "anchors": [
           "mcu"
@@ -4504,7 +4504,7 @@
         "text": "30 pF C0G on the input side (ORBIT's value).",
         "at": {
           "file": "src/oscillator.nsm",
-          "line": 24
+          "line": 21
         },
         "anchors": [
           "oscillator.load_in"
@@ -4517,7 +4517,7 @@
         "text": "30 pF C0G on the output side.",
         "at": {
           "file": "src/oscillator.nsm",
-          "line": 26
+          "line": 23
         },
         "anchors": [
           "oscillator.load_out"
@@ -4530,7 +4530,7 @@
         "text": "PWR1: the slide switch between the battery connector and the `+BATT` rail.",
         "at": {
           "file": "src/main.nsm",
-          "line": 89
+          "line": 82
         },
         "anchors": [
           "power_switch"
@@ -4543,7 +4543,7 @@
         "text": "SW1, RESET: pulls NRST to ground.",
         "at": {
           "file": "src/main.nsm",
-          "line": 125
+          "line": 118
         },
         "anchors": [
           "reset_button"
@@ -4556,7 +4556,7 @@
         "text": "C9, on NRST.",
         "at": {
           "file": "src/main.nsm",
-          "line": 127
+          "line": 120
         },
         "anchors": [
           "reset_cap"
@@ -4569,7 +4569,7 @@
         "text": "The mini USB B receptacle: the supply and the programming port.",
         "at": {
           "file": "src/main.nsm",
-          "line": 51
+          "line": 52
         },
         "anchors": [
           "usb"
@@ -4582,7 +4582,7 @@
         "text": "The USB to UART bridge. Join `.vbus` to the USB rail, `.dp` and `.dm` to the connector's data pins, and `.uart` to the MCU's UART with `~`, which crosses the lines.",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 20
+          "line": 21
         },
         "anchors": [],
         "result": null
@@ -4593,7 +4593,7 @@
         "text": "U22: the CP2102-GMR (LCSC C6568).",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 28
+          "line": 29
         },
         "anchors": [
           "usb_uart.ic"
@@ -4606,7 +4606,7 @@
         "text": "The chip's UART, `tx` and `rx` (its flow control is left open).",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 25
+          "line": 26
         },
         "anchors": [
           "mcu",
@@ -4620,7 +4620,7 @@
         "text": "C24, on `VBUS`.",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 36
+          "line": 37
         },
         "anchors": [
           "usb_uart.vbus_100n"
@@ -4633,7 +4633,7 @@
         "text": "C23, on `VBUS`.",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 34
+          "line": 35
         },
         "anchors": [
           "usb_uart.vbus_1u"
@@ -4646,7 +4646,7 @@
         "text": "C21, on the chip's regulator output.",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 32
+          "line": 33
         },
         "anchors": [
           "usb_uart.vdd_100n"
@@ -4659,7 +4659,7 @@
         "text": "C20, on the chip's regulator output.",
         "at": {
           "file": "src/usb_uart.nsm",
-          "line": 30
+          "line": 31
         },
         "anchors": [
           "usb_uart.vdd_bulk"
@@ -4672,7 +4672,7 @@
         "text": "SW2, USER: connects 3.3 V to a node that a 100 kohm resistor holds low; a 1 kohm resistor and a 100 nF capacitor take it to the MCU's pin.",
         "at": {
           "file": "src/main.nsm",
-          "line": 152
+          "line": 145
         },
         "anchors": [
           "user_button"
@@ -4685,7 +4685,7 @@
         "text": "C18.",
         "at": {
           "file": "src/main.nsm",
-          "line": 156
+          "line": 149
         },
         "anchors": [
           "user_node_cap"
@@ -4698,7 +4698,7 @@
         "text": "C19, on the MCU's pin.",
         "at": {
           "file": "src/main.nsm",
-          "line": 160
+          "line": 153
         },
         "anchors": [
           "user_pin_cap"
@@ -4711,7 +4711,7 @@
         "text": "R12.",
         "at": {
           "file": "src/main.nsm",
-          "line": 154
+          "line": 147
         },
         "anchors": [],
         "result": null
@@ -4722,7 +4722,7 @@
         "text": "R11.",
         "at": {
           "file": "src/main.nsm",
-          "line": 158
+          "line": 151
         },
         "anchors": [
           "user_series"
@@ -4735,7 +4735,7 @@
         "text": "The 3.3 V rail of the buck-boost regulator. ORBIT's schematic names it `+3.3V`; the window is a stated requirement (as for the RP2350A Minimal), and the regulator's divider derives the output, which the check compares with it.",
         "at": {
           "file": "src/main.nsm",
-          "line": 74
+          "line": 70
         },
         "anchors": [],
         "result": null
@@ -4746,7 +4746,7 @@
         "text": "C2, 4.7 uF, and C3 to C6, 100 nF, on the 3.3 V rail.",
         "at": {
           "file": "src/main.nsm",
-          "line": 108
+          "line": 101
         },
         "anchors": [
           "v3v3_bulk"
@@ -4759,7 +4759,7 @@
         "text": "The battery's rail behind the power switch, `+BATT`. The schematic names no cell, so no voltage is stated.",
         "at": {
           "file": "src/main.nsm",
-          "line": 68
+          "line": 66
         },
         "anchors": [],
         "result": null
@@ -4770,7 +4770,7 @@
         "text": "USB's VBUS, the only external supply. 5 V +/- 5% is USB's 4.75 V to 5.25 V.",
         "at": {
           "file": "src/main.nsm",
-          "line": 62
+          "line": 63
         },
         "anchors": [],
         "result": null
@@ -4781,7 +4781,7 @@
         "text": ".divider.vref == .ic.vref",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 55
+          "line": 56
         },
         "anchors": [
           "buck_boost.ic"
@@ -4794,7 +4794,7 @@
         "text": ".vout.voltage == .divider.vout",
         "at": {
           "file": "src/buck_boost.nsm",
-          "line": 56
+          "line": 57
         },
         "anchors": [],
         "result": "vout.voltage = 3.212V..3.391V"
@@ -4805,7 +4805,7 @@
         "text": ".ic.rprog == .rprog.resistance",
         "at": {
           "file": "src/charger.nsm",
-          "line": 44
+          "line": 45
         },
         "anchors": [
           "charger.ic",

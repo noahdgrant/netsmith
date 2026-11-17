@@ -57,6 +57,8 @@
 //!   listed exception: an example shows one construct and is no whole design (a part on a board
 //!   with nothing joined to it, a part defined and not used), so the rule `unused_definition` is
 //!   off for every block but a ` lints ` one.
+//! - Every complete ` ```nsm ` and ` ```nsm-physical ` block that parses is in the layout of
+//!   `netsmith project fmt` (issue #1103); `GUIDE_BLESS=1` formats them.
 //!
 //! Run with `GUIDE_BLESS=1` to rewrite the message blocks from what the tool prints.
 //!
@@ -878,6 +880,58 @@ fn every_complete_example_lints_as_the_guide_says() {
     }
     assert!(wrong.is_empty(), "{}", wrong.join("\n\n"));
     assert!(shown >= 4, "the guide shows only {shown} findings of the linter: one for each rule");
+    if bless && !rewrites.is_empty() {
+        for (file, text) in chapters() {
+            let mut mine: Vec<_> = rewrites.iter().filter(|r| r.0 == file).collect();
+            if mine.is_empty() {
+                continue;
+            }
+            let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
+            mine.sort_by_key(|r| std::cmp::Reverse(r.1));
+            for (_, start, end, new) in mine {
+                lines.splice(*start..*end, new.lines().map(str::to_string));
+            }
+            fs::write(root().join(&file), lines.join("\n") + "\n").unwrap();
+        }
+    }
+}
+
+/// The guide's examples are in the layout `netsmith project fmt` writes (issue #1103): each
+/// complete example (` ```nsm ` and ` ```nsm-physical `, not a fragment) that parses is formatted.
+/// `GUIDE_BLESS=1` formats them in place; the messages of a ` fails ` block then move with it, and a
+/// second run with `GUIDE_BLESS=1` writes them again.
+#[test]
+fn every_complete_example_is_formatted() {
+    let bless = std::env::var_os("GUIDE_BLESS").is_some();
+    let mut rewrites: Vec<(String, usize, usize, String)> = Vec::new();
+    let mut wrong = Vec::new();
+    for b in guide_blocks() {
+        if !(b.is("nsm") || b.is("nsm-physical")) {
+            continue;
+        }
+        let text = format!("{}\n", b.text);
+        let formatted = match netsmith_lang::format(&text) {
+            Ok(formatted) => formatted,
+            // A block that shows a mistake of syntax is not the formatter's.
+            Err(netsmith_lang::FormatError::Parse(_)) => continue,
+            Err(e) => {
+                wrong.push(format!("{}: {e}", b.at()));
+                continue;
+            }
+        };
+        if formatted == text {
+            continue;
+        }
+        if bless {
+            rewrites.push((b.file.clone(), b.body.0, b.body.1, formatted));
+        } else {
+            wrong.push(format!(
+                "{}: not formatted (`GUIDE_BLESS=1` formats it).\n--- guide\n{text}--- formatted\n{formatted}",
+                b.at()
+            ));
+        }
+    }
+    assert!(wrong.is_empty(), "{}", wrong.join("\n\n"));
     if bless && !rewrites.is_empty() {
         for (file, text) in chapters() {
             let mut mine: Vec<_> = rewrites.iter().filter(|r| r.0 == file).collect();
