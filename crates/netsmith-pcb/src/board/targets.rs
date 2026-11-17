@@ -136,6 +136,19 @@ impl Board {
         out
     }
 
+    /// The width each net with an impedance target is drawn at on each layer where a width gives
+    /// it, by net and layer name: what the design rules check holds its tracks to (the
+    /// `track_impedance` rule, issue #1025).
+    pub fn target_track_widths(&self) -> Vec<(String, String, f64)> {
+        self.impedance_widths
+            .iter()
+            .filter_map(|w| {
+                let layer = CopperLayer::of_name(&w.layer)?;
+                Some((w.net.clone(), w.layer.clone(), self.track_width_on(&w.net, layer)))
+            })
+            .collect()
+    }
+
     /// How much of each pair with an impedance target runs at a gap that gives its impedance,
     /// once the board is routed (issue #1025): the positive net's track, sampled every 0.05 mm,
     /// against the nearest track of the partner on the same layer, whose gap, edge to edge, with

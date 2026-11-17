@@ -271,6 +271,9 @@ pub enum Rule {
     /// A track narrower than its net's current needs, away from the net's pads (netsmith's,
     /// issue #431).
     TrackCurrent,
+    /// A track of a net with an impedance target whose width is not the one that gives the
+    /// target on its layer, away from the net's pads (netsmith's, issue #1025): a guideline.
+    TrackImpedance,
     /// Fewer vias side by side than a net's current needs (netsmith's, issue #431).
     ViaCurrent,
     /// A corner of 90 degrees or sharper where two tracks of a net meet outside a pad
@@ -322,7 +325,7 @@ pub enum Rule {
 }
 
 impl Rule {
-    pub const ALL: [Rule; 52] = [
+    pub const ALL: [Rule; 53] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -357,6 +360,7 @@ impl Rule {
         Rule::NpthDrill,
         Rule::PlatedRing,
         Rule::TrackCurrent,
+        Rule::TrackImpedance,
         Rule::ViaCurrent,
         Rule::TrackAngle,
         Rule::FiducialEdge,
@@ -414,6 +418,7 @@ impl Rule {
             Rule::NpthDrill => "npth_drill",
             Rule::PlatedRing => "plated_ring",
             Rule::TrackCurrent => "track_current",
+            Rule::TrackImpedance => "track_impedance",
             Rule::ViaCurrent => "via_current",
             Rule::TrackAngle => "track_angle",
             Rule::FiducialEdge => "fiducial_edge",
@@ -451,6 +456,7 @@ impl Rule {
                 | Rule::NpthDrill
                 | Rule::PlatedRing
                 | Rule::TrackCurrent
+                | Rule::TrackImpedance
                 | Rule::ViaCurrent
                 | Rule::TrackAngle
                 | Rule::FiducialEdge
@@ -485,6 +491,7 @@ impl Rule {
             | Rule::TrackDangling
             | Rule::ViaDangling
             | Rule::ViaInPad
+            | Rule::TrackImpedance
             | Rule::FiducialCount
             | Rule::FiducialSize
             | Rule::FiducialAngle
@@ -681,6 +688,10 @@ pub struct Extras {
     /// need a wider track (issue #833). A net not here is held to its `least_widths` entry on
     /// an inner layer too.
     pub inner_least_widths: Vec<(String, f64)>,
+    /// The width a net's tracks are held to on a layer, by net and layer name (`F.Cu`): the
+    /// width that gives the net's impedance target there (issue #1025). A track that is not that
+    /// wide, away from the net's pads as for `least_widths`, is a `track_impedance` warning.
+    pub target_widths: Vec<(String, String, f64)>,
     pub neck_reach: f64,
     /// How many vias side by side, their copper touching, each net needs where it changes layer,
     /// for the nets that need more than one.

@@ -38,8 +38,10 @@
 //!   the loop: the length of track from the capacitor's pad on the poured net to the nearest via
 //!   of that net.
 //! - **Diff pairs**: nets whose names differ only in a suffix pair ([`PAIR_SUFFIXES`]), the
-//!   track length of each, the difference (skew), and the share of the first net's track that
-//!   has the second's within [`COUPLED`] on the same layer.
+//!   track length of each, the difference (skew), the share of the first net's track that
+//!   has the second's within [`COUPLED`] on the same layer, and the median gap, edge to edge,
+//!   where it does: what a pair with an impedance target keeps beside its stated spacing (issue
+//!   #1025; the project file's net class states it as `diff_pair_gap`).
 
 use std::collections::{BTreeMap, BinaryHeap, HashMap};
 use std::fmt::Write as _;
@@ -123,6 +125,10 @@ pub struct PairScore {
     pub skew: f64,
     /// The share of `p`'s track with `n`'s within [`COUPLED`], 0 to 1.
     pub coupled: f64,
+    /// The median gap, edge to edge, between `p`'s track and the nearest of `n`'s where they
+    /// run coupled, in mm: what a pair with an impedance target is drawn at beside its stated
+    /// spacing (issue #1025). `None` when no length is coupled.
+    pub gap: Option<f64>,
 }
 
 /// What a board's routing measures.
@@ -254,9 +260,12 @@ impl Scorecard {
             vias.iter().copied().fold(0.0, f64::max)
         );
         for p in &self.pairs {
+            let gap = p
+                .gap
+                .map_or(String::new(), |g| format!(", gap {g:.3} mm"));
             let _ = writeln!(
                 s,
-                "pair {}/{}: {:.1} and {:.1} mm, skew {:.2} mm, coupled {:.0}%",
+                "pair {}/{}: {:.1} and {:.1} mm, skew {:.2} mm, coupled {:.0}%{gap}",
                 p.p,
                 p.n,
                 p.length_p,
@@ -964,21 +973,29 @@ fn pairs(tracks: &[Seg]) -> Vec<PairScore> {
             let (length_p, length_n) = (length(p), length(&n));
             // Sample p's track and look for n's on the same layer.
             let (mut near, mut all) = (0usize, 0usize);
-            for (_, layer, a, b, _) in tracks.iter().filter(|t| t.0 == p) {
+            let mut gaps: Vec<f64> = Vec::new();
+            for (_, layer, a, b, width) in tracks.iter().filter(|t| t.0 == p) {
                 let steps = ((a.dist(*b) / CELL).ceil() as usize).max(1);
                 for k in 0..steps {
                     let at = *a + (*b - *a) * ((k as f64 + 0.5) / steps as f64);
                     all += 1;
                     let dot = DrcShape::disc(at, 0.0);
-                    if tracks.iter().any(|t| {
-                        t.0 == n
-                            && t.1 == *layer
-                            && shape_gap(&dot, &DrcShape::capsule(t.2, t.3, 0.0)).d <= COUPLED
-                    }) {
+                    // The nearest of n's tracks on the layer: its centre line's distance and
+                    // its width.
+                    let nearest = tracks
+                        .iter()
+                        .filter(|t| t.0 == n && t.1 == *layer)
+                        .map(|t| (shape_gap(&dot, &DrcShape::capsule(t.2, t.3, 0.0)).d, t.4))
+                        .min_by(|x, y| x.0.total_cmp(&y.0));
+                    if let Some((d, w)) = nearest
+                        && d <= COUPLED
+                    {
                         near += 1;
+                        gaps.push(d - width / 2.0 - w / 2.0);
                     }
                 }
             }
+            gaps.sort_by(f64::total_cmp);
             out.push(PairScore {
                 p: p.to_string(),
                 n,
@@ -990,6 +1007,7 @@ fn pairs(tracks: &[Seg]) -> Vec<PairScore> {
                 } else {
                     0.0
                 },
+                gap: gaps.get(gaps.len() / 2).copied(),
             });
             break;
         }
@@ -1163,5 +1181,9 @@ mod tests {
         assert_eq!((p.p.as_str(), p.n.as_str()), ("usb.dp", "usb.dm"));
         assert!((p.skew - 2.0).abs() < 1e-9);
         assert!((p.coupled - 1.0).abs() < 1e-9);
+        // The tracks are 0.4 mm apart centre to centre and 0.2 mm wide: a gap of 0.2 mm, which
+        // the text says.
+        assert!((p.gap.unwrap() - 0.2).abs() < 1e-9, "{:?}", p.gap);
+        assert!(s.text().contains("coupled 100%, gap 0.200 mm"), "{}", s.text());
     }
 }

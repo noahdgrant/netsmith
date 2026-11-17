@@ -1323,6 +1323,14 @@ fn fab_board(
                     }),
             );
         }
+        // The impedance targets no width gives, or that a floor moves off (issue #1025): a
+        // guideline too, as the width against current is.
+        drops.extend(board.impedance_findings().into_iter().map(|m| {
+            format!(
+                "{}: {IMPEDANCE_RULE} guideline: {m}",
+                built.label()
+            )
+        }));
         if catalogs.strict_guidelines() && !drops.is_empty() {
             return Err(FabFailure {
                 text: drops
@@ -2692,6 +2700,10 @@ pub fn route_with_margin(
     route(board, left, true)
 }
 
+/// The name of the guideline that an impedance target a board cannot give breaks (issue
+/// #1025), as its message names it: `Board: impedance target guideline: ...`.
+pub const IMPEDANCE_RULE: &str = "impedance target";
+
 /// What the design rules check needs that the board file does not say: the process's mask
 /// web and widest filled via, the rules a project file cannot say and the least width of the
 /// nets that carry current (issue #431), the
@@ -2713,6 +2725,7 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
         pad_ring: Some(board.rules.min_annular_ring),
         least_widths: board.least_widths(),
         inner_least_widths: board.inner_least_widths(),
+        target_widths: board.target_track_widths(),
         neck_reach: netsmith_router::route::NECK_REACH,
         via_counts: board.via_counts(),
         track_angle: true,
