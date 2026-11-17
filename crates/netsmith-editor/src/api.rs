@@ -45,6 +45,7 @@ use ts_rs::TS;
 mod compare;
 mod copper;
 mod fit;
+mod gerber;
 mod hints;
 mod summary;
 mod view;
@@ -52,6 +53,7 @@ mod view;
 pub use compare::*;
 pub use copper::*;
 pub use fit::*;
+pub use gerber::*;
 pub use hints::*;
 pub use summary::*;
 pub use view::*;
@@ -2501,6 +2503,12 @@ pub fn typescript() -> String {
         PcbFitMiss,
         PcbFitPlace,
         PcbFit,
+        GerberExtent,
+        GerberFile,
+        GerberHoles,
+        GerberUnread,
+        GerberSkipped,
+        GerberView,
         BuildReport,
         Drc,
         Download,

@@ -1,13 +1,15 @@
 //! The Gerber viewer (issue #1105): reads the files of a fab package, the zip or the folder,
 //! netsmith's or another tool's, with netsmith's own reader (no KiCad, ADR 0097), and draws
 //! them as an SVG or a PNG, or sums them up. `netsmith view gerber` is its command line; the
-//! editor's panel (#1107) is meant to take the same three calls through its backend.
+//! editor's Gerber view (issue #1107) makes the same calls through its backend
+//! (`netsmith-workspace`'s `gerber.rs`), so the two draw the same SVG.
 //!
 //! The interface:
 //!
 //! - [`open`] reads a package from a path (a `.zip`, or a folder and the folders in it; a
 //!   folder with no Gerber or drill file of its own has its zips read, so `fab`'s output folder
-//!   opens as its `<board>-gerbers.zip`), and [`read`] from files already in memory. Every
+//!   opens as its `<board>-gerbers.zip`), [`read_bytes`] from the bytes of a zip or a file, and
+//!   [`read`] from files already in memory. Every
 //!   file is sniffed: RS-274X is read by [`crate::raster`]'s Gerber reader, Excellon by its
 //!   drill reader, and anything else is listed in [`Package::skipped`].
 //! - A [`File`] has its [`Function`] (copper of a layer, mask, paste or silkscreen of a face,
@@ -165,14 +167,21 @@ pub fn open(path: &Path) -> Result<Package, OpenError> {
         }
     } else {
         let bytes = std::fs::read(path).map_err(|e| err(&e))?;
-        if !bytes.starts_with(b"PK") {
-            // One file: a package of one.
-            vec![(name.clone(), bytes)]
-        } else {
-            unzip(&bytes).map_err(|e| err(&e))?
-        }
+        return read_bytes(&name, bytes).map_err(|e| err(&e));
     };
     Ok(read(&name, files))
+}
+
+/// Reads a package from the bytes of a `.zip`, or of one Gerber or drill file (a package of one),
+/// named `name`: what [`open`] does with a file, for bytes that are not on disk (the editor's
+/// Gerber view, issue #1107).
+pub fn read_bytes(name: &str, bytes: Vec<u8>) -> Result<Package, OpenError> {
+    let files = if bytes.starts_with(b"PK") {
+        unzip(&bytes).map_err(OpenError)?
+    } else {
+        vec![(name.to_string(), bytes)]
+    };
+    Ok(read(name, files))
 }
 
 fn walk(dir: &Path, prefix: &str, out: &mut Vec<(String, Vec<u8>)>) -> std::io::Result<()> {

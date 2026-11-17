@@ -4,7 +4,7 @@ The board's _Scene_ (ADR 0105) drawn by three.js in the PCB section: the same fi
 
 ## How to get to it
 
-The section "PCB", then `3D` in the toolbar's `2D | 3D` switch (`[data-testid=pcb-3d-toggle]`), the key `D` while the PCB has the keys, or "PCB: Switch between 2D and 3D" in the palette. The first time, the page fetches the 3D chunk (`assets/View3d-*.js`, three.js and the view, about 172 kB gzipped); the 2D view never loads it. The view's host is `[data-testid=pcb-3d]`; it gets `data-ready` once the first frame is drawn (headless Chromium compiles the shaders in 2 to 3 s) and `data-stamp`, the layout stamp of the scene it shows.
+The section "PCB", then `3D` in the toolbar's `2D | 3D | Gerber` switch (`[data-testid=pcb-3d-toggle]`), the key `D` while the PCB has the keys, or "PCB: Switch between 2D and 3D" in the palette. The first time, the page fetches the 3D chunk (`assets/View3d-*.js`, three.js and the view, about 172 kB gzipped); the 2D view never loads it. The view's host is `[data-testid=pcb-3d]`; it gets `data-ready` once the first frame is drawn (headless Chromium compiles the shaders in 2 to 3 s) and `data-stamp`, the layout stamp of the scene it shows.
 
 ## Driving it
 

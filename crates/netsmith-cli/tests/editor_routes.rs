@@ -146,6 +146,10 @@ const ROUTES: &[(&str, Way)] = &[
     ("POST /api/fab/cancel", PageOnly(CANCEL)),
     // A download is a file the command writes into its folder.
     ("GET /api/download", Command(&["board fab"])),
+    // The Gerber view: the package `fab` wrote, or one the page sends, read and drawn as
+    // `view gerber` reads and draws it (issue #1107).
+    ("GET /api/gerber", Command(&["view gerber"])),
+    ("POST /api/gerber", Command(&["view gerber"])),
     ("GET /api/orders", Command(&["project order"])),
     ("POST /api/order", Command(&["project order"])),
     ("POST /api/order/cancel", PageOnly(CANCEL)),

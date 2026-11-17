@@ -70,6 +70,9 @@ pub struct Drawing {
     pub svg: String,
     /// The region shown, in the viewer's frame: x, y, width, height in mm.
     pub region: [f64; 4],
+    /// Whether the drawing is mirrored left to right (the bottom, as a person sees it turned
+    /// over): a point at `x` in the SVG is at `2 * region.x + region.width - x` in the frame.
+    pub mirrored: bool,
     /// The files drawn, in the order drawn.
     pub drawn: Vec<String>,
     /// The files the view would draw that could not be read: they are not in the drawing.
@@ -403,6 +406,7 @@ pub fn draw(pkg: &Package, show: Show, region: Option<[f64; 4]>) -> Result<Drawi
     Ok(Drawing {
         svg: s,
         region,
+        mirrored: mirror,
         drawn,
         unread,
     })

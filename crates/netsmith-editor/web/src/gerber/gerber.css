@@ -1,0 +1,18 @@
+/* The Gerber view of the PCB area (issue 1107). The drawing is the reader's SVG, in its own colours on its own dark
+   background, whatever the page's theme: they are the colours of the layers a person knows from KiCad. */
+.gerber-stage { position: relative; }
+.gerber-stage.measuring { cursor: crosshair; }
+.gerber-svg, .gerber-svg svg { display: block; width: 100%; height: 100%; }
+.gerber-measure { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.gerber-measure line { stroke: var(--gerber-measure); stroke-width: 2px; vector-effect: non-scaling-stroke; stroke-dasharray: 6 3; }
+.gerber-measure circle { fill: var(--gerber-measure); }
+.gerber-side .gerber-package { display: flex; flex-direction: column; gap: 0.125rem; padding: 0.625rem 0.75rem; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.gerber-muted { color: var(--text-muted); font-size: var(--fs-sm); }
+.gerber-layer { display: flex; align-items: center; gap: 0.5rem; padding: 2px 0.75rem; cursor: pointer; font-size: var(--fs-sm); }
+.gerber-layer:hover { background: var(--hover); }
+.gerber-layer.absent { color: var(--text-faint); cursor: default; }
+.gerber-layer.unread .gerber-layer-name { text-decoration: line-through; }
+.gerber-layer-name { flex: none; }
+.gerber-layer-file { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; color: var(--text-faint); font-family: var(--mono); font-size: var(--fs-xs); }
+.gerber-note { padding: 0.25rem 0.75rem; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.gerber-note.bad b { color: var(--danger); }

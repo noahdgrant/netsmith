@@ -1036,6 +1036,8 @@
 
 /* ---- derived tokens: one definition for every theme ---- */
 :root {
+  /* the Gerber view's ruler, over the reader's own dark drawing whatever the theme (issue 1107) */
+  --gerber-measure: #ffffff;
   /* the names of the layers: 1 is a panel, 2 is raised, 3 is a field or a hovered row */
   --surface-1: var(--surface);
   --surface-2: var(--surface-raised);

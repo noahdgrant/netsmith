@@ -38,6 +38,7 @@
 //! | `POST /api/pcb/reroute` | the router's nets a track being drawn (a `PcbWalk`) crosses, routed again round it with everything else fixed, as a preview (issue 1009); nothing is written |
 //! | `GET /api/pcb/kicad?board=` | the board as `scene` has it placed and not routed, as a zip (`<board>.placed-kicad.zip`) of what `netsmith layout export` writes: the `.kicad_pcb`, the `.kicad_pro` and the list of the placement's findings, also while the placement has findings (issue #1001) |
 //! | `GET /api/pcb/3d?board=` | the board as `scene` has it placed, as glTF 2.0 binary (`model/gltf-binary`, ADR 0105), the bytes `netsmith dev board3d --glb` writes; the layout stamp of that placement in `X-Netsmith-Layout-Stamp` |
+//! | `GET /api/gerber?board=` (`layer=`), `POST /api/gerber?name=` (`layer=`), `GET /api/gerber?opened=` (`layer=`) | the files of a fab package read by netsmith's Gerber reader, what `netsmith view gerber` reads (issue #1107): the summary and the SVG of one view (`GerberView`); `board` reads the package `fab` last wrote for it, a `POST` reads the package in its body (a `.zip`, or one Gerber or drill file, up to 32 MiB) and keeps it, `opened` draws another view of the one kept; `404` with no such package, `400` for a view the package has no file for |
 //! | `POST /api/build`, `/api/fab`, `/api/order` and their `/cancel` | the commands of the same names; a cancelled job answers `499` and keeps nothing it was making (ADR 0062) |
 //! | `GET /api/download`, `/api/order/download` | a file `fab` or an order wrote |
 //! | `POST /api/definition` | where the name under the cursor is defined |
@@ -126,6 +127,8 @@ use netsmith_core::job::Cancel;
 const WATCH_INTERVAL: Duration = Duration::from_millis(500);
 /// A request body larger than this is not a source file.
 const MAX_BODY: usize = 4 * 1024 * 1024;
+/// A fab package the page sends to the Gerber view may be larger.
+const MAX_PACKAGE: usize = 32 * 1024 * 1024;
 /// The header a request that changes something must carry. A page on another origin cannot
 /// send a custom header without a preflight, which this server never answers.
 pub const GUARD_HEADER: &str = "x-netsmith";
@@ -184,6 +187,7 @@ const NEEDS_ANALYSIS: &[&str] = &[
     "/api/build",
     "/api/fab",
     "/api/download",
+    "/api/gerber",
     "/api/orders",
     "/api/order",
     "/api/order/download",
@@ -394,6 +398,12 @@ fn router(state: Shared) -> Router {
         .route("/api/fab", post(fab))
         .route("/api/fab/cancel", post(cancel_fab))
         .route("/api/download", get(download))
+        .route(
+            "/api/gerber",
+            get(gerber)
+                .post(gerber_open)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_PACKAGE)),
+        )
         .route("/api/orders", get(orders))
         .route("/api/order", post(fab_order))
         .route("/api/order/cancel", post(cancel_order))
@@ -1195,6 +1205,37 @@ async fn download(State(s): State<Shared>, Query(q): Query1) -> Result<Response,
     let (board, file) = (param(&q, "board")?, param(&q, "file")?);
     let attachment = blocking(move || s.backend.download(&board, &file)).await??;
     Ok(attached(attachment))
+}
+
+/// A view of a fab package (issue #1107): the one `fab` wrote for `board`, or the one the page
+/// opened, by its name.
+async fn gerber(
+    State(s): State<Shared>,
+    Query(q): Query1,
+) -> Result<Json<crate::api::GerberView>, ApiError> {
+    let layer = q.get("layer").cloned();
+    match (q.get("board").cloned(), q.get("opened").cloned()) {
+        (Some(board), None) => json(move || s.backend.gerber(&board, layer.as_deref())).await,
+        (None, Some(name)) => json(move || s.backend.gerber_opened(&name, layer.as_deref())).await,
+        _ => Err(ApiError::bad_request(
+            "the request needs `board` or `opened`, not both",
+        )),
+    }
+}
+
+/// A package the page sends to the Gerber view: its bytes, named by `name`.
+async fn gerber_open(
+    State(s): State<Shared>,
+    Query(q): Query1,
+    bytes: axum::body::Bytes,
+) -> Result<Json<crate::api::GerberView>, ApiError> {
+    let name = param(&q, "name")?;
+    let layer = q.get("layer").cloned();
+    json(move || {
+        s.backend
+            .gerber_open(&name, bytes.to_vec(), layer.as_deref())
+    })
+    .await
 }
 
 /// A file as a download.
