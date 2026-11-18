@@ -1187,14 +1187,14 @@ fn kicad_draws_a_back_footprints_model_and_pads_where_netsmith_puts_them() {
     close(theirs, part.pad_bounds(pad), "pad 1");
 }
 
-/// The four-layer example on a board of 36 by 27 mm, its planes holed by a grid of vias of a
-/// signal net, a via every 1.6 mm clear of the parts (286 of them): each plane's fill is one
+/// The four-layer example on a board of 80 by 60 mm, its planes holed by a grid of vias of a
+/// signal net, a via every 1.6 mm clear of the parts (about 1,300 of them): each plane's fill is one
 /// polygon of about 55,000 points, 1.2 MB on one line, as a large routed board's is. The smallest board that KiCad 9.0.0 could
 /// not open (issue #1221), when the writer put the points of a polygon on one line.
 fn perforated() -> Board {
     let mut b = board("four_layer");
     assert!(b.polygon.is_none());
-    b.outline = Rect::new(b.outline.min, b.outline.min + Pt::new(36.0, 27.0));
+    b.outline = Rect::new(b.outline.min, b.outline.min + Pt::new(80.0, 60.0));
     let net = b
         .nets
         .iter()
