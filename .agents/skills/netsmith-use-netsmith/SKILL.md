@@ -61,7 +61,7 @@ The files a command writes, and you commit with the source (look at the diff, do
 - `<stem>.lock.toml`: the pick lock, the parts the solver picked. `board build` writes it, and `project lock` refreshes it or checks in CI that it is current.
 - `dependencies.lock.toml`: where a git dependency was read.
 
-The files a run writes that you do not commit (git ignores them): `out/` (the schematic and its tables) and `fab/` (a package for each board: the Gerbers, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the KiCad files and the 3D scene). A board the router could not finish is written marked INCOMPLETE with `routing-failure.txt` and `routing-report.json` beside it. A part number a person chose is in the source, as a narrowing, and in no file of its own.
+The files a run writes that you do not commit (git ignores them): `out/` (the schematic and its tables) and `fab/` (a package for each board: the Gerbers, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the KiCad files and the 3D scene). To hand the KiCad files to someone, add `--portable` to `netsmith board build` or `netsmith board fab`: the board's folder then holds the libraries and 3D models it uses (`libs/`, `models/`), library tables with paths inside the folder and `LICENSES.md`, and opens in KiCad wherever it is moved; a 3D model that cannot be found is a `warning:` to tell the person. A board the router could not finish is written marked INCOMPLETE with `routing-failure.txt` and `routing-report.json` beside it. A part number a person chose is in the source, as a narrowing, and in no file of its own.
 
 ## Exit codes and JSON
 

@@ -270,6 +270,11 @@ pub struct FabOptions {
     /// `layout`, which says where the source is. The default is `false`: the board is routed
     /// from nothing and nothing is kept, so that a clean checkout gives the same board.
     pub reuse_routes: bool,
+    /// Write each board's KiCad files as a self-contained project (`board fab --portable`, issue
+    /// #1198): the symbols and footprints the board uses and their 3D models are copied into the
+    /// package's folder, with library tables and `(model ...)` entries relative to it
+    /// ([`netsmith_pipeline::portable`]). The default is `false`.
+    pub portable: bool,
 }
 
 /// What a run does about reusing the package of a board (`crate::reuse`).
@@ -410,6 +415,7 @@ impl Default for FabOptions {
             offline: false,
             reuse: Reuse::Off,
             reuse_routes: false,
+            portable: false,
         }
     }
 }
@@ -1480,7 +1486,18 @@ fn fab_board(
         // The board file holds netsmith's own fill, so it opens poured in KiCad (issue #1184);
         // netsmith reads it back as the board it was written from. Where the filler refuses the
         // board, the file is written unfilled and the package says why, as its Gerbers fail.
-        let pcb = kicad_pcb_filled(&board).unwrap_or_else(|_| kicad_pcb(&board));
+        let mut pcb = kicad_pcb_filled(&board).unwrap_or_else(|_| kicad_pcb(&board));
+        // A self-contained project (`--portable`, issue #1198): the libraries and the 3D models
+        // the board file names are copied into the folder, and the file names them there.
+        let mut project_files = options.portable.then(|| libraries.portable(&dir));
+        if let Some(project_files) = &mut project_files {
+            project_files
+                .libraries(&built.design)
+                .map_err(|e| fail(format!("{}: {e}", dir.display())))?;
+            pcb = project_files
+                .pcb(&pcb, &built.design.features.models)
+                .map_err(|e| fail(format!("{}: {e}", dir.display())))?;
+        }
         for (file, contents) in [
             (pcb_path.clone(), pcb),
             (dir.join(format!("{name}.kicad_pro")), kicad_pro(&board)),
@@ -1528,10 +1545,23 @@ fn fab_board(
         }
 
         // The project's own libraries and the standard library's own files that the board
-        // uses, so KiCad finds the footprints.
-        libraries
-            .write_tables(&dir, &built.design)
-            .map_err(|e| fail(format!("{}: {e}", dir.display())))?;
+        // uses, so KiCad finds the footprints; with `--portable`, the tables and the notice of
+        // the self-contained folder.
+        let mut portable_notes: Vec<String> = Vec::new();
+        match project_files {
+            Some(project_files) => {
+                let written = project_files
+                    .finish()
+                    .map_err(|e| fail(format!("{}: {e}", dir.display())))?;
+                for w in &written.warnings {
+                    say(format!("{}: warning: {w}", built.label()));
+                }
+                portable_notes = written.warnings;
+            }
+            None => libraries
+                .write_tables(&dir, &built.design)
+                .map_err(|e| fail(format!("{}: {e}", dir.display())))?,
+        }
 
         let paths: Vec<String> = built.design.parts.iter().map(|p| p.path.clone()).collect();
         let entries = bom_entries(&sourcing, &paths, &libraries.mapping).map_err(fail)?;
@@ -1542,6 +1572,7 @@ fn fab_board(
         extras.extend(glb_note.map(|n| format!("warning: {n}")));
         extras.extend(step_note.map(|n| format!("warning: {n}")));
         extras.extend(pdf_notes.iter().map(|n| format!("warning: {n}")));
+        extras.extend(portable_notes.iter().map(|n| format!("warning: {n}")));
         if let Some(scene) = &scene {
             extras.extend(scene.warnings.iter().map(|w| format!("warning: {w}")));
             extras.extend(model_notes(scene));

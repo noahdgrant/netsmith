@@ -202,8 +202,11 @@ netsmith from the part's pin table (a plain box and pins, ADR 0097), and those o
 discrete parts, connectors and mechanical parts from the electrical and mechanical conventions
 (IEC 60617, IEEE 315), not from KiCad's files. Only for a symbol or footprint that a project's
 own `kicad.toml` takes from KiCad and that netsmith does not make does it read the ones
-installed with KiCad (CC-BY-SA 4.0 with a design exception) at run time, and the tests that need
-no KiCad write small libraries of their own (the dev-only crate `netsmith-testkit`). For a package or a part that KiCad's libraries lack,
+installed with KiCad (CC-BY-SA 4.0 with a design exception) at run time. `board build --portable` and
+`board fab --portable` copy the library entries a board uses, and their 3D models, into the board's
+folder so that it opens in KiCad anywhere; those copies are KiCad's files under CC-BY-SA 4.0, the
+folder says so in `LICENSES.md`, and the design in it stays free of the licence by the
+exception. The tests that need no KiCad write small libraries of their own (the dev-only crate `netsmith-testkit`). For a package or a part that KiCad's libraries lack,
 `std/libs/` holds a small symbol and footprint library of netsmith's own, written by netsmith
 from a manufacturer's package drawing (MIT, like the rest; ADR 0087). The footprints it makes are original code that computes
 IPC-7351B land patterns from published package dimensions (ADR 0043); the test that checks
