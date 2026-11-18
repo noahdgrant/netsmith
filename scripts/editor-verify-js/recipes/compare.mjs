@@ -294,7 +294,9 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   step('the unchanged lines are hidden behind slim bars, in both views alike, with 3 lines of context round each change (a file over 60 lines does it by itself)');
   const col = (n) => page.locator('.diff-col').nth(n);
   const barsOf = (n) => col(n).locator('.cm-diff-bar');
-  expect((await page.locator('[data-testid="diff-hide"]').getAttribute('aria-pressed')) === 'true', 'the switch "Hide unchanged lines" is on without being asked, for a file of 107 lines');
+  // the working file's lines, whatever layout the formatter gave it: a side's rows (fillers too) are at least as many
+  const fileLines = fs.readFileSync(path.join(project, 'src/main.nsm'), 'utf8').trimEnd().split('\n').length;
+  expect((await page.locator('[data-testid="diff-hide"]').getAttribute('aria-pressed')) === 'true', `the switch "Hide unchanged lines" is on without being asked, for a file of ${fileLines} lines`);
   const counts = async (n) => (await barsOf(n).evaluateAll((els) => els.map((e) => Number(e.getAttribute('data-count')))));
   const c0 = await counts(0);
   const c1 = await counts(1);
@@ -305,7 +307,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   expect(!shownText.includes('import std::sources::Rail') && shownText.includes('150ohm'), 'a far line is not drawn, the changed one is');
   const hiddenTotal = c0.reduce((a, b) => a + b, 0);
   const rowsDrawn = await col(0).locator('.cm-line').count();
-  expect(rowsDrawn + hiddenTotal >= 105 && rowsDrawn < 70, `${rowsDrawn} lines drawn and ${hiddenTotal} hidden`);
+  expect(rowsDrawn + hiddenTotal >= fileLines && rowsDrawn < 70, `${rowsDrawn} lines drawn and ${hiddenTotal} hidden, of a file of ${fileLines}`);
   await shot('diff-collapsed');
 
   step('a click on a bar shows its lines in both views; Enter on another does the same from the keyboard; the choice is kept');
@@ -561,11 +563,12 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   step('an error written to disk is a new problem, and the comparison follows the files');
   const file = path.join(project, 'src/main.nsm');
   const original = fs.readFileSync(file, 'utf8');
-  // A colour the enum does not have (ADR 0118): `Color` is imported, so the only error is the variant.
+  // A colour the enum does not have (ADR 0118): `Color` is imported, so the only error is the variant. Both edits hold
+  // whatever layout the formatter gave the file: the name goes first in the braces, the statement on a line of its own.
   const withError = original
-    .replace('import std::parts::passive::{Capacitor, Resistor, Led}', 'import std::parts::passive::{Capacitor, Color, Resistor, Led}')
-    .replace('.led: Led {', '.led: Led { .color &= Color::Rde');
-  expect(withError.includes('Color, Resistor') && withError.includes('Color::Rde'), 'the error is written into the source');
+    .replace('import std::parts::passive::{', 'import std::parts::passive::{Color, ')
+    .replace('.led: Led {', '.led: Led {\n        .color &= Color::Rde\n');
+  expect(withError.includes('passive::{Color, ') && withError.includes('Color::Rde'), 'the error is written into the source');
   fs.writeFileSync(file, withError);
   await page.waitForSelector('[data-testid="cmp-head-errors"]');
   await tab('problems');

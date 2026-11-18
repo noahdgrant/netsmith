@@ -136,8 +136,18 @@ export async function run({ page, shot, step, expect, section }) {
   await page.locator(`.schematic g.note[data-at="${target.at}"]`).click();
   await page.waitForSelector('.section.sec-source:not(.away)');
   const written = file.split('\n')[Number(target.at.split(':').pop()) - 1].trim();
-  await page.waitForFunction((t) => document.querySelector('.cm-activeLine')?.textContent.trim() === t, written);
-  const active = (await page.locator('.cm-activeLine').innerText()).trim();
+  // the line's own text, without the inline hints the editor draws at its end (a block the formatter
+  // wrote on one line carries its value's hint on that line); given the text it wants, it says whether the line is it
+  const activeText = (want) => {
+    const line = document.querySelector('.cm-activeLine');
+    if (!line) return want === undefined ? null : false;
+    const copy = line.cloneNode(true);
+    for (const hint of copy.querySelectorAll('.cm-hint')) hint.remove();
+    const text = copy.textContent.trim();
+    return want === undefined ? text : text === want;
+  };
+  await page.waitForFunction(activeText, written);
+  const active = await page.evaluate(activeText);
   expect(active === written && written.length > 0, `the cursor is on line ${target.at} (${written.slice(0, 50)})`);
   expect((await page.locator('.selchip').count()) === 0, 'no selection chip: a note is not a part');
   expect((await page.locator('.back-btn').innerText()).includes('Schematic'), 'a Back button that names the schematic');
