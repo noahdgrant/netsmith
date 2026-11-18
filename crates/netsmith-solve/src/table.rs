@@ -24,6 +24,7 @@
 //! | `assembly` | who assembles the part when the design does not say: `fab`, `hand`, `none` or `consigned` (ADR 0024, ADR 0084) |
 //! | `height` | how tall the part's body stands above the face of the board it is on, a length of one value (`2.4mm`), read from the datasheet or the manufacturer's drawing, with the document, its revision and the page or table in the `source` cell (ADR 0094). The part's `.height` is this when nothing in the design states one; empty means the height is unknown. A part whose `catalog` lists `.height` as a column of its own reads it as that column instead |
 //! | `temp_min`, `temp_max` | the least and the greatest temperature the part works at, each one temperature as the datasheet prints it (`-40degC`, or `233.15K`, which is the same temperature), with the datasheet or record and which temperature it is (ambient, junction or operating) in `source` and `notes` (ADR 0099). A figure that is a junction range (`TJ`) is accepted as the part's range and the part is judged by it: a junction range that covers the environment is a pass, and the part's own heating is not computed, which is the limit of the check. A design whose board states an `.environment` is checked against them: a row whose range does not cover it is not offered, and a row with an empty cell is offered and named in a guideline finding. A project's own part that states `.temp_min` or `.temp_max` in its source states it for every row |
+//! | `max_voltage` (a cell, not a fixed column) | a part's maximum voltage may be written in steps over temperature, `5.5V to 70degC, 4.2V to 85degC` (quoted in the CSV, for the comma), as its datasheet prints a rating that falls when the part is hot (issue #1257). The cell is then its greatest step for every relation that reads the column, and the steps are judged against the board's `.environment.temperature` and the voltage across the part: a row whose steps do not hold that voltage at a temperature the board reaches is not offered |
 //! | `qualification` | the qualification the part's datasheet says its ordering code has: `Aec` where the datasheet or the maker's product page says it is qualified to an AEC standard (AEC-Q100 for integrated circuits, Q101 for discrete semiconductors, Q200 for passives; the `notes` say which, with the document, its revision and the page), `None` where it says the ordering code is not qualified (the commercial grade of a part that has a qualified one), and empty where nothing says, which is unknown and not a refusal. Never written from memory (ADR 0099). A design whose board's `.environment` states `.qualification &= Qualification::Aec` is checked against it: a row that says `None` is not offered, and a row with an empty cell is offered and named in a guideline finding. A project's own part that states `.qualification` in its source states it for every row |
 //! | `price`, `stock` | the board house's (JLCPCB's) snapshot, USD and pieces, entered by hand; `netsmith catalog refresh` never writes them (ADR 0039). The solver does not read them: a row is offered whatever its stock (ADR 0047), and only the bill of materials shows them, after a supply provider's answer |
 //! | `price_breaks` | the board house's price at each quantity, `1:0.0019 1000:0.0015` (pieces:USD), entered by hand; nothing reads it |
@@ -105,6 +106,7 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use netsmith_check::FieldKind;
+use netsmith_check::environment::RatingSteps;
 use netsmith_lang::ast::{BinOp, Expr};
 use netsmith_lang::parse_expr;
 use netsmith_quantity::{Dimension, Quantity, is_offset_unit, parse_unit};
@@ -507,6 +509,13 @@ impl Table {
                 },
                 temp_min: row.temperature("temp_min")?,
                 temp_max: row.temperature("temp_max")?,
+                max_voltage_steps: if columns.iter().any(|(c, k)| {
+                    c == "max_voltage" && *k == FieldKind::Quantity(Dimension::VOLTAGE)
+                }) {
+                    row.rating_steps()?
+                } else {
+                    None
+                },
                 qualification: row.cell("qualification").map(str::to_string),
                 generic: None,
             });
@@ -758,6 +767,17 @@ impl Row {
                     let d = self.derating(rest, dim, columns).map_err(bad)?;
                     return Ok(Some(Value::Derated(d)));
                 }
+                // A rating in steps over temperature is its greatest step here, and the steps
+                // are the candidate's (`rating_steps`).
+                if column == "max_voltage"
+                    && dim == Dimension::VOLTAGE
+                    && let Some(steps) = rating_steps(cell).map_err(bad)?
+                {
+                    let q = Quantity::literal(steps.greatest(), Some("V"))
+                        .map_err(|e| bad(e.to_string()))?
+                        .quantity;
+                    return Ok(Some(Value::Quantity(q)));
+                }
                 let q = quantity(cell).map_err(bad)?;
                 if q.dim() != dim {
                     return Err(bad(format!(
@@ -768,6 +788,16 @@ impl Row {
                 Ok(Some(Value::Quantity(q)))
             }
         }
+    }
+
+    /// The `max_voltage` cell as steps over temperature (`5.5V to 70degC, 4.2V to 85degC`,
+    /// issue #1257), or `None` for a cell of one value or an empty one.
+    fn rating_steps(&self) -> Result<Option<RatingSteps>, String> {
+        let Some(cell) = self.cell("max_voltage") else {
+            return Ok(None);
+        };
+        rating_steps(cell)
+            .map_err(|why| format!("{}:{}: `max_voltage`: {why}", self.file, self.line))
     }
 
     /// `capacitance by bias: 0:1 5:0.5`: this column is the value of the column `capacitance`
@@ -839,6 +869,38 @@ fn bias_curve(text: &str) -> Result<Vec<(f64, f64)>, String> {
     Ok(points)
 }
 
+/// A rating in steps over temperature, as a source writes it after `&=` (issue #1257):
+/// `5.5V to 70degC, 4.2V to 85degC`, each value one voltage and each temperature one
+/// temperature, the temperatures rising. `None` for a cell that is one value.
+fn rating_steps(text: &str) -> Result<Option<RatingSteps>, String> {
+    let Ok(Expr::Steps { steps, .. }) = parse_expr(text) else {
+        return Ok(None);
+    };
+    let one = |e: &Expr, dim: Dimension, what: &str| -> Result<f64, String> {
+        let q = constant(e)?;
+        if q.dim() != dim || q.lo() != q.hi() {
+            return Err(format!(
+                "`{}` in the steps is not one {what} (write `5.5V to 70degC, 4.2V to 85degC`)",
+                e.to_source()
+            ));
+        }
+        Ok(q.lo())
+    };
+    let mut read: Vec<(f64, f64)> = Vec::new();
+    for step in &steps {
+        let volts = one(&step.value, Dimension::VOLTAGE, "voltage")?;
+        let kelvin = one(&step.to, Dimension::TEMPERATURE, "temperature")?;
+        if read.last().is_some_and(|&(_, before)| kelvin <= before) {
+            return Err(format!(
+                "`{}` is not above the temperature of the step before it: the steps are written from the coldest",
+                step.to.to_source()
+            ));
+        }
+        read.push((volts, kelvin));
+    }
+    Ok(Some(RatingSteps { steps: read }))
+}
+
 /// A value in the language's syntax: a number with its unit, a range, a tolerance, or
 /// arithmetic on those.
 fn quantity(text: &str) -> Result<Quantity, String> {
@@ -903,6 +965,10 @@ fn constant(e: &Expr) -> Result<Quantity, String> {
         )),
         Expr::Call { .. } => Err(format!(
             "`{}` is a call; a value is a number with its unit",
+            e.to_source()
+        )),
+        Expr::Steps { .. } => Err(format!(
+            "`{}` is steps over temperature, which only a `max_voltage` cell holds",
             e.to_source()
         )),
         Expr::Path(p) => Err(format!(

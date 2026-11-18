@@ -1324,6 +1324,7 @@ fn a_candidate_takes_the_classs_range_only_where_it_states_none() {
         columns: vec![("dielectric".into(), Value::Text(class.into()))],
         temp_min: min,
         temp_max: max,
+        max_voltage_steps: None,
         ..Default::default()
     };
     assert_eq!(

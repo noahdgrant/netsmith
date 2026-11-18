@@ -1139,6 +1139,8 @@ pub struct ResolvedRow {
     pub name: String,
     pub temp_min: Option<f64>,
     pub temp_max: Option<f64>,
+    /// The row's `max_voltage` in steps over temperature, if it writes it so (issue #1257).
+    pub max_voltage_steps: Option<netsmith_check::environment::RatingSteps>,
     /// The cited range of the row's dielectric class, for an end the row leaves empty.
     pub temp_class: Option<&'static netsmith_check::environment::ClassRange>,
     /// The row's `qualification` cell, `Aec` or `None`, if it has one.

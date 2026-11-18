@@ -504,6 +504,7 @@ fn a_catalog_row_may_state_who_assembles_its_part_and_the_design_overrides_it() 
                 height: None,
                 temp_min: None,
                 temp_max: None,
+                max_voltage_steps: None,
                 qualification: None,
                 generic: None,
             }],

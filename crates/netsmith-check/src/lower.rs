@@ -19,6 +19,9 @@ use crate::model::{
     Domain, EnumId, FieldId, FieldKind, InstId, InstKind, Member, RExpr, RangeEnd, Relation,
 };
 
+/// The example every message about steps over temperature shows (issue #1257).
+const STEPS_EXAMPLE: &str = "`.max_voltage &= 5.5V to 70degC, 4.2V to 85degC`";
+
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum VTy {
     Q(Dimension),
@@ -271,6 +274,16 @@ impl Checker<'_> {
 
     pub fn lower(&mut self, e: &Expr) -> Option<Typed> {
         match e {
+            // Steps stand only as the whole value of a narrowing (`narrow_statement`).
+            Expr::Steps { span, .. } => {
+                self.error(
+                    *span,
+                    format!(
+                        "steps over temperature are a part's maximum voltage, stated with `&=` on its own: {STEPS_EXAMPLE}"
+                    ),
+                );
+                None
+            }
             Expr::Number(n, span) => match Quantity::literal(n.value, n.unit.as_deref()) {
                 Ok(lit) => Some(Typed {
                     ty: VTy::Q(lit.quantity.dim()),
@@ -744,6 +757,9 @@ impl Checker<'_> {
         self.narrowing = c.op == CmpOp::Narrow;
         let target = self.resolve_path(p);
         self.narrowing = false;
+        if let Expr::Steps { steps, span } = &c.rhs {
+            return self.steps_statement(target, p, c, steps, *span);
+        }
         let rhs = match target {
             Res::Field(f) => {
                 let beside = self.typed_field(f);
@@ -804,6 +820,160 @@ impl Checker<'_> {
             _ => {}
         }
         stated
+    }
+
+    /// `.max_voltage &= 5.5V to 70degC, 4.2V to 85degC` (issue #1257): a part's maximum
+    /// voltage in steps over temperature. Each value is one voltage and each `to` one
+    /// temperature, the temperatures rising. The member is narrowed to the greatest step, as the
+    /// datasheet's maximum, and the steps are recorded for the design stage, which judges them
+    /// against the board's environment and the voltage across the part.
+    fn steps_statement(
+        &mut self,
+        target: Res,
+        p: &ast::Path,
+        c: &ast::Constraint,
+        steps: &[ast::Step],
+        span: Span,
+    ) -> Option<FieldId> {
+        let Res::Field(f) = target else {
+            if matches!(target, Res::Inst(_)) {
+                self.error(
+                    p.span,
+                    format!(
+                        "`{}` is not a field: steps over temperature state a part's maximum voltage, {STEPS_EXAMPLE}",
+                        p.to_source()
+                    ),
+                );
+            }
+            return None;
+        };
+        let field = self.model.field(f);
+        let owner = field.owner;
+        let is_rating = field.name == "max_voltage"
+            && field.kind == FieldKind::Quantity(Dimension::VOLTAGE)
+            && self.model.instance(owner).kind == InstKind::Part;
+        if !is_rating {
+            self.error(
+                p.span,
+                format!(
+                    "`{}` cannot be stated in steps over temperature: only a part's maximum voltage, its `.max_voltage`, is, as {STEPS_EXAMPLE}",
+                    p.to_source()
+                ),
+            );
+            return None;
+        }
+        if c.op != CmpOp::Narrow {
+            self.error(
+                span,
+                format!(
+                    "steps over temperature are stated with `&=`, not `{}`: {STEPS_EXAMPLE}",
+                    c.op.symbol()
+                ),
+            );
+            return None;
+        }
+        let mut read: Vec<(f64, f64)> = Vec::new();
+        for step in steps {
+            let volts =
+                self.step_number(&step.value, Dimension::VOLTAGE, "a voltage such as `4.2V`");
+            let kelvin = self.step_number(
+                &step.to,
+                Dimension::TEMPERATURE,
+                "a temperature such as `85degC`",
+            );
+            let (Some(volts), Some(kelvin)) = (volts, kelvin) else {
+                return None;
+            };
+            if let Some(&(_, before)) = read.last()
+                && kelvin <= before
+            {
+                self.error(
+                    step.to.span(),
+                    format!(
+                        "the temperatures of the steps rise from the first to the last, but `{}` is not above `{}` before it: write the steps from the coldest, {STEPS_EXAMPLE}",
+                        step.to.to_source(),
+                        crate::environment::show(before)
+                    ),
+                );
+                return None;
+            }
+            read.push((volts, kelvin));
+        }
+        let path = self.model.field_in_scope(f);
+        if let Some(earlier) = self.model.voltage_steps.iter().find(|s| s.field == f) {
+            let place = self.place_of(earlier.source, earlier.span);
+            self.error(
+                c.span,
+                format!(
+                    "`{path}` is already stated in steps over temperature (at {place}): a part has one table of its rating, so keep one statement"
+                ),
+            );
+            return None;
+        }
+        self.refuse_own_statement(f, "&=", c.span);
+        self.stated.insert(f);
+        let steps = crate::environment::RatingSteps { steps: read };
+        let greatest = Quantity::literal(steps.greatest(), Some("V"))
+            .expect("volts are a quantity")
+            .quantity;
+        self.apply(
+            f,
+            Typed {
+                e: RExpr::Const(greatest),
+                ty: VTy::Q(Dimension::VOLTAGE),
+            },
+            CmpOp::Narrow,
+            c.span,
+        );
+        let source = self.cur_source();
+        self.model.voltage_steps.push(crate::model::VoltageSteps {
+            field: f,
+            steps,
+            source,
+            span: c.span,
+        });
+        Some(f)
+    }
+
+    /// One side of a step: a single number of `dim`, in its base unit.
+    fn step_number(&mut self, e: &Expr, dim: Dimension, what: &str) -> Option<f64> {
+        let t = self.lower(e)?;
+        match (t.ty, t.e) {
+            (VTy::Q(d), RExpr::Const(q)) if d == dim && q.lo() == q.hi() => Some(q.lo()),
+            (VTy::Q(d), RExpr::Const(q)) if d == dim => {
+                self.error(
+                    e.span(),
+                    format!("a step is one number, as the datasheet prints it, not the range {q}"),
+                );
+                None
+            }
+            (VTy::Q(d), RExpr::Const(_)) => {
+                let word = crate::dc::quantity_word(d);
+                let coulomb = if d == Dimension::CHARGE && dim == Dimension::TEMPERATURE {
+                    " (`C` alone is the coulomb: a temperature is written in `degC` or `K`)"
+                } else {
+                    ""
+                };
+                self.error(
+                    e.span(),
+                    format!(
+                        "`{}` is a {word}{coulomb}, but here a step takes {what}",
+                        e.to_source()
+                    ),
+                );
+                None
+            }
+            _ => {
+                self.error(
+                    e.span(),
+                    format!(
+                        "a step is the number the datasheet prints, {what}, not `{}`",
+                        e.to_source()
+                    ),
+                );
+                None
+            }
+        }
     }
 
     /// Whether the field is the `.abs_min` or the `.abs_max` that every pin has.

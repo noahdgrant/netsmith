@@ -19,7 +19,7 @@
 use std::collections::BTreeMap;
 
 use netsmith_check::environment::{
-    Fit, QualificationFit, requires_qualification, show, show_range,
+    Fit, QualificationFit, StepFit, requires_qualification, show, show_range, show_volts,
 };
 use netsmith_check::{Domain, InstId, Member, Model};
 use netsmith_solve::Pick;
@@ -159,6 +159,9 @@ pub fn judge(model: &Model, parts: &[Fitted<'_>], errors: &mut Vec<String>) -> J
     let mut judged = judge_temperatures(model, parts, errors);
     let (findings, waiting) = judge_qualification(model, parts, errors);
     judged.findings.extend(findings);
+    judged
+        .findings
+        .extend(judge_rating_steps(model, parts, errors));
     if let Some(tally) = &mut judged.tally {
         tally.qualification_pending = waiting
             .into_iter()
@@ -166,6 +169,132 @@ pub fn judge(model: &Model, parts: &[Fitted<'_>], errors: &mut Vec<String>) -> J
             .collect();
     }
     judged
+}
+
+/// Judge every fitted part whose maximum voltage is stated in steps over temperature (issue
+/// #1257), by the design (`.max_voltage &= 5.5V to 70degC, 4.2V to 85degC`) or by its catalog
+/// row's `max_voltage` cell, against the board's `.environment.temperature` and the voltage
+/// across the part (`RatingSteps::judge`). A step the environment reaches that is under the
+/// voltage, and an environment that reaches past the last step, are errors that name the
+/// temperature. Steps that cannot be judged (the board states no temperature, or the voltage
+/// across the part is not known) are kept and named in a guideline finding, never passed in
+/// silence. A part that states steps and has no voltage across it to compare them with (no
+/// `#[role(bias)]` member and `bridge`) is an error.
+fn judge_rating_steps(
+    model: &Model,
+    parts: &[Fitted<'_>],
+    errors: &mut Vec<String>,
+) -> Vec<Guideline> {
+    let board = model.root;
+    // The board's range, and the path of its field, when it states a finite one. An open end is
+    // refused by the judgement of temperatures, which says so.
+    let environment = model.environment_temperature_of(board).and_then(|field| {
+        match &model.field(field).domain {
+            Domain::Quantity(q) => Some(((q.lo(), q.hi()), model.path_of_field(field))),
+            _ => None,
+        }
+    });
+    if environment
+        .as_ref()
+        .is_some_and(|((lo, hi), _)| !(lo.is_finite() && hi.is_finite()))
+    {
+        return Vec::new();
+    }
+    let mut findings = Vec::new();
+    for fitted in parts {
+        if fitted.assembly == Assembly::None {
+            continue;
+        }
+        let part = fitted.part;
+        let name = model.path_of(part);
+        let (steps, from) = match (model.voltage_steps_of(part), fitted.pick) {
+            (Some(stated), _) => (
+                &stated.steps,
+                format!(
+                    "the design states `.{name}.max_voltage &= {}`",
+                    stated.steps.to_source()
+                ),
+            ),
+            (None, Some(pick)) if pick.max_voltage_steps.is_some() => {
+                let steps = pick.max_voltage_steps.as_ref().expect("checked above");
+                (
+                    steps,
+                    format!(
+                        "the catalog row {}{} states `max_voltage` {}",
+                        pick.candidate,
+                        pick.lcsc
+                            .as_deref()
+                            .map_or(String::new(), |lcsc| format!(" ({lcsc})")),
+                        steps.to_source()
+                    ),
+                )
+            }
+            _ => continue,
+        };
+        let Some((across, _, _)) = model
+            .bias_of(part)
+            .or_else(|| model.bridge_voltage_of(part))
+        else {
+            errors.push(format!(
+                "`{name}` states its maximum voltage in steps over temperature ({from}), but nothing gives it the voltage across it to compare them with: a part rated so has a `#[role(bias)]` member and a `bridge` between the two pins the voltage is across, as `Capacitor` has (`#[role(bias)] .bias: Voltage` and `bridge .a ~> .b`)"
+            ));
+            continue;
+        };
+        let bias = model.path_of_field(across);
+        let volts = match &model.field(across).domain {
+            Domain::Quantity(q) if q.lo().is_finite() && q.hi().is_finite() => {
+                q.lo().abs().max(q.hi().abs())
+            }
+            _ => {
+                findings.push(Guideline {
+                    rule: "environment",
+                    message: format!(
+                        "`{name}` states its maximum voltage in steps over temperature ({from}), and the voltage across it, `{bias}`, is not known, so they are not judged: place `{name}` across a rail, or state `.{bias}`"
+                    ),
+                    at: Some(part),
+                });
+                continue;
+            }
+        };
+        let Some(((lo, hi), path)) = &environment else {
+            findings.push(Guideline {
+                rule: "environment",
+                message: format!(
+                    "`{name}` states its maximum voltage in steps over temperature ({from}), and the board states no `.environment.temperature`, so they are judged at no temperature: state the range the board reaches, as `.environment: Environment {{ .temperature &= -20degC..85degC }}`"
+                ),
+                at: Some(part),
+            });
+            continue;
+        };
+        let range = show_range(*lo, *hi);
+        let across = show_volts(volts);
+        match steps.judge((*lo, *hi), volts) {
+            StepFit::Met => {}
+            StepFit::Broken { volts, above, to } => {
+                let at = match above {
+                    Some(t) => format!("above {}, up to {}", show(t), show(to)),
+                    None => format!(
+                        "from {}, the coldest the board's environment reaches, up to {}",
+                        show(*lo),
+                        show(to)
+                    ),
+                };
+                errors.push(format!(
+                    "`{name}` is rated for {} only {at} ({from}), under the {across} across it (`{bias}`), and the board's environment reaches {} (`{path}` {range}): choose a part rated for it, lower the voltage or narrow the environment",
+                    show_volts(volts),
+                    show(*hi),
+                ));
+            }
+            StepFit::Beyond { last } => {
+                errors.push(format!(
+                    "`{name}` is rated for no voltage above {}, its last step ({from}), and the board's environment reaches {} (`{path}` {range}): choose a part rated for it or narrow the environment",
+                    show(last),
+                    show(*hi),
+                ));
+            }
+        }
+    }
+    findings
 }
 
 /// What groups the parts of one finding: one catalog row, or one kind with no row.

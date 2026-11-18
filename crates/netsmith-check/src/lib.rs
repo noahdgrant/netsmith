@@ -57,7 +57,7 @@ pub use model::{
     Net, OptionalMark, OutlinePolygon, PartRules, Peripheral, PeripheralBus, PeripheralFunction,
     PinAssignment, PinKind, PinRequest, PinRow, PinTable, Pinout, PolygonCorner, Provider, RExpr,
     RangeEnd, Relation, Requirement, Role, RowLimit, SharedMember, SharedRes, Snapshot, Tie,
-    Unused, Written,
+    Unused, VoltageSteps, Written,
 };
 pub use pinedit::edit_entry;
 pub use pinfile::{BusEntry, EntrySource, PinEntry, PinFile, PinFileError};

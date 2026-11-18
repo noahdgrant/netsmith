@@ -251,6 +251,7 @@ pub fn resolve_generics(
                         name: row.name,
                         temp_min: row.temp_min,
                         temp_max: row.temp_max,
+                        max_voltage_steps: row.max_voltage_steps,
                         temp_class: row.temp_class,
                         qualification: row.qualification,
                     });

@@ -30,7 +30,7 @@ pub fn parse_expr(src: &str) -> Result<Expr, ParseError> {
         last_end: 0,
         in_generic: false,
     };
-    let e = parser.expr()?;
+    let e = parser.value()?;
     if parser.at(&Tok::Eof) {
         Ok(e)
     } else {
@@ -714,7 +714,7 @@ impl Parser {
                 };
                 self.bump();
                 self.skip_newlines();
-                let rhs = self.expr()?;
+                let rhs = self.value()?;
                 // `at` and a current after the value: the load a level is measured at.
                 let at = if matches!(&self.peek().tok, Tok::Ident(w) if w == "at") {
                     self.bump();
@@ -2337,6 +2337,40 @@ impl Parser {
     // A range with an open end is `lo..` (no upper limit) or `..hi` (no lower limit). After
     // `..` the high end is whatever value starts on the same line (inside parentheses, the
     // next token); a line that ends there leaves the end open.
+    /// A value after `&=` or in a catalog cell: an expression, or steps over temperature
+    /// (`5.5V to 70degC, 4.2V to 85degC`, issue #1257) when `to` follows the first one.
+    fn value(&mut self) -> Res<Expr> {
+        let start = self.peek().span.start;
+        let first = self.expr()?;
+        if !matches!(&self.peek().tok, Tok::Ident(w) if w == "to") {
+            return Ok(first);
+        }
+        let mut steps = Vec::new();
+        let mut value = first;
+        loop {
+            self.bump();
+            let to = self.expr()?;
+            steps.push(Step { value, to });
+            if !self.at(&Tok::Comma) {
+                break;
+            }
+            self.bump();
+            self.skip_newlines();
+            value = self.expr()?;
+            if !matches!(&self.peek().tok, Tok::Ident(w) if w == "to") {
+                let next = self.peek().clone();
+                return Err(unexpected(
+                    &next,
+                    "`to` and the temperature the step holds up to, such as `4.2V to 85degC`",
+                ));
+            }
+        }
+        Ok(Expr::Steps {
+            steps,
+            span: self.span_from(start),
+        })
+    }
+
     fn expr(&mut self) -> Res<Expr> {
         let start = self.peek().span.start;
         let lo = if self.at(&Tok::DotDot) {

@@ -438,6 +438,9 @@ pub struct Pick {
     /// range unless the design states one.
     pub temp_min: Option<f64>,
     pub temp_max: Option<f64>,
+    /// The row's `max_voltage` in steps over temperature, if it writes it so (issue #1257): the
+    /// part's unless the design states steps of its own.
+    pub max_voltage_steps: Option<netsmith_check::environment::RatingSteps>,
     /// The row's `qualification` cell, `Aec` or `None` (ADR 0099): the part's qualification
     /// unless the design states one. `Option::None` is a row that says nothing.
     pub qualification: Option<String>,

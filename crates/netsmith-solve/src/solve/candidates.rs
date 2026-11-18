@@ -198,7 +198,47 @@ impl Solver<'_> {
     /// Whether a candidate is out of the board's environment: its own range of temperatures
     /// does not cover it, or it says it is not what the board requires of qualification.
     fn outside_environment(&self, part: InstId, c: &Candidate) -> bool {
-        self.outside_temperatures(part, c) || self.unqualified(part, c)
+        self.outside_temperatures(part, c)
+            || self.unqualified(part, c)
+            || self.breaks_rating_steps(part, c)
+    }
+
+    /// The highest voltage across a part, its size: the `#[role(bias)]` member, or the
+    /// `bridge_voltage` of a part that has a sign, as the solver knows it now. `None` when the
+    /// part has neither or the voltage is not known yet.
+    pub(super) fn voltage_across(&self, part: InstId) -> Option<f64> {
+        let field = self
+            .model
+            .bias_of(part)
+            .or_else(|| self.model.bridge_voltage_of(part))
+            .map(|(f, _, _)| f)?;
+        match self.domain(field) {
+            Domain::Quantity(q) if q.lo().is_finite() && q.hi().is_finite() => {
+                Some(q.lo().abs().max(q.hi().abs()))
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether a candidate's `max_voltage`, written in steps over temperature (issue #1257),
+    /// is under the voltage across the part at a temperature the board's environment reaches,
+    /// or the environment reaches past its last step. A design that states steps of its own
+    /// for the part speaks for it (its statement narrows `.max_voltage`, and the design stage
+    /// judges its steps), and a row is not judged while the environment or the voltage across
+    /// the part is unknown: the design stage names what it could not judge.
+    fn breaks_rating_steps(&self, part: InstId, c: &Candidate) -> bool {
+        let Some(steps) = &c.max_voltage_steps else {
+            return false;
+        };
+        if self.model.voltage_steps_of(part).is_some() {
+            return false;
+        }
+        let (Some(environment), Some(across)) =
+            (self.environment_range(part), self.voltage_across(part))
+        else {
+            return false;
+        };
+        steps.judge(environment, across) != netsmith_check::environment::StepFit::Met
     }
 
     /// Whether a candidate's own range of temperatures, where the design states none for the
@@ -297,6 +337,27 @@ impl Solver<'_> {
                     "{left_out} {} left out because the temperatures {} state do not cover the board's environment, `.environment.temperature` {}: a row's `temp_min` and `temp_max` are its datasheet's{class_note}",
                     if left_out == 1 { "row was" } else { "rows were" },
                     if left_out == 1 { "it" } else { "they" },
+                    netsmith_check::environment::show_range(lo, hi),
+                ));
+            }
+        }
+        if let (Some((lo, hi)), Some(across)) = (
+            self.environment_range(job.part),
+            self.voltage_across(job.part),
+        ) {
+            let left_out = job
+                .catalog
+                .candidates
+                .iter()
+                .filter(|c| self.breaks_rating_steps(job.part, c))
+                .count();
+            if left_out > 0 {
+                notes.push(format!(
+                    "{left_out} {} left out because {} maximum voltage, stated in steps over temperature, is under the {} across `{}` at a temperature the board's environment reaches, `.environment.temperature` {}",
+                    if left_out == 1 { "row was" } else { "rows were" },
+                    if left_out == 1 { "its" } else { "their" },
+                    netsmith_check::environment::show_volts(across),
+                    job.path,
                     netsmith_check::environment::show_range(lo, hi),
                 ));
             }
