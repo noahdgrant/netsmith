@@ -9,9 +9,9 @@ writes a PCB that the parity checker finds equal to Raspberry Pi's in every way 
 Parts), so the placer arranges them otherwise than before, and which seed the router finishes
 moved with it: seeds 0 and 4 route completely (about 3 to 4 minutes in a debug build on a busy
 machine), seeds 1, 2 and 3 leave three, two and one connection after the router's 300 s (#731).
-The design rules check finds the nine thin rings of the RP2350's vias that their board has (see
-The reproduction), so `fab` needs `--allow-drc-violations` here. The figures of The result are
-from before.
+The design rules check measures the ring of each of the nine vias in the RP2350's exposed pad
+with the exposed pad round it, as KiCad does, and finds none too thin (see The reproduction). The
+figures of The result are from before.
 
 ## Source
 
@@ -550,13 +550,13 @@ overlap, and netsmith's design rules check finds no short, no clearance and no o
   the board file (the zones are written unfilled) removes them, as their board's does.
 - **U2's tab** is numbered 2, not 4 (see Parts): the same copper on the same net.
 - **What their board breaks of JLCPCB's rules.** `fab`'s design rules check (with the process's
-  rules) finds two things on the reproduction, both on their board too, which the test measures
-  by running the check on their file: the nine vias in the RP2350's exposed pad are 0.6 mm pads
-  round 0.25 mm holes, a ring of 0.175 mm where JLCPCB asks 0.18 mm (`plated_ring`, 9), and three
-  bends of their +3V3 tracks are sharper than the 45 degrees netsmith allows (`track_angle`, 3).
-  The board is packaged with `--allow-drc-violations` and `fab-notes.txt` lists them. Because the
-  automatic board draws the RP2350 with their footprint too, its check finds the nine rings as
-  well.
+  rules) finds one thing on the reproduction, on their board too, which the test measures by
+  running the check on their file: three bends of their +3V3 tracks are sharper than the 45
+  degrees netsmith allows (`track_angle`, 3). The board is packaged with
+  `--allow-drc-violations` and `fab-notes.txt` lists them. The nine vias in the RP2350's exposed
+  pad are 0.6 mm pads round 0.25 mm holes, a ring of 0.175 mm alone where JLCPCB asks 0.18 mm,
+  but each is measured with the exposed pad of its number that it touches, as KiCad measures it
+  (issue #1185), so neither board has a `plated_ring` finding.
 
 Netsmith's design rules check finds nothing else: no short, no clearance and no courtyard
 overlap.

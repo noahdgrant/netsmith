@@ -500,8 +500,8 @@ board TooMuchMargin {
 
 ```text
 error: TooMuchMargin: L1: part `Inductor` in package `1210` needs KiCad's footprint `Inductor_SMD:L_1210_3225Metric` (std/kicad.toml line 298).
-footprint `Inductor_SMD:L_1210_3225Metric` not found: looked for /tmp/netsmith-sample-libraries-442f93da51a2cbe0/footprints/Inductor_SMD.pretty/L_1210_3225Metric.kicad_mod; set NETSMITH_KICAD_FOOTPRINTS to the folder that holds the .pretty libraries, or list the library in kicad.toml
-KiCad is installed at /tmp/netsmith-sample-libraries-442f93da51a2cbe0/footprints but has no `Inductor_SMD:L_1210_3225Metric`: check the spelling, or use a project library (a `[[library]]` of kicad.toml) or a netsmith generated footprint: give that row a `gen:` footprint, for a package a generator makes (`footprint = "gen:SOT23(pins=3)"`).
+footprint `Inductor_SMD:L_1210_3225Metric` not found: looked for /usr/share/kicad/footprints/Inductor_SMD.pretty/L_1210_3225Metric.kicad_mod; set NETSMITH_KICAD_FOOTPRINTS to the folder that holds the .pretty libraries, or list the library in kicad.toml
+KiCad is installed at /usr/share/kicad/footprints but has no `Inductor_SMD:L_1210_3225Metric`: check the spelling, or use a project library (a `[[library]]` of kicad.toml) or a netsmith generated footprint: give that row a `gen:` footprint, for a package a generator makes (`footprint = "gen:SOT23(pins=3)"`).
 ```
 
 The output fixes only the ratio of the divider's two resistors, so the converter bounds the divider's current, which fixes their size: by default (`?=`) it is the IC's `.recommended_divider_current`, and that is 10 uA to 1 mA by default for an IC whose datasheet gives no figure. The floor keeps the feedback pin's input current (tens of nanoamps) small beside the divider's, and the ceiling keeps the divider from wasting far more than the IC draws for itself. An IC whose datasheet gives a range states it (the `Lmr16006y`'s bottom resistor of 1 kohm to 100 kohm is `.recommended_divider_current &= 7.65uA..765uA`, its 0.765 V reference over each). A board that wants another bound narrows the divider's current by its path (ADR 0116), which replaces the default and the IC's figure with it:

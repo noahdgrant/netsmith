@@ -61,3 +61,9 @@ opt-level = 2
 # board is millions of pixels, filled in a loop.
 [profile.dev.package.netsmith-draw]
 opt-level = 2
+
+# The pour fill and the design rules check (issue #1185 and the reproductions of
+# crates/netsmith-cli/tests/reproduce.rs): a board of forty parts is filled and checked in
+# minutes in a debug build.
+[profile.dev.package.netsmith-geom]
+opt-level = 2

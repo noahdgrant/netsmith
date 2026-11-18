@@ -86,14 +86,10 @@ const RP2350: Port = Port {
          KiCad's SOT-223-3_TabPin2) has it as a second pad 2, the output, so the project's copy \
          numbers it 2: the same copper on the same net",
     )],
+    // The nine vias in the RP2350's exposed pad (pads of 0.6 mm round a 0.25 mm hole) are no
+    // `plated_ring` finding: each ring is measured with the exposed pad of its number that it
+    // touches, as KiCad measures it (issue #1185).
     findings: &[
-        (
-        "plated_ring",
-        &["U1"],
-        9,
-        "Raspberry Pi's own: the nine vias in the RP2350's exposed pad are pads of 0.6 mm round a \
-         0.25 mm hole, a ring of 0.175 mm where JLCPCB asks 0.18 mm",
-        ),
         (
             "track_angle",
             &[],
