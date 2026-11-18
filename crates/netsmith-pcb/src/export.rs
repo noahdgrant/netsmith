@@ -334,11 +334,15 @@ fn footprint(board: &Board, part: &Placed, nets: &NetNumbers) -> Sexp {
             && child.args().first().and_then(Sexp::text) == Some("Reference"))
         .then(|| silk_text(&written, part, &format!("{key}/silk_text")))
         .flatten();
-        items.push(if part.mirrored() && child.head() != Some("model") {
+        let mut pushed = if part.mirrored() && child.head() != Some("model") {
             flipped(&written, None)
         } else {
             written.clone()
-        });
+        };
+        if child.head() == Some("zone") {
+            pushed = zone_in_board(&pushed, part.at, file_orientation(part));
+        }
+        items.push(pushed);
         if let Some(text) = own_text {
             items.push(if part.mirrored() {
                 flipped(&text, None)
@@ -498,6 +502,35 @@ fn flipped(node: &Sexp, parent: Option<&str>) -> Sexp {
         out.push(Sexp::atom("mirror"));
     }
     Sexp::List(out)
+}
+
+/// A zone of a footprint as KiCad's board file has it: its points (`xy`) in board coordinates.
+/// A footprint's other drawings are in its own frame, but a zone it carries (a library's keepout
+/// over its pads) is in the board's, as KiCad saves it; a `.kicad_mod`, whose footprint is at the
+/// origin, has it in the footprint's (issue #1237). `zone` is already as the footprint's side
+/// leaves it (flipped on the back), so a point is turned by the orientation written in the
+/// footprint's `at` and moved to its position, as `Placed::to_board` does for a point of the
+/// library's frame.
+fn zone_in_board(zone: &Sexp, at: Pt, orientation: f64) -> Sexp {
+    match zone {
+        Sexp::List(items) if zone.head() == Some("xy") && items.len() == 3 => {
+            let num = |i: usize| items[i].text().and_then(|t| t.parse::<f64>().ok());
+            match (num(1), num(2)) {
+                (Some(x), Some(y)) => {
+                    let p = at + Pt::new(x, y).rotate(orientation);
+                    Sexp::node("xy", vec![Sexp::num(p.x), Sexp::num(p.y)])
+                }
+                _ => zone.clone(),
+            }
+        }
+        Sexp::List(items) => Sexp::List(
+            items
+                .iter()
+                .map(|i| zone_in_board(i, at, orientation))
+                .collect(),
+        ),
+        other => other.clone(),
+    }
 }
 
 /// `(fp_text user "UART" ...)` in the place of the written reference `property`, for a part
@@ -2095,6 +2128,155 @@ mod tests {
 
     fn six() -> Board {
         crate::board::tests::six_layer_board()
+    }
+
+    /// The library's keepout of `keep_zone_board` below: a rectangle over two pads, off the
+    /// footprint's origin so that a wrong frame cannot hide behind a symmetry.
+    const LIBRARY_KEEPOUT: [(f64, f64); 4] = [(-1.0, -2.0), (3.0, -2.0), (3.0, 1.0), (-1.0, 1.0)];
+
+    /// The LED board with a keepout zone in its first part's footprint, as a library has it
+    /// (footprint coordinates), the part at (10, 20) turned by `rotation` on `side`.
+    fn keep_zone_board(rotation: f64, side: crate::board::Side) -> Board {
+        let mut board = led();
+        let part = &mut board.parts[0];
+        part.at = Pt::new(10.0, 20.0);
+        part.rotation = rotation;
+        part.side = side;
+        let points: String = LIBRARY_KEEPOUT
+            .iter()
+            .map(|(x, y)| format!("(xy {x} {y})"))
+            .collect();
+        let zone = format!(
+            r#"(zone (net 0) (net_name "") (layers "F.Cu") (hatch full 0.508)
+                (connect_pads (clearance 0)) (min_thickness 0.254)
+                (keepout (tracks allowed) (vias not_allowed) (pads allowed)
+                    (copperpour not_allowed) (footprints allowed))
+                (fill (thermal_gap 0.5) (thermal_bridge_width 0.5))
+                (polygon (pts {points})))"#
+        );
+        let Sexp::List(fields) = &mut part.footprint.source else {
+            panic!("a footprint is a list");
+        };
+        fields.push(Sexp::parse(&zone).unwrap());
+        board
+    }
+
+    /// The points and the layers of the keepout zone the first part's footprint holds in the
+    /// board file `board` is written as.
+    fn written_keep_zone(board: &Board) -> (Vec<(f64, f64)>, Vec<String>) {
+        let pcb = parsed(board);
+        let fp = footprint_of(&pcb, &board.parts[0].refdes);
+        let zone = fp.find("zone").expect("the footprint's zone is written");
+        let points = zone
+            .find("polygon")
+            .unwrap()
+            .find("pts")
+            .unwrap()
+            .find_all("xy")
+            .map(|xy| {
+                let n = |i: usize| xy.items()[i].text().unwrap().parse::<f64>().unwrap();
+                (n(1), n(2))
+            })
+            .collect();
+        let layers = zone
+            .find("layers")
+            .unwrap()
+            .args()
+            .iter()
+            .filter_map(|l| l.text().map(str::to_string))
+            .collect();
+        (points, layers)
+    }
+
+    #[test]
+    fn a_footprints_keepout_is_written_in_board_coordinates_at_its_position_turned_and_on_the_back()
+    {
+        // Issue #1237: KiCad keeps the points of a zone a footprint carries in board
+        // coordinates (a `.kicad_mod` has them in the footprint's frame). The expected points
+        // are worked out by hand: a point of the library's frame is mirrored along x on the
+        // back, turned counter-clockwise on screen (y points down: x' = x cos + y sin,
+        // y' = y cos - x sin) and moved to the part's position (10, 20).
+        use crate::board::Side::{Back, Front};
+        let cases = [
+            (
+                0.0,
+                Front,
+                [(9.0, 18.0), (13.0, 18.0), (13.0, 21.0), (9.0, 21.0)],
+                "F.Cu",
+            ),
+            (
+                90.0,
+                Front,
+                [(8.0, 21.0), (8.0, 17.0), (11.0, 17.0), (11.0, 21.0)],
+                "F.Cu",
+            ),
+            (
+                0.0,
+                Back,
+                [(11.0, 18.0), (7.0, 18.0), (7.0, 21.0), (11.0, 21.0)],
+                "B.Cu",
+            ),
+            (
+                90.0,
+                Back,
+                [(8.0, 19.0), (8.0, 23.0), (11.0, 23.0), (11.0, 19.0)],
+                "B.Cu",
+            ),
+        ];
+        for (rotation, side, expected, layer) in cases {
+            let board = keep_zone_board(rotation, side);
+            let (points, layers) = written_keep_zone(&board);
+            assert_eq!(
+                points.len(),
+                expected.len(),
+                "{rotation} degrees on {side:?}"
+            );
+            for (got, want) in points.iter().zip(expected) {
+                assert!(
+                    (got.0 - want.0).abs() < 1e-6 && (got.1 - want.1).abs() < 1e-6,
+                    "{rotation} degrees on {side:?}: {points:?}, not {expected:?}"
+                );
+            }
+            assert_eq!(layers, [layer], "{rotation} degrees on {side:?}");
+        }
+    }
+
+    #[test]
+    fn a_footprints_keepout_lies_where_its_pads_are_and_is_read_back_as_written() {
+        // Issue #1237: the points of the zone are where the part's own frame puts them
+        // (`Placed::to_board`, which the pads follow), at any angle and on either face, and
+        // the reader keeps them as they are: a round trip gives the same points.
+        for side in [crate::board::Side::Front, crate::board::Side::Back] {
+            for rotation in [0.0, 30.0, 90.0, 215.0] {
+                let board = keep_zone_board(rotation, side);
+                let part = &board.parts[0];
+                let (points, _) = written_keep_zone(&board);
+                let expected: Vec<Pt> = LIBRARY_KEEPOUT
+                    .iter()
+                    .map(|&(x, y)| part.to_board(Pt::new(x, y)))
+                    .collect();
+                assert_eq!(points.len(), expected.len());
+                for (got, want) in points.iter().zip(&expected) {
+                    assert!(
+                        (got.0 - want.x).abs() < 1e-3 && (got.1 - want.y).abs() < 1e-3,
+                        "{rotation} degrees on {side:?}: {points:?}, not {expected:?}"
+                    );
+                }
+                let art = netsmith_geom::Artwork::parse(&kicad_pcb(&board)).unwrap();
+                let zone = art
+                    .zones
+                    .iter()
+                    .find(|z| z.keepout.is_some() && z.owner == part.refdes)
+                    .expect("the keepout is read");
+                assert_eq!(zone.outlines.len(), 1);
+                for (got, want) in zone.outlines[0].iter().zip(&expected) {
+                    assert!(
+                        (got.x - want.x).abs() < 1e-3 && (got.y - want.y).abs() < 1e-3,
+                        "{rotation} degrees on {side:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

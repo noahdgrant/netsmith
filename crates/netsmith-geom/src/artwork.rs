@@ -1243,16 +1243,13 @@ impl<'a> Reader<'a> {
                 Some("pad") => self.pad(item, &frame)?,
                 Some("property") => self.text(item, Some(&frame))?,
                 Some(h) if h.starts_with("fp_") => self.drawing(item, Some(&frame))?,
-                // A zone inside a footprint (a keepout of the library): placed with it.
+                // A zone inside a footprint (a keepout of the library): a `.kicad_pcb` holds its
+                // points in board coordinates, as KiCad saves them (issue #1237), so they are
+                // read as they are, not turned and moved with the footprint again.
                 Some("zone") => {
                     self.zone(item)?;
                     if let Some(z) = self.out.zones.last_mut() {
                         z.owner = frame.part.clone();
-                        for o in z.outlines.iter_mut().chain(z.holes.iter_mut()) {
-                            for p in o.iter_mut() {
-                                *p = frame.world(*p);
-                            }
-                        }
                     }
                 }
                 _ => {}
@@ -1589,6 +1586,39 @@ mod tests {
           (property "Reference" "J1" (at 0 0 0) (layer "F.Fab"))
           (pad "1" thru_hole oval (at 1 0 30) (size 2.4 1.2)
             (drill oval 1.6 0.6 (offset 0.3 0)) (layers "*.Cu" "*.Mask"))))"#;
+
+    #[test]
+    fn a_keepout_a_footprint_carries_is_read_in_board_coordinates_as_kicad_saves_it() {
+        // Issue #1237: a zone inside a footprint of a `.kicad_pcb` has its points in board
+        // coordinates (this footprint is at (20, 30) turned 90 degrees, and its zone covers the
+        // two pads), so they are not turned and moved with the footprint again.
+        let src = r#"(kicad_pcb (layers (0 "F.Cu" signal) (2 "B.Cu" signal))
+            (footprint "L:K" (layer "F.Cu") (at 20 30 90)
+              (property "Reference" "J1" (at 0 0 0) (layer "F.Fab"))
+              (pad "1" smd rect (at 0 -1) (size 1 1) (layers "F.Cu" "F.Mask"))
+              (pad "2" smd rect (at 0 1) (size 1 1) (layers "F.Cu" "F.Mask"))
+              (zone (net 0) (net_name "") (layers "F.Cu")
+                (keepout (tracks allowed) (vias not_allowed) (pads allowed)
+                  (copperpour not_allowed) (footprints allowed))
+                (polygon (pts (xy 19 29) (xy 21 29) (xy 21 31) (xy 19 31))))))"#;
+        let a = Artwork::parse(src).unwrap();
+        let zone = a.zones.iter().find(|z| z.owner == "J1").unwrap();
+        assert_eq!(
+            zone.outlines,
+            [vec![
+                Pt::new(19.0, 29.0),
+                Pt::new(21.0, 29.0),
+                Pt::new(21.0, 31.0),
+                Pt::new(19.0, 31.0)
+            ]]
+        );
+        // And it covers the pads, which are at (21, 30) turned: (20 + y, 30 - x) for (x, y).
+        assert!(
+            a.pads
+                .iter()
+                .all(|p| { (19.0..=21.0).contains(&p.at.x) && (29.0..=31.0).contains(&p.at.y) })
+        );
+    }
 
     #[test]
     fn a_drill_offset_puts_the_hole_where_the_file_puts_the_pad_and_the_copper_off_it() {
