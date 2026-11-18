@@ -23,7 +23,9 @@ use netsmith_fab::{
     Side, package,
 };
 use netsmith_kicad::Mapping;
-use netsmith_pcb::{Board, Trim, kicad_pcb, kicad_pro, place_options, render_svg};
+use netsmith_pcb::{
+    Board, Trim, kicad_pcb, kicad_pcb_filled, kicad_pro, place_options, render_svg,
+};
 use netsmith_router::{RouteOptions, route_with};
 use netsmith_solve::Catalogs;
 
@@ -1475,8 +1477,12 @@ fn fab_board(
         let dir = built.dir(out);
         let pcb_path = dir.join(format!("{name}.kicad_pcb"));
         fs::create_dir_all(&dir).map_err(|e| fail(format!("{}: {e}", dir.display())))?;
+        // The board file holds netsmith's own fill, so it opens poured in KiCad (issue #1184);
+        // netsmith reads it back as the board it was written from. Where the filler refuses the
+        // board, the file is written unfilled and the package says why, as its Gerbers fail.
+        let pcb = kicad_pcb_filled(&board).unwrap_or_else(|_| kicad_pcb(&board));
         for (file, contents) in [
-            (pcb_path.clone(), kicad_pcb(&board)),
+            (pcb_path.clone(), pcb),
             (dir.join(format!("{name}.kicad_pro")), kicad_pro(&board)),
             (dir.join(format!("{name}.svg")), render_svg(&board)),
         ] {

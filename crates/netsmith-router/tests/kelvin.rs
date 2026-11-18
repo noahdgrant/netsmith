@@ -319,7 +319,6 @@ fn poured_over(board: &Board, copper: &SenseCopper, layer: CopperLayer, grow: f6
         .filter(|p| p.net.as_deref() == Some("GND"))
         .collect();
     assert!(!fill.is_empty(), "net GND is poured on {}", layer.name());
-    let size = |pen: &Polygons| pen.areas().iter().map(|a| a.size()).sum::<f64>();
     let mut poured = Polygons::new();
     poured.polarity(true);
     for p in &fill {
@@ -332,7 +331,51 @@ fn poured_over(board: &Board, copper: &SenseCopper, layer: CopperLayer, grow: f6
         }
         poured.polarity(true);
     }
-    let sense = drawn(board, copper, layer, grow);
+    shared(&poured, &drawn(board, copper, layer, grow))
+}
+
+/// The area in mm² that the fill of net `GND` on `layer` as the KiCad board `fab` writes holds
+/// it (its `filled_polygon`s, issue #1184) shares with the sense copper on it grown by `grow`.
+fn held_over(board: &Board, copper: &SenseCopper, layer: CopperLayer, grow: f64) -> f64 {
+    let text = netsmith_pcb::kicad_pcb_filled(board).unwrap_or_else(|e| panic!("{e:?}"));
+    let root = netsmith_kicad::Sexp::parse(&text).unwrap();
+    let word = |node: &netsmith_kicad::Sexp, key: &str| {
+        node.find(key)
+            .and_then(|n| n.items().get(1)?.text())
+            .map(str::to_string)
+    };
+    let mut held = Polygons::new();
+    held.polarity(true);
+    let mut pieces = 0;
+    for z in root.find_all("zone") {
+        if word(z, "net_name").as_deref() != Some("GND") || z.find("attr").is_some() {
+            continue;
+        }
+        for f in z
+            .find_all("filled_polygon")
+            .filter(|f| word(f, "layer").as_deref() == Some(layer.name()))
+        {
+            let ring: Vec<G> = f
+                .find("pts")
+                .unwrap()
+                .find_all("xy")
+                .map(|xy| {
+                    let n = |i: usize| xy.items()[i].text().unwrap().parse::<f64>().unwrap();
+                    G { x: n(1), y: n(2) }
+                })
+                .collect();
+            // One ring with its holes joined to it: the even-odd rule reads it.
+            held.region(Contour::polygon(&ring), None, &[]);
+            pieces += 1;
+        }
+    }
+    assert!(pieces > 0, "the board file holds GND's fill on {}", layer.name());
+    shared(&held, &drawn(board, copper, layer, grow))
+}
+
+/// The area in mm² that `a` and `b` share.
+fn shared(poured: &Polygons, sense: &Polygons) -> f64 {
+    let size = |pen: &Polygons| pen.areas().iter().map(|a| a.size()).sum::<f64>();
     // |A and B| = |A| + |B| - |A or B|.
     let mut both = Polygons::new();
     both.polarity(true);
@@ -344,7 +387,7 @@ fn poured_over(board: &Board, copper: &SenseCopper, layer: CopperLayer, grow: f6
         }
         both.polarity(true);
     }
-    size(&poured) + size(&sense) - size(&both)
+    size(poured) + size(sense) - size(&both)
 }
 
 /// The errors of netsmith's design rules check of the board file.
@@ -382,6 +425,9 @@ fn sense_copper_is_alone_under_the_pour(board: &mut Board, layer: CopperLayer, s
     // A micrometre of the polygons' own error less than the space.
     let near = poured_over(board, &copper, layer, space - 0.001);
     assert!(near < 1e-6, "the pour comes {near} mm² nearer the sense copper than {space} mm");
+    // The KiCad board holds the same fill (issue #1184), carved the same way.
+    let held = held_over(board, &copper, layer, space - 0.001);
+    assert!(held < 1e-6, "the board file's fill comes {held} mm² nearer the sense copper than {space} mm");
     let findings = kelvin_findings(board);
     assert!(findings.is_empty(), "{findings:?}");
     assert!(netsmith_pcb::Ratsnest::of(board).is_empty());

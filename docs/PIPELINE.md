@@ -104,6 +104,13 @@ installed KiCad library only for a KiCad id of a project's `kicad.toml` that it 
 0097). `fab` repeats stages 1 to 4 in the same process, then goes on
 (ADR 0076 gives about 1.25 s for a 60-part board, optimised build; the router may take up to 300 s).
 
+The board file `fab` writes (`<board>.kicad_pcb`) holds netsmith's own fill of every pour, plane and
+zone of the routes file, the fill its Gerbers get, as KiCad's `filled_polygon`s, so the board opens
+poured in KiCad with no refill (`netsmith_pcb::kicad_pcb_filled`, issue #1184). netsmith reads the
+fill of a file it wrote as none and makes it again, so the package, `board drc` of the file and
+the cross-check see the board itself. The stages keep the board in memory unfilled
+(`netsmith_pcb::kicad_pcb`), and `layout export` writes it so.
+
 The linter (`netsmith project lint`, `crates/netsmith-lint`, issue #1104) is not a stage: it runs stage 1 on the top-level files as `check` does, reads the syntax trees and the checked models (and the catalogs, for a narrowing the row a part is picked by gives), and writes nothing. A rule that asks whether a statement changes anything checks the files again without it.
 
 ## Inside the solver

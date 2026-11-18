@@ -288,6 +288,73 @@ fn a_pad_the_pour_joins_with_one_spoke_keeps_its_via_and_kicad_finds_it_so() {
 }
 
 #[test]
+fn kicad_checks_the_fill_fab_writes_as_it_is_and_finds_the_starved_pads_netsmith_finds() {
+    // Issue #1184: the board file `fab` writes holds netsmith's own fill. KiCad's check of it
+    // with no refill judges that copper: the corner board's plane and pours keep every clearance
+    // and rule area, and the starved thermal relief is the one netsmith's check names (R1's GND
+    // pad, joined by one spoke).
+    use netsmith_geom::{DrcRule, Pt as GeomPt};
+    let (_, bare) = crate::plane_vias::corner();
+    let ours = netsmith_geom::drc_check(
+        &kicad_pcb(&bare),
+        Some(&kicad_pro(&bare)),
+        &Default::default(),
+    )
+    .unwrap();
+    let starved: Vec<GeomPt> = ours
+        .findings
+        .iter()
+        .filter(|f| f.rule == DrcRule::StarvedThermal)
+        .filter_map(|f| f.items.first().map(|i| i.at))
+        .collect();
+    assert!(!starved.is_empty(), "{ours}");
+    let Some(cli) = KicadCliExe::locate_runnable() else {
+        eprintln!("skipped: no KiCad");
+        return;
+    };
+    let dir = TempDir::new("kicad-as-filled");
+    let pcb = dir.join("corner.kicad_pcb");
+    let filled = netsmith_pcb::kicad_pcb_filled(&bare).unwrap();
+    assert!(filled.contains("(filled_polygon"));
+    std::fs::write(&pcb, filled).unwrap();
+    std::fs::write(pcb.with_extension("kicad_pro"), kicad_pro(&bare)).unwrap();
+    let theirs =
+        netsmith_fab::parse_kicad_drc(&cli.drc_json_as_filled(&pcb).unwrap()).unwrap();
+    let said: Vec<String> = theirs
+        .iter()
+        .map(|k| format!("{} {} {:?}", k.kind, k.description, k.items))
+        .collect();
+    let theirs_starved: Vec<GeomPt> = theirs
+        .iter()
+        .filter(|k| k.kind == "starved_thermal")
+        .filter_map(|k| {
+            k.items
+                .iter()
+                .map(|(_, at)| *at)
+                .find(|at| starved.iter().any(|s| s.dist(*at) < 0.05))
+        })
+        .collect();
+    assert_eq!(
+        (
+            theirs_starved.len(),
+            theirs.iter().filter(|k| k.kind == "starved_thermal").count()
+        ),
+        (starved.len(), starved.len()),
+        "netsmith's starved thermals {starved:?}, KiCad's findings: {said:#?}"
+    );
+    // Nothing else KiCad finds is about a zone's copper: none of it is short of a clearance,
+    // in a rule area, or under another net's mask opening, and the zones join what they join.
+    let zones: Vec<&String> = theirs
+        .iter()
+        .zip(&said)
+        .filter(|(k, _)| k.kind != "starved_thermal" && !k.kind.starts_with("lib_footprint"))
+        .filter(|(k, _)| k.items.iter().any(|(what, _)| what.starts_with("Zone")))
+        .map(|(_, s)| s)
+        .collect();
+    assert_eq!(zones, Vec::<&String>::new());
+}
+
+#[test]
 fn a_line_routed_on_an_inner_signal_layer_passes_kicads_check() {
     // Issue #833: the line of `inner_layers.rs`'s walled board crosses under the wall on In2.Cu;
     // KiCad fills the plane and finds no violation and nothing unconnected.
