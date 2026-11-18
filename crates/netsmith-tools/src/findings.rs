@@ -315,6 +315,11 @@ pub struct BoardOut {
     /// down), the frame of the layout file and the routes file.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub outline_at: Option<Place>,
+    /// For `fab` and `board drc`: the nets the routing made long against their straight
+    /// length, and the nets with the most vias (issue #1194), each with its length, its
+    /// straight length, the ratio and its vias. Left out when there are none.
+    #[serde(skip_serializing_if = "netsmith_fab::NetRoutes::is_empty")]
+    pub routes: netsmith_fab::NetRoutes,
 }
 
 /// The count of the notes of the run, for each cause, whether or not they are listed.

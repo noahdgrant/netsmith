@@ -354,6 +354,7 @@ pub fn take(from: &Path, to: &Path, key: &str, label: &str) -> Result<Fabricated
         origins: Vec::new(),
         requirements: Vec::new(),
         place_warnings: Vec::new(),
+        routes: Default::default(),
         stages_run: 0,
         reused: true,
     })

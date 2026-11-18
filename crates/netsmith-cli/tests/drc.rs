@@ -106,7 +106,12 @@ fn its_findings_are_fabs_for_the_same_board_and_it_routes_and_writes_nothing() {
     // Nothing is routed (the stages that ran are timed, and there is no routing among them)
     // and nothing is written.
     assert!(said.contains("timing: design LedExample"), "{said}");
-    assert!(!said.contains("route"), "{said}");
+    assert!(
+        !said
+            .lines()
+            .any(|l| l.starts_with("timing:") && l.contains("route")),
+        "{said}"
+    );
     assert_eq!(listing(&dir), before);
 
     // The same findings as data: the rule, the place, the nets and the parts each names.
@@ -238,3 +243,87 @@ fn fab_writes_the_processs_rules_beside_the_project_and_a_kicad_boards_check_rea
         "{pads:#?}"
     );
 }
+
+/// A board drawn by hand: a crystal's line XOUT between two pads 4 mm apart, routed 10 mm out
+/// and back through two vias and the back, 14 mm in all.
+const DETOUR: &str = "(kicad_pcb
+	(version 20241229)
+	(generator \"netsmith-test\")
+	(general (thickness 1.6) (legacy_teardrops no))
+	(paper \"A4\")
+	(layers
+		(0 \"F.Cu\" signal)
+		(2 \"B.Cu\" signal)
+		(1 \"F.Mask\" user)
+		(3 \"B.Mask\" user)
+		(25 \"Edge.Cuts\" user)
+	)
+	(setup (pad_to_mask_clearance 0))
+	(net 0 \"\")
+	(net 1 \"XOUT\")
+	(footprint \"Test:Y1\" (layer \"F.Cu\") (at 10 20 0)
+		(property \"Reference\" \"Y1\" (at 0 -3 0) (layer \"F.Fab\") (hide yes) (effects (font (size 1 1) (thickness 0.15))))
+		(attr smd)
+		(pad \"1\" smd rect (at 0 0) (size 0.6 0.6) (layers \"F.Cu\" \"F.Mask\") (net 1 \"XOUT\"))
+	)
+	(footprint \"Test:U1\" (layer \"F.Cu\") (at 14 20 0)
+		(property \"Reference\" \"U1\" (at 0 -3 0) (layer \"F.Fab\") (hide yes) (effects (font (size 1 1) (thickness 0.15))))
+		(attr smd)
+		(pad \"1\" smd rect (at 0 0) (size 0.6 0.6) (layers \"F.Cu\" \"F.Mask\") (net 1 \"XOUT\"))
+	)
+	(segment (start 10 20) (end 10 25) (width 0.2) (layer \"F.Cu\") (net 1))
+	(via (at 10 25) (size 0.6) (drill 0.3) (layers \"F.Cu\" \"B.Cu\") (net 1))
+	(segment (start 10 25) (end 14 25) (width 0.2) (layer \"B.Cu\") (net 1))
+	(via (at 14 25) (size 0.6) (drill 0.3) (layers \"F.Cu\" \"B.Cu\") (net 1))
+	(segment (start 14 25) (end 14 20) (width 0.2) (layer \"F.Cu\") (net 1))
+	(gr_line (start 0 0) (end 30 0) (stroke (width 0.05) (type default)) (layer \"Edge.Cuts\"))
+	(gr_line (start 30 0) (end 30 30) (stroke (width 0.05) (type default)) (layer \"Edge.Cuts\"))
+	(gr_line (start 30 30) (end 0 30) (stroke (width 0.05) (type default)) (layer \"Edge.Cuts\"))
+	(gr_line (start 0 30) (end 0 0) (stroke (width 0.05) (type default)) (layer \"Edge.Cuts\"))
+)
+";
+
+#[test]
+fn its_notes_list_the_nets_routed_long_and_the_nets_with_the_most_vias() {
+    // Issue #1194.
+    let dir = TempDir::new("drc-net-routes");
+    fs::write(dir.join("detour.kicad_pcb"), DETOUR).unwrap();
+    let run = netsmith(&dir, &["board", "drc", "--kicad-pcb", "detour.kicad_pcb"]);
+    let said = text(&run);
+    let printed = out(&run);
+    let notes: Vec<&str> = printed
+        .lines()
+        .filter(|l| l.starts_with("detour: note: ") || l.starts_with("  XOUT"))
+        .collect();
+    assert_eq!(
+        notes,
+        [
+            "detour: note: routed long: 1 net routed more than 2x the straight length between its pads and 2 mm over it; look at each that must be short (a crystal's, a clock's, a switching node's)",
+            "  XOUT: 14 mm routed, straight 4 mm (3.5x), 2 vias",
+            "detour: note: most vias (nets no zone pours, 2 or more): XOUT 2 vias (14 mm routed, straight 4 mm)",
+        ],
+        "{said}"
+    );
+    let run = netsmith(
+        &dir,
+        &["board", "drc", "--kicad-pcb", "detour.kicad_pcb", "--format", "json"],
+    );
+    let report = json(&run);
+    let routes = &report["boards"][0]["routes"];
+    assert_eq!(routes["long"][0]["net"], "XOUT", "{report:#}");
+    assert_eq!(routes["long"][0]["length"], 14.0);
+    assert_eq!(routes["long"][0]["straight"], 4.0);
+    assert_eq!(routes["long"][0]["ratio"], 3.5);
+    assert_eq!(routes["long"][0]["vias"], 2);
+    assert_eq!(routes["most_vias"][0]["net"], "XOUT");
+    // The notes are no findings: the check of a board with a long net passes or fails as before.
+    assert!(
+        !report["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["message"].as_str().unwrap().contains("routed long")),
+        "{report:#}"
+    );
+}
+

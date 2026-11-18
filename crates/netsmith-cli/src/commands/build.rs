@@ -439,6 +439,7 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
                 dir: written.map(|d| d.display().to_string()),
                 parts: Vec::new(),
                 outline_at: None,
+                routes: Default::default(),
             });
             if run.emit_solved.is_some() || run.explain.is_some() {
                 solved.push(netsmith_pipeline::solved::to_value(&b));

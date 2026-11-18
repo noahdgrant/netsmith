@@ -79,6 +79,7 @@ mod exclusive;
 mod gerber;
 mod kicad;
 mod kicad_drc;
+mod net_routes;
 mod panel;
 mod raster;
 mod rotation;
@@ -114,6 +115,7 @@ pub use kicad_drc::{
     compare_with_rules_file as compare_kicad_drc_with_rules_file, drop_dangling_vias_of_clusters,
     in_rules_file as in_kicad_dru, parse as parse_kicad_drc,
 };
+pub use net_routes::{LONG_EXCESS, LONG_RATIO, MOST_VIAS, NetRoute, NetRoutes, VIAS_LEAST};
 pub use panel::{
     Cell as PanelCell, CellFacts as PanelCellFacts, CellInput as PanelCellInput,
     Finding as PanelFinding, Geometry as PanelGeometry, PanelPackage, Rules as PanelBuildRules,
@@ -501,6 +503,9 @@ pub struct Package {
     /// Designators whose rotation or side the package could not verify against JLCPCB's
     /// order preview (the "unverified" lines of the notes), sorted.
     pub unverified: Vec<String>,
+    /// The nets routed long and the nets with the most vias, as the notes list them (issue
+    /// #1194).
+    pub routes: NetRoutes,
 }
 
 impl Package {
@@ -588,6 +593,8 @@ pub struct Checked {
     pub report: DrcReport,
     /// Each requirement on where a part goes, measured: met or not, with the numbers.
     pub outcomes: Vec<ConstraintOutcome>,
+    /// The nets routed long and the nets with the most vias (issue #1194): notes, not findings.
+    pub routes: NetRoutes,
 }
 
 /// The design rules check of the board file `src` (the text of a `.kicad_pcb`, with the
@@ -595,9 +602,11 @@ pub struct Checked {
 /// positions (ADR 0045) measured on the same text. `netsmith board drc` calls it alone.
 pub fn check(src: &str, project: Option<&str>, options: &Options) -> Result<Checked, Error> {
     let mut report = drc_check(src, project, &options.drc)?;
+    let art = Artwork::parse(src)?;
+    let routes = NetRoutes::of(&art);
     let outcomes = match &options.constraints {
         Some(c) => {
-            let outcomes = c.measure(&Artwork::parse(src)?);
+            let outcomes = c.measure(&art);
             report
                 .findings
                 .extend(constraint_outcome_findings(&outcomes, c.severity));
@@ -608,7 +617,11 @@ pub fn check(src: &str, project: Option<&str>, options: &Options) -> Result<Chec
         }
         None => Vec::new(),
     };
-    Ok(Checked { report, outcomes })
+    Ok(Checked {
+        report,
+        outcomes,
+        routes,
+    })
 }
 
 /// Checks the board and builds the upload package for it.
@@ -631,6 +644,7 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
     let Checked {
         report: drc_report,
         outcomes,
+        routes,
     } = check(&src, drc_project_of(pcb).as_deref(), options)?;
     // A requirement of the design is not a design rule: waiving the rules does not waive it.
     let unmet: Vec<String> = drc_report
@@ -687,6 +701,7 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         .iter()
         .cloned()
         .chain(fill_notes(&art, &plotted.notes))
+        .chain(routes.lines())
         .collect();
     let mut unverified: Vec<String> = placed
         .unverified
@@ -722,6 +737,7 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         drc_report,
         constraints: outcomes,
         unverified,
+        routes,
     })
 }
 
