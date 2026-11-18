@@ -589,3 +589,65 @@ fn vias_side_by_side_are_checked_as_a_group_and_one_alone_is_refused() {
     let run = via(&["--at", "1,1", "--count", "3"]);
     assert_eq!(run.status.code(), Some(2), "{}", text(&run));
 }
+
+#[test]
+fn tidy_says_what_it_would_change_then_cuts_a_corner_and_merges_a_pair() {
+    // Issue #1192.
+    let dir = led("routes-tidy");
+    ok(&routes(
+        &dir,
+        &[
+            "add-track", "--net", "GND", "--layer", "bottom", "--width", "0.15", "--from",
+            "1.0,0.8", "--to", "2.0,0.8",
+        ],
+    ));
+    // The rest of the copper is written by hand, as a script would: a right angle (which
+    // `add-track` refuses, `track_angle`) and a pair of collinear tracks.
+    let file = dir.join("led.routes.toml");
+    let text = fs::read_to_string(&file).unwrap();
+    let first = text
+        .lines()
+        .find(|l| l.contains("from = [1.0, 0.8]"))
+        .unwrap()
+        .to_string();
+    let more = [
+        first.clone(),
+        first.replace("from = [1.0, 0.8], to = [2.0, 0.8]", "from = [2.0, 0.8], to = [3.5, 0.8]"),
+        first.replace("from = [1.0, 0.8], to = [2.0, 0.8]", "from = [3.5, 0.8], to = [3.5, 2.0]"),
+    ]
+    .join("\n");
+    fs::write(&file, text.replace(&first, &more)).unwrap();
+    let written = fs::read_to_string(&file).unwrap();
+
+    let run = routes(&dir, &["tidy", "--dry-run", "--format", "json"]);
+    let said = ok(&run);
+    let json: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+    assert_eq!(json["dry_run"], true, "{said}");
+    assert_eq!(json["counts"]["corners"], 1, "{said}");
+    assert_eq!(json["counts"]["merges"], 1, "{said}");
+    let places: Vec<&serde_json::Value> = json["changes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| &c["at"])
+        .collect();
+    assert!(places.contains(&&serde_json::json!([3.5, 0.8])), "{said}");
+    assert!(places.contains(&&serde_json::json!([2.0, 0.8])), "{said}");
+    assert!(json["wrote"].as_array().unwrap().is_empty(), "{said}");
+    assert_eq!(fs::read_to_string(&file).unwrap(), written);
+
+    let said = ok(&routes(&dir, &["tidy"]));
+    assert!(
+        said.contains("tidied 1 corner(s), 1 collinear pair(s)"),
+        "{said}"
+    );
+    assert!(said.contains("corner: net GND on bottom at (3.5, 0.8)"), "{said}");
+    assert!(said.contains("wrote led.routes.toml"), "{said}");
+    let shown = ok(&routes(&dir, &["show"]));
+    assert!(shown.contains("net GND: 3 track(s)"), "{shown}");
+    assert!(shown.contains("track 1: bottom, 0.15 mm, (1, 0.8) to (2.96, 0.8)"), "{shown}");
+    // Nothing is left to do.
+    let said = ok(&routes(&dir, &["tidy"]));
+    assert!(said.contains("tidied 0 corner(s), 0 collinear pair(s)"), "{said}");
+    assert!(said.contains("nothing to write"), "{said}");
+}

@@ -69,6 +69,27 @@ pub enum Command {
     Lock(ShapeArgs),
     /// Unlock a net or one shape.
     Unlock(ShapeArgs),
+    /// Cut corners to 45 degrees, merge collinear tracks, remove dangling vias, stubs and acid
+    /// traps, refusing any change that adds a finding or loses a connection.
+    #[command(
+        after_long_help = "A pass over the routes file's copper (and with `--reuse-routes` the router's copper kept in `.netsmith/routes/`, as `board fab --reuse-routes` starts from it) that makes four repairs:\n\n- a corner: two straight tracks of a net that meet outside its pads and bend by more than 45 degrees (the design rules check's `track_angle`) are cut into bends of 45 degrees at most, a 45 degree chamfer at a right angle; the chamfer starts four widths from the corner, and two and one width when the larger is refused;\n- a collinear pair: two straight tracks of one net, layer and width that meet end to end on one line, with nothing else there, become one;\n- a dangling via or a stub: a via joined to copper of its net on fewer than two layers (`via_dangling`) and a track with an end that touches nothing (`track_dangling`) are removed when the copper makes every connection of the net (the router may still start from a stub of a net it has to finish), and a via that joins nothing at all is removed in any net;\n- an acid trap (`acid_trap`): a track that leaves a pad or a via at an acute angle to its edge is made to leave it at a right angle and bend after the edge, and a track that ends on the middle of another at an acute angle is made to meet it at a right angle.\n\nEach change is made only when the design rules check of the board with it (the check `add-track` makes, with its warnings) finds nothing it did not find before and the connections left to route are the same; a refused change is listed with the first new finding or the connection it changes, and left as it was. A locked net or shape, an arc, a zone and a record whose pads moved are never touched. `--dry-run` says what would change, by kind, net, layer and place, and writes nothing. With `--reuse-routes` the kept file is written again, so that `board fab --reuse-routes` still starts from it; without it, a change to the routes file makes a kept file stale, and the command says so. The exit code is 0 when the pass ran (whether or not it changed or refused anything), 2 when it could not run."
+    )]
+    Tidy(TidyArgs),
+}
+
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct TidyArgs {
+    #[command(flatten)]
+    pub target: Target,
+    /// Say what would change and write nothing.
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Tidy the router's copper kept on disk too, as `board fab --reuse-routes` would start from it.
+    #[arg(long)]
+    pub reuse_routes: bool,
+    /// Text for a person, or one JSON document on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: common::Format,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -352,6 +373,33 @@ pub fn run(args: Args) -> ExitCode {
             shape: shape(&a),
             on: false,
         }),
+        Command::Tidy(a) => tidy(&a),
+    }
+}
+
+/// `routes tidy` (issue #1192): `netsmith_fabricate::routes_tidy::tidy_files` of the target's
+/// board; exit 0 when the pass ran, 2 when it could not.
+fn tidy(args: &TidyArgs) -> ExitCode {
+    let tidied = with_board(&args.target, |placed, board| {
+        netsmith_fabricate::routes_tidy::tidy_files(
+            board,
+            &placed.layout,
+            args.reuse_routes,
+            args.dry_run,
+        )
+    });
+    match tidied {
+        Ok(tidied) => {
+            match args.format {
+                common::Format::Json => println!(
+                    "{}",
+                    serde_json::to_string_pretty(&tidied).expect("plain data")
+                ),
+                common::Format::Text => print!("{}", tidied.text()),
+            }
+            ExitCode::SUCCESS
+        }
+        Err(code) => code,
     }
 }
 
@@ -754,6 +802,25 @@ mod tests {
             kind(&["routes", "add-via", "--net", "GND"]),
             ErrorKind::MissingRequiredArgument
         );
+        // `tidy` (issue #1192).
+        assert!(matches!(
+            parse(&[
+                "routes",
+                "tidy",
+                "--dry-run",
+                "--reuse-routes",
+                "--format",
+                "json"
+            ]),
+            Ok(Leaf::Routes(routes::Args {
+                command: routes::Command::Tidy(routes::TidyArgs {
+                    dry_run: true,
+                    reuse_routes: true,
+                    format: crate::commands::common::Format::Json,
+                    ..
+                })
+            }))
+        ));
         // A blind via's two layers (issue #1071): two different layers.
         for bad in ["top", "top,top", "top,middle"] {
             assert_eq!(

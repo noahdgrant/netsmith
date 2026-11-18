@@ -72,6 +72,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith routes delete` | the same | `--file` (was `--into`), `--board`, `--net`, `--track`, `--via`, `--zone` |
 | `netsmith routes lock` | the same | `--file` (was `--into`), `--board`, `--net`, `--track`, `--via`, `--zone` |
 | `netsmith routes unlock` | the same | `--file` (was `--into`), `--board`, `--net`, `--track`, `--via`, `--zone` |
+| `netsmith routes tidy` | new | `--file`, `--board`, `--dry-run`, `--reuse-routes`, `--format` |
 | `netsmith schematic show` | new (#1093) | `--file`, `--board`, `--format` |
 | `netsmith schematic set` | new (#1093) | `--file`, `--board`, `--by`, `--pin`, `--rotate`, `--mirror`, `--no-mirror`, `--at`, `--clear`, `--format` |
 | `netsmith schematic check` | new (#1093) | `--file`, `--board`, `--format` |
