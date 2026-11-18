@@ -210,12 +210,16 @@ pub struct PlacementFault {
     pub cutout: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub keepout: Option<String>,
-    /// The part's height and the limit, in mm (`too_tall`), and the face (`too_tall`,
+    /// The part's height (grown by its `.height_growth`) and the limit, in mm (`too_tall`), and the face (`too_tall`,
     /// `over_pins`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub height: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<f64>,
+    /// The part's `.height_growth`, in mm, included in `height` (`too_tall`, issue #1263); left
+    /// out for a part that states none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub growth: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub face: Option<&'static str>,
     /// The sentence a person reads for it. Not in the JSON: the finding carries the message.
@@ -321,6 +325,7 @@ impl Board {
             keepout: None,
             height: None,
             limit: None,
+            growth: None,
             face: None,
             text: problem.to_string(),
         };
@@ -366,12 +371,14 @@ impl Board {
                 keepout,
                 height,
                 limit,
+                growth,
                 side,
                 ..
             } => {
                 fault.keepout = Some(keepout.clone());
                 fault.height = Some(num(*height));
                 fault.limit = Some(num(*limit));
+                fault.growth = (*growth > 0.0).then(|| num(*growth));
                 fault.face = Some(face_word(*side));
             }
             PlacementProblem::NoPosition { what, name } => {

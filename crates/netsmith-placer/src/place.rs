@@ -710,7 +710,7 @@ fn apply_fixed(parts: &mut [Placed], options: &PlaceOptions) -> Vec<bool> {
 /// a face: nobody knows whether it needs one. Only a given size is judged (without one the
 /// board grows to hold what is asked of it).
 fn face_forbidden(part: &Placed, face: Side, options: &PlaceOptions) -> bool {
-    let (Some(height), Some(fit)) = (part.height, options.fit) else {
+    let (Some(height), Some(fit)) = (part.grown_height(), options.fit) else {
         return false;
     };
     let blocked: Vec<Rect> = options

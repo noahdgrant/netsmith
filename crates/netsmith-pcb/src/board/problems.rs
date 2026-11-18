@@ -91,9 +91,13 @@ pub enum PlacementProblem {
         refdes: String,
         path: String,
         keepout: String,
-        /// The part's height and the keepout's limit, in mm.
+        /// The height checked against the limit (the part's `.height` plus its
+        /// `.height_growth`) and the keepout's limit, in mm.
         height: f64,
         limit: f64,
+        /// The part's `.height_growth`, in mm, included in `height` (issue #1263); zero for a
+        /// part that states none.
+        growth: f64,
         /// The face of the board the part is on.
         side: Side,
         /// The centre of the part's body, in mm from the outline's top left corner.
@@ -221,6 +225,30 @@ pub(super) fn pad_text(number: &str) -> String {
 /// the rest of the checks measure.
 pub(super) const HEIGHT_TOLERANCE: f64 = 0.0005;
 
+/// What a height finding says of a part's `.height_growth` (issue #1263): ` when grown (its
+/// 6.00 mm height with its 0.50 mm ...)`, or nothing for a part that states none. `height` is
+/// the grown height.
+pub(super) fn grown_word(height: f64, growth: f64) -> String {
+    if growth > 0.0 {
+        format!(
+            " when grown (its {:.2} mm height with its {growth:.2} mm `.height_growth` added)",
+            height - growth
+        )
+    } else {
+        String::new()
+    }
+}
+
+/// What follows a standard's height for a part that states a `.height_growth` (` with its
+/// 0.50 mm ... added`), or nothing for a part that states no growth (issue #1263).
+fn growth_added(growth: f64) -> String {
+    if growth > 0.0 {
+        format!(" with its {growth:.2} mm `.height_growth` added")
+    } else {
+        String::new()
+    }
+}
+
 /// What a message calls the thing that limits a height: a keepout by its name, or the standoff
 /// of a body (`standoff of J1`, [`Placed::STANDOFF_ZONE`](super::Placed::STANDOFF_ZONE)).
 pub(super) fn limit_word(name: &str) -> String {
@@ -252,6 +280,9 @@ pub struct HeightUnchecked {
     /// The package standard's height, where the footprint has one and it is over the limit
     /// (ADR 0106): the part in the package may be lower, so whether it fits is still unknown.
     pub standard: Option<crate::standard_height::StandardHeight>,
+    /// The part's `.height_growth`, in mm (issue #1263), added to the standard's height; zero
+    /// for a part that states none.
+    pub growth: f64,
 }
 
 impl std::fmt::Display for HeightUnchecked {
@@ -268,13 +299,14 @@ impl std::fmt::Display for HeightUnchecked {
             ),
             Some(s) => write!(
                 f,
-                "height of {} is unchecked: {} limits parts on the {} face to {:.2} mm, the part states no height, and its package standard ({}) allows up to {:.2} mm, so a part in that package may or may not fit (say `.{}.height &= 1mm`, with the real number from its datasheet)",
+                "height of {} is unchecked: {} limits parts on the {} face to {:.2} mm, the part states no height, and its package standard ({}) allows up to {:.2} mm{}, so a part in that package may or may not fit (say `.{}.height &= 1mm`, with the real number from its datasheet)",
                 member(&self.path, &self.refdes),
                 limit_word(&self.keepout),
                 self.side.word(),
                 self.limit,
                 s.standard,
                 s.max,
+                growth_added(self.growth),
                 self.path
             ),
         }
@@ -375,19 +407,23 @@ pub struct StandardPass {
     pub limit: f64,
     pub side: Side,
     pub standard: crate::standard_height::StandardHeight,
+    /// The part's `.height_growth`, in mm (issue #1263), added to the standard's height; zero
+    /// for a part that states none.
+    pub growth: f64,
 }
 
 impl std::fmt::Display for StandardPass {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{} fits the {:.2} mm {} allows on the {} face by its package standard ({}, at most {:.2} mm), not by a height of its own: the design states none and its catalog row has none",
+            "{} fits the {:.2} mm {} allows on the {} face by its package standard ({}, at most {:.2} mm{}), not by a height of its own: the design states none and its catalog row has none",
             member(&self.path, &self.refdes),
             self.limit,
             limit_word(&self.keepout),
             self.side.word(),
             self.standard.cited(),
-            self.standard.max
+            self.standard.max,
+            growth_added(self.growth)
         )
     }
 }
@@ -399,6 +435,8 @@ pub(super) struct UnderLimit {
     pub(super) path: String,
     pub(super) keepout: String,
     pub(super) side: Side,
+    /// The part's `.height_growth`, in mm.
+    pub(super) growth: f64,
 }
 
 /// The pins of a through-hole part whose protrusion the design states, to be cut short after
@@ -661,13 +699,15 @@ impl std::fmt::Display for PlacementProblem {
                 keepout,
                 height,
                 limit,
+                growth,
                 side,
                 at,
             } => write!(
                 f,
-                "{} stands {height:.2} mm tall on the {} face, and {} allows {limit:.2} mm there ({:.2} mm too tall), where its body is, around ({:.1}, {:.1}) mm from the board's top left corner",
+                "{} stands {height:.2} mm tall on the {} face{}, and {} allows {limit:.2} mm there ({:.2} mm too tall), where its body is, around ({:.1}, {:.1}) mm from the board's top left corner",
                 member(path, refdes),
                 side.word(),
+                grown_word(*height, *growth),
                 limit_word(keepout),
                 height - limit,
                 at.0,

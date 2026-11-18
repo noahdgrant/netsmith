@@ -129,8 +129,8 @@ impl Board {
     pub fn heights_unchecked(&self) -> Vec<HeightUnchecked> {
         self.under_limits_without_height()
             .into_iter()
-            .filter(|(_, limit, standard)| {
-                standard.is_none_or(|s| s.max > limit + HEIGHT_TOLERANCE)
+            .filter(|(u, limit, standard)| {
+                standard.is_none_or(|s| s.max + u.growth > limit + HEIGHT_TOLERANCE)
             })
             .map(|(u, limit, standard)| HeightUnchecked {
                 refdes: u.refdes.clone(),
@@ -139,6 +139,7 @@ impl Board {
                 limit,
                 side: u.side,
                 standard: standard.copied(),
+                growth: u.growth,
             })
             .collect()
     }
@@ -214,7 +215,7 @@ impl Board {
         self.under_limits_without_height()
             .into_iter()
             .filter_map(|(u, limit, standard)| {
-                let s = standard.filter(|s| s.max <= limit + HEIGHT_TOLERANCE)?;
+                let s = standard.filter(|s| s.max + u.growth <= limit + HEIGHT_TOLERANCE)?;
                 Some(StandardPass {
                     refdes: u.refdes.clone(),
                     path: u.path.clone(),
@@ -222,6 +223,7 @@ impl Board {
                     limit,
                     side: u.side,
                     standard: *s,
+                    growth: u.growth,
                 })
             })
             .collect()
@@ -258,6 +260,7 @@ impl Board {
                             path: a.path.clone(),
                             keepout: k.name.clone(),
                             side: a.side,
+                            growth: a.height_growth,
                         },
                         limit,
                         a.standard_height(),

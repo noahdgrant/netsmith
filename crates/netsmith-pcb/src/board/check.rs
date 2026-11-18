@@ -250,7 +250,8 @@ impl Board {
             }
             // A part taller than the limit of a keepout it stands under, on its face. The body
             // is what stands there (the footprint's fabrication outline, else its courtyard).
-            if let Some(height) = a.height {
+            // A part that states a `.height_growth` is checked at its grown height (issue #1263).
+            if let Some(height) = a.grown_height() {
                 let body = a.body();
                 for k in keepouts
                     .iter()
@@ -268,6 +269,7 @@ impl Board {
                             keepout: k.name.clone(),
                             height,
                             limit,
+                            growth: a.height_growth,
                             side: a.side,
                             at: (centre.x - self.outline.min.x, centre.y - self.outline.min.y),
                         });

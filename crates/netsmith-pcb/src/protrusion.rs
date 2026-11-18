@@ -121,6 +121,7 @@ pub enum Verdict {
 /// The facts about a covering part that the rule needs, as the judge has them.
 #[derive(Debug, Clone, Copy)]
 pub struct Cover {
+    /// Its height, grown by its `.height_growth` (issue #1263, [`Placed::grown_height`]).
     pub height: Option<f64>,
     pub hand_fitted: bool,
     /// Its body where it is.
@@ -195,7 +196,7 @@ pub(crate) fn unstated_under<'a>(a: &'a Placed, b: &'a Placed) -> Option<&'a Pla
 /// The facts of `p` as a covering part, at the place it has.
 pub(crate) fn cover_of(p: &Placed) -> Cover {
     Cover {
-        height: p.height,
+        height: p.grown_height(),
         hand_fitted: p.hand_fitted,
         body: p.body(),
         side: p.side,

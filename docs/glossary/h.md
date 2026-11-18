@@ -16,6 +16,10 @@ _Avoid_: Rated current (a rating of what?), temperature-rise current, Irms (the 
 How many of a board's fitted parts have a known height, out of all of them, as the 3D view shows it (ADR 0105). A _Standard height_ counts as known and is counted apart (ADR 0106). A part with an unknown height lowers it; a _Height preview_ does not raise it.
 _Avoid_: Model coverage, completeness, height score
 
+**Height growth**:
+How much a part's body may grow in height over its life, from its datasheet: a cell or a supercapacitor that swells. A part states it with `.height_growth` (one length, zero or more); the height check adds it to the part's height before it compares the height with a _Height limit_, and the finding says the part is too tall "when grown" (issue #1263). It is not part of the height: the 3D view draws the height as built.
+_Avoid_: Swelling margin, height tolerance (a tolerance is of the part as made)
+
 **Height limit**:
 The tallest a part may stand where a keepout is (`std::pcb::Keepout`'s `.max_height`, ADR 0045; the rule is in the header of `crates/netsmith-pipeline/src/heights.rs`), on the faces the keepout's `.layers` name. A part states how tall it is with `.height`; one that does not has an unknown height, which is reported by name and never taken as zero. The check measures the part's body against the zone; the placer keeps the body, plus a small margin, out of it (owner decision 2026-11-04); a part with no fabrication outline has only its courtyard.
 
