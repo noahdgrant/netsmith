@@ -446,6 +446,8 @@ reason = "the input capacitor is on the bottom under IN and GND, with two vias e
 
 `netsmith layout summary` lists what each guideline measures on the board, with the number it asks for.
 
+The same table waives a finding of the design rules check of a part's own footprint, under the part's path and the rule's name, with a reason, a source and the pads or the place (issue #1196; chapter _The shape of a board_, _The layout file_).
+
 A block without its source is refused:
 
 ```nsm fails

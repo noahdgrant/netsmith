@@ -1,7 +1,7 @@
 # Glossary: W
 
 **Waiver**:
-An entry of the _Layout file_ that says why the board does not meet a guideline of a part's _Layout block_: `[Board.waive."reg.ic.input_cap"]` with `reason = "..."`, keyed by the part's path and the guideline's name (ADR 0030, issue #994). `fab` then says the guideline is waived, with the reason, and neither warns nor stops on it; a waiver of a guideline the board does not have, or with no reason, is an error. It is a decision of the design, so it is in the layout file and never in the part.
+An entry of the _Layout file_ that says why the board does not meet a guideline of a part's _Layout block_: `[Board.waive."reg.ic.input_cap"]` with `reason = "..."`, keyed by the part's path and the guideline's name (ADR 0030, issue #994). `fab` then says the guideline is waived, with the reason, and neither warns nor stops on it; a waiver of a guideline the board does not have, or with no reason, is an error. It is a decision of the design, so it is in the layout file and never in the part. The same table waives a finding of the design rules check of a part's own footprint (issue #1196): `[Board.waive."reg.ic.pad_to_pad"]`, keyed by the part's path and the rule's name, with `reason`, `source` and the `pads` (or `at`) of the finding; the finding is then listed `waived` and stops nothing, and a waiver that covers no finding is an error, `unmatched_waiver`.
 _Avoid_: Exception, suppression (of a guideline)
 
 **Walkaround**:

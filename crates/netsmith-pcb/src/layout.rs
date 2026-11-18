@@ -45,7 +45,25 @@
 //! ```
 //!
 //! A waiver names the part's path and the guideline's name; one for a guideline the board does
-//! not have, or with no reason, is an error. The routes ADR 0030 sketched are a file of their own beside this
+//! not have, or with no reason, is an error.
+//!
+//! The same table waives a finding of the design rules check that is a part's own footprint's
+//! (issue #1196: two pads of one part nearer than the process asks, as the maker drew them),
+//! under the part's path and the rule's name, with the source that says the land pattern is
+//! right, and the pads (or the place, `at`, in mm from the outline's corner) of the finding:
+//!
+//! ```toml
+//! [RegulatorExample.waive."reg.ic.pad_to_pad"]
+//! reason = "the maker's land pattern: pads 0.1448 mm apart, under the 0.15 mm the process asks"
+//! source = "maker's datasheet, Recommended land pattern, p.12"
+//! pads = ["2", "3"]
+//! ```
+//!
+//! A key whose name is not a guideline of the part and is a rule of the check
+//! (`netsmith_geom::DrcRule`) is such a waiver; it needs a reason, a source and its pads or place,
+//! and the pads are the part's. [`apply_layout`] puts it on the board ([`Board::drc_waivers`]),
+//! and the check (`netsmith_geom`'s `waivers.rs`) moves the findings it covers to the waived ones,
+//! and reports one that covers none. The routes ADR 0030 sketched are a file of their own beside this
 //! one, the routes file `<stem>.routes.toml` ([`crate::Routes`], issue #599), which whatever
 //! reads this file reads too. Regenerating one module (`netsmith layout regenerate`, issue #825)
 //! writes the entries of the parts it placed again with `source = "regen"`.
@@ -273,12 +291,39 @@ pub struct BoardLayout {
     pub waivers: BTreeMap<String, Waiver>,
 }
 
-/// Why a guideline of a part's `layout` block is not met on this board ([`BoardLayout::waivers`]).
+/// Why a guideline of a part's `layout` block is not met on this board, or why a finding of the
+/// design rules check of the part's own footprint is accepted ([`BoardLayout::waivers`]).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Waiver {
     /// The reason, in a sentence: what this design does instead, and why it is enough.
     pub reason: String,
+    /// The document that says so (a datasheet's land pattern, with its page): needed by a waiver
+    /// of a design rule (issue #1196).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// The pads of the part whose findings among themselves a waiver of a design rule covers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pads: Vec<String>,
+    /// The place of the finding a waiver of a design rule covers, in mm from the outline's top
+    /// left corner, as a part's `at` (within 0.1 mm), for a finding that names no pads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<[f64; 2]>,
+}
+
+/// A waiver of a finding of the design rules check of a part's own footprint, as
+/// [`apply_layout`] read it from [`BoardLayout::waivers`] (issue #1196).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RuleWaiver {
+    /// The part's path in the design.
+    pub part: String,
+    /// The rule's name, as the check names it (`pad_to_pad`).
+    pub rule: String,
+    pub pads: Vec<String>,
+    /// In mm from the outline's top left corner.
+    pub at: Option<[f64; 2]>,
+    pub reason: String,
+    pub source: String,
 }
 
 impl BoardLayout {
@@ -333,6 +378,13 @@ pub enum LayoutError {
     },
     /// A waiver of a guideline that gives no reason.
     EmptyReason { file: String, name: String },
+    /// A waiver that is wrong in itself (issue #1196): a guideline's that names pads, a design
+    /// rule's with no source or no pads and no place, or pads the part does not have.
+    BadWaiver {
+        file: String,
+        name: String,
+        why: String,
+    },
     /// A keepout or cutout whose source states `.x` and `.y` and whose place the file gives
     /// as well: a thing has one place.
     Twice {
@@ -413,6 +465,9 @@ impl std::fmt::Display for LayoutError {
                         if names.len() == 1 { "it" } else { "them" },
                         if *what == "part" {
                             bank_renames(names, known)
+                        } else if *what == "guideline" {
+                            // Issue #1196.
+                            "; a waiver of a finding of the design rules check names a part's path and the rule, `part.pad_to_pad`".to_string()
                         } else {
                             String::new()
                         },
@@ -429,6 +484,9 @@ impl std::fmt::Display for LayoutError {
             ),
             Self::BadKeepout { file, name, why } => {
                 write!(f, "{file}: the keepout `{name}` {why}")
+            }
+            Self::BadWaiver { file, name, why } => {
+                write!(f, "{file}: the waiver `{name}` {why}")
             }
             Self::NotFinite { part } => write!(
                 f,
@@ -914,6 +972,21 @@ fn drawn_keepout(
     })
 }
 
+/// The part's path and the design rule of a waiver's key (`reg.ic.pad_to_pad`), when the key
+/// waives a finding of the design rules check (issue #1196): its part is one of `parts`, its name
+/// is a rule of the check, and it is not a guideline of the part, whose waiver it is then.
+fn rule_waiver_of<'k>(
+    key: &'k str,
+    parts: &[String],
+    guidelines: &[String],
+) -> Option<(&'k str, netsmith_geom::DrcRule)> {
+    let (part, name) = key.rsplit_once('.')?;
+    if guidelines.iter().any(|g| g == key) || !parts.iter().any(|p| p == part) {
+        return None;
+    }
+    Some((part, netsmith_geom::DrcRule::from_id(name)?))
+}
+
 /// Put a layout on a board: each part with an entry takes its place, and each keepout and
 /// cutout that the source gives no position takes the file's. The board's own table is
 /// `layout.boards[board.name]`; a layout with none changes nothing.
@@ -997,7 +1070,7 @@ pub fn apply_layout(board: &mut Board, layout: &Layout, file: &str) -> Result<()
         stale(
             "part",
             missing(entries.parts.keys().collect(), parts.clone()),
-            parts,
+            parts.clone(),
         ),
         stale(
             "keepout",
@@ -1011,8 +1084,15 @@ pub fn apply_layout(board: &mut Board, layout: &Layout, file: &str) -> Result<()
         ),
         stale(
             "guideline",
-            missing(entries.waivers.keys().collect(), guidelines.clone()),
-            guidelines,
+            missing(
+                entries
+                    .waivers
+                    .keys()
+                    .filter(|k| rule_waiver_of(k, &parts, &guidelines).is_none())
+                    .collect(),
+                guidelines.clone(),
+            ),
+            guidelines.clone(),
         ),
     ];
     if let Some((name, _)) = entries
@@ -1027,6 +1107,89 @@ pub fn apply_layout(board: &mut Board, layout: &Layout, file: &str) -> Result<()
     }
     if let Some(error) = errors.into_iter().flatten().next() {
         return Err(error);
+    }
+    let mut drc_waivers = Vec::new();
+    for (name, waiver) in &entries.waivers {
+        let bad = |why: String| LayoutError::BadWaiver {
+            file: file.to_string(),
+            name: name.clone(),
+            why,
+        };
+        let Some((part, rule)) = rule_waiver_of(name, &parts, &guidelines) else {
+            if !waiver.pads.is_empty() || waiver.at.is_some() {
+                return Err(bad(
+                    "is of a guideline of the part's `layout` block, and gives `pads` or `at`, which only a waiver of a design rule gives: remove them".to_string(),
+                ));
+            }
+            continue;
+        };
+        if !rule.may_be_waived() {
+            return Err(bad(format!(
+                "names the rule `{}`, which no waiver covers{}",
+                rule.id(),
+                if rule == netsmith_geom::DrcRule::Constraint {
+                    ": a requirement of the physical file is met, changed there, or made a warning with `constraints = \"warn\"`"
+                } else {
+                    ""
+                }
+            )));
+        }
+        let source = waiver.source.as_deref().map(str::trim).unwrap_or("");
+        if source.is_empty() {
+            return Err(bad(format!(
+                "waives the design rule `{}` and gives no source: say in `source = \"...\"` which document shows the footprint is right for the part (a datasheet's land pattern, with its page)",
+                rule.id()
+            )));
+        }
+        if waiver.pads.is_empty() && waiver.at.is_none() {
+            return Err(bad(format!(
+                "waives the design rule `{}` and names no finding: give the part's pads it is between, `pads = [\"1\", \"2\"]`, or its place, `at = [x, y]` in mm from the outline's corner",
+                rule.id()
+            )));
+        }
+        if waiver
+            .at
+            .is_some_and(|at| !at.iter().all(|v| v.is_finite()))
+        {
+            return Err(LayoutError::NotFinite { part: name.clone() });
+        }
+        let placed = board
+            .parts
+            .iter()
+            .find(|p| p.path == part)
+            .expect("a waiver's part is one of the board's");
+        let known: Vec<&str> = placed
+            .footprint
+            .pads
+            .iter()
+            .map(|p| p.number.as_str())
+            .collect();
+        let unknown: Vec<&str> = waiver
+            .pads
+            .iter()
+            .map(String::as_str)
+            .filter(|p| !known.contains(p))
+            .collect();
+        if !unknown.is_empty() {
+            let mut pads = known.clone();
+            pads.dedup();
+            return Err(bad(format!(
+                "names the pad{} {} of `{part}` ({}, {}), which has the pads {}",
+                if unknown.len() == 1 { "" } else { "s" },
+                unknown.join(", "),
+                placed.refdes,
+                placed.footprint.name,
+                pads.join(", ")
+            )));
+        }
+        drc_waivers.push(RuleWaiver {
+            part: part.to_string(),
+            rule: rule.id().to_string(),
+            pads: waiver.pads.clone(),
+            at: waiver.at,
+            reason: waiver.reason.trim().to_string(),
+            source: source.to_string(),
+        });
     }
     for (what, names, stated) in [
         (
@@ -1070,6 +1233,7 @@ pub fn apply_layout(board: &mut Board, layout: &Layout, file: &str) -> Result<()
     }
 
     let origin = board.outline.min;
+    board.drc_waivers = drc_waivers;
     board.imported.clear();
     for part in &mut board.parts {
         if let Some(place) = entries.parts.get(&part.path) {

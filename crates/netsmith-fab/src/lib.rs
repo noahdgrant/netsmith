@@ -909,6 +909,15 @@ fn notes(
                 .map(|e| format!("  {e}")),
         );
     }
+    // A finding of a part's own footprint that the layout file waives (issue #1196) is neither an
+    // error nor a warning, and every one is listed, with its reason and source, for a reviewer.
+    if !report.waived.is_empty() {
+        lines.push(format!(
+            "design rules waived: {} finding(s) of a part's own footprint, by the layout file; check each against its source",
+            report.waived.len()
+        ));
+        lines.extend(report.waived.iter().map(|w| format!("  {w}")));
+    }
     if !constraints.is_empty() {
         let met = constraints.iter().filter(|c| c.satisfied).count();
         // A package is only made past an unmet one when the project asked for warnings

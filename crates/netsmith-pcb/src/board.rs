@@ -254,6 +254,39 @@ pub struct Board {
     /// one whose file has none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub zones: Vec<BoardZone>,
+    /// The layout file's waivers of findings of a part's own footprint (issue #1196), as
+    /// [`crate::apply_layout`] read them: the part by its path, the rule, the pads or the place
+    /// (in mm from the outline's corner), the reason and the source. [`Board::drc_waivers`] gives
+    /// them to the design rules check.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub drc_waivers: Vec<crate::layout::RuleWaiver>,
+}
+
+impl Board {
+    /// The layout file's waivers of findings of a part's own footprint, for the design rules check
+    /// (`netsmith_geom::DrcExtras::waivers`): each part by its designator, each place in the frame
+    /// of the board file. A waiver of a part the board no longer has is left out
+    /// ([`crate::apply_layout`] refuses one).
+    pub fn drc_waivers(&self) -> Vec<netsmith_geom::DrcWaiver> {
+        self.drc_waivers
+            .iter()
+            .filter_map(|w| {
+                let part = self.parts.iter().find(|p| p.path == w.part)?;
+                Some(netsmith_geom::DrcWaiver {
+                    key: format!("{}.{}", w.part, w.rule),
+                    rule: netsmith_geom::DrcRule::from_id(&w.rule)?,
+                    part: part.refdes.clone(),
+                    part_at: netsmith_geom::Pt::new(part.at.x, part.at.y),
+                    pads: w.pads.clone(),
+                    at: w.at.map(|[x, y]| {
+                        netsmith_geom::Pt::new(self.outline.min.x + x, self.outline.min.y + y)
+                    }),
+                    reason: w.reason.clone(),
+                    source: w.source.clone(),
+                })
+            })
+            .collect()
+    }
 }
 
 /// The copper of a board that a routes file fixed ([`crate::routes`]): the first `tracks` of

@@ -81,7 +81,9 @@
 //! #761 and #1006), `acid_trap` (a track
 //! that meets a pad's straight edge or another track of its net at an acute angle, a warning:
 //! `acid.rs`, issue #838), `stackup` (a board file whose copper layers, thickness or stackup
-//! the process does not make, an error: `stackup.rs`, issue #993), and,
+//! the process does not make, an error: `stackup.rs`, issue #993), `unmatched_waiver` (a waiver of
+//! the layout file that covers no finding of a part's own footprint, an error: `waivers.rs`, issue
+//! #1196; a finding one covers goes to [`Report::waived`] and stops nothing), and,
 //! from the placement check and shown in the editor, `too_tall` (a part with a stated `.height`
 //! under a lower height limit of a keepout, ADR 0045 section 11) and `height_unchecked` (a part
 //! with no `.height` under a height limit, a warning unless constraints are strict). The other
@@ -202,6 +204,7 @@ mod silk;
 mod stackup;
 mod teardrop;
 mod vias;
+mod waivers;
 
 use crate::artwork::Artwork;
 use crate::geom::Pt;
@@ -212,6 +215,7 @@ pub use rules::{Class, Rules};
 pub use rules_file::{PREFIX as RULES_FILE_PREFIX, kicad_dru, rules_file_of};
 pub use silk::FONT_MARGIN;
 pub use teardrop::{Teardrop, teardrops};
+pub use waivers::{PLACE_TOLERANCE as WAIVER_PLACE_TOLERANCE, Waived, Waiver};
 
 /// How bad a finding is. A rule the project file says to ignore produces none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -369,10 +373,13 @@ pub enum Rule {
     /// thicker than its aspect ratio allows, a drilled via through more (netsmith's, issue
     /// #1015).
     ViaAspectRatio,
+    /// A waiver of the layout file that covers no finding of the part's own footprint
+    /// (netsmith's, issue #1196; `waivers.rs`).
+    UnmatchedWaiver,
 }
 
 impl Rule {
-    pub const ALL: [Rule; 55] = [
+    pub const ALL: [Rule; 56] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -428,6 +435,7 @@ impl Rule {
         Rule::Stackup,
         Rule::ViaSpan,
         Rule::ViaAspectRatio,
+        Rule::UnmatchedWaiver,
     ];
 
     /// KiCad's name for the rule (its `type` in a JSON report).
@@ -488,6 +496,7 @@ impl Rule {
             Rule::Stackup => "stackup",
             Rule::ViaSpan => "via_span",
             Rule::ViaAspectRatio => "via_aspect_ratio",
+            Rule::UnmatchedWaiver => "unmatched_waiver",
         }
     }
 
@@ -525,6 +534,7 @@ impl Rule {
                 | Rule::Stackup
                 | Rule::ViaSpan
                 | Rule::ViaAspectRatio
+                | Rule::UnmatchedWaiver
         )
     }
 
@@ -630,6 +640,10 @@ impl std::fmt::Display for Finding {
             let items: Vec<&str> = self.items.iter().map(|i| i.what.as_str()).collect();
             write!(f, ": {}", items.join("; "))?;
         }
+        // A finding the board cannot change, which the layout file may waive (issue #1196).
+        if let Some(part) = self.own_part() {
+            write!(f, " (within {part}'s own footprint)")?;
+        }
         Ok(())
     }
 }
@@ -659,6 +673,9 @@ pub struct Report {
     /// (issue #1186): found or not, KiCad's check, which draws KiCad's font, may judge them
     /// otherwise. Not findings; the cross-check reads them.
     pub font_dependent: Vec<FontDependent>,
+    /// The findings of a part's own footprint that a waiver of the layout file covers, with its
+    /// reason and source (issue #1196): neither errors nor warnings, and listed as waived.
+    pub waived: Vec<Waived>,
 }
 
 /// A text of the silkscreen and what a silkscreen rule holds it to (an opening in the mask,
@@ -710,6 +727,9 @@ impl std::fmt::Display for Report {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for finding in &self.findings {
             writeln!(f, "{finding}")?;
+        }
+        for waived in &self.waived {
+            writeln!(f, "{waived}")?;
         }
         Ok(())
     }
@@ -791,6 +811,9 @@ pub struct Extras {
     /// `sizing`.
     pub branches: Vec<Branch>,
     pub sizing: Option<crate::ipc2221::TrackSizing>,
+    /// The layout file's waivers of findings of a part's own footprint (issue #1196, `waivers.rs`):
+    /// a finding one covers is moved to [`Report::waived`], and one that covers none is an error.
+    pub waivers: Vec<Waiver>,
 }
 
 /// A pin of a part that states the current of its branch (issue #1113): its pads, by the
@@ -959,10 +982,13 @@ pub fn check_artwork(
     connect::run(&model, &mut findings);
     // Errors before warnings, otherwise in the order found.
     findings.sort_by_key(|f| std::cmp::Reverse(f.severity));
-    Report {
+    let mut report = Report {
         findings,
         font_dependent: silk::font_dependent(&model),
-    }
+        waived: Vec::new(),
+    };
+    waivers::apply(&mut report, &extras.waivers);
+    report
 }
 
 /// The `.kicad_pro` beside a board file, if there is one.

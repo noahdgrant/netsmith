@@ -538,6 +538,7 @@ mod tests {
         let ours = DrcReport {
             font_dependent: Vec::new(),
             findings: vec![finding(DrcRule::Clearance, &[(5.05, 2.0), (1.0, 2.04)])],
+            waived: Vec::new(),
         };
         let c = compare(&ours, &k, 0.1);
         assert_eq!((c.agreed, c.out_of_scope), (1, 1));
@@ -555,6 +556,7 @@ mod tests {
                 finding(DrcRule::ShortingItems, &[(9.0, 9.0)]),
                 finding(DrcRule::HoleToEdge, &[(0.0, 0.0)]),
             ],
+            waived: Vec::new(),
         };
         let c = compare(&ours, &k, 0.1);
         assert_eq!(c.agreed, 0);
@@ -614,6 +616,7 @@ mod tests {
                 finding(DrcRule::PadToPad, &[(5.0, 2.0), (5.4448, 2.0)]),
                 finding(DrcRule::Clearance, &[(9.0, 2.0), (9.8, 2.0)]),
             ],
+            waived: Vec::new(),
         };
         let c = compare_with_rules_file(&ours, &k, 0.01);
         assert!(c.agrees(), "{c}");
@@ -627,6 +630,7 @@ mod tests {
         let short = DrcReport {
             font_dependent: Vec::new(),
             findings: ours.findings[..2].to_vec(),
+            waived: Vec::new(),
         };
         let c = compare_with_rules_file(&short, &k, 0.01);
         assert_eq!(c.only_kicad.len(), 2, "{c}");
@@ -676,6 +680,7 @@ mod tests {
                 rule: DrcRule::SilkOverlap,
                 places: vec![Pt::new(10.0, 10.0), Pt::new(10.81, 9.0)],
             }],
+            waived: Vec::new(),
         };
         let c = compare(&ours, &kicad, 0.01);
         assert!(c.agrees() && c.measured_otherwise == 1, "{c}");
