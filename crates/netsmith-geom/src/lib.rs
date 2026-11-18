@@ -54,7 +54,8 @@ pub use drc::constraints::{
 pub use drc::shape::{Gap as ShapeGap, Shape as DrcShape, gap as shape_gap};
 pub use drc::{
     Branch as DrcBranch, Class as DrcClass, Counts as DrcCounts, Error as DrcError,
-    Extras as DrcExtras, Finding as DrcFinding, Item as DrcItem, Marks as DrcMarks,
+    Extras as DrcExtras, FONT_MARGIN as DRC_FONT_MARGIN, Finding as DrcFinding,
+    FontDependent as DrcFontDependent, Item as DrcItem, Marks as DrcMarks,
     RULES_FILE_PREFIX as DRC_RULES_FILE_PREFIX, Report as DrcReport, Room, Rule as DrcRule,
     Rules as DrcRules, Severity as DrcSeverity, Stackup as DrcStackup, Teardrop as DrcTeardrop,
     ViaRules as DrcViaRules, check as drc_check, check_artwork as drc_check_artwork,

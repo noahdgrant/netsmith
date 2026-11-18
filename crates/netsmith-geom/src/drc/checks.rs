@@ -1,12 +1,11 @@
 //! The rules that look at one board's geometry: clearances, holes, edge, courtyards,
 //! silkscreen, solder mask, rule areas and the outline. Connectivity is in `connect.rs`.
 
-use super::model::{Copper, Kind, Model, drawn_at, drawn_shape, open_ring, overlap_area};
+use super::model::{Copper, Kind, Model, open_ring, overlap_area};
 use super::shape::{Shape, gap, near_pairs, touches_area};
 use super::{Finding, Item, Rule};
-use crate::artwork::{Graphic, PadKind, Text};
+use crate::artwork::PadKind;
 use crate::edge;
-use crate::font;
 use crate::geom::{self, Bounds, Pt};
 
 /// What a measurement may fall short of its limit by and still pass: KiCad's own epsilon
@@ -48,7 +47,7 @@ pub(crate) fn run(m: &Model<'_>, findings: &mut Vec<Finding>) {
     holes(&mut out);
     edges(&mut out);
     courtyards(&mut out);
-    silk(&mut out);
+    super::silk::run(&mut out);
     mask_bridges(&mut out);
     rule_areas(&mut out);
     via_in_pad(&mut out);
@@ -126,12 +125,9 @@ fn outline(out: &mut Out<'_>) {
     let m = out.m;
     match edge::outline(m.art) {
         Err(e) => {
-            let at = m.edge.first().map(|(_, i)| i.at).unwrap_or_default();
-            let items = m
-                .edge
-                .first()
-                .map(|(_, i)| vec![i.clone()])
-                .unwrap_or_default();
+            let first = m.edge.iter().find(|(_, i)| i.what.ends_with("Edge.Cuts"));
+            let at = first.map(|(_, i)| i.at).unwrap_or_default();
+            let items = first.map(|(_, i)| vec![i.clone()]).unwrap_or_default();
             out.push(Rule::InvalidOutline, e, at, Some("Edge.Cuts"), items);
         }
         Ok(o) => {
@@ -675,273 +671,6 @@ fn courtyards(out: &mut Out<'_>) {
             Some(&a.layer),
             vec![item(a), item(b)],
         );
-    }
-}
-
-/// A drawing or text on a silkscreen layer, as the ink it lays down.
-struct Ink {
-    text: bool,
-    layer: &'static str,
-    owner: String,
-    shapes: Vec<Shape>,
-    bounds: Bounds,
-    item: Item,
-}
-
-fn silk_layer(name: &str) -> Option<&'static str> {
-    match name {
-        "F.SilkS" => Some("F.SilkS"),
-        "B.SilkS" => Some("B.SilkS"),
-        _ => None,
-    }
-}
-
-fn inks(m: &Model<'_>) -> Vec<Ink> {
-    let mut inks = Vec::new();
-    for g in &m.art.graphics {
-        let Some(layer) = silk_layer(&g.layer) else {
-            continue;
-        };
-        inks.push(graphic_ink(g, layer));
-    }
-    for t in &m.art.texts {
-        let Some(layer) = silk_layer(&t.layer) else {
-            continue;
-        };
-        inks.push(text_ink(t, layer));
-    }
-    inks
-}
-
-fn graphic_ink(g: &Graphic, layer: &'static str) -> Ink {
-    let shape = drawn_shape(&g.shape, g.width, g.fill);
-    let what = match g.shape {
-        crate::artwork::Shape::Line(..) => "Segment",
-        crate::artwork::Shape::Arc(_) => "Arc",
-        crate::artwork::Shape::Circle { .. } => "Circle",
-        crate::artwork::Shape::Poly(_) => "Polygon",
-    };
-    Ink {
-        text: false,
-        layer,
-        owner: g.owner.clone(),
-        bounds: shape.bounds,
-        shapes: vec![shape],
-        item: Item {
-            what: format!("{what} on {layer}"),
-            at: drawn_at(&g.shape),
-            part: (!g.owner.is_empty()).then(|| g.owner.clone()),
-            pad: None,
-            net: None,
-        },
-    }
-}
-
-fn text_ink(t: &Text, layer: &'static str) -> Ink {
-    let (strokes, _) = font::strokes(t);
-    let shapes: Vec<Shape> = strokes
-        .into_iter()
-        .map(|pts| {
-            if pts.iter().all(|p| p.dist(pts[0]) < 1e-9) {
-                Shape::disc(pts[0], t.thickness / 2.0)
-            } else {
-                Shape::stroke(pts, t.thickness / 2.0)
-            }
-        })
-        .collect();
-    let bounds = Model::bounds_of(&shapes);
-    Ink {
-        text: true,
-        layer,
-        owner: if t.owner == "the board" {
-            String::new()
-        } else {
-            t.owner.clone()
-        },
-        bounds,
-        shapes,
-        item: Item {
-            what: format!("Text '{}' on {layer}", t.text.replace('\n', " ")),
-            at: t.at,
-            part: (t.owner != "the board").then(|| t.owner.clone()),
-            pad: None,
-            net: None,
-        },
-    }
-}
-
-fn ink_gap(a: &Ink, b: &Ink) -> Option<super::shape::Gap> {
-    let mut best: Option<super::shape::Gap> = None;
-    for sa in &a.shapes {
-        for sb in &b.shapes {
-            let g = gap(sa, sb);
-            if best.is_none_or(|x| g.d < x.d) {
-                best = Some(g);
-                if g.d == 0.0 {
-                    return best;
-                }
-            }
-        }
-    }
-    best
-}
-
-fn silk(out: &mut Out<'_>) {
-    let m = out.m;
-    let r = m.rules;
-    // Text sizes.
-    for t in &m.art.texts {
-        let Some(layer) = silk_layer(&t.layer) else {
-            continue;
-        };
-        let item = text_ink(t, layer).item;
-        if t.size.1 < r.text_height - EPS / 100.0 {
-            out.push(
-                Rule::TextHeight,
-                format!(
-                    "text '{}' is {:.4} mm high; the least is {:.4} mm",
-                    t.text.replace('\n', " "),
-                    t.size.1,
-                    r.text_height
-                ),
-                t.at,
-                Some(layer),
-                vec![item.clone()],
-            );
-        }
-        if t.thickness < r.text_thickness - EPS / 100.0 {
-            out.push(
-                Rule::TextThickness,
-                format!(
-                    "text '{}' is drawn {:.4} mm thick; the least is {:.4} mm",
-                    t.text.replace('\n', " "),
-                    t.thickness,
-                    r.text_thickness
-                ),
-                t.at,
-                Some(layer),
-                vec![item],
-            );
-        }
-    }
-
-    let inks = inks(m);
-    if inks.is_empty() {
-        return;
-    }
-    // Silkscreen over a pad's opening in the mask, where the fabricator clips it.
-    let openings: Vec<(bool, Vec<Shape>, Bounds, usize)> = m
-        .art
-        .pads
-        .iter()
-        .enumerate()
-        .flat_map(|(i, pad)| {
-            [true, false].into_iter().filter_map(move |front| {
-                let shapes = m.mask_opening(pad, front);
-                (!shapes.is_empty()).then(|| {
-                    let b = Model::bounds_of(&shapes);
-                    (front, shapes, b, i)
-                })
-            })
-        })
-        .collect();
-    let ink_boxes: Vec<Bounds> = inks.iter().map(|i| i.bounds).collect();
-    let mut all = ink_boxes.clone();
-    all.extend(openings.iter().map(|o| o.2));
-    let n = inks.len();
-    let mut clipped = vec![false; n];
-    for (i, j) in near_pairs(&all, 0.0) {
-        if i >= n || j < n {
-            continue;
-        }
-        let (ink, (front, shapes, _, pad)) = (&inks[i], &openings[j - n]);
-        if (ink.layer == "F.SilkS") != *front || clipped[i] {
-            continue;
-        }
-        let touch = ink
-            .shapes
-            .iter()
-            .any(|s| shapes.iter().any(|o| gap(s, o).d == 0.0));
-        if touch {
-            clipped[i] = true;
-            let p = &m.art.pads[*pad];
-            let pad_item = Item {
-                what: format!("Pad {} of {}", p.number, p.part),
-                at: p.at,
-                part: Some(p.part.clone()),
-                pad: Some(p.number.clone()),
-                net: p.net.clone(),
-            };
-            out.push(
-                Rule::SilkOverCopper,
-                format!(
-                    "{} lies over the opening in the solder mask of pad {} of {}, where the fabricator clips it",
-                    ink.item.what, p.number, p.part
-                ),
-                ink.item.at,
-                Some(ink.layer),
-                vec![ink.item.clone(), pad_item],
-            );
-        }
-    }
-
-    // Silkscreen too near other silkscreen, and near the board edge.
-    if r.silk_clearance > 0.0 {
-        for (i, j) in near_pairs(&ink_boxes, r.silk_clearance) {
-            let (a, b) = (&inks[i], &inks[j]);
-            // KiCad compares text with anything, and two drawings unless they are both the
-            // board's or both one part's.
-            let drawings = !a.text && !b.text;
-            if a.layer != b.layer || (drawings && (a.owner == b.owner)) {
-                continue;
-            }
-            if let Some(g) = ink_gap(a, b)
-                && g.d < r.silk_clearance - EPS
-            {
-                out.push(
-                    Rule::SilkOverlap,
-                    format!(
-                        "silkscreen is {:.4} mm between {} and {}; the least is {:.4} mm",
-                        g.d, a.item.what, b.item.what, r.silk_clearance
-                    ),
-                    g.middle(),
-                    Some(a.layer),
-                    vec![a.item.clone(), b.item.clone()],
-                );
-            }
-        }
-        let n = inks.len();
-        let mut all = ink_boxes.clone();
-        all.extend(m.edge.iter().map(|(s, _)| s.bounds));
-        let mut seen = vec![false; n];
-        for (i, j) in near_pairs(&all, r.silk_clearance) {
-            if i >= n || j < n || seen[i] {
-                continue;
-            }
-            let (ink, (edge_shape, edge_item)) = (&inks[i], &m.edge[j - n]);
-            let best = ink.shapes.iter().map(|s| gap(s, edge_shape)).fold(
-                None::<super::shape::Gap>,
-                |b, g| match b {
-                    Some(b) if b.d <= g.d => Some(b),
-                    _ => Some(g),
-                },
-            );
-            if let Some(g) = best
-                && g.d < r.silk_clearance - EPS
-            {
-                seen[i] = true;
-                out.push(
-                    Rule::SilkEdgeClearance,
-                    format!(
-                        "{} is {:.4} mm from the board edge; the least is {:.4} mm",
-                        ink.item.what, g.d, r.silk_clearance
-                    ),
-                    g.middle(),
-                    Some(ink.layer),
-                    vec![edge_item.clone(), ink.item.clone()],
-                );
-            }
-        }
     }
 }
 

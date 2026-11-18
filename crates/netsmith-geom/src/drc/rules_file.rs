@@ -7,9 +7,11 @@
 //! annular width for every item. A process states more: JLCPCB's surface-mount pads keep
 //! 0.15 mm from pads of other nets while copper keeps 0.1 mm, a track keeps 0.2 mm from a via's
 //! hole and 0.28 mm from a plated pad's, two holes keep 0.45 mm when one is a pad's, a
-//! non-plated hole and a slot have least sizes of their own, and a plated pad keeps more copper
-//! round its hole than a via. Each of those is a rule of the file, named `netsmith <rule>` after
-//! the rule of netsmith's check that holds it ([`super::Rule::id`]), so that a finding KiCad
+//! non-plated hole and a slot have least sizes of their own, a plated pad keeps more copper
+//! round its hole than a via, and a silkscreen text keeps 0.15 mm from an opening in the mask
+//! (the project file's silkscreen clearance is between silkscreen and to the edge, and KiCad's
+//! least from silkscreen to the mask is none; issue #1186). Each of those is a rule of the file, named
+//! `netsmith <rule>` after the rule of netsmith's check that holds it ([`super::Rule::id`]), so that a finding KiCad
 //! makes of it says the rule (`(rule 'netsmith pad_to_pad' clearance 0.1500 mm; actual
 //! 0.1448 mm)`) and the cross-check compares it with netsmith's (`netsmith_fab::parse_kicad_drc`
 //! takes the rule from it).
@@ -55,7 +57,8 @@ struct Written {
 /// The text of the `.kicad_dru` for a board whose project file holds `project` and whose
 /// process states the rules of `process` that are set (`pad_to_pad`, `hole_to_track`,
 /// `plated_hole_clearance`, `pad_hole_to_hole`, `npth_drill`, `npth_slot`, `plated_slot`,
-/// `pad_ring`; the other fields are not read). A file with no rule holds the version alone.
+/// `pad_ring`, `text_to_mask`; the other fields are not read). A file with no rule holds the
+/// version alone.
 pub fn kicad_dru(project: &Rules, process: &Extras) -> String {
     let mut rules: Vec<Written> = Vec::new();
     // Only where the process asks more than the project file says already.
@@ -148,6 +151,23 @@ pub fn kicad_dru(project: &Rules, process: &Extras) -> String {
             condition: "A.Type == 'Pad'".into(),
         });
     }
+    // The project file has no space from silkscreen to the mask (KiCad's is 0, the ink touching
+    // an opening): the process's space from a text to a pad reaches KiCad's mask test alone, for
+    // a text (KiCad's `Text` is a board's text, a designator and a footprint's text). KiCad
+    // checks the rule on the mask layers in two tests: silkscreen against the mask's openings
+    // (B is no item there, so a test of B is false), and silkscreen against the pads and vias on
+    // the mask layer, which would report a pad or a via a second time, as `silk_overlap`; a pad
+    // or a via as B leaves that test out, in either order (measured with KiCad 9, issue #1186).
+    if let Some(least) = more(process.text_to_mask, 0.0) {
+        rules.push(Written {
+            name: "silk_over_copper".into(),
+            constraint: "silk_clearance",
+            least,
+            condition: "(L == 'F.Mask' || L == 'B.Mask') && A.Type == 'Text' \
+                && !(B.Type == 'Pad' || B.Type == 'Via')"
+                .into(),
+        });
+    }
     let mut out = String::from(
         "(version 1)\n\
          # The rules of the board's manufacturing process that the project file cannot hold, written\n\
@@ -189,6 +209,7 @@ impl Extras {
                 "slot_width npth" => &mut self.npth_slot,
                 "slot_width plated" => &mut self.plated_slot,
                 "plated_ring" => &mut self.pad_ring,
+                "silk_over_copper" => &mut self.text_to_mask,
                 _ => continue,
             };
             slot.get_or_insert(least);
@@ -245,6 +266,7 @@ mod tests {
             npth_slot: Some(1.0),
             plated_slot: Some(0.5),
             pad_ring: Some(0.18),
+            text_to_mask: Some(0.15),
             ..Extras::default()
         }
     }

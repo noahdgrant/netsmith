@@ -26,6 +26,7 @@ fn process() -> DrcExtras {
         npth_slot: Some(1.0),
         plated_slot: Some(0.5),
         pad_ring: Some(0.18),
+        text_to_mask: Some(0.15),
         ..DrcExtras::default()
     }
 }

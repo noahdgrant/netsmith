@@ -76,6 +76,10 @@ interface EightLayer {
     /// The least space between silkscreen and a pad.
     .min_silk_to_pad: Length
     .min_silk_to_pad &= 0.15mm..
+    /// The least space between two pieces of silkscreen, which KiCad's check holds silkscreen
+    /// to the board edge to as well.
+    .min_silk_to_silk: Length
+    .min_silk_to_silk &= 0.15mm..
     /// The least solder mask left between two pads.
     .min_mask_bridge: Length
     .min_mask_bridge &= 0.13mm..
@@ -277,6 +281,10 @@ interface TenLayer {
     /// The least space between silkscreen and a pad.
     .min_silk_to_pad: Length
     .min_silk_to_pad &= 0.15mm..
+    /// The least space between two pieces of silkscreen, which KiCad's check holds silkscreen
+    /// to the board edge to as well.
+    .min_silk_to_silk: Length
+    .min_silk_to_silk &= 0.15mm..
     /// The least solder mask left between two pads.
     .min_mask_bridge: Length
     .min_mask_bridge &= 0.13mm..

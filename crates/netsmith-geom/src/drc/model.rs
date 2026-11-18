@@ -78,7 +78,7 @@ pub(crate) struct Model<'a> {
     pub items: Vec<Copper>,
     pub pours: Vec<Pour>,
     pub holes: Vec<Hole>,
-    /// The drawings of `Edge.Cuts`, each with the stroke it is drawn with.
+    /// The board's edge as KiCad's check measures against it ([`edge_of`]).
     pub edge: Vec<(Shape, Item)>,
     pub via_item: Vec<usize>,
 }
@@ -175,15 +175,68 @@ pub(crate) fn drawn_shape(shape: &Drawn, width: f64, filled: bool) -> Shape {
     }
 }
 
-/// Where KiCad says a drawing is: the start of a line or arc, the centre of a circle, the
-/// first point of a polygon.
+/// Where KiCad says a drawing is: the start of a line, the centre of an arc or a circle, the
+/// first point of a polygon (KiCad 9's report gives an arc's centre, issue #1186).
 pub(crate) fn drawn_at(shape: &Drawn) -> Pt {
     match shape {
         Drawn::Line(a, _) => *a,
-        Drawn::Arc(a) => a.start,
+        Drawn::Arc(a) => a.centre,
         Drawn::Circle { centre, .. } => *centre,
         Drawn::Poly(p) => p.first().copied().unwrap_or_default(),
     }
+}
+
+/// KiCad's word for a drawing in its report: `Segment`, `Arc`, `Circle`, `Polygon`.
+pub(crate) fn drawn_kind(shape: &Drawn) -> &'static str {
+    match shape {
+        Drawn::Line(..) => "Segment",
+        Drawn::Arc(_) => "Arc",
+        Drawn::Circle { .. } => "Circle",
+        Drawn::Poly(_) => "Polygon",
+    }
+}
+
+/// The board's edge as KiCad 9's check measures copper and silkscreen against it (measured,
+/// issue #1186): each drawing on `Edge.Cuts` along its path, with no stroke (a track 0.31 mm
+/// from the centre of a line drawn 0.05 mm wide keeps a least of 0.3 mm), a rectangle or a
+/// polygon that is not filled as its sides, a segment from each corner to the next (so a side is
+/// at its first corner, as KiCad reports it), and each drawing on `Margin`, the layer of a keepout
+/// from the edge, with its stroke.
+fn edge_of(art: &Artwork) -> Vec<(Shape, Item)> {
+    let item = |what: String, at: Pt| Item {
+        what,
+        at,
+        part: None,
+        pad: None,
+        net: None,
+    };
+    let mut edge = Vec::new();
+    for g in art
+        .graphics
+        .iter()
+        .filter(|g| g.layer == "Edge.Cuts" || g.layer == "Margin")
+    {
+        let width = if g.layer == "Edge.Cuts" { 0.0 } else { g.width };
+        match &g.shape {
+            Drawn::Poly(points) if !g.fill && points.len() > 1 => {
+                for (k, a) in points.iter().enumerate() {
+                    let b = points[(k + 1) % points.len()];
+                    edge.push((
+                        Shape::capsule(*a, b, width / 2.0),
+                        item(format!("Segment on {}", g.layer), *a),
+                    ));
+                }
+            }
+            shape => edge.push((
+                drawn_shape(shape, width, g.fill),
+                item(
+                    format!("{} on {}", drawn_kind(shape), g.layer),
+                    drawn_at(shape),
+                ),
+            )),
+        }
+    }
+    edge
 }
 
 impl<'a> Model<'a> {
@@ -324,12 +377,7 @@ impl<'a> Model<'a> {
                 continue;
             };
             let shape = drawn_shape(&g.shape, g.width, g.fill);
-            let what = match g.shape {
-                Drawn::Line(..) => "Segment",
-                Drawn::Arc(_) => "Arc",
-                Drawn::Circle { .. } => "Circle",
-                Drawn::Poly(_) => "Polygon",
-            };
+            let what = drawn_kind(&g.shape);
             let at = drawn_at(&g.shape);
             let owner = if g.owner.is_empty() {
                 String::new()
@@ -460,23 +508,7 @@ impl<'a> Model<'a> {
             });
         }
 
-        let edge = art
-            .graphics
-            .iter()
-            .filter(|g| g.layer == "Edge.Cuts")
-            .map(|g| {
-                (
-                    drawn_shape(&g.shape, g.width, g.fill),
-                    Item {
-                        what: "Segment on Edge.Cuts".to_string(),
-                        at: drawn_at(&g.shape),
-                        part: None,
-                        pad: None,
-                        net: None,
-                    },
-                )
-            })
-            .collect();
+        let edge = edge_of(art);
 
         Model {
             art,

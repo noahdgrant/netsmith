@@ -1193,3 +1193,50 @@ fn a_board_with_a_drawn_keepout_routes_around_it_and_passes_kicads_check() {
     // KiCad has it as a rule area.
     assert!(kicad_pcb(&b).contains("(keepout"), "a rule area is written");
 }
+
+// ---- silkscreen (issue #1186) ---------------------------------------------------------------
+
+/// The LED example with two of its parts moved so that its silkscreen breaks each rule: the
+/// resistor near the top edge, its line 0.1 mm from it, and its designator below it, over the
+/// LED's line and pads, whose own designator, above it, lies over the resistor's pads and its
+/// designator. KiCad's check, given the `.kicad_pro` and the `.kicad_dru` that `fab` writes,
+/// finds of the three silkscreen rules as many as netsmith's (and `check` requires every finding
+/// to agree, the places within 0.1 mm).
+#[test]
+fn kicad_counts_the_silkscreen_findings_of_the_led_example_as_netsmith_does() {
+    use netsmith_pcb::ReferenceSide;
+    let mut b = board("led");
+    let top = b.outline.min.y;
+    let x = (b.outline.min.x + b.outline.max.x) / 2.0;
+    let r1 = b.parts.iter().position(|p| p.refdes == "R1").unwrap();
+    let d1 = b.parts.iter().position(|p| p.refdes == "D1").unwrap();
+    for (i, y, side) in [
+        (r1, 0.54, ReferenceSide::Below),
+        (d1, 2.6, ReferenceSide::Above),
+    ] {
+        let p = &mut b.parts[i];
+        p.at = Pt::new(x, top + y);
+        p.rotation = 0.0;
+        p.reference_side = side;
+    }
+    let ours = netsmith_geom::drc_check(
+        &kicad_pcb(&b),
+        Some(&kicad_pro(&b)),
+        &netsmith_geom::DrcExtras::default().with_rules_file(&netsmith_pcb::kicad_dru(&b)),
+    )
+    .unwrap();
+    let kinds = [
+        ("silk_over_copper", netsmith_geom::DrcRule::SilkOverCopper),
+        ("silk_overlap", netsmith_geom::DrcRule::SilkOverlap),
+        ("silk_edge_clearance", netsmith_geom::DrcRule::SilkEdgeClearance),
+    ];
+    for (_, rule) in kinds {
+        assert!(ours.count(rule) > 0, "no {rule:?} in\n{ours}");
+    }
+    let Some(report) = check("led_silk", &b) else {
+        return;
+    };
+    for (kind, rule) in kinds {
+        assert_eq!(count(&report, kind), ours.count(rule), "{kind}\n{ours}");
+    }
+}

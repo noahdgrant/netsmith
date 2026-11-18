@@ -40,7 +40,7 @@
 //!
 //! **The numbers are the project's:** `min_clearance`, `min_track_width`, `min_via_diameter`,
 //! `min_via_annular_width`, `min_through_hole_diameter`, `min_hole_to_hole`, `min_hole_clearance`,
-//! `min_copper_edge_clearance`, `min_silk_clearance`, the text sizes, each net class's clearance
+//! `min_copper_edge_clearance`, `min_silk_clearance` (between silkscreen and to the edge), the text sizes, each net class's clearance
 //! with its net patterns and priority, and each rule's severity. A number the file lacks is KiCad
 //! 9's default. The board file's `solder_mask_min_width` is the least mask web (the exporter
 //! writes the process's `mask_bridge` there, so KiCad reads it too), and `fab` also passes the
@@ -109,7 +109,7 @@
 //! only if they do not belong to the same part or both to the board. Mask openings of pads with no
 //! net count against pads with one, two copper pads with no net are two nets (a QFN's unconnected
 //! pins side by side, issue #1185) where two holes with no plating are none, and openings that only
-//! touch are not a bridge when the process asks for no web. A track's place is its start and an arc's its centre. A missing connection's
+//! touch are not a bridge when the process asks for no web. A track's place is its start and an arc's its centre, a drawn arc's too. A missing connection's
 //! ends are the nearest anchors, and where several are equally near KiCad takes the one on a
 //! shared layer, then a track, then the longer (the two checks still pick differently at times,
 //! and the comparison counts a missing connection that names other ends as agreeing).
@@ -148,7 +148,8 @@
 //! vias is checked in 0.2 s in a debug build. A copy of a real project's board routed by netsmith
 //! (nothing of it is in the repository, so no figures from it are kept): no error, and KiCad agrees
 //! on the warnings except three (two silkscreen texts that our font puts a hair nearer a pad, and
-//! a mask opening drawn as a graphic on `F.Mask`, which is not checked).
+//! a mask opening drawn as a graphic on `F.Mask`, which was not checked then and is now, issue
+//! #1186).
 //!
 //! **Against KiCad's check, kind by kind** (issue #1185; the table, with what each rule holds, is
 //! in the guide's chapter on the commands, _The design rules check against KiCad's_). The same
@@ -163,8 +164,12 @@
 //! (`connect.rs`), and the cross-check leaves KiCad's finding of a via of a cluster out
 //! (`netsmith_fab::drop_dangling_vias_of_clusters`). Reported by both and not compared:
 //! `tracks_crossing`, `starved_thermal` and `isolated_copper` (each of its own fill),
-//! `copper_sliver` (KiCad's thresholds are its own). Missing parity: the silkscreen's
-//! `silk_over_copper`, `silk_overlap` and `silk_edge_clearance` (issue #1186). Not wanted:
+//! `copper_sliver` (KiCad's thresholds are its own). The silkscreen's `silk_over_copper`,
+//! `silk_overlap` and `silk_edge_clearance` are KiCad's rules with the process's numbers
+//! (`silk.rs`, issue #1186), a text drawn in netsmith's font: the report lists the pairs the font
+//! decides ([`Report::font_dependent`]), which the cross-check does not count as differences.
+//! `copper_edge_clearance` and `silk_edge_clearance` near a circle on `Edge.Cuts` are found here
+//! within the least and by KiCad 9 only where the two cross. Not wanted:
 //! `lib_footprint_mismatch` and `lib_footprint_issues`, which compare each footprint with a library
 //! of its name in KiCad's tables, while netsmith writes its own footprints into the board file
 //! (ADR 0087), and the comparisons with a schematic, which netsmith writes from the same design.
@@ -175,7 +180,7 @@
 //! blind, buried and micro vias, unrouted-by-design nets, footprint-against-library and schematic parity (KiCad's
 //! `lib_footprint_*`, `extra_footprint`), and the electrical rules check (the solver does most of
 //! it). Silkscreen text uses netsmith's own font, so a text that only just clears a pad can be
-//! judged differently. The pour categories and the rules above are not built (issue #61).
+//! judged differently by KiCad ([`FONT_MARGIN`]). The pour categories and the rules above are not built (issue #61).
 //! JLCPCB's own check has not been run on a package: the cross-check says netsmith agrees with
 //! KiCad, not that a fabricator will accept the board (issue #12; a person must do it, checklist
 //! in issue #10).
@@ -193,6 +198,7 @@ mod room;
 mod rules;
 mod rules_file;
 pub(crate) mod shape;
+mod silk;
 mod stackup;
 mod teardrop;
 mod vias;
@@ -204,6 +210,7 @@ pub use room::Room;
 pub use rules::matches_pattern;
 pub use rules::{Class, Rules};
 pub use rules_file::{PREFIX as RULES_FILE_PREFIX, kicad_dru, rules_file_of};
+pub use silk::FONT_MARGIN;
 pub use teardrop::{Teardrop, teardrops};
 
 /// How bad a finding is. A rule the project file says to ignore produces none.
@@ -648,6 +655,20 @@ impl Counts {
 pub struct Report {
     /// Errors first, then warnings, each in the order the rules ran.
     pub findings: Vec<Finding>,
+    /// The pairs of the silkscreen rules with a text in them whose verdict the font decides
+    /// (issue #1186): found or not, KiCad's check, which draws KiCad's font, may judge them
+    /// otherwise. Not findings; the cross-check reads them.
+    pub font_dependent: Vec<FontDependent>,
+}
+
+/// A text of the silkscreen and what a silkscreen rule holds it to (an opening in the mask,
+/// other silkscreen, the edge), near enough to the rule's least that the font decides whether
+/// it is a finding: within [`FONT_MARGIN`] of the text's size of the box round its ink.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FontDependent {
+    pub rule: Rule,
+    /// Where KiCad says the two things are, as a finding of the rule names them.
+    pub places: Vec<Pt>,
 }
 
 impl Report {
@@ -726,6 +747,10 @@ pub struct Extras {
     pub npth_slot: Option<f64>,
     pub npth_drill: Option<f64>,
     pub pad_ring: Option<f64>,
+    /// The least space from a silkscreen text to an opening in the solder mask (the process's
+    /// `.min_silk_to_pad`: JLCPCB removes a character within it, issue #1186); `None` is KiCad's,
+    /// the ink touching the opening, which a drawing is always held to.
+    pub text_to_mask: Option<f64>,
     /// The least width of the nets whose current needs more than the process's least track,
     /// by net (issue #431), and how near one of the net's pads a track may be narrower (the
     /// neck-down out of a fine-pitch pad). Empty when the currents are not known.
@@ -934,7 +959,10 @@ pub fn check_artwork(
     connect::run(&model, &mut findings);
     // Errors before warnings, otherwise in the order found.
     findings.sort_by_key(|f| std::cmp::Reverse(f.severity));
-    Report { findings }
+    Report {
+        findings,
+        font_dependent: silk::font_dependent(&model),
+    }
 }
 
 /// The `.kicad_pro` beside a board file, if there is one.

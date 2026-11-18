@@ -55,6 +55,11 @@ pub struct Process {
     pub min_text_height: f64,
     /// The least space between silkscreen and a pad.
     pub min_silk_to_pad: f64,
+    /// The least space between two pieces of silkscreen (issue #1186), which KiCad's check also
+    /// holds silkscreen to the board edge to. 0 in a design file written before it was read,
+    /// and then the space from a pad stands for it.
+    #[serde(default)]
+    pub min_silk_to_silk: f64,
     /// The least solder mask left between two pads.
     pub min_mask_bridge: f64,
     /// How many fiducials each side that has assembled parts has, at least (a guideline,

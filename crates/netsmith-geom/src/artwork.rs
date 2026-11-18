@@ -335,6 +335,7 @@ pub struct Text {
     pub at: Pt,
     /// Absolute turn in degrees.
     pub angle: f64,
+    /// Width and height of a character (the file writes the height first).
     pub size: (f64, f64),
     pub thickness: f64,
     pub mirror: bool,
@@ -559,13 +560,17 @@ struct FontStyle {
 
 fn font_style(effects: Option<&Sexp>) -> Result<FontStyle, ArtworkError> {
     let font = effects.and_then(|e| e.find("font"));
+    // KiCad writes `(size HEIGHT WIDTH)`; a text's size here is (width, height). A text whose
+    // two numbers differ is drawn so (measured with KiCad 9's Gerbers, issue #1186).
     let size = font
         .and_then(|f| f.find("size"))
         .map(|s| -> Result<(f64, f64), ArtworkError> {
-            Ok((
-                num(s.items().get(1), "a text's size")?,
-                num(s.items().get(2), "a text's size")?,
-            ))
+            let height = num(s.items().get(1), "a text's size")?;
+            let width = match s.items().get(2) {
+                Some(_) => num(s.items().get(2), "a text's size")?,
+                None => height,
+            };
+            Ok((width, height))
         })
         .transpose()?
         .unwrap_or((1.0, 1.0));
