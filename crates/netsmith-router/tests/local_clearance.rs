@@ -174,6 +174,7 @@ fn check(board: &Board) -> DrcReport {
         npth_slot: Some(board.rules.npth_slot),
         npth_drill: Some(board.rules.npth_drill),
         pad_ring: Some(board.rules.min_annular_ring),
+        text_to_mask: Some(board.rules.silk_to_pad),
         least_widths: board.least_widths(),
         inner_least_widths: board.inner_least_widths(),
         target_widths: board.target_track_widths(),
