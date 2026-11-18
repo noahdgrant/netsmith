@@ -916,7 +916,7 @@ board B {{
             .map(|(id, _)| id)
             .expect("the board has a `top`");
         let enclosed = HashMap::from([(top, Range::new(0.0, 1e-3))]);
-        let analysis = super::analyze(&s.model, true, &enclosed, &HashSet::new());
+        let analysis = super::analyze(&s.model, true, &enclosed, &HashSet::new(), None);
         let planned_outputs = analysis
             .outcomes
             .iter()
@@ -1016,7 +1016,7 @@ board B {
         .collect();
     let mut switches = 0;
     for cuts in [HashSet::new(), rails] {
-        let whole = super::extract(model, &HashMap::new(), &HashSet::new(), &cuts).islands;
+        let whole = super::extract(model, &HashMap::new(), &HashSet::new(), &cuts, None).islands;
         for &part in &parts {
             let around = super::extract::extract_around(model, &index, &cuts, &[part]);
             let want: Vec<_> = whole

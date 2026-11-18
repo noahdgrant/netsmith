@@ -22,6 +22,16 @@ pub(crate) struct Ceilings {
 
 impl Ceilings {
     pub(crate) fn new(model: &Model) -> Self {
+        Self::of_supplies(model, false)
+    }
+
+    /// The same, with a regulator's output a supply as well (at the top of its voltage, when it
+    /// has one): the ceiling of a rail behind a series element on the output (issue #1268).
+    pub(crate) fn with_outputs(model: &Model) -> Self {
+        Self::of_supplies(model, true)
+    }
+
+    fn of_supplies(model: &Model, outputs: bool) -> Self {
         let mut net_of = HashMap::new();
         for (i, n) in model.nets().iter().enumerate() {
             for &p in &n.pins {
@@ -38,6 +48,7 @@ impl Ceilings {
             }
         };
         let mut given: HashSet<InstId> = HashSet::new();
+        let mut held: Vec<InstId> = Vec::new();
         for (part, dc) in model.dc_elements() {
             if model.instance(part).kind != InstKind::Part {
                 continue;
@@ -48,7 +59,11 @@ impl Ceilings {
                 DcKind::Source => {
                     given.insert(dc.pins[0]);
                 }
-                DcKind::LinearRegulator | DcKind::SwitchingRegulator => {}
+                DcKind::LinearRegulator | DcKind::SwitchingRegulator => {
+                    if outputs {
+                        held.push(dc.pins[1]);
+                    }
+                }
             }
         }
         let mut supplies: HashMap<usize, f64> = HashMap::new();
@@ -72,6 +87,18 @@ impl Ceilings {
                 continue;
             }
             if let Some(&net) = net_of.get(&pos) {
+                let top = supplies.entry(net).or_insert(f64::NEG_INFINITY);
+                *top = top.max(q.hi());
+            }
+        }
+        for rail in held {
+            let Some((voltage, pos, _)) = model.rail_of(rail) else {
+                continue;
+            };
+            if let Domain::Quantity(q) = &model.field(voltage).domain
+                && q.hi().is_finite()
+                && let Some(&net) = net_of.get(&pos)
+            {
                 let top = supplies.entry(net).or_insert(f64::NEG_INFINITY);
                 *top = top.max(q.hi());
             }
