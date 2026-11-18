@@ -293,6 +293,28 @@ pub struct SilkText {
     pub thickness: f64,
 }
 
+/// A keepout zone a library footprint carries (`(zone ... (keepout ...))` in its `.kicad_mod`): a
+/// rule area over or round its pads, in the footprint's frame, written into the board file where
+/// the part is (issue #1237). KiCad's check flags the copper of the board inside it that it
+/// forbids (`items_not_allowed`), so the router, the stitching and the vias in pads keep out of
+/// it too (issue #1291).
+#[derive(Debug, Clone, PartialEq)]
+pub struct FootprintKeepout {
+    /// Its outline, in the footprint's frame (the `xy` points of the first `(polygon` of the
+    /// zone). An `(arc` among them is not read, as the board file's reader does not read one
+    /// (`netsmith_geom::Artwork`): a zone drawn with arcs alone is left out.
+    pub polygon: Vec<Pt>,
+    /// KiCad's names of the copper layers it is on, as the library has them (for the part on
+    /// the front): `F.Cu`, `B.Cu`, `In1.Cu`, or `*.Cu` for every one.
+    pub layers: Vec<String>,
+    pub tracks: bool,
+    pub vias: bool,
+    pub pads: bool,
+    /// Copper pours (`copperpour`).
+    pub copper: bool,
+    pub footprints: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Footprint {
     /// `R_0402_1005Metric`, without its library.
@@ -342,6 +364,62 @@ pub struct Footprint {
 }
 
 impl Footprint {
+    /// The keepout zones the library's footprint carries, read from its file (none for a
+    /// generated footprint, which draws none). A zone that forbids nothing is left out.
+    pub fn keepouts(&self) -> Vec<FootprintKeepout> {
+        let mut out = Vec::new();
+        for zone in self.source.find_all("zone") {
+            let Some(k) = zone.find("keepout") else {
+                continue;
+            };
+            let not_allowed = |name: &str| {
+                k.find(name).and_then(|c| c.items().get(1)?.text()) == Some("not_allowed")
+            };
+            let mut layers = Vec::new();
+            for head in ["layer", "layers"] {
+                if let Some(l) = zone.find(head) {
+                    for name in l.args().iter().filter_map(Sexp::text) {
+                        match name {
+                            "F&B.Cu" => layers.extend(["F.Cu".to_string(), "B.Cu".to_string()]),
+                            n if n.ends_with(".Cu") => layers.push(n.to_string()),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            let polygon: Vec<Pt> = zone
+                .find("polygon")
+                .and_then(|p| p.find("pts"))
+                .map(|pts| {
+                    pts.find_all("xy")
+                        .filter_map(|xy| {
+                            let n = |i: usize| xy.items().get(i)?.text()?.parse::<f64>().ok();
+                            Some(Pt::new(n(1)?, n(2)?))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            let keepout = FootprintKeepout {
+                polygon,
+                layers,
+                tracks: not_allowed("tracks"),
+                vias: not_allowed("vias"),
+                pads: not_allowed("pads"),
+                copper: not_allowed("copperpour"),
+                footprints: not_allowed("footprints"),
+            };
+            let forbids = keepout.tracks
+                || keepout.vias
+                || keepout.pads
+                || keepout.copper
+                || keepout.footprints;
+            if forbids && keepout.polygon.len() >= 3 && !keepout.layers.is_empty() {
+                out.push(keepout);
+            }
+        }
+        out
+    }
+
     /// The footprint of a silkscreen label: `text` in letters `height` tall and `thickness`
     /// thick, and a courtyard round it. It has no pads. The reference and the value are
     /// there for the board file but are hidden: the label prints its text, not a designator.

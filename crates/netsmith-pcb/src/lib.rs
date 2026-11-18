@@ -117,8 +117,8 @@ pub use fill_report::{
 };
 pub use fit_report::{FitReport, PartRef, Size};
 pub use footprint::{
-    Drill, Footprint, FootprintError, FootprintLibrary, Graphic, Layer, Mount, Pad, PadKind,
-    PadShape, Shape, SilkText,
+    Drill, Footprint, FootprintError, FootprintKeepout, FootprintLibrary, Graphic, Layer, Mount,
+    Pad, PadKind, PadShape, Shape, SilkText,
 };
 pub use generate::{
     HOLE_DRILL, generate as generated_footprint, generate_spec as generate_footprint_spec,

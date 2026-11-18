@@ -70,8 +70,9 @@ impl<'a> Free<'a> {
                 }
             }
         }
+        // The design's keepouts and those of the parts' footprints (issue #1291).
         let keepouts = board
-            .keepout_areas()
+            .copper_keepouts()
             .into_iter()
             .filter(|k| k.vias)
             .map(|k| k.rect)

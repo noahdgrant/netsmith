@@ -309,10 +309,11 @@ fn a_pour_joins_the_pads_and_vias_of_its_net_under_it_and_a_pad_set_to_no_connec
 }
 
 #[test]
-fn a_rule_area_the_board_draws_forbids_tracks_vias_pads_and_parts_but_one_a_footprint_carries_is_not_enforced()
+fn a_rule_area_the_board_draws_or_a_footprint_carries_forbids_tracks_vias_pads_and_parts()
  {
-    // The same antenna keepout, drawn on the board and carried by a footprint (KiCad does not
-    // enforce the second).
+    // The same antenna keepout, drawn on the board and carried by a footprint, both enforced as
+    // KiCad enforces them (issue #1291). A board file has a footprint's zone in the board's frame.
+    // A footprint's keepout does not forbid the footprint itself, but does its own pads.
     let rule_area = |inside: &str| {
         format!(
             "(zone (net 0) (net_name \"\") (layer \"F.Cu\") (name \"antenna\") (hatch edge 0.5) (connect_pads (clearance 0)) (min_thickness 0.25) (keepout (tracks not_allowed) (vias not_allowed) (pads not_allowed) (copperpour not_allowed) (footprints not_allowed)) (fill (thermal_gap 0.5) (thermal_bridge_width 0.5)) (polygon (pts {inside})))"
@@ -351,7 +352,7 @@ fn a_rule_area_the_board_draws_forbids_tracks_vias_pads_and_parts_but_one_a_foot
     );
 
     let mut b = Pcb::new(2);
-    b.raw(&format!("(footprint \"Test:ANT\" (layer \"F.Cu\") (at 20 10 0) (property \"Reference\" \"U1\" (at 0 0 0) (layer \"F.Fab\") (hide yes) (effects (font (size 1 1) (thickness 0.15)))) (attr smd) (pad \"1\" smd rect (at 0 0) (size 1 1) (layers \"F.Cu\" \"F.Mask\" \"F.Paste\")) {})", rule_area("(xy -4 -3) (xy 4 -3) (xy 4 3) (xy -4 3)")));
+    b.raw(&format!("(footprint \"Test:ANT\" (layer \"F.Cu\") (at 20 10 0) (property \"Reference\" \"U1\" (at 0 0 0) (layer \"F.Fab\") (hide yes) (effects (font (size 1 1) (thickness 0.15)))) (attr smd) (pad \"1\" smd rect (at 0 0) (size 1 1) (layers \"F.Cu\" \"F.Mask\" \"F.Paste\")) (fp_rect (start -1 -1) (end 1 1) (stroke (width 0.05) (type solid)) (fill no) (layer \"F.CrtYd\")) {})", rule_area("(xy 16 7) (xy 24 7) (xy 24 13) (xy 16 13)")));
     b.part(
         "R1",
         (21.0, 10.0),
@@ -362,8 +363,30 @@ fn a_rule_area_the_board_draws_forbids_tracks_vias_pads_and_parts_but_one_a_foot
             ..NONE
         },
     );
+    b.track("A", "B.Cu", (17.0, 12.0), (19.0, 12.0), 0.2);
     let r = check(&mut b);
-    assert_eq!(r.count(DrcRule::ItemsNotAllowed), 0, "{r}");
+    let found: Vec<_> = r
+        .findings
+        .iter()
+        .filter(|f| f.rule == DrcRule::ItemsNotAllowed)
+        .collect();
+    // R1's pad and R1 itself, and U1's own pad (KiCad 9 flags a footprint's own pad in its
+    // keepout too, `drc_corpus`); not U1 itself, not the track on the other layer.
+    assert_eq!(found.len(), 3, "{r}");
+    let parts: Vec<_> = found
+        .iter()
+        .map(|f| (f.items[0].part.as_deref(), f.items[0].pad.as_deref()))
+        .collect();
+    assert!(
+        parts.contains(&(Some("R1"), None)) && parts.contains(&(Some("R1"), Some("1"))),
+        "{r}"
+    );
+    assert!(parts.contains(&(Some("U1"), Some("1"))), "{r}");
+    assert!(
+        found[0].message.contains("'antenna' of U1's footprint"),
+        "{}",
+        found[0].message
+    );
 }
 
 #[test]
