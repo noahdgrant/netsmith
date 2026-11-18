@@ -34,6 +34,7 @@ pub mod regenerate;
 pub mod release;
 pub mod reuse;
 pub mod routes;
+pub mod routes_tidy;
 pub mod schematic;
 pub mod system3d;
 pub mod track_drop;
