@@ -45,7 +45,9 @@
 //! - ` ```csv file=catalogs/resistor.csv ` is a project's catalog file (ADR 0022): it adds its
 //!   rows to the catalog named by the file, for the `nsm` blocks that use the same `set=`
 //!   (default: none). ` ```csv fails ` must not load, and the next ` ```text ` block is the
-//!   exact message. An `nsm` block names its set with ` catalogs=<set> `.
+//!   exact message. An `nsm` block names its set with ` catalogs=<set> `. A ` file= ` of
+//!   `catalogs/curves/<catalog>/<row>.csv` is a curve file of the set (issue #1260), read after
+//!   its catalogs.
 //! - ` ```csv file=preferred.csv ` is a project's preferred-parts file (issue #802), not a
 //!   catalog: it must load, and every `lcsc` it names must be a row of the standard catalogs.
 //! - ` module=src::power ` makes the block a project module that other blocks may import.
@@ -182,20 +184,46 @@ fn loader(blocks: &[Block]) -> Loader {
 /// the `resistor` catalog). A set whose files do not load holds the problem.
 fn catalog_sets(blocks: &[Block]) -> HashMap<String, Result<Catalogs, String>> {
     let mut sets: HashMap<String, Result<Catalogs, String>> = HashMap::new();
-    for b in blocks
+    let csv: Vec<(&Block, &str)> = blocks
         .iter()
         .filter(|b| b.is("csv") && !b.has("fails") && !is_preferred(b))
-    {
-        let set = b.value("set").unwrap_or("").to_string();
-        let file = b
-            .value("file")
-            .unwrap_or_else(|| panic!("{}: a csv block needs file=", b.at()));
-        let name = Path::new(file).file_stem().unwrap().to_str().unwrap();
-        let entry = sets.entry(set).or_insert_with(|| Ok(Catalogs::jlcpcb()));
-        if let Ok(catalogs) = entry
-            && let Err(e) = catalogs.add_file(name, file, &b.text)
-        {
-            *entry = Err(e);
+        .map(|b| {
+            let file = b
+                .value("file")
+                .unwrap_or_else(|| panic!("{}: a csv block needs file=", b.at()));
+            (b, file)
+        })
+        .collect();
+    // A curve file, `.../curves/<catalog>/<row>.csv`: its catalog and its row.
+    let curve = |file: &str| -> Option<(String, String)> {
+        let path = Path::new(file);
+        let folder = path.parent()?;
+        (folder.parent()?.file_name()? == netsmith_solve::curve::FOLDER).then(|| {
+            let catalog = folder.file_name().unwrap().to_str().unwrap().to_string();
+            let row = path.file_stem().unwrap().to_str().unwrap().to_string();
+            (catalog, row)
+        })
+    };
+    // The catalogs first, then the curves of their rows.
+    for curves in [false, true] {
+        for (b, file) in &csv {
+            let of = curve(file);
+            if of.is_some() != curves {
+                continue;
+            }
+            let set = b.value("set").unwrap_or("").to_string();
+            let entry = sets.entry(set).or_insert_with(|| Ok(Catalogs::jlcpcb()));
+            let Ok(catalogs) = entry else { continue };
+            let added = match &of {
+                Some((catalog, row)) => catalogs.add_curve(catalog, row, file, &b.text),
+                None => {
+                    let name = Path::new(file).file_stem().unwrap().to_str().unwrap();
+                    catalogs.add_file(name, file, &b.text)
+                }
+            };
+            if let Err(e) = added {
+                *entry = Err(e);
+            }
         }
     }
     sets

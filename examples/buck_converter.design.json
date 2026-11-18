@@ -693,7 +693,7 @@
           "part": "reg.ic",
           "name": "feedback",
           "source": "SNVSA24, 11.1 Layout Guidelines, p.17",
-          "site": "std/parts/regulator.nsm:1062",
+          "site": "std/parts/regulator.nsm:1101",
           "statement": "near",
           "select": {
             "on": {
@@ -707,7 +707,7 @@
           "part": "reg.ic",
           "name": "inductor",
           "source": "SNVSA24, 11.1 Layout Guidelines, p.17",
-          "site": "std/parts/regulator.nsm:1066",
+          "site": "std/parts/regulator.nsm:1105",
           "statement": "near",
           "select": {
             "on": {
@@ -721,7 +721,7 @@
           "part": "reg.ic",
           "name": "input_cap",
           "source": "SNVSA24, 11.1 Layout Guidelines, p.17",
-          "site": "std/parts/regulator.nsm:1064",
+          "site": "std/parts/regulator.nsm:1103",
           "statement": "near",
           "select": {
             "bridging": {
