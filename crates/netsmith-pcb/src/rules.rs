@@ -833,8 +833,8 @@ mod tests {
         let dru = r.kicad_dru("T", &[]);
         for (rule, least) in [
             ("pad_to_pad", "physical_clearance (min 0.15mm)"),
-            ("hole_to_track", "hole_clearance (min 0.2mm)"),
-            ("hole_to_track plated", "hole_clearance (min 0.28mm)"),
+            ("hole_to_track", "physical_hole_clearance (min 0.2mm)"),
+            ("hole_to_track plated", "physical_hole_clearance (min 0.28mm)"),
             ("pad_hole_to_hole", "hole_to_hole (min 0.45mm)"),
             ("npth_drill", "hole_size (min 0.5mm)"),
             ("slot_width npth", "hole_size (min 1mm)"),

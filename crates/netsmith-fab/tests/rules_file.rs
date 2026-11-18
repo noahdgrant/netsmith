@@ -438,3 +438,128 @@ fn a_plated_pad_inside_a_pad_of_its_number_has_its_ring_measured_with_it_as_kica
     let c = compare_kicad_drc_with_rules_file(&mine, &theirs, 0.01);
     assert!(c.agrees() && c.agreed == 1, "{c}KiCad's:\n{theirs:#?}");
 }
+
+/// KiCad's findings of the rule of a hole's space to a track on the board.
+fn kicad_hole_to_track(
+    name: &str,
+    b: &mut Pcb,
+    rules: &str,
+) -> Option<Vec<netsmith_fab::KicadDrcReported>> {
+    let (pcb, pro) = (b.pcb(), b.pro());
+    kicad_findings_with(name, &pcb, &pro, rules)
+        .map(|k| k.into_iter().filter(|k| k.kind == "hole_to_track").collect())
+}
+
+/// A plated pad `J1` of net P with a hole of 0.5 mm, and a track of net `net` 0.27 mm from the
+/// hole's edge (the process asks 0.28 mm), the pad stating `own_clearance` and the footprint
+/// `fields` (issue #1231).
+fn plated_hole_and_track(own_clearance: Option<f64>, fields: &str, net: &'static str) -> Pcb {
+    let mut b = jlcpcb();
+    let pad = P {
+        clearance: own_clearance,
+        ..thru("1", 0.0, 0.0, 0.8, 0.5, "P")
+    };
+    b.part_in("J1", (10.0, 10.0), 0.0, &[pad], NONE, fields);
+    b.wire(net, "F.Cu", (8.0, 10.57), (12.0, 10.57), 0.1);
+    b
+}
+
+#[test]
+fn a_clearance_written_on_a_pad_does_not_silence_the_rule_of_a_holes_space_to_a_track() {
+    // KiCad's `hole_clearance` constraint yields to a clearance written on a pad or its
+    // footprint; the rule of the file is a `physical_hole_clearance`, which does not (measured
+    // with KiCad 9.0.0, issue #1231).
+    let cases = [
+        ("no clearance of its own", None, ""),
+        ("a pad's own clearance", Some(0.05), ""),
+        ("a footprint's clearance", None, "(clearance 0.05)"),
+    ];
+    for (what, own, fields) in cases {
+        let mut b = plated_hole_and_track(own, fields, "T");
+        let text = rules_file(&b);
+        assert!(
+            text.contains("(rule \"netsmith hole_to_track plated\"\n\t(constraint physical_hole_clearance (min 0.28mm))"),
+            "{text}"
+        );
+        let mine = ours(&mut b, &DrcExtras::default().with_rules_file(&text));
+        assert_eq!(mine.count(DrcRule::HoleToTrack), 1, "{what}: {mine}");
+        let Some(with) = kicad_hole_to_track("plated", &mut b, &text) else {
+            eprintln!("skipped: KiCad is not installed");
+            return;
+        };
+        assert_eq!(with.len(), 1, "{what}: {with:?}");
+        let all = kicad_findings_with("plated", &b.pcb(), &b.pro(), &text).unwrap();
+        let c = compare_kicad_drc_with_rules_file(&mine, &all, 0.01);
+        assert!(c.agrees() && c.agreed >= 1, "{what}: {c}{all:?}");
+        // The same rule as a `hole_clearance` is silent where the pad or its footprint states a
+        // clearance of its own, and reports where none does.
+        let as_hole_clearance = text.replace("physical_hole_clearance", "hole_clearance");
+        let old = kicad_hole_to_track("plated", &mut b, &as_hole_clearance).unwrap();
+        let expected = usize::from(own.is_none() && fields.is_empty());
+        assert_eq!(old.len(), expected, "{what}: a hole_clearance constraint: {old:?}");
+    }
+}
+
+#[test]
+fn a_hole_and_a_track_of_one_net_are_not_the_rules_of_a_holes_space_to_a_track() {
+    // `physical_hole_clearance` reports copper of the hole's own net, which `hole_clearance`
+    // and netsmith's check do not: the condition of the rule leaves it out (issue #1231). A
+    // plated pad's own track, a via's own track, a via of another net, and a track with no net
+    // beside a hole with none.
+    let mut plated = plated_hole_and_track(Some(0.05), "", "P");
+    let mut via_own = jlcpcb();
+    via_own.via("V", (12.0, 10.0), 0.45, 0.2);
+    via_own.wire("V", "F.Cu", (10.0, 10.0), (12.0, 10.0), 0.1);
+    via_own.wire("V", "F.Cu", (12.0, 10.0), (14.0, 10.3), 0.1);
+    let mut via_other = jlcpcb();
+    via_other.via("V", (12.0, 10.0), 0.45, 0.2);
+    via_other.wire("T", "F.Cu", (10.0, 10.3), (14.0, 10.3), 0.1);
+    let mut netless = jlcpcb();
+    netless.part("H1", (4.0, 10.0), 0.0, &[hole(0.0, 0.0, 0.6)], NONE);
+    netless.raw("(segment (start 2 10.45) (end 6 10.45) (width 0.1) (layer \"F.Cu\"))");
+    let cases = [
+        ("a plated pad's own track", &mut plated, 0),
+        ("a via's own tracks", &mut via_own, 0),
+        ("a track of another net beside a via", &mut via_other, 1),
+        ("a track with no net beside a hole with none", &mut netless, 1),
+    ];
+    for (what, b, count) in cases {
+        let text = rules_file(b);
+        let mine = ours(b, &DrcExtras::default().with_rules_file(&text));
+        assert_eq!(mine.count(DrcRule::HoleToTrack), count, "{what}: {mine}");
+        let Some(with) = kicad_hole_to_track("own_net", b, &text) else {
+            eprintln!("skipped: KiCad is not installed");
+            return;
+        };
+        assert_eq!(with.len(), count, "{what}: {with:?}");
+    }
+}
+
+#[test]
+fn the_rule_of_two_holes_space_is_not_silenced_by_a_pads_own_clearance() {
+    // `hole_to_hole` is not overridden by a clearance written on a pad (measured, issue #1231),
+    // so `pad_hole_to_hole` stays a `hole_to_hole` rule.
+    let mut b = jlcpcb();
+    let pad = |n| P {
+        clearance: Some(0.05),
+        ..thru(n, 0.0, 0.0, 1.0, 0.5, "Q")
+    };
+    b.part("J2", (12.0, 16.0), 0.0, &[pad("1")], NONE);
+    b.part("J3", (12.9, 16.0), 0.0, &[pad("1")], NONE);
+    let text = rules_file(&b);
+    assert!(
+        text.contains("(rule \"netsmith pad_hole_to_hole\"\n\t(constraint hole_to_hole"),
+        "{text}"
+    );
+    let mine = ours(&mut b, &DrcExtras::default().with_rules_file(&text));
+    assert_eq!(mine.count(DrcRule::PadHoleToHole), 1, "{mine}");
+    let Some(theirs) = kicad_findings_with("holes", &b.pcb(), &b.pro(), &text) else {
+        eprintln!("skipped: KiCad is not installed");
+        return;
+    };
+    assert_eq!(
+        theirs.iter().filter(|k| k.kind == "pad_hole_to_hole").count(),
+        1,
+        "{theirs:?}"
+    );
+}

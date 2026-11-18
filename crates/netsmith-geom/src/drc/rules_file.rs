@@ -32,8 +32,17 @@
 //! touch (a short, which netsmith reports as `shorting_items` alone: the cross-check counts
 //! KiCad's second finding of the pair as that short's). The project's clearance, and a net
 //! class's, are KiCad's own `clearance` and report beside it, so no rule of a net class is
-//! written. A hole's clearance (`hole_to_track`) is a `hole_clearance` rule and yields to a pad's
-//! own clearance in the same way (issue #1231).
+//! written.
+//!
+//! **A hole's space to a track is a `physical_hole_clearance` too** (issue #1231). KiCad's
+//! `hole_clearance` constraint yields to a clearance written on a pad or on its footprint in the
+//! same way, so a rule of it was silent for a plated pad that carries one; measured with KiCad
+//! 9.0.0, `physical_hole_clearance` reports the track near that pad's hole, with and without the
+//! pad's own clearance. It also reports a track of the hole's own net, which `hole_clearance`
+//! does not and netsmith's `hole_to_track` does not, so the condition leaves a hole and a track
+//! of one net out (`A.NetName != B.NetName`; a hole with no net is judged against every
+//! track). The least space between two holes (`pad_hole_to_hole`) is a `hole_to_hole`
+//! constraint, which a pad's own clearance does not override (measured), and stays one.
 //!
 //! **What a KiCad rule cannot say,** and so stays netsmith's alone: the space from a solder mask
 //! opening to a track (`mask_to_track`; KiCad's `solder_mask_bridge` names a track inside an
@@ -56,6 +65,11 @@ const SMD_PADS: &str = "A.Type == 'Pad' && B.Type == 'Pad' \
     && (A.Pad_Type == 'SMD' || A.Pad_Type == 'Edge connector') \
     && (B.Pad_Type == 'SMD' || B.Pad_Type == 'Edge connector') \
     && A.NetName != B.NetName";
+
+/// The condition that leaves out a hole and a track of one net, as netsmith's `hole_to_track`
+/// does (a hole with no net is judged against every track). KiCad's `physical_hole_clearance`
+/// reports an item of the hole's own net, where its `hole_clearance` does not (issue #1231).
+const OTHER_NET: &str = "(A.NetName != B.NetName || B.NetName == '')";
 
 /// One rule of the file: its name after [`PREFIX`], KiCad's constraint, the least, and the
 /// condition.
@@ -90,17 +104,19 @@ pub fn kicad_dru(project: &Rules, process: &Extras) -> String {
     if let Some(least) = more(process.hole_to_track, project.hole_clearance) {
         rules.push(Written {
             name: "hole_to_track".into(),
-            constraint: "hole_clearance",
+            constraint: "physical_hole_clearance",
             least,
-            condition: format!("{tracks} && (B.Type == 'Via' || B.Pad_Type == 'NPTH, mechanical')"),
+            condition: format!(
+                "{tracks} && (B.Type == 'Via' || B.Pad_Type == 'NPTH, mechanical') && {OTHER_NET}"
+            ),
         });
     }
     if let Some(least) = more(process.plated_hole_clearance, project.hole_clearance) {
         rules.push(Written {
             name: "hole_to_track plated".into(),
-            constraint: "hole_clearance",
+            constraint: "physical_hole_clearance",
             least,
-            condition: format!("{tracks} && B.Pad_Type == 'Through-hole'"),
+            condition: format!("{tracks} && B.Pad_Type == 'Through-hole' && {OTHER_NET}"),
         });
     }
     if let Some(least) = more(process.pad_hole_to_hole, project.hole_to_hole) {
@@ -170,6 +186,12 @@ pub fn kicad_dru(project: &Rules, process: &Extras) -> String {
          # that holds it; netsmith writes this file again on every fab.\n",
     );
     for r in rules {
+        if r.name == "hole_to_track" {
+            out.push_str(
+                "\n# A physical_hole_clearance and not a hole_clearance, for the same reason (issue #1231);\n\
+                 # a hole and a track of one net are left out, as netsmith's check leaves them.\n",
+            );
+        }
         if r.name == "pad_to_pad" {
             out.push_str(
                 "\n# A physical_clearance and not a clearance: KiCad's clearance yields to a clearance\n\
@@ -328,6 +350,37 @@ mod tests {
         assert!(text.contains("A.NetName != B.NetName"), "{text}");
         // KiCad's own clearance of a class reports beside it: no rule of the class is written.
         assert!(!text.contains("Clearance_1mm"), "{text}");
+        assert_eq!(Extras::default().with_rules_file(&text), jlcpcb());
+    }
+
+    #[test]
+    fn a_holes_space_to_a_track_is_a_physical_hole_clearance_of_a_hole_and_a_track_of_two_nets() {
+        // KiCad's hole_clearance yields to a pad's own clearance and physical_hole_clearance does
+        // not, but it also reports copper of the hole's own net (issue #1231).
+        let text = kicad_dru(&project(), &jlcpcb());
+        for (name, least, hole) in [
+            (
+                "hole_to_track",
+                "0.2",
+                "(B.Type == 'Via' || B.Pad_Type == 'NPTH, mechanical')",
+            ),
+            (
+                "hole_to_track plated",
+                "0.28",
+                "B.Pad_Type == 'Through-hole'",
+            ),
+        ] {
+            let rule = format!(
+                "(rule \"netsmith {name}\"\n\t(constraint physical_hole_clearance (min {least}mm))\n\t(condition \"(A.Type == 'Track' || A.Type == 'Arc') && {hole} && (A.NetName != B.NetName || B.NetName == '')\"))"
+            );
+            assert!(text.contains(&rule), "{rule}\n{text}");
+        }
+        // The holes' own space stays a hole_to_hole, which a pad's own clearance does not
+        // override.
+        assert!(
+            text.contains("(rule \"netsmith pad_hole_to_hole\"\n\t(constraint hole_to_hole"),
+            "{text}"
+        );
         assert_eq!(Extras::default().with_rules_file(&text), jlcpcb());
     }
 
