@@ -8,7 +8,7 @@
 //! (`.spi.role &= SpiRole::Slave`); a part that states none is judged by the kinds in its pin
 //! table alone. The kind of each row in a part's table is still what its datasheet says (ADR
 //! 0016): the role judges the table and the nets, and invents no datasheet fact. Names are those
-//! of the device that has the bus. Every bus but `Usb2` has `.levels`, the logic levels of its pins
+//! of the device that has the bus. Every bus but `Usb2` and `Can` has `.levels`, the logic levels of its pins
 //! (`std::logic::Levels`): a part states them for the interface, as it states those of a `Logic`.
 //!
 //! The lines of a bus are plain `Pin`s (ADR 0023; `lines` of ADR 0064 now says which way each
@@ -285,6 +285,77 @@ interface Usb2 {
         .dp bidirectional
         .dm bidirectional
     }
+}
+
+/// A CAN bus (ISO 11898-2): the two lines `canh` and `canl`, a differential pair, named as a
+/// transceiver's datasheet names its pins (CANH, CANL). Every node of the bus is the same, so a
+/// `Can` has no role and no limit: a transceiver's two pins are `bidirectional`, and a connector,
+/// whose pins are passive, is not judged (ADR 0064). `~` between two `Can` interfaces joins
+/// `canh` to `canh` and `canl` to `canl`.
+///
+/// The two lines are a diff pair to the router whatever the board names their nets (issue
+/// #1193), as the two nets of a `std::sources::DiffPair` are: they are routed side by side, with
+/// their vias together, their lengths matched to the router's skew target, and a termination
+/// resistor across them is placed by the connector on them (`CanTermination`). The names `canh`
+/// and `canl` are no suffix pair of the router's, so without this the two lines would be routed
+/// as any two nets.
+///
+/// `impedance` is the differential impedance of the bus, the cable's and the tracks': 120 ohm
+/// nominal, which the termination at each end of the bus matches (ISO 11898-2). It is an offer
+/// (`?=`) that a board may replace, and `~` equates it along the bus. It holds no track to a
+/// width: the width that gives an impedance depends on the space between the two tracks, which
+/// the bus does not know, so a board that wants its tracks held to it states a
+/// `std::sources::PairImpedance` on the two lines with the spacing of its process
+/// (`.can_tracks.impedance &= .xcvr.can.impedance`).
+///
+/// `bitrate` is the bit rate, in the unit of a frequency, as `Uart.baud` is: the board states
+/// the rate the bus runs (`.xcvr.can.bitrate &= 500kHz`), a transceiver bounds it by its
+/// datasheet (`.can.bitrate <= 1MHz`), and `~` equates it, so one value runs along the bus. The
+/// bus has no `.levels`: its lines carry a differential level, not a logic level against a rail.
+/// The logic side of a transceiver (TXD, RXD) is a link of the transceiver's own pins.
+interface Can {
+    .canh: Pin
+    .canl: Pin
+    .impedance: Resistance
+    .impedance ?= 120ohm
+    .bitrate: Frequency
+
+    lines {
+        .canh bidirectional
+        .canl bidirectional
+    }
+}
+
+/// The termination of one end of a CAN bus: one resistor from `canh` to `canl` of `bus`, which
+/// matches the bus's differential impedance so that a level does not reflect from the end (ISO
+/// 11898-2: a bus is terminated at both its ends, and at no node between). A board at an end of
+/// the bus states it, `.term: CanTermination` and `.term.bus ~ .conn.can`; a board in the middle
+/// of the bus states none.
+///
+/// `.resistor.resistance` is offered at `120ohm +/- 1%`, the nominal impedance of the bus; a
+/// board that runs a bus of another impedance narrows it (`.term.resistor.resistance &= 100ohm +/-
+/// 1%`). The placer pulls the resistor to the connector whose pads are on the two lines, as it
+/// pulls a decoupling capacitor to its part (issue #1193): a termination belongs at the end of
+/// the line, where the bus leaves the board.
+///
+/// The module states what its resistor carries, so its power is evaluated (ADR 0026, as for
+/// `PullDown`): while the bus is dominant a transmitter drives `differential` across it, and
+/// while it is recessive nothing. `differential` is offered at `0V..3V`, from the recessive 0 V to
+/// the most a transmitter drives dominant into a bus terminated at both ends (ISO 11898-2,
+/// 1.5 V to 3.0 V into 60 ohm); a board whose transceiver's datasheet drives more into a bus with
+/// one termination states its figure (`.term.differential &= 0V..5V`). The resistor's power is
+/// then up to `3V * 3V / 120ohm`, 75 mW, and the solver picks a package rated for it.
+module CanTermination {
+    .bus: Can
+    /// The resistor. A board narrows its resistance, and a size, `.resistor.package &=
+    /// "0603"` (ADR 0116); left out, the solver picks it.
+    .resistor: Resistor
+    .resistor.resistance ?= 120ohm +/- 1%
+    .bus.canh ~> .resistor ~> .bus.canl
+
+    .differential: Voltage
+    .differential ?= 0V..3V
+    .resistor.current == .differential / .resistor.resistance
 }
 
 /// A pull-up resistor: one resistor from the positive pin of `supply` to `line`, which holds

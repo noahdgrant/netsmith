@@ -7,7 +7,7 @@
 
 use netsmith_check::{Domain, GuidelineRule, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
-    CaseModel, Cutout, Features, ImpedanceTarget, Keepout, Label, Logo, LogoLayer, Offset,
+    CaseModel, Cutout, Features, ImpedanceTarget, Keepout, Label, Logo, LogoLayer, NetPair, Offset,
     OffsetEnd, Outline, PadConnection, PartHeight, PartKind, PartSilk, PartStandoff, PinProtrusion,
     PlaceBound, PlaceField, Placement, Pour, SilkPrint, StepModel,
 };
@@ -300,6 +300,76 @@ fn impedance_targets(model: &Model, errors: &mut Vec<String>) -> Vec<ImpedanceTa
             ohms,
             spacing,
         });
+    }
+    found
+}
+
+/// The std interfaces whose two pins are a diff pair with no impedance (issue #1193), with the
+/// names of the pins, the positive first: a `DiffPair` the design states, and a bus whose lines
+/// are a pair.
+const PAIRED: [(&str, [&str; 2]); 2] = [("DiffPair", ["p", "n"]), ("Can", ["canh", "canl"])];
+
+/// The pairs of nets the design states are diff pairs (issue #1193): each `DiffPair`, and the
+/// lines of each `Can`, with the nets their pins are on, each pair once, in the order of the
+/// paths. A `DiffPair` whose pin is on no net, or whose two pins are on one, is an error, as for
+/// a `PairImpedance`; a bus with a line on no net (a part's interface the board does not use)
+/// states no pair. A net that two pairs give two partners is an error.
+fn stated_pairs(model: &Model, errors: &mut Vec<String>) -> Vec<NetPair> {
+    let mut members: Vec<(String, InstId, bool, [&str; 2])> = model
+        .instances()
+        .filter(|(_, i)| i.kind == InstKind::Interface)
+        .filter_map(|(id, i)| {
+            let (name, pins) = PAIRED.iter().find(|(name, _)| *name == i.type_name)?;
+            Some((model.path_of(id), id, *name == "DiffPair", *pins))
+        })
+        .collect();
+    members.sort();
+    let net_of = |id: InstId, pin: &str| match model.member(id, pin) {
+        Some(Member::Inst(p)) => model
+            .nets()
+            .iter()
+            .find(|n| n.pins.contains(&p))
+            .map(|n| n.name.clone()),
+        _ => None,
+    };
+    let mut found: Vec<NetPair> = Vec::new();
+    for (path, id, stated, pins) in members {
+        let (p, n) = (net_of(id, pins[0]), net_of(id, pins[1]));
+        let (Some(p), Some(n)) = (p.clone(), n.clone()) else {
+            if stated {
+                for (pin, net) in pins.iter().zip([p, n]) {
+                    if net.is_none() {
+                        errors.push(format!(
+                            "`{path}.{pin}` is on no net: join it with `~` to a pin or a net of the pair"
+                        ));
+                    }
+                }
+            }
+            continue;
+        };
+        if p == n {
+            if stated {
+                errors.push(format!(
+                    "`{path}` joins both of its pins to the net `{p}`: a pair is two nets"
+                ));
+            }
+            continue;
+        }
+        let same = |q: &NetPair| (q.p == p && q.n == n) || (q.p == n && q.n == p);
+        if found.iter().any(same) {
+            continue;
+        }
+        if let Some(other) = found
+            .iter()
+            .find(|q| [&q.p, &q.n].iter().any(|x| **x == p || **x == n))
+        {
+            errors.push(format!(
+                "`{path}` makes `{p}` and `{n}` a diff pair, but `{}` already makes `{}` and `{}` one: a net is one track of one pair",
+                other.path, other.p, other.n
+            ));
+            continue;
+        }
+        found.push(NetPair { path, p, n });
     }
     found
 }
@@ -1200,6 +1270,7 @@ pub(crate) fn features_of(
         net_clearances: net_clearances(model),
         rail_nets: rail_nets(model),
         impedance_targets: impedance_targets(model, errors),
+        pairs: stated_pairs(model, errors),
         pours: pours(model, nets, least, errors),
         labels: labels(model, least_text, errors),
         heights: heights(model, errors),

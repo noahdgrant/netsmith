@@ -77,6 +77,12 @@ pub fn board_from_design_placed(
         .filter(|n| u.planes.iter().any(|p| p.layer == format!("In{n}.Cu")))
         .count();
     let signal_layers = 2 + inner - planes_inner;
+    // The diff pairs, whose terminations the placer pulls to their connectors (issue #1193).
+    let pairs = netsmith_pcb::diff_pairs_of(
+        &u.nets,
+        &design.features.impedance_targets,
+        &design.features.pairs,
+    );
     let (outline, corner_radius) = match &design.features.outline {
         None => (
             place::arrange_best(
@@ -89,6 +95,7 @@ pub fn board_from_design_placed(
                     corner_radius: 0.0,
                     pours: !design.features.pours.is_empty(),
                     signal_layers,
+                    pairs: &pairs,
                 },
             )
             .map_err(|e| {
@@ -107,6 +114,7 @@ pub fn board_from_design_placed(
                 &plane_nets,
                 !design.features.pours.is_empty(),
                 signal_layers,
+                &pairs,
             )
             .map_err(|e| {
                 BoardError::DoesNotFit(explained(e, design, &u.parts, &u.base, &u.rules))

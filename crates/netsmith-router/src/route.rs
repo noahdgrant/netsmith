@@ -332,7 +332,9 @@
 //! `PAIR_SUFFIXES` (`dp`/`dm`, `D+`/`D-`, `_P`/`_N`, `.p`/`.n` and the like), so the fields
 //! of a std interface such as `Usb2.dp` and `.dm` make one with no marking (decided by the agent
 //! under the owner's 2026-11-11 delegation: a marking would be a language choice, and the names
-//! already say it).
+//! already say it). The design may also state a pair, whatever its names: the two nets of a
+//! `PairImpedance` (issue #1025), and, with no impedance, of a `DiffPair` or the two lines of a
+//! `Can` (issue #1193; `netsmith_pcb::Board::diff_pairs` has them all).
 //!
 //! **What is built** ([`Router::side_by_side`]). When a try has routed every line, the lines of
 //! each net of a pair, the second net and then the first, are routed again against all the other

@@ -175,6 +175,89 @@ pub fn decoupling_pairs(parts: &[Placed], nets: &[BoardNet]) -> Vec<DecouplingPa
     pairs
 }
 
+/// The terminations of a board's diff pairs (issue #1193), each as a [`DecouplingPair`] whose
+/// `cap` is the termination: every part with two pads, that is no connector, one pad on each net
+/// of a pair (`pairs`, [`Board::diff_pairs`]), with the pads of the connectors on those nets as
+/// the pins it belongs next to. A termination matches the line's impedance at its end, where the
+/// line leaves the board, so the placer pulls it to the connector as it pulls a decoupling
+/// capacitor to its part (a `std::bus::CanTermination`'s resistor to the bus's connector). A
+/// pair with no connector on both its nets has none. Parts are in board order.
+pub fn termination_pairs(
+    parts: &[Placed],
+    nets: &[BoardNet],
+    pairs: &[(String, String)],
+) -> Vec<DecouplingPair> {
+    if pairs.is_empty() {
+        return Vec::new();
+    }
+    let connector = |part: &Placed| part.declared_kind == Some(netsmith_core::PartKind::Connector);
+    let index: HashMap<&str, usize> = parts
+        .iter()
+        .enumerate()
+        .map(|(i, p)| (p.refdes.as_str(), i))
+        .collect();
+    let net_index: HashMap<&str, usize> = nets
+        .iter()
+        .enumerate()
+        .map(|(n, net)| (net.name.as_str(), n))
+        .collect();
+    let mut net_of: HashMap<(usize, &str), usize> = HashMap::new();
+    let mut connectors: Vec<Vec<(usize, String)>> = vec![Vec::new(); nets.len()];
+    for (n, net) in nets.iter().enumerate() {
+        for pad in &net.pads {
+            let Some(&i) = index.get(pad.refdes.as_str()) else {
+                continue;
+            };
+            net_of.insert((i, pad.number.as_str()), n);
+            if connector(&parts[i]) {
+                connectors[n].push((i, pad.number.clone()));
+            }
+        }
+    }
+    let paired: Vec<(usize, usize)> = pairs
+        .iter()
+        .filter_map(|(p, n)| Some((*net_index.get(p.as_str())?, *net_index.get(n.as_str())?)))
+        .collect();
+    let mut found = Vec::new();
+    for (t, part) in parts.iter().enumerate() {
+        if connector(part) {
+            continue;
+        }
+        let numbers = part.footprint.pad_numbers();
+        let [first, second] = numbers.as_slice() else {
+            continue;
+        };
+        let (Some(&n1), Some(&n2)) = (net_of.get(&(t, *first)), net_of.get(&(t, *second))) else {
+            continue;
+        };
+        let across = paired
+            .iter()
+            .any(|&(a, b)| (a, b) == (n1, n2) || (b, a) == (n1, n2));
+        // The connectors with a pad on each of the two nets.
+        let both: Vec<usize> = connectors[n1]
+            .iter()
+            .map(|&(i, _)| i)
+            .filter(|i| connectors[n2].iter().any(|(j, _)| j == i))
+            .collect();
+        if !across || both.is_empty() {
+            continue;
+        }
+        let side = |pad: &str, net: usize| PairNet {
+            cap_pad: pad.to_string(),
+            pins: connectors[net]
+                .iter()
+                .filter(|(i, _)| both.contains(i))
+                .cloned()
+                .collect(),
+        };
+        found.push(DecouplingPair {
+            cap: t,
+            nets: [side(first, n1), side(second, n2)],
+        });
+    }
+    found
+}
+
 /// How far a decoupling capacitor is from the part it decouples.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DecouplingDistance {

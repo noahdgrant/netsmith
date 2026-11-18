@@ -446,36 +446,13 @@ pub(super) fn escape_lanes(board: &Board, grid: &Grid) -> Option<Lanes> {
     any.then_some(lanes)
 }
 
-/// For each net, the other net of its diff pair, if it has one: two nets whose names differ only
-/// in a suffix pair the route scorecard knows (`netsmith_geom::PAIR_SUFFIXES`), or the two nets
-/// of a pair with an impedance target (a `PairImpedance`, issue #1025), which says they are one.
+/// For each net, the other net of its diff pair, if it has one ([`Board::diff_partners`]): two
+/// nets whose names differ only in a suffix pair the route scorecard knows
+/// (`netsmith_geom::PAIR_SUFFIXES`), the two nets of a pair with an impedance target (a
+/// `PairImpedance`, issue #1025), or two nets the design states are a pair (a `DiffPair`, or the
+/// lines of a std bus such as `Can`, issue #1193).
 pub(super) fn diff_pair_partners(board: &Board) -> Vec<Option<usize>> {
-    let index: HashMap<&str, usize> = board
-        .nets
-        .iter()
-        .enumerate()
-        .map(|(n, net)| (net.name.as_str(), n))
-        .collect();
-    let mut partner = vec![None; board.nets.len()];
-    for (n, net) in board.nets.iter().enumerate() {
-        for (p, m) in netsmith_geom::PAIR_SUFFIXES {
-            if let Some(stem) = net.name.strip_suffix(p)
-                && let Some(&other) = index.get(format!("{stem}{m}").as_str())
-            {
-                partner[n] = Some(other);
-                partner[other] = Some(n);
-            }
-        }
-    }
-    for (n, net) in board.nets.iter().enumerate() {
-        if let Some((other, _)) = board.pair_spacing(&net.name)
-            && let Some(&other) = index.get(other)
-        {
-            partner[n] = Some(other);
-            partner[other] = Some(n);
-        }
-    }
-    partner
+    board.diff_partners()
 }
 
 /// How important a line is (issue #416), most important first: the order the classes are

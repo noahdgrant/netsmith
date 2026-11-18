@@ -145,3 +145,21 @@ interface PairImpedance {
     /// The space between the two tracks, edge to edge, as a single value.
     .spacing: Length
 }
+
+/// Two nets that are a diff pair, with no impedance stated (issue #1193): `.p` and `.n` are
+/// joined with `~` to the pair's two nets, and the router routes them as it routes the nets of a
+/// `PairImpedance` or two nets whose names differ only in a suffix pair (`dp` and `dm`, `_P` and
+/// `_N`): side by side, the copper of one kept beside the other's where that costs no length or
+/// vias, their vias together, and the shorter net lengthened by a meander until the two are as
+/// long to the router's skew target. It sets no width and no spacing: each net keeps the width
+/// and the clearance it has. A pair whose impedance matters is a `PairImpedance`, which is a diff
+/// pair too. A bus of the standard library whose lines are a pair says so itself (`std::bus::Can`).
+///
+/// Why an interface of its own, joined with `~`, as `TrackImpedance` and `PairImpedance` are:
+/// it adds no syntax, a module carries the pair out through its interface, and the nets are the
+/// ones the pins are joined to, not strings that a typo would miss. Built by an agent while the
+/// owner was away; the other spellings are in the pull request of issue #1193.
+interface DiffPair {
+    .p: Pin
+    .n: Pin
+}

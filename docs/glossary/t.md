@@ -18,6 +18,10 @@ _Avoid_: Absolute temperature, delta T (the range of temperatures a board's surr
 **Terminal**:
 A pin that belongs to a part, directly or through one of its interfaces. Terminals are what an exporter writes out.
 
+**Termination**:
+A part across the two nets of a _Diff pair_ that matches the line's impedance at its end, so that a level does not reflect: a part with two pads, no connector, one pad on each net (a `std::bus::CanTermination`'s 120 ohm resistor across a CAN bus's `canh` and `canl`). Derived from the netlist, as a decoupling capacitor is: the placer pulls it to the pads of the connectors that have a pad on both nets, where the line leaves the board (`netsmith_pcb::termination_pairs`, issue #1193).
+_Avoid_: Terminator, terminal (a pin of a part is a _Terminal_)
+
 **Test current**:
 The current a logic level was measured at, written after the value: `.voh &= .vdd.voltage - 0.4V at 2mA`. The statement narrows or constrains the level as it does without `at`; the checker records the current beside the level, and a later analysis derives the pin's output resistance from it (ADR 0076, amendment 1). Only `voh` and `vol` take one, and a level has one.
 _Avoid_: Load current (a part's `.current` is its draw), drive current

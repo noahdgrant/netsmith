@@ -66,6 +66,22 @@ pub struct ImpedanceTarget {
     pub spacing: Option<f64>,
 }
 
+/// Two nets the design states are a diff pair with no impedance (issue #1193): the two pins of
+/// a `std::sources::DiffPair`, or the two lines of a std bus whose lines are a pair
+/// (`std::bus::Can`). The router routes them as it routes the nets of a `PairImpedance` and two
+/// nets whose names say they are a pair (`netsmith_geom::PAIR_SUFFIXES`), with no width or
+/// spacing of their own.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NetPair {
+    /// The path of the member that states it (`can_pair`, `xcvr.can`): the first in the order
+    /// of the paths, when several state the same pair.
+    pub path: String,
+    /// The positive net (a `DiffPair`'s `.p`, a bus's `canh`).
+    pub p: String,
+    /// The negative net.
+    pub n: String,
+}
+
 /// What a design says about the board beyond its parts and nets (ADR 0020). Everything is
 /// optional; a design that says none of it is laid out as before.
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
@@ -92,6 +108,10 @@ pub struct Features {
     /// of their paths. Left out of a design file when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub impedance_targets: Vec<ImpedanceTarget>,
+    /// The pairs of nets the design states are diff pairs with no impedance (issue #1193), each
+    /// once, in the order of their paths. Left out of a design file when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pairs: Vec<NetPair>,
     /// The current each net carries, where it is known, and the least width that carries it
     /// (IPC-2221 at the width tolerance, ADR 0036): what the router may not narrow a track of
     /// the net below, away from its pads, and what the design rules check holds the routed

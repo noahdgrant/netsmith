@@ -111,6 +111,7 @@ impl Unplaced {
             rail_nets: design.features.rail_nets.clone(),
             impedance_widths,
             impedance_targets: design.features.impedance_targets.clone(),
+            pairs: design.features.pairs.clone(),
             net_currents: design.features.net_currents.clone(),
             branch_currents: design.features.branch_currents.clone(),
             overhang,

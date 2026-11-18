@@ -82,8 +82,8 @@ pub use board::{
     FixedCopper, Hang, HeightUnchecked, HeightUnknown, HoleNeighbour, KeepoutArea,
     Loaded as LoadedBoard, PadRef, PairCoupling, Placed, PlacementProblem, Plane, ReferenceSide,
     Side, Silk, StandardPass, Teardrop, Track, Trim, UnknownUnder, Unplaced, Via, ViaOffer,
-    ViaSpan, ViasInPads, ZoneIslands, ZonePads, heights_unknown_warning, member as board_member,
-    outline_box, rect_distance, span_depth, via_offers,
+    ViaSpan, ViasInPads, ZoneIslands, ZonePads, diff_pairs_of, heights_unknown_warning,
+    member as board_member, outline_box, rect_distance, span_depth, via_offers,
 };
 pub use body3d::{
     Axis as BodyAxis, Material as BodyMaterial, Primitive as BodyPrimitive, Solid as BodySolid,
@@ -168,7 +168,7 @@ pub use polygon::{BoardEdge, Polygon};
 pub use protrusion::{Cover, Protrusion, Verdict, judge as judge_protrusion, may_be_covered};
 pub use quality::{
     DecouplingDistance, DecouplingPair, PairNet, Quality, crossings, decoupling_pairs,
-    segments_cross,
+    segments_cross, termination_pairs,
 };
 pub use ratsnest::{Node as RatNode, Ratline, Ratsnest, nodes_of as ratsnest_nodes_of};
 pub use routes::{

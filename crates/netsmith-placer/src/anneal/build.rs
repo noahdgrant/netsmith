@@ -213,7 +213,12 @@ impl<'a> Engine<'a> {
                 .map(|(k, _)| k)
                 .collect()
         };
+        // A termination across a diff pair is pulled to the connector on the pair as a decoupling
+        // capacitor is to its part (issue #1193).
         let mut decs: Vec<Dec> = decoupling_pairs(parts, p.nets)
+            .into_iter()
+            .chain(termination_pairs(parts, p.nets, p.pairs))
+            .collect::<Vec<_>>()
             .iter()
             .map(|pair: &DecouplingPair| {
                 let side = |s: &netsmith_pcb::PairNet| {
