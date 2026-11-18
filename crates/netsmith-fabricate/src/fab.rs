@@ -177,7 +177,22 @@ pub struct FabOptions {
     /// and no `bom.csv` and no `cpl.csv`. The run still ends in an error while the check has
     /// errors, and an order never takes such a package (it makes the board again, and the check
     /// stops it). A board that passes is packaged as usual. Not with `allow_drc_violations`.
+    ///
+    /// It waives the findings of the board's own limits too (issue #1212), which stop a plain
+    /// `fab` at placement: a part over a height limit (`too_tall`), a part or a pad in a keepout
+    /// (`in_keepout`, `pad_in_keepout`), a part over pins that protrude (`over_pins`), a
+    /// collision with a case model, a part of unknown height under a limit when constraints are
+    /// strict, and the requirements on where parts go that the placer's own arrangement does not
+    /// meet ([`review_waives`]). Each is listed under `FOR REVIEW` in the notes, and a board with
+    /// one is packaged for review even when the design rules check passes.
     pub for_review: bool,
+    /// With `for_review`, write the pictures of the copper of a package made for review (issue
+    /// #1213): `<board>-top-REVIEW.png`, `<board>-inner<n>-REVIEW.png` for each inner signal
+    /// layer and `<board>-bottom-REVIEW.png`, the bytes `view pcb --layer <layer> --drc
+    /// --islands` draws of the board `fab` routed ([`review_pictures`]). `false` is `board fab
+    /// --no-pictures`. A package that is not for review has none, and the ones an earlier run
+    /// left are removed.
+    pub review_pictures: bool,
     /// After the files are written, compare the copper of each layer of the Gerbers with the
     /// board model's with netsmith's own viewer (`gerber_compare`, issue #1158; needs no KiCad),
     /// and with KiCad installed plot each board with KiCad too and compare the two sets
@@ -397,6 +412,7 @@ impl Default for FabOptions {
             layout: None,
             allow_drc_violations: false,
             for_review: false,
+            review_pictures: true,
             cross_check: false,
             only: None,
             strict_heights: false,
@@ -496,6 +512,87 @@ pub struct FabFailure {
     /// The faults of the placement check where the placer ended, as data (#779), when they are
     /// why the run stopped.
     pub placement: Box<[netsmith_pcb::PlacementFault]>,
+    /// The package `--for-review` made, when it made one (issue #1212).
+    pub review: Option<Box<Review>>,
+}
+
+/// A package made for review: its board, and what `--for-review` waived of it (issue #1212).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Review {
+    /// The board, as its label (`Unit`, `DevKit/carrier`).
+    pub board: String,
+    /// Each finding waived, as data, in the order the notes' `FOR REVIEW` heading lists them.
+    pub waived: Vec<Waived>,
+}
+
+/// A finding `board fab --for-review` waived (issue #1212): a line of the `FOR REVIEW` heading
+/// of the notes, and a finding of code `fab` with `waived: "for-review"` in `--format json`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Waived {
+    /// The rule that found it: a fault of the placement check (`too_tall`, `in_keepout`, ...), a
+    /// case model's finding (`case_collision`, ...), `height_unchecked`, or a rule of the design
+    /// rules check (`clearance`, `constraint`, ...).
+    pub rule: String,
+    /// The sentence, with the part, the numbers and the place.
+    pub message: String,
+    /// The fault of the placement check, with its parts and numbers, when it is one.
+    pub placement: Option<netsmith_pcb::PlacementFault>,
+    /// The finding of the design rules check, with its place, nets and parts, when it is one.
+    pub drc: Option<netsmith_geom::DrcFinding>,
+}
+
+impl Waived {
+    /// The line of the notes: `error [rule] message`, as the design rules check words its own.
+    pub fn line(&self) -> String {
+        match &self.drc {
+            Some(f) => f.to_string(),
+            None => format!("error [{}] {}", self.rule, self.message),
+        }
+    }
+
+    fn of_fault(fault: netsmith_pcb::PlacementFault) -> Waived {
+        // The fault's sentence names its place where it has one (`too_tall`); for the others
+        // the box each part's courtyard takes is the place.
+        let mut message = fault.text.clone();
+        if fault.kind != "too_tall" {
+            for part in &fault.parts {
+                if let Some(c) = &part.courtyard {
+                    message.push_str(&format!(
+                        "; the courtyard of {} is ({:.2}, {:.2}) to ({:.2}, {:.2}) mm from the board's top left corner",
+                        part.part.refdes, c.x_min, c.y_min, c.x_max, c.y_max
+                    ));
+                }
+            }
+        }
+        Waived {
+            rule: fault.kind.to_string(),
+            message,
+            placement: Some(fault),
+            drc: None,
+        }
+    }
+
+    fn of_drc(finding: &netsmith_geom::DrcFinding) -> Waived {
+        Waived {
+            rule: finding.rule.id().to_string(),
+            message: finding.with_items(),
+            placement: None,
+            drc: Some(finding.clone()),
+        }
+    }
+}
+
+/// Whether `--for-review` waives a fault of the placement check of this kind (issue #1212): the
+/// limits the board states on what may stand where (a keepout, a height limit, pins that
+/// protrude), which a board breaks and can still be made and assembled as drawn. The faults that
+/// say the parts do not fit the board itself (courtyards that overlap, a part outside the outline
+/// or over a cutout, a pad off or too near an edge, holes too near) or that the board cannot be
+/// drawn (a cutout outside the outline, a keepout with no place) still stop `fab`.
+pub fn review_waives(kind: &str) -> bool {
+    matches!(
+        kind,
+        "too_tall" | "in_keepout" | "pad_in_keepout" | "over_pins"
+    )
 }
 
 impl From<String> for FabFailure {
@@ -1115,7 +1212,13 @@ fn fab_board(
             options,
             say,
         )?;
-        let faults = board.placement_faults();
+        // `--for-review` waives the faults of the board's own limits (issue #1212): they are
+        // listed under FOR REVIEW in the notes, and the rest still stop `fab`.
+        let (waived_faults, faults): (Vec<_>, Vec<_>) = board
+            .placement_faults()
+            .into_iter()
+            .partition(|f| options.for_review && review_waives(f.kind));
+        let mut waived: Vec<Waived> = waived_faults.into_iter().map(Waived::of_fault).collect();
         let problems: Vec<String> = faults.iter().map(|f| f.text.clone()).collect();
         // When the placer could not meet the requirements of the physical file, the faults
         // above are its symptoms: say first which lines are not met and which cannot all hold,
@@ -1143,9 +1246,11 @@ fn fab_board(
         // not meet a requirement would be found by the check after routing; say so now, with
         // the same list, unless constraints are only warnings for this run. (With a layout
         // file the positions are the file's, and the check after routing measures those.)
+        // `--for-review` goes on: the check after routing finds them, and they are waived there.
         if layout.is_none()
             && let Some(report) = unmet.filter(|r| !r.unmet.is_empty())
             && !catalogs.constraints_warn()
+            && !options.for_review
         {
             return Err(FabFailure {
                 text: no_seed.unwrap_or_default()
@@ -1168,7 +1273,18 @@ fn fab_board(
         }
         // A part under a height limit that states no height is not a pass (ADR 0045,
         // "Height limits"): it is named, here and in the notes.
-        let unchecked = board.heights_unchecked();
+        let mut unchecked = board.heights_unchecked();
+        if options.strict_heights && options.for_review {
+            // Waived for review, and then not also a warning.
+            for u in std::mem::take(&mut unchecked) {
+                waived.push(Waived {
+                    rule: "height_unchecked".to_string(),
+                    message: u.to_string(),
+                    placement: None,
+                    drc: None,
+                });
+            }
+        }
         if options.strict_heights && !unchecked.is_empty() {
             return Err(unchecked
                 .iter()
@@ -1197,13 +1313,30 @@ fn fab_board(
         // routing: a collision stops `fab` whatever the flags say, an unchecked fit does when
         // constraints are strict, the rest are warnings. A file that is not there was said by
         // `models::locate` above; it is in the notes too.
-        let fit = if built.design.features.case_models.is_empty() {
+        let mut fit = if built.design.features.case_models.is_empty() {
             netsmith_3d::CaseScene::default()
         } else {
             timings::stage("fab.case", &label, || {
                 crate::board3d::scene(built, &board).case
             })
         };
+        // `--for-review` waives a collision with the case and a fit it cannot check, not a case
+        // model it cannot read; what it waives is not also a warning.
+        if options.for_review {
+            fit.findings.retain(|f| {
+                let waive = f.severity(options.strict_heights) == "error"
+                    && !matches!(f.why, netsmith_3d::CaseWhy::Unreadable { .. });
+                if waive {
+                    waived.push(Waived {
+                        rule: f.kind.word().to_string(),
+                        message: f.to_string(),
+                        placement: None,
+                        drc: None,
+                    });
+                }
+                !waive
+            });
+        }
         let refused: Vec<String> = fit
             .findings
             .iter()
@@ -1639,12 +1772,21 @@ fn fab_board(
                 extras.insert(after, cost.clone());
             }
         }
+        // A board the router left open is packaged as before, marked INCOMPLETE, unless a
+        // finding was waived for review before routing: it is never packaged to order from.
+        let for_review = options.for_review && (incomplete.is_none() || !waived.is_empty());
+        let pictures = if for_review && options.review_pictures {
+            review_pictures(&board, name)
+        } else {
+            Vec::new()
+        };
         let package_options = Options {
             // The check finds the unrouted connections as unconnected pads; the package is made
             // anyway, for the person to look at, and the run still fails.
             allow_drc_violations: options.allow_drc_violations || incomplete.is_some(),
-            // A board the router left open is packaged as before, marked INCOMPLETE.
-            for_review: options.for_review && incomplete.is_none(),
+            for_review,
+            waived: waived.iter().map(Waived::line).collect(),
+            pictures: pictures.iter().map(|(file, _)| file.clone()).collect(),
             drc: drc_extras(&board),
             trim: board.trims().iter().map(Trim::note).collect(),
             process: Some(board.process_note()),
@@ -1659,16 +1801,49 @@ fn fab_board(
             ),
             ..Options::default()
         };
+        // The pictures of a package made for review are of the board just routed (issue #1213);
+        // a package that is not for review has none, and those an earlier run left go.
+        let draw_pictures = |pkg: &mut Package| -> Result<Vec<PathBuf>, String> {
+            let wanted = if pkg.for_review() { &pictures[..] } else { &[] };
+            let (files, notes) = write_review_pictures(
+                &dir,
+                name,
+                &board,
+                package_options.constraints.as_ref(),
+                wanted,
+            )?;
+            for note in notes {
+                say(format!("{}: warning: {note}", built.label()));
+                if !pkg.notes.is_empty() && !pkg.notes.ends_with('\n') {
+                    pkg.notes.push('\n');
+                }
+                pkg.notes.push_str(&format!("warning: {note}\n"));
+            }
+            Ok(files)
+        };
         if let Some(incomplete) = incomplete {
-            let packaged = package(&pcb_path, &entries, &package_options);
+            let mut packaged = package(&pcb_path, &entries, &package_options);
             let requirements = packaged
                 .as_ref()
                 .err()
                 .map(unmet_requirements)
                 .unwrap_or_default();
+            let mut review = None;
+            if let Ok(pkg) = &mut packaged {
+                draw_pictures(pkg).map_err(fail)?;
+                if pkg.for_review() {
+                    let mut waived = waived;
+                    waived.extend(pkg.drc_report.errors().map(Waived::of_drc));
+                    review = Some(Box::new(Review {
+                        board: label.clone(),
+                        waived,
+                    }));
+                }
+            }
             return Err(FabFailure {
                 text: fail(write_incomplete(&incomplete, &dir, packaged)),
                 requirements,
+                review,
                 ..FabFailure::default()
             });
         }
@@ -1692,6 +1867,9 @@ fn fab_board(
             requirements: unmet_requirements(&e),
             ..FabFailure::default()
         })?;
+        let mut pkg = pkg;
+        let picture_files =
+            timings::stage("fab.pictures", &label, || draw_pictures(&mut pkg)).map_err(fail)?;
         if pkg.for_review() {
             // Written for a person to look at; the run still fails, as the check does.
             let mut written = vec![
@@ -1707,25 +1885,32 @@ fn fab_board(
                 timings::stage("fab.write", &label, || pkg.write(&dir))
                     .map_err(|e| fail(e.to_string()))?,
             );
+            written.extend(picture_files);
             let names: Vec<String> = written
                 .iter()
                 .filter_map(|f| f.file_name())
                 .map(|n| n.to_string_lossy().into_owned())
                 .collect();
-            let counts = pkg.drc_report.counts();
+            let mut waived = waived;
+            waived.extend(pkg.drc_report.errors().map(Waived::of_drc));
             return Err(FabFailure {
                 text: fail(format!(
-                    "design rules check: {} errors: {}: files to look at are in {}: {}; no bom.csv and no cpl.csv, and `project order` refuses this package; the run still fails while the check has errors\n\n{}",
-                    counts.violations + counts.unconnected + counts.footprint_errors,
+                    "{} finding{} waived for review: {}: files to look at are in {}: {}; no bom.csv and no cpl.csv, and `project order` refuses this package; the run still fails while a waived finding stands\n\n{}",
+                    waived.len(),
+                    if waived.len() == 1 { "" } else { "s" },
                     netsmith_fab::FOR_REVIEW,
                     dir.display(),
                     names.join(", "),
-                    pkg.drc_report
-                        .errors()
-                        .map(ToString::to_string)
+                    waived
+                        .iter()
+                        .map(Waived::line)
                         .collect::<Vec<_>>()
                         .join("\n")
                 )),
+                review: Some(Box::new(Review {
+                    board: label.clone(),
+                    waived,
+                })),
                 requirements: pkg
                     .constraints
                     .iter()
@@ -1738,7 +1923,6 @@ fn fab_board(
         // The viewer comparison of `--cross-check` (issue #1158): the copper of the board model
         // and of the Gerbers just made, each layer, with no KiCad. Its lines are in the notes
         // before they are written, so `fab-notes.txt` has them, a difference too.
-        let mut pkg = pkg;
         let viewer_check = if options.cross_check {
             say(format!(
                 "{}: cross-checking against netsmith's viewer",
@@ -1937,6 +2121,83 @@ fn fab_system(
         ));
     }
     Ok(())
+}
+
+/// The pictures of the copper a package made for review has (issue #1213), each with its file
+/// name: the top layer, each inner signal layer (an inner plane is left out) and the bottom
+/// layer, as `<name>-top-REVIEW.png`, `<name>-inner<n>-REVIEW.png` and `<name>-bottom-REVIEW.png`.
+/// The names end `-REVIEW`, as the review package's Gerber zip does, so that nobody orders from
+/// them; the pixels carry no mark.
+pub fn review_pictures(board: &Board, name: &str) -> Vec<(String, netsmith_pcb::CopperLayer)> {
+    use netsmith_pcb::CopperLayer;
+    std::iter::once(CopperLayer::Front)
+        .chain(board.signal_layers())
+        .chain(std::iter::once(CopperLayer::Back))
+        .map(|layer| {
+            let word = netsmith_pcb::routes_layer_word(layer.name()).unwrap_or_default();
+            (format!("{name}-{word}-REVIEW.png"), layer)
+        })
+        .collect()
+}
+
+/// What `view pcb --layer <layer> --drc --islands` asks for, with its other flags left as they
+/// are: the request of a picture of a package made for review (issue #1213), so that its bytes
+/// are the bytes `view pcb` writes of the same board.
+pub fn review_picture_request(layer: netsmith_pcb::CopperLayer) -> crate::pcb_picture::Request {
+    crate::pcb_picture::Request {
+        layers: netsmith_pcb::PictureLayers::One(layer),
+        from_below: None,
+        region: None,
+        scale: crate::pcb_picture::DEFAULT_SCALE,
+        courtyards: false,
+        designators: false,
+        highlight: Vec::new(),
+        only_open: false,
+        drc: true,
+        islands: true,
+        format: crate::pcb_picture::Format::Png,
+    }
+}
+
+/// Writes `pictures` ([`review_pictures`]) of `board` into `dir`, after removing every picture
+/// for review of `name` an earlier run left there, so that the folder holds only the pictures of
+/// this package (none for a package that is not for review). `constraints` are the design's, for
+/// the markers of the check. A picture that cannot be drawn is a note, never a failed fab; a file
+/// that cannot be written or removed is an error.
+fn write_review_pictures(
+    dir: &Path,
+    name: &str,
+    board: &Board,
+    constraints: Option<&netsmith_geom::Constraints>,
+    pictures: &[(String, netsmith_pcb::CopperLayer)],
+) -> Result<(Vec<PathBuf>, Vec<String>), String> {
+    let prefix = format!("{name}-");
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let file = entry.file_name().to_string_lossy().into_owned();
+            if file.starts_with(&prefix) && file.ends_with("-REVIEW.png") {
+                fs::remove_file(entry.path())
+                    .map_err(|e| format!("{}: {e}", entry.path().display()))?;
+            }
+        }
+    }
+    let mut written = Vec::new();
+    let mut notes = Vec::new();
+    for (file, layer) in pictures {
+        let path = dir.join(file);
+        match crate::pcb_picture::draw(board, &review_picture_request(*layer), constraints.cloned())
+        {
+            Ok(drawn) => {
+                fs::write(&path, &drawn.bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+                written.push(path);
+            }
+            Err(e) => notes.push(format!(
+                "the picture {} was not drawn ({e}); `view pcb` draws the board",
+                path.display()
+            )),
+        }
+    }
+    Ok((written, notes))
 }
 
 /// The board's 3D scene as `<name>.glb` in `dir` (or, with `write` false, the removal of one an

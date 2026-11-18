@@ -121,6 +121,10 @@ pub struct Finding {
     /// check.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub parts: Vec<String>,
+    /// What waived the finding, for one a run went past: `for-review` for what `board fab
+    /// --for-review` waived (issue #1212). The finding is still an error of the run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub waived: Option<String>,
 }
 
 /// Where a finding of the design rules check is.
@@ -152,6 +156,7 @@ impl Finding {
             place: None,
             nets: Vec::new(),
             parts: Vec::new(),
+            waived: None,
         }
     }
 
@@ -169,34 +174,37 @@ pub fn of_drc(report: &netsmith_geom::DrcReport, board: Option<&str>) -> Vec<Fin
     report
         .findings
         .iter()
-        .map(|f| {
-            let mut nets: Vec<String> = Vec::new();
-            for n in f.items.iter().filter_map(|i| i.net.clone()) {
-                if !nets.contains(&n) {
-                    nets.push(n);
-                }
-            }
-            Finding {
-                board: board.map(str::to_string),
-                rule: Some(f.rule.id().to_string()),
-                place: Some(Place {
-                    x: f.at.x,
-                    y: f.at.y,
-                    layer: f.layer.clone(),
-                }),
-                nets,
-                parts: f.parts(),
-                ..Finding::plain(
-                    match f.severity {
-                        netsmith_geom::DrcSeverity::Error => Severity::Error,
-                        _ => Severity::Warning,
-                    },
-                    "drc",
-                    f.with_items(),
-                )
-            }
-        })
+        .map(|f| of_drc_finding(f, board))
         .collect()
+}
+
+/// One finding of the design rules check as [`of_drc`] has it.
+pub fn of_drc_finding(f: &netsmith_geom::DrcFinding, board: Option<&str>) -> Finding {
+    let mut nets: Vec<String> = Vec::new();
+    for n in f.items.iter().filter_map(|i| i.net.clone()) {
+        if !nets.contains(&n) {
+            nets.push(n);
+        }
+    }
+    Finding {
+        board: board.map(str::to_string),
+        rule: Some(f.rule.id().to_string()),
+        place: Some(Place {
+            x: f.at.x,
+            y: f.at.y,
+            layer: f.layer.clone(),
+        }),
+        nets,
+        parts: f.parts(),
+        ..Finding::plain(
+            match f.severity {
+                netsmith_geom::DrcSeverity::Error => Severity::Error,
+                _ => Severity::Warning,
+            },
+            "drc",
+            f.with_items(),
+        )
+    }
 }
 
 /// The word of a stage, as the code of an error it found.
