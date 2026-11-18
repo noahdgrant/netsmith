@@ -1305,6 +1305,10 @@ pub struct RouteOptions {
     /// The rounds of rip-up and re-route of whole nets that a try gets when lines are still left
     /// after the chain ([`RIP_ROUNDS`] by default; 0 runs none). Only used with `rip_up`.
     pub rip_rounds: usize,
+    /// Whether the pours are stitched to the other layers of their nets once the board is routed
+    /// (`stitch.rs`); on by default. `netsmith routes route` routes one net and writes its
+    /// copper to the routes file, which keeps no stitching (issue #1195).
+    pub stitch: bool,
 }
 
 /// Which tries of the router route the lines by class, the most important first, and keep the
@@ -1355,6 +1359,7 @@ impl Default for RouteOptions {
             share_vias: true,
             pour_pads: true,
             rip_rounds: RIP_ROUNDS,
+            stitch: true,
         }
     }
 }
@@ -1666,7 +1671,9 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     // clear of them.
     crate::pad_vias::add(board);
     // Pours are stitched to the other layers of their nets in what the routing left free.
-    crate::stitch::stitch(board);
+    if options.stitch {
+        crate::stitch::stitch(board);
+    }
     // A pad that a pour of its net joins to those vias gives up its own (issue #834).
     crate::pour_pads::drop_vias(board, &drops);
     // Teardrops round the copper the search settled (issue #431, S11).

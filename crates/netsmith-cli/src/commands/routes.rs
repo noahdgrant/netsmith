@@ -18,7 +18,7 @@ use super::common;
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "The routes file `<stem>.routes.toml` sits beside the source and its layout file. `fab`, the editor and `netsmith dev route` (through `board fab --save-placed`) draw its copper on the placed board before the router, which keeps it and routes only the connections it leaves; a net with `lock = true` gets no copper from the router. Places are in mm from the outline's top left corner, y down, as in the layout file. The file's format is in the language guide's \"The routes file\".\n\nEach command builds and places the board as `fab` does (nothing is routed). The exit code is 0 when it did what it was asked, 1 when it refused (a shape that breaks the design rules, a locked shape, a net the board does not have), and 2 when it could not run."
+    after_long_help = "The routes file `<stem>.routes.toml` sits beside the source and its layout file. `fab`, the editor and `netsmith dev route` (through `board fab --save-placed`) draw its copper on the placed board before the router, which keeps it and routes only the connections it leaves; a net with `lock = true` gets no copper from the router. Places are in mm from the outline's top left corner, y down, as in the layout file. The file's format is in the language guide's \"The routes file\".\n\nEach command builds and places the board as `fab` does (nothing is routed, but by `route`). The exit code is 0 when it did what it was asked, 1 when it refused (a shape that breaks the design rules, a locked shape, a net the board does not have), and 2 when it could not run."
 )]
 pub struct Args {
     #[command(subcommand)]
@@ -60,6 +60,12 @@ pub enum Command {
         after_long_help = "The outline is a polygon given by `--outline X,Y` once for each corner (three or more, in order), by `--rect X,Y,W,H` for a rectangle, or by `--board-outline` for the board's whole outline. Places are mm from the outline's top left corner, y down, as for `add-track`. The zone is filled inside the outline on each `--layer` (`top`, `bottom`, `inner1`, ...; repeat the flag for several), joined to its net; where two zones of a layer overlap the higher `--priority` has the area, and two zones of different nets with the same priority must not overlap. Without a setting the zone has the design's own plane's: the clearance the process's planes keep, a minimum width of 0.25 mm, thermal relief gap and spokes of 0.5 mm, priority 0, a thermal relief at each pad of its net.\n\nA layer that has a zone of the routes file takes its zones from the file alone: the design's pour or plane on it is not drawn (the command says so when this zone makes that so). A zone is refused when a corner is off the board, a setting is wrong, or the design rules check finds an error with it that the board did not have (a short, a clearance, a track of another net it covers); the file is then as it was. The zone is written to the net's record (made, with the net's pad hash, if the net has none); `routes show` numbers it, and `delete`, `lock` and `unlock` name it with `--zone N`."
     )]
     AddZone(AddZoneArgs),
+    /// Route one net, or one connection of it, round the copper there; say which nets stood in
+    /// its way, and with `--rip` route them again after it.
+    #[command(
+        after_long_help = "The router routes the net (or the connection, `NET:REF.PAD-REF.PAD`: the lines that join those two pads alone) on the board as placed with the routes file's copper, every other net held as it is, and writes its tracks and vias to the net's record, unlocked. A connection joined already is said, and nothing is written. The text says the narrowest place of the new way and the widest track of the net that has room there, with every space of the design rules.\n\nWhen the net has no way round the copper there, it is routed again with the unlocked tracks and vias of the other nets taken away, and the nets whose copper that way crosses are named (exit 1, nothing written); where there is no way even so, what walls it in is said: pads, vias, the copper of locked nets, the edge. With `--rip NET,...` the copper of those nets alone may be taken away: it is removed, the net is routed through the room it left, and each ripped net is routed again after it (it may rip in turn, from the nets named). A locked net or a locked shape is never ripped, nor is a zone. The rounds are bounded by counts, those of the router's rounds of rip-up: 6 rounds, 3 rips of one net, 64 runs of the router. A ripped net left with more connections open than it had, or a result the design rules check finds a new error with, is refused and the file is as it was. `--dry-run` says what it would do and writes nothing."
+    )]
+    Route(RouteArgs),
     /// Delete a net's record, or one of its shapes; a locked one is refused.
     Delete(ShapeArgs),
     /// Lock a net (the router adds no copper to it) or one shape (kept when the net's pads move).
@@ -114,6 +120,24 @@ pub struct ImportArgs {
 pub struct ShowArgs {
     #[command(flatten)]
     pub target: Target,
+    /// Text for a person, or one JSON document on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: common::Format,
+}
+
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct RouteArgs {
+    /// The net, or one connection of it: `NET` or `NET:REF.PAD-REF.PAD` (`VCC:U1.3-C2.1`).
+    #[arg(value_name = "NET[:PAD-PAD]")]
+    pub net: String,
+    #[command(flatten)]
+    pub target: Target,
+    /// Nets whose unlocked tracks and vias may be removed and routed again after it, `A,B`.
+    #[arg(long, value_name = "NET,...", value_delimiter = ',')]
+    pub rip: Vec<String>,
+    /// Say what it would do, and write nothing.
+    #[arg(long)]
+    pub dry_run: bool,
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
@@ -359,6 +383,7 @@ pub fn run(args: Args) -> ExitCode {
             pads: pad_connection(a.pads),
             lock: a.lock,
         }),
+        Command::Route(a) => route(&a),
         Command::Delete(a) => edit(&a.target, |_| lib::Edit::Delete {
             net: a.net.clone(),
             shape: shape(&a),
@@ -521,6 +546,68 @@ fn edit_all(target: &Target, changes: impl Fn(&Board) -> Vec<lib::Edit>) -> Exit
             ExitCode::from(2)
         }
         Err(code) => code,
+    }
+}
+
+/// `routes route` (issue #1195, `netsmith_fabricate::route_net`): exit 0 when the net is routed
+/// (or would be, with `--dry-run`) or joined already, 1 when it is refused, 2 when it could not
+/// be tried.
+fn route(args: &RouteArgs) -> ExitCode {
+    use netsmith_fabricate::route_net;
+    let done = with_board(&args.target, |placed, board| {
+        let file = routes_file(placed);
+        let routes = lib::load(&file)?;
+        let ask = match route_net::Ask::of(board, &args.net, &args.rip) {
+            Ok(ask) => ask,
+            Err(lib::Refusal::Refused(e)) => return Ok(Err(e)),
+            Err(lib::Refusal::Failed(e)) => return Err(e),
+        };
+        let routed = route_net::route_net(board, &routes, &ask)?;
+        let written = match (&routed.routes, args.dry_run) {
+            (Some(r), false) => {
+                lib::save(&file, r)?;
+                true
+            }
+            _ => false,
+        };
+        Ok(Ok((routed, file, written)))
+    });
+    let (routed, file, written) = match done {
+        Ok(Ok(done)) => done,
+        Ok(Err(e)) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+        Err(code) => return code,
+    };
+    match args.format {
+        common::Format::Json => {
+            let mut doc = serde_json::to_value(&routed).expect("plain data");
+            doc["dry_run"] = args.dry_run.into();
+            doc["written"] = written.into();
+            doc["file"] = file.display().to_string().into();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&doc).expect("plain data")
+            );
+        }
+        common::Format::Text => {
+            print!("{}", routed.text());
+            if written {
+                println!("wrote {}", file.display());
+            } else if args.dry_run && routed.routes.is_some() {
+                println!("dry run: {} is not written", file.display());
+            }
+        }
+    }
+    match &routed.refused {
+        Some(e) => {
+            if args.format == common::Format::Text {
+                eprintln!("error: {e}");
+            }
+            ExitCode::FAILURE
+        }
+        None => ExitCode::SUCCESS,
     }
 }
 

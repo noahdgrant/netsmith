@@ -16,6 +16,9 @@
 //! only the rest (partial routing, issue #825), and [`kept`] is that copper as a file keeps it
 //! between sessions (issue #1019).
 //!
+//! [`one`] routes a few nets round the copper a board has and every other net locked, for
+//! `netsmith routes route` (issue #1195).
+//!
 //! [`walk`] is not a step of routing: the query the editor's track tool asks while a track is drawn
 //! (issue #726), whether a segment is free and the way round the copper in the way, with the
 //! design rules check's own spaces. [`shove`] moves the routes file's unlocked copper out of the
@@ -32,6 +35,7 @@ mod decouple;
 mod kelvin;
 pub mod kept;
 pub mod meander;
+pub mod one;
 pub mod pad_vias;
 pub mod parallel;
 mod plan;
