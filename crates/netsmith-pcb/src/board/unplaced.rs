@@ -119,6 +119,7 @@ impl Unplaced {
             imported: Default::default(),
             fixed: FixedCopper::default(),
             zones: Vec::new(),
+            drc_waivers: Vec::new(),
         }
     }
 }

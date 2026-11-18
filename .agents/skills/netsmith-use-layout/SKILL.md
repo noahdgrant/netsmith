@@ -40,6 +40,7 @@ A part with no entry is placed by the placer round the parts the file places; a 
 - `no seed places the board: ... the closest is seed 7, where this blocks it:` lists what blocks the best try, by path and designator, with the amounts. Unlock or move the part it names, or give the board more room; `--place-seeds N` and `--place-budget` widen or bound the search for one run.
 - Entries of parts that `netsmith routes import` wrote are `source = "import"`; they may share courtyard area and `fab` warns of each overlap.
 - `warning: B: layout guideline: `reg.ic` (U1) asks for `input_cap` within 2 mm ...` is a part's datasheet guideline (its `layout` block) that the board does not meet. Move the part it names as it says (`layout fit` finds a place), or, when the user decides the board is right as it is, write a waiver in the layout file with the user's reason: `[B.waive."reg.ic.input_cap"]` and `reason = "..."`. Never write a waiver without a reason the user gave; `fab` then says the guideline is waived and neither warns nor stops.
+- The same `waive` table waives a design rules finding of a part's own footprint (`(within U1's own footprint)`), keyed by the part's path and the rule: `[B.waive."reg.ic.pad_to_pad"]` with `reason`, `source` (the datasheet's land pattern) and `pads = ["2", "3"]` or `at = [x, y]`. Only with the user's decision; a waiver that covers nothing is `error [unmatched_waiver]`.
 
 ## Report
 

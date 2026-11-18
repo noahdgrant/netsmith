@@ -58,10 +58,11 @@ pub use drc::{
     FontDependent as DrcFontDependent, Item as DrcItem, Marks as DrcMarks,
     RULES_FILE_PREFIX as DRC_RULES_FILE_PREFIX, Report as DrcReport, Room, Rule as DrcRule,
     Rules as DrcRules, Severity as DrcSeverity, Stackup as DrcStackup, Teardrop as DrcTeardrop,
-    ViaRules as DrcViaRules, check as drc_check, check_artwork as drc_check_artwork,
-    kicad_dru as drc_kicad_dru, matches_pattern as drc_matches_pattern,
-    outline_shapes as drc_outline_shapes, project_of as drc_project_of,
-    rules_file_of as drc_rules_file_of, teardrops,
+    ViaRules as DrcViaRules, WAIVER_PLACE_TOLERANCE as DRC_WAIVER_PLACE_TOLERANCE,
+    Waived as DrcWaived, Waiver as DrcWaiver, check as drc_check,
+    check_artwork as drc_check_artwork, kicad_dru as drc_kicad_dru,
+    matches_pattern as drc_matches_pattern, outline_shapes as drc_outline_shapes,
+    project_of as drc_project_of, rules_file_of as drc_rules_file_of, teardrops,
 };
 pub use drill::{Hole as DrillHole, files as drill_files, holes as drill_holes};
 pub use edge::{Outline as EdgeOutline, cut_lines as edge_cut_lines, outline as edge_outline};

@@ -3343,8 +3343,9 @@ pub const IMPEDANCE_RULE: &str = "impedance target";
 /// What the design rules check needs that the board file does not say: the process's mask
 /// web and widest filled via, the rules a project file cannot say and the least width of the
 /// nets that carry current (issue #431), the
-/// courtyards a protruding pin excuses (ADR 0045 section 15), and the stackup the process makes
-/// (issue #993).
+/// courtyards a protruding pin excuses (ADR 0045 section 15), the stackup the process makes
+/// (issue #993), and the layout file's waivers of findings of a part's own footprint (issue
+/// #1196).
 pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
     netsmith_geom::DrcExtras {
         mask_web: Some(board.rules.mask_bridge),
@@ -3392,6 +3393,8 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
             })
             .collect(),
         sizing: netsmith_design::guidelines::sizing_of(&board.process),
+        // The layout file's waivers of findings of a part's own footprint (issue #1196).
+        waivers: board.drc_waivers(),
         // The rules the `.kicad_dru` beside the board holds for KiCad too (issue #1185).
         ..board.rules.process_rules()
     }

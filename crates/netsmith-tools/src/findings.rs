@@ -68,6 +68,10 @@ pub enum Severity {
     Error,
     Warning,
     Note,
+    /// A finding of the design rules check of a part's own footprint that a waiver of the layout
+    /// file covers (issue #1196): neither an error nor a warning, with the waiver's `reason` and
+    /// `source`.
+    Waived,
 }
 
 /// One thing a command found.
@@ -125,6 +129,19 @@ pub struct Finding {
     /// --for-review` waived (issue #1212). The finding is still an error of the run.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub waived: Option<String>,
+    /// For a finding of the design rules check that is within one part's own footprint (every
+    /// item it names is the part's, issue #1196): the part, by its designator. Such a finding is
+    /// the footprint's, which the board cannot fix, and the layout file may waive it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub footprint: Option<String>,
+    /// For a waived finding of the design rules check: the layout file's key of the waiver
+    /// (`reg.ic.pad_to_pad`), its reason and its source.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub waiver: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 /// Where a finding of the design rules check is.
@@ -157,6 +174,10 @@ impl Finding {
             nets: Vec::new(),
             parts: Vec::new(),
             waived: None,
+            footprint: None,
+            waiver: None,
+            reason: None,
+            source: None,
         }
     }
 
@@ -168,13 +189,16 @@ impl Finding {
 
 /// The findings of netsmith's own design rules check (ADR 0037) as `board drc` and `fab` have
 /// them: the code `drc`, the severity (a warning of the check is a warning, an error an error),
-/// the rule, where it is, the nets and the parts it names, and the message with the things it is
-/// about. `board` names the board a design's check was made on.
+/// the rule, where it is, the nets and the parts it names, the part whose own footprint it is
+/// within (`footprint`), and the message with the things it is about; after them the findings a
+/// waiver of the layout file covers, `waived`, each with the waiver's key, reason and source
+/// (issue #1196). `board` names the board a design's check was made on.
 pub fn of_drc(report: &netsmith_geom::DrcReport, board: Option<&str>) -> Vec<Finding> {
     report
         .findings
         .iter()
         .map(|f| of_drc_finding(f, board))
+        .chain(report.waived.iter().map(|w| of_drc_waived(w, board)))
         .collect()
 }
 
@@ -196,6 +220,7 @@ pub fn of_drc_finding(f: &netsmith_geom::DrcFinding, board: Option<&str>) -> Fin
         }),
         nets,
         parts: f.parts(),
+        footprint: f.own_part().map(str::to_string),
         ..Finding::plain(
             match f.severity {
                 netsmith_geom::DrcSeverity::Error => Severity::Error,
@@ -204,6 +229,19 @@ pub fn of_drc_finding(f: &netsmith_geom::DrcFinding, board: Option<&str>) -> Fin
             "drc",
             f.with_items(),
         )
+    }
+}
+
+/// A finding of the design rules check that a waiver of the layout file covers, as [`of_drc`]
+/// has it (issue #1196): the severity `waived`, with the waiver's key, reason and source. It is
+/// not `--for-review`'s `waived` (issue #1212), which marks an error the run went past.
+pub fn of_drc_waived(w: &netsmith_geom::DrcWaived, board: Option<&str>) -> Finding {
+    Finding {
+        severity: Severity::Waived,
+        waiver: Some(w.key.clone()),
+        reason: Some(w.reason.clone()),
+        source: Some(w.source.clone()),
+        ..of_drc_finding(&w.finding, board)
     }
 }
 

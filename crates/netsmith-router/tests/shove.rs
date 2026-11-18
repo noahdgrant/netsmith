@@ -103,6 +103,7 @@ fn errors(board: &Board) -> Vec<String> {
         vias: None,
         branches: Vec::new(),
         sizing: None,
+        waivers: Vec::new(),
     };
     drc_check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras)
         .unwrap()

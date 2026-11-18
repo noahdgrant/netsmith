@@ -45,6 +45,7 @@ fn ours(board: &Board) -> DrcReport {
         vias: None,
         branches: Vec::new(),
         sizing: None,
+        waivers: Vec::new(),
     };
     drc_check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras)
         .unwrap_or_else(|e| panic!("{}: {e}", board.name))

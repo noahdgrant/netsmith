@@ -327,3 +327,135 @@ fn its_notes_list_the_nets_routed_long_and_the_nets_with_the_most_vias() {
     );
 }
 
+
+/// The waiver of a finding of a part's own footprint (issue #1196). A process that asks 1 mm
+/// between surface-mount pads refuses the LED's and the resistor's own pads, which the board
+/// cannot change: unwaived the check fails, with each marked as the part's own; waived in the
+/// layout file with a reason and a source it passes and lists them as waived, in the text, the
+/// JSON and `fab-notes.txt`; a waiver that covers no finding is an error.
+#[test]
+fn a_finding_of_a_parts_own_footprint_is_waived_by_the_layout_file_with_a_reason_and_a_source() {
+    let dir = led("drc-waiver");
+    ok(&netsmith(&dir, &["board", "fab", "led.nsm", "--locked", "--out", "first"]));
+    ok(&netsmith(
+        &dir,
+        &["routes", "import", "first/LedExample/LedExample.kicad_pcb", "--file", "led.nsm"],
+    ));
+    let source = fs::read_to_string(dir.join("led.nsm")).unwrap();
+    let narrowed = source.replace(
+        ".stackup.thickness &= 1.6mm }",
+        ".stackup.thickness &= 1.6mm; .min_pad_to_pad &= 1mm.. }",
+    );
+    assert_ne!(narrowed, source);
+    fs::write(dir.join("led.nsm"), narrowed).unwrap();
+
+    let run = netsmith(&dir, &["board", "drc", "led.nsm"]);
+    assert_eq!(run.status.code(), Some(1), "{}", text(&run));
+    let errors: Vec<String> = lines(&run)
+        .into_iter()
+        .filter(|l| l.starts_with("error [pad_to_pad]"))
+        .collect();
+    assert_eq!(errors.len(), 2, "{}", text(&run));
+    assert!(errors[0].ends_with("(within D1's own footprint)"), "{errors:#?}");
+    assert!(errors[1].ends_with("(within R1's own footprint)"), "{errors:#?}");
+
+    let layout = dir.join("led.pcb.toml");
+    let placed = fs::read_to_string(&layout).unwrap();
+    let waivers = "\n[LedExample.waive.\"led.pad_to_pad\"]\nreason = \"the maker's land pattern\"\nsource = \"the LED's datasheet, land pattern, p.3\"\npads = [\"1\", \"2\"]\n\n[LedExample.waive.\"r1.pad_to_pad\"]\nreason = \"the standard land pattern of the package\"\nsource = \"IPC-7351, 0603\"\npads = [\"1\", \"2\"]\n";
+    fs::write(&layout, format!("{placed}{waivers}")).unwrap();
+    let run = netsmith(&dir, &["board", "drc", "led.nsm"]);
+    let said = ok(&run);
+    let printed = out(&run);
+    let waived: Vec<&str> = printed
+        .lines()
+        .filter(|l| l.starts_with("waived [pad_to_pad]"))
+        .collect();
+    assert_eq!(waived.len(), 2, "{said}");
+    assert!(
+        waived[0].ends_with("(within D1's own footprint), by `led.pad_to_pad`: the maker's land pattern (source: the LED's datasheet, land pattern, p.3)"),
+        "{said}"
+    );
+    assert!(said.contains("design rules check: passed (") && said.contains(", 2 waived)"), "{said}");
+    assert!(!lines(&run).iter().any(|l| l.starts_with("error [")), "{said}");
+
+    let run = netsmith(&dir, &["board", "drc", "led.nsm", "--format", "json"]);
+    assert!(run.status.success(), "{}", text(&run));
+    let report = json(&run);
+    assert_eq!(report["ok"], true);
+    let waived: Vec<&serde_json::Value> = report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|f| f["severity"] == "waived")
+        .collect();
+    assert_eq!(waived.len(), 2, "{report:#}");
+    assert_eq!(waived[1]["rule"], "pad_to_pad");
+    assert_eq!(waived[1]["footprint"], "R1");
+    assert_eq!(waived[1]["waiver"], "r1.pad_to_pad");
+    assert_eq!(waived[1]["reason"], "the standard land pattern of the package");
+    assert_eq!(waived[1]["source"], "IPC-7351, 0603");
+
+    // `fab` packages the board and lists both in the notes, for a reviewer.
+    let fabbed = ok(&netsmith(&dir, &["board", "fab", "led.nsm", "--locked", "--out", "second"]));
+    assert!(fabbed.contains("design rules check: passed"), "{fabbed}");
+    let notes = fs::read_to_string(dir.join("second/LedExample/fab-notes.txt")).unwrap();
+    assert!(
+        notes.contains("design rules waived: 2 finding(s) of a part's own footprint"),
+        "{notes}"
+    );
+    assert_eq!(
+        notes.lines().filter(|l| l.starts_with("  waived [pad_to_pad]")).count(),
+        2,
+        "{notes}"
+    );
+
+    // A waiver of a finding the board does not have is itself an error.
+    let stale = "\n[LedExample.waive.\"power_in.pad_to_pad\"]\nreason = \"a header has no such pads\"\nsource = \"none\"\npads = [\"1\", \"2\"]\n";
+    fs::write(&layout, format!("{placed}{waivers}{stale}")).unwrap();
+    let run = netsmith(&dir, &["board", "drc", "led.nsm"]);
+    assert_eq!(run.status.code(), Some(1), "{}", text(&run));
+    let unmatched: Vec<String> = lines(&run)
+        .into_iter()
+        .filter(|l| l.starts_with("error [unmatched_waiver]"))
+        .collect();
+    assert_eq!(unmatched.len(), 1, "{}", text(&run));
+    assert!(unmatched[0].contains("waives `pad_to_pad` of J1 (pads 1, 2)"), "{unmatched:#?}");
+
+    // A package made for review (issue #1212) lists that error under its `FOR REVIEW` heading,
+    // and the findings the layout file waives under `design rules waived:`, as an order does:
+    // the layout file's waivers are not `--for-review`'s.
+    let review = netsmith(
+        &dir,
+        &["board", "fab", "led.nsm", "--locked", "--for-review", "--out", "third"],
+    );
+    assert_eq!(review.status.code(), Some(1), "{}", text(&review));
+    let notes = fs::read_to_string(dir.join("third/LedExample/fab-notes.txt")).unwrap();
+    let heading = notes
+        .lines()
+        .position(|l| l.starts_with("FOR REVIEW, NOT FOR ORDER: `--for-review` waived 1 finding,"))
+        .unwrap_or_else(|| panic!("{notes}"));
+    assert!(
+        notes.lines().nth(heading + 1).unwrap().starts_with("  error [unmatched_waiver]"),
+        "{notes}"
+    );
+    assert!(
+        notes.contains("design rules waived: 2 finding(s) of a part's own footprint"),
+        "{notes}"
+    );
+    assert_eq!(
+        notes.lines().filter(|l| l.starts_with("  waived [pad_to_pad]")).count(),
+        2,
+        "{notes}"
+    );
+
+    // A waiver of a design rule with no source is an error of the layout file.
+    let unsourced = waivers.replace("source = \"IPC-7351, 0603\"\n", "");
+    fs::write(&layout, format!("{placed}{unsourced}")).unwrap();
+    let run = netsmith(&dir, &["board", "drc", "led.nsm"]);
+    assert_eq!(run.status.code(), Some(1), "{}", text(&run));
+    assert!(
+        text(&run).contains("the waiver `r1.pad_to_pad` waives the design rule `pad_to_pad` and gives no source"),
+        "{}",
+        text(&run)
+    );
+}

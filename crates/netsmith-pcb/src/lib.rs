@@ -135,7 +135,8 @@ pub use kelvin::{
 };
 pub use layout::{
     BoardLayout, Face as LayoutFace, IMPORT_SOURCE, KeepoutPlace, Layout, LayoutError, PartPlace,
-    Waiver, apply_layout, check_drawn_keepout, copper_layers, keepout_declaration, place_options,
+    RuleWaiver, Waiver, apply_layout, check_drawn_keepout, copper_layers, keepout_declaration,
+    place_options,
 };
 pub use live::{Glimpse, GlimpsePart, glimpses_watched, show_glimpse, watching_glimpses};
 pub use miss::RequirementMiss;
