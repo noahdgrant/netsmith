@@ -235,6 +235,14 @@ fn placement_findings(design: &netsmith_core::Design, libraries: &Libraries) -> 
     }
 }
 
+/// The message with the folder of the sample libraries (`/tmp/netsmith-sample-libraries-<hash>`,
+/// whose hash changes with the sample) written as KiCad's own folder on Linux, which holds the
+/// same `symbols/` and `footprints/`: the guide shows what a reader with KiCad installed there
+/// reads, and the message does not change when the sample does.
+fn with_kicad_at_its_place(message: &str) -> String {
+    message.replace(&netsmith_testkit::sample_root().display().to_string(), "/usr/share/kicad")
+}
+
 fn same(a: &str, b: &str) -> bool {
     let norm = |s: &str| {
         s.lines()
@@ -480,7 +488,7 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
         if b.has("fails") {
             let message = match build_with(name, &b.text, loader, &catalogs, &Libraries::sample()) {
                 Ok(_) => panic!("{at}: this block should fail and it builds"),
-                Err(message) => message,
+                Err(message) => with_kicad_at_its_place(&message),
             };
             let next = next_text();
             if bless {
