@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.4.0](https://github.com/noahdgrant/netsmith/compare/v0.3.1...v0.4.0) (2026-11-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* **lang:** a part states the logic levels of its plain pins once, as its `.levels` ([#1203](https://github.com/noahdgrant/netsmith/issues/1203))
+
+### Features
+
+* **bus:** std::bus::Can and std::sources::DiffPair make two nets a diff pair whatever their names ([#1216](https://github.com/noahdgrant/netsmith/issues/1216)) ([896219e](https://github.com/noahdgrant/netsmith/commit/896219ed51822ebcda9c2ea99d774c8c1ab3ed36)), closes [#1193](https://github.com/noahdgrant/netsmith/issues/1193)
+* **drc:** the layout file waives a finding of a part's own footprint, with a reason and a source ([#1226](https://github.com/noahdgrant/netsmith/issues/1226)) ([e461c47](https://github.com/noahdgrant/netsmith/commit/e461c4713cd58a551eebdb4d57287bcc2476644d)), closes [#1196](https://github.com/noahdgrant/netsmith/issues/1196)
+* **drc:** the silkscreen rules match KiCad's, with the process's space from a text to a pad and between silkscreen ([#1219](https://github.com/noahdgrant/netsmith/issues/1219)) ([955c6bf](https://github.com/noahdgrant/netsmith/commit/955c6bfc162efce587b246f5ef7d5402aeeffa8a))
+* **fab:** board fab --for-review waives height and keepout findings and writes the pictures of the copper ([#1218](https://github.com/noahdgrant/netsmith/issues/1218)) ([0d560b1](https://github.com/noahdgrant/netsmith/commit/0d560b17dd1b7eae83970a9a633b5d9a8863940a))
+* **fab:** board fab --for-review waives height and keepout findings, lists them under FOR REVIEW, and writes the pictures of the copper ([0d560b1](https://github.com/noahdgrant/netsmith/commit/0d560b17dd1b7eae83970a9a633b5d9a8863940a)), closes [#1212](https://github.com/noahdgrant/netsmith/issues/1212) [#1213](https://github.com/noahdgrant/netsmith/issues/1213)
+* **fab:** board fill reports how each pour joins each pad, and its copper islands ([#1202](https://github.com/noahdgrant/netsmith/issues/1202)) ([fdb65d5](https://github.com/noahdgrant/netsmith/commit/fdb65d579156f1635529aacddd319cf313f845ef)), closes [#1187](https://github.com/noahdgrant/netsmith/issues/1187)
+* **fab:** fab notes, board drc and the scorecard list the nets routed long and the nets with the most vias ([#1215](https://github.com/noahdgrant/netsmith/issues/1215)) ([684a8ca](https://github.com/noahdgrant/netsmith/commit/684a8ca72ccbc07c8c6712071a12db4f1e74419d)), closes [#1194](https://github.com/noahdgrant/netsmith/issues/1194)
+* **fab:** say first that no package was written, and --for-review writes the files of a board with findings ([#1201](https://github.com/noahdgrant/netsmith/issues/1201)) ([9cf8da4](https://github.com/noahdgrant/netsmith/commit/9cf8da4ef0f31b7b2f512cb013db4bd56e356286))
+* **fab:** the design rules check matches KiCad's kind by kind, and fab writes the process's rules into a .kicad_dru ([#1208](https://github.com/noahdgrant/netsmith/issues/1208)) ([dcefde7](https://github.com/noahdgrant/netsmith/commit/dcefde76e48a3d3d0ad402af8a1ce8a6bf3742ce)), closes [#1185](https://github.com/noahdgrant/netsmith/issues/1185)
+* **fab:** the KiCad board fab writes holds netsmith's own pour fill ([#1205](https://github.com/noahdgrant/netsmith/issues/1205)) ([8b1d666](https://github.com/noahdgrant/netsmith/commit/8b1d6667d1c1e984f152dc8f5c54822b5eaafd9f)), closes [#1184](https://github.com/noahdgrant/netsmith/issues/1184)
+* **kicad:** board build and board fab --portable write a self-contained KiCad project ([#1210](https://github.com/noahdgrant/netsmith/issues/1210)) ([7503a27](https://github.com/noahdgrant/netsmith/commit/7503a27f83424bbe7d5cc795f5cc469104307c30)), closes [#1198](https://github.com/noahdgrant/netsmith/issues/1198)
+* **lang:** a part states the logic levels of its plain pins once, as its `.levels` ([#1203](https://github.com/noahdgrant/netsmith/issues/1203)) ([1885223](https://github.com/noahdgrant/netsmith/commit/1885223706316dee34ae9ef5daf0b217ee1a4f2c)), closes [#1190](https://github.com/noahdgrant/netsmith/issues/1190)
+* **lock:** project lock --check takes --except, and a lock row can be held on purpose ([#1211](https://github.com/noahdgrant/netsmith/issues/1211)) ([b3ff92f](https://github.com/noahdgrant/netsmith/commit/b3ff92fe2738bb178b26fe618ad76488531f4d54)), closes [#1197](https://github.com/noahdgrant/netsmith/issues/1197)
+* **pcb:** view pcb --islands and the editor's 2D view mark the islands the fill took out and the starved pads ([#1204](https://github.com/noahdgrant/netsmith/issues/1204)) ([4d1f670](https://github.com/noahdgrant/netsmith/commit/4d1f670924f316500e8a46295ca638617867adc2)), closes [#1188](https://github.com/noahdgrant/netsmith/issues/1188)
+* **router:** board nets measures each net and pair, and the router routes a diff pair at one pitch ([#1233](https://github.com/noahdgrant/netsmith/issues/1233)) ([c1c2a4d](https://github.com/noahdgrant/netsmith/commit/c1c2a4d6209b45b8c97e59e4034fc66572d35ecc)), closes [#1223](https://github.com/noahdgrant/netsmith/issues/1223)
+* **routes:** routes route routes one net or connection, names the nets in its way, and rips and routes them again ([#1209](https://github.com/noahdgrant/netsmith/issues/1209)) ([11bb0ef](https://github.com/noahdgrant/netsmith/commit/11bb0ef71ecf1daa66bdc9fdcb626a11d93380cd)), closes [#1195](https://github.com/noahdgrant/netsmith/issues/1195)
+* **routes:** routes tidy cuts corners, merges collinear tracks, removes dangling vias, stubs and acid traps ([#1206](https://github.com/noahdgrant/netsmith/issues/1206)) ([352442e](https://github.com/noahdgrant/netsmith/commit/352442e3165875ce1cc3a970fcab42dbf50471e8)), closes [#1192](https://github.com/noahdgrant/netsmith/issues/1192)
+
+
+### Bug Fixes
+
+* **ci:** netsmith-fabricate reads examples/buck_converter ([#1217](https://github.com/noahdgrant/netsmith/issues/1217)) ([4ca35a4](https://github.com/noahdgrant/netsmith/commit/4ca35a4737dbb3fdf7fd812a3f0bed23aa750034))
+* **editor:** the 2D view rings a pad the fill joins by nothing, as it rings a starved one ([#1247](https://github.com/noahdgrant/netsmith/issues/1247)) ([66432a8](https://github.com/noahdgrant/netsmith/commit/66432a840c69ce97bf0d1ee6dbf966e081becc5b))
+* **export:** a footprint's keepout zone is written and read in board coordinates, as KiCad saves it ([#1237](https://github.com/noahdgrant/netsmith/issues/1237)) ([b6b2b80](https://github.com/noahdgrant/netsmith/commit/b6b2b80c3fbd118528c71342399372d8d73aa154))
+* **export:** a footprint's keepout zone is written and read in board coordinates, as KiCad saves it ([#1242](https://github.com/noahdgrant/netsmith/issues/1242)) ([b6b2b80](https://github.com/noahdgrant/netsmith/commit/b6b2b80c3fbd118528c71342399372d8d73aa154))
+* **fab:** the .kicad_dru's hole-to-track rules are physical_hole_clearance, which a pad's own clearance does not silence ([#1241](https://github.com/noahdgrant/netsmith/issues/1241)) ([dddf190](https://github.com/noahdgrant/netsmith/commit/dddf190c23a600c8bf34290714e650ee258f6b13))
+* **fab:** the .kicad_dru's pad-to-pad rule is a physical_clearance, and the guide says what KiCad does with pads of one footprint ([#1235](https://github.com/noahdgrant/netsmith/issues/1235)) ([37b95b0](https://github.com/noahdgrant/netsmith/commit/37b95b037ed486ce983cd95de3da58cfa6aef279)), closes [#1231](https://github.com/noahdgrant/netsmith/issues/1231)
+* **fab:** the .kicad_pro writes via_dangling as a warning, so KiCad's check passes on a via cluster ([#1214](https://github.com/noahdgrant/netsmith/issues/1214)) ([7e64a0c](https://github.com/noahdgrant/netsmith/commit/7e64a0c8c6bfb58e5ace4bf00e509f771c433244)), closes [#1207](https://github.com/noahdgrant/netsmith/issues/1207)
+* **fab:** the board file fab writes opens in KiCad 9.0.0 (fill points wrapped, newer footprint fields left out) ([#1228](https://github.com/noahdgrant/netsmith/issues/1228)) ([ab77dcd](https://github.com/noahdgrant/netsmith/commit/ab77dcd9adc8477598f8d4bc5b03c1fbfe7a0ce6))
+* **fill:** the pour makes the spokes and islands KiCad's refill makes, and a pad no spoke can join is a finding of its own ([#1239](https://github.com/noahdgrant/netsmith/issues/1239)) ([c55c330](https://github.com/noahdgrant/netsmith/commit/c55c33026225164d15714a9c220419568abc495b)), closes [#1222](https://github.com/noahdgrant/netsmith/issues/1222)
+* **layout:** layout check, layout fit and board fab's placement agree on a part of several courtyards ([#1236](https://github.com/noahdgrant/netsmith/issues/1236)) ([769bc82](https://github.com/noahdgrant/netsmith/commit/769bc82b621ab29d477f6bf30becdd0c20d576da)), closes [#1224](https://github.com/noahdgrant/netsmith/issues/1224)
+* **routes:** routes tidy checks each change where it is and says how far it has got ([#1244](https://github.com/noahdgrant/netsmith/issues/1244)) ([b53ead2](https://github.com/noahdgrant/netsmith/commit/b53ead2a9574c773c946b0c36385735fdc0a2190))
+* **routes:** routes tidy checks each change where it is, says how far it has got, and stops on Ctrl+C with the files as they were ([b53ead2](https://github.com/noahdgrant/netsmith/commit/b53ead2a9574c773c946b0c36385735fdc0a2190)), closes [#1225](https://github.com/noahdgrant/netsmith/issues/1225)
+* **test:** main's golden pictures, the RP2350 reproduction's findings and a guide message with a temporary folder ([#1227](https://github.com/noahdgrant/netsmith/issues/1227)) ([58a16d8](https://github.com/noahdgrant/netsmith/commit/58a16d84c9d5782dbc104d43c0ea49d7ad42a6ec))
+* zones of one net that overlap get distinct priorities in the written board, and the summary keeps a distance typed ([#1238](https://github.com/noahdgrant/netsmith/issues/1238)) ([81edafe](https://github.com/noahdgrant/netsmith/commit/81edafe69bc3f2b6f8b6d39a55d8bd5457396693))
+
+
+### Documentation
+
+* **glossary:** Unit sorts before Unjoinable thermal ([#1239](https://github.com/noahdgrant/netsmith/issues/1239)) ([f51dd20](https://github.com/noahdgrant/netsmith/commit/f51dd207e33a0fc5b147355121c86e279933a46c))
+* **glossary:** Unit sorts before Unjoinable thermal ([#1245](https://github.com/noahdgrant/netsmith/issues/1245)) ([f51dd20](https://github.com/noahdgrant/netsmith/commit/f51dd207e33a0fc5b147355121c86e279933a46c))
+* **guide:** the TooMuchMargin example fails on the capacitor's rating, as its text says ([#1250](https://github.com/noahdgrant/netsmith/issues/1250)) ([8799704](https://github.com/noahdgrant/netsmith/commit/8799704409c8a055ceda92bda052d065e54f27f3))
+* **migrating:** changes of 0.4.0 ([#1254](https://github.com/noahdgrant/netsmith/issues/1254)) ([795412d](https://github.com/noahdgrant/netsmith/commit/795412dc215867bca659f03899464216ecb6508d))
+* **readme:** the install lines name the package that exists, netsmith-cli ([#1199](https://github.com/noahdgrant/netsmith/issues/1199)) ([c27f8f4](https://github.com/noahdgrant/netsmith/commit/c27f8f4f601157c25d939ba4bb5dca3ebcf5921c))
+
 ## [0.3.1](https://github.com/noahdgrant/netsmith/compare/v0.3.0...v0.3.1) (2026-11-18)
 
 
