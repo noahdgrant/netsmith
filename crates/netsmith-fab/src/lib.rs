@@ -117,7 +117,9 @@ pub use kicad_drc::{
     in_rules_file as in_kicad_dru, parse as parse_kicad_drc,
 };
 pub use net_routes::{LONG_EXCESS, LONG_RATIO, MOST_VIAS, NetRoute, NetRoutes, VIAS_LEAST};
-pub use net_table::{NetRow, NetTable, PairRow, SAMPLE as PAIR_SAMPLE, VIA_PAIR_GAP};
+pub use net_table::{
+    GroupNet, GroupRow, NetRow, NetTable, PairLimit, PairRow, SAMPLE as PAIR_SAMPLE, VIA_PAIR_GAP,
+};
 pub use panel::{
     Cell as PanelCell, CellFacts as PanelCellFacts, CellInput as PanelCellInput,
     Finding as PanelFinding, Geometry as PanelGeometry, PanelPackage, Rules as PanelBuildRules,
@@ -166,11 +168,13 @@ pub struct Options {
     /// The design's requirements on where parts go (ADR 0045), which the board file does not
     /// hold: each is measured on the board and is a finding of the check if it is not met.
     pub constraints: Option<Constraints>,
-    /// The board's diff pairs, the positive net first, which the board file does not hold
-    /// (`netsmith_pcb::Board::diff_pairs`), and the skew a pair may have in mm (the router's
-    /// target): [`check`] notes each pair whose skew is over it (issue #1223).
-    pub pairs: Vec<(String, String)>,
-    pub pair_skew_limit: f64,
+    /// The board's diff pairs, the positive net first, with the skew each may have in mm, which
+    /// the board file does not hold (`netsmith_pcb::Board::diff_pairs_with_skew`): [`check`]
+    /// notes each pair whose skew is over its limit (issue #1223, #1234).
+    pub pairs: Vec<PairLimit>,
+    /// The board's groups of nets matched in length (issue #1234): [`check`] notes each group
+    /// whose spread is over its tolerance.
+    pub length_groups: Vec<netsmith_core::LengthGroup>,
     /// Package even though some parts have no LCSC part number. Those parts are left out
     /// of the BOM and placement file and listed in the notes as unassembled.
     pub allow_missing_lcsc: bool,
@@ -613,9 +617,12 @@ pub struct Checked {
     pub outcomes: Vec<ConstraintOutcome>,
     /// The nets routed long and the nets with the most vias (issue #1194): notes, not findings.
     pub routes: NetRoutes,
-    /// The diff pairs of [`Options::pairs`] whose skew is over [`Options::pair_skew_limit`]
-    /// (issue #1223): notes, not findings.
+    /// The diff pairs of [`Options::pairs`] whose skew is over their limit (issue #1223): notes,
+    /// not findings.
     pub skewed: Vec<PairRow>,
+    /// The groups of [`Options::length_groups`] whose spread is over their tolerance (issue
+    /// #1234): notes, not findings.
+    pub spread: Vec<GroupRow>,
 }
 
 /// The design rules check of the board file `src` (the text of a `.kicad_pcb`, with the
@@ -625,10 +632,9 @@ pub fn check(src: &str, project: Option<&str>, options: &Options) -> Result<Chec
     let mut report = drc_check(src, project, &options.drc)?;
     let art = Artwork::parse(src)?;
     let routes = NetRoutes::of(&art);
-    let skewed = NetTable::of(&art, &options.pairs, options.pair_skew_limit)
-        .over()
-        .cloned()
-        .collect();
+    let table = NetTable::of(&art, &options.pairs, &options.length_groups);
+    let skewed = table.over().cloned().collect();
+    let spread = table.groups_over().cloned().collect();
     let outcomes = match &options.constraints {
         Some(c) => {
             let outcomes = c.measure(&art);
@@ -647,6 +653,7 @@ pub fn check(src: &str, project: Option<&str>, options: &Options) -> Result<Chec
         outcomes,
         routes,
         skewed,
+        spread,
     })
 }
 
@@ -672,6 +679,7 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         outcomes,
         routes,
         skewed: _,
+        spread: _,
     } = check(&src, drc_project_of(pcb).as_deref(), options)?;
     // A requirement of the design is not a design rule: waiving the rules does not waive it.
     let unmet: Vec<String> = drc_report

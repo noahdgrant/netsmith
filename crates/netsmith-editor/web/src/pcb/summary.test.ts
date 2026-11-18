@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { CopperLayer, CopperZone, FillArea, FillCounts, FillPad, NetsPair, NetsRow, PcbCopper, PcbScene, SummaryGuideline, SummaryPads } from '../api';
-import { copperLayerLine, copperZoneLine, fillAreaLine, fillCountsLine, fillPadLine, fillStarvedLine, fillWord, guidelineLine, mm, netPairLine, netRowLine, padName, padProblem, padsLine, pourFields, sheetBox, summaryQuery, teardropsLine } from './summary';
+import type { CopperLayer, CopperZone, FillArea, FillCounts, FillPad, NetsGroup, NetsPair, NetsRow, PcbCopper, PcbScene, SummaryGuideline, SummaryPads } from '../api';
+import { copperLayerLine, copperZoneLine, fillAreaLine, fillCountsLine, fillPadLine, fillStarvedLine, fillWord, guidelineLine, mm, netGroupLine, netPairLine, netRowLine, padName, padProblem, padsLine, pourFields, sheetBox, summaryQuery, teardropsLine } from './summary';
 
 describe('a number of the summary', () => {
   it('is to the hundredth with no trailing zeros', () => {
@@ -117,5 +117,20 @@ describe('the table of the nets', () => {
     const pair: NetsPair = { p: 'CANH', n: 'CANL', lengthP: 63.09, lengthN: 63.11, skew: 0.02, limit: 0.1, over: false, coupled: 60.5, share: 0.959, gaps: [0.1, 0.12], viasP: 2, viasN: 2, viaPairs: 2 };
     expect(netPairLine(pair)).toBe('CANH/CANL: 63.09 and 63.11 mm, skew 0.02 mm (within 0.1 mm); coupled 60.5 mm (96%), gap 0.1 to 0.12 mm; vias 2 and 2, 2 side by side');
     expect(netPairLine({ ...pair, skew: 2.5, over: true, coupled: 0, share: 0, gaps: null })).toBe('CANH/CANL: 63.09 and 63.11 mm, skew 2.5 mm (over 0.1 mm); coupled 0 mm (0%); vias 2 and 2, 2 side by side');
+  });
+
+  it('says a group of nets matched in length in words', () => {
+    const group: NetsGroup = {
+      path: 'lanes',
+      nets: [
+        { net: 'D0', length: 40.1, shortBy: 0 },
+        { net: 'D1', length: 39.8, shortBy: 0.3 },
+      ],
+      spread: 0.3,
+      tolerance: 0.5,
+      over: false,
+    };
+    expect(netGroupLine(group)).toBe('lanes: D0 40.1, D1 39.8 mm, spread 0.3 mm (within 0.5 mm)');
+    expect(netGroupLine({ ...group, tolerance: 0.2, over: true })).toBe('lanes: D0 40.1, D1 39.8 mm, spread 0.3 mm (over 0.2 mm)');
   });
 });

@@ -79,7 +79,7 @@ mod validate;
 
 pub use board::{
     Board, BoardCutout, BoardError, BoardKeepout, BoardNet, BoardPour, BoardZone, CopperLayer,
-    FixedCopper, Hang, HeightUnchecked, HeightUnknown, HoleNeighbour, KeepoutArea,
+    DEFAULT_SKEW, FixedCopper, Hang, HeightUnchecked, HeightUnknown, HoleNeighbour, KeepoutArea,
     Loaded as LoadedBoard, PadRef, PairCoupling, Placed, PlacementProblem, Plane, ReferenceSide,
     Side, Silk, StandardPass, Teardrop, Track, Trim, UnknownUnder, Unplaced, Via, ViaOffer,
     ViaSpan, ViasInPads, ZoneIslands, ZonePads, diff_pairs_of, heights_unknown_warning,

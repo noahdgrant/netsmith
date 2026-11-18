@@ -3845,6 +3845,7 @@ mod tests {
                 path: "bus".into(),
                 p: "H".into(),
                 n: "L".into(),
+                skew: None,
             }];
         }
         let design = Design {

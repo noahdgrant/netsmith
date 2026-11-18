@@ -2,7 +2,7 @@
 // reads the answer. The numbers are the server's (`netsmith layout summary` has the same); this
 // file only turns them into the words and boxes the tab shows.
 
-import type { CopperLayer, CopperPour, CopperZone, FillArea, FillCounts, FillPad, FillStarved, NetsPair, NetsRow, PcbBox, PcbCopper, PcbScene, SummaryBox, SummaryGuideline, SummaryPads } from '../api';
+import type { CopperLayer, CopperPour, CopperZone, FillArea, FillCounts, FillPad, FillStarved, NetsGroup, NetsPair, NetsRow, PcbBox, PcbCopper, PcbScene, SummaryBox, SummaryGuideline, SummaryPads } from '../api';
 
 /** A number to the hundredth, without trailing zeros: `3.5`, `12`. */
 export function mm(v: number): string {
@@ -149,4 +149,10 @@ export function netPairLine(p: NetsPair): string {
     `coupled ${mm(p.coupled)} mm (${Math.round(p.share * 100)}%)${gaps}`,
     `vias ${p.viasP} and ${p.viasN}, ${p.viaPairs} side by side`,
   ].join('; ');
+}
+
+/** A group of nets matched in length (issue 1234): `bus.lanes: D0 40.1, D1 40.05, D2 39.8 mm, spread 0.3 mm (over 0.2 mm)`. */
+export function netGroupLine(g: NetsGroup): string {
+  const nets = g.nets.map((n) => `${n.net} ${mm(n.length)}`).join(', ');
+  return `${g.path}: ${nets} mm, spread ${mm(g.spread)} mm (${g.over ? 'over' : 'within'} ${mm(g.tolerance)} mm)`;
 }

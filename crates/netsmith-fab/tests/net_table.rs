@@ -1,10 +1,11 @@
 //! The per-net table of a routed board (issue #1223), measured on boards drawn by hand: each
 //! net's lengths, vias, layer changes and layers, and each diff pair's lengths, skew, coupled
-//! length, gaps and vias side by side.
+//! length, gaps and vias side by side, and each group of nets matched in length (issue #1234).
 
 use crate::common;
 
 use common::*;
+use netsmith_core::LengthGroup;
 use netsmith_fab::{NetRoutes, NetTable};
 use netsmith_geom::Artwork;
 
@@ -39,8 +40,8 @@ fn board() -> Pcb {
 }
 
 fn table(b: &mut Pcb, limit: f64) -> NetTable {
-    let pairs = [("P".to_string(), "N".to_string())];
-    NetTable::of(&Artwork::parse(&b.pcb()).unwrap(), &pairs, limit)
+    let pairs = [("P".to_string(), "N".to_string(), limit)];
+    NetTable::of(&Artwork::parse(&b.pcb()).unwrap(), &pairs, &[])
 }
 
 fn close(a: f64, b: f64) -> bool {
@@ -111,4 +112,37 @@ fn vias_of_a_pair_far_apart_are_not_side_by_side_and_the_nets_sort_by_length() {
     t.by_length();
     let names: Vec<&str> = t.nets.iter().map(|n| n.net.as_str()).collect();
     assert_eq!(names, ["N", "P", "S"]);
+}
+
+#[test]
+fn a_length_group_has_each_nets_length_and_its_spread_against_its_tolerance() {
+    let group = |tolerance: f64| LengthGroup {
+        path: "lanes".into(),
+        // `GND` is poured and `X` has no track: neither is a net of the group's row.
+        nets: vec!["P".into(), "S".into(), "GND".into(), "X".into()],
+        tolerance,
+    };
+    let art = Artwork::parse(&board().pcb()).unwrap();
+    let t = NetTable::of(&art, &[], &[group(1.0)]);
+    assert_eq!(t.groups.len(), 1);
+    let g = &t.groups[0];
+    let names: Vec<&str> = g.nets.iter().map(|n| n.net.as_str()).collect();
+    assert_eq!(names, ["P", "S"]);
+    assert!(close(g.spread, 15.0) && close(g.nets[1].short_by, 15.0), "{g:?}");
+    assert!(g.over, "{g:?}");
+    let lines = t.over_lines();
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!(
+        lines[0].starts_with("length group: lanes: 2 nets, spread 15 mm (S the shortest), over its tolerance of 1 mm"),
+        "{lines:?}"
+    );
+    assert!(t.text().contains("group lanes: P 20.00, S 5.00 mm, spread 15.00 mm (over the 1 mm tolerance)"), "{}", t.text());
+    let t = NetTable::of(&art, &[], &[group(20.0)]);
+    assert!(!t.groups[0].over && t.over_lines().is_empty());
+    // A group with one net with copper has nothing to match.
+    let lone = LengthGroup {
+        nets: vec!["P".into(), "X".into()],
+        ..group(1.0)
+    };
+    assert!(NetTable::of(&art, &[], &[lone]).groups.is_empty());
 }

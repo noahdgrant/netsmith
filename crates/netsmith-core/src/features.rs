@@ -64,6 +64,10 @@ pub struct ImpedanceTarget {
     /// The space between the two tracks of a pair, edge to edge, in mm; none for a single net.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spacing: Option<f64>,
+    /// The most a pair's two track lengths may differ by, in mm: the top of the pair's `.skew`
+    /// (issue #1234); none for a single net.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skew: Option<f64>,
 }
 
 /// Two nets the design states are a diff pair with no impedance (issue #1193): the two pins of
@@ -71,7 +75,7 @@ pub struct ImpedanceTarget {
 /// (`std::bus::Can`). The router routes them as it routes the nets of a `PairImpedance` and two
 /// nets whose names say they are a pair (`netsmith_geom::PAIR_SUFFIXES`), with no width or
 /// spacing of their own.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NetPair {
     /// The path of the member that states it (`can_pair`, `xcvr.can`): the first in the order
     /// of the paths, when several state the same pair.
@@ -80,6 +84,23 @@ pub struct NetPair {
     pub p: String,
     /// The negative net.
     pub n: String,
+    /// The most the two nets' track lengths may differ by, in mm: the top of the member's
+    /// `.skew` (issue #1234). None when the member states none, and the router's target holds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skew: Option<f64>,
+}
+
+/// Nets whose track lengths are matched to each other (issue #1234), a parallel bus or a byte
+/// lane: the router lengthens the shorter nets towards the longest until no two differ by more
+/// than `tolerance`, and `netsmith board nets` lists each group's lengths and spread.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct LengthGroup {
+    /// The path of the member that states it.
+    pub path: String,
+    /// The nets, in the order of the member's lines, each once.
+    pub nets: Vec<String>,
+    /// The most the longest and the shortest net may differ by, in mm.
+    pub tolerance: f64,
 }
 
 /// What a design says about the board beyond its parts and nets (ADR 0020). Everything is
@@ -112,6 +133,10 @@ pub struct Features {
     /// once, in the order of their paths. Left out of a design file when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pairs: Vec<NetPair>,
+    /// The groups of nets the design matches in length (issue #1234), in the order of their
+    /// paths. Left out of a design file when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub length_groups: Vec<LengthGroup>,
     /// The current each net carries, where it is known, and the least width that carries it
     /// (IPC-2221 at the width tolerance, ADR 0036): what the router may not narrow a track of
     /// the net below, away from its pads, and what the design rules check holds the routed

@@ -17,6 +17,7 @@ fn target(nets: &[&str], ohms: f64, spacing: Option<f64>) -> ImpedanceTarget {
         nets: nets.iter().map(|n| n.to_string()).collect(),
         ohms,
         spacing,
+        skew: None,
     }
 }
 

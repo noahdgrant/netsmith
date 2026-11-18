@@ -25,6 +25,7 @@ fn stated(apart: f64, out: f64) -> Board {
         path: "pair".into(),
         p: "A".into(),
         n: "B".into(),
+        skew: None,
     }];
     board
 }
@@ -34,7 +35,7 @@ fn route_and_measure(board: &mut Board) -> (Routing, PairRow) {
     let routing = route_with(board, RouteOptions::default());
     assert!(routing.left.is_empty(), "{:?}", routing.left.lines);
     let art = Artwork::parse(&kicad_pcb(board)).unwrap();
-    let table = NetTable::of(&art, &board.diff_pairs(), SKEW_TARGET);
+    let table = NetTable::of(&art, &board.diff_pairs_with_skew(), &[]);
     assert_eq!(table.pairs.len(), 1, "{table:?}");
     let pair = table.pairs[0].clone();
     println!("{}", table.text());
@@ -107,8 +108,8 @@ fn the_same_nets_stated_no_pair_run_apart() {
     let routing = route_with(&mut board, RouteOptions::default());
     assert!(routing.left.is_empty(), "{:?}", routing.left.lines);
     let art = Artwork::parse(&kicad_pcb(&board)).unwrap();
-    let pairs = [("A".to_string(), "B".to_string())];
-    let table = NetTable::of(&art, &pairs, SKEW_TARGET);
+    let pairs = [("A".to_string(), "B".to_string(), SKEW_TARGET)];
+    let table = NetTable::of(&art, &pairs, &[]);
     println!("{}", table.text());
     assert!(table.pairs[0].share < COUPLED_SHARE, "{:?}", table.pairs[0]);
 }

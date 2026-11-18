@@ -67,7 +67,7 @@ The first source of a port, which `netsmith import port skeleton <original.kicad
 _Avoid_: scaffold (the word for `netsmith project init`), template, stub
 
 **Skew**:
-The difference of the track lengths of the two nets of a _Diff pair_, in mm, each measured along its centre line (an arc by its chords). The router matches a pair to 0.1 mm (`netsmith_router::meander::SKEW_TARGET`) with a _Meander_ on the shorter net, and `fab`, `board drc` (a note) and the _Net table_ say which pair keeps more; no source states another limit for a pair yet (issue #1223).
+The difference of the track lengths of the two nets of a _Diff pair_, in mm, each measured along its centre line (an arc by its chords). The router matches a pair to its **skew limit** with a _Meander_ on the shorter net: the top of the pair's `.skew` (a field of `DiffPair`, `PairImpedance`, `Can` and `Usb2`, issue #1234), else 0.1 mm (`netsmith_router::meander::SKEW_TARGET`). `fab`, `board drc` (a note) and the _Net table_ say which pair keeps more (issue #1223).
 _Avoid_: Length mismatch, delay skew (netsmith measures length, not time)
 
 **Skill**:

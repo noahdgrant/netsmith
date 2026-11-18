@@ -1,6 +1,10 @@
 //! Length-matching meanders for diff pairs (issue #431, S11): the shorter net of a pair is
 //! lengthened with a serpentine on one of its straight runs until the two nets' track lengths
-//! differ by no more than [`SKEW_TARGET`].
+//! differ by no more than the pair's skew limit, its `.skew` or [`SKEW_TARGET`] (issue #1234).
+//! The nets of a group matched in length (a `LengthGroup`, issue #1234) are lengthened so too,
+//! each shorter net towards the group's longest, until the group's spread is within its
+//! tolerance; a net of a group has no partner of its own, so its meander may go anywhere along
+//! it (unless it is also a net of a pair).
 //!
 //! **The shape.** A meander is a row of bumps on one side of a straight track, each bump a
 //! trapezoid with 45 degree corners: out along a diagonal, a leg straight out, a diagonal to
@@ -30,8 +34,8 @@
 //! changes: the meander replaces the middle of one track with a longer path between the same two
 //! points.
 //!
-//! **The target.** [`SKEW_TARGET`] 0.1 mm, the router's grid: a meander is sized to add the
-//! whole skew, so a pair that has the room ends within a few µm. USB 2.0 high speed asks for a
+//! **The target.** The pair's `.skew`, else [`SKEW_TARGET`] 0.1 mm, the router's grid: a
+//! meander is sized to add the whole skew, so a pair that has the room ends within a few µm. USB 2.0 high speed asks for a
 //! skew of a few mm at most (100 ps), so 0.1 mm leaves margin everywhere netsmith's pairs go
 //! (decided by the implementing agent under the owner's delegation, 2026-11-13). A pair with
 //! no room keeps the skew it has, and [`add`] says what each pair was left with.
@@ -46,11 +50,10 @@ use netsmith_geom::{DrcRules, DrcShape, Pt as FPt, Room, shape_gap};
 
 use netsmith_pcb::{Board, Pt, Track};
 
-/// The skew a diff pair is matched to, in mm: a pair whose nets' track lengths differ by more
-/// gets a meander on its shorter net.
-pub const SKEW_TARGET: f64 = 0.1;
-/// The gap between two neighbouring legs of a meander, in track widths (the 3W rule); the
-/// net's clearance where that is larger.
+/// The skew a diff pair is matched to when its design states none, in mm: a pair whose nets'
+/// track lengths differ by more gets a meander on its shorter net. A pair's own `.skew`
+/// replaces it (issue #1234, `netsmith_pcb::Board::pair_skew`).
+pub const SKEW_TARGET: f64 = netsmith_pcb::DEFAULT_SKEW;
 pub const SPACING_WIDTHS: f64 = 3.0;
 /// The highest a meander's bump stands off its track, centre to centre, in mm.
 pub const MAX_AMPLITUDE: f64 = 2.0;
@@ -70,22 +73,68 @@ pub struct Matched {
     /// The two nets, the positive first (`dp` then `dm`, a `DiffPair`'s `.p` then `.n`).
     pub p: String,
     pub n: String,
+    /// The skew the pair is matched to, in mm (`netsmith_pcb::Board::pair_skew`).
+    pub limit: f64,
     /// The difference of the two nets' track lengths before, in mm.
     pub before: f64,
     /// The same after.
     pub after: f64,
 }
 
+/// A group of nets matched in length (issue #1234) and its spread before and after the
+/// meanders: the longest net's track length less the shortest's.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchedGroup {
+    /// The path of the member that states the group.
+    pub path: String,
+    /// The group's routed nets, in the order of its lines.
+    pub nets: Vec<String>,
+    /// The spread the group is matched to, in mm.
+    pub tolerance: f64,
+    pub before: f64,
+    pub after: f64,
+}
+
+/// What [`add`] matched: each diff pair and each group of nets matched in length.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Lengths {
+    pub pairs: Vec<Matched>,
+    pub groups: Vec<MatchedGroup>,
+}
+
+impl Lengths {
+    /// Whether the meanders changed nothing: every pair and group is left as it was.
+    pub fn unchanged(&self) -> bool {
+        self.pairs.iter().all(|m| m.after == m.before)
+            && self.groups.iter().all(|g| g.after == g.before)
+    }
+}
+
 /// The diff pairs of the board's routed nets ([`Board::diff_pairs`]): two nets whose names
 /// differ only in a suffix pair of `netsmith_geom::PAIR_SUFFIXES`, in the order of their first
 /// net's name, then the pairs the design states (a `PairImpedance`, a `DiffPair` or the lines of a
-/// std bus such as `Can`, issue #1193).
-fn pairs(board: &Board) -> Vec<(String, String)> {
+/// std bus such as `Can`, issue #1193), each with the skew it is matched to.
+fn pairs(board: &Board) -> Vec<(String, String, f64)> {
     let routed = |net: &str| board.tracks.iter().any(|t| t.net == net);
     board
-        .diff_pairs()
+        .diff_pairs_with_skew()
         .into_iter()
-        .filter(|(p, n)| routed(p) && routed(n))
+        .filter(|(p, n, _)| routed(p) && routed(n))
+        .collect()
+}
+
+/// The groups of nets matched in length (issue #1234), each with its routed nets, in the order
+/// the design states them; a group with fewer than two routed nets has nothing to match.
+fn groups(board: &Board) -> Vec<(String, Vec<String>, f64)> {
+    let routed = |net: &str| board.tracks.iter().any(|t| t.net == net);
+    board
+        .length_groups
+        .iter()
+        .map(|g| {
+            let nets: Vec<String> = g.nets.iter().filter(|n| routed(n)).cloned().collect();
+            (g.path.clone(), nets, g.tolerance)
+        })
+        .filter(|(_, nets, _)| nets.len() >= 2)
         .collect()
 }
 
@@ -106,30 +155,75 @@ fn track_length(t: &Track) -> f64 {
         .sum()
 }
 
-/// The skew of each diff pair of the board, in mm, in the order [`add`] takes them.
-pub fn skews(board: &Board) -> Vec<f64> {
-    pairs(board)
-        .iter()
-        .map(|(p, n)| (length(board, p) - length(board, n)).abs())
-        .collect()
+/// The longest less the shortest of the track lengths of `nets`, in mm.
+fn spread(board: &Board, nets: &[String]) -> f64 {
+    let lengths: Vec<f64> = nets.iter().map(|n| length(board, n)).collect();
+    let most = lengths.iter().copied().fold(f64::MIN, f64::max);
+    let least = lengths.iter().copied().fold(f64::MAX, f64::min);
+    if lengths.is_empty() {
+        0.0
+    } else {
+        most - least
+    }
 }
 
-/// Lengthen the shorter net of each diff pair of the routed board with a meander, where it has
-/// room, and say what skew each pair is left with.
-pub fn add(board: &mut Board) -> Vec<Matched> {
-    let mut out = Vec::new();
-    for (p, n) in pairs(board) {
+/// The skew of each diff pair of the board and the spread of each group of nets matched in
+/// length, in mm, in the order [`add`] takes them.
+pub fn skews(board: &Board) -> (Vec<f64>, Vec<f64>) {
+    let pairs = pairs(board)
+        .iter()
+        .map(|(p, n, _)| (length(board, p) - length(board, n)).abs())
+        .collect();
+    let groups = groups(board)
+        .iter()
+        .map(|(_, nets, _)| spread(board, nets))
+        .collect();
+    (pairs, groups)
+}
+
+/// Lengthen the shorter nets of each group of nets matched in length towards its longest, and
+/// then the shorter net of each diff pair, with meanders where they have room, and say what
+/// spread and skew each is left with. The groups go first: a pair in a group (a strobe of a byte
+/// lane) is matched within itself after its nets have their group's length.
+pub fn add(board: &mut Board) -> Lengths {
+    let mut out = Lengths::default();
+    for (path, nets, tolerance) in groups(board) {
+        let before = spread(board, &nets);
+        if before > tolerance {
+            let longest = nets
+                .iter()
+                .map(|n| length(board, n))
+                .fold(f64::MIN, f64::max);
+            for net in &nets {
+                let want = longest - length(board, net);
+                // A net a routes file locks gets no copper (`netsmith_pcb::Routes`).
+                if want > tolerance && !board.fixed.is_locked(net) {
+                    let partner = board.diff_partner(net);
+                    lengthen(board, net, partner.as_deref(), want, tolerance);
+                }
+            }
+        }
+        let after = spread(board, &nets);
+        out.groups.push(MatchedGroup {
+            path,
+            nets,
+            tolerance,
+            before,
+            after,
+        });
+    }
+    for (p, n, limit) in pairs(board) {
         let (lp, ln) = (length(board, &p), length(board, &n));
         let before = (lp - ln).abs();
         let (short, other) = if lp < ln { (&p, &n) } else { (&n, &p) };
-        // A net a routes file locks gets no copper (`netsmith_pcb::Routes`).
-        if before > SKEW_TARGET && !board.fixed.is_locked(short) {
-            lengthen(board, short, other, before);
+        if before > limit && !board.fixed.is_locked(short) {
+            lengthen(board, short, Some(other), before, limit);
         }
         let after = (length(board, &p) - length(board, &n)).abs();
-        out.push(Matched {
+        out.pairs.push(Matched {
             p,
             n,
+            limit,
             before,
             after,
         });
@@ -148,8 +242,10 @@ struct Plan {
     added: f64,
 }
 
-/// Add up to `want` mm of track to `net` with meanders on its straight runs.
-fn lengthen(board: &mut Board, net: &str, partner: &str, want: f64) {
+/// Add up to `want` mm of track to `net` with meanders on its straight runs, stopping within
+/// `limit` of it; `partner` is the other net of its diff pair, whose coupled run a meander keeps
+/// clear of.
+fn lengthen(board: &mut Board, net: &str, partner: Option<&str>, want: f64, limit: f64) {
     let Ok(art) = netsmith_pcb::copper_artwork(board) else {
         return;
     };
@@ -167,7 +263,7 @@ fn lengthen(board: &mut Board, net: &str, partner: &str, want: f64) {
     let partner_tracks: Vec<Track> = board
         .tracks
         .iter()
-        .filter(|t| t.net == partner)
+        .filter(|t| Some(t.net.as_str()) == partner)
         .cloned()
         .collect();
     // The spacing of a pair with an impedance target (issue #1025), which its coupled run keeps.
@@ -180,14 +276,14 @@ fn lengthen(board: &mut Board, net: &str, partner: &str, want: f64) {
     // First where the track runs apart from its partner; then, for what is left, on its coupled
     // runs too, with the bumps on the side away from the partner (issue #1223). A pair with an
     // impedance target keeps its coupled run whole: the impedance is stated for it.
-    let passes: &[bool] = if spacing.is_some() {
+    let passes: &[bool] = if spacing.is_some() || partner.is_none() {
         &[false]
     } else {
         &[false, true]
     };
     for &in_pair in passes {
         for &i in &runs {
-            if left <= SKEW_TARGET / 2.0 {
+            if left <= limit / 2.0 {
                 break;
             }
             if replaced.iter().any(|r| r.0 == i) {
@@ -529,7 +625,7 @@ mod tests {
         let mut board = board();
         skewed_pair(&mut board, 2.0);
         let before = findings(&board);
-        let matched = add(&mut board);
+        let matched = add(&mut board).pairs;
         assert_eq!(matched.len(), 1, "{matched:?}");
         let m = &matched[0];
         assert_eq!((m.p.as_str(), m.n.as_str()), ("usb.dp", "usb.dm"));
@@ -560,7 +656,7 @@ mod tests {
     fn a_small_skew_takes_low_bumps_with_no_straight_joint() {
         let mut board = board();
         skewed_pair(&mut board, 0.3);
-        let m = &add(&mut board)[0];
+        let m = &add(&mut board).pairs[0];
         assert!(m.before > SKEW_TARGET && m.after <= SKEW_TARGET, "{m:?}");
         let dp: Vec<&Track> = board.tracks.iter().filter(|t| t.net == "usb.dp").collect();
         assert!(dp.len() > 3, "{dp:?}");
@@ -590,7 +686,7 @@ mod tests {
         );
         path(&mut board, "usb.dm", &[(x, y - 6.0), (x + 22.0, y - 6.0)]);
         let tracks = board.tracks.clone();
-        let matched = add(&mut board);
+        let matched = add(&mut board).pairs;
         assert_eq!(matched.len(), 1);
         assert!((matched[0].before - 2.0).abs() < 1e-9);
         assert_eq!(matched[0].after, matched[0].before);

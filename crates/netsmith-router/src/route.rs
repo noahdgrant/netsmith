@@ -1565,6 +1565,9 @@ pub struct Routing {
     /// Each diff pair's skew before and after its meanders (`crate::meander`); empty
     /// when the board was left with lines or [`RouteOptions::meanders`] is off.
     pub pairs: Vec<crate::meander::Matched>,
+    /// Each group of nets matched in length and its spread before and after its meanders
+    /// (issue #1234); empty as `pairs` is.
+    pub groups: Vec<crate::meander::MatchedGroup>,
     /// What the rounds of rip-up and re-route did on the try that gave the result; the default
     /// when they did not run.
     pub rip_rounds: RipRounds,
@@ -1667,10 +1670,10 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     }
     // Diff pairs matched in length, on a board routed completely (issue #431, S11).
     let meanders = options.meanders && complete;
-    let mut pairs = if meanders {
+    let mut lengths = if meanders {
         crate::meander::add(board)
     } else {
-        Vec::new()
+        crate::meander::Lengths::default()
     };
     // A via that does not carry its net's current gets others beside it (issue #431).
     crate::parallel::parallel_vias(board, &via_needs);
@@ -1694,15 +1697,22 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     if meanders && options.arcs > 0.0 {
         for _ in 0..MEANDER_TOP_UPS {
             let again = crate::meander::add(board);
-            for (p, a) in pairs.iter_mut().zip(&again) {
+            for (p, a) in lengths.pairs.iter_mut().zip(&again.pairs) {
                 p.after = a.after;
             }
-            if again.iter().all(|a| a.after == a.before) {
+            for (g, a) in lengths.groups.iter_mut().zip(&again.groups) {
+                g.after = a.after;
+            }
+            if again.unchanged() {
                 break;
             }
             crate::arcs::round_bends(board, options.arcs);
-            for (p, skew) in pairs.iter_mut().zip(crate::meander::skews(board)) {
+            let (skews, spreads) = crate::meander::skews(board);
+            for (p, skew) in lengths.pairs.iter_mut().zip(skews) {
                 p.after = skew;
+            }
+            for (g, spread) in lengths.groups.iter_mut().zip(spreads) {
+                g.after = spread;
             }
         }
     }
@@ -1721,7 +1731,8 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         why,
         crowding,
         stages,
-        pairs,
+        pairs: lengths.pairs,
+        groups: lengths.groups,
         rip_rounds,
     }
 }

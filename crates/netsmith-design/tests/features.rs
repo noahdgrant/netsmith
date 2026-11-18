@@ -772,6 +772,7 @@ fn a_track_impedance_gives_the_net_its_pin_is_on_a_target() {
             nets: vec!["VIN".to_string()],
             ohms: 50.0,
             spacing: None,
+            skew: None,
         }]
     );
 }
@@ -790,6 +791,7 @@ fn a_pair_impedance_gives_two_nets_a_differential_target_and_a_spacing() {
             nets: vec!["VIN".to_string(), "GND".to_string()],
             ohms: 90.0,
             spacing: Some(0.15),
+            skew: Some(0.1),
         }]
     );
 }
@@ -844,9 +846,74 @@ fn a_diff_pair_and_a_can_bus_state_their_two_nets_a_pair_once() {
             path: "bus".to_string(),
             p: "VIN".to_string(),
             n: "GND".to_string(),
+            // The least of the two limits: the `DiffPair`'s 0.1 mm under the bus's 2.5 mm.
+            skew: Some(0.1),
         }]
     );
     assert!(d.features.impedance_targets.is_empty());
+}
+
+#[test]
+fn a_pair_carries_its_skew_limit_the_top_of_its_skew() {
+    // Issue #1234: a `DiffPair` offers `0mm..0.1mm`, a board narrows it, a `Can` offers its
+    // standard's 2.5 mm and the lines of a `Usb2` are a pair too.
+    let with = |extra: &str| {
+        designed(&board(extra).replace(
+            "import std::sources::Rail",
+            "import std::bus::{Can, Usb2}\nimport std::sources::{DiffPair, Rail}",
+        ))
+        .unwrap()
+        .features
+        .pairs
+    };
+    let skews = |pairs: Vec<netsmith_core::NetPair>| {
+        pairs
+            .into_iter()
+            .map(|p| (p.path, p.skew))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        skews(with(
+            "    .dp: DiffPair {\n        .p.net &= \"VIN\"\n        .n.net &= \"GND\"\n    }\n"
+        )),
+        [("dp".to_string(), Some(0.1))]
+    );
+    assert_eq!(
+        skews(with(
+            "    .dp: DiffPair {\n        .p.net &= \"VIN\"\n        .n.net &= \"GND\"\n        .skew &= 0mm..0.05mm\n    }\n"
+        )),
+        [("dp".to_string(), Some(0.05))]
+    );
+    assert_eq!(
+        skews(with(
+            "    .bus: Can {\n        .canh.net &= \"VIN\"\n        .canl.net &= \"GND\"\n    }\n"
+        )),
+        [("bus".to_string(), Some(2.5))]
+    );
+    assert_eq!(
+        skews(with(
+            "    .usb: Usb2 {\n        .dp.net &= \"VIN\"\n        .dm.net &= \"GND\"\n    }\n"
+        )),
+        [("usb".to_string(), Some(0.1))]
+    );
+}
+
+#[test]
+fn a_skew_with_a_top_of_nothing_is_an_error_that_says_what_to_write() {
+    let with = |skew: &str| {
+        errors_of(&board(&format!(
+            "    .dp: DiffPair {{\n        .p.net &= \"VIN\"\n        .n.net &= \"GND\"\n        .skew &= {skew}\n    }}\n"
+        ))
+        .replace(
+            "import std::sources::Rail",
+            "import std::sources::{DiffPair, Rail}",
+        ))
+    };
+    let zero = with("0mm");
+    assert!(
+        zero.contains("`dp.skew` is 0") && zero.contains("give it a top above 0, `&= 0mm..0.05mm`"),
+        "{zero}"
+    );
 }
 
 #[test]

@@ -1,8 +1,10 @@
 //! A per-net table of a routed board (issue #1223): for each net its routed and straight length,
 //! its vias, how often it changes layer and on which layers it runs, and for each diff pair the
 //! lengths of its two nets, their skew, how much of the pair runs coupled, the gaps it keeps
-//! there, and its vias side by side. `netsmith board nets` prints it, the editor's PCB summary
-//! shows it, and `board drc` notes the pairs whose skew is over the limit.
+//! there, and its vias side by side, and for each group of nets matched in length (issue #1234)
+//! each net's length and the group's spread. `netsmith board nets` prints it, the editor's PCB
+//! summary shows it, and `board drc` notes the pairs whose skew is over their limit and the
+//! groups whose spread is over their tolerance.
 //!
 //! Read from the board file, as the scorecard and the list of long nets are ([`crate::NetRoutes`],
 //! which takes its numbers from here), so a board netsmith routed and one a person routed are
@@ -23,9 +25,12 @@
 //!   edge over that length, the least and the largest, so a pair at one pitch has the two
 //!   equal. Two vias of the pair are **side by side** when their copper is no more than
 //!   [`VIA_PAIR_GAP`] apart, edge to edge, each via taken once.
-//! - A pair's skew is **over** when it is more than the limit the caller gives: the router's
-//!   target (`netsmith_router::meander::SKEW_TARGET`, 0.1 mm), which the source cannot state
-//!   for a pair yet.
+//! - A pair's skew is **over** when it is more than the limit the caller gives it: the pair's
+//!   `.skew` (issue #1234, `netsmith_pcb::Board::pair_skew`), else the router's target
+//!   (`netsmith_router::meander::SKEW_TARGET`, 0.1 mm).
+//! - A **group** is a `LengthGroup` of the design (issue #1234): its **spread** is its longest
+//!   net's track length less its shortest's, over when it is more than the group's tolerance.
+//!   A net of the group with no track is left out of it.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -84,6 +89,35 @@ pub struct PairRow {
     pub via_pairs: usize,
 }
 
+/// One net of a group matched in length.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct GroupNet {
+    pub net: String,
+    /// Its track length, in mm.
+    pub length: f64,
+    /// How much shorter it is than the group's longest net, in mm.
+    pub short_by: f64,
+}
+
+/// One group of nets matched in length (issue #1234).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct GroupRow {
+    /// The path of the member that states the group.
+    pub path: String,
+    /// Its nets with a track, in the order of its lines.
+    pub nets: Vec<GroupNet>,
+    /// The longest net's length less the shortest's, in mm.
+    pub spread: f64,
+    /// The spread the group may have, in mm.
+    pub tolerance: f64,
+    /// Whether `spread` is more than `tolerance`.
+    pub over: bool,
+}
+
+/// A diff pair as [`NetTable::of`] takes it: the positive net, the negative and the skew it may
+/// have, in mm.
+pub type PairLimit = (String, String, f64);
+
 /// The table of a board ([`NetTable::of`]).
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
 pub struct NetTable {
@@ -93,6 +127,8 @@ pub struct NetTable {
     pub nets: Vec<NetRow>,
     /// The pairs, in the order given.
     pub pairs: Vec<PairRow>,
+    /// The groups of nets matched in length, in the order given.
+    pub groups: Vec<GroupRow>,
 }
 
 /// A straight piece of track: net, layer, its ends and its width.
@@ -275,7 +311,7 @@ impl PairRow {
     /// The note of `board drc` for a pair whose skew is over its limit.
     pub fn over_line(&self) -> String {
         format!(
-            "pair skew: {}/{}: {} and {} mm routed, skew {} mm, over the {} mm the router matches a pair to; lengthen the shorter by hand or give the router room for a meander",
+            "pair skew: {}/{}: {} and {} mm routed, skew {} mm, over its limit of {} mm; lengthen the shorter by hand or give the router room for a meander",
             self.p,
             self.n,
             number(self.length_p),
@@ -286,20 +322,79 @@ impl PairRow {
     }
 }
 
+impl GroupRow {
+    /// The note of `board drc` for a group whose spread is over its tolerance.
+    pub fn over_line(&self) -> String {
+        let shortest = self
+            .nets
+            .iter()
+            .max_by(|a, b| a.short_by.total_cmp(&b.short_by))
+            .map_or("", |n| n.net.as_str());
+        format!(
+            "length group: {}: {} nets, spread {} mm ({} the shortest), over its tolerance of {} mm; lengthen the shorter nets by hand or give the router room for a meander",
+            self.path,
+            self.nets.len(),
+            number(self.spread),
+            shortest,
+            number(self.tolerance),
+        )
+    }
+}
+
 impl NetTable {
-    /// The table of a board file, with its diff pairs `pairs` (the positive net first) and the
-    /// skew a pair may have, `limit` in mm. A pair whose nets have no track is left out.
-    pub fn of(art: &Artwork, pairs: &[(String, String)], limit: f64) -> NetTable {
+    /// The table of a board file, with its diff pairs `pairs` (the positive net first, and the
+    /// skew each may have, in mm) and its groups of nets matched in length `groups`. A pair whose
+    /// nets have no track is left out, and so is a group with fewer than two nets with a track.
+    pub fn of(
+        art: &Artwork,
+        pairs: &[PairLimit],
+        groups: &[netsmith_core::LengthGroup],
+    ) -> NetTable {
         let segs = crate::score::lines(art);
         let has = |net: &str| segs.iter().any(|s| s.0 == net);
+        let nets = rows(art);
+        let groups = groups
+            .iter()
+            .filter_map(|g| {
+                let lengths: Vec<(String, f64)> = g
+                    .nets
+                    .iter()
+                    .filter_map(|n| {
+                        let row = nets.iter().find(|r| &r.net == n && r.length > 0.0)?;
+                        Some((n.clone(), row.length))
+                    })
+                    .collect();
+                if lengths.len() < 2 {
+                    return None;
+                }
+                let most = lengths.iter().map(|l| l.1).fold(f64::MIN, f64::max);
+                let least = lengths.iter().map(|l| l.1).fold(f64::MAX, f64::min);
+                let spread = most - least;
+                Some(GroupRow {
+                    path: g.path.clone(),
+                    nets: lengths
+                        .into_iter()
+                        .map(|(net, length)| GroupNet {
+                            net,
+                            length,
+                            short_by: most - length,
+                        })
+                        .collect(),
+                    spread,
+                    tolerance: g.tolerance,
+                    over: spread > g.tolerance + 1e-9,
+                })
+            })
+            .collect();
         NetTable {
             board: String::new(),
-            nets: rows(art),
             pairs: pairs
                 .iter()
-                .filter(|(p, n)| has(p) && has(n))
-                .map(|(p, n)| pair_row(art, &segs, p, n, limit))
+                .filter(|(p, n, _)| has(p) && has(n))
+                .map(|(p, n, limit)| pair_row(art, &segs, p, n, *limit))
                 .collect(),
+            nets,
+            groups,
         }
     }
 
@@ -314,13 +409,22 @@ impl NetTable {
         self.pairs.iter().filter(|p| p.over)
     }
 
-    /// One line for each pair whose skew is over its limit, for the notes of `board drc`; none
-    /// when every pair is within.
-    pub fn over_lines(&self) -> Vec<String> {
-        self.over().map(PairRow::over_line).collect()
+    /// The groups whose spread is over their tolerance.
+    pub fn groups_over(&self) -> impl Iterator<Item = &GroupRow> {
+        self.groups.iter().filter(|g| g.over)
     }
 
-    /// The table as text for a person: a line for each net, then a line for each pair.
+    /// One line for each pair whose skew is over its limit and each group whose spread is over
+    /// its tolerance, for the notes of `board drc`; none when every one is within.
+    pub fn over_lines(&self) -> Vec<String> {
+        self.over()
+            .map(PairRow::over_line)
+            .chain(self.groups_over().map(GroupRow::over_line))
+            .collect()
+    }
+
+    /// The table as text for a person: a line for each net, then a line for each pair, then a
+    /// line for each group.
     pub fn text(&self) -> String {
         let mut out = String::new();
         let width = self
@@ -369,6 +473,21 @@ impl NetTable {
                 p.vias_p,
                 p.vias_n,
                 p.via_pairs,
+            ));
+        }
+        for g in &self.groups {
+            let nets: Vec<String> = g
+                .nets
+                .iter()
+                .map(|n| format!("{} {:.2}", n.net, n.length))
+                .collect();
+            out.push_str(&format!(
+                "group {}: {} mm, spread {:.2} mm ({}the {} mm tolerance)\n",
+                g.path,
+                nets.join(", "),
+                g.spread,
+                if g.over { "over " } else { "within " },
+                number(g.tolerance),
             ));
         }
         out

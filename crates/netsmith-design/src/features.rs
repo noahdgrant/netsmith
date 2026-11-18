@@ -213,6 +213,30 @@ fn point(model: &Model, inst: InstId, name: &str, errors: &mut Vec<String>) -> O
     }
 }
 
+/// The most a pair's two track lengths may differ by, in mm: the top of the member's `.skew`
+/// (issue #1234), offered at `0mm..0.1mm` and narrowed by the board. `None` when the member has
+/// no such field or leaves it unset; a top that is open or not above 0 is an error.
+fn skew_of(model: &Model, inst: InstId, path: &str, errors: &mut Vec<String>) -> Option<f64> {
+    let Domain::Quantity(q) = domain(model, inst, "skew")? else {
+        return None;
+    };
+    let top = q.hi();
+    if !top.is_finite() {
+        errors.push(format!(
+            "`{path}.skew` is {q}, with no top, and a skew limit is the most the two lengths may differ by: say it with `&= 0mm..0.1mm`"
+        ));
+        return None;
+    }
+    let limit = mm(top);
+    if limit <= 0.0 {
+        errors.push(format!(
+            "`{path}.skew` is {q}, and no two routed tracks are as long to the nanometre: give it a top above 0, `&= 0mm..0.05mm`"
+        ));
+        return None;
+    }
+    Some(limit)
+}
+
 /// The impedance the design states for the tracks of nets (issue #1007): each `TrackImpedance`
 /// and `PairImpedance`, with the nets its pins are on, in the order of their paths.
 fn impedance_targets(model: &Model, errors: &mut Vec<String>) -> Vec<ImpedanceTarget> {
@@ -294,11 +318,17 @@ fn impedance_targets(model: &Model, errors: &mut Vec<String>) -> Vec<ImpedanceTa
             ));
             continue;
         }
+        let skew = if pair {
+            skew_of(model, id, &path, errors)
+        } else {
+            None
+        };
         found.push(ImpedanceTarget {
             path,
             nets,
             ohms,
             spacing,
+            skew,
         });
     }
     found
@@ -307,11 +337,16 @@ fn impedance_targets(model: &Model, errors: &mut Vec<String>) -> Vec<ImpedanceTa
 /// The std interfaces whose two pins are a diff pair with no impedance (issue #1193), with the
 /// names of the pins, the positive first: a `DiffPair` the design states, and a bus whose lines
 /// are a pair.
-const PAIRED: [(&str, [&str; 2]); 2] = [("DiffPair", ["p", "n"]), ("Can", ["canh", "canl"])];
+const PAIRED: [(&str, [&str; 2]); 3] = [
+    ("DiffPair", ["p", "n"]),
+    ("Can", ["canh", "canl"]),
+    ("Usb2", ["dp", "dm"]),
+];
 
 /// The pairs of nets the design states are diff pairs (issue #1193): each `DiffPair`, and the
-/// lines of each `Can`, with the nets their pins are on, each pair once, in the order of the
-/// paths. A `DiffPair` whose pin is on no net, or whose two pins are on one, is an error, as for
+/// lines of each `Can` and `Usb2`, with the nets their pins are on and the skew they may have
+/// (issue #1234), each pair once, in the order of the paths. Members that state the same pair
+/// give it the least of their limits. A `DiffPair` whose pin is on no net, or whose two pins are on one, is an error, as for
 /// a `PairImpedance`; a bus with a line on no net (a part's interface the board does not use)
 /// states no pair. A net that two pairs give two partners is an error.
 fn stated_pairs(model: &Model, errors: &mut Vec<String>) -> Vec<NetPair> {
@@ -355,8 +390,13 @@ fn stated_pairs(model: &Model, errors: &mut Vec<String>) -> Vec<NetPair> {
             }
             continue;
         }
+        let skew = skew_of(model, id, &path, errors);
         let same = |q: &NetPair| (q.p == p && q.n == n) || (q.p == n && q.n == p);
-        if found.iter().any(same) {
+        if let Some(q) = found.iter_mut().find(|q| same(q)) {
+            q.skew = match (q.skew, skew) {
+                (Some(a), Some(b)) => Some(a.min(b)),
+                (a, b) => a.or(b),
+            };
             continue;
         }
         if let Some(other) = found
@@ -369,7 +409,7 @@ fn stated_pairs(model: &Model, errors: &mut Vec<String>) -> Vec<NetPair> {
             ));
             continue;
         }
-        found.push(NetPair { path, p, n });
+        found.push(NetPair { path, p, n, skew });
     }
     found
 }
