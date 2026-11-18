@@ -553,6 +553,53 @@ fn a_board_that_passes_is_packaged_as_usual_with_the_review_option() {
     assert!(!pkg.notes.contains("FOR REVIEW"), "{}", pkg.notes);
 }
 
+/// Issue #1212: a finding the caller waived before the package makes a package for review of a
+/// board that passes the check, and the heading lists it with the pictures (issue #1213).
+#[test]
+fn a_board_that_passes_with_a_finding_waived_is_packaged_for_review_and_lists_it_first() {
+    let pcb = write_pcb("review-waived", &all_top_board());
+    let waived = "error [too_tall] `tall` (J3) stands 9.00 mm tall on the top face, and the keepout `lid` allows 3.00 mm there (6.00 mm too tall), where its body is, around (5.0, 13.3) mm from the board's top left corner";
+    let options = Options {
+        for_review: true,
+        waived: vec![waived.to_string()],
+        pictures: vec![
+            "sample-top-REVIEW.png".to_string(),
+            "sample-bottom-REVIEW.png".to_string(),
+        ],
+        ..Options::default()
+    };
+    let pkg = package(&pcb, &sample_bom(), &options).unwrap();
+    assert_eq!(pkg.drc, DrcOutcome::ForReview(DrcCounts::default()));
+    assert_eq!(pkg.zip_name(), "sample-gerbers-REVIEW.zip");
+    let lines: Vec<&str> = pkg.notes.lines().collect();
+    assert!(
+        lines[1].starts_with("FOR REVIEW, NOT FOR ORDER: `--for-review` waived 1 finding, ")
+            && lines[1].ends_with(": sample-top-REVIEW.png, sample-bottom-REVIEW.png"),
+        "{}",
+        pkg.notes
+    );
+    assert_eq!(lines[2], format!("  {waived}"));
+    assert!(
+        pkg.notes.contains(
+            "design rules check: no errors, and the package is FOR REVIEW, NOT FOR ORDER"
+        ) && !pkg.notes.contains("design rules check: passed"),
+        "{}",
+        pkg.notes
+    );
+
+    // Without the review option a waived line changes nothing: the caller stops instead.
+    let plain = package(
+        &pcb,
+        &sample_bom(),
+        &Options {
+            waived: vec![waived.to_string()],
+            ..Options::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(plain.drc, DrcOutcome::Passed);
+}
+
 #[test]
 fn a_board_with_the_project_rules_beside_it_is_checked_to_them() {
     // The same crowded board passes when the project says the least clearance is 0.01 mm.

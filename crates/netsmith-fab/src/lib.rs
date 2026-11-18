@@ -144,9 +144,20 @@ pub struct Options {
     /// (`board fab --for-review`, issue #1189): the errors of the design rules check and the
     /// requirements on where parts go that are not met are waived, the notes and the Gerber zip's
     /// name say "FOR REVIEW, NOT FOR ORDER", and [`Package::write`] writes no `bom.csv` and no
-    /// `cpl.csv`. A board that passes is packaged as usual. [`package`] still returns the
-    /// package: the caller ends the run in an error while the check has errors.
+    /// `cpl.csv`. A board that passes is packaged as usual, unless [`Options::waived`] has a
+    /// finding. [`package`] still returns the package: the caller ends the run in an error while
+    /// the check has errors or a finding was waived.
     pub for_review: bool,
+    /// The findings the caller waived for review before the package (`board fab --for-review`,
+    /// issue #1212): a part over a keepout's height limit, a part in a keepout, a collision
+    /// with a case model, one line each with its rule, the part, the numbers and the place
+    /// (`error [too_tall] ...`). With [`Options::for_review`], a package with any is made for
+    /// review even when the design rules check passes, and the notes list them under the
+    /// `FOR REVIEW` heading with the errors of the check.
+    pub waived: Vec<String>,
+    /// The pictures of the copper the caller writes beside a package made for review, by file
+    /// name (issue #1213), which the `FOR REVIEW` heading of the notes names.
+    pub pictures: Vec<String>,
     /// What the design rules check needs that the board file does not say (the process's
     /// mask web and the widest via it fills).
     pub drc: DrcExtras,
@@ -661,10 +672,12 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         }
         _ => Vec::new(),
     };
-    let drc = if drc_report.is_clean() {
-        DrcOutcome::Passed
-    } else if options.for_review {
+    // A package for review is one whatever the check says when the caller waived a finding
+    // before it (issue #1212): such a board is never packaged to order from.
+    let drc = if options.for_review && (!drc_report.is_clean() || !options.waived.is_empty()) {
         DrcOutcome::ForReview(drc_report.counts())
+    } else if drc_report.is_clean() {
+        DrcOutcome::Passed
     } else if options.allow_drc_violations && unmet.is_empty() {
         DrcOutcome::Waived(drc_report.counts())
     } else if options.allow_drc_violations {
@@ -724,6 +737,7 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         (options.process.as_deref(), options.revision.as_deref()),
         &extras,
         &options.trim,
+        (&options.waived, &options.pictures),
     );
     Ok(Package {
         gerber_files: files.into_iter().map(|f| f.name).collect(),
@@ -783,16 +797,14 @@ fn notes(
     (process, revision): (Option<&str>, Option<&str>),
     extras: &[String],
     trim: &[String],
+    (waived, pictures): (&[String], &[String]),
 ) -> String {
     let mut lines = vec![match revision {
         Some(revision) => format!("fab-notes for {name}, revision {revision}"),
         None => format!("fab-notes for {name}"),
     }];
-    if let DrcOutcome::ForReview(c) = drc {
-        lines.push(format!(
-            "{FOR_REVIEW}: the design rules check found {} error(s), so this package is made to look at, not to order; it has no bom.csv and no cpl.csv, and `project order` refuses it",
-            c.violations + c.unconnected + c.footprint_errors
-        ));
+    if matches!(drc, DrcOutcome::ForReview(_)) {
+        lines.extend(review_heading(report, waived, pictures));
     }
     if let Some(process) = process {
         lines.push(format!("process: {process}"));
@@ -878,14 +890,18 @@ fn notes(
             "design rules check: NOT clean, packaged anyway: {} violation(s), {} unconnected pad(s), {} footprint error(s)",
             c.violations, c.unconnected, c.footprint_errors
         ),
+        DrcOutcome::ForReview(c) if c == DrcCounts::default() => format!(
+            "design rules check: no errors, and the package is {FOR_REVIEW} for the findings under FOR REVIEW above"
+        ),
         DrcOutcome::ForReview(c) => format!(
-            "design rules check: NOT clean, {FOR_REVIEW}: {} violation(s), {} unconnected pad(s), {} footprint error(s)",
+            "design rules check: NOT clean, {FOR_REVIEW}: {} violation(s), {} unconnected pad(s), {} footprint error(s), each listed under FOR REVIEW above",
             c.violations, c.unconnected, c.footprint_errors
         ),
     });
     // A package made past the check lists what it waived, each but a connection left (those are
-    // in `routing-failure.txt`), so the person ordering reads what the board breaks.
-    if matches!(drc, DrcOutcome::Waived(_) | DrcOutcome::ForReview(_)) {
+    // in `routing-failure.txt`), so the person ordering reads what the board breaks. A package for
+    // review lists them at the top instead.
+    if matches!(drc, DrcOutcome::Waived(_)) {
         lines.extend(
             report
                 .errors()
@@ -902,7 +918,7 @@ fn notes(
             format!("constraints: {met} of {} satisfied", constraints.len())
         } else if matches!(drc, DrcOutcome::ForReview(_)) {
             format!(
-                "constraints: {met} of {} satisfied; {unmet} not met (each is an error above): {FOR_REVIEW}",
+                "constraints: {met} of {} satisfied; {unmet} not met (each listed under FOR REVIEW above): {FOR_REVIEW}",
                 constraints.len()
             )
         } else {
@@ -923,6 +939,33 @@ fn notes(
     }
     lines.push(String::new());
     lines.join("\n")
+}
+
+/// The `FOR REVIEW` heading of the notes of a package made for review (issues #1189, #1212,
+/// #1213): what the package is and is not, the pictures written beside it, and every finding
+/// `--for-review` waived, one to a line: those the caller waived before the package (`waived`),
+/// then the errors of the design rules check, the requirements on where parts go among them.
+fn review_heading(report: &DrcReport, waived: &[String], pictures: &[String]) -> Vec<String> {
+    let found: Vec<String> = waived
+        .iter()
+        .cloned()
+        .chain(report.errors().map(ToString::to_string))
+        .collect();
+    let pictures = if pictures.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "; the pictures of the copper, each layer as `view pcb --layer <layer> --drc --islands` draws it: {}",
+            pictures.join(", ")
+        )
+    };
+    let mut lines = vec![format!(
+        "{FOR_REVIEW}: `--for-review` waived {} finding{}, each listed below, so this package is made to look at, not to order; it has no bom.csv and no cpl.csv, and `project order` refuses it{pictures}",
+        found.len(),
+        if found.len() == 1 { "" } else { "s" }
+    )];
+    lines.extend(found.into_iter().map(|f| format!("  {f}")));
+    lines
 }
 
 #[cfg(test)]

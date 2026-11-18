@@ -16,7 +16,7 @@ use super::common::{self, libraries, no_boards, sync_pins, target_offline};
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "With no file, `fab` acts on the project's boards (see netsmith.toml).\n\n`fab` writes the Gerbers, drill files and placement file itself and runs netsmith's own design rules check (ADR 0037), so it does not need KiCad. An error of the check (a clearance, a short, a missing connection, a hole, the edge, a courtyard, a keepout) stops `fab`: the first line of the message says that no package was written and where the KiCad board is, with what each of two flags does. `--allow-drc-violations` packages the board anyway to order from, and `fab-notes.txt` then says the board is not clean. `--for-review` writes the files to look at instead (the KiCad board and project, `<board>-gerbers-REVIEW.zip`, the SVG, the `.glb` and `.step`, the schematic PDF and `fab-notes.txt` with the findings), each marked FOR REVIEW, NOT FOR ORDER, with no `bom.csv` and no `cpl.csv`; the run still exits 1 while the check has errors, and `project order` refuses such a package. The warnings of the check (silkscreen on a pad, a narrow mask web, a via in a pad) are listed in the notes. It writes, for each board, a Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb` and `.kicad_pro`, an `.svg`, and the board's 3D scene as `<board>.glb` (outside the Gerber zip; the scene of the routed board, the bytes `dev board3d --glb` writes for it; docs/BOARD3D.md), and the board as STEP, `<board>.step`, for mechanical CAD (outside the Gerber zip; the bytes `dev board3d --step` writes). Read `fab-notes.txt` before you order.\n\n`--cross-check` checks the Gerbers against the board, also with no KiCad: each copper layer of the zip, drawn as `view gerber` draws it, is compared pixel by pixel with the board model as `view pcb` draws it (40 pixels a millimetre; at most 1% of the pixels differ and 0.1% beyond 0.05 mm). A difference stops `fab` and lists each place as a `--region` box to draw with both commands; the result is in `fab-notes.txt` and, with `--format json`, a finding of code `fab`. With KiCad installed the KiCad cross-check runs as well (`cross-check-<file>.png` shows each layer that differs); without it the viewer comparison runs alone, and `fab-notes.txt` says so. A panel's cross-check is KiCad's alone.\n\nA board the router cannot finish is still written, marked INCOMPLETE, and the run ends in an error. Beside it, `routing-failure.txt` lists each connection left with its net, its two pads and their places and the parts most of them end on, and then, for each line the router left, the stage it last failed in (the first pass, the try with less room, ripping up, the negotiation, the chain of rip-ups, the rounds that rip up whole nets, or out of time) and the nets whose copper stands in its way, or, where no path crosses only other nets' copper, the pads, vias and edge that wall it in; `routing-report.json` has the same for a program, with a crowding map of the board (1 mm squares, how often the router's searches across other nets' copper passed through each), which shows where the board is fought over.\n\nWith `--format json` the progress goes nowhere unless `--progress json` prints it as JSON lines on stderr, and the notes of `fab-notes.txt` (\"before you order\") are findings with the code `fab`. Each board of `boards` has `routes`, the nets the routing made long against the straight length between their pads (`long`) and the nets with the most vias (`most_vias`), each with `net`, `length`, `straight`, `ratio` and `vias`, as the notes' `routed long:` and `most vias:` lines list them; it is left out when both are empty. A finding about requirements of the physical file that are not met has them as data in `requirements` (the requirement, what was measured, the window it allows and how far out it is), and the refusal because the parts do not fit has every overlapping pair, every part outside and every part's final place in `does_not_fit`. The lines of the physical file and locks of the layout file that cannot all hold are in `conflicts` (each with its kind, the lines, the parts with the box each courtyard lies within, and the overlap); a courtyard past an edge nobody stated and a part bigger than the outline (`past_edge`, `too_big`), proved before placing, are there too. Each line of a conflict has the window it allows (`measure`, `unit`, `min` and `max`, or `allowed_side`). With constraints as warnings, the lines that cannot all hold are findings of code `place` (the code `board build --format json` gives what is proved before placing) with their `conflicts`. The faults of the placement check where the placer ended are in `placement` (each with its kind, the parts with their courtyards, and its numbers). A lock of the layout file that breaks a requirement has `requirements` and `placement` of the board as the lock leaves it.\n\nThe height check cannot check a part of unknown height: one warning, `height_unknown`, on stderr and in `fab-notes.txt`, lists every such part that stands under a height limit or under another part's body, with the limit that would apply (for a body that states no `.standoff`, the limit its standoff would put over the part). It is a warning always: `fab` still passes. State each part's `.height` to leave it (docs/language/23-the-shape-of-a-board.md, _Height limits_)."
+    after_long_help = "With no file, `fab` acts on the project's boards (see netsmith.toml).\n\n`fab` writes the Gerbers, drill files and placement file itself and runs netsmith's own design rules check (ADR 0037), so it does not need KiCad. An error of the check (a clearance, a short, a missing connection, a hole, the edge, a courtyard, a keepout) stops `fab`: the first line of the message says that no package was written and where the KiCad board is, with what each of two flags does. `--allow-drc-violations` packages the board anyway to order from, and `fab-notes.txt` then says the board is not clean. `--for-review` writes the files to look at instead (the KiCad board and project, `<board>-gerbers-REVIEW.zip`, the SVG, the `.glb` and `.step`, the schematic PDF, the pictures of the copper `<board>-top-REVIEW.png`, `<board>-inner<n>-REVIEW.png` and `<board>-bottom-REVIEW.png`, which are the bytes `view pcb --layer <layer> --drc --islands` draws of the board `fab` routed and which `--no-pictures` leaves out, and `fab-notes.txt` with the findings), each marked FOR REVIEW, NOT FOR ORDER, with no `bom.csv` and no `cpl.csv`; the run still exits 1 while a finding it waived stands, and `project order` refuses such a package. Besides the errors of the check it waives the requirements on where parts go and the board's own limits that stop `fab` at placement (a part over a height limit or a keepout's `.max_height`, a part or a pad in a keepout, a part over pins that protrude, a collision with a case model, and with strict constraints a part of unknown height under a limit), and `fab-notes.txt` lists every finding it waived under `FOR REVIEW, NOT FOR ORDER` at its top; with `--format json` each is a finding of code `fab` with `waived: \"for-review\"`. Courtyards that overlap, a part outside the outline or over a cutout, and lines proved unable to hold together still stop it. The warnings of the check (silkscreen on a pad, a narrow mask web, a via in a pad) are listed in the notes. It writes, for each board, a Gerber zip, `bom.csv`, `cpl.csv`, `fab-notes.txt`, the `.kicad_pcb` and `.kicad_pro`, an `.svg`, and the board's 3D scene as `<board>.glb` (outside the Gerber zip; the scene of the routed board, the bytes `dev board3d --glb` writes for it; docs/BOARD3D.md), and the board as STEP, `<board>.step`, for mechanical CAD (outside the Gerber zip; the bytes `dev board3d --step` writes). Read `fab-notes.txt` before you order.\n\n`--cross-check` checks the Gerbers against the board, also with no KiCad: each copper layer of the zip, drawn as `view gerber` draws it, is compared pixel by pixel with the board model as `view pcb` draws it (40 pixels a millimetre; at most 1% of the pixels differ and 0.1% beyond 0.05 mm). A difference stops `fab` and lists each place as a `--region` box to draw with both commands; the result is in `fab-notes.txt` and, with `--format json`, a finding of code `fab`. With KiCad installed the KiCad cross-check runs as well (`cross-check-<file>.png` shows each layer that differs); without it the viewer comparison runs alone, and `fab-notes.txt` says so. A panel's cross-check is KiCad's alone.\n\nA board the router cannot finish is still written, marked INCOMPLETE, and the run ends in an error. Beside it, `routing-failure.txt` lists each connection left with its net, its two pads and their places and the parts most of them end on, and then, for each line the router left, the stage it last failed in (the first pass, the try with less room, ripping up, the negotiation, the chain of rip-ups, the rounds that rip up whole nets, or out of time) and the nets whose copper stands in its way, or, where no path crosses only other nets' copper, the pads, vias and edge that wall it in; `routing-report.json` has the same for a program, with a crowding map of the board (1 mm squares, how often the router's searches across other nets' copper passed through each), which shows where the board is fought over.\n\nWith `--format json` the progress goes nowhere unless `--progress json` prints it as JSON lines on stderr, and the notes of `fab-notes.txt` (\"before you order\") are findings with the code `fab`. Each board of `boards` has `routes`, the nets the routing made long against the straight length between their pads (`long`) and the nets with the most vias (`most_vias`), each with `net`, `length`, `straight`, `ratio` and `vias`, as the notes' `routed long:` and `most vias:` lines list them; it is left out when both are empty. A finding about requirements of the physical file that are not met has them as data in `requirements` (the requirement, what was measured, the window it allows and how far out it is), and the refusal because the parts do not fit has every overlapping pair, every part outside and every part's final place in `does_not_fit`. The lines of the physical file and locks of the layout file that cannot all hold are in `conflicts` (each with its kind, the lines, the parts with the box each courtyard lies within, and the overlap); a courtyard past an edge nobody stated and a part bigger than the outline (`past_edge`, `too_big`), proved before placing, are there too. Each line of a conflict has the window it allows (`measure`, `unit`, `min` and `max`, or `allowed_side`). With constraints as warnings, the lines that cannot all hold are findings of code `place` (the code `board build --format json` gives what is proved before placing) with their `conflicts`. The faults of the placement check where the placer ended are in `placement` (each with its kind, the parts with their courtyards, and its numbers). A lock of the layout file that breaks a requirement has `requirements` and `placement` of the board as the lock leaves it.\n\nThe height check cannot check a part of unknown height: one warning, `height_unknown`, on stderr and in `fab-notes.txt`, lists every such part that stands under a height limit or under another part's body, with the limit that would apply (for a body that states no `.standoff`, the limit its standoff would put over the part). It is a warning always: `fab` still passes. State each part's `.height` to leave it (docs/language/23-the-shape-of-a-board.md, _Height limits_)."
 )]
 pub struct Args {
     /// The source file; with none, the project's boards (see netsmith.toml).
@@ -45,18 +45,31 @@ pub struct Args {
     /// netsmith.toml or `--constraints warn`.
     #[arg(long)]
     pub allow_drc_violations: bool,
-    /// Write the files to look at of a board that fails the design rules check, marked FOR REVIEW.
+    /// Write the files to look at of a board with findings, marked FOR REVIEW, never to order.
     ///
-    /// Without a flag the check stops `fab` and no package is written; `--allow-drc-violations`
-    /// packages the board to order from, and this packages it to look at. It writes the KiCad
-    /// board and project, `<board>-gerbers-REVIEW.zip`, the SVG, the `.glb` and `.step`, the
-    /// schematic PDF and `fab-notes.txt` with the findings, each marked FOR REVIEW, NOT FOR
-    /// ORDER, and no `bom.csv` and no `cpl.csv`. The run exits 1 while the check has errors, and
-    /// `project order` refuses the package. It waives the findings about where parts go too, which
-    /// `--allow-drc-violations` never does. A board that passes is packaged as usual. It takes
-    /// neither `--allow-drc-violations` nor `--cross-check`, and `project order` does not take it.
+    /// Without a flag the design rules check stops `fab` and no package is written;
+    /// `--allow-drc-violations` packages the board to order from, and this packages it to look
+    /// at. It writes the KiCad board and project, `<board>-gerbers-REVIEW.zip`, the SVG, the
+    /// `.glb` and `.step`, the schematic PDF, a picture of the copper of each layer
+    /// (`<board>-top-REVIEW.png`, `<board>-inner<n>-REVIEW.png` for each inner signal layer,
+    /// `<board>-bottom-REVIEW.png`: the bytes `view pcb --layer <layer> --drc --islands` draws of
+    /// the board `fab` routed) and `fab-notes.txt`, each marked FOR REVIEW, NOT FOR ORDER, and no
+    /// `bom.csv` and no `cpl.csv`. Besides the errors of the check it waives the requirements on
+    /// where parts go, which `--allow-drc-violations` never does, and the board's own limits that
+    /// stop `fab` at placement: a part over a height limit or a keepout's `.max_height`
+    /// (`too_tall`), a part or a pad in a keepout (`in_keepout`, `pad_in_keepout`), a part over
+    /// pins that protrude (`over_pins`), a collision with a case model, and with strict
+    /// constraints a part of unknown height under a limit. The notes list every finding it waived
+    /// under `FOR REVIEW` at the top. The run exits 1 while one stands, and `project order`
+    /// refuses the package. A board with none is packaged as usual. It takes neither
+    /// `--allow-drc-violations` nor `--cross-check`, and `project order` does not take it.
     #[arg(long, conflicts_with_all = ["allow_drc_violations", "cross_check"])]
     pub for_review: bool,
+    /// With `--for-review`, leave the pictures of the copper (`<board>-<layer>-REVIEW.png`) out.
+    ///
+    /// The pictures an earlier run left are removed.
+    #[arg(long, requires = "for_review")]
+    pub no_pictures: bool,
     /// Check the Gerbers against the board, with netsmith's own viewer and with KiCad's own plot and check.
     ///
     /// Each copper layer of the Gerbers is drawn as `view gerber` draws it and compared with the board as `view pcb` draws it (the limits are in the language guide); a difference stops `fab`, lists each place as a `--region` box and is a finding of `fab-notes.txt`. This needs no KiCad. With KiCad's command-line tool installed (`$KICAD_CLI`, then `kicad-cli` or `kicad-cli.exe` on `PATH`, then Windows KiCad 9 under WSL) the files and the findings are compared with KiCad's own plot and check too; without it only the viewer comparison runs, and `fab-notes.txt` says so.
@@ -196,7 +209,7 @@ fn run_chosen(args: &Args, format: Format) -> ExitCode {
             args.route_timeout,
             args.rip_rounds,
             args.allow_drc_violations,
-            args.for_review,
+            (args.for_review, !args.no_pictures),
             args.cross_check,
             args.strict,
             args.locked,
@@ -323,7 +336,7 @@ fn run_fab(
     route_timeout: Option<u64>,
     rip_rounds: Option<usize>,
     allow_drc_violations: bool,
-    for_review: bool,
+    (for_review, review_pictures): (bool, bool),
     cross_check: bool,
     strict: bool,
     locked: bool,
@@ -385,6 +398,7 @@ fn run_fab(
         layout: None,
         allow_drc_violations,
         for_review,
+        review_pictures,
         cross_check,
         only: None,
         strict_heights: strict_heights(&target, constraints_warn),
@@ -468,6 +482,17 @@ fn run_fab(
                 unchecked |= !failure.problems.is_empty();
                 if json {
                     if failure.problems.is_empty() {
+                        // What `--for-review` waived is a finding of its own each (issue #1212).
+                        let waived: Vec<Finding> = failure
+                            .review
+                            .iter()
+                            .flat_map(|r| {
+                                r.waived.iter().map(|w| Finding {
+                                    board: Some(r.board.clone()),
+                                    ..waived_finding(w)
+                                })
+                            })
+                            .collect();
                         report.findings.push(Finding {
                             requirements: failure.requirements,
                             does_not_fit: failure.does_not_fit,
@@ -479,6 +504,7 @@ fn run_fab(
                                 failure.text.trim().trim_start_matches("error: "),
                             )
                         });
+                        report.findings.extend(waived);
                     } else {
                         report
                             .findings
@@ -628,6 +654,31 @@ fn quiet_line(message: &str) {
     }
 }
 
+/// A finding `board fab --for-review` waived (issue #1212), as a finding of code `fab` with
+/// `waived: "for-review"`: its rule, and the fault of the placement check with its parts and
+/// numbers, or the place, nets and parts of a finding of the design rules check. Still an error:
+/// the run fails while it stands.
+fn waived_finding(w: &netsmith_fabricate::fab::Waived) -> Finding {
+    let mut finding = match &w.drc {
+        Some(f) => netsmith_tools::findings::of_drc_finding(f, None),
+        None => Finding::plain(Severity::Error, "fab", w.message.clone()),
+    };
+    finding.severity = Severity::Error;
+    finding.code = "fab".to_string();
+    finding.rule = Some(w.rule.clone());
+    finding.waived = Some("for-review".to_string());
+    if let Some(fault) = &w.placement {
+        finding.parts = fault.parts.iter().map(|p| p.part.refdes.clone()).collect();
+        finding.path = fault
+            .parts
+            .first()
+            .map(|p| p.part.path.clone())
+            .filter(|p| !p.is_empty());
+        finding.placement = vec![fault.clone()];
+    }
+    finding
+}
+
 /// A line `fab` told as it went, as a finding when it is a warning or a note: `note: ...`,
 /// `warning: ...`, or `<board>: warning: ...`.
 fn finding_of_line(line: &str) -> Option<Finding> {
@@ -733,6 +784,7 @@ pub(super) fn run_order(
         allow_drc_violations,
         // An order is never made for review.
         for_review: false,
+        review_pictures: false,
         cross_check,
         strict_heights: strict_heights(&target, constraints_warn),
         lock: None,
@@ -890,6 +942,7 @@ mod tests {
                 rip_rounds: None,
                 allow_drc_violations: false,
                 for_review: false,
+                no_pictures: false,
                 cross_check: false,
                 strict: false,
                 locked: false,
@@ -944,6 +997,13 @@ mod tests {
             assert!(e.contains("cannot be used with"), "{other}: {e}");
         }
         assert!(parse(&["project", "order", "d", "--for-review"]).is_err());
+        // Issue #1213: the pictures of a review package are left out with `--no-pictures`,
+        // which means nothing without `--for-review`.
+        assert!(fab(&["--for-review", "--no-pictures"]).no_pictures);
+        assert!(!fab(&["--for-review"]).no_pictures);
+        let e = parse(&["board", "fab", "--no-pictures"]).unwrap_err();
+        assert!(e.contains("--for-review"), "{e}");
+        assert!(parse(&["project", "order", "d", "--no-pictures"]).is_err());
         assert!(parse(&["board", "build", "--for-review"]).is_err());
         assert!(parse(&["board", "build", "--cross-check"]).is_err());
         assert!(parse(&["board", "build", "--no-glb"]).is_err());

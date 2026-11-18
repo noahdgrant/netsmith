@@ -1247,6 +1247,8 @@ pub fn build(spec: &Spec, cell: &CellInput, options: &Options) -> Result<PanelPa
         (options.process.as_deref(), options.revision.as_deref()),
         &extras,
         &options.trim,
+        // A panel is never made for review.
+        (&[], &[]),
     );
     Ok(PanelPackage {
         gerber_files: files.into_iter().map(|f| f.name).collect(),

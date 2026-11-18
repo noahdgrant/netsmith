@@ -42,7 +42,7 @@ pub struct Args {
     #[arg(long, value_name = "X,Y,W,H", value_parser = parse_region)]
     pub region: Option<[f64; 4]>,
     /// Pixels a millimetre.
-    #[arg(long, value_name = "PX_PER_MM", default_value_t = 20.0, value_parser = parse_scale)]
+    #[arg(long, value_name = "PX_PER_MM", default_value_t = pcb_picture::DEFAULT_SCALE, value_parser = parse_scale)]
     pub scale: f64,
     /// What to write: a PNG, or the SVG it is drawn from.
     #[arg(long, value_enum, default_value = "png")]

@@ -44,6 +44,10 @@ use netsmith_router::RouteOptions;
 
 use crate::kept_routes::KeptRoutes;
 
+/// Pixels a millimetre of `view pcb` when `--scale` is not given, and of the pictures of a
+/// package made for review (`board fab --for-review`, issue #1213).
+pub const DEFAULT_SCALE: f64 = 20.0;
+
 /// What file to write.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
