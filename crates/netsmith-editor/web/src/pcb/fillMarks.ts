@@ -2,7 +2,8 @@
 // fill (`GET /api/pcb/fill`, crates/netsmith-pcb/src/fill_report.rs, what `netsmith board fill` prints), drawn where it is. Each
 // copper island the fill removed (copper of a pour that touched no copper of its net, so the Gerbers have none there) is hatched
 // and outlined, dashed, in `--pcb-island`; each pad the fill starves (fewer than two spokes and tracks join it to the pour, the
-// design rules check's `starved_thermal`) is ringed in `--pcb-starved`, as `netsmith view pcb --islands --drc` marks them. The
+// design rules check's `starved_thermal`) is ringed in `--pcb-starved`, as `netsmith view pcb --islands --drc` marks them, and so
+// is each pad it joins by nothing (no spoke and no track, the check's `unjoinable_thermal`, issue 1222), its tip saying why. The
 // places are in the board file's frame, which is the sheet's, so they go into the drawing as they are.
 
 import type { PcbFill, PcbScene } from '../api';
@@ -31,15 +32,17 @@ export interface IslandShape {
   d: string;
 }
 
-/** A starved pad as it is drawn. */
+/** A starved pad, or one the fill joins by nothing, as it is drawn. */
 export interface StarvedShape {
+  /** `starved` (`starved_thermal`) or `unjoinable` (`unjoinable_thermal`). */
+  kind: 'starved' | 'unjoinable';
   layer: string;
   side: PourSide;
   net: string;
   pad: string;
   x: number;
   y: number;
-  /** `1 of 4 spokes, 0 tracks`. */
+  /** `1 of 4 spokes, 0 tracks`, or of an unjoinable pad why the fill makes none of its spokes. */
   how: string;
 }
 
@@ -63,12 +66,13 @@ export function islandsOf(fill: PcbFill): IslandShape[] {
   );
 }
 
-/** Every starved pad, with KiCad's name of its layer. */
+/** Every starved pad, then every pad the fill joins by nothing, with KiCad's name of its layer. */
 export function starvedOf(fill: PcbFill): StarvedShape[] {
   const names = new Map(fill.fills.map((f) => [f.layer, f.layerName]));
-  return fill.starved.map((s) => {
+  const starved = fill.starved.map((s): StarvedShape => {
     const layer = names.get(s.layer) ?? s.layer;
     return {
+      kind: 'starved',
       layer,
       side: sideOf(layer),
       net: s.net,
@@ -78,7 +82,17 @@ export function starvedOf(fill: PcbFill): StarvedShape[] {
       how: `${s.joinedSpokes} of ${s.spokes} spokes, ${s.tracks} track${s.tracks === 1 ? '' : 's'}`,
     };
   });
+  const unjoinable = fill.unjoinable.map((u): StarvedShape => {
+    const layer = names.get(u.layer) ?? u.layer;
+    return { kind: 'unjoinable', layer, side: sideOf(layer), net: u.net, pad: `${u.part}.${u.pad}`, x: u.at.x, y: u.at.y, how: u.why };
+  });
+  return [...starved, ...unjoinable];
 }
+
+const tipOf = (s: StarvedShape): string =>
+  s.kind === 'starved'
+    ? `${escaped(s.pad)}: the ${escaped(s.net)} pour starves it (${escaped(s.how)}; it needs 2)`
+    : `${escaped(s.pad)}: no spoke of the ${escaped(s.net)} pour joins it (${escaped(s.how)})`;
 
 const escaped = (text: string): string =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -93,7 +107,7 @@ export function fillMarkup(fill: PcbFill | null, current: boolean): string {
   );
   const starved = starvedOf(fill).map(
     (s) =>
-      `<g class="starved-pad starved-${s.side}" data-layer="${escaped(s.layer)}" data-net="${escaped(s.net)}" data-pad="${escaped(s.pad)}"><title>${escaped(s.pad)}: the ${escaped(s.net)} pour starves it (${s.how}; it needs 2)</title><circle class="starved-ring" cx="${num(s.x)}" cy="${num(s.y)}" r="1.2"/><circle class="starved-dot" cx="${num(s.x)}" cy="${num(s.y)}" r=".25"/></g>`,
+      `<g class="starved-pad starved-${s.side}" data-kind="${s.kind}" data-layer="${escaped(s.layer)}" data-net="${escaped(s.net)}" data-pad="${escaped(s.pad)}"><title>${tipOf(s)}</title><circle class="starved-ring" cx="${num(s.x)}" cy="${num(s.y)}" r="1.2"/><circle class="starved-dot" cx="${num(s.x)}" cy="${num(s.y)}" r=".25"/></g>`,
   );
   const group = (cls: string, testid: string, items: string[]) =>
     items.length ? `<g class="${cls}" data-testid="${testid}" data-current="${current}">${items.join('')}</g>` : '';
