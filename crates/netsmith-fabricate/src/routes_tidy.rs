@@ -31,6 +31,31 @@
 //! finding or the connection that changed. A refused change is tried again in its other forms
 //! (a smaller chamfer, the other side of a pad's edge), then left as it was.
 //!
+//! **Checked where the change is** (issue #1225). The check of the whole board took seconds on
+//! a board of a few thousand tracks, and the pass checked it for every group: half an hour. Now
+//! the changes of a pass are taken net by net, and each net's changes are a group, checked
+//! together and split in two when refused as before. A group is checked by the check of its
+//! neighbourhood ([`near`]): the items within the board's largest space of the copper the
+//! changes remove and add, of every net (found in a grid of the board's items built once), with
+//! the changes and without them, and the findings with a place in the neighbourhood compared.
+//! The connections are judged there too: when the changes leave each net with as many pieces
+//! there as it had, they join and part nothing; when they do not, the connections left of the
+//! whole board decide, as before (the ratsnest of a board fills its zones, which costs as much
+//! as a check). After each pass the whole board is checked once. The next pass takes its
+//! changes from that check's findings, and when it finds what the pass's changes add that no
+//! neighbourhood could see (a rule of a whole net or a fill, [`near`]), those changes are checked
+//! again against the whole board, split as a refused group is, so that what is made is what the
+//! check of the whole board allows. The report counts the checks and the items they looked at
+//! ([`Tidied::checks`], [`Tidied::items_checked`]): the work grows with the changes, and with the
+//! board only by the check of the whole board after each pass. [`Checking::Whole`] is the pass
+//! as it was, every group checked on the whole board, which the tests compare with.
+//!
+//! **Progress and cancel** (ADR 0062). Each pass says how far it has got, net by net
+//! ([`netsmith_core::job::report_detail`], `nets tidied`: the net, how many of the pass's nets,
+//! the changes made so far and the time the pass has left at the pace so far), and each check is
+//! a checkpoint. Nothing is written until the whole pass has run, so a cancel, or Ctrl+C, leaves
+//! the files as they were.
+//!
 //! **What is never touched.** A net the routes file locks, a locked shape, an arc, the shapes of
 //! a record whose pads moved (they are not on the board), zones, and the kept copper of a net
 //! whose pads moved since it was routed (`fab --reuse-routes` routes it again).
@@ -44,12 +69,31 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
-use netsmith_pcb::{Board, CopperLayer, Pt, RouteTrack, RouteVia, Routes, Track, Via};
+use netsmith_core::job;
+use netsmith_pcb::{
+    Board, CopperLayer, Placed, Pt, Rect, RouteTrack, RouteVia, Routes, Track, Via,
+};
 use netsmith_router::kept::Kept;
 use serde::Serialize;
 
 use crate::kept_routes::KeptRoutes;
 use crate::routes::{beside_layout, load, save, with_routes};
+
+mod near;
+
+/// How [`tidy_with`] checks a group of changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Checking {
+    /// By the check of the group's neighbourhood, and the whole board's after each pass (the
+    /// module's header).
+    Near,
+    /// By the check of the whole board: the pass before issue #1225, one group of all the
+    /// changes of a pass, which the tests compare [`Checking::Near`] with.
+    Whole,
+}
+
+/// The unit of the pass's progress.
+pub const PROGRESS_UNIT: &str = "nets tidied";
 
 /// How far from the corner a chamfer starts, in widths of the narrower track, the largest
 /// first: each is tried when the one before it is refused.
@@ -144,8 +188,11 @@ pub struct Tidied {
     pub findings_after: usize,
     /// The connections left to route, before and after: the same, by the rule of every change.
     pub connections_left: usize,
-    /// How many times the board was checked: the work done.
+    /// How many times the design rules check ran (of a neighbourhood or of the whole board):
+    /// the work done.
     pub checks: usize,
+    /// How many items (tracks, vias, pads and zones) those checks looked at, in all.
+    pub items_checked: usize,
     /// What else there is to know: a kept file not used, or made stale.
     pub notes: Vec<String>,
     /// The files written (none for a dry run, or when nothing changed).
@@ -212,6 +259,11 @@ impl Tidied {
             s,
             "the design rules check: {} finding(s) before, {} after; {} connection(s) left to route, as before",
             self.findings_before, self.findings_after, self.connections_left
+        );
+        let _ = writeln!(
+            s,
+            "checked {} time(s), {} item(s) in all",
+            self.checks, self.items_checked
         );
         for n in &self.notes {
             let _ = writeln!(s, "note: {n}");
@@ -307,6 +359,16 @@ pub fn tidy(
     routes: &Routes,
     kept: Option<KeptCopper<'_>>,
 ) -> Result<Tidied, String> {
+    tidy_with(board, routes, kept, Checking::Near)
+}
+
+/// [`tidy`], with the groups of changes checked as `checking` says.
+pub fn tidy_with(
+    board: &Board,
+    routes: &Routes,
+    kept: Option<KeptCopper<'_>>,
+    checking: Checking,
+) -> Result<Tidied, String> {
     let mut work = Work::new(board, routes, kept.as_ref())?;
     let first = work.look(&work.copper.clone())?;
     let mut look = first.clone();
@@ -314,7 +376,8 @@ pub fn tidy(
     // The last refusal of each change by its place, and how many of its forms were tried.
     let mut refused: BTreeMap<Key, Change> = BTreeMap::new();
     let mut tries: HashMap<Key, usize> = HashMap::new();
-    for _ in 0..PASSES {
+    for pass in 1..=PASSES {
+        job::checkpoint();
         let candidates = work.candidates(&look, &tries);
         if candidates.is_empty() {
             break;
@@ -323,7 +386,12 @@ pub fn tidy(
             *tries.entry(c.key.clone()).or_default() += 1;
         }
         let mut outcome = Outcome::default();
-        work.settle(candidates, &mut look, &mut outcome)?;
+        match checking {
+            Checking::Whole => work.settle(candidates, &mut look, &mut outcome)?,
+            Checking::Near => {
+                work.pass_near(pass, candidates, &mut look, &mut outcome, made.len())?
+            }
+        }
         for c in outcome.made {
             refused.remove(&c.key);
             made.push(c.change);
@@ -360,6 +428,7 @@ pub fn tidy(
         findings_after: look.keys.len(),
         connections_left: look.lines.len(),
         checks: work.checks,
+        items_checked: work.items,
         notes: Vec::new(),
         wrote: Vec::new(),
         routes: new_routes,
@@ -372,6 +441,9 @@ pub fn tidy(
 struct Wire {
     owner: Owner,
     track: Track,
+    /// The track as the board has it: of a track of the routes file, its record's form put on
+    /// the board, as `with_routes` puts it.
+    drawn: Track,
     /// The record's form as the file had it, while it is unchanged.
     was: Option<RouteTrack>,
     /// Locked, or of a locked net: never changed.
@@ -431,7 +503,24 @@ struct Work<'a> {
     copper: Copper,
     /// The nets whose records are current and unlocked: their shapes are rebuilt from the copper.
     rebuilt: BTreeSet<String>,
+    /// The board with the routes file's zones and none of its copper or parts: what each check
+    /// puts the copper and the parts it looks at on.
+    shell: Board,
+    parts: Vec<Placed>,
+    part_boxes: Vec<Rect>,
+    /// The zones of the board, its planes and pours as the routes file would hold them too:
+    /// what the check of a neighbourhood cuts to it ([`near::clipped`]).
+    zones: Vec<netsmith_pcb::BoardZone>,
+    /// What the check is given beside the board file: the same for every check of the pass.
+    project: String,
+    extras: netsmith_geom::DrcExtras,
+    /// The board's items, by where they are ([`near::Grid`]), and the margin of a neighbourhood.
+    grid: near::Grid,
+    reach: f64,
+    /// The connections left to route of the copper as it is now, sorted.
+    lines: Vec<String>,
     checks: usize,
+    items: usize,
 }
 
 impl<'a> Work<'a> {
@@ -459,6 +548,7 @@ impl<'a> Work<'a> {
                 copper.wires.push(Wire {
                     owner: Owner::RoutesFile,
                     track: t.on(board, net),
+                    drawn: t.on(board, net),
                     was: Some(t.clone()),
                     fixed: record.lock || t.lock || !current,
                     alive: true,
@@ -498,6 +588,7 @@ impl<'a> Work<'a> {
                     copper.wires.push(Wire {
                         owner: Owner::Kept,
                         track: t.clone(),
+                        drawn: t.clone(),
                         was: None,
                         fixed,
                         alive: true,
@@ -515,12 +606,51 @@ impl<'a> Work<'a> {
                 }
             }
         }
+        let mut shell = with_routes(board, routes)?.0;
+        shell.tracks.clear();
+        shell.vias.clear();
+        let parts = std::mem::take(&mut shell.parts);
+        let part_boxes: Vec<Rect> = parts.iter().map(near::part_box).collect();
+        let reach = near::reach(&shell);
+        let mut area = board.outline;
+        for r in &part_boxes {
+            area = area.union(r);
+        }
+        let mut grid = near::Grid::new(area, 2.0 * reach);
+        for (i, r) in part_boxes.iter().enumerate() {
+            grid.put(near::Item::Part(i), r);
+        }
+        for (i, w) in copper.wires.iter().enumerate() {
+            grid.put(near::Item::Wire(i), &near::track_box(&w.drawn));
+        }
+        for (i, h) in copper.holes.iter().enumerate() {
+            grid.put(near::Item::Hole(i), &near::via_box(&h.via));
+        }
+        let mut whole = shell.clone();
+        whole.parts = parts.clone();
+        let mut zones = shell.zones.clone();
+        zones.extend(
+            netsmith_pcb::process_zones(&whole)
+                .into_iter()
+                .map(|(net, z)| z.on(&whole, &net))
+                .filter(|z| !z.layers.iter().any(|l| shell.zoned(l))),
+        );
         Ok(Work {
             board,
             routes,
             copper,
             rebuilt,
+            project: netsmith_pcb::kicad_pro(&whole),
+            extras: crate::fab::drc_extras(&whole),
+            shell,
+            parts,
+            part_boxes,
+            zones,
+            grid,
+            reach,
+            lines: Vec::new(),
             checks: 0,
+            items: 0,
         })
     }
 
@@ -610,36 +740,94 @@ impl<'a> Work<'a> {
         Ok(next)
     }
 
-    /// The board with `copper` on it: the routes file's, then the router's kept copper.
-    fn board_of(&self, copper: &Copper) -> Result<Board, String> {
-        let mut board = with_routes(self.board, &self.routes_of(copper))?.0;
-        for w in copper
-            .wires
-            .iter()
-            .filter(|w| w.alive && w.owner == Owner::Kept)
-        {
-            board.tracks.push(w.track.clone());
-        }
-        for h in copper
-            .holes
-            .iter()
-            .filter(|h| h.alive && h.owner == Owner::Kept)
-        {
-            board.vias.push(h.via.clone());
-        }
-        Ok(board)
+    /// The board with the live `copper` that `wire` and `hole` take, and the parts `part`
+    /// takes, in the order the board with all of it has them: the routes file's tracks net by
+    /// net in the order its records are written, then the router's kept copper (what
+    /// `with_routes` of [`Work::routes_of`], then the kept copper, makes).
+    fn board_with(
+        &self,
+        copper: &Copper,
+        wire: impl Fn(usize) -> bool,
+        hole: impl Fn(usize) -> bool,
+        part: impl Fn(usize) -> bool,
+    ) -> Board {
+        let mut board = self.shell.clone();
+        board.parts = (0..self.parts.len())
+            .filter(|&i| part(i))
+            .map(|i| self.parts[i].clone())
+            .collect();
+        let live = |i: usize, owner: Owner| {
+            let w = &copper.wires[i];
+            w.alive && w.owner == owner && wire(i)
+        };
+        let mut file: Vec<usize> = (0..copper.wires.len())
+            .filter(|&i| live(i, Owner::RoutesFile))
+            .collect();
+        file.sort_by(|&a, &b| {
+            let (wa, wb) = (&copper.wires[a], &copper.wires[b]);
+            (&wa.track.net, wa.rank, a).cmp(&(&wb.track.net, wb.rank, b))
+        });
+        board.tracks = file
+            .into_iter()
+            .chain((0..copper.wires.len()).filter(|&i| live(i, Owner::Kept)))
+            .map(|i| copper.wires[i].drawn.clone())
+            .collect();
+        let live = |i: usize, owner: Owner| {
+            let h = &copper.holes[i];
+            h.alive && h.owner == owner && hole(i)
+        };
+        let mut file: Vec<usize> = (0..copper.holes.len())
+            .filter(|&i| live(i, Owner::RoutesFile))
+            .collect();
+        file.sort_by(|&a, &b| (&copper.holes[a].via.net, a).cmp(&(&copper.holes[b].via.net, b)));
+        board.vias = file
+            .into_iter()
+            .chain((0..copper.holes.len()).filter(|&i| live(i, Owner::Kept)))
+            .map(|i| copper.holes[i].via.clone())
+            .collect();
+        board
     }
 
-    /// The check of the board with `copper`.
-    fn look(&mut self, copper: &Copper) -> Result<Look, String> {
+    /// The whole board with `copper` on it.
+    fn board_of(&self, copper: &Copper) -> Board {
+        self.board_with(copper, |_| true, |_| true, |_| true)
+    }
+
+    /// The design rules check of `board`, counted.
+    fn check(&mut self, board: &Board) -> Result<netsmith_geom::DrcReport, String> {
+        job::checkpoint();
         self.checks += 1;
-        let board = self.board_of(copper)?;
-        let report = netsmith_geom::drc_check(
-            &netsmith_pcb::kicad_pcb(&board),
-            Some(&netsmith_pcb::kicad_pro(&board)),
-            &crate::fab::drc_extras(&board),
+        self.items += board.tracks.len()
+            + board.vias.len()
+            + board.zones.len()
+            + board
+                .parts
+                .iter()
+                .map(|p| p.footprint.pads.len())
+                .sum::<usize>();
+        netsmith_geom::drc_check(
+            &netsmith_pcb::kicad_pcb(board),
+            Some(&self.project),
+            &self.extras,
         )
-        .map_err(|e| format!("the design rules check: {e}"))?;
+        .map_err(|e| format!("the design rules check: {e}"))
+    }
+
+    /// The connections left to route of the board with `copper`, sorted, with the nets of each.
+    fn lines_of(&self, copper: &Copper) -> (Vec<String>, BTreeSet<String>) {
+        let ratsnest = netsmith_pcb::Ratsnest::of(&self.board_of(copper));
+        let mut lines: Vec<String> = ratsnest.lines.iter().map(ToString::to_string).collect();
+        lines.sort();
+        (
+            lines,
+            ratsnest.lines.iter().map(|l| l.net.clone()).collect(),
+        )
+    }
+
+    /// The check of the whole board with `copper`.
+    fn look(&mut self, copper: &Copper) -> Result<Look, String> {
+        let board = self.board_of(copper);
+        let report = self.check(&board)?;
         let mut keys: Vec<String> = report
             .findings
             .iter()
@@ -647,16 +835,250 @@ impl<'a> Work<'a> {
             .map(|f| finding_key(f, &board))
             .collect();
         keys.sort();
-        let ratsnest = netsmith_pcb::Ratsnest::of(&board);
-        let mut lines: Vec<String> = ratsnest.lines.iter().map(ToString::to_string).collect();
-        lines.sort();
-        let open = ratsnest.lines.iter().map(|l| l.net.clone()).collect();
+        let (lines, open) = self.lines_of(copper);
         Ok(Look {
             report,
             keys,
             lines,
             open,
         })
+    }
+
+    /// The pass of `candidates` checked by neighbourhoods (the module's header): net by net,
+    /// then the whole board once, which becomes `look`; the changes made go to `out`, after
+    /// `before` made by the passes before.
+    fn pass_near(
+        &mut self,
+        pass: usize,
+        candidates: Vec<Candidate>,
+        look: &mut Look,
+        out: &mut Outcome,
+        before: usize,
+    ) -> Result<(), String> {
+        let start = self.copper.clone();
+        self.lines = look.lines.clone();
+        let tried = candidates.len();
+        // The changes made are said in the order of the pass's list, as one group of them all
+        // makes them.
+        let order: HashMap<Key, usize> = candidates
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (c.key.clone(), i))
+            .collect();
+        let made_before = out.made.len();
+        let mut by_net: BTreeMap<String, Vec<Candidate>> = BTreeMap::new();
+        for c in candidates {
+            by_net.entry(c.change.net.clone()).or_default().push(c);
+        }
+        let total = by_net.len() as u64;
+        job::report_detail(PROGRESS_UNIT, 0, Some(total), || {
+            format!("pass {pass}: {tried} change(s) to try on {total} net(s), {before} made so far")
+        });
+        let began = std::time::Instant::now();
+        for (k, (net, group)) in by_net.into_iter().enumerate() {
+            self.settle_near(group, out)?;
+            let done = k as u64 + 1;
+            job::report_detail(PROGRESS_UNIT, done, Some(total), || {
+                let left = if done < total {
+                    let each = began.elapsed().as_secs_f64() / done as f64;
+                    format!(
+                        ", about {:.0} s left in the pass",
+                        each * (total - done) as f64
+                    )
+                } else {
+                    String::new()
+                };
+                format!(
+                    "pass {pass}: net {net}, {done} of {total} net(s): {} change(s) made so far{left}",
+                    before + out.made.len()
+                )
+            });
+        }
+        out.made[made_before..].sort_by_key(|c| order.get(&c.key).copied());
+        if out.made.is_empty() {
+            return Ok(());
+        }
+        let end = self.look(&self.copper.clone())?;
+        if refusal(look, &end).is_none() {
+            *look = end;
+            return Ok(());
+        }
+        // The whole board finds what no neighbourhood could see: the pass's changes are checked
+        // against the whole board, as `Checking::Whole` checks them.
+        job::report_detail(PROGRESS_UNIT, total, Some(total), || {
+            format!(
+                "pass {pass}: the whole board finds what its changes add beyond their neighbourhoods; its {} change(s) are checked again on the whole board",
+                out.made.len()
+            )
+        });
+        // The grid keeps listing the tracks the pass added; a search tests what it finds.
+        self.copper = start;
+        let made = std::mem::take(&mut out.made);
+        self.settle(made, look, out)
+    }
+
+    /// [`Work::settle`] by the check of the group's neighbourhood.
+    fn settle_near(&mut self, group: Vec<Candidate>, out: &mut Outcome) -> Result<(), String> {
+        if group.is_empty() {
+            return Ok(());
+        }
+        let mut trial = self.copper.clone();
+        for c in &group {
+            apply(self.board, &mut trial, c);
+        }
+        match self.refusal_near(&group, &trial)? {
+            None => {
+                self.accept(trial);
+                out.made.extend(group);
+            }
+            Some(why) if group.len() == 1 => {
+                out.refused
+                    .push((group.into_iter().next().expect("one"), why));
+            }
+            Some(_) => {
+                let mut first = group;
+                let second = first.split_off(first.len() / 2);
+                self.settle_near(first, out)?;
+                self.settle_near(second, out)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// `trial` made the copper: the tracks it adds put in the grid.
+    fn accept(&mut self, trial: Copper) {
+        for (i, w) in trial.wires.iter().enumerate().skip(self.copper.wires.len()) {
+            self.grid
+                .put(near::Item::Wire(i), &near::track_box(&w.drawn));
+        }
+        self.copper = trial;
+    }
+
+    /// The box round the copper `c` removes from the copper and adds to it.
+    fn changed(&self, c: &Candidate) -> Rect {
+        let boxes = c
+            .remove_wires
+            .iter()
+            .map(|&i| near::track_box(&self.copper.wires[i].drawn))
+            .chain(
+                c.remove_holes
+                    .iter()
+                    .map(|&i| near::via_box(&self.copper.holes[i].via)),
+            )
+            .chain(c.add.iter().map(near::track_box));
+        boxes
+            .reduce(|a, b| a.union(&b))
+            .unwrap_or(Rect::new(self.board.outline.min, self.board.outline.min))
+    }
+
+    /// Why `trial`, the copper with the changes of `group`, is refused, by the check of the
+    /// neighbourhoods of the changes with and without them; `None` when it is allowed.
+    fn refusal_near(
+        &mut self,
+        group: &[Candidate],
+        trial: &Copper,
+    ) -> Result<Option<String>, String> {
+        let hoods: Vec<Rect> = group
+            .iter()
+            .map(|c| self.changed(c).expanded(self.reach))
+            .collect();
+        let wides: Vec<Rect> = hoods.iter().map(|h| h.expanded(self.reach)).collect();
+        let mut wires = BTreeSet::new();
+        let mut holes = BTreeSet::new();
+        let mut parts = BTreeSet::new();
+        for &wide in &wides {
+            for item in self.grid.near(&wide) {
+                match item {
+                    near::Item::Wire(i)
+                        if i < self.copper.wires.len()
+                            && near::meets(
+                                &near::track_box(&self.copper.wires[i].drawn),
+                                &wide,
+                            ) =>
+                    {
+                        wires.insert(i);
+                    }
+                    near::Item::Hole(i)
+                        if near::meets(&near::via_box(&self.copper.holes[i].via), &wide) =>
+                    {
+                        holes.insert(i);
+                    }
+                    near::Item::Part(i) if near::meets(&self.part_boxes[i], &wide) => {
+                        parts.insert(i);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let now = self.copper.wires.len();
+        let zones = near::clipped(&self.zones, &near::clusters(wides));
+        let local = |mut board: Board| {
+            board.zones = zones.clone();
+            board.planes.clear();
+            board.pours.clear();
+            board
+        };
+        let before = local(self.board_with(
+            &self.copper,
+            |i| wires.contains(&i),
+            |i| holes.contains(&i),
+            |i| parts.contains(&i),
+        ));
+        let after = local(self.board_with(
+            trial,
+            |i| i >= now || wires.contains(&i),
+            |i| holes.contains(&i),
+            |i| parts.contains(&i),
+        ));
+        let (old, old_pieces) = self.keys_near(&before, &hoods)?;
+        let (new, new_pieces) = self.keys_near(&after, &hoods)?;
+        // The pieces of each net in the neighbourhoods are as many as they were: the changes
+        // join and part nothing, and the connections left are as they were (a change that
+        // parts what joins only further off is the whole board's, after the pass). Otherwise
+        // the connections left of the whole board say.
+        if old_pieces != new_pieces {
+            let (lines, _) = self.lines_of(trial);
+            if lines != self.lines {
+                return Ok(lines_refusal(&self.lines, &lines));
+            }
+        }
+        Ok(keys_refusal(&old, &new))
+    }
+
+    /// The keys of the findings of `board` with a place in one of `hoods`, sorted, and the nets
+    /// of its unconnected items (each a piece of a net not joined to the rest), sorted.
+    fn keys_near(
+        &mut self,
+        board: &Board,
+        hoods: &[Rect],
+    ) -> Result<(Vec<String>, Vec<String>), String> {
+        let report = self.check(board)?;
+        let unconnected =
+            |f: &&netsmith_geom::DrcFinding| f.rule == netsmith_geom::DrcRule::UnconnectedItems;
+        let mut keys: Vec<String> = report
+            .findings
+            .iter()
+            .filter(|f| !unconnected(f))
+            .filter(|f| {
+                let at = Pt::new(f.at.x, f.at.y);
+                hoods.iter().any(|h| near::holds(h, at))
+            })
+            .map(|f| finding_key(f, board))
+            .collect();
+        keys.sort();
+        let mut pieces: Vec<String> = report
+            .findings
+            .iter()
+            .filter(unconnected)
+            .map(|f| {
+                f.items
+                    .first()
+                    .and_then(|i| i.net.clone())
+                    .unwrap_or_default()
+            })
+            .collect();
+        pieces.sort();
+        Ok((keys, pieces))
     }
 
     /// Make the changes of `group` that the rule allows, splitting a refused group in two.
@@ -671,12 +1093,12 @@ impl<'a> Work<'a> {
         }
         let mut trial = self.copper.clone();
         for c in &group {
-            apply(&mut trial, c);
+            apply(self.board, &mut trial, c);
         }
         let after = self.look(&trial)?;
         match refusal(look, &after) {
             None => {
-                self.copper = trial;
+                self.accept(trial);
                 *look = after;
                 out.made.extend(group);
             }
@@ -1162,7 +1584,7 @@ impl<'a> Work<'a> {
 
 /// `c` made on `copper`: what it removes marked so, what it adds written in the place of the
 /// first track it removes.
-fn apply(copper: &mut Copper, c: &Candidate) {
+fn apply(board: &Board, copper: &mut Copper, c: &Candidate) {
     let rank = c
         .remove_wires
         .iter()
@@ -1181,9 +1603,14 @@ fn apply(copper: &mut Copper, c: &Candidate) {
         copper.holes[i].alive = false;
     }
     for (n, t) in c.add.iter().enumerate() {
+        let drawn = match owner {
+            Owner::RoutesFile => RouteTrack::of(board, t).on(board, &t.net),
+            Owner::Kept => t.clone(),
+        };
         copper.wires.push(Wire {
             owner,
             track: t.clone(),
+            drawn,
             was: None,
             fixed: false,
             alive: true,
@@ -1196,19 +1623,28 @@ fn apply(copper: &mut Copper, c: &Candidate) {
 /// left that changed; `None` when it is allowed.
 fn refusal(before: &Look, after: &Look) -> Option<String> {
     if after.lines != before.lines {
-        let lost: Vec<&String> = after
-            .lines
-            .iter()
-            .filter(|l| !before.lines.contains(l))
-            .collect();
-        return Some(match lost.first() {
-            Some(l) => format!("it leaves a connection open: {l}"),
-            None => "it changes the connections left to route".to_string(),
-        });
+        return lines_refusal(&before.lines, &after.lines);
     }
-    let mut old = before.keys.clone();
+    keys_refusal(&before.keys, &after.keys)
+}
+
+/// Why connections left `after` are refused against `before`: the first that is new.
+fn lines_refusal(before: &[String], after: &[String]) -> Option<String> {
+    if after == before {
+        return None;
+    }
+    let lost: Vec<&String> = after.iter().filter(|l| !before.contains(l)).collect();
+    Some(match lost.first() {
+        Some(l) => format!("it leaves a connection open: {l}"),
+        None => "it changes the connections left to route".to_string(),
+    })
+}
+
+/// Why findings `after` (keys, sorted) are refused against `before`: the first that is new.
+fn keys_refusal(before: &[String], after: &[String]) -> Option<String> {
+    let mut old = before.to_vec();
     let mut new: Vec<&String> = Vec::new();
-    for k in &after.keys {
+    for k in after {
         match old.binary_search(k) {
             Ok(i) => {
                 old.remove(i);
@@ -1428,10 +1864,52 @@ mod tests {
 
     fn findings(board: &Board, routes: &Routes) -> Vec<String> {
         let mut w = Work::new(board, routes, None).unwrap();
-        let mut copper = w.copper.clone();
         // The board as the file draws it, checked.
-        copper.wires.retain(|_| true);
+        let copper = w.copper.clone();
         w.look(&copper).unwrap().keys
+    }
+
+    /// [`tidy`], which checks neighbourhoods, and the same with every group checked on the whole
+    /// board (issue #1225): the same changes, refusals and copper.
+    fn tidied(board: &Board, routes: &Routes, kept: Option<KeptCopper<'_>>) -> Tidied {
+        let kept2 = kept.as_ref().map(|k| KeptCopper {
+            kept: k.kept,
+            stale: k.stale,
+        });
+        let near = tidy(board, routes, kept).unwrap();
+        let whole = tidy_with(board, routes, kept2, Checking::Whole).unwrap();
+        assert_eq!(
+            near.changes,
+            whole.changes,
+            "{}\n{}",
+            near.text(),
+            whole.text()
+        );
+        assert_eq!(
+            near.refused,
+            whole.refused,
+            "{}\n{}",
+            near.text(),
+            whole.text()
+        );
+        assert_eq!(near.routes, whole.routes);
+        assert_eq!(near.kept, whole.kept);
+        assert_eq!(near.findings_after, whole.findings_after);
+        near
+    }
+
+    /// The board the checks put the copper on is the board `with_routes` makes of the routes
+    /// file the copper writes, with the kept copper after it, track for track.
+    fn same_board(board: &Board, routes: &Routes, kept: Option<KeptCopper<'_>>) {
+        let w = Work::new(board, routes, kept.as_ref()).unwrap();
+        let mut by_file = with_routes(board, &w.routes_of(&w.copper)).unwrap().0;
+        for wire in w.copper.wires.iter().filter(|x| x.owner == Owner::Kept) {
+            by_file.tracks.push(wire.track.clone());
+        }
+        for h in w.copper.holes.iter().filter(|x| x.owner == Owner::Kept) {
+            by_file.vias.push(h.via.clone());
+        }
+        assert_eq!(w.board_of(&w.copper), by_file);
     }
 
     fn lines(board: &Board, routes: &Routes) -> Vec<String> {
@@ -1479,7 +1957,8 @@ mod tests {
             "{before:#?}"
         );
 
-        let tidied = tidy(&board, &routes, None).unwrap();
+        same_board(&board, &routes, None);
+        let tidied = tidied(&board, &routes, None);
         let said = tidied.text();
         assert_eq!(
             tidied.counts,
@@ -1536,6 +2015,7 @@ mod tests {
             "{gnd:#?}"
         );
         // A second pass has nothing to do.
+        same_board(&board, &tidied.routes, None);
         let again = tidy(&board, &tidied.routes, None).unwrap();
         assert_eq!(again.changes, Vec::new(), "{}", again.text());
         assert_eq!(again.routes, tidied.routes);
@@ -1567,6 +2047,7 @@ mod tests {
         let file = beside_layout(&layout);
         save(&file, &routes).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
+        let _ = tidied(&board, &routes, None);
         let tidied = tidy_files(&board, &layout, false, false).unwrap();
         let said = tidied.text();
         assert_eq!(tidied.changes, Vec::new(), "{said}");
@@ -1598,7 +2079,7 @@ mod tests {
                 .any(|f| f.contains("[acid_trap] a track leaves a pad")),
             "{before:#?}"
         );
-        let tidied = tidy(&board, &routes, None).unwrap();
+        let tidied = tidied(&board, &routes, None);
         let said = tidied.text();
         assert_eq!(tidied.counts.stubs, 1, "{said}");
         assert_eq!(tidied.counts.acid_traps, 1, "{said}");
@@ -1642,21 +2123,55 @@ mod tests {
         ));
         let kept = Kept::of(&start, &routed, "led.nsm");
         let stale = BTreeSet::new();
-        let tidied = tidy(
-            &board,
-            &routes,
+        let with = || {
             Some(KeptCopper {
                 kept: &kept,
                 stale: &stale,
-            }),
-        )
-        .unwrap();
+            })
+        };
+        same_board(&board, &routes, with());
+        let tidied = tidied(&board, &routes, with());
         assert_eq!(tidied.counts.corners, 1, "{}", tidied.text());
         assert_eq!(tidied.changes[0].copper, Owner::Kept);
         let new = tidied.kept.unwrap();
         assert_eq!(new.nets["GND"].tracks.len(), 3);
         assert_eq!(new.routes, kept.routes);
         assert_eq!(tidied.routes, routes);
+    }
+
+    #[test]
+    fn a_cancelled_pass_writes_nothing_and_one_not_cancelled_writes() {
+        // Issue #1225 (ADR 0062): a cancel at any check of the pass leaves the file as it was.
+        let board = led();
+        let routes = routes_of(
+            &board,
+            vec![(
+                "GND",
+                false,
+                path(BOTTOM, &[[2.0, 0.8], [5.0, 0.8], [5.0, 2.0]]),
+                Vec::new(),
+            )],
+        );
+        let dir = netsmith_testkit::TempDir::new("routes-tidy-cancel");
+        let layout = dir.join("b.pcb.toml");
+        let file = beside_layout(&layout);
+        save(&file, &routes).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        let token = job::Cancel::new();
+        let whole = job::scope(&token, || tidy_files(&board, &layout, false, true)).unwrap();
+        let reached = token.checkpoints();
+        assert!(reached > 2, "{reached} checkpoint(s): {}", whole.text());
+        for at in [1, reached / 2, reached] {
+            let token = job::Cancel::at_checkpoint(at);
+            let ended =
+                job::catch(|| job::scope(&token, || tidy_files(&board, &layout, false, false)));
+            assert!(ended.is_err(), "cancelled at checkpoint {at} of {reached}");
+            assert_eq!(token.checkpoints(), at, "no work after the cancel");
+            assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
+        }
+        let done = tidy_files(&board, &layout, false, false).unwrap();
+        assert_eq!(done.counts.corners, 1, "{}", done.text());
+        assert_ne!(std::fs::read_to_string(&file).unwrap(), text);
     }
 
     #[test]
