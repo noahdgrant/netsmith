@@ -480,7 +480,7 @@ A margin on the capacitors' ratings is the converter's `.voltage_margin` (ADR 00
 }
 ```
 
-The 5 V input of this guide peaks at 5.25 V, so 1.25 times it is 6.56 V and a 6.3 V capacitor, which the converter picks by default, is no longer enough: the input takes a row rated for at least that. A margin no row of the catalog can give is refused with the numbers of the closest row, and only the rating fails: with a margin of 5 the input capacitor would have to be rated for 26.25 V, and no row that keeps the capacitance the IC asks for has more than 25 V.
+The 5 V input of this guide peaks at 5.25 V, so 1.25 times it is 6.56 V and a 6.3 V capacitor, which the converter picks by default, is no longer enough: the input takes a row rated for at least that. A margin no row of the catalog can give is refused with the numbers of the closest row, and only the rating fails: with a margin of 20 the input capacitor would have to be rated for 105 V, and no row of the catalog is rated for more than 100 V. The refusal comes from the converter's checks, before any footprint or symbol is looked up, so it does not depend on the KiCad libraries. A margin of 5 is not refused: the 50 V and 100 V rows keep enough capacitance, and the converter picks one.
 
 ```nsm fails
 import std::parts::regulator::Buck
@@ -491,7 +491,7 @@ import src::zbk2::Zbk2
 board TooMuchMargin {
     .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
     .output: Rail { .pos.net &= "1V8"; .current &= 0mA..1A }
-    .reg: Buck<Zbk2> { .vout.voltage &= 1.8V +/- 3%; .voltage_margin &= 5 }
+    .reg: Buck<Zbk2> { .vout.voltage &= 1.8V +/- 3%; .voltage_margin &= 20 }
 
     .input ~ .reg.vin
     .reg.vout ~ .output
@@ -499,9 +499,11 @@ board TooMuchMargin {
 ```
 
 ```text
-error: TooMuchMargin: L1: part `Inductor` in package `1210` needs KiCad's footprint `Inductor_SMD:L_1210_3225Metric` (std/kicad.toml line 298).
-footprint `Inductor_SMD:L_1210_3225Metric` not found: looked for /usr/share/kicad/footprints/Inductor_SMD.pretty/L_1210_3225Metric.kicad_mod; set NETSMITH_KICAD_FOOTPRINTS to the folder that holds the .pretty libraries, or list the library in kicad.toml
-KiCad is installed at /usr/share/kicad/footprints but has no `Inductor_SMD:L_1210_3225Metric`: check the spelling, or use a project library (a `[[library]]` of kicad.toml) or a netsmith generated footprint: give that row a `gen:` footprint, for a package a generator makes (`footprint = "gen:SOT23(pins=3)"`).
+error: no `capacitor` candidate satisfies `reg.input_cap`: the closest of the 36 that fit, 1 x 2.2uF 10% 100V X7R 1210 C55151, fails because reg.input_cap.max_voltage must always be at least (reg.vin.voltage * reg.voltage_margin), but 100V is not always above 95V..105V (`reg.input_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 25)
+    --> std/parts/regulator.nsm:589:5
+    |
+589 |     .input_cap.max_voltage >= .vin.voltage * .voltage_margin
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 The output fixes only the ratio of the divider's two resistors, so the converter bounds the divider's current, which fixes their size: by default (`?=`) it is the IC's `.recommended_divider_current`, and that is 10 uA to 1 mA by default for an IC whose datasheet gives no figure. The floor keeps the feedback pin's input current (tens of nanoamps) small beside the divider's, and the ceiling keeps the divider from wasting far more than the IC draws for itself. An IC whose datasheet gives a range states it (the `Lmr16006y`'s bottom resistor of 1 kohm to 100 kohm is `.recommended_divider_current &= 7.65uA..765uA`, its 0.765 V reference over each). A board that wants another bound narrows the divider's current by its path (ADR 0116), which replaces the default and the IC's figure with it:
