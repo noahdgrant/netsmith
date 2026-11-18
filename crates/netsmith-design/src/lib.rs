@@ -850,6 +850,13 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
         min_silk_width: mm("min_silk_width"),
         min_text_height: mm("min_text_height"),
         min_silk_to_pad: mm("min_silk_to_pad"),
+        // A process that does not state it (one written before issue #1186) keeps its space
+        // from a pad to silkscreen between silkscreen, as netsmith did before.
+        min_silk_to_silk: if mm("min_silk_to_silk") > 0.0 {
+            mm("min_silk_to_silk")
+        } else {
+            mm("min_silk_to_pad")
+        },
         min_mask_bridge: mm("min_mask_bridge"),
         min_fiducials: number("min_fiducials"),
         fiducial_diameter: mm("fiducial_diameter"),

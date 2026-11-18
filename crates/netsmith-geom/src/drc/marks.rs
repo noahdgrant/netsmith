@@ -242,11 +242,26 @@ fn edge_gap(m: &Model<'_>, shapes: &[Shape]) -> Option<(Gap, Item)> {
     // fiducials beside the line that cuts them off, and the page's space is to the panel's edge
     // (issue #1006).
     let cuts = crate::edge::cut_lines(m.art);
+    let same = |(a, b): (Pt, Pt), (p, q): (Pt, Pt)| {
+        (a.dist(p) < 1e-6 && b.dist(q) < 1e-6) || (a.dist(q) < 1e-6 && b.dist(p) < 1e-6)
+    };
+    // The sides of a rectangle or a polygon on `Edge.Cuts` are the edge's, whatever line lies on
+    // them (`model::edge_of` gives each side as a segment).
+    let sides: Vec<(Pt, Pt)> = m
+        .art
+        .graphics
+        .iter()
+        .filter(|g| g.layer == "Edge.Cuts")
+        .filter_map(|g| match &g.shape {
+            crate::artwork::Shape::Poly(p) if p.len() > 1 => Some(p),
+            _ => None,
+        })
+        .flat_map(|p| (0..p.len()).map(move |k| (p[k], p[(k + 1) % p.len()])))
+        .collect();
     for (edge, item) in &m.edge {
         if let [a, b] = edge.pts[..]
-            && cuts.iter().any(|(p, q)| {
-                (a.dist(*p) < 1e-6 && b.dist(*q) < 1e-6) || (a.dist(*q) < 1e-6 && b.dist(*p) < 1e-6)
-            })
+            && cuts.iter().any(|c| same((a, b), *c))
+            && !sides.iter().any(|s| same((a, b), *s))
         {
             continue;
         }

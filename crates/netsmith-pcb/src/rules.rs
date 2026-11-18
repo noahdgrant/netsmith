@@ -68,8 +68,13 @@ pub struct Rules {
     /// The smallest silkscreen text, and its thinnest stroke.
     pub min_text_height: f64,
     pub min_text_thickness: f64,
-    /// The least space between silkscreen and a pad.
+    /// The least space between silkscreen and a pad (an opening in the solder mask).
     pub silk_to_pad: f64,
+    /// The least space between two pieces of silkscreen, and from silkscreen to the board edge
+    /// (the project file's `min_silk_clearance`, which KiCad's check holds both to; issue #1186).
+    /// 0 in a board saved before it was read, and then not checked.
+    #[serde(default)]
+    pub silk_to_silk: f64,
     /// The least solder mask left between two openings of different nets.
     pub mask_bridge: f64,
     /// The space a plane keeps from copper that is not on its net: the process's space
@@ -176,6 +181,13 @@ impl Rules {
             min_text_height: process.min_text_height,
             min_text_thickness: process.min_silk_width,
             silk_to_pad: process.min_silk_to_pad,
+            // A design file written before the field was read has none: the space from a pad,
+            // which the project file held before (issue #1186).
+            silk_to_silk: if process.min_silk_to_silk > 0.0 {
+                process.min_silk_to_silk
+            } else {
+                process.min_silk_to_pad
+            },
             mask_bridge: process.min_mask_bridge,
             plane_clearance: process.min_clearance.max(plane_hole),
             via_in_pad: process.via_in_pad >= via_diameter,
@@ -202,6 +214,7 @@ impl Rules {
             npth_slot: Some(self.npth_slot),
             npth_drill: Some(self.npth_drill),
             pad_ring: Some(self.min_annular_ring),
+            text_to_mask: Some(self.silk_to_pad),
             ..netsmith_geom::DrcExtras::default()
         }
     }
@@ -341,7 +354,7 @@ impl Rules {
                                 ("min_copper_edge_clearance", N(self.copper_to_edge)),
                                 ("min_hole_clearance", N(self.clearance)),
                                 ("min_hole_to_hole", N(self.via_hole_to_hole)),
-                                ("min_silk_clearance", N(self.silk_to_pad)),
+                                ("min_silk_clearance", N(self.silk_to_silk)),
                                 ("min_text_height", N(self.min_text_height)),
                                 ("min_text_thickness", N(self.min_text_thickness)),
                                 ("min_through_hole_diameter", N(self.min_through_hole)),
@@ -807,7 +820,7 @@ mod tests {
         assert_eq!((r.pad_to_pad, r.mask_to_track), (0.15, 0.09));
         assert_eq!((r.npth_drill, r.plated_slot, r.npth_slot), (0.5, 0.5, 1.0));
         assert_eq!((r.min_text_height, r.min_text_thickness), (1.0, 0.15));
-        assert_eq!(r.silk_to_pad, 0.15);
+        assert_eq!((r.silk_to_pad, r.silk_to_silk), (0.15, 0.15));
     }
 
     #[test]
@@ -827,6 +840,7 @@ mod tests {
             ("slot_width npth", "hole_size (min 1mm)"),
             ("slot_width plated", "hole_size (min 0.5mm)"),
             ("plated_ring", "annular_width (min 0.18mm)"),
+            ("silk_over_copper", "silk_clearance (min 0.15mm)"),
         ] {
             assert!(
                 dru.contains(&format!(

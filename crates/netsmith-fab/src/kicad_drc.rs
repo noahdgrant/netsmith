@@ -18,6 +18,14 @@
 //! places agrees with it: a pad pair 0.08 mm apart breaks both `clearance` (0.1 mm) and
 //! `pad_to_pad` (0.15 mm) in netsmith's check, and KiCad, whose custom rule replaces the
 //! project's clearance for that pair, reports it once.
+//!
+//! **Measured otherwise** (issue #1186). A finding of a silkscreen rule one check alone makes of
+//! a pair that netsmith's report says the font decides (`DrcReport::font_dependent`: a text in
+//! netsmith's font near the least, which KiCad draws in its own) is counted in
+//! [`Comparison::measured_otherwise`], not as a difference; so is netsmith's finding of copper or
+//! silkscreen near a circle on `Edge.Cuts` or `Margin`, which KiCad 9 finds only where the two
+//! cross. Of several sides of the edge within the least, KiCad names the first it finds and
+//! netsmith the nearest, so an edge finding that agrees on everything but the edge agrees.
 
 use netsmith_geom::{DrcReport, DrcRule, DrcSeverity, Pt};
 
@@ -210,6 +218,12 @@ pub struct Comparison {
     /// Findings of kinds netsmith does not check, and of KiCad's that it counts otherwise
     /// ([`drop_dangling_vias_of_clusters`]).
     pub out_of_scope: usize,
+    /// Findings one check alone makes where the two measure otherwise by design (issue #1186):
+    /// a silkscreen rule's pair with a text the font decides (netsmith's report lists them,
+    /// `DrcReport::font_dependent`: KiCad draws KiCad's font, the package prints netsmith's),
+    /// and netsmith's finding of copper or silkscreen near a circle on `Edge.Cuts` or `Margin`,
+    /// which KiCad 9 finds only where the two cross.
+    pub measured_otherwise: usize,
 }
 
 impl Comparison {
@@ -221,19 +235,23 @@ impl Comparison {
 
 impl std::fmt::Display for Comparison {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.agreed == 0 && self.agrees() && self.netsmith_only_rules + self.out_of_scope == 0 {
+        if self.agreed == 0
+            && self.agrees()
+            && self.netsmith_only_rules + self.out_of_scope + self.measured_otherwise == 0
+        {
             return writeln!(f, "design rules: neither check found anything");
         }
         writeln!(
             f,
-            "design rules: {} finding(s) agree ({} between other ends of a missing connection), {} only netsmith's, {} only KiCad's, {} at another severity ({} of rules KiCad lacks, {} of kinds netsmith does not check)",
+            "design rules: {} finding(s) agree ({} between other ends of a missing connection), {} only netsmith's, {} only KiCad's, {} at another severity ({} of rules KiCad lacks, {} of kinds netsmith does not check, {} measured otherwise: a text in another font, a round cutout)",
             self.agreed,
             self.other_ends,
             self.only_netsmith.len(),
             self.only_kicad.len(),
             self.severity.len(),
             self.netsmith_only_rules,
-            self.out_of_scope
+            self.out_of_scope,
+            self.measured_otherwise
         )?;
         for line in &self.only_netsmith {
             writeln!(f, "  only netsmith: {line}")?;
@@ -281,6 +299,28 @@ pub fn compare_with_rules_file(ours: &DrcReport, kicad: &[Reported], tolerance: 
     compare_rules(ours, kicad, tolerance, true)
 }
 
+/// The rules KiCad's check judges against the board edge, which name one edge of several.
+fn edge_rule(rule: &str) -> bool {
+    matches!(rule, "copper_edge_clearance" | "silk_edge_clearance")
+}
+
+/// Whether an item, as either report names it, is a drawing of the edge.
+fn is_edge(what: &str) -> bool {
+    what.ends_with(" on Edge.Cuts") || what.ends_with(" on Margin")
+}
+
+/// Whether a finding of a silkscreen rule at these places is one of netsmith's report's pairs
+/// that the font decides (issue #1186).
+fn font_decides(ours: &DrcReport, rule: &str, places: &[Pt], tolerance: f64) -> bool {
+    matches!(
+        rule,
+        "silk_over_copper" | "silk_overlap" | "silk_edge_clearance"
+    ) && ours
+        .font_dependent
+        .iter()
+        .any(|d| d.rule.id() == rule && same_places(places, &d.places, tolerance))
+}
+
 fn compare_rules(
     ours: &DrcReport,
     kicad: &[Reported],
@@ -302,15 +342,46 @@ fn compare_rules(
             continue;
         }
         let places: Vec<Pt> = f.items.iter().map(|i| i.at).collect();
-        let found = kicad.iter().enumerate().find(|(i, k)| {
-            !taken[*i]
-                && k.kind == f.rule.id()
-                && same_places(
-                    &places,
-                    &k.items.iter().map(|(_, p)| *p).collect::<Vec<_>>(),
-                    tolerance,
-                )
-        });
+        let found = kicad
+            .iter()
+            .enumerate()
+            .find(|(i, k)| {
+                !taken[*i]
+                    && k.kind == f.rule.id()
+                    && same_places(
+                        &places,
+                        &k.items.iter().map(|(_, p)| *p).collect::<Vec<_>>(),
+                        tolerance,
+                    )
+            })
+            // Of several sides of the edge within the least (at a corner), KiCad names the first
+            // it finds; netsmith the nearest. The other item is the finding.
+            .or_else(|| {
+                let off_edge = |what: &str| !is_edge(what);
+                let others: Vec<Pt> = f
+                    .items
+                    .iter()
+                    .filter(|i| off_edge(&i.what))
+                    .map(|i| i.at)
+                    .collect();
+                (edge_rule(f.rule.id()) && others.len() < places.len())
+                    .then(|| {
+                        kicad.iter().enumerate().find(|(i, k)| {
+                            !taken[*i]
+                                && k.kind == f.rule.id()
+                                && same_places(
+                                    &others,
+                                    &k.items
+                                        .iter()
+                                        .filter(|(d, _)| off_edge(d))
+                                        .map(|(_, p)| *p)
+                                        .collect::<Vec<_>>(),
+                                    tolerance,
+                                )
+                        })
+                    })
+                    .flatten()
+            });
         // KiCad's rule of the `.kicad_dru` replaced its own for these items and reports them
         // once, under netsmith's stricter rule.
         let absorbed = found.is_none()
@@ -321,6 +392,16 @@ fn compare_rules(
             });
         if absorbed {
             c.agreed += 1;
+            continue;
+        }
+        if found.is_none()
+            && (font_decides(ours, f.rule.id(), &places, tolerance)
+                || (edge_rule(f.rule.id())
+                    && f.items
+                        .iter()
+                        .any(|i| i.what.starts_with("Circle on ") && is_edge(&i.what))))
+        {
+            c.measured_otherwise += 1;
             continue;
         }
         match found {
@@ -388,6 +469,10 @@ fn compare_rules(
             c.netsmith_only_rules += 1;
             continue;
         }
+        if font_decides(ours, &k.kind, &places_of(k), tolerance) {
+            c.measured_otherwise += 1;
+            continue;
+        }
         let items: Vec<String> = k
             .items
             .iter()
@@ -451,6 +536,7 @@ mod tests {
     fn findings_of_one_rule_at_the_same_places_agree_in_either_order() {
         let k = parse(JSON).unwrap();
         let ours = DrcReport {
+            font_dependent: Vec::new(),
             findings: vec![finding(DrcRule::Clearance, &[(5.05, 2.0), (1.0, 2.04)])],
         };
         let c = compare(&ours, &k, 0.1);
@@ -463,6 +549,7 @@ mod tests {
     {
         let k = parse(JSON).unwrap();
         let ours = DrcReport {
+            font_dependent: Vec::new(),
             findings: vec![
                 finding(DrcRule::Clearance, &[(1.5, 2.0), (5.0, 2.0)]),
                 finding(DrcRule::ShortingItems, &[(9.0, 9.0)]),
@@ -520,6 +607,7 @@ mod tests {
      {
         let k = parse(RULES_FILE_JSON).unwrap();
         let ours = DrcReport {
+            font_dependent: Vec::new(),
             findings: vec![
                 finding(DrcRule::Clearance, &[(1.0, 2.0), (1.38, 2.0)]),
                 finding(DrcRule::PadToPad, &[(1.0, 2.0), (1.38, 2.0)]),
@@ -537,9 +625,116 @@ mod tests {
         assert_eq!((c.agreed, c.netsmith_only_rules), (2, 4));
         // A finding of the file's rules that one side lacks is a difference.
         let short = DrcReport {
+            font_dependent: Vec::new(),
             findings: ours.findings[..2].to_vec(),
         };
         let c = compare_with_rules_file(&short, &k, 0.01);
         assert_eq!(c.only_kicad.len(), 2, "{c}");
+    }
+
+    fn reported(kind: &str, items: &[(&str, (f64, f64))]) -> Reported {
+        Reported {
+            kind: kind.into(),
+            base: kind.into(),
+            severity: DrcSeverity::Warning,
+            description: "d".into(),
+            items: items
+                .iter()
+                .map(|(d, (x, y))| (d.to_string(), Pt::new(*x, *y)))
+                .collect(),
+        }
+    }
+
+    fn named(rule: DrcRule, items: &[(&str, (f64, f64))]) -> DrcFinding {
+        DrcFinding {
+            severity: DrcSeverity::Warning,
+            items: items
+                .iter()
+                .map(|(what, (x, y))| Item {
+                    what: what.to_string(),
+                    at: Pt::new(*x, *y),
+                    part: None,
+                    pad: None,
+                    net: None,
+                })
+                .collect(),
+            ..finding(rule, &[])
+        }
+    }
+
+    #[test]
+    fn a_silkscreen_finding_the_font_decides_is_measured_otherwise_and_one_it_does_not_is_a_difference()
+     {
+        // KiCad's font crosses a line that netsmith's text clears: the pair is in netsmith's list.
+        let kicad = vec![reported(
+            "silk_overlap",
+            &[("PCB text 'R1'", (10.0, 10.0)), ("Segment", (10.81, 9.0))],
+        )];
+        let ours = DrcReport {
+            findings: vec![],
+            font_dependent: vec![netsmith_geom::DrcFontDependent {
+                rule: DrcRule::SilkOverlap,
+                places: vec![Pt::new(10.0, 10.0), Pt::new(10.81, 9.0)],
+            }],
+        };
+        let c = compare(&ours, &kicad, 0.01);
+        assert!(c.agrees() && c.measured_otherwise == 1, "{c}");
+        // The same finding of another rule, or with no such pair, is a difference.
+        let other = vec![reported(
+            "silk_edge_clearance",
+            &[("PCB text 'R1'", (10.0, 10.0)), ("Segment", (10.81, 9.0))],
+        )];
+        assert_eq!(compare(&ours, &other, 0.01).only_kicad.len(), 1);
+        let bare = DrcReport::default();
+        assert_eq!(compare(&bare, &kicad, 0.01).only_kicad.len(), 1);
+        // netsmith's finding of such a pair that KiCad lacks is measured otherwise too.
+        let ours = DrcReport {
+            findings: vec![named(
+                DrcRule::SilkOverlap,
+                &[("Text 'R1'", (10.0, 10.0)), ("Segment", (10.81, 9.0))],
+            )],
+            ..ours
+        };
+        let c = compare(&ours, &[], 0.01);
+        assert!(c.agrees() && c.measured_otherwise == 1, "{c}");
+    }
+
+    #[test]
+    fn a_finding_at_a_round_edge_netsmith_alone_makes_is_measured_otherwise_and_a_corner_matches_by_the_other_item()
+     {
+        let ours = DrcReport {
+            findings: vec![named(
+                DrcRule::SilkEdgeClearance,
+                &[
+                    ("Circle on Edge.Cuts", (5.0, 5.0)),
+                    ("Segment on F.SilkS", (3.0, 6.1)),
+                ],
+            )],
+            ..DrcReport::default()
+        };
+        let c = compare(&ours, &[], 0.01);
+        assert!(c.agrees() && c.measured_otherwise == 1, "{c}");
+        // A segment of the edge is not excused.
+        let segment = DrcReport {
+            findings: vec![named(
+                DrcRule::SilkEdgeClearance,
+                &[
+                    ("Segment on Edge.Cuts", (0.0, 0.0)),
+                    ("Segment on F.SilkS", (0.1, 0.1)),
+                ],
+            )],
+            ..DrcReport::default()
+        };
+        assert_eq!(compare(&segment, &[], 0.01).only_netsmith.len(), 1);
+        // At a corner KiCad names the other side: the silkscreen is the finding.
+        let kicad = vec![reported(
+            "silk_edge_clearance",
+            &[
+                ("Segment on Edge.Cuts", (40.0, 0.0)),
+                ("Segment on F.Silkscreen", (0.1, 0.1)),
+            ],
+        )];
+        let c = compare(&segment, &kicad, 0.01);
+        assert!(c.agrees() && c.agreed == 1, "{c}");
     }
 }

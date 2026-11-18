@@ -2479,6 +2479,7 @@
       "min_silk_width": 0.15,
       "min_text_height": 1.0,
       "min_silk_to_pad": 0.15,
+      "min_silk_to_silk": 0.15,
       "min_mask_bridge": 0.13,
       "min_fiducials": 2.0,
       "fiducial_diameter": 1.0,

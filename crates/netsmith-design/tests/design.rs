@@ -588,8 +588,13 @@ fn the_process_arrives_in_the_design_as_the_library_states_it() {
     );
     assert_eq!((p.min_hole_to_hole, p.min_edge_clearance), (0.45, 0.2));
     assert_eq!(
-        (p.min_silk_width, p.min_text_height, p.min_silk_to_pad),
-        (0.15, 1.0, 0.15)
+        (
+            p.min_silk_width,
+            p.min_text_height,
+            p.min_silk_to_pad,
+            p.min_silk_to_silk
+        ),
+        (0.15, 1.0, 0.15, 0.15)
     );
     assert_eq!(p.min_mask_bridge, 0.13);
     assert_eq!(p.stackup.layers, 2);

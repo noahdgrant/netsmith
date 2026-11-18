@@ -4271,6 +4271,7 @@ mod tests {
             npth_slot: Some(rules.npth_slot),
             npth_drill: Some(rules.npth_drill),
             pad_ring: Some(rules.min_annular_ring),
+            text_to_mask: Some(rules.silk_to_pad),
             round_track_angle: p.min_round_track_angle,
             marks: Some(netsmith_geom::DrcMarks {
                 min_fiducials: p.min_fiducials as usize,
