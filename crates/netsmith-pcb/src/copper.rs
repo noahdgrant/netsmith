@@ -970,11 +970,12 @@ mod tests {
         let (same, _) = poured_with(|p| p.min_width = Some(crate::export::ZONE_MIN_THICKNESS));
         assert!((same - default).abs() < 1e-9);
         // Spokes 0.5 mm wide are narrower than 0.6 mm: the fill drops them, the pour is left
-        // joined to nothing and goes, and both GND pads' reliefs are starved.
+        // joined to nothing and goes, and both GND pads' reliefs are joined by nothing, which the
+        // check says with the reason (issue #1222).
         let (narrowest, after) = poured_with(|p| p.min_width = Some(0.6));
         assert!(narrowest + 10.0 < default, "{narrowest} and {default}");
-        assert_eq!(count(&before, "starved_thermal"), 0, "{before:?}");
-        assert_eq!(count(&after, "starved_thermal"), 2, "{after:?}");
+        assert_eq!(count(&before, "unjoinable_thermal"), 0, "{before:?}");
+        assert_eq!(count(&after, "unjoinable_thermal"), 2, "{after:?}");
     }
 
     #[test]

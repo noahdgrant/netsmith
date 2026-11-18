@@ -1,8 +1,9 @@
 //! What the fill of a board's pours and planes does with its pads (issue #1187): for each pour,
 //! plane or zone of the routes file on each copper layer, how it joins each pad of its net
 //! (solid copper, a thermal relief with the spokes that reach the fill, or not at all), the pads
-//! of other nets it keeps clear of, the pads it starves (KiCad's `starved_thermal`: fewer than
-//! two spokes, with the tracks of the pad's net onto the fill), and the copper islands it keeps
+//! of other nets it keeps clear of, the pads it starves (KiCad's `starved_thermal`: one or more
+//! spokes but fewer than two, with the tracks of the pad's net onto the fill), the pads it joins
+//! by nothing and why (`unjoinable_thermal`, issue #1222), and the copper islands it keeps
 //! and the ones it took out, with their places and areas. `netsmith board fill` prints it and
 //! the editor's PCB summary tab shows it, both from [`FillReport::of`], so the two cannot
 //! differ.
@@ -96,8 +97,12 @@ pub struct FillPad {
     /// touches it.
     pub joined: bool,
     /// Whether the fill starves it (KiCad's `starved_thermal`, the design rules check's): a thermal
-    /// relief that fewer than two spokes and tracks join to the fill.
+    /// relief that one or more spokes, but fewer than two spokes and tracks, join to the fill.
     pub starved: bool,
+    /// Of a thermal relief that no spoke and no track joins to the fill (the design rules
+    /// check's `unjoinable_thermal`, issue #1222): why the fill makes none of its spokes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unjoinable: Option<String>,
 }
 
 /// A pad of another net (or of none) in the fill's outline, which the fill keeps clear of.
@@ -136,6 +141,9 @@ pub struct JoinCounts {
     pub none: u32,
     /// The starved thermal reliefs among them ([`FillPad::starved`]).
     pub starved: u32,
+    /// The thermal reliefs among them that the fill joins by nothing ([`FillPad::unjoinable`]).
+    #[serde(default)]
+    pub unjoinable: u32,
 }
 
 impl JoinCounts {
@@ -148,6 +156,7 @@ impl JoinCounts {
             (JoinKind::Thermal, Some(_)) => self.two_or_more_spokes += 1,
         }
         self.starved += u32::from(pad.starved);
+        self.unjoinable += u32::from(pad.unjoinable.is_some());
     }
 
     fn sum(&mut self, other: &JoinCounts) {
@@ -157,6 +166,7 @@ impl JoinCounts {
         self.solid += other.solid;
         self.none += other.none;
         self.starved += other.starved;
+        self.unjoinable += other.unjoinable;
     }
 
     /// How many pads in all.
@@ -166,14 +176,15 @@ impl JoinCounts {
 
     fn text(&self) -> String {
         format!(
-            "{} pad(s): {} by 2 or more spokes, {} by 1 spoke, {} by no spoke, {} solid, {} none; {} starved",
+            "{} pad(s): {} by 2 or more spokes, {} by 1 spoke, {} by no spoke, {} solid, {} none; {} starved, {} unjoinable",
             self.pads(),
             self.two_or_more_spokes,
             self.one_spoke,
             self.no_spokes,
             self.solid,
             self.none,
-            self.starved
+            self.starved,
+            self.unjoinable
         )
     }
 }
@@ -215,6 +226,19 @@ pub struct StarvedPad {
     pub tracks: u32,
 }
 
+/// A thermal relief the fill joins by nothing, as the design rules check's `unjoinable_thermal`
+/// names it, and why (issue #1222).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UnjoinablePad {
+    pub layer: String,
+    pub net: String,
+    pub part: String,
+    pub pad: String,
+    pub at: Pt,
+    pub spokes: u32,
+    pub why: String,
+}
+
 /// What the fill of a board's pours does with its pads ([module](self)).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FillReport {
@@ -227,6 +251,9 @@ pub struct FillReport {
     pub counts: JoinCounts,
     /// Every starved thermal relief.
     pub starved: Vec<StarvedPad>,
+    /// Every thermal relief the fill joins by nothing.
+    #[serde(default)]
+    pub unjoinable: Vec<UnjoinablePad>,
 }
 
 impl FillReport {
@@ -309,8 +336,20 @@ impl FillReport {
         }
         let mut counts = JoinCounts::default();
         let mut starved = Vec::new();
+        let mut unjoinable = Vec::new();
         for f in &fills {
             counts.sum(&f.counts);
+            unjoinable.extend(f.pads.iter().filter_map(|p| {
+                Some(UnjoinablePad {
+                    layer: f.layer.clone(),
+                    net: f.net.clone(),
+                    part: p.part.clone(),
+                    pad: p.pad.clone(),
+                    at: p.at,
+                    spokes: p.spokes.unwrap_or(0),
+                    why: p.unjoinable.clone()?,
+                })
+            }));
             starved.extend(f.pads.iter().filter(|p| p.starved).map(|p| StarvedPad {
                 layer: f.layer.clone(),
                 net: f.net.clone(),
@@ -328,6 +367,7 @@ impl FillReport {
             fills,
             counts,
             starved,
+            unjoinable,
         })
     }
 
@@ -357,9 +397,7 @@ impl FillReport {
             ));
             for p in &f.pads {
                 let how = match (p.join, p.spokes, p.joined_spokes) {
-                    (JoinKind::Thermal, Some(0), _) => {
-                        "thermal, no spokes (the pad is narrower than the minimum width)".into()
-                    }
+                    (JoinKind::Thermal, Some(0), _) => "thermal, no spokes".into(),
                     (JoinKind::Thermal, Some(n), Some(r)) => format!("thermal, {r} of {n} spokes"),
                     (JoinKind::Solid, _, _) if !p.joined => {
                         "solid, the fill does not reach it".into()
@@ -371,11 +409,15 @@ impl FillReport {
                     1 => " and 1 track".into(),
                     n => format!(" and {n} tracks"),
                 };
+                let flag = match &p.unjoinable {
+                    Some(why) => format!(" (unjoinable: {why})"),
+                    None if p.starved => " (starved)".into(),
+                    None => String::new(),
+                };
                 out.push_str(&format!(
-                    "  {} at {}: {how}{tracks}{}\n",
+                    "  {} at {}: {how}{tracks}{flag}\n",
                     pad_name(&p.part, &p.pad),
                     at(p.at),
-                    if p.starved { " (starved)" } else { "" }
                 ));
             }
             if !f.cleared.is_empty() {
@@ -414,7 +456,7 @@ impl FillReport {
             out.push_str("starved thermal reliefs: none\n");
         } else {
             out.push_str(&format!(
-                "starved thermal reliefs (fewer than {} spokes and tracks join the pad to the fill): {}\n",
+                "starved thermal reliefs (one or more but fewer than {} spokes and tracks join the pad to the fill): {}\n",
                 netsmith_geom::MIN_SPOKES,
                 self.starved.len()
             ));
@@ -428,6 +470,24 @@ impl FillReport {
                     s.joined_spokes,
                     s.spokes,
                     s.tracks
+                ));
+            }
+        }
+        if self.unjoinable.is_empty() {
+            out.push_str("thermal reliefs the fill joins by nothing: none\n");
+        } else {
+            out.push_str(&format!(
+                "thermal reliefs the fill joins by nothing (no spoke and no track; the pad's own via or track joins it): {}\n",
+                self.unjoinable.len()
+            ));
+            for u in &self.unjoinable {
+                out.push_str(&format!(
+                    "  {} on {} ({}) at {}: {}\n",
+                    pad_name(&u.part, &u.pad),
+                    u.layer,
+                    u.net,
+                    at(u.at),
+                    u.why
                 ));
             }
         }
@@ -447,6 +507,7 @@ fn pad_name(part: &str, pad: &str) -> String {
 
 fn fill_pad(part: String, pad: String, at: Pt, join: netsmith_geom::PadJoin) -> FillPad {
     let starved = join.starved();
+    let unjoinable = join.unjoinable().map(ToString::to_string);
     match join {
         netsmith_geom::PadJoin::Solid { touched } => FillPad {
             part,
@@ -458,11 +519,13 @@ fn fill_pad(part: String, pad: String, at: Pt, join: netsmith_geom::PadJoin) -> 
             tracks: 0,
             joined: touched,
             starved,
+            unjoinable,
         },
         netsmith_geom::PadJoin::Thermal {
             spokes,
             reach,
             tracks,
+            ..
         } => FillPad {
             part,
             pad,
@@ -473,6 +536,7 @@ fn fill_pad(part: String, pad: String, at: Pt, join: netsmith_geom::PadJoin) -> 
             tracks: tracks as u32,
             joined: reach + tracks > 0,
             starved,
+            unjoinable,
         },
         netsmith_geom::PadJoin::Unjoined => FillPad {
             part,
@@ -484,6 +548,7 @@ fn fill_pad(part: String, pad: String, at: Pt, join: netsmith_geom::PadJoin) -> 
             tracks: 0,
             joined: false,
             starved,
+            unjoinable,
         },
     }
 }
@@ -592,7 +657,7 @@ mod tests {
         let text = report.text();
         assert!(text.contains("(starved)"), "{text}");
         assert!(
-            text.contains("starved thermal reliefs (fewer than 2"),
+            text.contains("starved thermal reliefs (one or more but fewer than 2"),
             "{text}"
         );
     }
@@ -600,28 +665,19 @@ mod tests {
     #[test]
     fn a_pad_is_counted_by_the_spokes_that_reach_the_fill() {
         let pad = |join| fill_pad("U1".into(), "2".into(), Pt::new(0.0, 0.0), join);
+        let thermal = |spokes, reach, tracks| netsmith_geom::PadJoin::Thermal {
+            spokes,
+            reach,
+            lone: 0,
+            tracks,
+            unjoinable: (reach == 0).then(|| netsmith_geom::Unjoinable::Blocked(Vec::new())),
+        };
         let mut c = JoinCounts::default();
         for join in [
-            netsmith_geom::PadJoin::Thermal {
-                spokes: 4,
-                reach: 1,
-                tracks: 0,
-            },
-            netsmith_geom::PadJoin::Thermal {
-                spokes: 4,
-                reach: 1,
-                tracks: 1,
-            },
-            netsmith_geom::PadJoin::Thermal {
-                spokes: 4,
-                reach: 3,
-                tracks: 0,
-            },
-            netsmith_geom::PadJoin::Thermal {
-                spokes: 0,
-                reach: 0,
-                tracks: 0,
-            },
+            thermal(4, 1, 0),
+            thermal(4, 1, 1),
+            thermal(4, 3, 0),
+            thermal(0, 0, 0),
             netsmith_geom::PadJoin::Solid { touched: true },
             netsmith_geom::PadJoin::Unjoined,
         ] {
@@ -635,7 +691,8 @@ mod tests {
                 two_or_more_spokes: 1,
                 solid: 1,
                 none: 1,
-                starved: 2,
+                starved: 1,
+                unjoinable: 1,
             }
         );
     }

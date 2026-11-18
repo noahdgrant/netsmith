@@ -5,6 +5,14 @@
 //! after KiCad refills the zones (when KiCad is installed; the comparison is skipped where it
 //! is not, and runs in the `kicad` job). The report of each pad's join to its pour (issue #1187,
 //! `netsmith_geom::pad_joins`, which `board fill` prints) counts the same pads of the same fill.
+//!
+//! Issue #1222: the fill makes the spokes KiCad's refill makes on a board of pads at the spacing of
+//! a real one, spoke for spoke, at several spoke widths, gaps and minimum thicknesses; a narrower
+//! spoke or a smaller gap never joins fewer pads by two spokes (a spoke as wide as the minimum
+//! thickness was once trimmed away whole); and KiCad's check of the fill netsmith writes into the
+//! zones finds the starved thermal reliefs, isolated copper and copper slivers netsmith's check
+//! finds (two zones of a net that touch only each other, and the corner where two zones of a net
+//! meet, once left copper KiCad called isolated and a sliver).
 
 use crate::common;
 
@@ -29,6 +37,11 @@ const PITCH: f64 = 1.55;
 /// - B, between a SIG3 and a SIG4 pad in the open pour: two spokes (up and down), enough;
 /// - C, alone: four.
 fn board() -> Pcb {
+    board_with(0.5, 0.5, 0.25)
+}
+
+/// [`board`] with its pour's spoke width, thermal gap and minimum thickness set.
+fn board_with(spoke: f64, gap: f64, min: f64) -> Pcb {
     let mut b = Pcb::new(2);
     b.outline = (0.0, 0.0, 30.0, 20.0);
     let none = Draw {
@@ -62,7 +75,7 @@ fn board() -> Pcb {
     );
     let bottom = PADS[0].1.1 + 0.85;
     b.raw(&format!(
-        "(zone (net 1) (net_name \"GND\") (layer \"F.Cu\") (hatch edge 0.5) (connect_pads (clearance 0.3)) (min_thickness 0.25) (filled_areas_thickness no) (fill yes (thermal_gap 0.5) (thermal_bridge_width 0.5)) (polygon (pts (xy 1 1) (xy 29 1) (xy 29 {bottom}) (xy 1 {bottom}))))"
+        "(zone (net 1) (net_name \"GND\") (layer \"F.Cu\") (hatch edge 0.5) (connect_pads (clearance 0.3)) (min_thickness {min}) (filled_areas_thickness no) (fill yes (thermal_gap {gap}) (thermal_bridge_width {spoke})) (polygon (pts (xy 1 1) (xy 29 1) (xy 29 {bottom}) (xy 1 {bottom}))))"
     ));
     b
 }
@@ -137,8 +150,8 @@ fn the_report_of_the_pads_of_a_pour_counts_what_the_check_and_the_gerbers_have()
         .iter()
         .map(|(p, join)| {
             let name = pad_at(p.at).unwrap_or_else(|| panic!("a GND pad of the board: {p:?}"));
-            match *join {
-                PadJoin::Thermal { spokes, reach, .. } => (name, spokes, reach),
+            match join {
+                PadJoin::Thermal { spokes, reach, .. } => (name, *spokes, *reach),
                 other => panic!("{name} is joined by a thermal relief: {other:?}"),
             }
         })
@@ -216,4 +229,254 @@ fn the_report_says_which_copper_islands_the_fill_took_out() {
     // About 1.5 mm wide (from the pour's edge at 1 mm to the track's clearance at 2.575 mm) and
     // 14.85 mm long, less its rounded corners.
     assert!((15.0..25.0).contains(area), "{area}");
+}
+
+
+/// No part draws anything but its pads.
+const BARE: Draw = Draw {
+    courtyard: None,
+    silk: None,
+    back: false,
+};
+
+/// The board of the sweep (issue #1222): [`board_with`] and pads at the spacing of a real board's
+/// (four layers, 122 parts, whose ground pours left most of the starved pads): an 0402 part's GND
+/// pad beside its other pad (0.6 x 0.5 mm pads, 1 mm apart), a GND pad between two other nets'
+/// pads at a 0.65 mm pitch (0.3 x 0.8 mm pads), and an 0402 part's GND pad beside a track of
+/// another net.
+fn swept(spoke: f64, gap: f64, min: f64) -> Pcb {
+    let mut b = board_with(spoke, gap, min);
+    let two = |net: &'static str| {
+        [
+            smd("1", -0.5, 0.0, 0.6, 0.5, net),
+            smd("2", 0.5, 0.0, 0.6, 0.5, "GND"),
+        ]
+    };
+    b.part("C1", (14.0, 4.0), 0.0, &two("SIG5"), BARE);
+    b.part(
+        "U4",
+        (14.0, 10.0),
+        0.0,
+        &[
+            smd("1", -0.65, 0.0, 0.3, 0.8, "SIG6"),
+            smd("2", 0.0, 0.0, 0.3, 0.8, "GND"),
+            smd("3", 0.65, 0.0, 0.3, 0.8, "SIG7"),
+        ],
+        BARE,
+    );
+    b.part("C2", (14.0, 14.0), 90.0, &two("SIG8"), BARE);
+    b.track("SIG9", "F.Cu", (14.6, 12.0), (14.6, 16.5), 0.2);
+    b
+}
+
+/// Each GND pad of a board's F.Cu pour by `part.number`, with how many spokes reach the fill, as
+/// `pad_joins` counts them: of the fill the file holds where it holds one (a board KiCad refilled
+/// and saved), else of netsmith's.
+fn reach_of(pcb: &str, pro: &str) -> Vec<(String, usize)> {
+    use netsmith_geom::{Artwork, PadJoin, edge_outline, pad_joins, plot_rules_of};
+    let art = Artwork::parse(pcb).unwrap();
+    let edge = edge_outline(&art).unwrap();
+    let rules = plot_rules_of(Some(pro));
+    let mut out: Vec<(String, usize)> = pad_joins(&art, "F.Cu", &edge, &rules)
+        .unwrap()
+        .into_iter()
+        .flat_map(|z| z.pads)
+        .filter_map(|(p, j)| match j {
+            PadJoin::Thermal { reach, .. } => Some((format!("{}.{}", p.part, p.number), reach)),
+            _ => None,
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+/// The spoke widths, thermal gaps and minimum thickness of the sweep: the spokes from netsmith's
+/// default down to the minimum thickness, the gaps from the default down to 0.2 mm.
+const SPOKES: [f64; 4] = [0.5, 0.4, 0.3, 0.25];
+const GAPS: [f64; 5] = [0.5, 0.4, 0.3, 0.25, 0.2];
+const MIN: f64 = 0.25;
+
+#[test]
+fn a_narrower_spoke_or_a_smaller_gap_never_joins_fewer_pads_by_two_spokes() {
+    // How many GND pads fewer than two spokes join, at each spoke width (rows) and gap (columns).
+    let fewer = |spoke: f64, gap: f64| {
+        let mut b = swept(spoke, gap, MIN);
+        let (pcb, pro) = (b.pcb(), b.pro());
+        reach_of(&pcb, &pro).iter().filter(|(_, r)| *r < 2).count()
+    };
+    let table: Vec<Vec<usize>> = SPOKES
+        .iter()
+        .map(|&s| GAPS.iter().map(|&g| fewer(s, g)).collect())
+        .collect();
+    eprintln!("pads joined by fewer than two spokes, spokes {SPOKES:?} by gaps {GAPS:?}: {table:?}");
+    for (i, row) in table.iter().enumerate() {
+        for (k, &n) in row.iter().enumerate() {
+            if k > 0 {
+                assert!(n <= row[k - 1], "gap {} gave {n}, more than gap {}: {table:?}", GAPS[k], GAPS[k - 1]);
+            }
+            if i > 0 {
+                let wider = table[i - 1][k];
+                assert!(n <= wider, "spoke {} gave {n}, more than spoke {}: {table:?}", SPOKES[i], SPOKES[i - 1]);
+            }
+        }
+    }
+    // A spoke as wide as the minimum thickness is made: the pads it joins are not all starved.
+    let pads = {
+        let mut b = swept(MIN, 0.5, MIN);
+        let (pcb, pro) = (b.pcb(), b.pro());
+        reach_of(&pcb, &pro).len()
+    };
+    assert!(table[SPOKES.len() - 1][0] < pads, "{table:?}");
+}
+
+#[test]
+fn the_fill_makes_the_spokes_kicads_refill_makes() {
+    for (spoke, gap, min) in [(0.5, 0.5, 0.25), (0.25, 0.25, 0.25), (0.3, 0.2, 0.25), (0.2, 0.2, 0.2)] {
+        let mut b = swept(spoke, gap, min);
+        let (pcb, pro) = (b.pcb(), b.pro());
+        let ours = reach_of(&pcb, &pro);
+        assert!(ours.iter().any(|(_, r)| *r > 0), "{ours:?}");
+        // No dot in the name: the file's extension is what follows the last one.
+        let name = format!("sweep-{spoke}-{gap}-{min}").replace('.', "_");
+        let Some(filled) = kicad_refilled(&name, &pcb, &pro) else {
+            eprintln!("thermal_spokes: KiCad is not installed; netsmith's spokes alone are counted");
+            return;
+        };
+        let theirs = reach_of(&filled, &pro);
+        assert_eq!(ours, theirs, "spoke {spoke}, gap {gap}, minimum {min}: netsmith's, then KiCad's");
+    }
+}
+
+/// `pcb` with netsmith's fill written into its zones, as `fab` writes it (each piece one
+/// `filled_polygon`, its holes joined to its outline): the zones of the board are its lines that
+/// start a zone, in the order netsmith reads them.
+fn with_netsmith_fill(pcb: &str, pro: &str) -> String {
+    use netsmith_geom::{Artwork, edge_outline, plot_rules_of, zone_fills};
+    let art = Artwork::parse(pcb).unwrap();
+    let edge = edge_outline(&art).unwrap();
+    let rules = plot_rules_of(Some(pro));
+    let mut fills: Vec<String> = vec![String::new(); art.zones.len()];
+    for layer in &art.copper {
+        for (i, areas) in zone_fills(&art, layer, &edge, &rules).unwrap() {
+            for a in areas {
+                let pts: String = a
+                    .fractured()
+                    .iter()
+                    .map(|p| format!("(xy {:.6} {:.6}) ", p.x, p.y))
+                    .collect();
+                fills[i].push_str(&format!(" (filled_polygon (layer \"{layer}\") (pts {pts}))"));
+            }
+        }
+    }
+    let mut zones = fills.into_iter();
+    pcb.lines()
+        .map(|line| match line.strip_suffix(')') {
+            Some(open) if line.starts_with("\t(zone") => {
+                format!("{open}{})", zones.next().unwrap_or_default())
+            }
+            _ => line.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// A zone of GND of priority 1 over a rectangle, on F.Cu, with the pour's settings.
+fn higher(b: &mut Pcb, (x0, y0, x1, y1): (f64, f64, f64, f64)) {
+    b.raw(&format!(
+        "(zone (net 1) (net_name \"GND\") (layer \"F.Cu\") (priority 1) (hatch edge 0.5) (connect_pads (clearance 0.3)) (min_thickness 0.25) (filled_areas_thickness no) (fill yes (thermal_gap 0.5) (thermal_bridge_width 0.5)) (polygon (pts (xy {x0} {y0}) (xy {x1} {y0}) (xy {x1} {y1}) (xy {x0} {y1}))))"
+    ));
+}
+
+/// The board of the check of the fill (issue #1222): a GND pour over a 30 x 20 mm board, and three
+/// places where zones of GND meet:
+///
+/// - D, a GND pad whose relief ends 0.18 mm from a GND zone of a higher priority, SIG tracks over
+///   the ends of its other spokes: KiCad takes the higher zone's area out of the lower zone's fill
+///   last, so the strip between joins the spoke to the right, and the pad is starved (one spoke);
+/// - E, inside a ring of SIG track, a GND zone of a higher priority over half the inside: its
+///   piece and the lower zone's beside it touch only each other, both islands;
+/// - F, a SIG pad across the lower edge of a GND zone of a higher priority: where the pad's
+///   clearance meets that edge, each zone is trimmed as if the other's area were its own, so no
+///   notch is left between them with a spike of copper beside it.
+fn meeting() -> Pcb {
+    let mut b = Pcb::new(2);
+    b.outline = (0.0, 0.0, 30.0, 20.0);
+    b.via("GND", (2.0, 2.0), 0.6, 0.3);
+    b.raw(
+        "(zone (net 1) (net_name \"GND\") (layer \"F.Cu\") (hatch edge 0.5) (connect_pads (clearance 0.3)) (min_thickness 0.25) (filled_areas_thickness no) (fill yes (thermal_gap 0.5) (thermal_bridge_width 0.5)) (polygon (pts (xy 1 1) (xy 29 1) (xy 29 19) (xy 1 19))))",
+    );
+    // D.
+    b.part("U5", (5.0, 10.0), 0.0, &[smd("1", 0.0, 0.0, 1.0, 1.0, "GND")], BARE);
+    higher(&mut b, (6.18, 7.0, 9.0, 13.0));
+    b.via("GND", (7.5, 10.0), 0.6, 0.3);
+    b.track("SIG1", "F.Cu", (3.7, 7.0), (3.7, 13.0), 0.2);
+    b.track("SIG1", "F.Cu", (3.0, 8.7), (5.6, 8.7), 0.2);
+    b.track("SIG1", "F.Cu", (3.0, 11.3), (5.6, 11.3), 0.2);
+    // E.
+    let ring = [(14.0, 6.0), (20.0, 6.0), (20.0, 12.0), (14.0, 12.0)];
+    for k in 0..4 {
+        b.track("SIG2", "F.Cu", ring[k], ring[(k + 1) % 4], 0.2);
+    }
+    higher(&mut b, (15.0, 7.0, 17.0, 11.0));
+    // F.
+    higher(&mut b, (22.0, 5.0, 27.0, 9.0));
+    b.via("GND", (26.0, 6.0), 0.6, 0.3);
+    b.part("U6", (23.5, 9.0), 0.0, &[smd("1", 0.0, 0.0, 1.0, 1.0, "SIG3")], BARE);
+    b
+}
+
+#[test]
+fn kicads_check_of_the_fill_netsmith_writes_finds_what_netsmiths_check_finds() {
+    use netsmith_geom::{Artwork, edge_outline, pad_joins, plot_rules_of};
+    let mut b = meeting();
+    let (pcb, pro) = (b.pcb(), b.pro());
+    // D has the spoke to the right, into the strip beside the higher zone, and no other.
+    assert_eq!(reach_of(&pcb, &pro), [("U5.1".to_string(), 1)]);
+    let ours = drc_check(&pcb, Some(&pro), &DrcExtras::default()).unwrap();
+    let count = |rule: DrcRule| ours.findings.iter().filter(|f| f.rule == rule).count();
+    let starved: Vec<String> = ours
+        .findings
+        .iter()
+        .filter(|f| f.rule == DrcRule::StarvedThermal)
+        .filter_map(|f| f.items.iter().find_map(|i| i.part.clone()))
+        .collect();
+    assert_eq!(starved, ["U5"], "{ours}");
+    assert_eq!(count(DrcRule::IsolatedCopper), 0, "{ours}");
+    assert_eq!(count(DrcRule::CopperSliver), 0, "{ours}");
+    // E's two pieces are taken out, as islands.
+    let art = Artwork::parse(&pcb).unwrap();
+    let edge = edge_outline(&art).unwrap();
+    let joins = pad_joins(&art, "F.Cu", &edge, &plot_rules_of(Some(&pro))).unwrap();
+    let inside = |p: &Pt| (14.0..20.0).contains(&p.x) && (6.0..12.0).contains(&p.y);
+    let removed = joins
+        .iter()
+        .flat_map(|z| &z.removed)
+        .filter(|(at, _)| inside(at))
+        .count();
+    assert_eq!(removed, 2, "{joins:?}");
+
+    let filled = with_netsmith_fill(&pcb, &pro);
+    let Some(kicad) = kicad_findings_as_filled("meeting", &filled, &pro) else {
+        eprintln!("thermal_spokes: KiCad is not installed; netsmith's findings alone are checked");
+        return;
+    };
+    let of = |kind: &str| -> Vec<String> {
+        kicad
+            .iter()
+            .filter(|k| k.kind == kind)
+            .map(|k| format!("{} {:?}", k.description, k.items))
+            .collect()
+    };
+    let theirs_starved = of("starved_thermal");
+    assert_eq!(theirs_starved.len(), 1, "{theirs_starved:?}");
+    assert!(
+        kicad
+            .iter()
+            .filter(|k| k.kind == "starved_thermal")
+            .all(|k| k.items.iter().any(|(_, at)| at.dist(Pt::new(5.0, 10.0)) < 0.01)),
+        "{theirs_starved:?}"
+    );
+    assert_eq!(of("isolated_copper"), Vec::<String>::new());
+    assert_eq!(of("copper_sliver"), Vec::<String>::new());
+    assert_eq!(of("clearance"), Vec::<String>::new());
 }

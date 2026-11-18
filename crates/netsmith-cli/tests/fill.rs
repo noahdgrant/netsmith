@@ -87,11 +87,36 @@ fn the_starved_pads_are_the_ones_board_drc_finds_and_the_counts_add_up() {
         .collect();
     theirs.sort();
     assert_eq!(ours, theirs);
+    // The pads no spoke joins are `board drc`'s `unjoinable_thermal` (issue #1222).
+    let parts = |all: Vec<String>| {
+        let mut all = all;
+        all.sort();
+        all
+    };
+    let unjoinable = parts(
+        doc["unjoinable"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|u| u["part"].as_str().unwrap().to_string())
+            .collect(),
+    );
+    let found = parts(
+        checked["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|f| f["rule"] == "unjoinable_thermal")
+            .map(|f| f["parts"][0].as_str().unwrap().to_string())
+            .collect(),
+    );
+    assert_eq!(unjoinable, found);
+    assert_eq!(doc["counts"]["unjoinable"], unjoinable.len());
 
     // The counts of the board are the counts of its fills, and each fill's of its pads.
     let fills = doc["fills"].as_array().unwrap();
     let kinds = ["no_spokes", "one_spoke", "two_or_more_spokes", "solid", "none"];
-    for kind in kinds.iter().chain(&["starved"]) {
+    for kind in kinds.iter().chain(&["starved", "unjoinable"]) {
         let sum: u64 = fills.iter().map(|f| f["counts"][kind].as_u64().unwrap()).sum();
         assert_eq!(doc["counts"][kind].as_u64(), Some(sum), "{kind}");
     }
@@ -111,7 +136,7 @@ fn the_starved_pads_are_the_ones_board_drc_finds_and_the_counts_add_up() {
     assert!(said.contains(" (starved)\n"), "{said}");
     assert!(
         said.contains(&format!(
-            "starved thermal reliefs (fewer than 2 spokes and tracks join the pad to the fill): {}\n",
+            "starved thermal reliefs (one or more but fewer than 2 spokes and tracks join the pad to the fill): {}\n",
             ours.len()
         )),
         "{said}"

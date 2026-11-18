@@ -462,6 +462,38 @@ pub fn kicad_findings(
     kicad_findings_with(name, pcb, pro, "")
 }
 
+/// KiCad's design rules check of a board as its file is, its zones' fill the one the file holds
+/// (no refill), or `None` if KiCad is not installed.
+pub fn kicad_findings_as_filled(
+    name: &str,
+    pcb: &str,
+    pro: &str,
+) -> Option<Vec<netsmith_fab::KicadDrcReported>> {
+    let cli = netsmith_fab::KicadCliExe::locate_runnable()?;
+    let dir = netsmith_testkit::TempDir::new(&format!("drc-filled-{name}"));
+    let path = dir.join(format!("{name}.kicad_pcb"));
+    std::fs::write(&path, pcb).ok()?;
+    std::fs::write(path.with_extension("kicad_pro"), pro).ok()?;
+    let json = cli
+        .drc_json_as_filled(&path)
+        .unwrap_or_else(|e| panic!("{name}: {e}"));
+    Some(netsmith_fab::parse_kicad_drc(&json).unwrap())
+}
+
+/// The text of a board as KiCad's own filler fills its zones, or `None` if KiCad is not
+/// installed.
+pub fn kicad_refilled(name: &str, pcb: &str, pro: &str) -> Option<String> {
+    let cli = netsmith_fab::KicadCliExe::locate_runnable()?;
+    let dir = netsmith_testkit::TempDir::new(&format!("refill-{name}"));
+    let path = dir.join(format!("{name}.kicad_pcb"));
+    std::fs::write(&path, pcb).ok()?;
+    std::fs::write(path.with_extension("kicad_pro"), pro).ok()?;
+    Some(
+        cli.refilled(&path)
+            .unwrap_or_else(|e| panic!("{name}: {e}")),
+    )
+}
+
 /// [`kicad_findings`] with a custom rules file (`.kicad_dru`) beside the project when `rules` is
 /// not empty.
 pub fn kicad_findings_with(

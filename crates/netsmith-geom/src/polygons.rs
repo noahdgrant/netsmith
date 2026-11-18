@@ -18,7 +18,7 @@ use i_overlay::float::simplify::SimplifyShape;
 use i_overlay::float::single::SingleFloatOverlay;
 
 use crate::gbr::{Ap, Contour, Pen, Seg};
-use crate::geom::{self, Arc, Pt, circle_polygon};
+use crate::geom::{self, Arc, Bounds, Pt, circle_polygon};
 use crate::pads::rounded_rect_polygon;
 
 /// A polygon with holes. `outer` runs so that its shoelace sum ([`geom::area2`]) is
@@ -296,22 +296,128 @@ pub(crate) fn grown(areas: &[Area], by: f64) -> Vec<Area> {
 /// to its `min_thickness`: each area is shrunk by half the width and the rest grown back by as
 /// much, so a neck narrower than the width parts the area in two and a sliver goes.
 pub(crate) fn trimmed(areas: &[Area], min_width: f64) -> Vec<Area> {
-    let by = min_width / 2.0;
+    opened(areas, min_width / 2.0, Corners::Round, Corners::Round)
+}
+
+/// How an offset draws the corners it goes round: with a round pen, or squared off at the
+/// offset's distance from the corner along its bisector (Clipper's square join, which KiCad's
+/// `CHAMFER_ALL_CORNERS` asks for), which reaches further than the round one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Corners {
+    Round,
+    Square,
+}
+
+/// The size under which a piece of shrunk copper is a speck of rounding ([`opened`]), in mm.
+const SPECK: f64 = 0.001;
+
+/// The areas shrunk by `by` with `shrink`'s corners and the rest grown back by as much with
+/// `grow`'s: [`trimmed`] with round corners both ways.
+pub(crate) fn opened(areas: &[Area], by: f64, shrink: Corners, grow: Corners) -> Vec<Area> {
     if by <= 0.0 || areas.is_empty() {
         return areas.to_vec();
     }
+    // A speck of the shrunk copper narrower than a micrometre is what is left between the
+    // pieces of the band by rounding, not copper as wide as the width: grown back it would be a
+    // disc of copper where there was none.
+    let core: Vec<Area> = difference(areas, &to_areas(band(areas, by, shrink)))
+        .into_iter()
+        .filter(|a| {
+            Bounds::of(a.outer.iter().copied())
+                .is_some_and(|b| (b.max.x - b.min.x).max(b.max.y - b.min.y) >= SPECK)
+        })
+        .collect();
+    if core.is_empty() {
+        return core;
+    }
+    let mut rings = rings_of(&core);
+    rings.extend(band(&core, by, grow));
+    to_areas(rings)
+}
+
+/// Everything within `by` of the rings of `areas`, on both sides, its corners drawn as
+/// `corners` says.
+fn band(areas: &[Area], by: f64, corners: Corners) -> Vec<Ring> {
     let mut band: Vec<Ring> = Vec::new();
     for a in areas {
         for r in std::iter::once(&a.outer).chain(&a.holes) {
-            let mut closed = r.clone();
-            if let Some(&first) = r.first() {
-                closed.push(first);
+            match corners {
+                Corners::Round => {
+                    let mut closed = r.clone();
+                    if let Some(&first) = r.first() {
+                        closed.push(first);
+                    }
+                    band.extend(strokes(&closed, 2.0 * by));
+                }
+                Corners::Square => band.extend(square_band(r, by)),
             }
-            band.extend(strokes(&closed, 2.0 * by));
         }
     }
-    let core = difference(areas, &to_areas(band));
-    grown(&core, by)
+    band
+}
+
+/// The band within `by` of a closed ring, as Clipper offsets it with square joins: a rectangle
+/// along each side, and at each corner, on the side where the ring turns away (the outside of
+/// the turn), the wedge between the two sides' rectangles squared off at `by` from the corner.
+/// On the other side the rectangles overlap and need nothing more.
+fn square_band(ring_pts: &[Pt], by: f64) -> Vec<Ring> {
+    let n = ring_pts.len();
+    let mut out = Vec::new();
+    if n == 0 {
+        return out;
+    }
+    let unit = |v: Pt| {
+        let l = (v.x * v.x + v.y * v.y).sqrt();
+        (l > 1e-12).then(|| v * (1.0 / l))
+    };
+    let dot = |a: Pt, b: Pt| a.x * b.x + a.y * b.y;
+    // The normal to the right of a direction.
+    let right = |d: Pt| Pt::new(d.y, -d.x);
+    // Each rectangle reaches a nanometre past its side's ends, under the corners' squares, so
+    // that no seam of rounding is left between them for the shrinking to keep.
+    let seam = 1e-6;
+    for i in 0..n {
+        let (a, b) = (ring_pts[i], ring_pts[(i + 1) % n]);
+        let Some(d) = unit(b - a) else { continue };
+        let m = right(d) * by;
+        let (a, b) = (a - d * seam, b + d * seam);
+        out.extend(ring(&[a + m, b + m, b - m, a - m]));
+    }
+    for i in 0..n {
+        let v = ring_pts[i];
+        // The sides in and out of the corner, past any point repeated.
+        let Some(d1) = (1..n)
+            .map(|k| ring_pts[(i + n - k) % n])
+            .find_map(|p| unit(v - p))
+        else {
+            continue;
+        };
+        let Some(d2) = (1..n)
+            .map(|k| ring_pts[(i + k) % n])
+            .find_map(|p| unit(p - v))
+        else {
+            continue;
+        };
+        let cross = d1.x * d2.y - d1.y * d2.x;
+        if cross.abs() < 1e-12 && dot(d1, d2) > 0.0 {
+            continue;
+        }
+        // The outside of the turn, and how far the square reaches along each side's offset past
+        // the corner: `by * tan(turn / 4)`, the square being tangent to the round join at the
+        // middle of the turn.
+        let side = if cross >= 0.0 { 1.0 } else { -1.0 };
+        let (na, nb) = (right(d1) * side, right(d2) * side);
+        let turn = cross.abs().atan2(dot(d1, d2));
+        let reach = by * (turn / 4.0).tan();
+        out.extend(ring(&[
+            v,
+            v + na * by,
+            v + na * by + d1 * reach,
+            v + nb * by - d2 * reach,
+            v + nb * by,
+        ]));
+    }
+    out
 }
 
 /// The shapes of an overlay as one list of rings: each shape's outer ring and its holes.
@@ -517,6 +623,94 @@ mod tests {
             Pt::new(x0 + s, y0 + s),
             Pt::new(x0, y0 + s),
         ])
+    }
+
+    /// A 4 mm square with round bites out of it (circles cut into many short sides, as the fill's
+    /// clearances are) and a stub 0.3 mm wide off one side.
+    fn bitten() -> Vec<Area> {
+        let mut p = Polygons::new();
+        p.region(square(0.0, 0.0, 4.0), None, &[]);
+        p.region(
+            Contour::polygon(&[
+                Pt::new(4.0, 1.85),
+                Pt::new(4.6, 1.85),
+                Pt::new(4.6, 2.15),
+                Pt::new(4.0, 2.15),
+            ]),
+            None,
+            &[],
+        );
+        p.polarity(false);
+        for (x, y, r) in [
+            (2.0, 0.0, 1.0),
+            (4.0, 3.0, 0.6),
+            (0.0, 2.0, 0.3),
+            (1.0, 2.6, 0.4),
+        ] {
+            p.region(
+                Contour::polygon(&geom::circle_polygon(Pt::new(x, y), r)),
+                None,
+                &[],
+            );
+        }
+        p.areas()
+    }
+
+    #[test]
+    fn a_square_shrink_leaves_no_speck_to_grow_into_a_disc() {
+        // A bump 0.16 mm deep and 0.3 mm tall off a block, its end cut on a slant, as a spoke a
+        // clearance cuts. The band's rectangles and squares once met at seams of rounding that
+        // left specks of a square nanometre in the shrunk copper, each grown back into a disc
+        // 0.24 mm across, past the bump's end.
+        let stub = [
+            (1.0, -0.5),
+            (1.0, 1.0),
+            (0.24, 1.0),
+            (0.24, 0.4),
+            (0.1618, 0.4),
+            (0.1076, 0.2636),
+            (0.0974, 0.2243),
+            (0.08, 0.1858),
+            (0.08, 0.11),
+            (0.0816, 0.1),
+            (0.24, 0.1),
+            (0.24, -0.5),
+        ];
+        let pts: Vec<Pt> = stub.iter().map(|&(x, y)| Pt::new(x, y)).collect();
+        let areas = vec![Area::of(&pts)];
+        let total = |a: &[Area]| a.iter().map(Area::size).sum::<f64>();
+        for corners in [Corners::Square, Corners::Round] {
+            let o = opened(&areas, 0.122, corners, Corners::Round);
+            let extra = total(&difference(&o, &grown(&areas, geom::ARC_ERROR)));
+            assert!(extra < 1e-9, "{corners:?}: {extra} mm2 outside");
+            assert!(
+                !o.iter().any(|a| a.contains(Pt::new(0.02, 0.25))),
+                "{corners:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_opening_never_adds_copper_and_square_corners_take_no_less() {
+        let areas = bitten();
+        let total = |a: &[Area]| a.iter().map(Area::size).sum::<f64>();
+        for by in [0.05, 0.124, 0.2] {
+            let round = opened(&areas, by, Corners::Round, Corners::Round);
+            let square = opened(&areas, by, Corners::Square, Corners::Round);
+            for (what, o) in [("round", &round), ("square", &square)] {
+                // Nothing further out than the rounding of the curves.
+                let extra = total(&difference(o, &grown(&areas, geom::ARC_ERROR)));
+                assert!(extra < 1e-9, "{what} by {by}: {extra} mm2 outside");
+            }
+            let more = total(&difference(&square, &grown(&round, geom::ARC_ERROR)));
+            assert!(
+                more < 1e-9,
+                "square by {by}: {more} mm2 the round keeps not"
+            );
+            // The stub, 0.3 mm wide, stays at 0.124 and goes at 0.2.
+            let stub = |o: &[Area]| o.iter().any(|a| a.contains(Pt::new(4.4, 2.0)));
+            assert_eq!(stub(&square), by < 0.15, "by {by}");
+        }
     }
 
     /// A 10 mm square with three 2 mm holes: one at the left, one to its right on the same
