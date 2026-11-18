@@ -1816,7 +1816,7 @@ export type NetsPair = {
  */
 p: string, n: string, lengthP: number, lengthN: number, skew: number, 
 /**
- * The skew the pair may have: its `.skew`, else the router's target (issue #1234).
+ * The skew the pair may have: its `.skew`, else the router's target (issue 1234).
  */
 limit: number, over: boolean, 
 /**

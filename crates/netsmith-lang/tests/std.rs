@@ -134,8 +134,8 @@ fn sources_parse() {
     // #1193).
     assert_eq!(file.definitions.len(), 4);
     assert_eq!(def(&file, "TrackImpedance").items.len(), 2);
-    assert_eq!(def(&file, "PairImpedance").items.len(), 4);
-    assert_eq!(def(&file, "DiffPair").items.len(), 2);
+    assert_eq!(def(&file, "PairImpedance").items.len(), 6);
+    assert_eq!(def(&file, "DiffPair").items.len(), 4);
     let rail = def(&file, "Rail");
     assert_eq!(rail.kind, DefKind::Interface);
     assert_eq!(

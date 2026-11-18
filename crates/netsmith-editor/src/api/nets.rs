@@ -6,7 +6,7 @@
 //! (and routed) and answers for each net that no zone pours its routed and straight length, its
 //! vias, its layer changes and its layers, for each diff pair both lengths, the skew against its
 //! limit, the coupled length, the gaps over it and the vias side by side, and for each group of
-//! nets matched in length (issue #1234) each net's length and the group's spread. `404`
+//! nets matched in length (issue 1234) each net's length and the group's spread. `404`
 //! for a board that is not there; a board that cannot be measured is a `500` with the reason.
 
 use serde::{Deserialize, Serialize};
@@ -40,7 +40,7 @@ pub struct NetsPair {
     pub length_p: f64,
     pub length_n: f64,
     pub skew: f64,
-    /// The skew the pair may have: its `.skew`, else the router's target (issue #1234).
+    /// The skew the pair may have: its `.skew`, else the router's target (issue 1234).
     pub limit: f64,
     pub over: bool,
     /// The length of `p` that runs coupled, and its share of `p`, 0 to 1.
@@ -64,7 +64,7 @@ pub struct NetsGroupNet {
     pub short_by: f64,
 }
 
-/// One group of nets matched in length (issue #1234), in mm.
+/// One group of nets matched in length (issue 1234), in mm.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct NetsGroup {
