@@ -15,12 +15,14 @@
 //! is seen from the top.
 //!
 //! None of these places the board: [`check`] measures a locked entry against the requirements
-//! of the physical file with the footprints loaded and nothing more.
+//! of the physical file with the footprints loaded, and the parts the file places with the
+//! placement check `fab` runs ([`Board::placement_faults`] on [`Board::laid_out_entries`], issue
+//! #1224), and nothing more.
 
 use std::path::Path;
 
 use netsmith_core::Design;
-use netsmith_pcb::{Board, Layout, LayoutFace, PartPlace};
+use netsmith_pcb::{Board, Layout, LayoutFace, PartPlace, PlacementFault};
 use serde::Serialize;
 
 /// Why `turn` is not a turn a part may take, if it is not: a turn is any angle from 0 up to
@@ -389,7 +391,8 @@ pub enum Severity {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Finding {
     pub severity: Severity,
-    /// `no_entry`, `no_part`, `bad_turn`, `bad_place`, `requirement` or `unmeasured`.
+    /// `no_entry`, `no_part`, `bad_turn`, `bad_place`, `requirement`, `placement` or
+    /// `unmeasured`.
     pub kind: &'static str,
     /// The part's path.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -398,6 +401,10 @@ pub struct Finding {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub line: Option<usize>,
     pub message: String,
+    /// For `placement`: the fault as `fab`'s placement check gives it (`board fab --format json`
+    /// and `layout fit` have the same data), with the parts, their courtyards and the amounts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fault: Option<PlacementFault>,
 }
 
 /// What [`check`] says.
@@ -458,10 +465,34 @@ fn locked_breaks(
     ))
 }
 
+/// The faults the placement check `fab` runs ([`Board::placement_faults`]) finds on the board of
+/// the parts `layout` places, each where it says ([`Board::laid_out_entries`]): `fab` puts them
+/// there whatever the seed, so a fault among them stops it. Nothing is placed.
+fn placement_faults(
+    design: &Design,
+    layout: &Layout,
+    file: &Path,
+    libraries: &netsmith_pipeline::Libraries,
+) -> Result<Vec<PlacementFault>, String> {
+    let options = netsmith_pcb::place_options(design, Some(layout));
+    let laid = (layout.clone(), file.display().to_string());
+    let board = Board::laid_out_entries(
+        design,
+        &libraries.mapping,
+        &libraries.footprints,
+        &options,
+        Some(&laid),
+    )?;
+    Ok(board.placement_faults())
+}
+
 /// What the layout file at `file` has wrong against `design`: a part with no entry (a note: the
 /// placer places it), an entry that names no part (with the nearest names), an entry with a
-/// turn that is not from 0 up to 360 or a position that is not a number, and a locked entry
-/// that breaks a requirement of the physical file. Each finding has the line of its entry.
+/// turn that is not from 0 up to 360 or a position that is not a number, a locked entry that
+/// breaks a requirement of the physical file, and each fault the placement check `fab` runs finds
+/// among the parts the file places (`placement`, issue #1224): two courtyards that overlap, a
+/// part past the edge, in a keepout or a cutout, over a height limit, a hole too near another
+/// part. Each finding has the line of its entry.
 pub fn check(
     design: &Design,
     file: &Path,
@@ -493,6 +524,7 @@ pub fn check(
                         "the entry of `{path}` names no part of the board `{}`; the nearest names are {near}: rename the entry or remove it",
                         design.name
                     ),
+                    fault: None,
                 },
             );
         } else if let Some(why) = turn_error(place.rotation) {
@@ -502,6 +534,7 @@ pub fn check(
                 path: Some(path.clone()),
                 line,
                 message: format!("the entry of `{path}`: {why}"),
+                fault: None,
             });
         } else if !place.at.iter().all(|v| v.is_finite()) {
             findings.push(Finding {
@@ -510,6 +543,7 @@ pub fn check(
                 path: Some(path.clone()),
                 line,
                 message: format!("the entry of `{path}` has a position that is not a number"),
+                fault: None,
             });
         }
     }
@@ -523,10 +557,39 @@ pub fn check(
                     line: lines.get(&path).copied(),
                     path: Some(path),
                     message,
+                    fault: None,
                 });
             }
         }
         Err(e) => unmeasured = Some(e),
+    }
+    // The placement check `fab` runs, on the parts the file places (issue #1224). A wrong
+    // entry is said above, and the board is not made of it.
+    let mut unplaced = None;
+    if findings.is_empty() {
+        match placement_faults(design, &layout, file, libraries) {
+            Ok(faults) => {
+                for fault in faults {
+                    // The entry the fault is about: the first of its parts the file places.
+                    let path = fault
+                        .parts
+                        .iter()
+                        .map(|p| &p.part.path)
+                        .find(|p| entries.parts.contains_key(*p))
+                        .or_else(|| fault.parts.first().map(|p| &p.part.path))
+                        .cloned();
+                    findings.push(Finding {
+                        severity: Severity::Error,
+                        kind: "placement",
+                        line: path.as_ref().and_then(|p| lines.get(p).copied()),
+                        path,
+                        message: fault.text.clone(),
+                        fault: Some(fault),
+                    });
+                }
+            }
+            Err(e) => unplaced = Some(e),
+        }
     }
     findings.sort_by_key(|f| (f.line.unwrap_or(usize::MAX), f.path.clone()));
     if let Some(e) = unmeasured {
@@ -536,6 +599,17 @@ pub fn check(
             path: None,
             line: None,
             message: format!("the locked entries were not measured against the requirements: {e}"),
+            fault: None,
+        });
+    }
+    if let Some(e) = unplaced {
+        findings.push(Finding {
+            severity: Severity::Note,
+            kind: "unmeasured",
+            path: None,
+            line: None,
+            message: format!("the entries were not measured by the placement check: {e}"),
+            fault: None,
         });
     }
     for part in &design.parts {
@@ -549,6 +623,7 @@ pub fn check(
                     "`{}` ({}) has no entry: the placer places it",
                     part.path, part.refdes
                 ),
+                fault: None,
             });
         }
     }

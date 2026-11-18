@@ -168,25 +168,13 @@ pub fn case_findings(board: &Board, case: &netsmith_3d::CaseScene) -> Vec<PcbFin
         .collect()
 }
 
-/// The box two parts' courtyards share: where the most of any two of their shapes (each a
-/// room of its own) overlap. A part's shapes are what the placement check counts, so the box
-/// is where the overlap is and not a part of the box round a shape and its far neighbour.
+/// The box two parts' courtyards share ([`Board::shared_courtyard`], the placement check's own
+/// measure), or the box round the two where no shapes of theirs meet.
 fn shared_area(board: &Board, a: &str, b: &str) -> Option<Rect> {
-    let (pa, pb) = (board.part(a)?, board.part(b)?);
-    let (ra, rb) = (pa.courtyards(), pb.courtyards());
-    let share = |x: &Rect, y: &Rect| {
-        Rect::new(
-            Pt::new(x.min.x.max(y.min.x), x.min.y.max(y.min.y)),
-            Pt::new(x.max.x.min(y.max.x), x.max.y.min(y.max.y)),
-        )
-    };
-    let area = |r: &Rect| r.width().max(0.0) * r.height().max(0.0);
-    ra.iter()
-        .flat_map(|x| rb.iter().map(move |y| share(x, y)))
-        .fold(None, |best: Option<Rect>, r| match best {
-            Some(b) if area(&b) >= area(&r) => Some(b),
-            _ => Some(r),
-        })
+    board.shared_courtyard(a, b).or_else(|| {
+        let (pa, pb) = (board.part(a)?, board.part(b)?);
+        Some(pa.courtyard().union(&pb.courtyard()))
+    })
 }
 
 /// The problems with where the parts are, each with the box it is about.

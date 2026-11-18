@@ -13,7 +13,12 @@
 //! The turns are the four right angles from the part's turn (the placer turns by right angles
 //! only); the faces are both, unless a requirement states the face or the caller names one. A
 //! turn or face a requirement rules out is not tried. Nothing is moved: the board is the
-//! caller's, and a place it finds goes into the layout file with `netsmith layout set`.
+//! caller's, and a place it finds goes into the layout file with `netsmith layout set --lock`
+//! (locked, so that `fab`'s placer places the other parts round it, issue #1224).
+//!
+//! The measure is the placement check's own: [`Board::placement_problems_of`] is
+//! [`Board::check_placement`] measured on one part, the check `fab`, `layout check`, `layout
+//! regenerate` and the editor run, so a place it calls free is one they accept.
 //!
 //! Places are footprint origins in the layout file's frame (mm from the outline's top left
 //! corner, y down), and distances are from the point to the centre of the courtyard.
@@ -125,7 +130,9 @@ impl PartFit {
     }
 
     /// A few lines for a person; each place that fits with the `netsmith layout set` that
-    /// writes it.
+    /// writes it, locked: the place is free with every other part where it is, and `fab`'s
+    /// placer places round a locked part, where an unlocked entry is put after placing and
+    /// may find a part the placer put there (issue #1224).
     pub fn text(&self) -> String {
         let near = match &self.near.part {
             Some(p) => format!("{} ({})", p.refdes, p.path),
@@ -151,7 +158,7 @@ impl PartFit {
         for p in &self.poses {
             if p.fits {
                 out += &format!(
-                    "  fits {}, {} mm away: netsmith layout set {} --at {},{} --turn {} --side {}\n",
+                    "  fits {}, {} mm away: netsmith layout set {} --at {},{} --turn {} --side {} --lock\n",
                     pose(p),
                     num(p.distance),
                     self.part.path,
