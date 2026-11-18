@@ -48,7 +48,7 @@ pub use resolve::{PartSymbol, part_symbols};
 pub use schematic::{
     EmitError, Schematic, emit_schematic, is_netsmith_sheet, needs_power_flag, project_file,
 };
-pub use sexp::{ParseError, Sexp, fmt_num};
+pub use sexp::{KICAD_LINE_MAX, ParseError, Sexp, fmt_num, longest_line};
 pub use stdlib::{
     FOOTPRINT_FOLDER, NAME as STDLIB_NAME, files as stdlib_files, footprint as stdlib_footprint,
     footprint_names as stdlib_footprint_names, is_library_id,

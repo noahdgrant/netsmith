@@ -109,7 +109,12 @@ zone of the routes file, the fill its Gerbers get, as KiCad's `filled_polygon`s,
 poured in KiCad with no refill (`netsmith_pcb::kicad_pcb_filled`, issue #1184). netsmith reads the
 fill of a file it wrote as none and makes it again, so the package, `board drc` of the file and
 the cross-check see the board itself. The stages keep the board in memory unfilled
-(`netsmith_pcb::kicad_pcb`), and `layout export` writes it so.
+(`netsmith_pcb::kicad_pcb`), and `layout export` writes it so. The points of a fill are written
+a line of about 100 bytes at a time: KiCad 9 refuses a whole file with a line over 1,000,000
+bytes, and a plane's fill on one line was longer (issue #1221). A zone whose fill still could not
+be written as KiCad reads it is written unfilled, and `fab-notes.txt` has a warning that names it.
+The file is in KiCad 9.0's format, so a footprint from a library saved by a newer KiCad is written
+without the fields 9.0.0 refuses a board for (its `units` and its jumper pads).
 
 The linter (`netsmith project lint`, `crates/netsmith-lint`, issue #1104) is not a stage: it runs stage 1 on the top-level files as `check` does, reads the syntax trees and the checked models (and the catalogs, for a narrowing the row a part is picked by gives), and writes nothing. A rule that asks whether a statement changes anything checks the files again without it.
 

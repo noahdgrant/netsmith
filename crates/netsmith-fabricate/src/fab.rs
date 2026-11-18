@@ -1621,8 +1621,16 @@ fn fab_board(
         fs::create_dir_all(&dir).map_err(|e| fail(format!("{}: {e}", dir.display())))?;
         // The board file holds netsmith's own fill, so it opens poured in KiCad (issue #1184);
         // netsmith reads it back as the board it was written from. Where the filler refuses the
-        // board, the file is written unfilled and the package says why, as its Gerbers fail.
-        let mut pcb = kicad_pcb_filled(&board).unwrap_or_else(|_| kicad_pcb(&board));
+        // board, the file is written unfilled and the package says why, as its Gerbers fail. A
+        // zone whose fill KiCad could not read is written unfilled, and the notes say which
+        // (issue #1221): a board its owner cannot open is worse than one KiCad fills.
+        let (mut pcb, unfilled_notes) = match kicad_pcb_filled(&board) {
+            Ok(filled) => (filled.text, filled.unfilled),
+            Err(_) => (kicad_pcb(&board), Vec::new()),
+        };
+        for note in &unfilled_notes {
+            say(format!("{}: warning: {note}", built.label()));
+        }
         // A self-contained project (`--portable`, issue #1198): the libraries and the 3D models
         // the board file names are copied into the folder, and the file names them there.
         let mut project_files = options.portable.then(|| libraries.portable(&dir));
@@ -1709,6 +1717,7 @@ fn fab_board(
         extras.extend(step_note.map(|n| format!("warning: {n}")));
         extras.extend(pdf_notes.iter().map(|n| format!("warning: {n}")));
         extras.extend(portable_notes.iter().map(|n| format!("warning: {n}")));
+        extras.extend(unfilled_notes.iter().map(|n| format!("warning: {n}")));
         if let Some(scene) = &scene {
             extras.extend(scene.warnings.iter().map(|w| format!("warning: {w}")));
             extras.extend(model_notes(scene));

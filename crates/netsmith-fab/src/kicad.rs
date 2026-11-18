@@ -171,6 +171,29 @@ impl KicadCliExe {
         stage.drc_json()
     }
 
+    /// Whether KiCad opens the board as its file is, with no refill: the outline of the board
+    /// plotted from the file, an error when KiCad cannot load it ("Failed to load board"). Issue
+    /// #1221: KiCad 9.0.0 refused a board whose fill had a line longer than its reader takes.
+    pub fn opens(&self, pcb: &Path) -> Result<(), CliError> {
+        let stage = self.stage_with(pcb, false)?;
+        let file = stage.dir.join("edge.svg");
+        stage.run(&[
+            "export",
+            "svg",
+            "--layers",
+            "Edge.Cuts",
+            "-o",
+            &stage.arg(&file)?,
+        ])?;
+        if file.is_file() {
+            Ok(())
+        } else {
+            Err(CliError::Io(
+                "kicad-cli wrote no picture of the board".into(),
+            ))
+        }
+    }
+
     fn stage(&self, pcb: &Path) -> Result<Stage<'_>, CliError> {
         self.stage_with(pcb, true)
     }
