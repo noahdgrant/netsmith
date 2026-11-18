@@ -337,7 +337,9 @@ fn poured_over(board: &Board, copper: &SenseCopper, layer: CopperLayer, grow: f6
 /// The area in mm² that the fill of net `GND` on `layer` as the KiCad board `fab` writes holds
 /// it (its `filled_polygon`s, issue #1184) shares with the sense copper on it grown by `grow`.
 fn held_over(board: &Board, copper: &SenseCopper, layer: CopperLayer, grow: f64) -> f64 {
-    let text = netsmith_pcb::kicad_pcb_filled(board).unwrap_or_else(|e| panic!("{e:?}"));
+    let text = netsmith_pcb::kicad_pcb_filled(board)
+        .unwrap_or_else(|e| panic!("{e:?}"))
+        .text;
     let root = netsmith_kicad::Sexp::parse(&text).unwrap();
     let word = |node: &netsmith_kicad::Sexp, key: &str| {
         node.find(key)

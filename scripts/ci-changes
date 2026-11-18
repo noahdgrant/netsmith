@@ -211,12 +211,13 @@ example_readers() {
         enclosure_sensor) echo "$any_example netsmith-fabricate" ;;
         # netsmith-netlist reads the ports' original schematics and boards (`reference/`).
         power_manifold_charger) echo "$any_example netsmith-fabricate netsmith-netlist" ;;
-        orbit | easyduino_esp32s3) echo "$any_example netsmith-netlist" ;;
+        # The KiCad load test of netsmith-fabricate (`kicad_load.rs`) fabs them (issue #1221).
+        orbit | easyduino_esp32s3) echo "$any_example netsmith-netlist netsmith-fabricate" ;;
         led_panel | outline_and_pours) echo "$any_example netsmith-fabricate" ;;
         two_buck) echo "$any_example netsmith-fabricate" ;;
         # The KiCad comparison of the parity audit (`kicad_drc.rs` of netsmith-fabricate) fabs it (issue #1185).
         buck_converter) echo "$any_example netsmith-fabricate" ;;
-        rp2350_minimal) echo "$any_example netsmith-pcb" ;;
+        rp2350_minimal) echo "$any_example netsmith-pcb netsmith-fabricate" ;;
         # The editor backend's tests open it as a project (the `example_project` helper takes a name).
         schematic_bench) echo "$any_example" ;;
         *) echo "$any_example" ;;

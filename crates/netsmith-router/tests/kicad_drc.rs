@@ -314,7 +314,7 @@ fn kicad_checks_the_fill_fab_writes_as_it_is_and_finds_the_starved_pads_netsmith
     };
     let dir = TempDir::new("kicad-as-filled");
     let pcb = dir.join("corner.kicad_pcb");
-    let filled = netsmith_pcb::kicad_pcb_filled(&bare).unwrap();
+    let filled = netsmith_pcb::kicad_pcb_filled(&bare).unwrap().text;
     assert!(filled.contains("(filled_polygon"));
     std::fs::write(&pcb, filled).unwrap();
     std::fs::write(pcb.with_extension("kicad_pro"), kicad_pro(&bare)).unwrap();
@@ -1185,4 +1185,85 @@ fn kicad_draws_a_back_footprints_model_and_pads_where_netsmith_puts_them() {
     let theirs = stl_box(&pads, |p| p[2] < 0.0).expect("KiCad drew no pad on the back");
     let pad = part.footprint.pads_numbered("1").next().unwrap();
     close(theirs, part.pad_bounds(pad), "pad 1");
+}
+
+/// The four-layer example on a board of 36 by 27 mm, its planes holed by a grid of vias of a
+/// signal net, a via every 1.6 mm clear of the parts (286 of them): each plane's fill is one
+/// polygon of about 55,000 points, 1.2 MB on one line, as a large routed board's is. The smallest board that KiCad 9.0.0 could
+/// not open (issue #1221), when the writer put the points of a polygon on one line.
+fn perforated() -> Board {
+    let mut b = board("four_layer");
+    assert!(b.polygon.is_none());
+    b.outline = Rect::new(b.outline.min, b.outline.min + Pt::new(36.0, 27.0));
+    let net = b
+        .nets
+        .iter()
+        .map(|n| n.name.clone())
+        .find(|n| b.planes.iter().all(|p| &p.net != n))
+        .unwrap();
+    let keep: Vec<Rect> = b.parts.iter().map(|p| p.courtyard().expanded(1.0)).collect();
+    let inner = b.outline.expanded(-1.5);
+    let (columns, rows) = (
+        (inner.width() / 1.6) as usize,
+        (inner.height() / 1.6) as usize,
+    );
+    for i in 0..=columns {
+        for j in 0..=rows {
+            let at = inner.min + Pt::new(i as f64 * 1.6, j as f64 * 1.6);
+            if keep.iter().any(|r| r.contains(&Rect::new(at, at))) {
+                continue;
+            }
+            b.vias.push(Via {
+                net: net.clone(),
+                at,
+                diameter: 0.6,
+                drill: 0.3,
+                span: None,
+            });
+        }
+    }
+    b
+}
+
+#[test]
+fn kicad_opens_the_board_fab_writes_when_a_planes_fill_has_more_points_than_a_line_holds() {
+    // Issue #1221: KiCad 9.0.0 refused the whole board ("Failed to load board") for a line over
+    // a million bytes, and a plane's fill of 69,000 points was written on one line.
+    use netsmith_fab::KicadCli as _;
+    use netsmith_kicad::{KICAD_LINE_MAX, Sexp, longest_line};
+    let b = perforated();
+    let filled = netsmith_pcb::kicad_pcb_filled(&b).unwrap();
+    assert_eq!(filled.unfilled, Vec::<String>::new());
+    // The construct: a plane's `filled_polygon` whose points, written on one line, would be
+    // longer than KiCad reads. The file wraps them, a line of points at a time.
+    let tree = Sexp::parse(&filled.text).unwrap();
+    let one_line = tree
+        .find_all("zone")
+        .flat_map(|z| z.find_all("filled_polygon"))
+        .map(|f| {
+            f.find("pts")
+                .unwrap()
+                .find_all("xy")
+                .map(|p| {
+                    let mut text = String::new();
+                    p.write(&mut text);
+                    text.len() + 1
+                })
+                .sum::<usize>()
+        })
+        .max()
+        .unwrap();
+    assert!(one_line > KICAD_LINE_MAX, "{one_line} bytes on one line");
+    assert!(longest_line(&filled.text) < 1000, "{}", longest_line(&filled.text));
+    let Some(cli) = KicadCliExe::locate_runnable() else {
+        eprintln!("skipped: no KiCad");
+        return;
+    };
+    let dir = TempDir::new("kicad-opens-perforated");
+    let pcb = dir.join("perforated.kicad_pcb");
+    std::fs::write(&pcb, &filled.text).unwrap();
+    std::fs::write(pcb.with_extension("kicad_pro"), kicad_pro(&b)).unwrap();
+    if let Err(e) = cli.pos(&pcb) {
+        panic!("KiCad cannot open the board fab writes: {e}");
+    }
 }

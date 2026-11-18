@@ -10,6 +10,20 @@
 
 use std::fmt::Write as _;
 
+/// The longest line KiCad's reader takes, in bytes: a longer one makes KiCad 9 refuse the whole
+/// file ("Failed to load board"; `LINE_READER_LINE_DEFAULT_MAX` of KiCad's `richio.h`). Issue
+/// #1221: a plane's fill of 69,000 points written on one line of 1.4 MB.
+pub const KICAD_LINE_MAX: usize = 1_000_000;
+
+/// The width past which [`Sexp::to_kicad_string`] starts a new line of a list of points, in
+/// bytes of the line: about where KiCad 9 wraps its own.
+const PTS_WRAP: usize = 100;
+
+/// The length of the longest line of `text`, in bytes, to hold against [`KICAD_LINE_MAX`].
+pub fn longest_line(text: &str) -> usize {
+    text.split('\n').map(str::len).max().unwrap_or(0)
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Sexp {
     /// A bare token: keyword, number, `yes`/`no`.
@@ -158,16 +172,22 @@ impl Sexp {
                     out.push(')');
                     return;
                 }
-                // KiCad keeps the points of a polyline on one line.
+                // KiCad keeps the points of a polyline together, a line of them at a time: a
+                // point that starts past `PTS_WRAP` bytes of its line starts the next one. A
+                // zone's fill can have tens of thousands of points, and KiCad's reader refuses
+                // a file with a line longer than `KICAD_LINE_MAX` (issue #1221).
                 if matches!(items.first(), Some(Self::Atom(a)) if a == "pts")
                     && rest.iter().all(|i| i.head() == Some("xy"))
                 {
-                    out.push('\n');
-                    for _ in 0..=depth {
-                        out.push('\t');
-                    }
+                    let mut line = out.len();
                     for (i, point) in rest.iter().enumerate() {
-                        if i > 0 {
+                        if i == 0 || out.len() - line >= PTS_WRAP {
+                            out.push('\n');
+                            line = out.len();
+                            for _ in 0..=depth {
+                                out.push('\t');
+                            }
+                        } else {
                             out.push(' ');
                         }
                         point.write_kicad(out, depth + 1);
@@ -389,6 +409,32 @@ mod tests {
         assert_eq!(fmt_num(100.0), "100");
         assert_eq!(fmt_num(-0.00001), "0");
         assert_eq!(fmt_num(1.0 / 3.0), "0.3333");
+    }
+
+    #[test]
+    fn a_long_list_of_points_is_written_a_line_at_a_time_as_kicad_reads_it() {
+        // Issue #1221: KiCad 9 refuses a file with a line over a million bytes, and a plane's
+        // fill can have tens of thousands of points.
+        let pts = |n: usize| {
+            let mut items = vec![Sexp::atom("pts")];
+            items.extend((0..n).map(|i| {
+                Sexp::node(
+                    "xy",
+                    vec![Sexp::num(100.0 + i as f64 / 7.0), Sexp::num(-55.1234)],
+                )
+            }));
+            Sexp::node("zone", vec![Sexp::node("polygon", vec![Sexp::List(items)])])
+        };
+        let long = pts(100_000);
+        let text = long.to_kicad_string();
+        assert!(text.len() > 2 * KICAD_LINE_MAX);
+        assert!(longest_line(&text) < 200, "{}", longest_line(&text));
+        assert_eq!(Sexp::parse(&text).unwrap(), long);
+        // A few points stay on one line, after the `(pts`, as before.
+        assert_eq!(
+            pts(2).to_kicad_string(),
+            "(zone\n\t(polygon\n\t\t(pts\n\t\t\t(xy 100 -55.1234) (xy 100.1429 -55.1234)\n\t\t)\n\t)\n)\n"
+        );
     }
 
     #[test]
