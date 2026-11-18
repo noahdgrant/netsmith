@@ -103,6 +103,11 @@ pub struct FillPad {
     /// check's `unjoinable_thermal`, issue #1222): why the fill makes none of its spokes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unjoinable: Option<String>,
+    /// Of a thermal relief that no spoke and no track joins to this fill: whether another fill
+    /// of its net joins the pad (a zone of the net of a higher priority over it, or a fill on
+    /// another layer of a pad with a hole), which makes it not unjoinable (issue #1292).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub joined_elsewhere: bool,
 }
 
 /// A pad of another net (or of none) in the fill's outline, which the fill keeps clear of.
@@ -281,7 +286,9 @@ impl FillReport {
             }
         };
         let mut fills = Vec::new();
-        for layer in &art.copper {
+        // Every layer at once, as the design rules check judges them (issue #1292).
+        for (layer, joins) in netsmith_geom::pad_joins(&art, &edge, &rules).map_err(CopperError)? {
+            let layer = &layer;
             let copper = CopperLayer::of_name(layer);
             let word: &str = match copper {
                 Some(c) => c.word(),
@@ -294,7 +301,7 @@ impl FillReport {
             } else {
                 FillSource::Pour
             };
-            for z in netsmith_geom::pad_joins(&art, layer, &edge, &rules).map_err(CopperError)? {
+            for z in joins {
                 let mut counts = JoinCounts::default();
                 let pads: Vec<FillPad> = z
                     .pads
@@ -412,6 +419,7 @@ impl FillReport {
                 let flag = match &p.unjoinable {
                     Some(why) => format!(" (unjoinable: {why})"),
                     None if p.starved => " (starved)".into(),
+                    None if p.joined_elsewhere => " (joined by another fill of its net)".into(),
                     None => String::new(),
                 };
                 out.push_str(&format!(
@@ -508,6 +516,15 @@ fn pad_name(part: &str, pad: &str) -> String {
 fn fill_pad(part: String, pad: String, at: Pt, join: netsmith_geom::PadJoin) -> FillPad {
     let starved = join.starved();
     let unjoinable = join.unjoinable().map(ToString::to_string);
+    let joined_elsewhere = matches!(
+        join,
+        netsmith_geom::PadJoin::Thermal {
+            reach: 0,
+            tracks: 0,
+            elsewhere: true,
+            ..
+        }
+    );
     match join {
         netsmith_geom::PadJoin::Solid { touched } => FillPad {
             part,
@@ -520,6 +537,7 @@ fn fill_pad(part: String, pad: String, at: Pt, join: netsmith_geom::PadJoin) -> 
             joined: touched,
             starved,
             unjoinable,
+            joined_elsewhere,
         },
         netsmith_geom::PadJoin::Thermal {
             spokes,
@@ -537,6 +555,7 @@ fn fill_pad(part: String, pad: String, at: Pt, join: netsmith_geom::PadJoin) -> 
             joined: reach + tracks > 0,
             starved,
             unjoinable,
+            joined_elsewhere,
         },
         netsmith_geom::PadJoin::Unjoined => FillPad {
             part,
@@ -549,6 +568,7 @@ fn fill_pad(part: String, pad: String, at: Pt, join: netsmith_geom::PadJoin) -> 
             joined: false,
             starved,
             unjoinable,
+            joined_elsewhere,
         },
     }
 }
@@ -662,6 +682,109 @@ mod tests {
         );
     }
 
+    /// A zone of the routes file on F.Cu of `net` over `area`, with the pad connection `pads`
+    /// and the priority `priority`.
+    fn zone(
+        net: &str,
+        area: crate::geometry::Rect,
+        pads: crate::board::ZonePads,
+        priority: u32,
+    ) -> crate::board::BoardZone {
+        crate::board::BoardZone {
+            net: net.into(),
+            layers: vec!["F.Cu".into()],
+            outline: area.corners().to_vec(),
+            holes: Vec::new(),
+            priority,
+            clearance: 0.2,
+            min_width: 0.2,
+            pads,
+            thermal_gap: 0.3,
+            spoke_width: 0.3,
+            islands: crate::board::ZoneIslands::Remove,
+            island_min_area: None,
+        }
+    }
+
+    fn unjoinable_findings(board: &Board) -> usize {
+        netsmith_geom::drc_check(
+            &crate::kicad_pcb(board),
+            Some(&crate::kicad_pro(board)),
+            &Default::default(),
+        )
+        .unwrap()
+        .findings
+        .iter()
+        .filter(|f| f.rule.id() == "unjoinable_thermal")
+        .count()
+    }
+
+    #[test]
+    fn a_pad_a_solid_zone_of_its_net_joins_is_not_unjoinable_in_the_zone_under_it() {
+        // Issue #1292: a thermal GND zone over the board, and a solid GND zone of a higher
+        // priority over one of its pads, which the lower zone gives its area: none of the lower
+        // zone's spokes is on its fill, but the higher zone's fill joins the pad.
+        use crate::board::ZonePads;
+        let mut board = crate::board::tests::led_board();
+        board.zones.push(zone(
+            "GND",
+            board.outline.expanded(-0.3),
+            ZonePads::Thermal,
+            0,
+        ));
+        let before = FillReport::of(&board).unwrap();
+        let pad = before.fills[0]
+            .pads
+            .iter()
+            .find(|p| p.join == JoinKind::Thermal && p.joined)
+            .unwrap_or_else(|| panic!("a GND pad the zone joins: {}", before.text()))
+            .clone();
+        let around = crate::geometry::Rect::new(
+            Pt::new(pad.at.x - 1.5, pad.at.y - 1.5),
+            Pt::new(pad.at.x + 1.5, pad.at.y + 1.5),
+        );
+        board.zones.push(zone("GND", around, ZonePads::Solid, 1));
+        let report = FillReport::of(&board).unwrap();
+        let fills_of_the_pad: Vec<(&FillArea, &FillPad)> = report
+            .fills
+            .iter()
+            .flat_map(|f| f.pads.iter().map(move |p| (f, p)))
+            .filter(|(_, p)| (p.part.as_str(), p.pad.as_str()) == (&pad.part, &pad.pad))
+            .collect();
+        // The higher zone joins it solid; the lower one's relief reaches nothing but is not
+        // unjoinable.
+        assert!(
+            fills_of_the_pad
+                .iter()
+                .any(|(_, p)| p.join == JoinKind::Solid && p.joined),
+            "{}",
+            report.text()
+        );
+        assert!(
+            fills_of_the_pad
+                .iter()
+                .any(|(_, p)| p.join == JoinKind::Thermal && p.joined_spokes == Some(0)),
+            "{}",
+            report.text()
+        );
+        assert!(report.unjoinable.is_empty(), "{}", report.text());
+        assert!(
+            fills_of_the_pad.iter().any(|(_, p)| p.joined_elsewhere),
+            "{}",
+            report.text()
+        );
+        assert!(
+            report
+                .text()
+                .contains("(joined by another fill of its net)"),
+            "{}",
+            report.text()
+        );
+        assert_eq!(report.counts.unjoinable, 0, "{}", report.text());
+        // `board drc` (and `fab`, which runs it) judge the pad by the same join.
+        assert_eq!(unjoinable_findings(&board), 0);
+    }
+
     #[test]
     fn a_pad_is_counted_by_the_spokes_that_reach_the_fill() {
         let pad = |join| fill_pad("U1".into(), "2".into(), Pt::new(0.0, 0.0), join);
@@ -671,6 +794,7 @@ mod tests {
             lone: 0,
             tracks,
             unjoinable: (reach == 0).then(|| netsmith_geom::Unjoinable::Blocked(Vec::new())),
+            elsewhere: false,
         };
         let mut c = JoinCounts::default();
         for join in [
