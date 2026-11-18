@@ -9,7 +9,8 @@
 //! the pad has room. A via goes on a grid across the pad, kept a via's radius inside its copper
 //! and the via to via space from the vias already there, rows from the top and points from the
 //! left. A pad whose part or pad is turned by other than a right angle is left as it is: its box
-//! is not its copper. What is not added is said by `fab`'s `layout` guideline, with what to do.
+//! is not its copper. A via keeps out of a keepout that forbids vias, a footprint's own among
+//! them (issue #1291). What is not added is said by `fab`'s `layout` guideline, with what to do.
 
 use netsmith_core::LayoutRule;
 use netsmith_pcb::{Board, CopperLayer, Pt, Rect, Via};
@@ -26,6 +27,21 @@ pub fn add(board: &mut Board) -> usize {
     }
     let radius = rules.via_diameter / 2.0;
     let apart = (rules.via_hole_to_hole + rules.via_drill).max(rules.via_diameter) + MARGIN;
+    // A via keeps out of the keepouts that forbid vias, the design's and those of the parts'
+    // footprints (a keepout a library draws over a pad, issue #1291).
+    let keepouts: Vec<Rect> = board
+        .copper_keepouts()
+        .into_iter()
+        .filter(|k| k.vias)
+        .map(|k| k.rect)
+        .collect();
+    let in_keepout = |at: Pt| {
+        keepouts.iter().any(|k| {
+            let dx = (k.min.x - at.x).max(at.x - k.max.x).max(0.0);
+            let dy = (k.min.y - at.y).max(at.y - k.max.y).max(0.0);
+            dx.hypot(dy) < radius + MARGIN
+        })
+    };
     let mut added = 0;
     for i in 0..board.parts.len() {
         let wants: Vec<(Vec<String>, usize)> = board.parts[i]
@@ -113,7 +129,7 @@ pub fn add(board: &mut Board) -> usize {
                             };
                             v.at.distance(at) + 1e-9 >= space
                         });
-                        if !clear {
+                        if !clear || in_keepout(at) {
                             continue;
                         }
                         board.vias.push(Via {
@@ -248,6 +264,52 @@ mod tests {
         assert_eq!(on_tab(&b).len(), 4);
         // Its guideline is met.
         assert!(netsmith_pcb::layout_findings(&b).is_empty());
+    }
+
+    /// A keepout zone in U1's footprint, as a library draws one, over its pads numbered 2 that
+    /// `which` picks (the pin, 1.5 mm tall, and the tab, 3.8 mm), in the footprint's frame,
+    /// forbidding vias alone.
+    fn keep_vias_off(b: &mut Board, which: fn(&netsmith_pcb::Pad) -> bool) {
+        let mut pts = Vec::new();
+        for pad in b.parts[0].footprint.pads_numbered("2").filter(|p| which(p)) {
+            let (w, h) = (pad.width / 2.0 + 0.1, pad.height / 2.0 + 0.1);
+            pts.extend([
+                Pt::new(pad.at.x - w, pad.at.y - h),
+                Pt::new(pad.at.x + w, pad.at.y + h),
+            ]);
+        }
+        let r = Rect::around(pts).unwrap();
+        let zone = netsmith_kicad::Sexp::parse(&format!(
+            "(zone (net 0) (net_name \"\") (layers \"F&B.Cu\") (hatch full 0.508) (connect_pads (clearance 0)) (min_thickness 0.254) (keepout (tracks allowed) (vias not_allowed) (pads allowed) (copperpour allowed) (footprints allowed)) (fill (thermal_gap 0.5) (thermal_bridge_width 0.5)) (polygon (pts (xy {} {}) (xy {} {}) (xy {} {}) (xy {} {}))))",
+            r.min.x, r.min.y, r.max.x, r.min.y, r.max.x, r.max.y, r.min.x, r.max.y
+        ))
+        .unwrap();
+        match &mut b.parts[0].footprint.source {
+            netsmith_kicad::Sexp::List(items) => items.push(zone),
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn no_via_goes_into_a_keepout_the_footprint_carries_over_its_pads() {
+        // A keepout over both pads of the pin: no via (issue #1291).
+        let mut b = board(true);
+        keep_vias_off(&mut b, |_| true);
+        assert_eq!(b.footprint_keepouts().len(), 1);
+        assert_eq!(add(&mut b), 0);
+        // Over the small pad alone: the vias go in the tab, none in the keepout.
+        let mut b = board(true);
+        keep_vias_off(&mut b, |p| p.height < 2.0);
+        assert_eq!(add(&mut b), 4);
+        let keep = b.footprint_keepouts()[0].rect;
+        let radius = b.rules.via_diameter / 2.0;
+        for v in &b.vias {
+            assert!(
+                !Rect::new(v.at, v.at).expanded(radius).overlaps(&keep),
+                "the via at {:?} is in the keepout {keep:?}",
+                v.at
+            );
+        }
     }
 
     #[test]

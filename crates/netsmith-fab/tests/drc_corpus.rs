@@ -456,22 +456,64 @@ fn corpus() -> Vec<Case> {
     );
     cases.push(case("keepout", b, &[(DrcRule::ItemsNotAllowed, 4)]));
 
-    // A rule area a part carries.
+    // A rule area a part carries (issue #1291): a board file has its points in the board's
+    // frame, where the footprint is (issue #1237). ANT1's, beside its pad, forbids tracks, vias
+    // and pads on F.Cu: a track and a via of another net and a pad of another part in it are
+    // flagged, a track on B.Cu under it is not. ANT2's covers its own pad and forbids pads,
+    // tracks and vias: its own pad is flagged, as KiCad 9 flags it, and so is a via beside the
+    // pad. ANT3's covers its own courtyard and R2's and forbids footprints alone: R2 is flagged,
+    // ANT3 itself is not.
     let mut b = two_layer();
-    let ant = |name: &str, x: f64, angle: f64| {
+    let ant = |name: &str, x: f64, area: (f64, f64, f64, f64), keep: &str| {
+        let (x0, y0, x1, y1) = area;
         format!(
-            "(footprint \"Test:{name}\" (layer \"F.Cu\") (at {x} 10 {angle}) (property \"Reference\" \"{name}\" (at 0 0 0) (layer \"F.Fab\") (hide yes) (effects (font (size 1 1) (thickness 0.15)))) (attr smd) (pad \"1\" smd rect (at 0 0) (size 1 1) (layers \"F.Cu\" \"F.Mask\" \"F.Paste\")) (zone (net 0) (net_name \"\") (layer \"F.Cu\") (hatch edge 0.5) (connect_pads (clearance 0)) (min_thickness 0.25) (keepout (tracks not_allowed) (vias not_allowed) (pads not_allowed) (copperpour not_allowed) (footprints not_allowed)) (fill (thermal_gap 0.5) (thermal_bridge_width 0.5)) (polygon (pts (xy 2 -1) (xy 6 -1) (xy 6 1) (xy 2 1)))))"
+            "(footprint \"Test:{name}\" (layer \"F.Cu\") (at {x} 10 0) (property \"Reference\" \"{name}\" (at 0 0 0) (layer \"F.Fab\") (hide yes) (effects (font (size 1 1) (thickness 0.15)))) (attr smd) (pad \"1\" smd rect (at 0 0) (size 1 1) (layers \"F.Cu\" \"F.Mask\" \"F.Paste\")) (zone (net 0) (net_name \"\") (layer \"F.Cu\") (hatch edge 0.5) (connect_pads (clearance 0)) (min_thickness 0.25) (keepout {keep}) (fill (thermal_gap 0.5) (thermal_bridge_width 0.5)) (polygon (pts (xy {x0} {y0}) (xy {x1} {y0}) (xy {x1} {y1}) (xy {x0} {y1})))))"
         )
     };
-    b.raw(&ant("ANT1", 10.0, 0.0));
-    b.raw(&ant("ANT2", 25.0, 90.0));
-    b.track("A", "F.Cu", (11.0, 9.0), (14.0, 9.0), 0.2);
-    b.track("A", "F.Cu", (11.0, 11.0), (16.0, 11.0), 0.2);
-    b.track("B", "F.Cu", (24.0, 9.0), (24.0, 14.0), 0.2);
-    b.track("B", "F.Cu", (26.0, 9.0), (26.0, 13.0), 0.2);
-    b.via("C", (13.0, 10.0), 0.6, 0.3);
-    b.via("C", (25.0, 15.0), 0.6, 0.3);
-    cases.push(case("part_rule_area", b, &[]));
+    let forbids = "(tracks not_allowed) (vias not_allowed) (pads not_allowed) (copperpour not_allowed) (footprints allowed)";
+    b.raw(&ant("ANT1", 10.0, (12.0, 8.0, 18.0, 12.0), forbids));
+    b.raw(&ant("ANT2", 30.0, (28.0, 8.0, 32.0, 12.0), forbids));
+    b.track("A", "F.Cu", (14.0, 10.0), (16.0, 10.0), 0.2);
+    b.track("A", "B.Cu", (14.0, 9.0), (16.0, 9.0), 0.2);
+    b.via("C", (16.5, 11.2), 0.6, 0.3);
+    b.via("C", (31.2, 11.2), 0.6, 0.3);
+    b.part(
+        "R1",
+        (13.0, 8.8),
+        0.0,
+        &[smd("1", 0.0, 0.0, 0.4, 0.4, "D")],
+        NONE,
+    );
+    b.raw("(footprint \"Test:ANT3\" (layer \"F.Cu\") (at 10 22 0) (property \"Reference\" \"ANT3\" (at 0 0 0) (layer \"F.Fab\") (hide yes) (effects (font (size 1 1) (thickness 0.15)))) (attr smd) (pad \"1\" smd rect (at 0 0) (size 1 1) (layers \"F.Cu\" \"F.Mask\" \"F.Paste\")) (fp_rect (start -1 -1) (end 1 1) (stroke (width 0.05) (type solid)) (fill no) (layer \"F.CrtYd\")) (zone (net 0) (net_name \"\") (layer \"F.Cu\") (hatch edge 0.5) (connect_pads (clearance 0)) (min_thickness 0.25) (keepout (tracks allowed) (vias allowed) (pads allowed) (copperpour allowed) (footprints not_allowed)) (fill (thermal_gap 0.5) (thermal_bridge_width 0.5)) (polygon (pts (xy 7 19) (xy 17 19) (xy 17 25) (xy 7 25)))))");
+    b.part(
+        "R2",
+        (14.0, 22.0),
+        0.0,
+        &[smd("1", 0.0, 0.0, 0.6, 0.6, "E")],
+        Draw {
+            courtyard: Some((0.8, 0.8)),
+            ..NONE
+        },
+    );
+    cases.push(case(
+        "part_rule_area",
+        b,
+        &[(DrcRule::ItemsNotAllowed, 6)],
+    ));
+
+    // A fill the board file holds that reaches into a footprint's keepout that forbids pours
+    // (issue #1291): KiCad 9's check does not judge a zone's fill against a rule area (nor
+    // against a board's, measured), and neither does netsmith's. The fill keeps out of the
+    // keepout itself: netsmith's and KiCad's refill (`netsmith-router`'s `footprint_keepout`).
+    let mut b = two_layer();
+    b.raw("(footprint \"Test:ANT\" (layer \"F.Cu\") (at 20 10 0) (property \"Reference\" \"U1\" (at 0 0 0) (layer \"F.Fab\") (hide yes) (effects (font (size 1 1) (thickness 0.15)))) (attr smd) (zone (net 0) (net_name \"\") (layer \"F.Cu\") (hatch edge 0.5) (connect_pads (clearance 0)) (min_thickness 0.25) (keepout (tracks allowed) (vias allowed) (pads allowed) (copperpour not_allowed) (footprints allowed)) (fill (thermal_gap 0.5) (thermal_bridge_width 0.5)) (polygon (pts (xy 16 7) (xy 24 7) (xy 24 13) (xy 16 13)))))");
+    b.stub("GND", 5.0, 10.0);
+    b.raw("(zone (net 1) (net_name \"GND\") (layer \"F.Cu\") (hatch edge 0.5) (connect_pads (clearance 0.2)) (min_thickness 0.2) (filled_areas_thickness no) (fill yes (thermal_gap 0.3) (thermal_bridge_width 0.3)) (polygon (pts (xy 1 1) (xy 39 1) (xy 39 29) (xy 1 29))) (filled_polygon (layer \"F.Cu\") (pts (xy 1 1) (xy 20 1) (xy 20 29) (xy 1 29))))");
+    cases.push(case(
+        "part_rule_area_fill",
+        b,
+        &[(DrcRule::ItemsNotAllowed, 0)],
+    ));
 
     // Connectivity.
     let mut b = two_layer();

@@ -182,8 +182,8 @@ pub(crate) fn initial_obstacles(board: &Board, stack: &Stack) -> Obstacles {
     }
     // Keepouts: tracks keep out of the areas that forbid them on a layer (and, because a
     // track's cells also bound vias here, vias keep out of them too), and vias of the
-    // areas that forbid them.
-    for k in board.keepout_areas() {
+    // areas that forbid them: the design's and those of the parts' footprints (issue #1291).
+    for k in board.copper_keepouts() {
         let mut layers = Layers::outer(k.on(CopperLayer::Front), k.on(CopperLayer::Back));
         for (n, &inner) in stack.copper.iter().enumerate().skip(2) {
             if k.on(inner) {

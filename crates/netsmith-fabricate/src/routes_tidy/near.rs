@@ -65,11 +65,17 @@ pub fn via_box(v: &Via) -> Rect {
     Rect::new(v.at, v.at).expanded(v.diameter / 2.0)
 }
 
-/// The box round a part: its courtyard, body, pads and mask openings.
+/// The box round a part: its courtyard, body, pads, mask openings and the keepouts its
+/// footprint carries (whose copper the check judges, issue #1291).
 pub fn part_box(part: &netsmith_pcb::Placed) -> Rect {
     let mut r = part.courtyard().union(&part.body());
     for p in &part.footprint.pads {
         r = r.union(&part.pad_bounds(p));
+    }
+    for k in part.footprint.keepouts() {
+        if let Some(b) = Rect::around(k.polygon.iter().map(|p| part.to_board(*p))) {
+            r = r.union(&b);
+        }
     }
     for m in part.mask_openings() {
         r = r.union(&m);

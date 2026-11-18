@@ -87,6 +87,78 @@ impl Board {
             .collect()
     }
 
+    /// The keepout zones the parts' library footprints carry ([`crate::FootprintKeepout`]), on
+    /// the board: each is the box round its outline where the part is, turned and moved with the
+    /// part and on the other face for a part on the back, as the board file has it (issue
+    /// #1237). A zone that is not a box with sides along the axes, or a part turned by other than
+    /// a right angle, gives the box that holds it, which keeps copper out of a little more than
+    /// the zone. Its layers are the layout file's words (`top`, `inner1`, `bottom`); `copper`
+    /// is the zone's `copperpour` and `parts` its `footprints`. The carrier is the part.
+    ///
+    /// They are not keepouts of the design and are not among [`Board::keepout_areas`] (the
+    /// board file has them in the footprint already, and the placer does not read them): what
+    /// adds copper reads [`Board::copper_keepouts`] (issue #1291).
+    pub fn footprint_keepouts(&self) -> Vec<KeepoutArea> {
+        let words = crate::layout::copper_layers(self);
+        let mut out = Vec::new();
+        for part in &self.parts {
+            for (n, k) in part.footprint.keepouts().into_iter().enumerate() {
+                let Some(rect) = Rect::around(k.polygon.iter().map(|p| part.to_board(*p))) else {
+                    continue;
+                };
+                let mut layers: Vec<String> = Vec::new();
+                for name in &k.layers {
+                    let named: Vec<String> = if name == "*.Cu" {
+                        words.clone()
+                    } else {
+                        // A part on the back has the library's front copper on the back, as the
+                        // board file has it.
+                        let name = match (part.side, name.as_str()) {
+                            (Side::Back, "F.Cu") => "B.Cu",
+                            (Side::Back, "B.Cu") => "F.Cu",
+                            (_, other) => other,
+                        };
+                        CopperLayer::of_name(name)
+                            .map(|l| l.word().to_string())
+                            .filter(|w| words.contains(w))
+                            .into_iter()
+                            .collect()
+                    };
+                    for w in named {
+                        if !layers.contains(&w) {
+                            layers.push(w);
+                        }
+                    }
+                }
+                if layers.is_empty() {
+                    continue;
+                }
+                out.push(KeepoutArea {
+                    name: format!("{}'s footprint keepout {}", part.refdes, n + 1),
+                    carrier: Some(part.path.clone()),
+                    rect,
+                    layers,
+                    tracks: k.tracks,
+                    vias: k.vias,
+                    copper: k.copper,
+                    parts: k.footprints,
+                    max_height: None,
+                });
+            }
+        }
+        out
+    }
+
+    /// The keepouts that copper added to the board keeps out of: the design's
+    /// ([`Board::keepout_areas`]) and those of the parts' footprints
+    /// ([`Board::footprint_keepouts`]). The router, the stitching of a pour and the vias in pads
+    /// read these (issue #1291).
+    pub fn copper_keepouts(&self) -> Vec<KeepoutArea> {
+        let mut areas = self.keepout_areas();
+        areas.extend(self.footprint_keepouts());
+        areas
+    }
+
     /// The areas under the bodies that stand off the board (`.standoff`, issue #775), each
     /// limiting the parts on the same face to the standoff, on the sheet. They are not keepouts of
     /// the board and are not among [`Board::keepout_areas`]; the checks that compare a part's

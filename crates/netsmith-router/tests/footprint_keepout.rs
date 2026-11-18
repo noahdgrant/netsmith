@@ -9,6 +9,12 @@
 //! footprint is, and both reach its edges there. The part is at a position, turned by 0 and 90
 //! degrees, on the front and on the back; the keepout is off the footprint's origin, so a frame
 //! that is wrong cannot hide behind a symmetry.
+//!
+//! Copper keeps out of such a keepout where it forbids it (issue #1291): a footprint whose keepout
+//! is a wall across the straight way between two pads, under two stitched pours, is routed and
+//! stitched with no track or via in it, and netsmith's check and KiCad's find nothing there; the
+//! same wall allowing copper takes stitching vias and a track, which both checks flag, at the same
+//! places, when the wall forbids them.
 
 use netsmith_core::{Design, Net, Part, PinRef};
 use netsmith_fab::KicadCliExe;
@@ -196,6 +202,19 @@ fn the_pour_keeps_out_of_a_footprints_keepout_where_the_footprint_is_in_netsmith
             let who = format!("{rotation} degrees on the {side:?}");
             let board = board(rotation, side);
             let at = keepout_box(&board);
+            // The board's own reading of the keepout, which the router and the stitching keep
+            // out of (issue #1291): the same box, on the part's face, forbidding vias and pours.
+            let read = board.footprint_keepouts();
+            assert_eq!(read.len(), 1, "{who}: {read:?}");
+            let near = |a: Pt, b: Pt| a.distance(b) < 1e-9;
+            assert!(
+                near(read[0].rect.min, at.min) && near(read[0].rect.max, at.max),
+                "{who}: {:?} is not {at:?}",
+                read[0].rect
+            );
+            let face = if side == Side::Back { "bottom" } else { "top" };
+            assert_eq!(read[0].layers, [face], "{who}");
+            assert!(read[0].vias && read[0].copper && !read[0].tracks, "{who}");
             // The keepout is over the pads: where the board puts each of K1's pads.
             let k1 = board.parts.iter().find(|p| p.refdes == "K1").unwrap();
             for pad in [Pt::new(0.0, 0.0), Pt::new(1.5, 0.5)] {
@@ -241,4 +260,203 @@ fn the_pour_keeps_out_of_a_footprints_keepout_where_the_footprint_is_in_netsmith
             assert_pour_keeps_out(&format!("KiCad, {who}"), &fill_points(&refilled), at);
         }
     }
+}
+
+// ---- copper keeps out of a footprint's keepout (issue #1291) -------------------------------------
+
+/// A footprint that carries a wall: a keepout from x -1 to 1 and y -4 to 4 mm on both outer layers
+/// that forbids `forbids` (`not_allowed` or `allowed` for tracks, vias and copper pours), and a pad
+/// off its end.
+fn wall(forbids: &str) -> String {
+    format!(
+        r#"(footprint "Wall" (version 20241229) (generator "netsmith") (layer "F.Cu")
+    (property "Reference" "REF**" (at 0 -6 0) (layer "F.SilkS") (effects (font (size 1 1) (thickness 0.15))))
+    (property "Value" "Wall" (at 0 6 0) (layer "F.Fab") (effects (font (size 1 1) (thickness 0.15))))
+    (attr smd)
+    (pad "1" smd rect (at 0 6) (size 0.8 0.8) (layers "F.Cu" "F.Mask" "F.Paste"))
+    (fp_rect (start -1.2 -4.2) (end 1.2 6.6) (stroke (width 0.05) (type solid)) (fill no) (layer "F.CrtYd"))
+    (zone (net 0) (net_name "") (layers "F&B.Cu") (hatch full 0.508)
+        (connect_pads (clearance 0)) (min_thickness 0.254) (filled_areas_thickness no)
+        (keepout (tracks {forbids}) (vias {forbids}) (pads allowed) (copperpour {forbids}) (footprints allowed))
+        (placement (enabled no) (sheetname ""))
+        (fill (thermal_gap 0.5) (thermal_bridge_width 0.5))
+        (polygon (pts (xy -1 -4) (xy 1 -4) (xy 1 4) (xy -1 4)))))"#
+    )
+}
+
+/// A 30 x 20 mm board with the wall W1 at (15, 10) between R1 at (6, 10) and R2 at (24, 10), which
+/// SIG joins across it; GND joins their other pins, poured on both faces and stitched every 2 mm.
+fn walled_board(forbids: &str) -> Board {
+    let dir = TempDir::new("footprint-keepout-wall");
+    let pretty = dir.path().join("keep.pretty");
+    std::fs::create_dir_all(&pretty).unwrap();
+    std::fs::write(pretty.join("Wall.kicad_mod"), wall(forbids)).unwrap();
+    let rows = "[[part]]\nkind = \"Keep\"\npackage = \"P\"\nsymbol = \"keep:Keep\"\nfootprint = \"keep:Wall\"\n";
+    let mapping = Mapping::standard()
+        .merged(Mapping::parse(rows, "kicad.toml", dir.path()).unwrap())
+        .unwrap();
+    let library =
+        FootprintLibrary::at(netsmith_testkit::sample_footprints()).with_library("keep", pretty);
+    let design = Design {
+        modules: Vec::new(),
+        name: "Wall".into(),
+        process: Some(common::process_with(&[])),
+        features: Default::default(),
+        interfaces: Vec::new(),
+        notes: Vec::new(),
+        parts: vec![
+            part("W1", "Keep"),
+            part("R1", "Resistor"),
+            part("R2", "Resistor"),
+        ],
+        nets: vec![
+            net("GND", &[("R1", "1"), ("R2", "1")]),
+            net("SIG", &[("R1", "2"), ("R2", "2")]),
+        ],
+    };
+    let mut board = netsmith_placer::board_from_design(&design, &mapping, &library).unwrap();
+    for placed in &mut board.parts {
+        placed.at = match placed.refdes.as_str() {
+            "W1" => Pt::new(15.0, 10.0),
+            "R1" => Pt::new(6.0, 10.0),
+            _ => Pt::new(24.0, 10.0),
+        };
+        placed.rotation = 0.0;
+        placed.side = Side::Front;
+        placed.reference_side = netsmith_pcb::ReferenceSide::default();
+    }
+    board.outline = Rect::new(Pt::new(0.0, 0.0), Pt::new(30.0, 20.0));
+    for layer in [CopperLayer::Front, CopperLayer::Back] {
+        board.pours.push(BoardPour {
+            layer,
+            net: "GND".into(),
+            stitch_pitch: Some(2.0),
+            thermal_gap: None,
+            spoke_width: None,
+            clearance: None,
+            min_width: None,
+            pads: None,
+        });
+    }
+    board
+}
+
+/// The wall on the board: x 14 to 16, y 6 to 14.
+const WALL: Rect = Rect {
+    min: Pt { x: 14.0, y: 6.0 },
+    max: Pt { x: 16.0, y: 14.0 },
+};
+
+/// The tracks and vias of `board` with copper inside the wall.
+fn in_wall(board: &Board) -> Vec<String> {
+    let mut found = Vec::new();
+    for t in &board.tracks {
+        let seg = Rect::around([t.from, t.to]).unwrap().expanded(t.width / 2.0 - 0.01);
+        if seg.overlaps(&WALL) {
+            found.push(format!("track {t:?}"));
+        }
+    }
+    for v in &board.vias {
+        if Rect::new(v.at, v.at).expanded(v.diameter / 2.0 - 0.01).overlaps(&WALL) {
+            found.push(format!("via {v:?}"));
+        }
+    }
+    found
+}
+
+#[test]
+fn the_router_and_the_stitching_keep_out_of_a_footprints_keepout_and_both_checks_find_nothing_in_it()
+{
+    let mut board = walled_board("not_allowed");
+    let keepouts = board.footprint_keepouts();
+    assert_eq!(keepouts.len(), 1, "{keepouts:?}");
+    assert_eq!(keepouts[0].rect, WALL);
+    assert_eq!(keepouts[0].layers, ["top", "bottom"]);
+    let left = netsmith_router::route(&mut board);
+    assert!(left.is_empty(), "{left:?}");
+    assert!(
+        board.vias.iter().filter(|v| v.net == "GND").count() > 4,
+        "the pours are stitched: {:?}",
+        board.vias
+    );
+    let found = in_wall(&board);
+    assert!(found.is_empty(), "copper in the wall: {found:#?}");
+    // netsmith's check of the board file finds nothing in it, nor does KiCad's.
+    let filled = kicad_pcb_filled(&board).unwrap();
+    let report = netsmith_geom::drc_check(
+        &filled.text,
+        Some(&kicad_pro(&board)),
+        &netsmith_geom::DrcExtras::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        report.count(netsmith_geom::DrcRule::ItemsNotAllowed),
+        0,
+        "{report}"
+    );
+    if let Some(kicad) = crate::drc_kit::check("footprint-keepout-wall", &board) {
+        assert_eq!(
+            kicad.count("items_not_allowed"),
+            0,
+            "{:?}",
+            kicad.violations
+        );
+    }
+}
+
+#[test]
+fn a_footprints_keepout_that_allows_copper_takes_the_stitching_and_one_that_forbids_it_is_flagged() {
+    // The same wall, allowing everything: the stitching puts vias in it, so the wall above is what
+    // keeps them out.
+    let mut open = walled_board("allowed");
+    assert!(open.footprint_keepouts().is_empty(), "a zone that forbids nothing is no keepout");
+    netsmith_router::route(&mut open);
+    let found = in_wall(&open);
+    assert!(
+        found.iter().any(|f| f.starts_with("via")),
+        "the stitching reaches the wall where it is allowed: {:?}",
+        open.vias
+    );
+    // That copper, on the board whose wall forbids it, is what both checks flag.
+    let mut walled = walled_board("not_allowed");
+    walled.tracks = open.tracks.clone();
+    walled.vias = open.vias.clone();
+    let filled = kicad_pcb_filled(&walled).unwrap();
+    let report = netsmith_geom::drc_check(
+        &filled.text,
+        Some(&kicad_pro(&walled)),
+        &netsmith_geom::DrcExtras::default(),
+    )
+    .unwrap();
+    // Each piece of copper whose box is in the wall, less one whose box only is (a track that
+    // passes a corner on a slant).
+    let flagged = report.count(netsmith_geom::DrcRule::ItemsNotAllowed);
+    assert!(flagged > 0 && flagged <= found.len(), "{found:#?}\n{report}");
+    // KiCad's check flags the same copper. Only this rule is compared: KiCad refills the pours
+    // first, out of the wall, which leaves the vias in it joined to nothing, where netsmith's check
+    // of the file joins a via inside a pour's outline to it.
+    let Some(cli) = KicadCliExe::locate_runnable() else {
+        eprintln!("skipped KiCad's check: no KiCad");
+        return;
+    };
+    let dir = TempDir::new("footprint-keepout-flagged");
+    let pcb = dir.join("flagged.kicad_pcb");
+    std::fs::write(&pcb, &filled.text).unwrap();
+    std::fs::write(pcb.with_extension("kicad_pro"), kicad_pro(&walled)).unwrap();
+    let json = netsmith_fab::KicadCli::drc_json(&cli, &pcb).unwrap_or_else(|e| panic!("{e}"));
+    let theirs = netsmith_fab::parse_kicad_drc(&json).unwrap();
+    let mut kicad: Vec<_> = theirs
+        .iter()
+        .filter(|f| f.kind == "items_not_allowed")
+        .flat_map(|f| f.items.iter().map(|(_, at)| (at.x * 100.0).round() as i64 * 100_000 + (at.y * 100.0).round() as i64))
+        .collect();
+    let mut ours: Vec<_> = report
+        .findings
+        .iter()
+        .filter(|f| f.rule == netsmith_geom::DrcRule::ItemsNotAllowed)
+        .map(|f| (f.at.x * 100.0).round() as i64 * 100_000 + (f.at.y * 100.0).round() as i64)
+        .collect();
+    kicad.sort_unstable();
+    ours.sort_unstable();
+    assert_eq!(kicad, ours, "KiCad's items_not_allowed: {theirs:?}");
 }

@@ -54,7 +54,7 @@ fn allows(board: &Board, net: &str, p: Pt) -> bool {
         return false;
     }
     if board
-        .keepout_areas()
+        .copper_keepouts()
         .iter()
         .any(|k| k.vias && to_rect(p, &k.rect) < radius + MARGIN)
     {

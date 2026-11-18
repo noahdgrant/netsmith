@@ -763,27 +763,27 @@ fn mask_bridges(out: &mut Out<'_>) {
     }
 }
 
-/// Tracks, vias, pads and parts inside a rule area that forbids them.
+/// Tracks, vias, pads and parts inside a rule area that forbids them: the board's own and those a
+/// footprint carries (a library's keepout over or round its pads, issue #1291), as KiCad's check
+/// flags both. A footprint's rule area forbids its own pads too, but not the footprint itself
+/// (measured with KiCad 9). A pour's fill is not judged against a rule area, as KiCad 9's check
+/// does not judge it (measured, `drc_corpus`): the fill keeps out of one that forbids pours
+/// ([`crate::fill`]), as KiCad's refill does.
 fn rule_areas(out: &mut Out<'_>) {
     let m = out.m;
-    // A rule area a library footprint carries (an antenna module's) is not enforced, as KiCad
-    // does not: only the board's own are.
-    for z in m
-        .art
-        .zones
-        .iter()
-        .filter(|z| z.keepout.is_some() && z.owner.is_empty())
-    {
+    for z in m.art.zones.iter().filter(|z| z.keepout.is_some()) {
         let Some(k) = &z.keepout else { continue };
         let on: Vec<usize> = z
             .layers
             .iter()
             .filter_map(|l| m.layers.iter().position(|x| x == l))
             .collect();
-        let name = if z.name.is_empty() {
-            "(unnamed)".to_string()
-        } else {
-            z.name.clone()
+        let owner = (!z.owner.is_empty()).then_some(z.owner.as_str());
+        let name = match (owner, z.name.is_empty()) {
+            (Some(o), true) => format!("of {o}'s footprint"),
+            (Some(o), false) => format!("'{}' of {o}'s footprint", z.name),
+            (None, true) => "'(unnamed)'".to_string(),
+            (None, false) => format!("'{}'", z.name),
         };
         let area_bounds = Bounds::of(z.outlines.iter().flatten().copied());
         let Some(area_bounds) = area_bounds else {
@@ -819,7 +819,7 @@ fn rule_areas(out: &mut Out<'_>) {
                 out.push(
                     Rule::ItemsNotAllowed,
                     format!(
-                        "{} is inside the rule area '{name}', which does not allow it",
+                        "{} is inside the rule area {name}, which does not allow it",
                         c.item.what
                     ),
                     c.item.at,
@@ -829,7 +829,12 @@ fn rule_areas(out: &mut Out<'_>) {
             }
         }
         if k.footprints {
-            for fp in &m.art.footprints {
+            for fp in m
+                .art
+                .footprints
+                .iter()
+                .filter(|fp| Some(fp.part.as_str()) != owner)
+            {
                 let side = if fp.back { "B.CrtYd" } else { "F.CrtYd" };
                 let side_cu = if fp.back { "B.Cu" } else { "F.Cu" };
                 if !z.layers.iter().any(|l| l == side_cu) {
@@ -866,7 +871,7 @@ fn rule_areas(out: &mut Out<'_>) {
                     out.push(
                         Rule::ItemsNotAllowed,
                         format!(
-                            "{} is inside the rule area '{name}', which does not allow parts",
+                            "{} is inside the rule area {name}, which does not allow parts",
                             fp.part
                         ),
                         fp.at,
