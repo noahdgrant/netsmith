@@ -4,7 +4,8 @@
 //! This file only loads them. Each CSV is one catalog, named by the file (`resistor.csv` is
 //! the `resistor` catalog), and its format is described in [`crate::table`]. Adding a part
 //! to a catalog, or a whole catalog, is a change to `data/`, not to this crate:
-//! `build.rs` embeds every file in those directories.
+//! `build.rs` embeds every file in those directories, and the curve files beside them
+//! (`curves/<catalog>/<row>.csv`, [`crate::curve`]).
 //!
 //! **The order of the rows is the selection policy** and nothing sorts it here: the files in
 //! `data/jlcpcb/catalog/` are ordered Basic before Extended (Extended parts cost a feeder
@@ -19,10 +20,18 @@ include!(concat!(env!("OUT_DIR"), "/catalogs.rs"));
 
 /// The catalogs of a set of embedded files. The files are checked by this crate's tests, so
 /// one that cannot be read is a bug in the data and stops here with its line.
-pub(crate) fn embedded(files: &[(&str, &str, &str)]) -> Catalogs {
+pub(crate) fn embedded(
+    files: &[(&str, &str, &str)],
+    curves: &[(&str, &str, &str, &str)],
+) -> Catalogs {
     let mut catalogs = Catalogs::empty();
     for (name, file, text) in files {
         if let Err(e) = catalogs.add_built_in_file(name, file, text) {
+            panic!("{e}");
+        }
+    }
+    for (name, row, file, text) in curves {
+        if let Err(e) = catalogs.add_curve(name, row, file, text) {
             panic!("{e}");
         }
     }

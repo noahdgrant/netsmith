@@ -176,6 +176,7 @@ impl Solver<'_> {
                 .flat_map(|&j| {
                     [
                         self.derating_note(&jobs[j]),
+                        self.curve_note(&jobs[j]),
                         self.package_note(&jobs[j]),
                         self.environment_note(&jobs[j]),
                         self.blank_note(&jobs[j]),
@@ -210,6 +211,7 @@ impl Solver<'_> {
             };
             let notes: Vec<String> = [
                 self.derating_note(job),
+                self.curve_note(job),
                 self.package_note(job),
                 self.environment_note(job),
                 self.blank_note(job),

@@ -14,7 +14,10 @@
 /// The standard file `data/jlcpcb/catalog/diode.csv` has the 1N4148W (Basic), 1N4148WS and M7 rows,
 /// read from the JLCPCB and LCSC records and each datasheet (`data/jlcpcb/README.md`). Each
 /// `.forward_voltage` is the datasheet's maximum at the rated current, so a design that needs a
-/// lower drop states it and gets a `Schottky` or a project's own row.
+/// lower drop states it and gets a `Schottky` or a project's own row. A row with a curve file
+/// (`curves/diode/<row>.csv`, issue #1260) has its forward voltage read off the curve at the
+/// `.current` the design gives and the board's environment temperature; with no current it is
+/// the row's figure.
 ///
 /// `.bias` is the voltage across the diode in the direction it blocks: the voltage at the
 /// cathode relative to the anode, so it is negative when the diode conducts. A diode placed
@@ -116,6 +119,9 @@ generic Diode {
 /// same fields and ratings, and is its own kind because it is a different symbol and a
 /// different catalog, and because a design says which it needs ("a Schottky for the
 /// reverse-polarity drop").
+/// A row with a curve file (`curves/schottky/<row>.csv`, issue #1260) has its `.forward_voltage`
+/// read off the curve at the `.current` the design gives and the board's environment
+/// temperature, as for `Diode`.
 #[kind(diode)]
 generic Schottky {
     .designator &= "D"

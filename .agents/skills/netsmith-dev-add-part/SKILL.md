@@ -1,6 +1,6 @@
 ---
 name: netsmith-dev-add-part
-description: Add a real part, a capacitor bias curve or a catalog column to netsmith's JLCPCB catalogs (CSV files) with recorded evidence. Use when the solver says a catalog has nothing for a value, or when asked to support a new LCSC part or IC.
+description: Add a real part, a capacitor bias curve, a curve file or a catalog column to netsmith's JLCPCB catalogs (CSV files) with recorded evidence. Use when the solver says a catalog has nothing for a value, or when asked to support a new LCSC part or IC.
 ---
 
 # Add a part to the JLCPCB catalogs
@@ -40,6 +40,7 @@ The solver takes the first row that works and nothing sorts the file. The standa
 - Resistors: 1%, from the supplier's value, with `max_power` from the record's `Power(Watts)` (check it on the LCSC record too). A 0 ohm link is left out. A row with an empty `max_power` is never offered, so do not add a resistor whose rating you cannot read.
 - Capacitors: value, tolerance and rated voltage from the supplier's record. `effective_capacitance` is `derate capacitance by bias: 0:1 ...`, the manufacturer's DC-bias curve: `volts:fraction` pairs from 0 V (`0:1`) to the rated voltage, volts rising, fractions between 0 and 1, lowered by a margin. Say where the curve is in `source` after `bias-curve:`. A part with no published curve gets `derate capacitance by bias:` with nothing after the colon. Do not estimate a curve, and do not add a class-level fallback.
 - LEDs: color and forward-voltage range from the datasheet; say how in `notes`.
+- Curves over current and temperature (a diode's forward voltage; issue #1260): a file `data/jlcpcb/catalog/curves/<catalog>/<lcsc>.csv` whose first line names the axes (`temperature`, `current`) and then the column (`forward_voltage`), one point per line with units (`25degC,100mA,0.42V`). The row keeps its single figure. Read the points from the datasheet's figure (numbers the maker gives, or the drawn line by pixel position), say where in the row's `source` after `curve:` and whether it is typical in `notes`, and add a point at `0A` when a design's current starts at zero. No curve from a family or memory. The format is the module doc of `crates/netsmith-solve/src/curve.rs`.
 - Diodes, TVS, ferrite beads, inductors, fuses, MOSFETs and crystals (ADR 0025): the worst case of the datasheet table for each rating (maximum forward voltage at the rated current, minimum to maximum Zener voltage, largest RDS(on), an inductor's Isat and maximum DC resistance, a crystal's whole range over temperature), the package name of `std/kicad.toml` so the pick can be exported, and the JLCPCB and LCSC records agreeing on the model. When the record and the datasheet disagree, leave the part out and put it in `considered.csv`. `catalog` lines are in `std/parts/*.nsm`; `crates/netsmith-solve/tests/data.rs` lists the columns.
 - Regulators: output voltage, dropout, current, power and package from the datasheet; say how in `notes`. The pads are not a column: the part's `pins` table in `std/` has a block for the package (ADR 0016), so a row for a new package needs its table too.
 

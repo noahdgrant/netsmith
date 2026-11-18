@@ -57,6 +57,10 @@
 //!   with the fix. A capacitor's curve is `derate capacitance by bias: 0:1 5:0.5` (ADR 0013):
 //!   the row's `capacitance` times the fraction left at the voltage across the part's `bias`;
 //!   nothing after the colon is a part with no published curve.
+//! - **Curve files** (issue #1260, owner decision): a column of a row over the part's operating
+//!   conditions is not a cell but a file beside the catalog, `curves/<catalog>/<row>.csv`, read by
+//!   [`crate::curve`] and attached with [`Table::add_curve`]; the row keeps its single figure in
+//!   the cell, and the column is a [`Value::Curved`].
 //! - **`name` and `label` exist** because messages and schematics must stay as they were
 //!   (`10kΩ 1% 0402 C25744`, a value of `4.7k`), which a generic rule could not make. They are
 //!   the one column added to the task as handed over, and default to the `mpn`, then the `lcsc`.
@@ -111,7 +115,10 @@ use netsmith_lang::ast::{BinOp, Expr};
 use netsmith_lang::parse_expr;
 use netsmith_quantity::{Dimension, Quantity, is_offset_unit, parse_unit};
 
-use crate::catalog::{Candidate, Derating, Library, Value};
+use std::sync::Arc;
+
+use crate::catalog::{Candidate, Curved, Derating, Library, Value};
+use crate::curve::Curve;
 use crate::standard::Standard;
 
 /// The columns that are about the row, not about the part.
@@ -290,6 +297,9 @@ impl Row {
 #[derive(Debug, Clone, Default)]
 pub struct Table {
     rows: Vec<Row>,
+    /// The curve files of the catalog's rows (`crate::curve`), each with the name of the row it
+    /// is for (its file stem: the row's `lcsc`, or its `mpn`).
+    curves: Vec<(String, Arc<Curve>)>,
 }
 
 impl Table {
@@ -363,7 +373,10 @@ impl Table {
             rows.push(row);
         }
         let mut table = Table::default();
-        table.append(Table { rows })?;
+        table.append(Table {
+            rows,
+            curves: Vec::new(),
+        })?;
         Ok(table)
     }
 
@@ -411,6 +424,28 @@ impl Table {
             added.push(row);
         }
         self.rows.extend(other.rows);
+        for (row, curve) in other.curves {
+            self.add_curve(&row, curve)?;
+        }
+        Ok(())
+    }
+
+    /// Attach a curve file to the row it is named by (`row`: the row's `lcsc`, or its `mpn`).
+    /// Which row and column it is for is checked when a part reads the catalog
+    /// ([`Table::candidates`]), since only the part says what its columns are. A row has one
+    /// curve for each column: a second file for the same row and column is an error naming both.
+    pub fn add_curve(&mut self, row: &str, curve: Arc<Curve>) -> Result<(), String> {
+        if let Some((_, first)) = self
+            .curves
+            .iter()
+            .find(|(r, c)| r == row && c.column == curve.column)
+        {
+            return Err(format!(
+                "{}: the row `{row}` already has a curve of `{}` in {}; a row has one curve for each column",
+                curve.file, curve.column, first.file
+            ));
+        }
+        self.curves.push((row.to_string(), curve));
         Ok(())
     }
 
@@ -439,6 +474,22 @@ impl Table {
         Some((row.name.clone(), number(&row.lcsc), number(&row.mpn)))
     }
 
+    /// The curve of a row's column, if a curve file is named by the row.
+    fn curve_of(&self, row: &Row, column: &str) -> Option<&Arc<Curve>> {
+        let key = if row.lcsc.is_empty() {
+            &row.mpn
+        } else {
+            &row.lcsc
+        };
+        if key.is_empty() {
+            return None;
+        }
+        self.curves
+            .iter()
+            .find(|(r, c)| r == key && c.column == column)
+            .map(|(_, c)| c)
+    }
+
     pub fn len(&self) -> usize {
         self.rows.len()
     }
@@ -464,6 +515,42 @@ impl Table {
                 .collect::<Vec<_>>()
                 .join(", ")
         };
+        for (key, curve) in &self.curves {
+            if !self
+                .rows
+                .iter()
+                .any(|r| r.lcsc == *key || (r.lcsc.is_empty() && r.mpn == *key))
+            {
+                return Err(format!(
+                    "{}: no row of `catalog {name}` has the lcsc `{key}` (or, for a row with no lcsc, the mpn): a curve file is named by the row it is for",
+                    curve.file
+                ));
+            }
+            let kind = columns.iter().find(|(c, _)| *c == curve.column);
+            match kind {
+                Some((_, FieldKind::Quantity(dim))) if *dim == curve.dim => {}
+                Some((_, FieldKind::Quantity(dim))) => {
+                    return Err(format!(
+                        "{}: the points of `{}` are in {}, and the column holds {dim}",
+                        curve.file, curve.column, curve.dim
+                    ));
+                }
+                _ => {
+                    return Err(format!(
+                        "{}: `{}`, the last column of the curve, is not a quantity column of `catalog {name}`, which lists {}",
+                        curve.file,
+                        curve.column,
+                        listed()
+                    ));
+                }
+            }
+            if let Some((axis, _)) = curve.axes.iter().find(|(a, _)| *a == curve.column) {
+                return Err(format!(
+                    "{}: `{axis}` is both an axis and the value of the curve",
+                    curve.file
+                ));
+            }
+        }
         let mut out = Vec::new();
         for row in &self.rows {
             for column in &row.header.names {
@@ -490,8 +577,24 @@ impl Table {
                         listed()
                     ));
                 }
-                if let Some(value) = row.value(name, column, *kind, columns)? {
-                    values.push((column.clone(), value));
+                let value = row.value(name, column, *kind, columns)?;
+                match (self.curve_of(row, column), value) {
+                    (Some(curve), Some(Value::Quantity(figure))) => values.push((
+                        column.clone(),
+                        Value::Curved(Curved {
+                            figure,
+                            curve: Arc::clone(curve),
+                        }),
+                    )),
+                    (Some(curve), _) => {
+                        return Err(format!(
+                            "{}: `{column}` has the curve {}, and a row with a curve keeps its single figure there (one value, such as the datasheet's at the rated current)",
+                            row.at(),
+                            curve.file
+                        ));
+                    }
+                    (None, Some(value)) => values.push((column.clone(), value)),
+                    (None, None) => {}
                 }
             }
             out.push(Candidate {
@@ -903,7 +1006,7 @@ fn rating_steps(text: &str) -> Result<Option<RatingSteps>, String> {
 
 /// A value in the language's syntax: a number with its unit, a range, a tolerance, or
 /// arithmetic on those.
-fn quantity(text: &str) -> Result<Quantity, String> {
+pub(crate) fn quantity(text: &str) -> Result<Quantity, String> {
     let e = parse_expr(text).map_err(|e| e.message)?;
     constant(&e)
 }

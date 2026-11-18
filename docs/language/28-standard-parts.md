@@ -32,14 +32,14 @@ board Conducts {
 
 ```text
 error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C3V3 3.3V 500mW Zener SOD-123 C2112, fails because min(z.bias) must be at most max(z.zener_voltage), but 11.4V is above 3.5V: no value of the two ranges meets it, so change one of them
-    --> std/parts/diode.nsm:305:5
+    --> std/parts/diode.nsm:311:5
     |
-305 |     min(.bias) <= max(.zener_voltage)
+311 |     min(.bias) <= max(.zener_voltage)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: min(z.bias) must be at most max(z.zener_voltage), but 11.4V is above 3.5V: no value of the two ranges meets it, so change one of them
-    --> std/parts/diode.nsm:305:5
+    --> std/parts/diode.nsm:311:5
     |
-305 |     min(.bias) <= max(.zener_voltage)
+311 |     min(.bias) <= max(.zener_voltage)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -152,9 +152,9 @@ board Standoff {
 
 ```text
 error: no `tvs` candidate satisfies `tvs`: the closest of the 10 that fit, SMAJ12A 12V TVS SMA C113957, fails because tvs.bias must always be at most tvs.standoff_voltage, but 11.4V..12.6V is not always below 12V
-    --> std/parts/diode.nsm:423:5
+    --> std/parts/diode.nsm:429:5
     |
-423 |     .bias <= .standoff_voltage
+429 |     .bias <= .standoff_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -221,9 +221,9 @@ error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C
 7 |     .z.bias <= .z.zener_voltage
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: d.bias must always be at most d.max_reverse_voltage, but 11.4V..12.6V is not always below 10V
-    --> std/parts/diode.nsm:104:5
+    --> std/parts/diode.nsm:107:5
     |
-104 |     .bias <= .max_reverse_voltage
+107 |     .bias <= .max_reverse_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: z.bias must always be at most z.zener_voltage, but 11.4V..12.6V is not always below 11V..13V
   --> main.nsm:7:5
@@ -249,19 +249,19 @@ board Reversed {
 
 ```text
 error: no `diode` candidate satisfies `d`: the closest of the 3 that fit, 1N4148W 75V 150mA Switching Diode SOD-123 C81598, fails because d.bias must always be at least -d.forward_voltage, but -12.6V..-11.4V is not always above -1.25V
-    --> std/parts/diode.nsm:105:5
+    --> std/parts/diode.nsm:108:5
     |
-105 |     .bias >= -.forward_voltage
+108 |     .bias >= -.forward_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: no `zener` candidate satisfies `z`: the closest of the 1 that fit, BZT52C5V1 5.1V 500mW Zener SOD-123 C2117, fails because z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
-    --> std/parts/diode.nsm:304:5
+    --> std/parts/diode.nsm:310:5
     |
-304 |     .bias >= 0V
+310 |     .bias >= 0V
     |     ^^^^^^^^^^^
 error: z.bias must always be at least 0V, but -12.6V..-11.4V is not always above 0V
-    --> std/parts/diode.nsm:304:5
+    --> std/parts/diode.nsm:310:5
     |
-304 |     .bias >= 0V
+310 |     .bias >= 0V
     |     ^^^^^^^^^^^
 ```
 
@@ -1155,14 +1155,14 @@ board Overloaded {
 
 ```text
 error: no combination of candidates satisfies `d` and `fuse` together: the closest, d = 1N5819WS 40V 1A Schottky SOD-323 C191023, fails because d.supply_fault_current must always be at most d.max_forward_current, but 3A is not always below 1A
-    --> std/parts/diode.nsm:162:5
+    --> std/parts/diode.nsm:168:5
     |
-162 |     .supply_fault_current <= .max_forward_current
+168 |     .supply_fault_current <= .max_forward_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: d.supply_fault_current must always be at most d.max_forward_current, but 3A is not always below 1A
-    --> std/parts/diode.nsm:162:5
+    --> std/parts/diode.nsm:168:5
     |
-162 |     .supply_fault_current <= .max_forward_current
+168 |     .supply_fault_current <= .max_forward_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 

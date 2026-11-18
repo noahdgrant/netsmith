@@ -3,7 +3,8 @@
 use std::collections::HashSet;
 
 use super::{Accepted, Coupling, Job, Rejection, Solver, Underated, Verdict, reads};
-use crate::catalog::{Candidate, Derating, DeratingError, Value};
+use crate::catalog::{Candidate, Curved, Derating, DeratingError, Value};
+use crate::curve::{self, Beyond};
 use crate::eval::{Val, eval, fields_in, relation_reads_end};
 use crate::generic::{Need, Sense};
 use netsmith_check::{Checkpoint, Domain, FieldId, FieldKind, InstId, Member, RExpr, SourceId};
@@ -88,6 +89,14 @@ impl Solver<'_> {
                         // Not knowing the value matters only if the design asks for it.
                         Err(_) => !self.asked(*f),
                     },
+                    (Some(Value::Curved(v)), domain) => match self.curved(part, v) {
+                        Ok(q) => match domain {
+                            Domain::Quantity(want) => want.encloses(&q).unwrap_or(false),
+                            Domain::Unset => true,
+                            Domain::Text(_) => false,
+                        },
+                        Err(_) => !self.asked(*f),
+                    },
                     (Some(_), Domain::Unset) => true,
                     (Some(Value::Quantity(q)), Domain::Quantity(d)) => {
                         d.encloses(q).unwrap_or(false)
@@ -163,6 +172,13 @@ impl Solver<'_> {
                                 "its `{key}` is not known, as its bias curve stops at {known_to} V, and `{path}` is {stated}"
                             )
                         }
+                    },
+                    Some(Value::Curved(v)) => match self.curved(part, v) {
+                        Ok(q) => format!("its `{key}` is {q}, and `{path}` is {stated}"),
+                        Err(why) => format!(
+                            "its `{key}` is not known, as {why} ({}), and `{path}` is {stated}",
+                            v.curve.file
+                        ),
                     },
                 }
             }
@@ -529,6 +545,61 @@ impl Solver<'_> {
         d.at(&bias).map_err(Underated::Curve)
     }
 
+    /// A candidate's value read off its curve file (issue #1260), over the ranges the design
+    /// gives the curve's axes: a field of the part by its path, and `temperature` the board's
+    /// environment, or every temperature the curve has where the board states none. Where a
+    /// field the curve reads has no value the value is the row's own figure.
+    pub(super) fn curved(&self, part: InstId, v: &Curved) -> Result<Quantity, CurveMiss> {
+        let mut ranges = Vec::with_capacity(v.curve.axes.len());
+        for (i, (axis, _)) in v.curve.axes.iter().enumerate() {
+            if axis == curve::TEMPERATURE {
+                ranges.push(
+                    self.environment_range(part)
+                        .unwrap_or_else(|| v.curve.span(i)),
+                );
+                continue;
+            }
+            let path = format!("{}.{axis}", self.model.path_of(part));
+            let Some(field) = self.model.field_at(&path) else {
+                return Err(CurveMiss::NoField(path));
+            };
+            match self.domain(field) {
+                Domain::Quantity(q) if q.dim() == v.curve.axes[i].1 => {
+                    ranges.push((q.lo(), q.hi()))
+                }
+                Domain::Quantity(_) | Domain::Text(_) => return Err(CurveMiss::NoField(path)),
+                Domain::Unset => return Ok(v.figure),
+            }
+        }
+        v.curve.over(&ranges).map_err(CurveMiss::Beyond)
+    }
+
+    /// What to add to a message when a column read off a curve file hides candidates (issue
+    /// #1260): the design puts the part past the points of a row's curve, named with its file.
+    pub(super) fn curve_note(&self, job: &Job) -> Option<String> {
+        let mut why: Vec<String> = Vec::new();
+        for (f, key) in &job.columns {
+            if !self.asked(*f) {
+                continue;
+            }
+            for c in &job.catalog.candidates {
+                if let Some(Value::Curved(v)) = c.column(key)
+                    && let Err(miss) = self.curved(job.part, v)
+                {
+                    why.push(format!("{} ({}): {miss}", c.name, v.curve.file));
+                }
+            }
+            if !why.is_empty() {
+                return Some(format!(
+                    "`{}.{key}` is read off a curve file for some candidates, and is unknown for these, so they were not used: {}",
+                    job.path,
+                    why.join("; ")
+                ));
+            }
+        }
+        None
+    }
+
     /// What to add to a message when a derated column hides candidates: the design gave no
     /// bias, or some candidates have no curve or none that reaches the bias.
     pub(super) fn derating_note(&self, job: &Job) -> Option<String> {
@@ -712,6 +783,10 @@ impl Solver<'_> {
                 Value::Derated(d) => match self.derated(part, d) {
                     Ok(q) => Domain::Quantity(q),
                     // The design does not ask for it, and `fits` let it through.
+                    Err(_) => continue,
+                },
+                Value::Curved(v) => match self.curved(part, v) {
+                    Ok(q) => Domain::Quantity(q),
                     Err(_) => continue,
                 },
             };
@@ -930,5 +1005,26 @@ impl Solver<'_> {
             }
         }
         out
+    }
+}
+
+/// Why a value could not be read off a row's curve file.
+#[derive(Debug, Clone)]
+pub(super) enum CurveMiss {
+    /// An axis of the curve is not a quantity field of the part of its dimension (its path).
+    NoField(String),
+    /// The design puts the part past the points of the file.
+    Beyond(Beyond),
+}
+
+impl std::fmt::Display for CurveMiss {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoField(path) => write!(
+                f,
+                "its curve reads `{path}`, which is not a field of the part in the curve's unit"
+            ),
+            Self::Beyond(b) => write!(f, "{b}"),
+        }
     }
 }

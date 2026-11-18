@@ -21,6 +21,7 @@ A catalog file is CSV whose first line names the columns of the part's `catalog 
 - **Cells use the language's syntax**: `10kohm +/- 1%`, `3.3V +/- 5%`, `1.8V..2.4V`, `0.68V`, and bare text for `package` and `color`. `name` is what messages call the row and `label` is the schematic's value field.
 - **`effective_capacitance`** is `derate capacitance by bias: <volts>:<fraction> ...`, the capacitor's DC-bias curve (see below). Nothing after the colon means no curve is published.
 - A project adds its own parts in its own repository, not here: `catalogs = [...]` in its `netsmith.toml`.
+- **Curve files** (`catalog/curves/<catalog>/<row>.csv`, issue #1260) give a column of one row as points over the part's current and the board's temperature, such as a diode's forward voltage; the row keeps its single figure. Their format is in `crates/netsmith-solve/src/curve.rs` and the guide (_Curve files_, chapter 12). **No row has one yet.** A curve file is added only with its source, as a row is: the row's `source` gets a `curve:` entry that names the datasheet, its revision, the figure (`Typical Forward Characteristics`), whether the curve is typical or a bound, how the points were read (from numbers the maker gives, or off the drawn line by pixel position against the gridlines, as the capacitor curves below were) and what margin was added. A curve that is a typical figure is said to be typical in the row's `notes`, since a check that reads it is then a typical check. Never draw a curve from a part's family, a SPICE model of another part or memory.
 
 ## Evidence rules
 
@@ -30,6 +31,7 @@ Every row has a `source` column (`considered.csv` calls it `evidence`) with, in 
 - `datasheet:<url>`: the manufacturer's datasheet, where the model uses a number from it. Regulator and LED pinouts, dropout, current and capacitor requirements come from the manufacturer datasheets (links in the `source` column), read as PDF text and, for the XC6206, as page images.
 - `bias-curve:` and its test conditions, for a capacitor with a DC-bias curve (below).
 - `esr:` and the cell's figure, for a capacitor row that states an ESR (below): the document, the page, the table or graph and the point it was read at.
+- `curve:`, for a row with a curve file (above): the document, the figure and how its points were read.
 
 The row for C5446 (XC6206) has no date: its source is the two records and the datasheet.
 

@@ -250,8 +250,11 @@ impl Need {
     }
 
     fn met_by(&self, value: Option<&Value>) -> bool {
+        // A row's own figure stands for a column it has a curve of.
         let quantity = match value {
-            Some(Value::Quantity(q)) => Some(q),
+            Some(Value::Quantity(q) | Value::Curved(crate::catalog::Curved { figure: q, .. })) => {
+                Some(q)
+            }
             _ => None,
         };
         match self {
@@ -269,8 +272,11 @@ impl Need {
     /// row that has nothing to compare or is off by its whole size. Relative, so that the
     /// shortfalls of different columns can be added.
     fn shortfall(&self, value: Option<&Value>) -> f64 {
+        // A row's own figure stands for a column it has a curve of.
         let quantity = match value {
-            Some(Value::Quantity(q)) => Some(q),
+            Some(Value::Quantity(q) | Value::Curved(crate::catalog::Curved { figure: q, .. })) => {
+                Some(q)
+            }
             _ => None,
         };
         let over = |amount: f64, scale: f64| (amount / scale.abs().max(f64::MIN_POSITIVE)).min(1.0);

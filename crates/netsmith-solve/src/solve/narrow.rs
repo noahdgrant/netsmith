@@ -144,6 +144,10 @@ impl Solver<'_> {
                         Ok(q) => Cell::Num(q.dim(), q.lo(), q.hi()),
                         Err(_) => Cell::Open,
                     },
+                    Some(Value::Curved(v)) => match self.curved(job.part, v) {
+                        Ok(q) => Cell::Num(q.dim(), q.lo(), q.hi()),
+                        Err(_) => Cell::Open,
+                    },
                     Some(Value::Open(_)) => return None,
                     None => Cell::Open,
                 });

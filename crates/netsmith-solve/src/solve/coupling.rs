@@ -348,6 +348,24 @@ impl Solver<'_> {
                         from.entry(*f).or_default().push(bias);
                     }
                 }
+                // A column read off a curve file (issue #1260) reads the fields of the part
+                // the curve's axes name, as a derated one reads its bias.
+                let mut axes: Vec<&str> = Vec::new();
+                for c in &job.catalog.candidates {
+                    if let Some(Value::Curved(v)) = c.column(key) {
+                        for (axis, _) in &v.curve.axes {
+                            if axis != crate::curve::TEMPERATURE && !axes.contains(&axis.as_str()) {
+                                axes.push(axis);
+                            }
+                        }
+                    }
+                }
+                for axis in axes {
+                    let path = format!("{}.{axis}", self.model.path_of(job.part));
+                    if let Some(read) = self.model.field_at(&path) {
+                        from.entry(*f).or_default().push(read);
+                    }
+                }
             }
         }
         let mut job_of: HashMap<FieldId, usize> = HashMap::new();

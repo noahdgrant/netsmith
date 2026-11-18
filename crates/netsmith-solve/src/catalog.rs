@@ -13,6 +13,7 @@ use std::sync::Arc;
 use netsmith_check::FieldKind;
 use netsmith_quantity::Quantity;
 
+use crate::curve::Curve;
 use crate::generic::{Generic, Sense, Series};
 use crate::lock::{LockedRow, PickLock};
 use crate::preferred::Preferred;
@@ -45,6 +46,22 @@ pub enum Value {
     /// A value a generic part (ADR 0047) cannot know and the design supplies: the solver
     /// reads it from the design when it picks the part. Only generic parts have it.
     Open(Sense),
+    /// A value read off the row's curve file at the part's operating point, with the row's own
+    /// figure for a design that gives none (see [`Curved`]).
+    Curved(Curved),
+}
+
+/// A column whose row has a curve file (`crate::curve`, issue #1260): a diode's forward voltage
+/// at each current and temperature. The solver reads the curve at the ranges the design gives
+/// the part for the curve's axes (`Solver::curved`): a field of the part (`.current`) and the
+/// board's environment temperature, or the whole of the curve's temperatures on a board that
+/// states no environment. Where a field the curve reads has no value, the column is the row's
+/// single figure, as for a row with no curve.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Curved {
+    /// The row's own cell: the figure the column is where the design gives no operating point.
+    pub figure: Quantity,
+    pub curve: Arc<Curve>,
 }
 
 /// A capacitor's effective capacitance: the marked value with its tolerance, and the fraction
@@ -470,6 +487,27 @@ impl Catalogs {
         self.add_table(name, file, Table::parse_built_in(file, text)?)
     }
 
+    /// Read a curve file of the catalog `name` (`crate::curve`, issue #1260). `file` is what
+    /// a message calls it and `row` its stem, the `lcsc` (or, for a row with none, the `mpn`) of
+    /// the row it is for. The catalog's file is added first: a curve of a catalog that has no
+    /// file is an error that names it. Which row and column the curve is for is checked when a
+    /// part reads the catalog, and an error then names the curve file.
+    pub fn add_curve(
+        &mut self,
+        name: &str,
+        row: &str,
+        file: &str,
+        text: &str,
+    ) -> Result<(), String> {
+        let curve = Curve::parse(file, text)?;
+        let Some(table) = self.tables.get_mut(name) else {
+            return Err(format!(
+                "{file}: there is no catalog `{name}` for the curve to be part of; its folder is named after a catalog that has a file"
+            ));
+        };
+        table.add_curve(row, Arc::new(curve))
+    }
+
     fn add_table(&mut self, name: &str, file: &str, table: Table) -> Result<(), String> {
         if let Some(code) = self.map.get(name)
             && !code.candidates.is_empty()
@@ -589,13 +627,13 @@ impl Catalogs {
     /// `data/sample/`. There is none for LEDs, so an LED stays unresolved. The parts in
     /// them are made up for the solver's tests and have no supplier numbers.
     pub fn sample() -> Self {
-        crate::jlcpcb::embedded(crate::jlcpcb::SAMPLE)
+        crate::jlcpcb::embedded(crate::jlcpcb::SAMPLE, crate::jlcpcb::SAMPLE_CURVES)
     }
 
     /// Real parts for JLCPCB assembly, from `data/jlcpcb/catalog/`. See [`crate::jlcpcb`]
     /// for the files and `data/jlcpcb/README.md` for where each row comes from.
     pub fn jlcpcb() -> Self {
-        crate::jlcpcb::embedded(crate::jlcpcb::JLCPCB)
+        crate::jlcpcb::embedded(crate::jlcpcb::JLCPCB, crate::jlcpcb::JLCPCB_CURVES)
     }
 }
 
