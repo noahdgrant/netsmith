@@ -132,7 +132,7 @@ fn sources_parse() {
     let file = parse(SOURCES).unwrap();
     // `Rail`, the impedance a design states for tracks (issue #1007) and a pair with none (issue
     // #1193).
-    assert_eq!(file.definitions.len(), 4);
+    assert_eq!(file.definitions.len(), 5);
     assert_eq!(def(&file, "TrackImpedance").items.len(), 2);
     assert_eq!(def(&file, "PairImpedance").items.len(), 6);
     assert_eq!(def(&file, "DiffPair").items.len(), 4);
