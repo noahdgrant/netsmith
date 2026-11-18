@@ -94,13 +94,14 @@ describe('the copper areas', () => {
     expect(teardropsLine(copper({ counted: true, total: 0, layers: [] }))).toBe('0');
   });
   it('count the pads a fill joins by kind, and say how each is joined', () => {
-    const counts: FillCounts = { noSpokes: 0, oneSpoke: 1, twoOrMoreSpokes: 2, solid: 1, none: 0, starved: 1 };
-    expect(fillCountsLine(counts)).toBe('4 pads: 2 by 2 or more spokes, 1 by 1 spoke, 0 by no spoke, 1 solid, 0 none; 1 starved');
-    const pad = (p: Partial<FillPad>): FillPad => ({ part: 'U1', pad: '2', at: { x: 8, y: 15 }, join: 'thermal', spokes: 4, joinedSpokes: 1, tracks: 0, joined: true, starved: true, ...p });
+    const counts: FillCounts = { noSpokes: 0, oneSpoke: 1, twoOrMoreSpokes: 2, solid: 1, none: 0, starved: 1, unjoinable: 0 };
+    expect(fillCountsLine(counts)).toBe('4 pads: 2 by 2 or more spokes, 1 by 1 spoke, 0 by no spoke, 1 solid, 0 none; 1 starved, 0 unjoinable');
+    const pad = (p: Partial<FillPad>): FillPad => ({ part: 'U1', pad: '2', at: { x: 8, y: 15 }, join: 'thermal', spokes: 4, joinedSpokes: 1, tracks: 0, joined: true, starved: true, unjoinable: null, ...p });
     expect(fillPadLine(pad({}))).toBe('U1.2: thermal, 1 of 4 spokes (starved)');
     expect(fillPadLine(pad({ joinedSpokes: 1, tracks: 1, starved: false }))).toBe('U1.2: thermal, 1 of 4 spokes and 1 track');
     expect(fillPadLine(pad({ join: 'solid', spokes: null, joinedSpokes: null, starved: false }))).toBe('U1.2: solid');
     expect(fillPadLine(pad({ join: 'solid', spokes: null, joinedSpokes: null, joined: false, starved: false }))).toBe('U1.2: solid, the fill does not reach it');
+    expect(fillPadLine(pad({ joinedSpokes: 0, starved: false, unjoinable: 'the edge' }))).toBe('U1.2: thermal, 0 of 4 spokes (unjoinable: the edge)');
     expect(fillPadLine(pad({ join: 'none', spokes: null, joinedSpokes: null, joined: false, starved: false }))).toBe('U1.2: none');
     const area: FillArea = { layer: 'top', layerName: 'F.Cu', net: 'GND', source: 'pour', held: false, area: 120.456, pads: [], counts, cleared: [], islands: [], removedIslands: [{ at: { x: 1, y: 2 }, area: 0.5, outline: [] }] };
     expect(fillAreaLine(area)).toBe(`pour on GND, 120.46 mm²: ${fillCountsLine(counts)}; clears 0 pads of other nets; islands: 0 kept, 1 removed`);

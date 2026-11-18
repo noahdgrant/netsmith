@@ -39,6 +39,10 @@ pub struct FillPad {
     pub joined: bool,
     /// Whether it is a starved thermal relief (`starved_thermal`).
     pub starved: bool,
+    /// Of a thermal relief that no spoke and no track joins (`unjoinable_thermal`, issue 1222):
+    /// why the fill makes none of its spokes.
+    #[serde(default)]
+    pub unjoinable: Option<String>,
 }
 
 /// A pad of another net in the fill's outline, which the fill keeps clear of.
@@ -73,6 +77,8 @@ pub struct FillCounts {
     pub solid: u32,
     pub none: u32,
     pub starved: u32,
+    #[serde(default)]
+    pub unjoinable: u32,
 }
 
 /// The fill of one pour, plane or zone on one layer.
@@ -110,6 +116,19 @@ pub struct FillStarved {
     pub tracks: u32,
 }
 
+/// A thermal relief that the fill joins by nothing (`unjoinable_thermal`, issue 1222), and why.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct FillUnjoinable {
+    pub layer: String,
+    pub net: String,
+    pub part: String,
+    pub pad: String,
+    pub at: FillAt,
+    pub spokes: u32,
+    pub why: String,
+}
+
 /// How the fill of the board's pours joins its pads.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -125,4 +144,8 @@ pub struct PcbFill {
     pub fills: Vec<FillArea>,
     pub counts: FillCounts,
     pub starved: Vec<FillStarved>,
+    /// The thermal reliefs the fill joins by nothing, which the 2D view rings as it rings the
+    /// starved ones.
+    #[serde(default)]
+    pub unjoinable: Vec<FillUnjoinable>,
 }

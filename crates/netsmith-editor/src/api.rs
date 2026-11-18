@@ -2508,6 +2508,7 @@ pub fn typescript() -> String {
         FillCounts,
         FillArea,
         FillStarved,
+        FillUnjoinable,
         PcbFill,
         NetsRow,
         NetsPair,

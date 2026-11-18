@@ -1732,7 +1732,12 @@ joined: boolean,
 /**
  * Whether it is a starved thermal relief (`starved_thermal`).
  */
-starved: boolean, };
+starved: boolean, 
+/**
+ * Of a thermal relief that no spoke and no track joins (`unjoinable_thermal`, issue 1222):
+ * why the fill makes none of its spokes.
+ */
+unjoinable: string | null, };
 
 export type FillCleared = { part: string, pad: string, net: string | null, at: FillAt, };
 
@@ -1743,7 +1748,7 @@ export type FillIsland = { at: FillAt, area: number,
  */
 outline: Array<Array<FillAt>>, };
 
-export type FillCounts = { noSpokes: number, oneSpoke: number, twoOrMoreSpokes: number, solid: number, none: number, starved: number, };
+export type FillCounts = { noSpokes: number, oneSpoke: number, twoOrMoreSpokes: number, solid: number, none: number, starved: number, unjoinable: number, };
 
 export type FillArea = { 
 /**
@@ -1765,6 +1770,8 @@ area: number, pads: Array<FillPad>, counts: FillCounts, cleared: Array<FillClear
 
 export type FillStarved = { layer: string, net: string, part: string, pad: string, at: FillAt, spokes: number, joinedSpokes: number, tracks: number, };
 
+export type FillUnjoinable = { layer: string, net: string, part: string, pad: string, at: FillAt, spokes: number, why: string, };
+
 export type PcbFill = { board: string, 
 /**
  * The stamps of the placement and of the routes file it was filled on, and whether it was
@@ -1774,7 +1781,12 @@ layoutStamp: string, routesStamp: string, routed: boolean, outlineAt: FillAt,
 /**
  * Each fill, by layer from the top.
  */
-fills: Array<FillArea>, counts: FillCounts, starved: Array<FillStarved>, };
+fills: Array<FillArea>, counts: FillCounts, starved: Array<FillStarved>, 
+/**
+ * The thermal reliefs the fill joins by nothing, which the 2D view rings as it rings the
+ * starved ones.
+ */
+unjoinable: Array<FillUnjoinable>, };
 
 export type NetsRow = { net: string, 
 /**
