@@ -101,7 +101,7 @@ impl<'a> Router<'a> {
                 pad_depth(board, &l.from, l.from_at).max(to)
             })
             .collect();
-        let class = classes(board, &lines, &depth);
+        let class = classes(board, &lines, &depth, true);
         let mut fixed = initial_obstacles(board, &stack);
         fixed_copper(board, &stack, &net_index, &mut fixed);
         let mut fixed_by_net = vec![Vec::new(); board.nets.len()];
@@ -361,6 +361,55 @@ impl<'a> Router<'a> {
         (lo, lo + MARGIN + ROOM_TIGHT + PITCH)
     }
 
+    /// The diff pairs of the board as the router routes them, each once: the names of its two
+    /// nets, the lower index first.
+    pub(super) fn pair_names(&self) -> Vec<(String, String)> {
+        (0..self.partners.len())
+            .filter_map(|n| self.partners[n].filter(|&p| p > n).map(|p| (n, p)))
+            .map(|(n, p)| {
+                (
+                    self.board.nets[n].name.clone(),
+                    self.board.nets[p].name.clone(),
+                )
+            })
+            .collect()
+    }
+
+    /// Route every diff pair as two separate lines from here on (issue #1295): no net has a
+    /// partner, so no pass runs it beside one, and its lines take the class they would have
+    /// with no pair (not routed early as a pair, and ripped up for other lines as any line
+    /// is). The memo of searches is emptied, since the classes say which copper a search may
+    /// rip. The board's pairs are still matched in length by the meanders, which read the
+    /// board.
+    pub(super) fn unpair(&mut self) {
+        self.partners = vec![None; self.partners.len()];
+        self.class = classes(self.board, &self.lines, &self.depth, false);
+        self.memo.borrow_mut().clear();
+    }
+
+    /// The track of `partner` that a net of its pair runs beside: the router's own copper of it
+    /// in `routed`, and the copper the board had of it (a routes file's fixed copper, which
+    /// `netsmith routes route` of one net of a pair leaves its partner as, issue #1295).
+    pub(super) fn partner_tracks<'s>(
+        &'s self,
+        routed: impl IntoIterator<Item = &'s Routed>,
+        partner: usize,
+    ) -> Vec<&'s Track> {
+        let name = &self.board.nets[partner].name;
+        routed
+            .into_iter()
+            .filter(|r| self.nets[r.line] == partner)
+            .flat_map(|r| r.tracks.iter())
+            .chain(self.board.tracks.iter().filter(|t| &t.net == name))
+            .collect()
+    }
+
+    /// Whether `net` has no line of its own on this board (its copper is all fixed, or it has
+    /// none): its partner in a pair runs beside the copper it has.
+    pub(super) fn has_no_lines(&self, net: usize) -> bool {
+        !(0..self.lines.len()).any(|l| self.nets[l] == net)
+    }
+
     /// [`Masks::follow`] for a line of `net`: the cells of [`Router::pair_band`] round the
     /// centre line of the partner's routed tracks, on their layers, for the width of `line`
     /// (on each layer for a pair with an impedance target, else the outer one); empty when the
@@ -376,11 +425,7 @@ impl<'a> Router<'a> {
         let Some(partner) = self.partners[net] else {
             return vec![Vec::new(); layers];
         };
-        let tracks: Vec<&Track> = routed
-            .iter()
-            .filter(|r| self.nets[r.line] == partner)
-            .flat_map(|r| r.tracks.iter())
-            .collect();
+        let tracks = self.partner_tracks(routed.iter().copied(), partner);
         if tracks.is_empty() {
             return vec![Vec::new(); layers];
         }

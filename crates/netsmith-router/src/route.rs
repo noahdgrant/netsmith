@@ -365,6 +365,22 @@
 //! the partner's track keeps the net a cell past the spacing. A pair with an impedance target
 //! keeps its coupled run whole: its meander goes only where it runs apart.
 //!
+//! **Beside copper already there, and as two lines** (issue #1295, the agent's decision). A
+//! partner's copper that the board had (a routes file's fixed copper: `netsmith routes route`
+//! of one net of a pair leaves its partner so) counts as its track in the band and in the
+//! measure ([`Router::partner_tracks`]), and a net whose partner has no line of its own may
+//! also grow by what it is shorter than its partner, which the meander would add anyway: before
+//! it, the second line routed alone beside the first ran straight past it, 0 % coupled with a
+//! skew of 0.69 mm, and now runs 85 % coupled at the pair's pitch within 0.1 mm. Before the
+//! pass, what sets a pair apart from two lines is its class alone (routed early, and never
+//! ripped up for a line of a later class), so a board whose tries leave lines gets one more try
+//! with every pair as two ordinary lines ([`Router::unpair`]), the first order by class, kept
+//! only if it leaves fewer; [`Routing::separate`] names the pairs and `fab` says it. Their
+//! lines do not run side by side, and the meander still matches their lengths (it reads the
+//! board's pairs). A board routed with no classes ([`LineClasses::Off`], as `routes route` is)
+//! routes a pair as two lines already and gets no try more. Counted, not timed: one try more,
+//! only on a board with a pair that is left with lines.
+//!
 //! **Both together** (issue #1010, the agent's decision while the owner was away). On Orbit
 //! at seed 3 (placed with each capacitor kept 1 mm from a QFN's other pins), `dm` has 2 vias
 //! and `dp` none: `dp` beside `dm` takes `dm`'s 2 vias and 7 mm, and `dm` beside `dp` finds no
@@ -1571,6 +1587,23 @@ pub struct Routing {
     /// What the rounds of rip-up and re-route did on the try that gave the result; the default
     /// when they did not run.
     pub rip_rounds: RipRounds,
+    /// The diff pairs routed as two separate lines because routed as pairs they left
+    /// connections (issue #1295); `None` when every pair was routed as a pair.
+    pub separate: Option<Separate>,
+}
+
+/// The diff pairs a board routed as two separate lines ([`Routing::separate`], issue #1295):
+/// the tries that routed them as pairs left lines, and one more try with each pair's two lines
+/// as two ordinary lines left fewer. Their lines do not run side by side, and their lengths are
+/// matched by the meanders as any pair's are (on a board routed completely).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Separate {
+    /// The pairs, by the names of their two nets.
+    pub pairs: Vec<(String, String)>,
+    /// How many of the router's lines the best try with the pairs left.
+    pub left_as_pairs: usize,
+    /// How many the try with them as two lines left.
+    pub left: usize,
 }
 
 /// Route as much of the ratsnest as the router can, adding tracks and vias to the board.
@@ -1584,7 +1617,7 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     // A sense pin's tap is cut in two while the board is routed, so its track keeps apart from
     // the rest of its net (`crate::kelvin`, issue #1148); the board is put back at the end.
     let split = crate::kelvin::split(board);
-    let (best, stopped, tries, why, crowding, stages, drops, rip_rounds, line_vias) = {
+    let (best, stopped, tries, why, crowding, stages, drops, rip_rounds, line_vias, separate) = {
         let mut router = Router::new(board, &options);
         let mut orders = router.tries(&options);
         if options.plan != CoarsePlan::Off {
@@ -1632,6 +1665,44 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
                 break;
             }
         }
+        // A board with a diff pair that the tries left with lines: one more try with every pair
+        // routed as two separate lines (issue #1295), kept only if it leaves fewer. Before the
+        // pairs' pass, which runs only on a try that routed every line, what sets a pair apart
+        // from two lines is its class: routed early, and never ripped up for a line of a later
+        // class. A board routed with no classes routes a pair as two lines already.
+        let mut separate = None;
+        if let Some(b) = best.as_ref().filter(|b| !b.0.failed.is_empty())
+            && !router.out_of_time()
+            && options.classes != LineClasses::Off
+            && router.partners.iter().any(Option::is_some)
+        {
+            let left_as_pairs = b.0.failed.len();
+            let pairs = router.pair_names();
+            router.unpair();
+            tries += 1;
+            let order = router.classed_order(&orders[0]);
+            let state = router.run(&order, options.rip_up, tries, tries);
+            router.report(true, Some(&state), || {
+                format!(
+                    "{}; the diff pairs routed as two separate lines",
+                    router.try_ended(&state, tries, tries)
+                )
+            });
+            if state.failed.len() < left_as_pairs {
+                let failed_in = router.failed_in.take();
+                let snapshots = router
+                    .snapshots
+                    .as_ref()
+                    .map(|s| s.take())
+                    .unwrap_or_default();
+                separate = Some(Separate {
+                    pairs,
+                    left_as_pairs,
+                    left: state.failed.len(),
+                });
+                best = Some((state, failed_in, snapshots, router.ripped.take()));
+            }
+        }
         let stopped = router.out_of_time();
         let (best, failed_in, stages, rip_rounds) = best.unwrap_or_default();
         // What stands in the way of each line left is looked for past the time limit too, for
@@ -1654,7 +1725,7 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
             .collect();
         let crowding = router.crowding.into_inner();
         (
-            best, stopped, tries, why, crowding, stages, drops, rip_rounds, line_vias,
+            best, stopped, tries, why, crowding, stages, drops, rip_rounds, line_vias, separate,
         )
     };
     let complete = best.failed.is_empty();
@@ -1734,5 +1805,6 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         pairs: lengths.pairs,
         groups: lengths.groups,
         rip_rounds,
+        separate,
     }
 }

@@ -55,12 +55,7 @@ impl<'a> Router<'a> {
         net: usize,
         partner: usize,
     ) -> (f64, usize, f64) {
-        let theirs: Vec<&Track> = state
-            .routed
-            .iter()
-            .filter(|r| self.nets[r.line] == partner)
-            .flat_map(|r| r.tracks.iter())
-            .collect();
+        let theirs = self.partner_tracks(&state.routed, partner);
         let (mut length, mut near, mut vias) = (0.0, 0.0, 0);
         for r in state.routed.iter().filter(|r| self.nets[r.line] == net) {
             vias += r.vias.len();
@@ -110,18 +105,23 @@ impl<'a> Router<'a> {
                     break;
                 }
                 let (len0, vias0, c0) = self.pair_measure(state, x, y);
-                if len0 == 0.0 || self.pair_measure(state, y, x).0 == 0.0 {
+                let theirs = self.partner_tracks(&state.routed, y);
+                if len0 == 0.0 || theirs.is_empty() {
                     continue;
+                }
+                // A partner whose copper is all fixed (one net of a pair routed beside the
+                // other, issue #1295) is not routed again: the net may also grow by what it is
+                // shorter than its partner, which the meander would add to it anyway.
+                let mut slack = self.funnel_slack(x, y);
+                if self.has_no_lines(y) {
+                    let partner: f64 = theirs.iter().map(|t| t.from.distance(t.to)).sum();
+                    slack += (partner - len0).max(0.0);
                 }
                 let Some(trial) = self.route_again(state, &[x]) else {
                     continue;
                 };
                 let (len1, vias1, c1) = self.pair_measure(&trial, x, y);
-                if keeps_pair(
-                    (len0, vias0, c0),
-                    (len1, vias1, c1),
-                    self.funnel_slack(x, y),
-                ) {
+                if keeps_pair((len0, vias0, c0), (len1, vias1, c1), slack) {
                     *state = trial;
                 }
             }

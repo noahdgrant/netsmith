@@ -490,9 +490,15 @@ impl Class {
 /// The least current of a net that is routed as power, in amperes.
 pub(super) const POWER_CURRENT: f64 = 0.1;
 
-/// The class of each line ([`Class`]); `depth` is each line's [`pad_depth`].
-pub(super) fn classes(board: &Board, lines: &[Ratline], depth: &[f64]) -> Vec<Class> {
-    let partners = diff_pair_partners(board);
+/// The class of each line ([`Class`]); `depth` is each line's [`pad_depth`]. With `pairs`
+/// false a net of a diff pair is classed as if it were no pair (the try that routes a pair as
+/// two lines, [`Router::unpair`], issue #1295).
+pub(super) fn classes(board: &Board, lines: &[Ratline], depth: &[f64], pairs: bool) -> Vec<Class> {
+    let partners = if pairs {
+        diff_pair_partners(board)
+    } else {
+        vec![None; board.nets.len()]
+    };
     let index: HashMap<&str, usize> = board
         .nets
         .iter()
