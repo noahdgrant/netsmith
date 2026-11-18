@@ -51,8 +51,10 @@
 //! `rule_severities` decide what stops `fab`: the exporter writes `silk_over_copper`,
 //! `silk_overlap`, `silk_edge_clearance` and `solder_mask_bridge` as warnings (a fabricator clips
 //! silkscreen over a mask opening and keeps a web only where it can; neither stops a board being
-//! made) and everything else as errors. The owner confirmed on 2026-11-04 that those four stay
-//! warnings.
+//! made) and `via_dangling` as a warning (KiCad's own default: it counts a via of a cluster side
+//! by side on its top layer alone, so its check of a board `fab` made would otherwise fail on
+//! the extra vias, issue #1207), and everything else as errors. The owner confirmed on
+//! 2026-11-04 that the four silkscreen and mask rules stay warnings.
 //!
 //! **Findings are data.** [`check`] returns a `Report` of findings: the rule (named as KiCad
 //! names it), the severity, a message with the numbers (`clearance is 0.1000 mm between SMD pad 1
