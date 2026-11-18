@@ -1,21 +1,24 @@
 //! KiCad opens the board file `fab` writes (issue #1221): every example with planes or pours is
 //! fabricated, and `kicad-cli` (found as `netsmith_fab::KicadCliExe::locate_runnable` does; the
 //! test skips where KiCad is not installed) reads the `.kicad_pcb`, with its fill in each zone,
-//! and exports its position file. KiCad 9.0.0 refused a whole board ("Failed to load board") for
-//! a line longer than its reader takes, a plane's fill written on one line; the board that holds
-//! that construct is netsmith-router's `kicad_drc.rs`
+//! and plots the board from it as it is, with no refill (`KicadCliExe::opens`). KiCad 9.0.0
+//! refused a whole board ("Failed to load board") for a line longer than its reader takes, a
+//! plane's fill written on one line; the board that holds that construct is netsmith-router's
+//! `kicad_drc.rs`
 //! (`kicad_opens_the_board_fab_writes_when_a_planes_fill_has_more_points_than_a_line_holds`).
 //!
 //! Each example is copied to a folder of its own first, since `fab` writes the seed it placed
 //! with to the layout file. The single-file examples are routed; the projects, which take the
-//! router minutes, are written with the copper the router lays before its timeout of none (what
-//! the zones are filled round is then the pads, the outline and the cutouts).
+//! router minutes, are fabricated with a route timeout of zero, as what is checked is the file and
+//! not the routing. KiCad 9.0.0 also refused a board for a footprint of a project's library saved
+//! by a newer KiCad (`units`, `duplicate_pad_numbers_are_jumpers`), which the projects
+//! `rp2350_minimal` and `easyduino_esp32s3` have.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use netsmith_fab::{KicadCli as _, KicadCliExe};
+use netsmith_fab::KicadCliExe;
 use netsmith_fabricate::fab::{FabOptions, fab_with_options};
 use netsmith_fabricate::project::Target;
 use netsmith_kicad::Sexp;
@@ -71,9 +74,10 @@ fn kicad_opens(name: &str) {
                 fs::copy(file.path(), source.join(&*file_name)).unwrap();
             }
         }
-        let file = format!("{name}.nsm");
+        // The absolute path, as the target keeps the name it is given as the file's path.
+        let file = source.join(format!("{name}.nsm"));
         (
-            Target::resolve_from(&source, Some(&file)),
+            Target::resolve_from(&source, Some(&file.to_string_lossy())),
             FabOptions::default().route_timeout,
         )
     };
@@ -126,7 +130,7 @@ fn kicad_opens(name: &str) {
         return;
     };
     for pcb in &boards {
-        if let Err(e) = cli.pos(pcb) {
+        if let Err(e) = cli.opens(pcb) {
             panic!("KiCad cannot open {}: {e}", pcb.display());
         }
     }
@@ -150,10 +154,15 @@ fn every_example_with_planes_or_pours_is_one_kicad_opens_here() {
     // A board's source that states a plane or a pour: a layer of its process given a net, or a
     // process of more than two layers. A new example with one is added to `POURED`.
     let states = |text: &str| {
-        text.contains(".net &=")
-            || ["FourLayer", "SixLayer", "TenLayer"]
-                .iter()
-                .any(|p| text.contains(&format!(".process: {p}")))
+        text.lines().any(|l| {
+            let l = l.trim_start();
+            (l.starts_with(".top.net")
+                || l.starts_with(".bottom.net")
+                || l.starts_with(".inner") && l.contains(".net"))
+                || ["FourLayer", "SixLayer", "TenLayer"]
+                    .iter()
+                    .any(|p| l.starts_with(&format!(".process: {p}")))
+        })
     };
     let mut found = Vec::new();
     for entry in fs::read_dir(examples()).unwrap().flatten() {

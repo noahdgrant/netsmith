@@ -1229,7 +1229,6 @@ fn perforated() -> Board {
 fn kicad_opens_the_board_fab_writes_when_a_planes_fill_has_more_points_than_a_line_holds() {
     // Issue #1221: KiCad 9.0.0 refused the whole board ("Failed to load board") for a line over
     // a million bytes, and a plane's fill of 69,000 points was written on one line.
-    use netsmith_fab::KicadCli as _;
     use netsmith_kicad::{KICAD_LINE_MAX, Sexp, longest_line};
     let b = perforated();
     let filled = netsmith_pcb::kicad_pcb_filled(&b).unwrap();
@@ -1263,7 +1262,7 @@ fn kicad_opens_the_board_fab_writes_when_a_planes_fill_has_more_points_than_a_li
     let pcb = dir.join("perforated.kicad_pcb");
     std::fs::write(&pcb, &filled.text).unwrap();
     std::fs::write(pcb.with_extension("kicad_pro"), kicad_pro(&b)).unwrap();
-    if let Err(e) = cli.pos(&pcb) {
+    if let Err(e) = cli.opens(&pcb) {
         panic!("KiCad cannot open the board fab writes: {e}");
     }
 }

@@ -282,6 +282,17 @@ impl<'a> NetNumbers<'a> {
     }
 }
 
+/// The fields of a footprint that a library saved by a newer KiCad holds and KiCad 9.0.0 does
+/// not know: it refuses the whole board for one ("Failed to load board", issue #1221). The board
+/// file is written in 9.0's format ([`VERSION`]), so they are left out: a footprint's units (the
+/// pins of each unit of its symbol, which the board does not use) and its jumper pads, which
+/// only KiCad's own check reads.
+const NEWER_THAN_9_0: [&str; 3] = [
+    "units",
+    "duplicate_pad_numbers_are_jumpers",
+    "jumper_pad_groups",
+];
+
 fn footprint(board: &Board, part: &Placed, nets: &NetNumbers) -> Sexp {
     let key = format!("{}/{}", board.name, part.refdes);
     let mut at = vec![Sexp::num(part.at.x), Sexp::num(part.at.y)];
@@ -301,7 +312,8 @@ fn footprint(board: &Board, part: &Placed, nets: &NetNumbers) -> Sexp {
         if matches!(
             child.head(),
             Some("version" | "generator" | "generator_version" | "layer" | "uuid" | "at")
-        ) {
+        ) || NEWER_THAN_9_0.contains(&child.head().unwrap_or_default())
+        {
             continue;
         }
         let child_key = format!("{key}/{index}");
@@ -1954,6 +1966,28 @@ mod tests {
 
     fn six() -> Board {
         crate::board::tests::six_layer_board()
+    }
+
+    #[test]
+    fn a_footprint_saved_by_a_newer_kicad_is_written_without_what_kicad_9_0_cannot_read() {
+        // Issue #1221: a project's library saved by a newer KiCad gives each footprint its
+        // units and `duplicate_pad_numbers_are_jumpers`, and KiCad 9.0.0 refuses the board.
+        let mut board = led();
+        let Sexp::List(fields) = &mut board.parts[0].footprint.source else {
+            panic!("a footprint is a list");
+        };
+        for field in [
+            r#"(units (unit (name "A") (pins "1" "2")))"#,
+            "(duplicate_pad_numbers_are_jumpers no)",
+            r#"(jumper_pad_groups ("1" "2"))"#,
+        ] {
+            fields.push(Sexp::parse(field).unwrap());
+        }
+        let text = kicad_pcb(&board);
+        for head in NEWER_THAN_9_0 {
+            assert!(!text.contains(&format!("({head}")), "{head}");
+        }
+        assert_eq!(text, kicad_pcb(&led()));
     }
 
     #[test]

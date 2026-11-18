@@ -113,6 +113,8 @@ the cross-check see the board itself. The stages keep the board in memory unfill
 a line of about 100 bytes at a time: KiCad 9 refuses a whole file with a line over 1,000,000
 bytes, and a plane's fill on one line was longer (issue #1221). A zone whose fill still could not
 be written as KiCad reads it is written unfilled, and `fab-notes.txt` has a warning that names it.
+The file is in KiCad 9.0's format, so a footprint from a library saved by a newer KiCad is written
+without the fields 9.0.0 refuses a board for (its `units` and its jumper pads).
 
 The linter (`netsmith project lint`, `crates/netsmith-lint`, issue #1104) is not a stage: it runs stage 1 on the top-level files as `check` does, reads the syntax trees and the checked models (and the catalogs, for a narrowing the row a part is picked by gives), and writes nothing. A rule that asks whether a statement changes anything checks the files again without it.
 
