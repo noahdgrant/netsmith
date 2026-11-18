@@ -145,6 +145,7 @@ fn expand_items(items: &mut Vec<Item>, errors: &mut Vec<ParseError>) {
                             },
                             ty: g.ty.clone(),
                             count: None,
+                            list: None,
                             optional: None,
                             body: g.body.clone(),
                             span: g.span,

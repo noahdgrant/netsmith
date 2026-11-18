@@ -179,3 +179,24 @@ interface DiffPair {
     .skew: Length
     .skew ?= 0mm..0.1mm
 }
+
+/// Nets whose tracks are matched in length (issue #1234), a parallel bus or a byte lane: each
+/// line is joined with `~` to a net of the group, `.lane.lines[0] ~ .u.d0` up to
+/// `.lane.lines[7] ~ .u.d7`, and the group has as many lines as the indices the board joins (the
+/// owner's decision on issue #1252: no count is written anywhere). The router lengthens the
+/// shorter nets towards the longest with meanders until no two differ by more than the top of
+/// `.tolerance`, and `netsmith board nets` and `board drc` list each net's length and the group's
+/// spread. A line on no net (an index skipped), two lines on one net, a group of fewer than two
+/// nets and a tolerance with no top or a top of 0 are errors of the build.
+///
+/// Why an interface joined with `~`, as `DiffPair` is: a module carries the group out through
+/// its interface, and the nets are the ones the lines are joined to, not strings that a typo
+/// would miss (the owner's decision on issue #1234).
+interface LengthGroup {
+    /// The group's nets, one line for each, named by index from `[0]`.
+    .lines: [Pin]
+    /// The most the longest and the shortest net may differ by, as a range whose top is the
+    /// limit (`.lane.tolerance &= 0mm..0.5mm`). It has no default: what a bus allows depends on
+    /// its clock and its interface's timing, which the board knows and the library does not.
+    .tolerance: Length
+}

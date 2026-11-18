@@ -94,3 +94,81 @@ fn the_routed_pair_has_both_lengths_and_its_skew_within_the_target() {
     assert!(text.contains("pair "), "{text}");
     assert!(text.contains("within the 0.1 mm limit"), "{text}");
 }
+
+/// Four lines from one header to another, the outer two crossed, stated a length group
+/// (issue #1252): the line on the back is longer than the three on the front.
+const LANE: &str = r#"import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x4
+import std::sources::LengthGroup
+
+/// Four lines of a parallel bus, matched in length.
+board Lane {
+    .process: TwoLayer
+    .process.stackup.thickness &= 1.6mm
+    .near: Header1x4
+    .far: Header1x4
+    .lane: LengthGroup { .tolerance &= 0mm..0.2mm }
+    .near.p1 ~ .far.p4
+    .near.p2 ~ .far.p2
+    .near.p3 ~ .far.p3
+    .near.p4 ~ .far.p1
+    .lane.lines[0] ~ .near.p1
+    .lane.lines[1] ~ .near.p2
+    .lane.lines[2] ~ .near.p3
+    .lane.lines[3] ~ .near.p4
+}
+"#;
+
+/// The spread of the routed lengths of `nets` of a `board nets` table.
+fn spread(table: &serde_json::Value) -> f64 {
+    let lengths: Vec<f64> = table["nets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n["length"].as_f64().unwrap())
+        .collect();
+    let max = lengths.iter().copied().fold(f64::MIN, f64::max);
+    let min = lengths.iter().copied().fold(f64::MAX, f64::min);
+    max - min
+}
+
+#[test]
+fn a_length_group_the_source_states_is_lengthened_by_the_router_and_listed() {
+    let dir = TempDir::new("board-nets-group");
+    // The same board with no group: its lines are not matched.
+    let bare: String = LANE
+        .lines()
+        .filter(|l| !l.contains("lane"))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    fs::write(dir.join("bare.nsm"), bare).unwrap();
+    let unmatched = json(&dir, &["board", "nets", "bare.nsm", "--route"]);
+    assert_eq!(unmatched["groups"].as_array().unwrap().len(), 0, "{unmatched}");
+    let before = spread(&unmatched);
+    println!("spread with no group: {before} mm");
+    assert!(before > 0.2, "{unmatched}");
+
+    fs::write(dir.join("lane.nsm"), LANE).unwrap();
+    let routed = json(&dir, &["board", "nets", "lane.nsm", "--route"]);
+    let groups = routed["groups"].as_array().unwrap();
+    assert_eq!(groups.len(), 1, "{routed}");
+    let group = &groups[0];
+    println!("{group}");
+    assert_eq!(group["path"], "lane");
+    assert_eq!(group["tolerance"].as_f64(), Some(0.2));
+    assert_eq!(group["over"], false, "{group}");
+    // Its nets in the order of its lines, the nets each line is joined to.
+    let nets: Vec<&str> = group["nets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n["net"].as_str().unwrap())
+        .collect();
+    assert_eq!(nets.len(), 4, "{group}");
+    assert!(group["spread"].as_f64().unwrap() <= 0.2, "{group}");
+    assert!((spread(&routed) - group["spread"].as_f64().unwrap()).abs() < 1e-9);
+    let text = netsmith(&dir, &["board", "nets", "lane.nsm", "--route"]);
+    let text = String::from_utf8_lossy(&text.stdout).into_owned();
+    assert!(text.contains("group lane: "), "{text}");
+    assert!(text.contains("within the 0.2 mm tolerance"), "{text}");
+}

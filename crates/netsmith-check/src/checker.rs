@@ -188,6 +188,10 @@ pub(crate) struct Checker<'a> {
     /// The members that a generic declared in an instance, by instance and name, with the
     /// generic's name: a provider may not declare one again (ADR 0068).
     pub(crate) generic_members: HashMap<(InstId, String), String>,
+    /// The lists of pins an instance declares (`.lines: [Pin]`, issue #1252), by instance and
+    /// name, with where the list is declared and its doc comment: a member `lines[k]` is made
+    /// when a statement first names it.
+    pub(crate) open_lists: HashMap<(InstId, String), OpenList>,
     /// The rows of the `pins` tables of generics, for the instance they were read into.
     pub(crate) contract_rows: Vec<ContractRow>,
     /// The definitions being made, outermost first: a definition that is made again inside
@@ -327,6 +331,7 @@ impl<'a> Checker<'a> {
             uses: Vec::new(),
             provider_conflicts: Vec::new(),
             generic_members: HashMap::new(),
+            open_lists: HashMap::new(),
             contract_rows: Vec::new(),
             making: Vec::new(),
             use_site: None,
@@ -1191,6 +1196,7 @@ impl<'a> Checker<'a> {
         self.assign = assign.cloned().unwrap_or_default();
         self.uses.clear();
         self.generic_members.clear();
+        self.open_lists.clear();
         self.contract_rows.clear();
         self.making.clear();
         self.params = None;
@@ -1739,10 +1745,16 @@ impl<'a> Checker<'a> {
                 continue;
             }
             let name = d.name.segments[0].name.clone();
-            if self.model.member(cur, &name).is_some() {
+            if self.model.member(cur, &name).is_some()
+                || self.open_lists.contains_key(&(cur, name.clone()))
+            {
                 let message = self.redeclared(cur, &name, d);
                 self.error(d.name.span, message);
                 self.skipped.insert(key);
+                continue;
+            }
+            if let Some(span) = d.list {
+                self.declare_list(cur, &name, d, span);
                 continue;
             }
 
@@ -1974,6 +1986,68 @@ impl<'a> Checker<'a> {
         }
         let field = self.model.add_field(owner, name, kind);
         self.model.add_member(owner, name, Member::Field(field));
+    }
+
+    /// `.lines: [Pin]` (issue #1252): a list of pins whose number is the indices the
+    /// statements name. Only an interface declares one, of pins, with no block: the members
+    /// are made as they are named ([`Self::list_member`]).
+    fn declare_list(&mut self, cur: InstId, name: &str, d: &Decl, span: Span) {
+        let fault = if !self.in_kind(DefKind::Interface) {
+            Some(format!(
+                "only an interface declares a list (`.{name}: [Pin]`); a {} declares a group whose number it knows, `.{name}: 4 x {}`",
+                self.model.instance(cur).kind.word(),
+                d.ty.to_source()
+            ))
+        } else if d.ty.of_member || d.ty.segments.len() != 1 || d.ty.segments[0].name != "Pin" {
+            Some(format!(
+                "a list is of pins, `.{name}: [Pin]`, and `{}` is not `Pin`",
+                d.ty.to_source()
+            ))
+        } else if d.body.is_some() || d.optional.is_some() {
+            Some(format!(
+                "a list of pins has no block and no `optional`: write `.{name}: [Pin]`, and state what a member needs where it is named (`.{name}[0] ~ .u.d0`)"
+            ))
+        } else {
+            None
+        };
+        if let Some(message) = fault {
+            self.error(span, message);
+            self.model.add_member(cur, name, Member::Poison);
+            return;
+        }
+        self.open_lists.insert(
+            (cur, name.to_string()),
+            OpenList {
+                source: self.cur_source(),
+                span: d.span,
+                docs: d.docs.clone(),
+            },
+        );
+    }
+
+    /// The member `lines[3]` of the list `lines` of `inst` (issue #1252), made now if no
+    /// statement has named it before; `None` when `name` is no index of a list of `inst`.
+    fn list_member(&mut self, inst: InstId, name: &str) -> Option<Member> {
+        let (base, index) = name.strip_suffix(']')?.rsplit_once('[')?;
+        // As many as a group may have (ADR 0119): an index past it is a mistake.
+        index
+            .parse::<u32>()
+            .ok()
+            .filter(|k| *k < netsmith_lang::MAX_GROUP)?;
+        let list = self.open_lists.get(&(inst, base.to_string()))?.clone();
+        let pin = self.add_pin(inst, name, list.span, list.docs);
+        self.model.instances[pin.0].source = list.source;
+        self.model.add_member(inst, name, Member::Inst(pin));
+        Some(Member::Inst(pin))
+    }
+
+    /// What to say when `name` is a list of `inst` named with no index (issue #1252).
+    fn list_hint(&self, inst: InstId, name: &str) -> Option<String> {
+        self.open_lists.contains_key(&(inst, name.to_string())).then(|| {
+            format!(
+                "`.{name}` is a list of pins, not one pin: name each by its index, `.{name}[0]`, `.{name}[1]`, ..., and the list has as many as the indices named"
+            )
+        })
     }
 
     pub(crate) fn add_pin(
@@ -2360,7 +2434,11 @@ impl<'a> Checker<'a> {
         let cur = self.current();
         let first = &p.segments[0];
         let start = if p.leading_dot {
-            match self.model.member(cur, &first.name) {
+            match self
+                .model
+                .member(cur, &first.name)
+                .or_else(|| self.list_member(cur, &first.name))
+            {
                 Some(m) => {
                     if !self.visible(cur, m, first) {
                         return Res::Bad;
@@ -2373,7 +2451,10 @@ impl<'a> Checker<'a> {
                         .expect("the guard found it"),
                 ),
                 None => {
-                    if let Some(hint) = self.group_hint(cur, &first.name) {
+                    if let Some(hint) = self
+                        .group_hint(cur, &first.name)
+                        .or_else(|| self.list_hint(cur, &first.name))
+                    {
                         self.error(first.span, hint);
                         return Res::Bad;
                     }
@@ -2470,7 +2551,11 @@ impl<'a> Checker<'a> {
                     self.error(seg.span, format!("a value has no member `{}`", seg.name));
                     return Res::Bad;
                 }
-                Member::Inst(i) => match self.model.member(i, &seg.name) {
+                Member::Inst(i) => match self
+                    .model
+                    .member(i, &seg.name)
+                    .or_else(|| self.list_member(i, &seg.name))
+                {
                     Some(m) => {
                         if !self.visible(i, m, seg) {
                             return Res::Bad;
@@ -2500,7 +2585,10 @@ impl<'a> Checker<'a> {
                         if !self.named_ic(i) && self.report_outside_bound(i, seg) {
                             return Res::Bad;
                         }
-                        if let Some(hint) = self.group_hint(i, &seg.name) {
+                        if let Some(hint) = self
+                            .group_hint(i, &seg.name)
+                            .or_else(|| self.list_hint(i, &seg.name))
+                        {
                             self.error(seg.span, hint);
                             return Res::Bad;
                         }
@@ -2748,4 +2836,13 @@ impl Checker<'_> {
         }
         false
     }
+}
+
+/// A list of pins an instance declares (`.lines: [Pin]`, issue #1252): where it is declared,
+/// which each member made from it is given.
+#[derive(Debug, Clone)]
+pub(crate) struct OpenList {
+    source: SourceId,
+    span: Span,
+    docs: Vec<String>,
 }
