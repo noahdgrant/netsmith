@@ -33,6 +33,7 @@ pub mod refresh;
 pub mod regenerate;
 pub mod release;
 pub mod reuse;
+pub mod route_net;
 pub mod routes;
 pub mod routes_tidy;
 pub mod schematic;
