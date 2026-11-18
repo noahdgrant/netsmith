@@ -276,9 +276,9 @@ fn kicads_check_judges_the_items_of_one_footprint_to_the_same_rules_as_netsmiths
         // Two nets that overlap: a short.
         smd("3", -0.1, 3.0, 0.3, 0.6, "C"),
         smd("4", 0.1, 3.0, 0.3, 0.6, "D"),
-        // A hole with no copper 0.05 mm from a pad of its own footprint.
-        hole(0.0, 6.0, 1.0),
-        smd("5", 0.7, 6.0, 0.3, 0.6, "E"),
+        // (A hole with no copper 0.05 mm from a pad of its own footprint is left out: KiCad 9.0.0
+        // reports its `hole_clearance`, 9.0.8 does not, and a check of the two must not depend on
+        // which KiCad is installed.)
         // Two plated holes 0.1 mm apart (`hole_to_hole`, `pad_hole_to_hole`, thin rings).
         thru("6", -0.45, 9.0, 1.0, 0.8, "F"),
         thru("7", 0.45, 9.0, 1.0, 0.8, "F"),
@@ -290,7 +290,7 @@ fn kicads_check_judges_the_items_of_one_footprint_to_the_same_rules_as_netsmiths
     pads.push(smd("9", 12.0, 0.0, 0.3, 0.6, "A"));
     let own_edge = "(fp_rect (start 6 -2) (end 8 2) (stroke (width 0.05) (type solid)) (fill no) (layer \"Edge.Cuts\"))\n\t\t(fp_line (start 6 -2.1) (end 8 -2.1) (stroke (width 0.12) (type solid)) (layer \"F.SilkS\"))";
     b.part_in("U1", (10.0, 10.0), 0.0, &pads, NONE, own_edge);
-    // A mask web of 0.04 mm: the short's pads break it, the hole's 0.05 mm from a pad does not.
+    // A mask web of 0.04 mm: the short's pads break it.
     b.setup("(solder_mask_min_width 0.04)\n");
     let text = rules_file(&b);
     let mine = ours(&mut b, &DrcExtras::default().with_rules_file(&text));
@@ -305,7 +305,6 @@ fn kicads_check_judges_the_items_of_one_footprint_to_the_same_rules_as_netsmiths
         "pad_to_pad",
         "solder_mask_bridge",
         "shorting_items",
-        "hole_clearance",
         "hole_to_hole",
         "pad_hole_to_hole",
         "copper_edge_clearance",
