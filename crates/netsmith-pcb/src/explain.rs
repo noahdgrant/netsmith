@@ -1586,7 +1586,7 @@ impl<'a> Context<'a> {
                 } else if c.part.height.is_none() {
                     Some(crate::protrusion::Refusal::NoHeight)
                 } else {
-                    let stack = protrusion.length + c.part.height.unwrap_or(0.0);
+                    let stack = protrusion.length + c.part.grown_height().unwrap_or(0.0);
                     self.design.features.keepouts.iter().find_map(|k| {
                         let (Some(limit), None, Some(at)) = (k.max_height, &k.part, k.at) else {
                             return None;

@@ -8,8 +8,8 @@
 use netsmith_check::{Domain, GuidelineRule, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
     CaseModel, Cutout, Features, ImpedanceTarget, Keepout, Label, Logo, LogoLayer, NetPair, Offset,
-    OffsetEnd, Outline, PadConnection, PartHeight, PartKind, PartSilk, PartStandoff, PinProtrusion,
-    PlaceBound, PlaceField, Placement, Pour, SilkPrint, StepModel,
+    OffsetEnd, Outline, PadConnection, PartHeight, PartHeightGrowth, PartKind, PartSilk,
+    PartStandoff, PinProtrusion, PlaceBound, PlaceField, Placement, Pour, SilkPrint, StepModel,
 };
 use netsmith_lang::Span;
 use std::collections::{BTreeMap, BTreeSet};
@@ -448,6 +448,34 @@ fn heights(model: &Model, errors: &mut Vec<String>) -> Vec<PartHeight> {
             continue;
         }
         found.push(PartHeight { path, height });
+    }
+    found
+}
+
+/// How much the design says the bodies of its parts may grow in height over their life
+/// (`.height_growth`, issue #1263), by path: a cell or a supercapacitor that swells. A part that
+/// states none does not grow and is not listed. A negative growth is an error (a body that
+/// shrinks is checked at its stated height), and so is a range: the check needs one number.
+fn height_growths(model: &Model, errors: &mut Vec<String>) -> Vec<PartHeightGrowth> {
+    let mut parts: Vec<(String, InstId)> = model
+        .instances()
+        .filter(|(_, i)| i.kind == InstKind::Part)
+        .map(|(id, _)| (model.path_of(id), id))
+        .collect();
+    parts.sort();
+    let mut found = Vec::new();
+    for (path, id) in parts {
+        netsmith_core::job::checkpoint();
+        let Some(growth) = exact(model, id, "height_growth", errors) else {
+            continue;
+        };
+        if growth < 0.0 {
+            errors.push(format!(
+                "`{path}.height_growth` is {growth} mm, and a growth does not lower a body: state the height it has at its lowest in `.height` and what it grows by in `.height_growth`"
+            ));
+            continue;
+        }
+        found.push(PartHeightGrowth { path, growth });
     }
     found
 }
@@ -1315,6 +1343,7 @@ pub(crate) fn features_of(
         labels: labels(model, least_text, errors),
         heights: heights(model, errors),
         standoffs: standoffs(model, errors),
+        height_growths: height_growths(model, errors),
         silks: silks(model, errors),
         ..Features::default()
     };
@@ -1689,6 +1718,14 @@ pub(crate) fn expand_banks(
     for s in old {
         for path in members(&s.path, banks) {
             features.standoffs.push(PartStandoff { path, ..s.clone() });
+        }
+    }
+    let old = std::mem::take(&mut features.height_growths);
+    for g in old {
+        for path in members(&g.path, banks) {
+            features
+                .height_growths
+                .push(PartHeightGrowth { path, ..g.clone() });
         }
     }
     let old = std::mem::take(&mut features.silks);

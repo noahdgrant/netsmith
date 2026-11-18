@@ -59,7 +59,8 @@ impl<'a> Engine<'a> {
                     side: parts[i].side,
                     hole: parts[i].has_hole(),
                     protrusion: parts[i].protrusion.as_ref().map(|t| t.length),
-                    height: parts[i].height,
+                    // Grown by its `.height_growth` (issue #1263): read only against limits.
+                    height: parts[i].grown_height(),
                     hand_fitted: parts[i].hand_fitted,
                     court_faces: parts[i].footprint.courtyard_faces,
                     role: if crate::place::is_connector(&parts[i]) {
@@ -84,7 +85,7 @@ impl<'a> Engine<'a> {
                         .and_then(Option::as_ref)
                         .is_some_and(|w| w.overhangs),
                     may: p.overhangs.get(i).copied().unwrap_or_default(),
-                    no_go: match parts[i].height {
+                    no_go: match parts[i].grown_height() {
                         Some(h) => p
                             .zones
                             .iter()

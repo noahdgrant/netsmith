@@ -120,6 +120,12 @@ pub struct Placed {
     /// ordinary part, when the design states none. The body stands from here up to `height`.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub standoff: f64,
+    /// How much the body may grow in height over its life, in mm, as the design states it
+    /// (`.height_growth`, issue #1263): a cell or a supercapacitor that swells. Zero when the
+    /// design states none. A height limit is checked against `height` plus this
+    /// ([`Placed::grown_height`]).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub height_growth: f64,
     /// How far its pins protrude out of the opposite face
     /// (`.pin_protrusion`, ADR 0045 section 15). `None` is unknown: the pads are an obstacle.
     pub protrusion: Option<crate::protrusion::Protrusion>,
@@ -138,6 +144,13 @@ pub struct Placed {
 }
 
 impl Placed {
+    /// The height a height limit is checked against, in mm: the part's `height` plus its
+    /// `height_growth` (issue #1263). `None` when the height is unknown: a growth alone says
+    /// nothing of how tall the part is.
+    pub fn grown_height(&self) -> Option<f64> {
+        self.height.map(|h| h + self.height_growth)
+    }
+
     /// The _Standard height_ of the part's footprint (ADR 0106,
     /// [`crate::standard_height`]), when the part has no height of its own: `None` when the
     /// design or the catalog row gives one, which always wins, and for a footprint the table has

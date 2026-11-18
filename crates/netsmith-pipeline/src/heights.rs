@@ -26,6 +26,12 @@
 //!   unchecked. The footprint's 3D model is not read, and a KiCad footprint has no height of
 //!   its own. The spelling `.height` is the owner's (2026-11-03); it made the label's own
 //!   `.height` become `.text_height` (a breaking rename of `std::parts::mechanical::Label`).
+//! - *A growth.* `.height_growth` is a built-in `Length` member of every part (issue #1263): how
+//!   much its body may grow in height over its life (a cell, a supercapacitor), one value, zero
+//!   or more. The check adds it to the height from whichever source above, before it compares
+//!   the height with a limit (`Placed::grown_height`), and the `TooTall` finding says so; the
+//!   placer and the rule of protruding pins read the grown height too. A part with a growth and
+//!   no height is still unknown. The 3D scene draws the height as built.
 //! - *A limit.* `Keepout` has `.max_height`, one value above zero. A keepout that states it and
 //!   none of `.tracks`, `.vias`, `.copper` and `.parts` forbids nothing else (owner,
 //!   2026-11-04); one that states neither is still the error "forbids nothing". A height-only

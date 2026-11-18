@@ -1348,6 +1348,14 @@ impl<'a> Checker<'a> {
                 .model
                 .add_field(id, "height", FieldKind::Quantity(Dimension::LENGTH));
             self.model.add_member(id, "height", Member::Field(field));
+            // And one for how much its body may grow in height over its life (issue #1263): a
+            // cell or a supercapacitor that swells. The height check adds it to the height
+            // before it compares the height with a limit. A part that states none does not grow.
+            let field =
+                self.model
+                    .add_field(id, "height_growth", FieldKind::Quantity(Dimension::LENGTH));
+            self.model
+                .add_member(id, "height_growth", Member::Field(field));
             // And one for how high the underside of the body stands above the board (issue
             // #775): a module on pins has a gap under it. A part that does not state it
             // stands on the board.
@@ -2665,7 +2673,7 @@ impl Checker<'_> {
     }
 
     /// Whether a statement of a board may mention these fields. A physical file may set and
-    /// compare only physical things: a part's `.place`, a part's `.height`, `.standoff`, `.pin_protrusion` and `.model`, and
+    /// compare only physical things: a part's `.place`, a part's `.height`, `.height_growth`, `.standoff`, `.pin_protrusion` and `.model`, and
     /// what the file declared itself. A board's circuit source may mention none of a `.place`
     /// (ADR 0048 decision 10). Reports it when not.
     pub(crate) fn physical_gate(&mut self, fields: &[crate::model::FieldId], span: Span) -> bool {
@@ -2676,7 +2684,7 @@ impl Checker<'_> {
                     self.error(
                         span,
                         format!(
-                            "`{path}` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`), how high its body stands off the board (`.standoff`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`), what its silkscreen prints (`.silk`, `.silk_text`) and the outline, cutouts, keepouts, holes, fiducials, labels and case models it declares, never what a part is; put this in the circuit source"
+                            "`{path}` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`) and how much it may grow (`.height_growth`), how high its body stands off the board (`.standoff`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`), what its silkscreen prints (`.silk`, `.silk_text`) and the outline, cutouts, keepouts, holes, fiducials, labels and case models it declares, never what a part is; put this in the circuit source"
                         ),
                     );
                     return false;
@@ -2720,7 +2728,10 @@ impl Checker<'_> {
             return true;
         }
         let f = self.model.field(field);
-        if (f.name == "height" || f.name == "standoff" || f.name == "pin_protrusion")
+        if (f.name == "height"
+            || f.name == "height_growth"
+            || f.name == "standoff"
+            || f.name == "pin_protrusion")
             && self.model.instance(f.owner).kind == InstKind::Part
         {
             return true;

@@ -56,7 +56,7 @@ physical for Cased {
 ```
 
 - **`case { ... }`** is the section for what the case fixes: the outline, the cutouts, the mounting holes (`MountingHole`), the fiducials (`Fiducial`) and the labels (`Label`) of the board, and the case's own STEP file (`CaseModel`, see _A case model_). It holds the same statements as the rest of the unit, and lifts out unchanged into an `enclosure` that several boards share (_A shared enclosure_, below). These six belong in it; a keepout may be anywhere in the unit.
-- **A path crosses a module boundary here for any statement of physical intent.** `.sensor.j.place.left` names the header inside the `Sensor` module. The circuit source reaches into a module only to narrow a value (ADR 0116); the physical file can also state physical intent about the part. A statement may set or compare only a part's `.place`, a part's `.height`, a part's `.standoff`, and what the unit declares itself (the fields of its `.outline`, `.window`, `.rib`). Anything that changes what a part is, or a connection, is refused.
+- **A path crosses a module boundary here for any statement of physical intent.** `.sensor.j.place.left` names the header inside the `Sensor` module. The circuit source reaches into a module only to narrow a value (ADR 0116); the physical file can also state physical intent about the part. A statement may set or compare only a part's `.place`, a part's `.height` and `.height_growth`, a part's `.standoff`, and what the unit declares itself (the fields of its `.outline`, `.window`, `.rib`). Anything that changes what a part is, or a connection, is refused.
 - **A relation between two parts** is the equation of _Where a part goes_: `.b.place.x - .a.place.x == 17.5mm +/- 0.05mm`. The placer holds it and `fab` measures it (_A relation between two parts_).
 - **`.place.side` on a module** is a requirement on every part of it, at any depth. A module with an exception states the faces of its parts one by one and none for itself; two lines that disagree are an error that names both. `.place.side` with no path, on the board itself, is the same requirement on every part of the board (_A board on one face_).
 - **`.silk` and `.silk_text`** say what the silkscreen prints for a part: nothing, or a text in place of its designator (_Silkscreen text_). `.silk` on a module or on the board reaches every part inside it.
@@ -118,7 +118,7 @@ physical for Wrong {
 ```
 
 ```text
-error: `b.j.assembly` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`), how high its body stands off the board (`.standoff`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`), what its silkscreen prints (`.silk`, `.silk_text`) and the outline, cutouts, keepouts, holes, fiducials, labels and case models it declares, never what a part is; put this in the circuit source
+error: `b.j.assembly` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`) and how much it may grow (`.height_growth`), how high its body stands off the board (`.standoff`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`), what its silkscreen prints (`.silk`, `.silk_text`) and the outline, cutouts, keepouts, holes, fiducials, labels and case models it declares, never what a part is; put this in the circuit source
   --> main.physical.nsm:2:5
   |
 2 |     .b.j.assembly &= AssemblyMode::Hand
@@ -1208,6 +1208,68 @@ warning: height_unknown: the height check cannot say whether 2 parts of unknown 
 
 It is a warning always: `fab` still passes, with strict constraints too (the per-part `height_unchecked` of a part under a limit is the error that strict constraints make). `fab-notes.txt` has the line, `dev board3d --format json` has it as `height_unknown` (with the parts and what each stands under), and the `.glb` as a finding of that code. State each part's `.height` to leave the warning. The second part of the example is a module that stands on pin strips with a gap under its body and states no `.standoff` (the next section): its body is taken to stand on the board, so no limit is over `u2`; stating the `.standoff` of the module makes it the limit `standoff of J1`, and a part that is taller is `too tall`. Where such a module overlaps a part whose height is known, the overlap that `dev board3d` reports names the statement that is missing, `.module.standoff` and `.module.pin_protrusion` (the body of the part with plated holes that is the larger of the two, standing on the board).
 
+### Height growth
+
+A cell or a supercapacitor swells over its life, so the height that fits a lid on the day it is built may not fit it a few years on. A part has the built-in member `.height_growth` (a length, one value, zero or more): the most its body's top may rise above its height over its life, from the datasheet's end-of-life swelling or the maker's figure (issue #1263). The part, a user part or the board states it, in the circuit source or in the physical file, as `.height` is stated. The height check adds it to the part's height, the stated `.height` or the catalog row's `height` (a stated one wins, as above), or the package standard's, before it compares the height with a limit, and the finding says that the part is too tall when grown, with both numbers. The placer keeps a part out from under a limit its grown height is over, and a part that stands over protruding pins is judged at its grown height too. A part that states a growth and no height is still of unknown height: the growth says nothing of how tall it is. The 3D view, the STEP export and the overlap of two bodies draw and compare the height as built, without the growth.
+
+```nsm solve place refused
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::Capacitor
+import std::sources::Rail
+
+board Backup {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .rail: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC" }
+    // Stands for a supercapacitor: 2.5 mm tall, and its datasheet allows 0.8 mm of swelling.
+    .store: Capacitor { .capacitance &= 10uF +/- 20% }
+    .rail.pos ~> .store ~> .rail.neg
+    .store.height &= 2.5mm
+    .store.height_growth &= 0.8mm
+}
+```
+
+```nsm-physical
+import std::pcb::{Keepout, Outline}
+
+physical for Backup {
+    case {
+        .outline: Outline { .width &= 20mm; .height &= 15mm }
+    }
+    // The lid leaves 3 mm over the whole top face, and the part is on the top face.
+    .lid: Keepout {
+        .x &= 0mm
+        .y &= 0mm
+        .width &= 20mm
+        .height &= 15mm
+        .layers &= "top"
+        .max_height &= 3mm
+    }
+    .store.place.side &= "top"
+}
+```
+
+```text
+error: Backup: `store` (C1) stands 3.30 mm tall on the top face when grown (its 2.50 mm height with its 0.80 mm `.height_growth` added), and the keepout `lid` allows 3.00 mm there (0.30 mm too tall), where its body is, around (2.0, 1.1) mm from the board's top left corner
+```
+
+Misuse: a growth is one value, zero or more: a body that shrinks is stated at its lowest `.height`.
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::Resistor
+
+board Shrinks {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .r: Resistor { .resistance &= 15kohm +/- 1% }
+    .r.height &= 2mm
+    .r.height_growth &= -0.5mm
+}
+```
+
+```text
+error: Shrinks: `r.height_growth` is -0.5 mm, and a growth does not lower a body: state the height it has at its lowest in `.height` and what it grows by in `.height_growth`
+```
+
 ### A body that stands off the board
 
 A plug-in module stands on pins, and its body has a gap under it. A part has the built-in member `.standoff` (a length, one value, zero or more): how far the underside of its body is above the face of the board it is on, so that the body stands from the standoff up to its `.height`. The board's physical file states it as it states `.height`, and a path may reach a part inside a module. A part that states none stands on the board, a standoff of zero, as every part did before. A standoff at or above the part's own `.height` is an error: `.height` is the top of the body, measured from the face, and the body would have no thickness.
@@ -2120,7 +2182,7 @@ physical for Docked {
 }
 ```
 
-- **A module's file states only how its parts stand to one another**, which is the same wherever the board puts the module: a relation whose places cancel along each axis (`.b.place.x - .a.place.x`, the centre between two parts minus a third, a `row`), and a part's `.height`, `.standoff`, `.pin_protrusion`, `.model` and `.silk`. A position, a turn or a face stated with `&=` (`.row_a.place.x &= 3mm`), or a sum of two places, is in the board's frame and is refused: the board's file places the module. A module's file declares nothing (no `case { }`, no keepout). It reaches the parts of modules inside the module by path, as a board's does.
+- **A module's file states only how its parts stand to one another**, which is the same wherever the board puts the module: a relation whose places cancel along each axis (`.b.place.x - .a.place.x`, the centre between two parts minus a third, a `row`), and a part's `.height`, `.height_growth`, `.standoff`, `.pin_protrusion`, `.model` and `.silk`. A position, a turn or a face stated with `&=` (`.row_a.place.x &= 3mm`), or a sum of two places, is in the board's frame and is refused: the board's file places the module. A module's file declares nothing (no `case { }`, no keepout). It reaches the parts of modules inside the module by path, as a board's does.
 - **A board's file may only narrow what a module's states.** An offset between two parts that the module's file states may be stated again by the board with a window inside the module's (here 17.5 mm +/- 0.02 mm inside +/- 0.05 mm); a wider window, or one that does not meet it, is an error that names both lines. A `&=` narrows as every `&=` does. A board that needs a different spacing changes the module.
 - **An anchor** (`anchor .dock = .row_a`, in the module's file only) is a second name for a part or a module inside it, which every physical file that reaches into the module may use, the module's own too. A board's file reaches a part inside a module by its path, so a rename inside the module breaks every such path; through an anchor, the rename changes the one `anchor` line. An anchor may not take the name of a member. The circuit source does not see anchors.
 

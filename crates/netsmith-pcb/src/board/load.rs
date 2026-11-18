@@ -111,6 +111,7 @@ impl Board {
                     silk: Silk::default(),
                     height: None,
                     standoff: 0.0,
+                    height_growth: 0.0,
                     protrusion: None,
                     hand_fitted: true,
                     symbol,
@@ -178,6 +179,12 @@ impl Board {
                     .iter()
                     .find(|s| s.path == part.path)
                     .map_or(0.0, |s| s.standoff),
+                height_growth: design
+                    .features
+                    .height_growths
+                    .iter()
+                    .find(|g| g.path == part.path)
+                    .map_or(0.0, |g| g.growth),
                 protrusion: design
                     .features
                     .protrusions

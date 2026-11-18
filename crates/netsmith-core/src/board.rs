@@ -161,6 +161,18 @@ pub struct PartStandoff {
     pub standoff: f64,
 }
 
+/// How much a part's body may grow in height over its life, as the design states it
+/// (`.height_growth`, issue #1263): a cell or a supercapacitor that swells. The height check adds
+/// it to the part's height before it compares the height with a limit, and the finding says so.
+/// A part the design states no growth for is not here: it does not grow.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PartHeightGrowth {
+    /// The part's path in the design.
+    pub path: String,
+    /// In mm, the most the body's top rises above its stated height.
+    pub growth: f64,
+}
+
 /// How far the pins of a through-hole part protrude out of the board on the face opposite the
 /// part, whether they were cut after soldering or bought short, as the board's physical file
 /// states it (`.pin_protrusion`, ADR 0045 section 15). A part the design states no

@@ -586,10 +586,26 @@ fn every_placement_check_message_names_the_member_by_path_with_the_designator() 
             keepout: "lid".into(),
             height: 3.0,
             limit: 2.0,
+            growth: 0.0,
             side: Side::Front,
             at: (1.0, 2.0)
         }),
         "`stage.r3` (R3) stands 3.00 mm tall on the top face, and the keepout `lid` allows 2.00 mm there (1.00 mm too tall), where its body is, around (1.0, 2.0) mm from the board's top left corner"
+    );
+    // A part that states a `.height_growth` is checked grown, and the finding says so (issue
+    // #1263).
+    assert_eq!(
+        text(PlacementProblem::TooTall {
+            refdes: r(),
+            path: path(),
+            keepout: "lid".into(),
+            height: 2.5,
+            limit: 2.0,
+            growth: 0.75,
+            side: Side::Front,
+            at: (1.0, 2.0)
+        }),
+        "`stage.r3` (R3) stands 2.50 mm tall on the top face when grown (its 1.75 mm height with its 0.75 mm `.height_growth` added), and the keepout `lid` allows 2.00 mm there (0.50 mm too tall), where its body is, around (1.0, 2.0) mm from the board's top left corner"
     );
     assert!(
         text(PlacementProblem::OutsideOutline {
@@ -626,9 +642,42 @@ fn every_placement_check_message_names_the_member_by_path_with_the_designator() 
             limit: 2.0,
             side: Side::Front,
             standard: None,
+            growth: 0.0,
         }
         .to_string(),
         "height of `stage.r3` (R3) is unchecked: the keepout `lid` limits parts on the top face to 2.00 mm and the part states no height (say `.stage.r3.height &= 8mm`, with the real number)"
+    );
+    // A growth is added to a package standard's height, and the message says so (issue #1263).
+    let standard = crate::standard_height::StandardHeight {
+        standard: "JEDEC MS-012",
+        max: 1.75,
+        drawing: "TI D0008A",
+    };
+    assert_eq!(
+        HeightUnchecked {
+            refdes: r(),
+            path: path(),
+            keepout: "lid".into(),
+            limit: 2.0,
+            side: Side::Front,
+            standard: Some(standard),
+            growth: 0.5,
+        }
+        .to_string(),
+        "height of `stage.r3` (R3) is unchecked: the keepout `lid` limits parts on the top face to 2.00 mm, the part states no height, and its package standard (JEDEC MS-012) allows up to 1.75 mm with its 0.50 mm `.height_growth` added, so a part in that package may or may not fit (say `.stage.r3.height &= 1mm`, with the real number from its datasheet)"
+    );
+    assert_eq!(
+        StandardPass {
+            refdes: r(),
+            path: path(),
+            keepout: "lid".into(),
+            limit: 3.0,
+            side: Side::Front,
+            standard,
+            growth: 0.5,
+        }
+        .to_string(),
+        "`stage.r3` (R3) fits the 3.00 mm the keepout `lid` allows on the top face by its package standard (JEDEC MS-012, drawing TI D0008A, at most 1.75 mm with its 0.50 mm `.height_growth` added), not by a height of its own: the design states none and its catalog row has none"
     );
     assert!(
         Hang {
