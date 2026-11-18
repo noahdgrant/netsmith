@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/noahdgrant/netsmith/compare/v0.3.0...v0.3.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* **release:** the lock is set by a job and the release is built on the release pull request ([#1183](https://github.com/noahdgrant/netsmith/issues/1183)) ([14e723e](https://github.com/noahdgrant/netsmith/commit/14e723e8d69bb0072dd4053e4dcd6678f34f3b50))
+
 ## [0.3.0](https://github.com/noahdgrant/netsmith/compare/v0.2.0...v0.3.0) (2026-11-18)
 
 
