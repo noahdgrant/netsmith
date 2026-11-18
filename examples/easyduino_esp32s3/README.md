@@ -340,7 +340,9 @@ or a catalog row records with its page; nothing is a number the port made up.
   Schottky diode (D2 or D3). With the USB window 4.75 V to 5.25 V (the figure the RP2350 board
   uses; the reference says "5V (USB UART OR USB ESP32)") and the diode's 0.6 V (ROHM's maximum
   VF at 1 A, the row's figure), the input is at least 4.15 V, and the regulator needs its
-  output's top, 3.399 V, plus the dropout, 1.3 V at most, which is 4.699 V. **By the catalog's
+  output's minimum, 3.201 V, plus the dropout, 1.3 V at most, which is 4.501 V (issue #1259:
+  below its set point plus the dropout the output follows the input, and it stays inside its
+  rail's range while the input is at least the rail's minimum plus the dropout). **By the catalog's
   figures the dropout does not hold in the worst case**, and nothing says it does: the 1.3 V is
   the datasheet's maximum at 0.8 A (page 3, note 4) and the board draws at most 0.5 A, the
   diode's 0.6 V is its figure at 1 A (it is less at 0.5 A), and the datasheet gives no

@@ -123,9 +123,9 @@ board Overload {
 
 ```text
 error: no `ldo` candidate satisfies `stage.regulator`: the closest of the 1 that fit, XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446, fails because -stage.regulator.vout.current must always be at most stage.regulator.max_current, but 0A..50A is not always below 100mA (the currents on net `3V3` in `stage`: stage.regulator.vout.current (-50A..0A) + -stage.vout.current (-50A..0A) add up to zero; net `3V3`: output.current (0A..50A) + stage.vout.current (-50A..0A) add up to zero)
-   --> std/parts/regulator.nsm:41:5
+   --> std/parts/regulator.nsm:55:5
    |
-41 |     -.vout.current <= .max_current
+55 |     -.vout.current <= .max_current
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -303,9 +303,9 @@ board Heaters {
 
 ```text
 error: no `ldo` candidate satisfies `regulator`: the closest of the 1 that fit, XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446, fails because -regulator.vout.current must always be at most regulator.max_current, but 0A..120mA is not always below 100mA (the currents on net `3V3`: heater_a.current (0A..60mA) + heater_b.current (0A..60mA) + heater_c.current (0A..60mA) + regulator.vout.current (-120mA..0A) add up to zero, with at most 2 of `HEATERS` on at once)
-   --> std/parts/regulator.nsm:41:5
+   --> std/parts/regulator.nsm:55:5
    |
-41 |     -.vout.current <= .max_current
+55 |     -.vout.current <= .max_current
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 

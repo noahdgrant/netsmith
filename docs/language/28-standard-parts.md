@@ -374,9 +374,9 @@ board TooTight {
 
 ```text
 error: no combination of candidates satisfies `divider.rbottom` and `divider.rtop` together: the closest, divider.rbottom = 20kΩ 1% 0402 C25765 and divider.rtop = 56kΩ 1% 0603 C23206, fails because `divider.vout` must stay within 3.762V..3.838V, but (divider.vref * (1 + (divider.rtop.resistance / divider.rbottom.resistance))) works out to 3.707V..3.896V
-    --> std/parts/regulator.nsm:124:5
+    --> std/parts/regulator.nsm:138:5
     |
-124 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
+138 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -500,9 +500,9 @@ board TooMuchMargin {
 
 ```text
 error: no `capacitor` candidate satisfies `reg.input_cap`: the closest of the 36 that fit, 1 x 2.2uF 10% 100V X7R 1210 C55151, fails because reg.input_cap.max_voltage must always be at least (reg.vin.voltage * reg.voltage_margin), but 100V is not always above 95V..105V (`reg.input_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 25)
-    --> std/parts/regulator.nsm:589:5
+    --> std/parts/regulator.nsm:621:5
     |
-589 |     .input_cap.max_voltage >= .vin.voltage * .voltage_margin
+621 |     .input_cap.max_voltage >= .vin.voltage * .voltage_margin
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -539,14 +539,14 @@ board Overload {
 
 ```text
 error: -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 15.11uA..3.001A is not always below 2A, and whichever parts are picked, its range reaches 3A or higher (the currents on net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3.001A..-15.11uA) + reg.inductor.current (15.11uA..3.001A) add up to zero; net `1V8` in `reg`: reg.divider.supply.current (14.62uA..16.37uA) + -reg.inductor.current (15.11uA..3.001A) + -reg.vout.current (-3A..0A) add up to zero; net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..0A) add up to zero; net `1V8` in `reg.divider`: -reg.divider.supply.current (14.62uA..16.37uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled)
-    --> std/parts/regulator.nsm:215:5
+    --> std/parts/regulator.nsm:230:5
     |
-215 |     -.sw.current <= .max_output_current
+230 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -reg.vout.current must always be at most reg.ic.max_output_current, but 0A..3A is not always below 2A, and whichever parts are picked, its range reaches 3A or higher (the currents on net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..0A) add up to zero; net `1V8` in `reg`: reg.divider.supply.current (14.62uA..16.37uA) + -reg.inductor.current (15.11uA..3.001A) + -reg.vout.current (-3A..0A) add up to zero; net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3.001A..-15.11uA) + reg.inductor.current (15.11uA..3.001A) add up to zero; net `1V8` in `reg.divider`: -reg.divider.supply.current (14.62uA..16.37uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled)
-    --> std/parts/regulator.nsm:586:5
+    --> std/parts/regulator.nsm:618:5
     |
-586 |     -.vout.current <= .ic.max_output_current
+618 |     -.vout.current <= .ic.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -603,13 +603,13 @@ board HighInput {
 
 ```text
 error: reg.on_time must always be at least reg.ic.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:604:5
+    --> std/parts/regulator.nsm:636:5
     |
-604 |     .on_time >= .ic.min_on_time
+636 |     .on_time >= .ic.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-The input of a 12 V board that stays under 16 V holds it (4.7 V over 16 V at 1.1 MHz is 267 ns); a datasheet that gives no figure leaves the check out. A linear regulator's dropout is checked the same way by `LinearRegulator` and by a part that states `.vin.voltage >= .vout.voltage + .dropout` (the section on `LinearRegulator`).
+The input of a 12 V board that stays under 16 V holds it (4.7 V over 16 V at 1.1 MHz is 267 ns); a datasheet that gives no figure leaves the check out. A converter's dropout, the input it needs when its high-side switch is held on, is the section _Dropout_ below.
 
 The ripple of the output voltage is a closed-form check, not a simulation (`docs/research/closed-form-checks.md`, check 3; the converter has no time in it, only the charge balance of a capacitor over one period). `Buck` has `.output_ripple`, the sum of the capacitor's term and the ESR's, `dI / (8 * fsw * C) + dI * ESR / n`, with `dI` the inductor's ripple current above, `C` the output bank's effective capacitance (`.output_cap.total_effective_capacitance`), `n` its count (`.output_cap.count`) and `ESR` the converter's `.output_esr`. A board bounds it (`.output_ripple <= 20mV`) and the bound holds in the worst case of every range: the highest input, the lowest inductance, frequency and capacitance (each with its tolerance, the capacitance at its DC bias) and the highest ESR. Each term moves one way with each of them, so the range is exact. The ESR comes from the output capacitor's row or from the board. `Capacitor` and `CapacitorBank` have an optional `esr` member that an optional `esr` column of the capacitor catalog provides (ADR 0078), and a row states it only where its maker's document prints or draws one, with the page, the table or figure and the point it was read at (frequency and bias) as the recorded source (`data/jlcpcb/README.md`): the cell is one value in ohms, at most the figure the document gives at the frequency the row's `notes` name. `Buck` reads it as `.output_esr ?= .output_cap.esr`, so the picked row's figure is the converter's ESR when the board states none, and a board that states `.output_esr` (the datasheet's maximum for the capacitor it means to fit, at the switching frequency, the bias and the temperature of the board; a range gives the worst end) wins over what the row records, as over any `?=`. A row that records no ESR leaves `.output_ripple` open, as no row at all did (below). The solver picks the capacitor without checking a stated figure against the row's own.
 
@@ -654,9 +654,9 @@ board TooQuiet {
 
 ```text
 error: no `capacitor` candidate satisfies `reg.output_cap`: the closest of the 36 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because reg.output_cap.total_effective_capacitance must always be at least reg.ic.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`reg.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 25)
-    --> std/parts/regulator.nsm:611:5
+    --> std/parts/regulator.nsm:650:5
     |
-611 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
+650 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -934,9 +934,9 @@ board Converter {
 
 ```text
 error: the `lt8641` catalog is empty (no file of it has a row), so nothing can be picked for `reg.ic`: add rows to `catalogs/lt8641.csv` in the project (docs/language/12, "Catalog files")
-    --> std/parts/regulator.nsm:490:5
+    --> std/parts/regulator.nsm:516:5
     |
-490 |     .ic: Ic
+516 |     .ic: Ic
     |     ^^^^^^^
 ```
 
@@ -1021,6 +1021,49 @@ The datasheet's other parts (the feedback phase-lead capacitor, an enable divide
 **Standard libraries of footprints** (ADR 0087). A package that KiCad's libraries lack and the generators of ADR 0043 do not make is drawn in `std/libs/`: footprints as `.kicad_mod` files in `std/libs/netsmith.pretty/` and symbols in `std/libs/netsmith.kicad_sym`, in KiCad's own formats, compiled into the binary. They are the library `netsmith`, named in a row of `std/kicad.toml` like any other (`footprint = "netsmith:UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA"`), found before any KiCad install is read, and the same on every machine. A project cannot list a library called `netsmith` (`kicad.toml: library `netsmith` is the name of the standard library's own footprints and symbols ...`). When a board uses one of them, `build`, `fab` and the editor write the library into the board's output folder (`netsmith.pretty/`, `netsmith.kicad_sym`) and list it in the `fp-lib-table` and `sym-lib-table` beside the `.kicad_pro`, as they list a project's own libraries, so KiCad opens the board with the footprint in its library table. Every footprint of the folder is named by a row of `std/kicad.toml`, and a test checks each against the pin table of its part (every pad of the table is a pad of the footprint and a pin of the symbol, and the other way round). A symbol of that library is one netsmith drew: a row of `std/kicad.toml` (or of a project's `kicad.toml`) that has no `symbol` names none, and a part with a pin table is then drawn as a plain box, one box for the part with its pins on the sides (inputs left, outputs right, ground below, and the supply above, except a supply that takes power in a part that also gives power, which is on the left), each pin with its datasheet name, its pad number and the electrical type of its kind. A pin table says `power` and not whether the pin takes power from its net or gives it, because that is the sign of the current of the rail on the pin, which the board's loads decide: the design stage reads it from the solved model (a pin that is the `pos` of a rail whose current is negative, from below 0 A to at most 0 A, gives power; one whose current is drawn, from at least 0 A to above 0 A, takes it; and a pin that the part joins to such a pin has its direction). A pin that gives power, such as the switch node of a converter, is a power output on the right of the box, and the others, including a power pin whose direction is not known (a rail whose current has no value or may take either sign), are power inputs, so that a net with no output gets a power flag: a power input of a part that also has a pin that gives power (the input of a regulator or a converter) is on the left of the box, where the schematic layout reads a converter's input, and any other is above it. The symbol is named for the part and its package (`netsmith:Lt8641_UDC20_18`), with `_out` and the first pad of each pin that gives power when there is one (`netsmith:Lt8641_UDC20_18_out8`), so that two parts of one kind that differ in direction are two symbols, and written into the board's `netsmith.kicad_sym` with the rest of the library. A row that does name a `symbol` is drawn with it, except where netsmith draws that id itself: the ids of the standard rows of the resistor, capacitor, inductor, ferrite bead, fuse, crystal, LED, the four diodes, the switch and the two FETs (`Device:R`, `Device:C`, `Device:L`, `Device:FerriteBead`, `Device:Fuse`, `Device:Crystal`, `Device:LED`, `Device:D`, `Device:D_Schottky`, `Device:D_Zener`, `Device:D_TVS`, `Switch:SW_SPST`, `Transistor_FET:Q_NMOS_GSD` and `Transistor_FET:Q_PMOS_GSD`) are answered from the binary with a symbol of netsmith's own (`netsmith:R`, `netsmith:D_Schottky`, ...) before any KiCad library is read, on every machine, so a board of those parts needs no KiCad symbol library. The glyph is the conventional drawing of the part (a rectangle for a resistor, two plates for a capacitor, a triangle and a bar for a diode), and the pins, their numbers, names and types, the places of the reference and the value, and the extent of the body are those of KiCad's symbol of the id, so the layout of the schematic is the same. The same holds for the generic connectors (`Connector_Generic:Conn_01x02` to `Conn_02x10_Odd_Even`, the `Connector:Conn_01x02_Socket` family), the two USB-C receptacles (`Connector:USB_C_Receptacle_PowerOnly_6P` and `USB_C_Receptacle_USB2.0_16P`), `Connector:Conn_Coaxial`, `Connector:TestPoint`, `Mechanical:MountingHole`, `MountingHole_Pad` and `Fiducial`, and for `power:PWR_FLAG`, the one-pin power symbol that the exporter places on a net that takes power and has nothing on the board to drive it: it is answered with `netsmith:PWR_FLAG`, a power symbol with the same `power_out` pin and the value `PWR_FLAG`, which KiCad's electrical rules check takes as it takes its own, and it is written into the board's `netsmith.kicad_sym` when the board has such a net. The pins of these symbols (the headers' odd pins left and even pins right, the USB-C receptacle's power on the right and its ground below), the places of the fields and the extent of the body are those of KiCad's symbol, for the layout; the drawing is netsmith's. The linear regulator is drawn from its pin table like an IC, so no row of the standard mapping reads a symbol from KiCad's libraries any more (ADR 0097, steps 1 and 2); every footprint of the standard rows is generated or one of these files (step 3), so no standard row needs KiCad's footprint library. A project that lists a library named `Device`, `Switch` or `Transistor_FET` in its `kicad.toml` is read from that library, as before.
 
 A footprint is added only from a package drawing that was read: each pad's size and place is a dimension of the manufacturer's land pattern, `std/libs/README.md` says which were read from the drawing and which were assumed, and a package with a dimension that cannot be read is not added.
+
+### Dropout
+
+A regulator whose input falls toward its output stops regulating: its output follows the input, less a drop that grows with the load (issue #1259). A linear regulator's output is then the input less its `.dropout`, and a buck converter's, with its high-side switch held on for the whole period, the input less the load's drop across that switch and the inductor's winding. The output is the lower of the set point and that, so it still reaches the least voltage of its rail while the input is at least that voltage plus the drop: that is the least input the regulator needs, and it is what the two check.
+
+- **`LinearRegulator`**: `.vin.voltage >= min(.vout.voltage) + .dropout`. `.dropout` is the catalog row's figure (the datasheet's maximum at the rated current), or the row's **curve file** (_Curve files_ in the chapter on catalogs) read at the regulator's `.output_current`, the current its output supplies (`-.vout.current`), and the board's temperature: `curves/ldo/<row>.csv` with the axes `temperature` and `output_current` and the column `dropout`. A curve gives a light load the small dropout the datasheet draws for it, where the single figure holds the part to its full-load number.
+- **`Buck`**: `.vin.voltage >= min(.vout.voltage) + .inductor.current * (.ic.high_side_resistance + .inductor.dc_resistance)`, and `.dropout` is the drop on its own. `.high_side_resistance` is an `optional` member of `BuckIc` (ADR 0074): the high-side switch's largest on-resistance over temperature, stated only by an IC whose datasheet says it runs at 100 % duty cycle in dropout. An IC that states none has no such check and `.dropout` has no value (an IC that stops short of 100 % has `.min_off_time`, above, instead). `BuckConverter`'s `.vin.voltage >= .vout.voltage` still holds for every buck.
+
+The minimum is the output rail's, not the set point's top: a regulator of 3.3 V +/- 2 % (3.234 V to 3.366 V) with 0.15 V of dropout at its load needs 3.384 V, and at 3.5 V its output is 3.35 V, inside its rail, whether or not it is in dropout. The loads behind the regulator are judged against that rail as before, and a regulator behind another (an LDO after a buck) has its least input checked against the first one's output rail, so each one in a chain keeps the next one's minimum. The output in dropout is not modelled below the rail's range: a board whose loads accept less than the regulator's own range still holds the regulator to its range.
+
+The row and its curve below are invented, a 3.3 V +/- 2 % regulator with 0.6 V at 500 mA as its figure; no standard row has a recorded dropout curve or switch resistance yet (`data/jlcpcb/README.md`).
+
+```csv file=catalogs/ldo.csv set=dropout
+mpn,vout.voltage,dropout,max_current,max_power,package,source
+ZZL-33,3.3V +/- 2%,0.6V,0.5A,2W,SOT-23,https://example.invalid/zzl
+```
+
+```csv file=catalogs/curves/ldo/ZZL-33.csv set=dropout
+temperature,output_current,dropout
+25degC,0A,0.05V
+25degC,100mA,0.15V
+25degC,500mA,0.5V
+125degC,0A,0.08V
+125degC,100mA,0.22V
+125degC,500mA,0.6V
+```
+
+At up to 100 mA on a board at 25 C the dropout is 0.05 V to 0.15 V, and the least input is 3.234 V + 0.15 V = 3.384 V, which a 3.5 V supply holds; the row's 0.6 V alone would ask for 3.834 V. The same board at up to 125 C needs 3.454 V (0.22 V at 100 mA), and a supply of 3.4 V is refused with `u.vin.voltage must be at least (min(u.vout.voltage) + u.dropout), but 3.4V..5V is below 3.284V..3.454V`.
+
+```nsm evaluate catalogs=dropout
+import std::env::Environment
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+
+board LowInput {
+    .supply: Rail { .voltage &= 3.5V..5V; .pos.net &= "VIN" }
+    .u: LinearRegulator { .vout.voltage &= 3.3V +/- 2% }
+    .supply ~ .u.vin
+    .load: Rail { .current &= 0mA..100mA; .pos.net &= "V33" }
+    .u.vout ~ .load
+    .environment: Environment { .temperature &= 25degC }
+}
+```
 
 ### Current through a part
 
@@ -1665,7 +1708,7 @@ What it models in this stage:
 - **Supplies.** A `Rail` that the board itself declares, with a `.voltage` that the board states, is an ideal source over that range between its `pos` and its `neg`, and so is the rail that a part says it gives with `dc source` (a connector's supply: `Obd2M` and `UsbCPower` do) when the design states its `.voltage`. Any other rail of a part or of a module is no source: a part's rail is what the part draws, and a module's is a port whose range may be a seed or a promise. A range that is not a source cannot be treated as one: the voltage of a node would then move apart from the current that makes it.
 - **Loads.** A rail of a part, or a rail of the board that is not a supply, with a `.current` that is never negative is a current source over that range from its `pos` to its `neg`. A part with a `bridge` and no `dc` statement (an LED, an inductor) that has a `.current` with a value, stated or worked out, is a current source over it between the pins of its `bridge`: this is how a board states what is behind a pin that nothing models (a boundary takes a stated `.current`). A pin that the checker says draws nothing (ADR 0027: a capacitor, an input) adds nothing, and a capacitor is open at DC.
 
-- **Regulators.** A part with `dc linear_regulator` or `dc switching_regulator` holds the net of its output rail over the range of the rail's `.voltage` (an ideal source, so what is behind it is an island of its own) and draws from its input what its output asks. A board rail on the output net is then what the regulator supplies: a load, whatever voltage the board states for it. A linear regulator draws what it supplies and its quiescent current, when its statement names one (the range of the current, both ends added to the load's: the load and the quiescent current are drawn at once). A switching one draws `Pout / (efficiency * Vin)`, and `Vin` is what the parts in front of it leave after the current they carry, so the current is the solution of a fixed point, which the pass finds from zero: the iterates rise to the least solution, and when there is none the input falls to nothing. The power tree is solved in order, the output side first: what the loads behind a regulator take (as a range, summed over everything on its output net) is the regulator's load when the island in front of it is solved. A regulator whose output has a pin that nothing models falls back on its own `.vout.current` when something states it (or the balances worked it out), and is otherwise left alone, with the island in front of it. The pass writes the regulator's `.vin.current` and `.vin.voltage` by the rules below, so the part's own relations (`.vin.voltage >= .vout.voltage + .dropout`, `.vin.voltage >= .buck.min_input_voltage`, a stage's `.vin.voltage <= ...`) are judged with the voltage the circuit gives it, and the parts in front (a fuse, a diode, a shunt, a bead) take their currents from it.
+- **Regulators.** A part with `dc linear_regulator` or `dc switching_regulator` holds the net of its output rail over the range of the rail's `.voltage` (an ideal source, so what is behind it is an island of its own) and draws from its input what its output asks. A board rail on the output net is then what the regulator supplies: a load, whatever voltage the board states for it. A linear regulator draws what it supplies and its quiescent current, when its statement names one (the range of the current, both ends added to the load's: the load and the quiescent current are drawn at once). A switching one draws `Pout / (efficiency * Vin)`, and `Vin` is what the parts in front of it leave after the current they carry, so the current is the solution of a fixed point, which the pass finds from zero: the iterates rise to the least solution, and when there is none the input falls to nothing. The power tree is solved in order, the output side first: what the loads behind a regulator take (as a range, summed over everything on its output net) is the regulator's load when the island in front of it is solved. A regulator whose output has a pin that nothing models falls back on its own `.vout.current` when something states it (or the balances worked it out), and is otherwise left alone, with the island in front of it. The pass writes the regulator's `.vin.current` and `.vin.voltage` by the rules below, so the part's own relations (`.vin.voltage >= min(.vout.voltage) + .dropout`, `.vin.voltage >= .buck.min_input_voltage`, a stage's `.vin.voltage <= ...`) are judged with the voltage the circuit gives it, and the parts in front (a fuse, a diode, a shunt, a bead) take their currents from it.
 
 - **Logic pins that drive** (ADR 0076, amendment 4). A pin of kind `output`, `tri_state` or `bidirectional` that states its `voh` and its `vol` with the current each is measured at, as the datasheet does (`.voh &= .vdd.voltage - 0.4V at 2mA`, `.vol &= 0.4V at 2mA`), is high, low or (a tri-state or bidirectional pin) high impedance. High joins the line to the pin's supply through an output resistance, low joins it to the pin's ground, and high impedance joins it to nothing. The resistance is the drop over the test current, `0.4 V / 2 mA` = 200 ohm, taken from zero up to that (a lighter load drops less; under 1 mohm the pin is a branch with its own resistance, as a resistor is), so the pin can be exactly at its supply. The pass tries every state of every pin with the states of everything else, and writes what the pin's load carries: a pull-down on the line gets its `.current` and `.drop`, and its relations are judged. The pin needs a reference rail whose two nets a supply or a regulator's output holds, no `.swing` (a line that goes to a supply with no pin has a high the reference rail does not give), and no other pin that could drive its net: two such pins are not modelled, since their states include driving it apart (an input that only leaks, below, is no driver, and may share the net). A pin that states a level without its test current, or a `voh` and no `vol`, is a boundary, unless the part states the output resistances itself (below).
 

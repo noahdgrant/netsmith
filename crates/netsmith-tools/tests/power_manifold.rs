@@ -574,7 +574,8 @@ mod board {
                 .iter()
                 .filter(|n| n.contains("not evaluated: "))
                 .count(),
-            70,
+            // 71 since the LDO's `.output_current` (issue #1259), which waits on its load.
+            71,
             "{:#?}",
             built.notes
         );

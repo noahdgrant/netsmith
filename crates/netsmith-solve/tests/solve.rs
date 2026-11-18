@@ -533,7 +533,12 @@ fn a_regulator_without_headroom_fails_with_the_numbers() {
         "{}",
         msgs[0]
     );
-    assert!(msgs[0].contains("must always be at least"), "{}", msgs[0]);
+    // The least input is the output's minimum plus the dropout (issue #1259).
+    assert!(
+        msgs[0].contains("must be at least (min(stage.regulator.vout.voltage) + stage.regulator.dropout)"),
+        "{}",
+        msgs[0]
+    );
     assert!(msgs[0].contains("3.325V..3.675V"), "{}", msgs[0]);
 }
 
@@ -872,13 +877,13 @@ fn the_regulator_example_gets_the_xc6206_and_two_basic_capacitors() {
 
 #[test]
 fn the_regulator_must_still_have_headroom_with_the_real_dropout() {
-    // 3.3 V in leaves no room for 3.135 V out plus 0.68 V of dropout.
+    // 3.61 V in leaves no room for 3.135 V out, the output's minimum, plus 0.68 V of dropout.
     let low = REGULATOR.replace(".voltage &= 5V +/- 5%", ".voltage &= 3.8V +/- 5%");
     let (_, s) = run_with(&low, &Catalogs::jlcpcb());
     assert!(
         messages(&s)
             .iter()
-            .any(|m| m.contains("always be at least")),
+            .any(|m| m.contains("must be at least (min(stage.regulator.vout.voltage)")),
         "{:?}",
         messages(&s)
     );
