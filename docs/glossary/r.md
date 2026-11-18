@@ -67,7 +67,7 @@ Whether a board routes for more than one lucky set of the router's costs: its pl
 _Avoid_: Stability (the placer's), determinism (the same input always gives the same copper; that is a separate property), variance
 
 **Route scorecard**:
-The numbers that say how good a board's routing is, read from its `.kicad_pcb` and `.kicad_pro` (`netsmith_fab::Scorecard`), so that a board netsmith routed and one a person routed in KiCad are measured by the same code: connections left, track length against the shortest tree between each routed net's pads, vias, bends by angle, track narrower than its net class, how much other nets' track cuts each pour and the pieces it falls into, decoupling track length and the skew of diff pairs. A measurement and never a check: `scripts/route-scorecard` prints it for the example boards beside their references (issue #431).
+The numbers that say how good a board's routing is, read from its `.kicad_pcb` and `.kicad_pro` (`netsmith_fab::Scorecard`), so that a board netsmith routed and one a person routed in KiCad are measured by the same code: connections left, track length against the shortest tree between each routed net's pads, vias, bends by angle, track narrower than its net class, how much other nets' track cuts each pour and the pieces it falls into, decoupling track length, the skew of diff pairs, and each _Long net_ and the nets with the most vias. A measurement and never a check: `scripts/route-scorecard` prints it for the example boards beside their references (issue #431).
 _Avoid_: Score (alone), quality (the placer's `Quality` is a measure of a placement), benchmark
 
 **Routes file**:

@@ -118,6 +118,10 @@ _Avoid_: STEP model (a maker's or KiCad's file of one part, the next term), 3D e
 A STEP file of one part, kept in the project, that a part names with its built-in `.model` (`.usb.model.file &= "models/usb4105.step"`, with an offset in mm and a rotation in degrees, of the prelude's `StepModel`), drawn in the _Scene_ in place of its _Package shape_ (ADR 0108): placed in KiCad's frame for a model, so a footprint's `(model ...)` numbers can be copied in, read by netsmith's own reader and copied exactly into the _STEP file_. It is a drawing and never a height. netsmith bundles and downloads none; a file that is not there is a warning, and the part keeps its generated shape. A part that names none may take the model of its footprint from the project's _Model table_.
 _Avoid_: 3D model (KiCad's word, which also names VRML files), user model, CAD model
 
+**Straight length**:
+The shortest tree of straight lines between the centres of a net's pads: no routing of the net is shorter, give or take a junction off a pad. The _Route scorecard_ sums it over the routed nets as their spanning length, and a _Long net_ is routed far over its own (issue #1194).
+_Avoid_: Manhattan length (the tree is of straight lines at any angle), airwire length, ratsnest length
+
 **Stray wire**:
 Wire or dot in the editor's schematic that serves nothing: an end that touches no pin, power symbol, flag, label, X or other wire of its net (a dead end, such as a rail that runs on past its last tap), two wires of one net along one line, a hook (out, across a grid step or less, and back), a wire that is a point, a dot where fewer than three arms of a net meet, three arms and no dot, a wire along a pin's line, or along the outline of a body or a flag within 0.7 mm. The drawing has none: the engine takes them off when it has routed, and `netsmith_view::check` reports any that is left.
 _Avoid_: Dangling wire, spur, stub (a stub is the short wire straight out of a pin)

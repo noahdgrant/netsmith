@@ -59,6 +59,9 @@ pub struct Fabricated {
     /// What the pre-check before placing said was only suspicious (lines that cannot all hold,
     /// when constraints are warnings), as data (#998); each is also told as it goes.
     pub place_warnings: Vec<PlaceWarning>,
+    /// The nets routed long and the nets with the most vias, as the notes list them (issue
+    /// #1194); empty for a panel and a reused package.
+    pub routes: netsmith_fab::NetRoutes,
     /// How many stages (`netsmith_core::timings::stage`: resolve, place, route, package...) this
     /// board's run did: the count that shows a reused package, which runs none (issue #841).
     pub stages_run: u64,
@@ -1817,6 +1820,7 @@ fn fab_board(
                 .map(netsmith_pcb::RequirementMiss::of_outcome)
                 .collect(),
             place_warnings: precheck.place_warnings(),
+            routes: pkg.routes.clone(),
             stages_run: 0,
             reused: false,
         };
@@ -2835,6 +2839,7 @@ fn fab_panel(
         origins: Vec::new(),
         requirements: Vec::new(),
         place_warnings: Vec::new(),
+        routes: Default::default(),
         stages_run: 0,
         reused: false,
     })

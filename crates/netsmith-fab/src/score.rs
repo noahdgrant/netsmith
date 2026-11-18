@@ -16,6 +16,9 @@
 //!   a lower bound that no routing beats; the ratio of the two is how much longer than the
 //!   least the routing is.
 //! - **Vias**.
+//! - **Long nets and the nets with the most vias**: each routed net whose track is much longer
+//!   than its straight length, and the nets with the most vias ([`crate::net_routes`], issue
+//!   #1194).
 //! - **Teardrops** are no track and no pour: a zone KiCad marks as a teardrop counts in neither,
 //!   and a pour's pieces keep its clearance from another net's.
 //! - **Bends**: where exactly two straight tracks of one net and layer meet, outside every pad,
@@ -46,6 +49,7 @@
 use std::collections::{BTreeMap, BinaryHeap, HashMap};
 use std::fmt::Write as _;
 
+use crate::net_routes::NetRoutes;
 use netsmith_geom::{
     Artwork, ArtworkPadKind, Bounds, DrcExtras, DrcRule, DrcRules, DrcShape, Pt, TrackShape,
     drc_check, drc_matches_pattern, drc_outline_shapes, pad_outline, polygon_contains, shape_gap,
@@ -154,6 +158,9 @@ pub struct Scorecard {
     pub pours: Vec<PourScore>,
     pub decoupling: Vec<Decoupling>,
     pub pairs: Vec<PairScore>,
+    /// The nets routed long against their straight length, and the nets with the most vias
+    /// (issue #1194).
+    pub nets: NetRoutes,
 }
 
 impl Scorecard {
@@ -272,6 +279,9 @@ impl Scorecard {
                 p.coupled * 100.0
             );
         }
+        for line in self.nets.lines() {
+            let _ = writeln!(s, "{line}");
+        }
         s
     }
 }
@@ -328,7 +338,7 @@ fn key(p: Pt) -> (i64, i64) {
 }
 
 /// The straight tracks of the board as (net, layer, a, b, width), arcs as their chords' points.
-fn lines(art: &Artwork) -> Vec<Seg> {
+pub(crate) fn lines(art: &Artwork) -> Vec<Seg> {
     let mut out = Vec::new();
     for t in &art.tracks {
         let net = t.net.clone().unwrap_or_default();
@@ -453,6 +463,7 @@ fn score(
         pours,
         decoupling,
         pairs,
+        nets: NetRoutes::of(art),
     }
 }
 
@@ -557,7 +568,7 @@ fn spanning(art: &Artwork, poured: &[&str]) -> f64 {
 }
 
 /// The length of the minimum spanning tree of `pts` (Prim's, O(n²)).
-fn prim(pts: &[Pt]) -> f64 {
+pub(crate) fn prim(pts: &[Pt]) -> f64 {
     if pts.len() < 2 {
         return 0.0;
     }

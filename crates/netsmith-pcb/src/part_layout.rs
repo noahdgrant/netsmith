@@ -18,7 +18,7 @@
 //! - `vias`: the vias of the pin's net whose centre is on one of the pin's pads. At least
 //!   `count`. Checked on the routed board.
 //! - `route`: the length of every track of the pin's net, in all. At most `length`. Checked on
-//!   the routed board. Its `width` is not measured here: the design adds it to the net's least
+//!   the routed board; the finding names the net, its length and the limit (issue #1194). Its `width` is not measured here: the design adds it to the net's least
 //!   width (`Features::net_widths`), which the router keeps to.
 //! - `kelvin`: no number; the sense pin is routed alone from its tap, and `crate::kelvin` says
 //!   when it is not (issue #1148).
@@ -640,9 +640,16 @@ pub fn layout_findings(board: &Board) -> Vec<LayoutFinding> {
                 measured as usize,
             ),
             (LayoutRule::Route { pin, length, .. }, _) => format!(
-                "{head}: the tracks of the net of its pin `.{pin}` at most {} mm long in all, and they are {} mm {tail}: move the parts on the net nearer {}",
+                "{head}: the tracks of the net of its pin `.{pin}` (pads {}) at most {} mm long in all, and the tracks of {} are {} mm, {} mm over {tail}: move the parts on the net nearer {}, or route it shorter",
+                pads(pin),
                 number(length.unwrap_or_default()),
+                part.layout
+                    .iter()
+                    .find(|x| x.rule.name == g.name)
+                    .and_then(|x| net_of(board, part, &x.pads[0]))
+                    .map_or_else(|| "the net".to_string(), |net| format!("`{net}`")),
                 number(measured),
+                number(measured - length.unwrap_or_default()),
                 part.refdes,
             ),
             _ => continue,
