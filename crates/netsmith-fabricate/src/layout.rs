@@ -184,6 +184,16 @@ pub fn route_progress(
     stage_progress(label, "routing", say)
 }
 
+/// [`place_progress`] for `routes tidy` (issue #1225): `<label>: tidying: pass 1: net GND, 3 of
+/// 41 net(s): 12 change(s) made so far, about 40 s left in the pass [12 s]`. Each line carries a
+/// detail, so each is told.
+pub fn tidy_progress(
+    label: String,
+    say: impl Fn(&str) + 'static,
+) -> std::rc::Rc<dyn Fn(&netsmith_core::job::Work)> {
+    stage_progress(label, "tidying", say)
+}
+
 fn stage_progress(
     label: String,
     stage: &'static str,
@@ -229,7 +239,7 @@ fn stage_progress(
 
 /// A line of the placer's or the router's progress ([`place_progress`], [`route_progress`]) as
 /// data, for a program that reads it (`board fab --progress json`, issue #764): the board, the stage
-/// (`placing`, `routing`), the count with its unit, what the step found if it says, the time
+/// (`placing`, `routing`, `tidying`), the count with its unit, what the step found if it says, the time
 /// since the stage began and the line a person reads.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]

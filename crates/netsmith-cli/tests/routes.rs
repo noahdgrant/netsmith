@@ -636,7 +636,27 @@ fn tidy_says_what_it_would_change_then_cuts_a_corner_and_merges_a_pair() {
     assert!(json["wrote"].as_array().unwrap().is_empty(), "{said}");
     assert_eq!(fs::read_to_string(&file).unwrap(), written);
 
-    let said = ok(&routes(&dir, &["tidy"]));
+    // The progress, as JSON lines on stderr (issue #1225): each pass's nets, one by one.
+    let run = routes(&dir, &["tidy", "--progress", "json"]);
+    let said = ok(&run);
+    let events: Vec<serde_json::Value> = String::from_utf8_lossy(&run.stderr)
+        .lines()
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .filter(|e: &serde_json::Value| e["stage"] == "tidying")
+        .collect();
+    assert!(!events.is_empty(), "{said}");
+    for e in &events {
+        assert_eq!(e["board"], "LedExample", "{e}");
+        assert_eq!(e["unit"], "nets tidied", "{e}");
+        assert!(e["elapsedMs"].is_u64() && e["total"].is_u64(), "{e}");
+    }
+    assert!(
+        events.iter().any(|e| e["detail"]
+            .as_str()
+            .is_some_and(|d| d.starts_with("pass 1: net GND, 1 of 1 net(s): ")
+                && d.contains("change(s) made so far"))),
+        "{events:#?}"
+    );
     assert!(
         said.contains("tidied 1 corner(s), 1 collinear pair(s)"),
         "{said}"
