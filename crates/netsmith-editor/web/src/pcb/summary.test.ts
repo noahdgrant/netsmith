@@ -102,7 +102,7 @@ describe('the copper areas', () => {
     expect(fillPadLine(pad({ join: 'solid', spokes: null, joinedSpokes: null, starved: false }))).toBe('U1.2: solid');
     expect(fillPadLine(pad({ join: 'solid', spokes: null, joinedSpokes: null, joined: false, starved: false }))).toBe('U1.2: solid, the fill does not reach it');
     expect(fillPadLine(pad({ join: 'none', spokes: null, joinedSpokes: null, joined: false, starved: false }))).toBe('U1.2: none');
-    const area: FillArea = { layer: 'top', layerName: 'F.Cu', net: 'GND', source: 'pour', held: false, area: 120.456, pads: [], counts, cleared: [], islands: [], removedIslands: [{ at: { x: 1, y: 2 }, area: 0.5 }] };
+    const area: FillArea = { layer: 'top', layerName: 'F.Cu', net: 'GND', source: 'pour', held: false, area: 120.456, pads: [], counts, cleared: [], islands: [], removedIslands: [{ at: { x: 1, y: 2 }, area: 0.5, outline: [] }] };
     expect(fillAreaLine(area)).toBe(`pour on GND, 120.46 mm²: ${fillCountsLine(counts)}; clears 0 pads of other nets; islands: 0 kept, 1 removed`);
     expect(fillStarvedLine({ layer: 'top', net: 'GND', part: 'U1', pad: '2', at: { x: 8, y: 15 }, spokes: 4, joinedSpokes: 1, tracks: 0 })).toBe('U1.2 on top (GND) at (8, 15): 1 of 4 spokes');
   });

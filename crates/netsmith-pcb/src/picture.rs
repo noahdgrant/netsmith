@@ -9,7 +9,9 @@
 //! layer drawn, the one furthest from the viewer first: its pours and planes (translucent), its
 //! teardrop fills, its pads, its tracks and the copper its footprints draw; then the vias with
 //! copper on a layer drawn, and every drilled hole, open to the background. Over the copper: the
-//! courtyards and the designators when asked, the open connections (bright lines with a dot at
+//! courtyards and the designators when asked, the copper islands the fill took out when given
+//! (hatched and outlined, dashed, in near white, each with its number: copper the pour would have
+//! had and the Gerbers do not, issue #1188), the open connections (bright lines with a dot at
 //! each end) and the markers of the design rules check when given (a ring with its number).
 //!
 //! **The copper is the Gerbers'.** Pads, tracks, pours, planes, fills and vias come from
@@ -101,6 +103,9 @@ const KEEPOUT: &str = "#e0707a";
 /// The open connections: bright, so they are seen over the copper of either face.
 const OPEN: &str = "#ffd84d";
 const ERROR: &str = "#ff4d4d";
+/// The copper islands the fill took out: near white, a mark that is no layer's copper and reads
+/// on the board's dark substrate where the copper is not.
+const ISLAND: &str = "#eef1f7";
 const WARNING: &str = "#ffb020";
 
 /// How opaque a pour is: the pads and tracks over it must show.
@@ -225,18 +230,31 @@ pub struct Marker {
     pub label: String,
 }
 
+/// A copper island the fill of a pour took out (issue #1188): drawn on its layer, hatched and
+/// outlined, with its label.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Island {
+    /// KiCad's name of its copper layer (`F.Cu`): it is drawn with that layer only.
+    pub layer: String,
+    /// Its rings in the board's frame, the outline first and then its holes.
+    pub rings: Vec<Vec<Pt>>,
+    /// What is written beside it: its number in the list printed with the picture.
+    pub label: String,
+}
+
 /// The region a picture of `board` shows when it is given none.
 pub fn whole(board: &Board) -> Rect {
     board.outline.expanded(MARGIN)
 }
 
 /// The board's picture as the text of an SVG file: the copper of `options.layers`, the open
-/// connections `open` (a line to a plane is left out: it has no length) and the `markers` on a
-/// layer drawn. The error says why the copper cannot be drawn (the board's file would not plot
-/// either) or names a layer the board does not have.
+/// connections `open` (a line to a plane is left out: it has no length), and the `islands` the
+/// fill took out and the `markers` on a layer drawn. The error says why the copper cannot be
+/// drawn (the board's file would not plot either) or names a layer the board does not have.
 pub fn picture(
     board: &Board,
     open: &[Ratline],
+    islands: &[Island],
     markers: &[Marker],
     options: &Picture,
 ) -> Result<String, String> {
@@ -487,6 +505,11 @@ pub fn picture(
         modules(&mut out, &f, board, lit, &face);
     }
 
+    let shown_names: Vec<&str> = shown.iter().map(|&i| names[i]).collect();
+    if !islands.is_empty() {
+        removed_islands(&mut out, &f, islands, &shown_names);
+    }
+
     let _ = writeln!(out, r#"<g class="open">"#);
     for line in open.iter().filter(|l| !l.to_plane) {
         let (a, b) = (f.p(line.from_at), f.p(line.to_at));
@@ -535,7 +558,6 @@ pub fn picture(
         let _ = writeln!(out, "</g>");
     }
 
-    let shown_names: Vec<&str> = shown.iter().map(|&i| names[i]).collect();
     let _ = writeln!(out, r#"<g class="markers">"#);
     for m in markers.iter().filter(|m| {
         m.layer
@@ -634,6 +656,103 @@ impl Frame<'_> {
             d.push('Z');
         }
     }
+}
+
+/// The islands on a layer drawn (`shown`), each hatched at 45° and outlined, dashed, with its
+/// label by its top left corner. The hatch is worked out here, not left to an SVG pattern: the
+/// rasterizer draws no patterns, and the PNG must be the SVG's drawing.
+fn removed_islands(out: &mut String, f: &Frame, islands: &[Island], shown: &[&str]) {
+    let _ = writeln!(
+        out,
+        r#"<g class="islands" fill="none" stroke="{ISLAND}" stroke-linejoin="round">"#
+    );
+    for island in islands.iter().filter(|i| shown.contains(&i.layer.as_str())) {
+        let rings: Vec<Vec<Pt>> = island
+            .rings
+            .iter()
+            .filter(|r| r.len() >= 3)
+            .map(|r| r.iter().map(|p| f.p(*p)).collect())
+            .collect();
+        let Some(first) = rings.first() else {
+            continue;
+        };
+        let mut outline = String::new();
+        for ring in &rings {
+            for (i, p) in ring.iter().enumerate() {
+                let _ = write!(
+                    outline,
+                    "{}{} {}",
+                    if i == 0 { 'M' } else { 'L' },
+                    n(p.x),
+                    n(p.y)
+                );
+            }
+            outline.push('Z');
+        }
+        let mut hatch = String::new();
+        for (a, b) in hatch_lines(&rings, f.px(6.0)) {
+            let _ = write!(hatch, "M{} {}L{} {}", n(a.x), n(a.y), n(b.x), n(b.y));
+        }
+        let top_left = first.iter().fold(first[0], |m, p| {
+            if p.y < m.y || (p.y == m.y && p.x < m.x) {
+                *p
+            } else {
+                m
+            }
+        });
+        let size = f.px(12.0);
+        let _ = writeln!(
+            out,
+            r#"<g class="island" data-layer="{}"><path d="{hatch}" stroke-width="{}" stroke-opacity="0.7"/><path d="{outline}" stroke-width="{}" stroke-dasharray="{} {}"/><text x="{}" y="{}" font-size="{}" font-family="sans-serif" fill="{ISLAND}" stroke="{BG}" stroke-width="{}" paint-order="stroke">{}</text></g>"#,
+            escape(&island.layer),
+            n(f.px(1.0)),
+            n(f.px(1.5)),
+            n(f.px(5.0)),
+            n(f.px(3.0)),
+            n(top_left.x + f.px(2.0)),
+            n(top_left.y - f.px(3.0)),
+            n(size),
+            n(f.px(3.0)),
+            escape(&island.label)
+        );
+    }
+    let _ = writeln!(out, "</g>");
+}
+
+/// The pieces of the lines at 45° (down to the right on the picture), `pitch` apart, that lie in
+/// the area the `rings` bound by the even-odd rule: the hatch of an island.
+fn hatch_lines(rings: &[Vec<Pt>], pitch: f64) -> Vec<(Pt, Pt)> {
+    // In the frame turned by 45° the lines are those of constant v = y - x; along a line, the
+    // place is u = x + y.
+    let uv = |p: &Pt| (p.x + p.y, p.y - p.x);
+    let back = |u: f64, v: f64| Pt::new((u - v) / 2.0, (u + v) / 2.0);
+    let edges: Vec<((f64, f64), (f64, f64))> = rings
+        .iter()
+        .flat_map(|r| (0..r.len()).map(move |i| (uv(&r[i]), uv(&r[(i + 1) % r.len()]))))
+        .collect();
+    let (lo, hi) = edges.iter().fold((f64::MAX, f64::MIN), |(lo, hi), (a, _)| {
+        (lo.min(a.1), hi.max(a.1))
+    });
+    // Lines `pitch` apart are `pitch` times the root of 2 apart in v.
+    let step = pitch * std::f64::consts::SQRT_2;
+    if step.is_nan() || step <= 0.0 || lo > hi {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mut v = (lo / step).floor() * step + step / 2.0;
+    while v < hi {
+        let mut cuts: Vec<f64> = edges
+            .iter()
+            .filter(|(a, b)| (a.1 <= v) != (b.1 <= v))
+            .map(|(a, b)| a.0 + (v - a.1) / (b.1 - a.1) * (b.0 - a.0))
+            .collect();
+        cuts.sort_by(f64::total_cmp);
+        for [a, b] in cuts.as_chunks::<2>().0 {
+            out.push((back(*a, v), back(*b, v)));
+        }
+        v += step;
+    }
+    out
 }
 
 /// The modules lit, each in its colour: each part's courtyard box filled faintly and outlined,

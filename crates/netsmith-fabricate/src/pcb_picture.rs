@@ -18,7 +18,16 @@
 //! **The markers** (`--drc`) are the places of netsmith's design rules check of the board drawn
 //! ([`crate::drc::of_board`], the check `fab` and `board drc` run), numbered in the order the
 //! check lists its findings. A missing connection is not marked: it is drawn as an open
-//! connection.
+//! connection. A pad the fill of a pour starves (joined to it by fewer than two spokes and
+//! tracks) is the check's `starved_thermal` finding, so `--drc` marks it: the check judges the
+//! fill the picture draws, and its starved pads are those of `board fill`
+//! ([`netsmith_pcb::FillReport`]), so a flag of its own would ring the same pad twice.
+//!
+//! **The removed islands** (`--islands`, issue #1188) are the copper islands the fill of each
+//! pour took out ([`netsmith_pcb::FillReport`]'s `removed_islands`, what `board fill` lists):
+//! copper the pour would have had that touched no copper of its net, so the Gerbers have none
+//! there. Each is hatched and outlined on its layer and labelled `I1`, `I2`, ... in the order of
+//! the report, apart from the numbers of the markers.
 //!
 //! **The PNG** is the SVG filled by `netsmith-draw` (ADR 0142) at the scale asked, so the two
 //! are the same drawing, and the same board gives the same bytes.
@@ -28,7 +37,8 @@ use std::time::Duration;
 
 use netsmith_geom::Constraints;
 use netsmith_pcb::{
-    Board, Lit, Marker, PictureLayers, PictureOptions, Pt, Ratline, Ratsnest, Rect, picture_svg,
+    Board, FillReport, Lit, Marker, PictureIsland, PictureLayers, PictureOptions, Pt, Ratline,
+    Ratsnest, Rect, picture_svg,
 };
 use netsmith_router::RouteOptions;
 
@@ -70,6 +80,8 @@ pub struct Request {
     pub only_open: bool,
     /// Mark the places of the design rules check's findings.
     pub drc: bool,
+    /// Hatch and number the copper islands the fill took out.
+    pub islands: bool,
     pub format: Format,
 }
 
@@ -85,6 +97,9 @@ pub struct Drawn {
     /// The findings marked, each with its number (`1: error [clearance] ...`), in the order
     /// drawn.
     pub markers: Vec<String>,
+    /// The removed islands drawn, each with its label (`I1: bottom GND at (12.000, 3.500), 2.150
+    /// mm2`), places in the frame of the layout file.
+    pub islands: Vec<String>,
 }
 
 /// Put on `board`, placed and with no copper, the copper the picture draws (the module's
@@ -240,6 +255,11 @@ pub fn draw(
     } else {
         (Vec::new(), Vec::new())
     };
+    let (islands, island_lines) = if request.islands {
+        removed_islands(board, request.layers)?
+    } else {
+        (Vec::new(), Vec::new())
+    };
     let options = PictureOptions {
         layers: request.layers,
         from_below: request
@@ -251,7 +271,7 @@ pub fn draw(
         designators: request.designators,
         lit,
     };
-    let svg = picture_svg(board, &open, &markers, &options)?;
+    let svg = picture_svg(board, &open, &islands, &markers, &options)?;
     let bytes = match request.format {
         Format::Svg => svg.into_bytes(),
         Format::Png => {
@@ -276,7 +296,41 @@ pub fn draw(
             .map(ToString::to_string)
             .collect(),
         markers: listed,
+        islands: island_lines,
     })
+}
+
+/// The copper islands the fill of the board's pours took out, on a copper layer drawn, and their
+/// lines, numbered.
+fn removed_islands(
+    board: &Board,
+    layers: PictureLayers,
+) -> Result<(Vec<PictureIsland>, Vec<String>), String> {
+    let report = FillReport::of(board).map_err(|e| e.to_string())?;
+    let mut islands = Vec::new();
+    let mut lines = Vec::new();
+    for fill in &report.fills {
+        if let PictureLayers::One(l) = layers
+            && l.name() != fill.layer_name
+        {
+            continue;
+        }
+        for island in &fill.removed_islands {
+            // `I1`, `I2`: not the numbers of the markers drawn beside them.
+            let label = format!("I{}", islands.len() + 1);
+            let at = island.at - report.outline_at;
+            lines.push(format!(
+                "{label}: {} {} at ({:.3}, {:.3}), {:.3} mm2",
+                fill.layer, fill.net, at.x, at.y, island.area
+            ));
+            islands.push(PictureIsland {
+                layer: fill.layer_name.clone(),
+                rings: island.outline.clone(),
+                label,
+            });
+        }
+    }
+    Ok((islands, lines))
 }
 
 /// The places of the check's findings, but a missing connection and one on a copper layer that
