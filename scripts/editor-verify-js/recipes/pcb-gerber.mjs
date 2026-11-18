@@ -26,6 +26,10 @@ export async function run({ page, shot, step, expect, section, project, binary, 
   step('the Gerber switch of the PCB bar: before fab there is no package, and the view says how to make one');
   // The page asks for the package and the server answers 404: the browser logs it.
   allowConsole(/404/);
+  // A recipe before this one in the session (`build`) may have made the board's package: take it away, so the view
+  // starts with none (the server answers 404 for a package that is not on disk).
+  const left = await answer(page, 'top');
+  if (left.path) fs.rmSync(path.join(project, path.dirname(left.path)), { recursive: true, force: true });
   await page.getByTestId('pcb-gerber').click();
   await page.waitForSelector('[data-testid=gerber-none]');
   await shot('no-package');

@@ -12,7 +12,7 @@ export async function run({ page, shot, step, expect, project, section }) {
   const good = fs.readFileSync(file, 'utf8');
   try {
     step('break the file on disk and open the page afresh');
-    fs.writeFileSync(file, good.replace('.led: Led {', '.led: Led {\n        .nonsense &= 1V'));
+    fs.writeFileSync(file, good.replace('.led: Led {', '.led: Led {\n        .nonsense &= 1V\n'));
     await page.reload();
     await page.waitForSelector('.app');
     await page.waitForFunction(() => document.querySelector('.statusbar .counts .e')?.textContent.includes('1'));

@@ -22,7 +22,8 @@ export async function run({ page, shot, step, expect, project, section }) {
     await shot('dock-empty');
 
     step('a mistake saved to disk: counts, a row, and the strip above the dimmed drawing');
-    fs.writeFileSync(file, good.replace('.led: Led {', '.led: Led {\n        .nonsense &= 1V'));
+    // the mistake is a statement of its own line, whether the formatter wrote the block on one line or several
+    fs.writeFileSync(file, good.replace('.led: Led {', '.led: Led {\n        .nonsense &= 1V\n'));
     await page.waitForSelector('.dock .problem.error');
     await page.waitForSelector('.section:not(.away) .stale-strip');
     const strip = await page.locator('.section:not(.away) .stale-strip').innerText();
