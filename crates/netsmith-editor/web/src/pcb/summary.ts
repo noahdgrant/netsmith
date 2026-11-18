@@ -2,7 +2,7 @@
 // reads the answer. The numbers are the server's (`netsmith layout summary` has the same); this
 // file only turns them into the words and boxes the tab shows.
 
-import type { CopperLayer, CopperPour, CopperZone, FillArea, FillCounts, FillPad, FillStarved, PcbBox, PcbCopper, PcbScene, SummaryBox, SummaryGuideline, SummaryPads } from '../api';
+import type { CopperLayer, CopperPour, CopperZone, FillArea, FillCounts, FillPad, FillStarved, NetsPair, NetsRow, PcbBox, PcbCopper, PcbScene, SummaryBox, SummaryGuideline, SummaryPads } from '../api';
 
 /** A number to the hundredth, without trailing zeros: `3.5`, `12`. */
 export function mm(v: number): string {
@@ -132,4 +132,21 @@ export function fillPadLine(p: FillPad): string {
 export function fillStarvedLine(s: FillStarved): string {
   const tracks = s.tracks === 0 ? '' : `, ${s.tracks} track${s.tracks === 1 ? '' : 's'}`;
   return `${s.part}.${s.pad} on ${s.layer} (${s.net}) at (${mm(s.at.x)}, ${mm(s.at.y)}): ${s.joinedSpokes} of ${s.spokes} spokes${tracks}`;
+}
+
+/** A net of the table of the routed board (issue 1223, `netsmith board nets`): `CANH: 63.09 mm routed, straight 60.2 mm (1.05x), 2 vias, 2 layer changes, on F.Cu B.Cu`. */
+export function netRowLine(n: NetsRow): string {
+  const ratio = n.ratio > 0 ? ` (${n.ratio.toFixed(2)}x)` : '';
+  const vias = `${n.vias} via${n.vias === 1 ? '' : 's'}, ${n.layerChanges} layer change${n.layerChanges === 1 ? '' : 's'}`;
+  return `${n.net}: ${mm(n.length)} mm routed, straight ${mm(n.straight)} mm${ratio}, ${vias}${n.layers.length ? `, on ${n.layers.join(' ')}` : ''}`;
+}
+
+/** A diff pair of the table: `CANH/CANL: 63.09 and 63.11 mm, skew 0.02 mm (within 0.1 mm); coupled 60.5 mm (96%), gap 0.1 to 0.12 mm; vias 2 and 2, 2 side by side`. */
+export function netPairLine(p: NetsPair): string {
+  const gaps = p.gaps ? `, gap ${mm(p.gaps[0])} to ${mm(p.gaps[1])} mm` : '';
+  return [
+    `${p.p}/${p.n}: ${mm(p.lengthP)} and ${mm(p.lengthN)} mm, skew ${mm(p.skew)} mm (${p.over ? 'over' : 'within'} ${mm(p.limit)} mm)`,
+    `coupled ${mm(p.coupled)} mm (${Math.round(p.share * 100)}%)${gaps}`,
+    `vias ${p.viasP} and ${p.viasN}, ${p.viaPairs} side by side`,
+  ].join('; ');
 }

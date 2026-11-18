@@ -80,6 +80,7 @@ mod gerber;
 mod kicad;
 mod kicad_drc;
 mod net_routes;
+mod net_table;
 mod panel;
 mod raster;
 mod rotation;
@@ -116,6 +117,7 @@ pub use kicad_drc::{
     in_rules_file as in_kicad_dru, parse as parse_kicad_drc,
 };
 pub use net_routes::{LONG_EXCESS, LONG_RATIO, MOST_VIAS, NetRoute, NetRoutes, VIAS_LEAST};
+pub use net_table::{NetRow, NetTable, PairRow, SAMPLE as PAIR_SAMPLE, VIA_PAIR_GAP};
 pub use panel::{
     Cell as PanelCell, CellFacts as PanelCellFacts, CellInput as PanelCellInput,
     Finding as PanelFinding, Geometry as PanelGeometry, PanelPackage, Rules as PanelBuildRules,
@@ -164,6 +166,11 @@ pub struct Options {
     /// The design's requirements on where parts go (ADR 0045), which the board file does not
     /// hold: each is measured on the board and is a finding of the check if it is not met.
     pub constraints: Option<Constraints>,
+    /// The board's diff pairs, the positive net first, which the board file does not hold
+    /// (`netsmith_pcb::Board::diff_pairs`), and the skew a pair may have in mm (the router's
+    /// target): [`check`] notes each pair whose skew is over it (issue #1223).
+    pub pairs: Vec<(String, String)>,
+    pub pair_skew_limit: f64,
     /// Package even though some parts have no LCSC part number. Those parts are left out
     /// of the BOM and placement file and listed in the notes as unassembled.
     pub allow_missing_lcsc: bool,
@@ -606,6 +613,9 @@ pub struct Checked {
     pub outcomes: Vec<ConstraintOutcome>,
     /// The nets routed long and the nets with the most vias (issue #1194): notes, not findings.
     pub routes: NetRoutes,
+    /// The diff pairs of [`Options::pairs`] whose skew is over [`Options::pair_skew_limit`]
+    /// (issue #1223): notes, not findings.
+    pub skewed: Vec<PairRow>,
 }
 
 /// The design rules check of the board file `src` (the text of a `.kicad_pcb`, with the
@@ -615,6 +625,10 @@ pub fn check(src: &str, project: Option<&str>, options: &Options) -> Result<Chec
     let mut report = drc_check(src, project, &options.drc)?;
     let art = Artwork::parse(src)?;
     let routes = NetRoutes::of(&art);
+    let skewed = NetTable::of(&art, &options.pairs, options.pair_skew_limit)
+        .over()
+        .cloned()
+        .collect();
     let outcomes = match &options.constraints {
         Some(c) => {
             let outcomes = c.measure(&art);
@@ -632,6 +646,7 @@ pub fn check(src: &str, project: Option<&str>, options: &Options) -> Result<Chec
         report,
         outcomes,
         routes,
+        skewed,
     })
 }
 
@@ -656,6 +671,7 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         report: drc_report,
         outcomes,
         routes,
+        skewed: _,
     } = check(&src, drc_project_of(pcb).as_deref(), options)?;
     // A requirement of the design is not a design rule: waiving the rules does not waive it.
     let unmet: Vec<String> = drc_report

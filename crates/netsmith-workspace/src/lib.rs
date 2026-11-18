@@ -49,7 +49,7 @@ use netsmith_editor::{
     api::{
         Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
         FabReport, FileContent, GerberView, GitInfo, KeepoutPlacement, OrderInfo, OrderReport,
-        PanelView, PcbChange, PcbCopper, PcbEdit, PcbEdited, PcbFill, PcbFindings, PcbFit,
+        PanelView, PcbChange, PcbCopper, PcbEdit, PcbEdited, PcbFill, PcbFindings, PcbFit, PcbNets,
         PcbReport, PcbScene, PcbSummary, PinLock, PinMove, PinWritten, PowerTree, Project, Saved,
         SchematicHints, SystemView,
     },
@@ -1605,6 +1605,29 @@ impl Backend for Workspace {
         }
         drop(state);
         filling.fill(board)
+    }
+
+    fn pcb_nets(&self, board: &str) -> Result<PcbNets, ApiError> {
+        // As `pcb_fill`: the placement `pcb_scene` draws, placed here only when the board has
+        // not been placed since the files were read; measured with no lock held.
+        let (version, data) = {
+            let state = self.fresh();
+            let data = state.snapshot.board_handle(board)?;
+            if let Some(entry) = state.pcb.get(board) {
+                let filling = pcb::Filling::of(entry);
+                drop(state);
+                return filling.nets(board);
+            }
+            (state.version, data)
+        };
+        let entry = pcb::place(&data, board)?;
+        let filling = pcb::Filling::of(&entry);
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.version == version {
+            state.pcb.entry(board.to_string()).or_insert(entry);
+        }
+        drop(state);
+        filling.nets(board)
     }
 
     fn gerber(&self, board: &str, layer: Option<&str>) -> Result<GerberView, ApiError> {

@@ -48,6 +48,7 @@ mod fill;
 mod fit;
 mod gerber;
 mod hints;
+mod nets;
 mod summary;
 mod view;
 
@@ -57,6 +58,7 @@ pub use fill::*;
 pub use fit::*;
 pub use gerber::*;
 pub use hints::*;
+pub use nets::*;
 pub use summary::*;
 pub use view::*;
 
@@ -2507,6 +2509,9 @@ pub fn typescript() -> String {
         FillArea,
         FillStarved,
         PcbFill,
+        NetsRow,
+        NetsPair,
+        PcbNets,
         PcbFitPart,
         PcbFitNear,
         PcbFitFault,

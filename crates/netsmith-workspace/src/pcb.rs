@@ -82,11 +82,11 @@ use netsmith_editor::{
         PartPlacement, PcbBox, PcbChange, PcbCopper, PcbCrossed, PcbCrossedTrack, PcbCrossedVia,
         PcbCutout, PcbFill, PcbFinding, PcbFindings, PcbFit, PcbFitFault, PcbFitMiss, PcbFitNear,
         PcbFitPart, PcbFitPlace, PcbKeepout, PcbLive, PcbLivePart, PcbLiveTrack, PcbLiveVia,
-        PcbNetWidth, PcbPad, PcbPart, PcbPoint, PcbRegenerate, PcbRegenerated, PcbRegeneratedPart,
-        PcbReport, PcbRequirement, PcbRerouted, PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene,
-        PcbShapeRef, PcbShove, PcbShoveAnswer, PcbShoved, PcbShovedTrack, PcbShovedVia, PcbSide,
-        PcbSummary, PcbTotals, PcbViaOffer, PcbWalk, PcbWalked, RequiredPlace, RoutesChange,
-        Severity,
+        PcbNetWidth, PcbNets, PcbPad, PcbPart, PcbPoint, PcbRegenerate, PcbRegenerated,
+        PcbRegeneratedPart, PcbReport, PcbRequirement, PcbRerouted, PcbRouteNet, PcbRouteTrack,
+        PcbRouteVia, PcbScene, PcbShapeRef, PcbShove, PcbShoveAnswer, PcbShoved, PcbShovedTrack,
+        PcbShovedVia, PcbSide, PcbSummary, PcbTotals, PcbViaOffer, PcbWalk, PcbWalked,
+        RequiredPlace, RoutesChange, Severity,
     },
 };
 use netsmith_pcb::{
@@ -939,7 +939,8 @@ pub fn copper(data: &BoardData, name: &str, routed: Option<&Board>) -> Result<Pc
 }
 
 /// The board of an entry and the stamps of what it was placed from, copied out so that the fill
-/// of [`fill`], which takes longer than anything else the view asks for, runs with no lock held.
+/// of [`Filling::fill`], which takes longer than anything else the view asks for, and the table
+/// of [`Filling::nets`] run with no lock held.
 pub struct Filling {
     board: Board,
     layout_stamp: String,
@@ -969,6 +970,20 @@ impl Filling {
         value["routed"] = self.routed.into();
         serde_json::from_value(camel_keys(value))
             .map_err(|e| ApiError::internal(format!("the fill of {name}: {e}")))
+    }
+
+    /// The table of the board's nets and diff pairs (`netsmith board nets`, issue #1223), as the
+    /// entry has it placed (and routed): [`netsmith_fab::NetTable`] with camelCase keys.
+    pub fn nets(self, name: &str) -> Result<PcbNets, ApiError> {
+        let table = netsmith_fabricate::net_table::of_board(&self.board)
+            .map_err(|e| ApiError::internal(format!("the nets of {name}: {e}")))?;
+        let mut value = serde_json::to_value(&table).expect("plain data");
+        value["board"] = name.into();
+        value["layout_stamp"] = self.layout_stamp.into();
+        value["routes_stamp"] = self.routes_stamp.into();
+        value["routed"] = self.routed.into();
+        serde_json::from_value(camel_keys(value))
+            .map_err(|e| ApiError::internal(format!("the nets of {name}: {e}")))
     }
 }
 

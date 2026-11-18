@@ -335,7 +335,7 @@ pub(super) struct Masks {
     /// is of the outer layers: an inner layer has no entry and costs nothing.
     pub(super) off_plan: Option<Vec<Vec<i64>>>,
     /// For a net of a diff pair whose partner is routed, the cells beside the partner's tracks
-    /// (within [`PAIR_NEAR`] of their centre lines), by layer: a step onto one costs [`FOLLOW`]
+    /// (in the band of [`Router::pair_band`] round their centre lines), by layer: a step onto one costs [`FOLLOW`]
     /// of its length, so the net runs beside its partner (issue #431, S9). Empty when unset.
     pub(super) follow: Vec<Vec<bool>>,
     /// The share of the octile distance the search's estimate is, as a fraction: whole, or

@@ -338,8 +338,8 @@
 //!
 //! **What is built** ([`Router::side_by_side`]). When a try has routed every line, the lines of
 //! each net of a pair, the second net and then the first, are routed again against all the other
-//! copper, where a step within [`PAIR_NEAR`] (the scorecard's coupled 0.5 mm) of the partner's
-//! track, and no nearer than the rules allow, costs [`FOLLOW`] (half) of its length, and the
+//! copper, where a step in the band of [`Router::pair_band`] beside the partner's track (at the
+//! pair's pitch, within a cell) costs [`FOLLOW`] (half) of its length, and the
 //! search's estimate is cut to match, so the search goes out of its way for it. The new copper
 //! is kept only if more of the net runs coupled and it is no more than [`PAIR_SLACK`] 0.2 mm
 //! longer, with no more vias ([`keeps_pair`]). Then both nets are routed again together, one
@@ -350,12 +350,20 @@
 //! completely as before; the pass takes 0.1 to 0.3 s.
 //!
 //! **Pulled to its spacing** (issue #1054, the agent's decision). A pair with a stated spacing
-//! (a `PairImpedance`) is pulled together from its pads' pitch to the spacing: its slack is
+//! (a `PairImpedance`) is pulled together from its pads' pitch to the spacing, and since issue
+//! #1223 every pair is, a pair with none to its nets' clearance ([`Router::pair_gap`]), so that a
+//! pair is routed as one object: at one pitch, its vias side by side where the two change layer
+//! together, its lengths matched by a meander that, when the runs apart from the partner have no
+//! room, stands on the coupled run with its bumps away from the partner
+//! ([`crate::meander`]). Measured (2026-11-18, `netsmith board nets`'s table): a CAN pair across
+//! a connector, its termination and a transceiver 60 mm away ran 0.9 mm apart, centre to
+//! centre, 0 % coupled with a skew of 2.8 mm; it runs 84 % coupled at a 0.2 mm gap with a skew of
+//! 0.03 mm. Its slack is
 //! [`PAIR_SLACK`] plus what jogs of 45 degrees from each end of a net to its partner's pitch
 //! add ([`Router::funnel_slack`]), a bend beside the partner costs [`PAIR_TURN`] instead of
 //! [`TURN`], and its nets are routed again at [`ROOM_TIGHT`] first, since at [`ROOM_LOOSE`]
-//! the partner's track keeps the net a cell past the spacing. A pair with no stated spacing
-//! routes as before.
+//! the partner's track keeps the net a cell past the spacing. A pair with an impedance target
+//! keeps its coupled run whole: its meander goes only where it runs apart.
 //!
 //! **Both together** (issue #1010, the agent's decision while the owner was away). On Orbit
 //! at seed 3 (placed with each capacitor kept 1 mm from a QFN's other pins), `dm` has 2 vias
@@ -793,9 +801,6 @@ const DIAGONAL: i64 = 14;
 /// as much, so the search goes out of its way to run beside the partner; the pass keeps the
 /// new copper only if it is no longer than the old.
 const FOLLOW: (i64, i64) = (1, 2);
-/// How far from the centre line of a pair's partner a cell counts as beside it, in mm: the
-/// scorecard's coupled distance.
-const PAIR_NEAR: f64 = netsmith_geom::COUPLED;
 /// What a bend of 45 degrees costs by default ([`Costs::turn`]).
 const TURN: i64 = 25;
 /// What a right-angle turn costs, which the router cuts into two bends of 45 degrees after the

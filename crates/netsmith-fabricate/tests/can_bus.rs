@@ -182,3 +182,62 @@ fn the_lines_of_a_can_bus_are_routed_as_a_pair_and_its_termination_is_by_the_con
     let round = 2.0 * (board.outline.width() + board.outline.height());
     assert!(lh < round && ll < round, "{lh:.2} and {ll:.2} mm on a board {round:.2} mm round");
 }
+
+/// The board placed as `fab` places it, then spread along a board 72 mm long: the connector at
+/// the left end with the termination beside it, the transceiver and its header 60 mm away at the
+/// right end.
+fn spread() -> Board {
+    let mut board = placed();
+    board.outline = netsmith_pcb::Rect::new(
+        netsmith_pcb::Pt::new(0.0, 0.0),
+        netsmith_pcb::Pt::new(72.0, 16.0),
+    );
+    board.polygon = None;
+    let term = board
+        .parts
+        .iter()
+        .position(|p| p.path == "term.resistor")
+        .unwrap();
+    for (i, part) in board.parts.iter_mut().enumerate() {
+        part.at = match part.refdes.as_str() {
+            "J1" => netsmith_pcb::Pt::new(5.0, 8.0),
+            "U1" => netsmith_pcb::Pt::new(65.0, 8.0),
+            _ if i == term => netsmith_pcb::Pt::new(9.0, 8.0),
+            _ => netsmith_pcb::Pt::new(69.5, 4.0),
+        };
+    }
+    board
+}
+
+/// The least share of the CAN pair's first line that runs coupled on the spread board.
+const COUPLED_SHARE: f64 = 0.8;
+
+#[test]
+fn a_can_pair_60_mm_long_is_routed_as_one_coupled_with_its_lengths_matched() {
+    // Before issue #1223 the two lines ran 0.9 mm apart, centre to centre (not coupled), with a
+    // skew of 2.8 mm that no meander took up.
+    let mut board = spread();
+    let (h, l) = board.diff_pairs()[0].clone();
+    let routing = route_with(
+        &mut board,
+        RouteOptions {
+            time_limit: Some(Duration::from_secs(120)),
+            ..RouteOptions::default()
+        },
+    );
+    assert!(routing.left.is_empty(), "{:?}", routing.left.lines);
+    let table = netsmith_fabricate::net_table::of_board(&board).unwrap();
+    print!("{}", table.text());
+    let pair = &table.pairs[0];
+    assert_eq!((pair.p.as_str(), pair.n.as_str()), (h.as_str(), l.as_str()));
+    // The table's numbers are the router's.
+    let matched = routing.pairs.iter().find(|m| m.p == h).unwrap();
+    assert!((matched.after - pair.skew).abs() < 0.01, "{matched:?} {pair:?}");
+    let ((lh, vh), (ll, vl)) = (length_and_vias(&board, &h), length_and_vias(&board, &l));
+    assert!((lh - pair.length_p).abs() < 0.01 && (ll - pair.length_n).abs() < 0.01);
+    assert_eq!((vh, vl), (pair.vias_p, pair.vias_n));
+    assert!(pair.length_p > 55.0, "{pair:?}");
+    assert!(!pair.over && pair.skew <= SKEW_TARGET, "{pair:?}");
+    assert!(pair.share >= COUPLED_SHARE, "{:.0} % coupled", pair.share * 100.0);
+    assert_eq!(pair.via_pairs, pair.vias_p.max(pair.vias_n), "{pair:?}");
+}

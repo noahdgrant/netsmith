@@ -18,7 +18,11 @@
 //! to its ends, on an interval of it that runs no nearer than the scorecard's coupled distance
 //! (`netsmith_geom::COUPLED`, 0.5 mm) to the partner's track on its layer, or for a pair with an
 //! impedance target (a `PairImpedance`) no nearer than twice its spacing, edge to edge, so the
-//! pair's coupled run is left as it was. The meander's copper keeps every space the design rules check
+//! pair's coupled run is left as it was. What those runs cannot take, a pair with no impedance
+//! target takes on its coupled runs too, in a second pass, with the bumps on the side away from
+//! the partner only (issue #1223): since every pair is routed at one pitch, most of a pair is
+//! coupled, and a pair whose pads leave it 4 mm of skew kept it all before. A pair with an
+//! impedance target keeps its coupled run whole. The meander's copper keeps every space the design rules check
 //! asks of a track from the other nets' copper, holes, the edge, mask openings and rule areas
 //! (`netsmith_geom::Room`, the teardrops' room), and the pitch's gap from its own net's pads,
 //! vias and other tracks. A run that cannot take all the length takes what it can (three
@@ -173,28 +177,46 @@ fn lengthen(board: &mut Board, net: &str, partner: &str, want: f64) {
     let mut left = want;
     // What replaces each track that gets a meander.
     let mut replaced: Vec<(usize, Vec<Pt>)> = Vec::new();
-    for i in runs {
-        if left <= SKEW_TARGET / 2.0 {
-            break;
-        }
-        let track = board.tracks[i].clone();
-        let Some(layer) = room.layer(track.layer.name()) else {
-            continue;
-        };
-        let plan = SHARES.iter().find_map(|share| {
-            let ask = left * share;
-            (ask >= LEAST)
-                .then(|| plan(&room, &track, layer, ask, &partner_tracks, spacing, &drawn))
-                .flatten()
-        });
-        if let Some(plan) = plan {
-            let shape = DrcShape::stroke(
-                plan.points.iter().map(|&p| fpt(p)).collect(),
-                track.width / 2.0,
-            );
-            drawn.push((layer, shape));
-            left -= plan.added;
-            replaced.push((i, plan.points));
+    // First where the track runs apart from its partner; then, for what is left, on its coupled
+    // runs too, with the bumps on the side away from the partner (issue #1223). A pair with an
+    // impedance target keeps its coupled run whole: the impedance is stated for it.
+    let passes: &[bool] = if spacing.is_some() {
+        &[false]
+    } else {
+        &[false, true]
+    };
+    for &in_pair in passes {
+        for &i in &runs {
+            if left <= SKEW_TARGET / 2.0 {
+                break;
+            }
+            if replaced.iter().any(|r| r.0 == i) {
+                continue;
+            }
+            let track = board.tracks[i].clone();
+            let Some(layer) = room.layer(track.layer.name()) else {
+                continue;
+            };
+            let beside = Near {
+                partner: &partner_tracks,
+                spacing,
+                in_pair,
+            };
+            let plan = SHARES.iter().find_map(|share| {
+                let ask = left * share;
+                (ask >= LEAST)
+                    .then(|| plan(&room, &track, layer, ask, &beside, &drawn))
+                    .flatten()
+            });
+            if let Some(plan) = plan {
+                let shape = DrcShape::stroke(
+                    plan.points.iter().map(|&p| fpt(p)).collect(),
+                    track.width / 2.0,
+                );
+                drawn.push((layer, shape));
+                left -= plan.added;
+                replaced.push((i, plan.points));
+            }
         }
     }
     // Each track with a meander becomes the track to the meander, the meander, and the track on.
@@ -278,17 +300,31 @@ fn span(count: usize, a: f64, g: f64) -> f64 {
     count as f64 * (4.0 * c + top) + count.saturating_sub(1) as f64 * top
 }
 
-/// A meander on `track` that adds `want` mm, where it keeps every space, or `None`. `spacing` is
-/// the pair's stated spacing, edge to edge, if it has an impedance target.
+/// The partner of the net a meander lengthens, and where the meander may go beside it.
+struct Near<'a> {
+    /// The partner's tracks.
+    partner: &'a [Track],
+    /// The pair's stated spacing, edge to edge, if it has an impedance target.
+    spacing: Option<f64>,
+    /// Whether the meander may stand on a run of the track coupled to the partner, its bumps on
+    /// the side away from it; else only where the track runs apart from it.
+    in_pair: bool,
+}
+
+/// A meander on `track` that adds `want` mm, where it keeps every space, or `None`.
 fn plan(
     room: &Room<'_>,
     track: &Track,
     layer: usize,
     want: f64,
-    partner: &[Track],
-    spacing: Option<f64>,
+    beside: &Near<'_>,
     drawn: &[(usize, DrcShape)],
 ) -> Option<Plan> {
+    let Near {
+        partner,
+        spacing,
+        in_pair,
+    } = *beside;
     let w = track.width;
     // How near the partner's centre line runs for the track to be coupled: the scorecard's
     // distance, or for a pair with an impedance target out to twice its spacing, edge to edge,
@@ -318,6 +354,8 @@ fn plan(
     } else {
         [flip, normal]
     };
+    // On a coupled run, only the side away from the partner.
+    let sides = if in_pair { &sides[..1] } else { &sides[..] };
     let along = |x: f64| Pt::new(track.from.x + u.x * x, track.from.y + u.y * x);
     // Whether the track between `x0` and `x1` runs coupled to the partner.
     let coupled = |x0: f64, x1: f64| {
@@ -357,10 +395,10 @@ fn plan(
         });
         for x0 in offsets {
             let x0 = g + x0;
-            if coupled(x0, x0 + s) {
+            if !in_pair && coupled(x0, x0 + s) {
                 continue;
             }
-            for v in sides {
+            for &v in sides {
                 let points = bumps(along(x0), u, v, count, a, g);
                 let path: Vec<FPt> = points.iter().map(|&p| fpt(p)).collect();
                 let shape = DrcShape::stroke(path.clone(), w / 2.0);

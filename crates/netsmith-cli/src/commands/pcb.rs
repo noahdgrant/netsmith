@@ -200,17 +200,7 @@ impl Args {
 /// build or place, 2 when the request cannot be drawn or the file cannot be written.
 pub fn run(args: Args) -> ExitCode {
     let request = args.request();
-    let route = args.route.then(|| Route {
-        timeout: match args.route_timeout {
-            Some(0) => None,
-            Some(secs) => Some(Duration::from_secs(secs)),
-            None => netsmith_fabricate::fab::FabOptions::default().route_timeout,
-        },
-        rip_rounds: netsmith_fabricate::fab::rip_rounds(project().as_ref()),
-        track_margin: project()
-            .and_then(|p| p.manifest.track_margin)
-            .unwrap_or(netsmith_fabricate::fab::DEFAULT_TRACK_MARGIN),
-    });
+    let route = route_of(args.route, args.route_timeout);
     let drawn = common::with_stage_events(|| {
         common::with_placed_board(
             args.file.as_deref(),
@@ -266,6 +256,22 @@ pub fn run(args: Args) -> ExitCode {
         println!("removed island {line}");
     }
     ExitCode::SUCCESS
+}
+
+/// What `--route` and `--route-timeout` ask of the router, as `board fab --reuse-routes` routes:
+/// `None` without `--route`. `view pcb` and `board nets` take the two flags.
+pub(super) fn route_of(route: bool, timeout: Option<u64>) -> Option<Route> {
+    route.then(|| Route {
+        timeout: match timeout {
+            Some(0) => None,
+            Some(secs) => Some(Duration::from_secs(secs)),
+            None => netsmith_fabricate::fab::FabOptions::default().route_timeout,
+        },
+        rip_rounds: netsmith_fabricate::fab::rip_rounds(project().as_ref()),
+        track_margin: project()
+            .and_then(|p| p.manifest.track_margin)
+            .unwrap_or(netsmith_fabricate::fab::DEFAULT_TRACK_MARGIN),
+    })
 }
 
 /// The project of the current folder, if there is one: its `rip_rounds` and `track_margin`.

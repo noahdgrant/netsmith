@@ -332,23 +332,33 @@ impl<'a> Router<'a> {
         masks.free_turn = free;
     }
 
+    /// Whether `net` is a net of a diff pair ([`netsmith_pcb::Board::diff_pairs`]).
+    pub(super) fn paired(&self, net: usize) -> bool {
+        self.partners.get(net).is_some_and(Option::is_some)
+    }
+
+    /// The gap, edge to edge, a net of a diff pair keeps from its partner where they run
+    /// together (issue #1223): the pair's stated spacing (a `PairImpedance`, which the net's
+    /// clearance holds, issue #1025), or for a pair with none (two nets the names or a
+    /// `DiffPair` make a pair) the net's clearance, the nearest the rules allow, so that every
+    /// pair runs at one pitch: its two widths' halves and this gap.
+    pub(super) fn pair_gap(&self, net: usize) -> f64 {
+        self.board.clearance(&self.board.nets[net].name)
+    }
+
     /// The centre distances from a track of a pair's partner at which a track of `net` runs
-    /// beside it, for tracks `width` and `partner_width` wide: from the nearest the rules allow
-    /// (half of each width and the clearance) out to [`PAIR_NEAR`]. A pair with an impedance
-    /// target (issue #1025) keeps its stated spacing, which its clearance holds
-    /// ([`netsmith_pcb::Board::clearance`]), and runs beside its partner only within a cell of
-    /// the nearest a track searched at [`ROOM_TIGHT`] comes ([`MARGIN`] and that room past the
-    /// spacing), where the drawn gap is the spacing rounded up to the grid (issue #1054).
+    /// beside it, for tracks `width` and `partner_width` wide: from half of each width and the
+    /// pair's gap ([`Router::pair_gap`]: a stated spacing, which the net's clearance holds,
+    /// [`netsmith_pcb::Board::clearance`], or the clearance) out to a cell past the nearest a
+    /// track searched at [`ROOM_TIGHT`] comes ([`MARGIN`] and that room past the gap), where the
+    /// drawn gap is the pair's gap rounded up to the grid (issue #1054). Since issue #1223 every
+    /// pair keeps one pitch: before it, a pair with no stated spacing counted anything within
+    /// the scorecard's coupled distance (0.5 mm, centre to centre) as beside its partner, and on a
+    /// board the lines of a CAN bus ran 0.9 mm apart for 60 mm.
     pub(super) fn pair_band(&self, net: usize, width: f64, partner_width: f64) -> (f64, f64) {
         let half = width / 2.0 + partner_width / 2.0;
-        let name = &self.board.nets[net].name;
-        match self.board.pair_spacing(name) {
-            Some(_) => {
-                let lo = half + self.board.clearance(name);
-                (lo, lo + MARGIN + ROOM_TIGHT + PITCH)
-            }
-            None => (half + self.board.rules.clearance, PAIR_NEAR),
-        }
+        let lo = half + self.pair_gap(net);
+        (lo, lo + MARGIN + ROOM_TIGHT + PITCH)
     }
 
     /// [`Masks::follow`] for a line of `net`: the cells of [`Router::pair_band`] round the
@@ -381,11 +391,7 @@ impl<'a> Router<'a> {
             };
             // A pair with a target is drawn at its width on each layer; any other at the outer
             // width, as before (issue #1025).
-            let width = if self
-                .board
-                .pair_spacing(&self.board.nets[net].name)
-                .is_some()
-            {
+            let width = if self.paired(net) {
                 self.width_on(line, layer)
             } else {
                 self.width_of(line)

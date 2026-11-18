@@ -2,15 +2,15 @@
 // summary` prints. Wire length and crossings, how full each face is and where it is free, each
 // module's box, the decoupling distances, what the datasheets' layout guidelines measure (issue
 // 994), the longest nets, the parts near the selected parts, and
-// the distance between two pads typed in, and the copper areas (issue 1085, `netsmith board copper`): the planes, pours, the routes file's zones and the teardrop fills, and how the fill of the pours joins each pad (issue 1187, `netsmith board fill`): by how many thermal spokes, solid or not at all, the starved reliefs and the copper islands. A click on a box or a part zooms the canvas to it.
+// the distance between two pads typed in, and the copper areas (issue 1085, `netsmith board copper`): the planes, pours, the routes file's zones and the teardrop fills, and how the fill of the pours joins each pad (issue 1187, `netsmith board fill`): by how many thermal spokes, solid or not at all, the starved reliefs and the copper islands, and the table of the nets (issue 1223, `netsmith board nets`): each net's lengths, vias and layers, and each diff pair's skew, coupled length and vias side by side. A click on a box or a part zooms the canvas to it.
 
 import { useEffect, useState } from 'preact/hooks';
 
-import type { PcbBox, PcbCopper, PcbFill, PcbScene, PcbSummary } from '../api';
+import type { PcbBox, PcbCopper, PcbFill, PcbNets, PcbScene, PcbSummary } from '../api';
 import { api, ApiFailure } from '../client';
 import { EmptyState } from '../components/ui';
 import { select, selection } from '../pcbstore';
-import { copperLayerLine, copperZoneLine, fillAreaLine, fillCountsLine, fillPadLine, fillStarvedLine, fillWord, guidelineLine, mm, padName, padProblem, padsLine, sheetBox, summaryQuery, teardropsLine } from './summary';
+import { copperLayerLine, copperZoneLine, fillAreaLine, fillCountsLine, fillPadLine, fillStarvedLine, fillWord, guidelineLine, mm, netPairLine, netRowLine, padName, padProblem, padsLine, sheetBox, summaryQuery, teardropsLine } from './summary';
 
 /** How many of the longest nets the tab lists. */
 const LONGEST_NETS = 8;
@@ -98,6 +98,28 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
         if (!current) return;
         setFillError(e instanceof ApiFailure || e instanceof Error ? e.message : String(e));
         setFill(null);
+      });
+    return () => {
+      current = false;
+    };
+  }, [sc.board, sc.layoutStamp, sc.routesStamp, sc.routed]);
+  // The table of the nets and pairs of the board as placed (and routed): asked again when the
+  // placement, the routes file or the routing changes.
+  const [nets, setNets] = useState<PcbNets | null>(null);
+  const [netsError, setNetsError] = useState<string | null>(null);
+  useEffect(() => {
+    let current = true;
+    api
+      .pcbNets(sc.board)
+      .then((r) => {
+        if (!current) return;
+        setNets(r);
+        setNetsError(null);
+      })
+      .catch((e) => {
+        if (!current) return;
+        setNetsError(e instanceof ApiFailure || e instanceof Error ? e.message : String(e));
+        setNets(null);
       });
     return () => {
       current = false;
@@ -253,6 +275,34 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
               Starved: {fillStarvedLine(s)}
             </div>
           ))}
+          <div class="sub">Routed nets and pairs</div>
+          {netsError && (
+            <div class="note-line bad" data-testid="summary-nets-error">
+              {netsError}
+            </div>
+          )}
+          {nets && nets.nets.length === 0 && (
+            <div class="summary-line faint" data-testid="summary-nets-none">
+              No routed copper
+            </div>
+          )}
+          {nets?.pairs.map((p) => (
+            <div key={`${p.p}/${p.n}`} class={`summary-line${p.over ? ' bad' : ''}`} data-testid="summary-nets-pair" data-pair={`${p.p}/${p.n}`} data-over={p.over}>
+              <b>Pair</b> {netPairLine(p)}
+            </div>
+          ))}
+          {nets && nets.nets.length > 0 && (
+            <details class="summary-line" data-testid="summary-nets" data-routed={nets.routed}>
+              <summary>
+                {nets.nets.length} net{nets.nets.length === 1 ? '' : 's'} with copper
+              </summary>
+              {nets.nets.map((n) => (
+                <div key={n.net} class="summary-line faint" data-testid="summary-nets-net" data-net={n.net}>
+                  {netRowLine(n)}
+                </div>
+              ))}
+            </details>
+          )}
           <div class="sub">Faces</div>
           {s.faces.map((f) => (
             <div key={f.face} class="summary-line" data-testid="summary-face" data-face={f.face}>

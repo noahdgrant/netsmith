@@ -48,7 +48,7 @@ impl<'a> Router<'a> {
 
     /// The track length of the lines of `net`, their vias, and the share of that length beside
     /// a track of `partner` on the same layer: within the far edge of their
-    /// [`Router::pair_band`] ([`PAIR_NEAR`], or a cell past a stated spacing).
+    /// [`Router::pair_band`] (a cell past the pair's gap).
     pub(super) fn pair_measure(
         &self,
         state: &State,
@@ -154,14 +154,15 @@ impl<'a> Router<'a> {
     }
 
     /// How much longer a net of a pair may become in [`Self::side_by_side`]: [`PAIR_SLACK`],
-    /// and for a pair with a stated spacing (issue #1054) also what the jogs of 45 degrees from
-    /// its pads to the spacing add, [`JOG`] for each mm by which each end of the net's lines is
+    /// and also what the jogs of 45 degrees from its pads to the pair's gap add (issue #1054, for
+    /// every pair since issue #1223, [`Router::pair_gap`]), [`JOG`] for each mm by which each end of the net's lines is
     /// farther from the nearest end of the partner's than the pair's pitch (its widths and the
     /// spacing), as if the net alone moved over to its partner.
     fn funnel_slack(&self, net: usize, partner: usize) -> f64 {
-        let Some((_, spacing)) = self.board.pair_spacing(&self.board.nets[net].name) else {
+        if !self.paired(net) {
             return PAIR_SLACK;
-        };
+        }
+        let spacing = self.pair_gap(net);
         let ends = |n: usize| -> Vec<Pt> {
             (0..self.lines.len())
                 .filter(|&l| self.nets[l] == n && !self.lines[l].to_plane)
@@ -198,11 +199,7 @@ impl<'a> Router<'a> {
             again.sort_by(|&a, &b| self.lines[a].length().total_cmp(&self.lines[b].length()));
             // A net of a pair with a stated spacing is searched for at the least room first:
             // at the usual room, its partner's track keeps it a cell past the spacing.
-            let rooms = if self
-                .board
-                .pair_spacing(&self.board.nets[net].name)
-                .is_some()
-            {
+            let rooms = if self.paired(net) {
                 [ROOM_TIGHT, ROOM_LOOSE]
             } else {
                 [ROOM_LOOSE, ROOM_TIGHT]
