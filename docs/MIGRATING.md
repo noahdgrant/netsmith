@@ -13,6 +13,8 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+## 0.4.0: changes since 0.3.1
+
 ### The ATtiny13A's I/O pins are plain pins with the part's levels (issue #1190)
 
 ```text
