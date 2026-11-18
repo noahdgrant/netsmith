@@ -2589,8 +2589,8 @@
         },
         {
           "net": "net-buck_3v3.light.anode",
-          "current": 0.0016818181818181817,
-          "least_width": 0.000055985916141391685,
+          "current": 0.0016818181844999998,
+          "least_width": 0.000055985916264529405,
           "vias": 1
         },
         {
@@ -2601,8 +2601,8 @@
         },
         {
           "net": "net-buck_3v3.stage.divider.rbottom.a",
-          "current": 0.00038085385808607345,
-          "least_width": 7.217637853343578e-6,
+          "current": 0.0003808538594669273,
+          "least_width": 7.217637889438527e-6,
           "vias": 1
         },
         {
@@ -2619,8 +2619,8 @@
         },
         {
           "net": "net-buck_5v.light.anode",
-          "current": 0.003484848484848485,
-          "least_width": 0.00015293232181797385,
+          "current": 0.003484848489333334,
+          "least_width": 0.0001529323220894459,
           "vias": 1
         },
         {
@@ -2631,8 +2631,8 @@
         },
         {
           "net": "net-buck_5v.stage.divider.rbottom.a",
-          "current": 0.0008358186739648418,
-          "least_width": 0.000021341640094787027,
+          "current": 0.0008358186758006605,
+          "least_width": 0.00002134164015944283,
           "vias": 1
         },
         {

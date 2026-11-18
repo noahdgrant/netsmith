@@ -34,7 +34,10 @@
 //!   and writes the voltage of rails nothing has given, so a pick is refused on the circuit's
 //!   own number.
 //!
-//! After the picks, `dc_field` and `dc_write_rail` write the results by the rules above, and the
+//! After the picks, `dc_analyze` solves the network, and once more with each rail behind a series
+//! element that has no voltage taken at 0 V up to the supply that reaches it when the first
+//! solve left something alone (issue #1268: a pull-up's draw that reads such a rail). Then
+//! `dc_field` and `dc_write_rail` write the results by the rules above, and the
 //! checks of the design's statements are `dc_check_supplies` (a supply's own `.current` is a
 //! budget the loads must be able to meet), `dc_check_efficiencies` (an efficiency is above 0 and
 //! at most 1), `dc_check_stated` (a voltage the design states on a rail the analysis solved must
@@ -345,8 +348,7 @@ impl Solver<'_> {
         // What each island draws from a source rail that states its own `.current`
         // (amendment 13): the rail, the range of the draw, and the island's run.
         let mut drawn: SupplyDraws = Vec::new();
-        let dc::Analysis { outcomes, left } =
-            dc::analyze(&self.model, false, &HashMap::new(), &HashSet::new());
+        let dc::Analysis { outcomes, left } = self.dc_analyze();
         notes.extend(left.into_iter().map(|l| NotEvaluated {
             at: l.at,
             involves: l.involves,
@@ -508,6 +510,166 @@ impl Solver<'_> {
             summary.rails += self.dc_write_rail(&rail, &class, &run);
         }
         (summary, notes, reads, net_currents)
+    }
+
+    /// The analysis after the picks, and the start of a circle through a rail behind a series
+    /// element (issue #1268).
+    ///
+    /// A rail on the far side of a bead or a resistor has the voltage the network gives it, so
+    /// it has none until the network is solved. A load on it whose draw reads that voltage (a
+    /// `PullUp`'s, `supply_top &= supply.voltage`) has no current until then, and a resistor
+    /// into a line nothing models with no current leaves the network open: the network waits
+    /// on the draw, the draw on the voltage, and the voltage on the network, and the analysis
+    /// left the regulator in front of it alone.
+    ///
+    /// So when the analysis leaves something alone, each rail that has no voltage and that a
+    /// stated supply or a regulator's output reaches through series elements is taken, for a
+    /// moment, at 0 V up to the highest of them (none of those elements raises a voltage: the
+    /// ceiling of `dc::ceiling`), the relations are worked through, and the resistors whose
+    /// current that gives are solved as loads of it (`extract`'s `into_open`). The result is
+    /// kept only when it leaves less alone and every rail taken is solved and inside the range it
+    /// was taken at, after the relations narrowed it: the draws were worked out over a range
+    /// that holds the circuit's voltage, so they hold its draw, and what the analysis gives is
+    /// an enclosure. A rail the solve does not reach is dropped and the rest are solved again. The model is put back, and the pass writes the rail's own voltage, from
+    /// which the draws are worked out again.
+    fn dc_analyze(&mut self) -> dc::Analysis {
+        let (enclosed, hulled, none) = (HashMap::new(), HashSet::new(), HashMap::new());
+        let first = dc::analyze(&self.model, false, &enclosed, &hulled, Some(&none));
+        if first.left.is_empty() {
+            return first;
+        }
+        let ceilings = dc::ceiling::Ceilings::with_outputs(&self.model);
+        let mut windows: Vec<(HashSet<FieldId>, Quantity)> = Vec::new();
+        let mut seen: HashSet<FieldId> = HashSet::new();
+        for (iface, _) in self.model.instances() {
+            let Some((voltage, pos, _)) = self.model.rail_of(iface) else {
+                continue;
+            };
+            if seen.contains(&voltage) {
+                continue;
+            }
+            let class = self.equated(voltage);
+            seen.extend(class.iter().copied());
+            if class
+                .iter()
+                .any(|&f| !matches!(self.domain(f), Domain::Unset))
+            {
+                continue;
+            }
+            if let Some(hi) = ceilings.of(pos)
+                && hi > 0.0
+                && let Ok(window) = Quantity::interval(Dimension::VOLTAGE, 0.0, hi)
+            {
+                windows.push((class, window));
+            }
+        }
+        if windows.is_empty() {
+            return first;
+        }
+        let resistors: Vec<(InstId, FieldId)> = self
+            .model
+            .dc_elements()
+            .filter(|(part, element)| {
+                element.kind == netsmith_check::DcKind::Resistor
+                    && self.model.instance(*part).kind == netsmith_check::InstKind::Part
+            })
+            .filter_map(|(part, _)| Some((part, self.model.through_of(part)?)))
+            .filter(|&(_, current)| matches!(self.domain(current), Domain::Unset))
+            .collect();
+        if resistors.is_empty() {
+            return first;
+        }
+        // Each round takes the rails at their windows, works out the currents and solves the
+        // network with them. A rail that the round does not solve is not checked by it, and a
+        // current worked out from its window is not known to hold, so the next round goes
+        // without it, until every rail taken is solved, or none is left.
+        let mut windows = windows;
+        while !windows.is_empty() {
+            let (given, narrowed) = self.currents_at(&windows, &resistors);
+            if given.is_empty() {
+                return first;
+            }
+            let second = dc::analyze(&self.model, false, &enclosed, &hulled, Some(&given));
+            if second.left.len() >= first.left.len() {
+                return first;
+            }
+            let mut solved = vec![false; windows.len()];
+            for outcome in &second.outcomes {
+                let Ok(report) = &outcome.result else {
+                    continue;
+                };
+                if report.consistent == 0 {
+                    continue;
+                }
+                for rail in &outcome.planned.rails {
+                    let Some(k) = windows.iter().position(|(c, _)| c.contains(&rail.field)) else {
+                        continue;
+                    };
+                    let r = report.range(Which::NodeVoltage(rail.node));
+                    let inside = narrowed[k].is_some_and(|w| {
+                        let s = slack(Dimension::VOLTAGE, w.lo(), w.hi());
+                        !r.is_empty() && r.lo >= w.lo() - s && r.hi <= w.hi() + s
+                    });
+                    if !inside {
+                        return first;
+                    }
+                    solved[k] = true;
+                }
+            }
+            if solved.iter().all(|&s| s) {
+                return second;
+            }
+            let mut k = 0;
+            windows.retain(|_| {
+                k += 1;
+                solved[k - 1]
+            });
+        }
+        first
+    }
+
+    /// The currents of `resistors` with each rail of `windows` taken at its window and the
+    /// relations worked through, and each window as the relations narrowed it (`None` when they
+    /// emptied it). The model is put back as it was.
+    fn currents_at(
+        &mut self,
+        windows: &[(HashSet<FieldId>, Quantity)],
+        resistors: &[(InstId, FieldId)],
+    ) -> (HashMap<InstId, dc::Range>, Vec<Option<Quantity>>) {
+        let mark = self.mark();
+        for (class, window) in windows {
+            for &f in class {
+                self.model.set_domain(f, Domain::Quantity(*window));
+            }
+        }
+        let _ = self.propagate();
+        let narrowed = windows
+            .iter()
+            .map(|(class, window)| {
+                let mut w = Some(*window);
+                for &f in class {
+                    if let (Some(prev), Domain::Quantity(q)) = (w, self.domain(f)) {
+                        w = prev.intersect(&q).ok().flatten();
+                    }
+                }
+                w
+            })
+            .collect();
+        let given = resistors
+            .iter()
+            .filter_map(|&(part, current)| match self.domain(current) {
+                Domain::Quantity(q)
+                    if q.dim() == Dimension::CURRENT
+                        && q.lo().is_finite()
+                        && q.hi().is_finite() =>
+                {
+                    Some((part, dc::Range::new(q.lo(), q.hi())))
+                }
+                _ => None,
+            })
+            .collect();
+        self.restore(&mark);
+        (given, narrowed)
     }
 
     /// A source rail that states its own `.current` is a budget (ADR 0076, amendment 13): a
@@ -1143,7 +1305,7 @@ impl Solver<'_> {
         if closing {
             self.enclose_boundaries(jobs);
         }
-        let outcomes = dc::analyze(&self.model, true, &enclosed, &hulled).outcomes;
+        let outcomes = dc::analyze(&self.model, true, &enclosed, &hulled, None).outcomes;
         self.model.restore(&saved);
         let mut written: Vec<(dc::RailNode, Rc<Run>)> = Vec::new();
         let mut vins: Vec<(InstId, FieldId, Rc<Run>, usize)> = Vec::new();

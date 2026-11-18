@@ -337,13 +337,27 @@ struct Scope<'a> {
 /// range its voltage has, as a source is: the network is cut there, and what is on its two
 /// sides is solved on its own (the pick-time analysis of ADR 0076, amendment 10, cuts at the
 /// rails that an earlier pass worked out).
+///
+/// With `into_open` (the pass after the picks) a resistor from a free net into a net that
+/// nothing here models is a load of the current it carries, the range `into_open` gives it or
+/// else the one its `.current` has (see `loads_into_open`).
 pub(crate) fn extract(
     model: &Model,
     enclosed: &HashMap<InstId, Range>,
     hulled: &HashSet<InstId>,
     cuts: &HashSet<InstId>,
+    into_open: Option<&HashMap<InstId, Range>>,
 ) -> Extracted {
-    extract_in(model, &Index::new(model), enclosed, hulled, cuts, None).0
+    extract_in(
+        model,
+        &Index::new(model),
+        enclosed,
+        hulled,
+        cuts,
+        None,
+        into_open,
+    )
+    .0
 }
 
 /// The islands of `extract(model, {}, {}, cuts)` that have one of `parts`, the same and in the
@@ -365,7 +379,8 @@ pub(crate) fn extract_around(
     let mut nets: BTreeSet<usize> = BTreeSet::new();
     loop {
         let scope = Scope { nets: &nets, parts };
-        let (extracted, needs) = extract_in(model, index, &enclosed, &hulled, cuts, Some(&scope));
+        let (extracted, needs) =
+            extract_in(model, index, &enclosed, &hulled, cuts, Some(&scope), None);
         if needs.is_subset(&nets) {
             return extracted.islands;
         }
@@ -382,6 +397,7 @@ fn extract_in(
     hulled: &HashSet<InstId>,
     cuts: &HashSet<InstId>,
     scope: Option<&Scope<'_>>,
+    into_open: Option<&HashMap<InstId, Range>>,
 ) -> (Extracted, BTreeSet<usize>) {
     let nets = model.nets();
     let net_of = &ix.net_of;
@@ -1196,6 +1212,9 @@ fn extract_in(
         }
         open_nets(&accounted)
     };
+    if let Some(given) = into_open {
+        loads_into_open(model, given, &open, &held, &mut items, &mut enclosed_loads);
+    }
 
     for reg in regs.iter_mut() {
         reg.out_complete = !open.contains(&reg.out_net);
@@ -1810,6 +1829,52 @@ fn driver_of(
         open_drain: false,
         leak,
     })
+}
+
+/// A resistor from a free net into a net that nothing here models (a pull-up to an open-drain
+/// line, a series resistor to a pin with no model) is a load of the current it carries, drawn
+/// from the free net to the ground of its island, and not an element (issue #1268). As an
+/// element it would join the open net to the island, and the whole island, the rail behind a
+/// series bead and what feeds it, would be left alone; as a load, the island has what the
+/// resistor draws and the open net stays out of it. The current is `given`'s range for the part,
+/// or else the one its `.current` has (a `PullUp` states it); with none the resistor stays an
+/// element. A resistor whose other end is held stays one as well: a held net is no node of an
+/// island, and the balance of the net gives what it draws, as before.
+fn loads_into_open(
+    model: &Model,
+    given: &HashMap<InstId, Range>,
+    open: &BTreeSet<usize>,
+    held: &BTreeMap<usize, Held_>,
+    items: &mut Vec<Item>,
+    loads: &mut Vec<(String, usize, usize, Range)>,
+) {
+    items.retain(|item| {
+        let (Kind::Resistor { .. }, Some(part), &[a, b]) = (&item.kind, item.part, &item.nets[..])
+        else {
+            return true;
+        };
+        let (free, into) = match (open.contains(&a), open.contains(&b)) {
+            (false, true) => (a, b),
+            (true, false) => (b, a),
+            _ => return true,
+        };
+        if held.contains_key(&free) {
+            return true;
+        }
+        let Some(i) = given
+            .get(&part)
+            .copied()
+            .or_else(|| stated_current(model, part).map(|(_, i)| i))
+        else {
+            return true;
+        };
+        // `.current` flows along the bridge, from `a` to `b` of the element unless it is
+        // flipped; the load is what leaves the free net.
+        let forward = (free == a) != item.flipped;
+        let i = if forward { i } else { Range::new(-i.hi, -i.lo) };
+        loads.push((item.name.clone(), free, into, i));
+        false
+    });
 }
 
 /// A part's through-current (its `.current`, for a part with a `bridge`) when it has a range

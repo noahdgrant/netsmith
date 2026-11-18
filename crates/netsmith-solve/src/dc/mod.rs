@@ -245,19 +245,21 @@ fn one_load_of_a_group(island: &net::Island) -> Option<(usize, usize)> {
 
 /// Extract and solve every island of a model, in the order of the power tree. With `enclosure`
 /// (the start before the picks) a regulator whose load is not known is given the range its own
-/// relations enclose it in.
+/// relations enclose it in. `into_open` is `extract`'s: the currents of the resistors into a net
+/// nothing models, for the pass after the picks.
 pub(crate) fn analyze(
     model: &Model,
     enclosure: bool,
     enclosed: &HashMap<InstId, Range>,
     hulled: &HashSet<InstId>,
+    into_open: Option<&HashMap<InstId, Range>>,
 ) -> Analysis {
     let extract::Extracted {
         mut islands,
         regs,
         unsolved_outputs,
         mut left,
-    } = extract(model, enclosed, hulled, &HashSet::new());
+    } = extract(model, enclosed, hulled, &HashSet::new(), into_open);
     let mut states: Vec<State> = islands.iter().map(|_| State::Pending).collect();
     let mut loads: Vec<Option<Option<Range>>> = vec![None; regs.len()];
     let mut whys: Vec<Option<Why>> = vec![None; regs.len()];
