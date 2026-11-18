@@ -78,7 +78,9 @@ fn the_rules_file_holds_the_processs_pad_to_pad_and_netsmiths_check_reads_it_bac
     pads(&mut b, "U1", (10.0, 10.0), 0.1448);
     let text = rules_file(&b);
     assert!(
-        text.contains("(rule \"netsmith pad_to_pad\"\n\t(constraint clearance (min 0.15mm))"),
+        text.contains(
+            "(rule \"netsmith pad_to_pad\"\n\t(constraint physical_clearance (min 0.15mm))"
+        ),
         "{text}"
     );
     // The project file's clearance is 0.1 mm: a gap of 0.1448 mm passes it.
@@ -99,7 +101,7 @@ fn the_rules_file_holds_the_processs_pad_to_pad_and_netsmiths_check_reads_it_bac
 }
 
 #[test]
-fn kicads_check_with_the_rules_file_reports_a_pad_gap_of_0_1448_mm_as_netsmiths_does() {
+fn kicads_check_with_the_rules_file_reports_a_gap_of_0_1448_mm_between_pads_of_one_footprint_as_netsmiths_does() {
     let mut b = jlcpcb();
     pads(&mut b, "U1", (10.0, 10.0), 0.1448);
     let (pcb, pro, text) = (b.pcb(), b.pro(), rules_file(&b));
@@ -124,6 +126,226 @@ fn kicads_check_with_the_rules_file_reports_a_pad_gap_of_0_1448_mm_as_netsmiths_
     let mine = ours(&mut b, &DrcExtras::default().with_rules_file(&text));
     let c = compare_kicad_drc_with_rules_file(&mine, &with, 0.01);
     assert!(c.agrees() && c.agreed == 1, "{c}");
+}
+
+/// Two surface-mount pads 0.3 mm wide of nets A and B, `gap` apart, in one footprint `U1` or in
+/// two parts, `U1` and `U2`. `own_clearance` is written on pad 1 and `fields` among the
+/// footprint's own (issue #1229).
+fn pair(gap: f64, one_footprint: bool, own_clearance: Option<f64>, fields: &str) -> Pcb {
+    let mut b = jlcpcb();
+    let half = (0.3 + gap) / 2.0;
+    let first = P {
+        clearance: own_clearance,
+        ..smd("1", if one_footprint { -half } else { 0.0 }, 0.0, 0.3, 0.6, "A")
+    };
+    if one_footprint {
+        let second = smd("2", half, 0.0, 0.3, 0.6, "B");
+        b.part_in("U1", (10.0, 10.0), 0.0, &[first, second], NONE, fields);
+    } else {
+        b.part_in("U1", (10.0 - half, 10.0), 0.0, &[first], NONE, fields);
+        b.part("U2", (10.0 + half, 10.0), 0.0, &[smd("1", 0.0, 0.0, 0.3, 0.6, "B")], NONE);
+    }
+    b
+}
+
+/// KiCad's findings of the rule of the pads' space on the board.
+fn kicad_pad_to_pad(name: &str, b: &mut Pcb, rules: &str) -> Option<Vec<netsmith_fab::KicadDrcReported>> {
+    let (pcb, pro) = (b.pcb(), b.pro());
+    kicad_findings_with(name, &pcb, &pro, rules)
+        .map(|k| k.into_iter().filter(|k| k.kind == "pad_to_pad").collect())
+}
+
+#[test]
+fn kicads_check_with_the_rules_file_reports_pads_0_14_mm_apart_of_one_footprint_and_of_two_parts_alike()
+{
+    // Measured with KiCad 9.0.0 (issue #1229): its check does not skip the pads of one footprint.
+    for one_footprint in [true, false] {
+        let mut b = pair(0.14, one_footprint, None, "");
+        let text = rules_file(&b);
+        let mine = ours(&mut b, &DrcExtras::default().with_rules_file(&text));
+        assert_eq!(mine.count(DrcRule::PadToPad), 1, "{mine}");
+        // The finding says where it is: within a footprint or between two parts.
+        assert_eq!(
+            mine.to_string().contains("within U1's own footprint"),
+            one_footprint,
+            "{mine}"
+        );
+        let Some(without) = kicad_pad_to_pad("gap14", &mut b, "") else {
+            eprintln!("skipped: KiCad is not installed");
+            return;
+        };
+        assert_eq!(without, vec![], "the project file's 0.1 mm passes the pads");
+        let with = kicad_pad_to_pad("gap14", &mut b, &text).unwrap();
+        assert_eq!(with.len(), 1, "one footprint: {one_footprint}: {with:?}");
+        assert!(
+            with[0].description.contains("actual 0.1400 mm"),
+            "{}",
+            with[0].description
+        );
+        let all = kicad_findings_with("gap14", &b.pcb(), &b.pro(), &text).unwrap();
+        let c = compare_kicad_drc_with_rules_file(&mine, &all, 0.01);
+        assert!(c.agrees() && c.agreed == 1, "{c}{all:?}");
+    }
+}
+
+#[test]
+fn a_clearance_written_on_a_pad_or_its_footprint_or_a_net_tie_group_does_not_silence_the_rule() {
+    // KiCad's `clearance` constraint yields to a clearance written on a pad or on its footprint,
+    // as it is in KiCad's own footprint libraries, and to a footprint's net tie groups: a rule of
+    // that constraint is silent for those pads. The rule of the file is a `physical_clearance`,
+    // which they do not override (measured with KiCad 9.0.0, issue #1229).
+    let cases = [
+        ("a pad's own clearance, one footprint", true, Some(0.05), ""),
+        ("a pad's own clearance, two parts", false, Some(0.05), ""),
+        ("a footprint's clearance", true, None, "(clearance 0.05)"),
+        ("a net tie group", true, None, "(net_tie_pad_groups \"1, 2\")"),
+    ];
+    for (what, one_footprint, own, fields) in cases {
+        let mut b = pair(0.14, one_footprint, own, fields);
+        let text = rules_file(&b);
+        let mine = ours(&mut b, &DrcExtras::default().with_rules_file(&text));
+        assert_eq!(mine.count(DrcRule::PadToPad), 1, "{what}: {mine}");
+        let Some(with) = kicad_pad_to_pad("own", &mut b, &text) else {
+            eprintln!("skipped: KiCad is not installed");
+            return;
+        };
+        assert_eq!(with.len(), 1, "{what}: {with:?}");
+        // The same rule as a `clearance` is silent.
+        let as_clearance = text.replace("physical_clearance", "clearance");
+        let silent = kicad_pad_to_pad("own", &mut b, &as_clearance).unwrap();
+        assert_eq!(silent, vec![], "{what}: a clearance constraint reports");
+    }
+}
+
+#[test]
+fn pads_that_overlap_are_the_short_and_pads_of_one_net_or_no_net_are_not_the_rules() {
+    // Overlapping pads of two nets: netsmith reports the short, and KiCad too, with its rule
+    // of the pads' space as a second finding of the pair, which the comparison counts as the
+    // short's.
+    let mut b = pair(-0.1, true, None, "");
+    let text = rules_file(&b);
+    let mine = ours(&mut b, &DrcExtras::default().with_rules_file(&text));
+    assert_eq!(mine.count(DrcRule::PadToPad), 0, "{mine}");
+    assert_eq!(mine.count(DrcRule::ShortingItems), 1, "{mine}");
+    // Pads 0.14 mm apart of one net, or with no net: netsmith's rule is for pads of two nets.
+    let net_of = |a, b2| {
+        let mut b = jlcpcb();
+        let pad = |n, x, net| P {
+            net,
+            ..smd(n, x, 0.0, 0.3, 0.6, "")
+        };
+        b.part("U1", (10.0, 10.0), 0.0, &[pad("1", -0.22, a), pad("2", 0.22, b2)], NONE);
+        b
+    };
+    for (what, mut same) in [
+        ("one net", net_of(Some("A"), Some("A"))),
+        ("no net", net_of(None, None)),
+    ] {
+        let mine = ours(&mut same, &DrcExtras::default().with_rules_file(&text));
+        assert_eq!(mine.count(DrcRule::PadToPad), 0, "{what}: {mine}");
+        let Some(theirs) = kicad_pad_to_pad("same", &mut same, &text) else {
+            eprintln!("skipped: KiCad is not installed");
+            return;
+        };
+        assert_eq!(theirs, vec![], "{what}");
+    }
+    let Some(theirs) = kicad_findings_with("overlap", &b.pcb(), &b.pro(), &text) else {
+        eprintln!("skipped: KiCad is not installed");
+        return;
+    };
+    assert_eq!(
+        theirs.iter().filter(|k| k.kind == "pad_to_pad").count(),
+        1,
+        "{theirs:?}"
+    );
+    let c = compare_kicad_drc_with_rules_file(&mine, &theirs, 0.01);
+    assert!(c.agrees() && c.measured_otherwise == 1, "{c}{theirs:?}");
+}
+
+#[test]
+fn kicads_check_judges_the_items_of_one_footprint_to_the_same_rules_as_netsmiths() {
+    // The guide's table (chapter _Commands_, _The design rules check against KiCad's_) says,
+    // for each class of finding, whether KiCad reports it where both items are of one
+    // footprint (issue #1229). One footprint `U1` with pads and a hole that break the rules a
+    // pair of its own items can break; the two checks name the same findings.
+    let mut b = jlcpcb();
+    let mut pads = vec![
+        // Two nets 0.08 mm apart: `clearance` and `pad_to_pad`.
+        smd("1", -0.19, 0.0, 0.3, 0.6, "A"),
+        smd("2", 0.19, 0.0, 0.3, 0.6, "B"),
+        // Two nets that overlap: a short.
+        smd("3", -0.1, 3.0, 0.3, 0.6, "C"),
+        smd("4", 0.1, 3.0, 0.3, 0.6, "D"),
+        // A hole with no copper 0.05 mm from a pad of its own footprint.
+        hole(0.0, 6.0, 1.0),
+        smd("5", 0.7, 6.0, 0.3, 0.6, "E"),
+        // Two plated holes 0.1 mm apart (`hole_to_hole`, `pad_hole_to_hole`, thin rings).
+        thru("6", -0.45, 9.0, 1.0, 0.8, "F"),
+        thru("7", 0.45, 9.0, 1.0, 0.8, "F"),
+        // A pad 0.1 mm from a line of its own footprint on `Edge.Cuts`, and silkscreen 0.1 mm
+        // from it.
+        smd("8", 8.25, 0.0, 0.3, 0.6, "G"),
+    ];
+    // Pad 9 is of pad 1's net and joined to it by nothing: `unconnected_items`.
+    pads.push(smd("9", 12.0, 0.0, 0.3, 0.6, "A"));
+    let own_edge = "(fp_rect (start 6 -2) (end 8 2) (stroke (width 0.05) (type solid)) (fill no) (layer \"Edge.Cuts\"))\n\t\t(fp_line (start 6 -2.1) (end 8 -2.1) (stroke (width 0.12) (type solid)) (layer \"F.SilkS\"))";
+    b.part_in("U1", (10.0, 10.0), 0.0, &pads, NONE, own_edge);
+    // A mask web of 0.04 mm: the short's pads break it, the hole's 0.05 mm from a pad does not.
+    b.setup("(solder_mask_min_width 0.04)\n");
+    let text = rules_file(&b);
+    let mine = ours(&mut b, &DrcExtras::default().with_rules_file(&text));
+    let Some(theirs) = kicad_findings_with("one_footprint", &b.pcb(), &b.pro(), &text) else {
+        eprintln!("skipped: KiCad is not installed");
+        return;
+    };
+    let c = compare_kicad_drc_with_rules_file(&mine, &theirs, 0.1);
+    assert!(c.agrees(), "{c}netsmith's:\n{mine}KiCad's:\n{theirs:#?}");
+    for rule in [
+        "clearance",
+        "pad_to_pad",
+        "solder_mask_bridge",
+        "shorting_items",
+        "hole_clearance",
+        "hole_to_hole",
+        "pad_hole_to_hole",
+        "copper_edge_clearance",
+        "silk_edge_clearance",
+        "unconnected_items",
+    ] {
+        assert!(
+            // The process's `pad_hole_to_hole` replaces `hole_to_hole` for the pair in KiCad.
+            theirs
+                .iter()
+                .any(|k| k.kind == rule || (rule == "hole_to_hole" && k.base == rule)),
+            "KiCad reports no {rule}: {theirs:#?}"
+        );
+        assert!(
+            DrcRule::from_id(rule).is_some_and(|r| mine.count(r) > 0),
+            "netsmith reports no {rule}:\n{mine}"
+        );
+    }
+}
+
+#[test]
+fn the_mask_web_between_pads_of_one_footprint_is_judged_by_both_checks() {
+    // Pads of two nets 0.08 mm apart in one footprint, and in two parts, to a web of 0.13 mm.
+    for one_footprint in [true, false] {
+        let mut b = pair(0.08, one_footprint, None, "");
+        b.setup("(solder_mask_min_width 0.13)\n");
+        let mine = ours(&mut b, &DrcExtras::default());
+        assert_eq!(mine.count(DrcRule::SolderMaskBridge), 1, "{mine}");
+        let Some(theirs) = kicad_findings("web", &b.pcb(), &b.pro()) else {
+            eprintln!("skipped: KiCad is not installed");
+            return;
+        };
+        let c = compare_kicad_drc_with_rules_file(&mine, &theirs, 0.01);
+        assert!(c.agrees(), "{c}{theirs:#?}");
+        assert_eq!(
+            theirs.iter().filter(|k| k.kind == "solder_mask_bridge").count(),
+            1,
+            "one footprint: {one_footprint}: {theirs:#?}"
+        );
+    }
 }
 
 #[test]
@@ -174,7 +396,10 @@ fn kicads_check_with_the_rules_file_agrees_with_netsmiths_on_every_rule_the_file
     assert!(c.agrees(), "{c}netsmith's:\n{mine}KiCad's:\n{theirs:#?}");
     for rule in ["pad_to_pad", "hole_to_track", "pad_hole_to_hole", "npth_drill", "slot_width", "plated_ring"] {
         assert!(
-            theirs.iter().any(|k| k.kind == rule),
+            // The process's `pad_hole_to_hole` replaces `hole_to_hole` for the pair in KiCad.
+            theirs
+                .iter()
+                .any(|k| k.kind == rule || (rule == "hole_to_hole" && k.base == rule)),
             "KiCad reports no {rule}: {theirs:#?}"
         );
     }

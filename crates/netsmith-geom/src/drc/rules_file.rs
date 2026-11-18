@@ -18,11 +18,22 @@
 //!
 //! A rule is written only where the process asks more than the project file already does: a
 //! custom rule replaces the project's number for the items it matches, so a smaller one would
-//! let KiCad pass what netsmith refuses. For the same reason a net class that keeps more than
-//! the space between surface-mount pads gets a rule of its own after the pads' rule (in KiCad,
-//! the last rule that matches wins, and a custom rule wins over a net class's clearance; measured
-//! with KiCad 9.0.0), ordered by its clearance so that the larger of two classes wins, as KiCad
-//! takes the larger clearance of two nets.
+//! let KiCad pass what netsmith refuses.
+//!
+//! **The space between pads is a `physical_clearance`, not a `clearance`** (issue #1229). KiCad's
+//! `clearance` constraint yields to a clearance written on a pad or on its footprint (a library
+//! footprint's `(clearance 0.05)`, which the footprints of KiCad's own libraries carry on
+//! fine-pitch pads), and to the net tie groups of a footprint: a rule of that constraint is silent
+//! for those pads, in one footprint or between two. Measured with KiCad 9.0.0, the pads of one
+//! footprint are checked like those of two, and `physical_clearance` is the constraint that a
+//! pad's own clearance does not override. It is not limited to pads of different nets as
+//! `clearance` is, so the condition says it (`A.NetName != B.NetName`: netsmith's `pad_to_pad`
+//! leaves two pads of one net, or two with no net, alone), and it also reports two pads that
+//! touch (a short, which netsmith reports as `shorting_items` alone: the cross-check counts
+//! KiCad's second finding of the pair as that short's). The project's clearance, and a net
+//! class's, are KiCad's own `clearance` and report beside it, so no rule of a net class is
+//! written. A hole's clearance (`hole_to_track`) is a `hole_clearance` rule and yields to a pad's
+//! own clearance in the same way (issue #1231).
 //!
 //! **What a KiCad rule cannot say,** and so stays netsmith's alone: the space from a solder mask
 //! opening to a track (`mask_to_track`; KiCad's `solder_mask_bridge` names a track inside an
@@ -39,11 +50,12 @@ use super::{Extras, Rules};
 /// What starts the name of each rule the file holds.
 pub const PREFIX: &str = "netsmith ";
 
-/// The condition that matches two surface-mount pads (KiCad's `connect` pads, an edge
-/// connector's, among them, as netsmith's `pad_to_pad` takes them).
+/// The condition that matches two surface-mount pads of different nets (KiCad's `connect` pads,
+/// an edge connector's, among them, as netsmith's `pad_to_pad` takes them).
 const SMD_PADS: &str = "A.Type == 'Pad' && B.Type == 'Pad' \
     && (A.Pad_Type == 'SMD' || A.Pad_Type == 'Edge connector') \
-    && (B.Pad_Type == 'SMD' || B.Pad_Type == 'Edge connector')";
+    && (B.Pad_Type == 'SMD' || B.Pad_Type == 'Edge connector') \
+    && A.NetName != B.NetName";
 
 /// One rule of the file: its name after [`PREFIX`], KiCad's constraint, the least, and the
 /// condition.
@@ -70,27 +82,10 @@ pub fn kicad_dru(project: &Rules, process: &Extras) -> String {
     ) {
         rules.push(Written {
             name: "pad_to_pad".into(),
-            constraint: "clearance",
+            constraint: "physical_clearance",
             least,
             condition: SMD_PADS.into(),
         });
-        let mut classes: Vec<(&str, f64)> = project
-            .classes
-            .iter()
-            .filter_map(|c| Some((c.name.as_str(), c.clearance?)))
-            .filter(|(_, c)| *c > least + 1e-9)
-            .collect();
-        classes.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(b.0)));
-        for (class, clearance) in classes {
-            rules.push(Written {
-                name: format!("clearance {class}"),
-                constraint: "clearance",
-                least: clearance,
-                condition: format!(
-                    "{SMD_PADS} && (A.hasNetclass('{class}') || B.hasNetclass('{class}'))"
-                ),
-            });
-        }
     }
     if let Some(least) = more(process.hole_to_track, project.hole_clearance) {
         rules.push(Written {
@@ -175,6 +170,13 @@ pub fn kicad_dru(project: &Rules, process: &Extras) -> String {
          # that holds it; netsmith writes this file again on every fab.\n",
     );
     for r in rules {
+        if r.name == "pad_to_pad" {
+            out.push_str(
+                "\n# A physical_clearance and not a clearance: KiCad's clearance yields to a clearance\n\
+                 # written on a pad or on its footprint (a library's), which would silence this rule\n\
+                 # for those pads, in one footprint or between two (issue #1229).\n",
+            );
+        }
         out.push_str(&format!(
             "\n(rule \"{PREFIX}{}\"\n\t(constraint {} (min {}mm))\n\t(condition \"{}\"))\n",
             r.name,
@@ -304,7 +306,7 @@ mod tests {
     }
 
     #[test]
-    fn a_class_that_keeps_more_than_the_pads_gets_a_rule_after_theirs_the_larger_last() {
+    fn the_pads_space_is_a_physical_clearance_of_pads_of_different_nets_and_a_class_gets_no_rule() {
         let mut p = project();
         for (name, clearance) in [("Clearance_1mm", 1.0), ("Clearance_0.5mm", 0.5)] {
             p.classes.push(super::super::Class {
@@ -315,11 +317,17 @@ mod tests {
             });
         }
         let text = kicad_dru(&p, &jlcpcb());
-        let at = |s: &str| text.find(s).unwrap_or_else(|| panic!("no {s} in {text}"));
-        assert!(at("netsmith pad_to_pad") < at("netsmith clearance Clearance_0.5mm"));
-        assert!(at("netsmith clearance Clearance_0.5mm") < at("netsmith clearance Clearance_1mm"));
-        assert!(text.contains("B.hasNetclass('Clearance_1mm')"), "{text}");
-        // Read back, a class's rule is the project file's and changes nothing.
+        // A pad's own clearance overrides KiCad's `clearance` constraint and not this one
+        // (issue #1229).
+        assert!(
+            text.contains(
+                "(rule \"netsmith pad_to_pad\"\n\t(constraint physical_clearance (min 0.15mm))"
+            ),
+            "{text}"
+        );
+        assert!(text.contains("A.NetName != B.NetName"), "{text}");
+        // KiCad's own clearance of a class reports beside it: no rule of the class is written.
+        assert!(!text.contains("Clearance_1mm"), "{text}");
         assert_eq!(Extras::default().with_rules_file(&text), jlcpcb());
     }
 

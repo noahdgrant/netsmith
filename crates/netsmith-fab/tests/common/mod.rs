@@ -18,6 +18,9 @@ pub struct P {
     pub size: (f64, f64),
     pub drill: Option<f64>,
     pub net: Option<&'static str>,
+    /// A clearance written on the pad itself (a library's, `(clearance 0.05)`), which KiCad's
+    /// `clearance` constraint yields to (issue #1229).
+    pub clearance: Option<f64>,
 }
 
 /// A surface-mount rectangle pad.
@@ -30,6 +33,7 @@ pub fn smd(number: &'static str, x: f64, y: f64, w: f64, h: f64, net: &'static s
         size: (w, h),
         drill: None,
         net: Some(net),
+        clearance: None,
     }
 }
 
@@ -43,6 +47,7 @@ pub fn thru(number: &'static str, x: f64, y: f64, d: f64, drill: f64, net: &'sta
         size: (d, d),
         drill: Some(drill),
         net: Some(net),
+        clearance: None,
     }
 }
 
@@ -56,6 +61,7 @@ pub fn hole(x: f64, y: f64, drill: f64) -> P {
         size: (drill, drill),
         drill: Some(drill),
         net: None,
+        clearance: None,
     }
 }
 
@@ -168,6 +174,19 @@ impl Pcb {
     }
 
     pub fn part(&mut self, refdes: &str, at: (f64, f64), angle: f64, pads: &[P], draw: Draw) {
+        self.part_in(refdes, at, angle, pads, draw, "");
+    }
+
+    /// [`Pcb::part`] with `fields` among the footprint's own (`(net_tie_pad_groups "1, 2")`).
+    pub fn part_in(
+        &mut self,
+        refdes: &str,
+        at: (f64, f64),
+        angle: f64,
+        pads: &[P],
+        draw: Draw,
+        fields: &str,
+    ) {
         let (side, fab, silk, crt) = if draw.back {
             ("B.Cu", "B.Fab", "B.SilkS", "B.CrtYd")
         } else {
@@ -181,6 +200,9 @@ impl Pcb {
             s.push_str("\t\t(attr through_hole)\n");
         } else {
             s.push_str("\t\t(attr smd)\n");
+        }
+        if !fields.is_empty() {
+            let _ = writeln!(s, "\t\t{fields}");
         }
         if let Some((hx, hy)) = draw.courtyard {
             let _ = writeln!(
@@ -204,9 +226,13 @@ impl Pcb {
                 _ => "\"*.Cu\" \"*.Mask\"".to_string(),
             };
             let drill = p.drill.map(|d| format!(" (drill {d})")).unwrap_or_default();
+            let clearance = p
+                .clearance
+                .map(|c| format!(" (clearance {c})"))
+                .unwrap_or_default();
             let _ = writeln!(
                 s,
-                "\t\t(pad \"{}\" {} {} (at {} {}) (size {} {}){drill} (layers {layers}) {net})",
+                "\t\t(pad \"{}\" {} {} (at {} {}) (size {} {}){drill} (layers {layers}) {net}{clearance})",
                 p.number, p.kind, p.shape, p.at.0, p.at.1, p.size.0, p.size.1
             );
         }
