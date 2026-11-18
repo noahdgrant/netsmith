@@ -49,15 +49,18 @@ The imports and doc comments are left out here; the complete file is `examples/l
 
 ## Install
 
-- Build from a checkout: `cargo install --path crates/netsmith --locked`. It needs only Rust;
-  the editor's page is committed as a built bundle.
+- Build from a checkout: `cargo install --path crates/netsmith-cli --locked` (the package is
+  `netsmith-cli`; the program it installs is `netsmith`). It needs Rust; with Node 20 or newer
+  it also builds the editor's page (without Node the editor shows a page that says it was not
+  built, ADR 0114).
 - Or straight from GitHub, with no checkout:
-  `cargo install --git https://github.com/noahdgrant/netsmith netsmith --locked`.
+  `cargo install --git https://github.com/noahdgrant/netsmith netsmith-cli --locked`.
 - Or take the `netsmith-<version>-<target>.tar.gz` archive (`.zip` on Windows) from the
   [releases](https://github.com/noahdgrant/netsmith/releases), check it against its `.sha256`
   file and put the binary on your `PATH`. The release workflow builds them for Linux, macOS and
   Windows (`scripts/release-build.sh` makes one) and attaches them to a release when its tag is
-  pushed. v0.1.0 has none: the workflow failed on its first run, and the failures are fixed.
+  pushed. v0.1.0 and v0.3.0 have none (their builds failed; 0.3.1 is the first of the 0.3 line
+  with archives): the release pull request now runs the same build before it is merged.
 - netsmith is not on crates.io yet.
 
 ### KiCad is optional
