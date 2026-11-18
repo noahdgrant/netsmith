@@ -11,8 +11,9 @@
 //!
 //! **What stood in the way.** When the net finds no way, it is routed again with the unlocked
 //! tracks and vias of every net that may be ripped taken away: a net whose record is not locked,
-//! is current (its pads have not moved) and has such a shape; zones, locked shapes and the
-//! copper of locked nets stay. The nets whose copper that way crosses
+//! is current (its pads have not moved), has such a shape and is joined by no pour, plane or
+//! zone (issue #1315: `--rip` of one is refused, it has no copper to rip); zones, locked shapes
+//! and the copper of locked nets stay. The nets whose copper that way crosses
 //! ([`netsmith_router::walk::Ground::crossed`], the design rules check's own spaces) stood in
 //! the way. Each of them is then given back its copper in turn, by name, and kept back when the
 //! net still routes: the nets named are a set none of which can be left out, though not always
@@ -82,6 +83,11 @@ impl Ask {
             if *r == net {
                 return Err(Refusal::Refused(format!(
                     "`--rip` names net {net}, the net to route: it rips the nets in its way"
+                )));
+            }
+            if netsmith_pcb::net_is_poured(board, r) {
+                return Err(Refusal::Refused(format!(
+                    "`--rip` names net {r}, which a pour, a plane or a zone joins: it has no copper to rip (the fill is not a track or a via)"
                 )));
             }
             set.insert(r.clone());
@@ -579,7 +585,9 @@ impl Runs<'_> {
 }
 
 /// The nets of `routes` whose copper may be ripped (the module's header), less `exclude`, and
-/// only those of `only` when given.
+/// only those of `only` when given. A net a pour, a plane or a zone joins is never one (issue
+/// #1315): its fill is no track or via to remove, so a way that needs its stitching vias gone
+/// is no way ripping gives, and each run of the router that took them away was wasted.
 fn candidates(
     board: &Board,
     routes: &Routes,
@@ -595,6 +603,8 @@ fn candidates(
         .filter(|(n, _)| !exclude.contains(*n) && only.is_none_or(|o| o.contains(*n)))
         .filter(|(n, r)| {
             !r.lock
+                && r.zones.is_empty()
+                && !netsmith_pcb::net_is_poured(board, n)
                 && Some(&r.pads) == netsmith_pcb::pad_hash(board, n).as_ref()
                 && (r.tracks.iter().any(|t| !t.lock) || r.vias.iter().any(|v| !v.lock))
         })

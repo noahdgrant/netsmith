@@ -145,6 +145,44 @@ fn a_net_whose_way_crosses_another_nets_track_names_it_and_rip_routes_both() {
     assert!(text.contains("the narrowest place of its way"), "{text}");
 }
 
+/// Issue #1315: a net a pour joins is never suggested for `--rip`, asking to rip it is refused
+/// with what is true (it has no copper to rip), and no run of the router is spent taking its
+/// copper away.
+#[test]
+fn a_poured_net_is_neither_suggested_nor_ripped_and_costs_no_run() {
+    let mut board = board();
+    let (target, wall) = nets(&board);
+    let routes = walled(&board, &target, &wall, false);
+    let plain = route_net(&board, &routes, &ask(&board, &target, &[])).unwrap();
+    assert_eq!(plain.in_the_way, vec![wall.clone()], "{}", plain.text());
+
+    board.pours.push(netsmith_pcb::BoardPour {
+        layer: CopperLayer::Front,
+        net: wall.clone(),
+        stitch_pitch: None,
+        thermal_gap: None,
+        spoke_width: None,
+        clearance: None,
+        min_width: None,
+        pads: None,
+    });
+    let said = route_net(&board, &routes, &ask(&board, &target, &[])).unwrap();
+    let text = said.refused.clone().unwrap();
+    assert!(said.in_the_way.is_empty(), "{said:?}");
+    assert!(!text.contains("--rip"), "{text}");
+    // One run to route the net, none to look for nets to rip.
+    assert_eq!(said.runs, 1, "{said:?}");
+    assert!(plain.runs > said.runs, "{} runs without a pour", plain.runs);
+
+    let rip = vec![wall.clone()];
+    match Ask::of(&board, &target, &rip) {
+        Err(Refusal::Refused(m)) => {
+            assert!(m.contains(&wall) && m.contains("no copper to rip"), "{m}");
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
 #[test]
 fn a_locked_net_or_shape_is_never_ripped() {
     let board = board();
