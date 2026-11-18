@@ -596,7 +596,7 @@ fn an_unknown_height_is_flat_in_the_glb_and_the_limit_it_breaks_is_marked() {
         .iter()
         .map(|f| f["code"].as_str().unwrap())
         .collect();
-    assert_eq!(codes, ["too_tall", "height_unchecked"]);
+    assert_eq!(codes, ["too_tall", "height_unchecked", "height_unknown"]);
 }
 
 #[test]

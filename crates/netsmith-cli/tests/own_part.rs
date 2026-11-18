@@ -199,13 +199,15 @@ fn switched_off(dir: &Path, args: &[&str]) -> (bool, String) {
 }
 
 #[test]
-fn cross_check_with_kicad_switched_off_says_what_hides_kicad_cli() {
+fn cross_check_with_kicad_switched_off_runs_the_viewer_comparison_and_says_why_not_kicads() {
     let dir = TempDir::new("own-part-cross-check");
     project(&dir, &sensor_row("gen:SOT23(pins=3)"));
     let (ok, err) = switched_off(&dir, &["board", "fab", "--cross-check"]);
-    assert!(!ok, "{err}");
+    // `--cross-check` needs no KiCad any more (issue #1158): the viewer comparison runs alone, and
+    // the note says what hid KiCad's own.
+    assert!(ok, "{err}");
     assert!(err.contains("--cross-check"), "{err}");
-    assert!(err.contains("kicad-cli"), "{err}");
+    assert!(err.contains("viewer comparison alone"), "{err}");
     assert!(err.contains("NETSMITH_NO_KICAD is set"), "{err}");
     // `KICAD_CLI` changes nothing then: it is not the advice.
     assert!(!err.contains("set KICAD_CLI"), "{err}");
