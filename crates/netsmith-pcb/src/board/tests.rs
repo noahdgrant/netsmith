@@ -1113,6 +1113,7 @@ fn a_stated_single_target_gets_a_line_for_each_layer_with_a_width_that_gives_it(
         nets: vec!["RF".to_string()],
         ohms: 50.0,
         spacing: None,
+        skew: None,
     };
     let lines = crate::target_notes(&process.stackup, &[target], &|_, _| 0.2);
     assert_eq!(
@@ -1169,6 +1170,7 @@ fn a_stated_pair_gets_the_width_that_gives_its_differential_impedance_at_its_spa
         nets: vec!["DP".to_string(), "DM".to_string()],
         ohms: 90.0,
         spacing: Some(0.15),
+        skew: None,
     };
     let lines = crate::target_notes(&process.stackup, &[target], &|_, _| 0.2);
     assert_eq!(
@@ -1200,6 +1202,7 @@ fn a_track_drawn_off_its_target_is_said_to_be_outside_jlcpcbs_test_tolerance() {
         nets: vec!["RF".to_string()],
         ohms: 50.0,
         spacing: None,
+        skew: None,
     };
     // The width that is 50 ohm on the front.
     let lines = crate::target_notes(&process.stackup, std::slice::from_ref(&target), &|_, _| 0.2);
@@ -1294,6 +1297,7 @@ fn impedance_target(
         nets: nets.iter().map(|n| n.to_string()).collect(),
         ohms,
         spacing,
+        skew: None,
     }
 }
 

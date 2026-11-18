@@ -276,6 +276,16 @@ interface Usb2 {
     .dp: Pin
     .dm: Pin
     .vbus: Rail
+    /// The most the tracks of `dp` and `dm` may differ in length (issue #1234), as
+    /// `std::sources::DiffPair.skew` is: the two lines are a diff pair to the router whatever
+    /// the board names their nets. USB 2.0 bounds the skew a high-speed cable adds within the
+    /// pair at 100 ps (USB 2.0 specification, 7.1.3) and states no figure for a board; the
+    /// offer is the router's target, `0mm..0.1mm`, under 1 ps of track on FR-4 (about 6 ps
+    /// a mm), so a board's part of the budget is a small share of the cable's. A board whose
+    /// device's layout guide asks for less narrows it (`.usb.skew &= 0mm..0.05mm`); `~` equates
+    /// it along the bus.
+    .skew: Length
+    .skew ?= 0mm..0.1mm
 
     lines UsbRole::Host limit 1 {
         .dp bidirectional
@@ -295,7 +305,7 @@ interface Usb2 {
 ///
 /// The two lines are a diff pair to the router whatever the board names their nets (issue
 /// #1193), as the two nets of a `std::sources::DiffPair` are: they are routed side by side, with
-/// their vias together, their lengths matched to the router's skew target, and a termination
+/// their vias together, their lengths matched to `skew`, and a termination
 /// resistor across them is placed by the connector on them (`CanTermination`). The names `canh`
 /// and `canl` are no suffix pair of the router's, so without this the two lines would be routed
 /// as any two nets.
@@ -313,12 +323,21 @@ interface Usb2 {
 /// datasheet (`.can.bitrate <= 1MHz`), and `~` equates it, so one value runs along the bus. The
 /// bus has no `.levels`: its lines carry a differential level, not a logic level against a rail.
 /// The logic side of a transceiver (TXD, RXD) is a link of the transceiver's own pins.
+///
+/// `skew` is the most the tracks of `canh` and `canl` may differ in length (issue #1234), as
+/// `std::sources::DiffPair.skew` is. ISO 11898-2 states no length for it; its shortest bit, of
+/// the data phase of CAN FD at 5 Mbit/s, is 200 ns, and 2.5 mm of track on FR-4 is about 17 ps,
+/// under a ten-thousandth of it. So the offer is `0mm..2.5mm`, which leaves the router room
+/// and spares a pair a meander it does not need; a board whose transceiver's layout guide asks
+/// for less narrows it (`.xcvr.can.skew &= 0mm..0.5mm`), and `~` equates it along the bus.
 interface Can {
     .canh: Pin
     .canl: Pin
     .impedance: Resistance
     .impedance ?= 120ohm
     .bitrate: Frequency
+    .skew: Length
+    .skew ?= 0mm..2.5mm
 
     lines {
         .canh bidirectional

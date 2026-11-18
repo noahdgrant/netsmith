@@ -10,7 +10,6 @@ use netsmith_check::Loader;
 use netsmith_kicad::{Mapping, SymbolLib};
 use netsmith_pcb::{Board, FootprintLibrary, place_options};
 use netsmith_pipeline::{Libraries, build_with};
-use netsmith_router::meander::SKEW_TARGET;
 use netsmith_router::{RouteOptions, route_with};
 use netsmith_solve::Catalogs;
 
@@ -174,7 +173,9 @@ fn the_lines_of_a_can_bus_are_routed_as_a_pair_and_its_termination_is_by_the_con
         .find(|m| m.p == h && m.n == l)
         .unwrap_or_else(|| panic!("{:?}", routing.pairs));
     println!("{matched:?}");
-    assert!(matched.after <= SKEW_TARGET, "{matched:?}");
+    // The bus's own skew limit, from its standard (`std::bus::Can.skew`, issue #1234).
+    assert_eq!(matched.limit, CAN_SKEW, "{matched:?}");
+    assert!(matched.after <= matched.limit, "{matched:?}");
     let ((lh, vh), (ll, vl)) = (length_and_vias(&board, &h), length_and_vias(&board, &l));
     println!("{h}: {lh:.2} mm, {vh} vias; {l}: {ll:.2} mm, {vl} vias");
     assert_eq!(vh, vl);
@@ -209,6 +210,9 @@ fn spread() -> Board {
     board
 }
 
+/// The skew `std::bus::Can` offers its lines, in mm (issue #1234).
+const CAN_SKEW: f64 = 2.5;
+
 /// The least share of the CAN pair's first line that runs coupled on the spread board.
 const COUPLED_SHARE: f64 = 0.8;
 
@@ -237,7 +241,8 @@ fn a_can_pair_60_mm_long_is_routed_as_one_coupled_with_its_lengths_matched() {
     assert!((lh - pair.length_p).abs() < 0.01 && (ll - pair.length_n).abs() < 0.01);
     assert_eq!((vh, vl), (pair.vias_p, pair.vias_n));
     assert!(pair.length_p > 55.0, "{pair:?}");
-    assert!(!pair.over && pair.skew <= SKEW_TARGET, "{pair:?}");
+    assert_eq!(pair.limit, CAN_SKEW, "{pair:?}");
+    assert!(!pair.over && pair.skew <= CAN_SKEW, "{pair:?}");
     assert!(pair.share >= COUPLED_SHARE, "{:.0} % coupled", pair.share * 100.0);
     assert_eq!(pair.via_pairs, pair.vias_p.max(pair.vias_n), "{pair:?}");
 }

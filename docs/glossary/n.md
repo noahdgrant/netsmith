@@ -22,7 +22,7 @@ How the editor's schematic shows a signal net that is not drawn as one wire: the
 _Avoid_: Bare name, off-page connector (a flag is that), global label
 
 **Net table**:
-The numbers of a board's routed copper, net by net (`netsmith board nets`, the editor's PCB summary, `netsmith_fab::NetTable`, issue #1223): each net no zone pours with its routed length, _Straight length_, their ratio, its vias, its layer changes (the vias where its tracks meet on two layers or more) and its layers; and each _Diff pair_ with both lengths, its _Skew_ against the router's target, the length that runs coupled (the partner's track on its layer within 0.5 mm, centre to centre) and its share, the least and the largest gap over that length, and its _Via pair_s. A measurement and never a check: `board drc` notes a pair over its skew.
+The numbers of a board's routed copper, net by net (`netsmith board nets`, the editor's PCB summary, `netsmith_fab::NetTable`, issue #1223): each net no zone pours with its routed length, _Straight length_, their ratio, its vias, its layer changes (the vias where its tracks meet on two layers or more) and its layers; and each _Diff pair_ with both lengths, its _Skew_ against its limit, the length that runs coupled (the partner's track on its layer within 0.5 mm, centre to centre) and its share, the least and the largest gap over that length, and its _Via pair_s; and each _Length group_ with its nets' lengths and its spread (issue #1234). A measurement and never a check: `board drc` notes a pair over its skew and a group over its tolerance.
 _Avoid_: Length report, net report (the _Route scorecard_ is the board's sums)
 
 **Netlist comparison**:

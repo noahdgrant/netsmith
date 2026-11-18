@@ -2512,6 +2512,8 @@ pub fn typescript() -> String {
         PcbFill,
         NetsRow,
         NetsPair,
+        NetsGroupNet,
+        NetsGroup,
         PcbNets,
         PcbFitPart,
         PcbFitNear,

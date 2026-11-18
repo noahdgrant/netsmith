@@ -78,6 +78,7 @@ pub fn run(args: Args) -> ExitCode {
                 outline_at: made.outline_at,
                 routes: made.checked.routes.clone(),
                 pair_skews: made.checked.skewed.clone(),
+                group_spreads: made.checked.spread.clone(),
             });
             report
                 .findings
@@ -103,9 +104,13 @@ pub fn run(args: Args) -> ExitCode {
                     None => println!("{}: note: {line}", made.board),
                 }
             }
-            // The diff pairs whose skew is over the router's target (issue #1223): notes too.
+            // The diff pairs whose skew is over their limit (issue #1223) and the groups of nets
+            // whose spread is over their tolerance (issue #1234): notes too.
             for pair in &made.checked.skewed {
                 println!("{}: note: {}", made.board, pair.over_line());
+            }
+            for group in &made.checked.spread {
+                println!("{}: note: {}", made.board, group.over_line());
             }
             let counts = made.checked.report.counts();
             let warnings = made.checked.report.warnings().count();

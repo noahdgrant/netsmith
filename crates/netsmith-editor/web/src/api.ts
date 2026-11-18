@@ -1816,7 +1816,7 @@ export type NetsPair = {
  */
 p: string, n: string, lengthP: number, lengthN: number, skew: number, 
 /**
- * The skew the pair may have: the router's target.
+ * The skew the pair may have: its `.skew`, else the router's target (issue 1234).
  */
 limit: number, over: boolean, 
 /**
@@ -1832,6 +1832,30 @@ gaps: [number, number] | null, viasP: number, viasN: number,
  */
 viaPairs: number, };
 
+export type NetsGroupNet = { net: string, length: number, 
+/**
+ * How much shorter it is than the group's longest net.
+ */
+shortBy: number, };
+
+export type NetsGroup = { 
+/**
+ * The path of the member that states the group.
+ */
+path: string, 
+/**
+ * Its nets with a track, in the order of its lines.
+ */
+nets: Array<NetsGroupNet>, 
+/**
+ * The longest net's length less the shortest's.
+ */
+spread: number, 
+/**
+ * The spread the group may have.
+ */
+tolerance: number, over: boolean, };
+
 export type PcbNets = { board: string, 
 /**
  * The stamps of the placement and of the routes file it was measured on, and whether it
@@ -1841,7 +1865,7 @@ layoutStamp: string, routesStamp: string, routed: boolean,
 /**
  * The nets, by name.
  */
-nets: Array<NetsRow>, pairs: Array<NetsPair>, };
+nets: Array<NetsRow>, pairs: Array<NetsPair>, groups: Array<NetsGroup>, };
 
 export type PcbFitPart = { refdes: string, path: string, };
 

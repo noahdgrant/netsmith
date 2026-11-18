@@ -6,7 +6,57 @@
 
 use super::*;
 
+/// The skew a diff pair is matched to when its design states none, in mm: the router's grid
+/// (issue #1223). A pair's own `.skew` replaces it (issue #1234, [`Board::pair_skew`]).
+pub const DEFAULT_SKEW: f64 = 0.1;
+
 impl Board {
+    /// The most the track lengths of the diff pair `p`, `n` may differ by, in mm: the least of
+    /// the `.skew` its design states for it, on a `PairImpedance`, a `DiffPair` or a std bus
+    /// (issue #1234), else [`DEFAULT_SKEW`].
+    pub fn pair_skew(&self, p: &str, n: &str) -> f64 {
+        let same = |a: &str, b: &str| (a == p && b == n) || (a == n && b == p);
+        let impedance = self
+            .impedance_targets
+            .iter()
+            .filter(|t| t.nets.len() == 2 && same(&t.nets[0], &t.nets[1]))
+            .filter_map(|t| t.skew);
+        let stated = self
+            .pairs
+            .iter()
+            .filter(|q| same(&q.p, &q.n))
+            .filter_map(|q| q.skew);
+        impedance
+            .chain(stated)
+            .reduce(f64::min)
+            .unwrap_or(DEFAULT_SKEW)
+    }
+
+    /// The other net of the diff pair `net` is in, if it is in one.
+    pub fn diff_partner(&self, net: &str) -> Option<String> {
+        self.diff_pairs().into_iter().find_map(|(p, n)| {
+            if p == net {
+                Some(n)
+            } else if n == net {
+                Some(p)
+            } else {
+                None
+            }
+        })
+    }
+
+    /// The diff pairs of the board ([`Board::diff_pairs`]), each with the skew it may have
+    /// ([`Board::pair_skew`]).
+    pub fn diff_pairs_with_skew(&self) -> Vec<(String, String, f64)> {
+        self.diff_pairs()
+            .into_iter()
+            .map(|(p, n)| {
+                let skew = self.pair_skew(&p, &n);
+                (p, n, skew)
+            })
+            .collect()
+    }
+
     /// The diff pairs of the board, each once, the positive net first: first the pairs its nets'
     /// names make, in the order of the first net's name (the first suffix pair that matches),
     /// then the pairs its design states, those of its impedance targets and then the others, in
@@ -121,6 +171,7 @@ mod tests {
             path: path.into(),
             p: p.into(),
             n: n.into(),
+            skew: None,
         }
     }
 
@@ -149,6 +200,7 @@ mod tests {
             nets: vec!["X_P".into(), "A".into()],
             ohms: 90.0,
             spacing: Some(0.15),
+            skew: None,
         };
         // `X_P` goes with `A`, as the target says, and the stated pair that names `A` too is
         // left out; `X_N` has no partner.

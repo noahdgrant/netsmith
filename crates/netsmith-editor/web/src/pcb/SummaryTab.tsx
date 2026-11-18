@@ -10,7 +10,7 @@ import type { PcbBox, PcbCopper, PcbFill, PcbNets, PcbScene, PcbSummary } from '
 import { api, ApiFailure } from '../client';
 import { EmptyState } from '../components/ui';
 import { select, selection } from '../pcbstore';
-import { copperLayerLine, copperZoneLine, fillAreaLine, fillCountsLine, fillPadLine, fillStarvedLine, fillWord, guidelineLine, mm, netPairLine, netRowLine, padName, padProblem, padsLine, sheetBox, summaryQuery, teardropsLine } from './summary';
+import { copperLayerLine, copperZoneLine, fillAreaLine, fillCountsLine, fillPadLine, fillStarvedLine, fillWord, guidelineLine, mm, netGroupLine, netPairLine, netRowLine, padName, padProblem, padsLine, sheetBox, summaryQuery, teardropsLine } from './summary';
 
 /** How many of the longest nets the tab lists. */
 const LONGEST_NETS = 8;
@@ -289,6 +289,11 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
           {nets?.pairs.map((p) => (
             <div key={`${p.p}/${p.n}`} class={`summary-line${p.over ? ' bad' : ''}`} data-testid="summary-nets-pair" data-pair={`${p.p}/${p.n}`} data-over={p.over}>
               <b>Pair</b> {netPairLine(p)}
+            </div>
+          ))}
+          {nets?.groups.map((g) => (
+            <div key={g.path} class={`summary-line${g.over ? ' bad' : ''}`} data-testid="summary-nets-group" data-group={g.path} data-over={g.over}>
+              <b>Group</b> {netGroupLine(g)}
             </div>
           ))}
           {nets && nets.nets.length > 0 && (

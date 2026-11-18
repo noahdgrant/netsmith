@@ -144,6 +144,12 @@ interface PairImpedance {
     .impedance: Resistance
     /// The space between the two tracks, edge to edge, as a single value.
     .spacing: Length
+    /// The most the two tracks' lengths may differ by (issue #1234), as `DiffPair.skew` is: the
+    /// router lengthens the shorter until they differ by no more, and `netsmith board nets` and
+    /// `board drc` judge the pair against its top. Offered at `0mm..0.1mm`, the router's target;
+    /// a board whose link asks for less narrows it (`.pair.skew &= 0mm..0.05mm`).
+    .skew: Length
+    .skew ?= 0mm..0.1mm
 }
 
 /// Two nets that are a diff pair, with no impedance stated (issue #1193): `.p` and `.n` are
@@ -151,7 +157,7 @@ interface PairImpedance {
 /// `PairImpedance` or two nets whose names differ only in a suffix pair (`dp` and `dm`, `_P` and
 /// `_N`): as one object, at one pitch (the gap between them is their clearance), their vias side
 /// by side, and the shorter net lengthened by a meander until the two are as long to the router's
-/// skew target (issue #1223; `netsmith board nets` measures it). It sets no width and no spacing:
+/// skew limit, `.skew` (issue #1223; `netsmith board nets` measures it). It sets no width and no spacing:
 /// each net keeps the width and the clearance it has. A pair whose impedance matters is a `PairImpedance`, which is a diff
 /// pair too. A bus of the standard library whose lines are a pair says so itself (`std::bus::Can`).
 ///
@@ -162,4 +168,14 @@ interface PairImpedance {
 interface DiffPair {
     .p: Pin
     .n: Pin
+    /// The most the two nets' track lengths may differ by (issue #1234): the router lengthens
+    /// the shorter with a meander until they differ by no more, and `netsmith board nets` and
+    /// `board drc` judge the pair against the top of the range. Offered at `0mm..0.1mm`, the
+    /// router's grid, which is well inside what the links netsmith's boards carry ask (USB 2.0
+    /// high speed asks a whole path under 100 ps, many mm of track); a board whose link asks
+    /// for less narrows it (`.lines.skew &= 0mm..0.05mm`), and a bus of the standard library
+    /// offers the figure of its standard (`std::bus::Can`). Why a field and not an interface of
+    /// its own: the owner's decision on issue #1234.
+    .skew: Length
+    .skew ?= 0mm..0.1mm
 }

@@ -16,6 +16,10 @@ _Avoid_: Sidecar (the word for what it is, not its name), placement file (that i
 The most current a logic pin takes or gives when it is high impedance, at any voltage between its ground and its supply, stated by a part as the optional member `.ii` of its `Logic` or `Levels` (`.io.ii &= 1uA`; ADR 0076, amendment 8). The analysis takes it as a resistance from the pin to its supply and to its ground, the greatest supply voltage over the current, each a state of the pin. A pin that states none leaks nothing. The output resistances `.roh` and `.rol` are the other optional members.
 _Avoid_: Input current (a part's `.current` is its draw), bias current, input impedance
 
+**Length group**:
+Nets whose track lengths are matched to each other, a parallel bus or a byte lane (issue #1234, `netsmith_core::LengthGroup`): the router lengthens each shorter net towards the group's longest with a _Meander_ until the **spread**, the longest less the shortest, is within the group's **tolerance**, and the _Net table_ lists each group's lengths and spread. The board and the router hold groups; the source's `LengthGroup` interface waits on the spelling of the count of its lines (issue #1252). A _Diff pair_ is matched within itself by its _Skew_, not as a group.
+_Avoid_: Match group, length-matched bus, net class (a class sets widths and clearances, not lengths)
+
 **Level translator**:
 A `LevelTranslator` (`std::parts::logic`, ADR 0063, ADR 0066): a single-supply buffer whose input accepts a lower logic level than its supply and whose output swings to its supply. Its input is a `Logic` line whose `.vih` is `.vt_plus_max` (above it the input is a high for sure) and whose `.vil` is `.vt_minus_min` (below it a low for sure), so the solver judges the driver without a statement of the design; its output is a `Logic` line that states no level. Its supply draw is the row's own: `0A .. .max_supply_current`. A generic with the catalog `level_translator`, which has no standard row.
 _Avoid_: Level shifter, voltage translator

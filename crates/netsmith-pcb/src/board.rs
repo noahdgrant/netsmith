@@ -29,7 +29,7 @@ pub(crate) mod tests;
 mod unplaced;
 
 pub use features::*;
-pub use pairs::diff_pairs_of;
+pub use pairs::{DEFAULT_SKEW, diff_pairs_of};
 pub use placed::*;
 pub use problems::*;
 pub use process::ViasInPads;
@@ -221,6 +221,10 @@ pub struct Board {
     /// of the board.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pairs: Vec<netsmith_core::NetPair>,
+    /// The groups of nets the design matches in length (issue #1234): the router lengthens the
+    /// shorter nets of each towards its longest ([`Board::length_groups`] has the routed ones).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub length_groups: Vec<netsmith_core::LengthGroup>,
     /// The width that gives each net of `impedance_targets` its impedance on each layer a track
     /// may be on (issue #1025), solved once from the build-up: what [`Board::track_width_on`]
     /// draws the net at.
