@@ -564,6 +564,9 @@ impl Carry {
                             out.push(hidden);
                             out.push(self.silk_text(i));
                         }
+                        // A footprint's zone (a library's keepout) is in board coordinates, as
+                        // KiCad saves it (issue #1237), so it moves with the cell.
+                        Some("zone") => out.push(self.moved(i, false)),
                         _ => out.push(self.moved(i, true)),
                     }
                 }

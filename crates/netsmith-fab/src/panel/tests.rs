@@ -679,3 +679,63 @@ fn the_cells_test_points_and_finish_are_not_asked_again_of_the_panel() {
         );
     }
 }
+
+#[test]
+fn a_zone_inside_a_footprint_moves_with_the_cell_as_its_footprint_does() {
+    // Issue #1237: KiCad saves the points of a footprint's zone (a library's keepout) in board
+    // coordinates, so a cell's copy of the board moves them, and the keepout stays over the
+    // footprint's pads in every cell.
+    let zone = r#"(zone (net 0) (net_name "") (layers "F.Cu")
+		(keepout (tracks allowed) (vias not_allowed) (pads allowed) (copperpour not_allowed) (footprints allowed))
+		(polygon (pts (xy 44 39) (xy 46 39) (xy 46 43) (xy 44 43))))"#;
+    let source = CELL.replacen(
+        r#"(net 2 "VCC"))
+	)
+	(segment"#,
+        &format!("(net 2 \"VCC\"))\n\t\t{zone}\n\t)\n\t(segment"),
+        1,
+    );
+    assert_ne!(source, CELL);
+    let entries = entries();
+    let input = CellInput {
+        pcb: &source,
+        pro: None,
+        entries: &entries,
+        facts: facts(),
+    };
+    let pkg = build(&spec(2, 3, 5.0), &input, &Options::default()).unwrap();
+    let root = Sexp::parse(&pkg.pcb).unwrap();
+    let number = |n: &Sexp, i: usize| n.items()[i].text().unwrap().parse::<f64>().unwrap();
+    let mut seen = 0;
+    for footprint in root.find_all("footprint") {
+        let reference = footprint
+            .find_all("property")
+            .find(|p| p.items()[1].text() == Some("Reference"))
+            .and_then(|p| p.items()[2].text());
+        if !reference.is_some_and(|r| r.starts_with("J1_")) {
+            continue;
+        }
+        let at = footprint.find("at").unwrap();
+        let first = footprint
+            .find("zone")
+            .unwrap()
+            .find("polygon")
+            .unwrap()
+            .find("pts")
+            .unwrap()
+            .find_all("xy")
+            .next()
+            .unwrap();
+        // The board's J1 is at (45, 40) and the zone's first point at (44, 39).
+        assert_eq!(
+            (
+                number(first, 1) - number(at, 1),
+                number(first, 2) - number(at, 2)
+            ),
+            (-1.0, -1.0),
+            "{reference:?}"
+        );
+        seen += 1;
+    }
+    assert_eq!(seen, 6);
+}
