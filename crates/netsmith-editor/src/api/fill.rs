@@ -1,0 +1,123 @@
+//! How the fill of the board's pours joins each pad (issue #1187): what `netsmith board fill`
+//! prints, as the page reads it. The values are `netsmith_pcb::FillReport`'s, so the page and
+//! the command line cannot differ; their field names are camelCase here and nothing else differs.
+//!
+//! **`GET /api/pcb/fill?board=`** fills the pours, planes and zones of the board as the PCB view
+//! has it placed (and routed), as the Gerbers fill them, and answers for each fill the pads of
+//! its net and how each is joined (`solid`, `thermal` with the spokes that reach the fill, or
+//! `none`), the counts, the pads of other nets it keeps clear of, its copper islands kept and
+//! removed, and the starved thermal reliefs of the board. The places are in mm in the frame of
+//! the board file, y down; `outlineAt` is the outline's top left corner there. `404` for a board
+//! that is not there; a board that cannot be filled is a `500` with the reason.
+
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+
+/// A place in mm in the frame of the board file, y down.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+pub struct FillAt {
+    pub x: f64,
+    pub y: f64,
+}
+
+/// A pad of the fill's net, and how the fill joins it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct FillPad {
+    pub part: String,
+    pub pad: String,
+    pub at: FillAt,
+    /// `solid`, `thermal` or `none`.
+    pub join: String,
+    /// Of a thermal relief: its spokes, and how many of them reach the fill.
+    pub spokes: Option<u32>,
+    pub joined_spokes: Option<u32>,
+    /// The tracks of its net that run from it onto the fill.
+    pub tracks: u32,
+    /// Whether the fill reaches it at all.
+    pub joined: bool,
+    /// Whether it is a starved thermal relief (`starved_thermal`).
+    pub starved: bool,
+}
+
+/// A pad of another net in the fill's outline, which the fill keeps clear of.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct FillCleared {
+    pub part: String,
+    pub pad: String,
+    pub net: Option<String>,
+    pub at: FillAt,
+}
+
+/// A copper island: a corner of it and its area in mm2.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct FillIsland {
+    pub at: FillAt,
+    pub area: f64,
+}
+
+/// How many pads are joined each way.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct FillCounts {
+    pub no_spokes: u32,
+    pub one_spoke: u32,
+    pub two_or_more_spokes: u32,
+    pub solid: u32,
+    pub none: u32,
+    pub starved: u32,
+}
+
+/// The fill of one pour, plane or zone on one layer.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct FillArea {
+    /// `top`, `inner1`, `bottom`, and KiCad's name of it.
+    pub layer: String,
+    pub layer_name: String,
+    pub net: String,
+    /// `plane`, `pour` or `zone`.
+    pub source: String,
+    /// Whether it is the fill the board file holds.
+    pub held: bool,
+    /// Its area in mm2.
+    pub area: f64,
+    pub pads: Vec<FillPad>,
+    pub counts: FillCounts,
+    pub cleared: Vec<FillCleared>,
+    pub islands: Vec<FillIsland>,
+    pub removed_islands: Vec<FillIsland>,
+}
+
+/// A starved thermal relief.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct FillStarved {
+    pub layer: String,
+    pub net: String,
+    pub part: String,
+    pub pad: String,
+    pub at: FillAt,
+    pub spokes: u32,
+    pub joined_spokes: u32,
+    pub tracks: u32,
+}
+
+/// How the fill of the board's pours joins its pads.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PcbFill {
+    pub board: String,
+    /// The stamps of the placement and of the routes file it was filled on, and whether it was
+    /// routed.
+    pub layout_stamp: String,
+    pub routes_stamp: String,
+    pub routed: bool,
+    pub outline_at: FillAt,
+    /// Each fill, by layer from the top.
+    pub fills: Vec<FillArea>,
+    pub counts: FillCounts,
+    pub starved: Vec<FillStarved>,
+}

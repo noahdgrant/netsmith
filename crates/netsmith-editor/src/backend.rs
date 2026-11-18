@@ -6,9 +6,9 @@ use netsmith_core::job::Cancel;
 use crate::api::{
     Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
     FabReport, FileContent, GerberView, GitInfo, OrderInfo, OrderReport, PanelView, PcbCopper,
-    PcbEdit, PcbEdited, PcbFindings, PcbFit, PcbPours, PcbReport, PcbScene, PcbSummary, PinLock,
-    PinMove, PinWritten, PowerTree, Project, Saved, SchematicHints, Swap, SwapApply, Swapped,
-    SystemView,
+    PcbEdit, PcbEdited, PcbFill, PcbFindings, PcbFit, PcbPours, PcbReport, PcbScene, PcbSummary,
+    PinLock, PinMove, PinWritten, PowerTree, Project, Saved, SchematicHints, Swap, SwapApply,
+    Swapped, SystemView,
 };
 
 /// A refusal, with the HTTP status that says why.
@@ -381,6 +381,13 @@ pub trait Backend: Send + Sync + 'static {
     fn pcb_copper(&self, board: &str) -> Result<PcbCopper, ApiError> {
         Err(ApiError::not_found(format!(
             "there is no copper summary of `{board}`"
+        )))
+    }
+    /// How the fill of the board's pours joins its pads (issue #1187): what `netsmith board fill`
+    /// prints, of the board as [`Backend::pcb_scene`] has it placed (and routed).
+    fn pcb_fill(&self, board: &str) -> Result<PcbFill, ApiError> {
+        Err(ApiError::not_found(format!(
+            "there is no fill report of `{board}`"
         )))
     }
     /// The package `fab` last wrote for `board` (in this session, else the one an earlier run left

@@ -60,6 +60,13 @@
 //!   fill with the spokes in it and trimmed, where the spoke's own copper kept that strip, and
 //!   counted such stubs (three spokes on a pad KiCad joins by one).
 //!
+//! **The pads of a pour (issue #1187).** [`pad_joins`] says, of the same fill, how each zone
+//! joins each pad of its net in its outline ([`Join`]: solid, a thermal relief with the spokes
+//! that reach the fill, or not at all), which pads of other nets it keeps clear of, and which
+//! copper islands it keeps and which it took out: `netsmith board fill` prints it
+//! (`netsmith_pcb::FillReport`). The spokes are counted as the design rules check counts them
+//! for `starved_thermal`, by one code ([`judge`]), so the two cannot differ.
+//!
 //! **Where it differs from KiCad.** Copper islands are removed once every zone of the layer is
 //! filled, and a zone of lower priority keeps away from a higher one's fill as it was before its
 //! islands went, so it does not grow into the room an island leaves. A same-net zone of higher
@@ -114,7 +121,12 @@ pub fn pour(
     // largest box first, so that clearing a hole never takes copper drawn before it (a piece
     // inside a hole is smaller than the piece round it).
     let mut pieces: Vec<(f64, &Zone, &Area)> = Vec::new();
-    for (i, areas) in &filled {
+    for Filled {
+        zone: i,
+        fill: areas,
+        ..
+    } in &filled
+    {
         for a in areas {
             let size = Bounds::of(a.outer.iter().copied())
                 .map_or(0.0, |b| (b.max.x - b.min.x) * (b.max.y - b.min.y));
@@ -195,7 +207,7 @@ fn fill_zones(
     edge: &BoardEdge,
     rules: &Rules,
     zones: &[&Zone],
-) -> Result<Vec<(usize, Vec<Area>)>, String> {
+) -> Result<Vec<Filled>, String> {
     let outlines: Vec<Vec<Area>> = zones.iter().map(|z| outline_area(z)).collect();
     for (i, a) in zones.iter().enumerate() {
         for (j, b) in zones.iter().enumerate().skip(i + 1) {
@@ -246,7 +258,7 @@ fn fill_zones(
         let fill = trimmed(&fill, z.min_thickness);
         filled.push((i, fill));
     }
-    let kept: Vec<Vec<Area>> = filled
+    let kept: Vec<(Vec<Area>, Vec<Area>)> = filled
         .iter()
         .map(|(i, fill)| {
             let z = zones[*i];
@@ -261,8 +273,22 @@ fn fill_zones(
     Ok(filled
         .into_iter()
         .zip(kept)
-        .map(|((i, _), fill)| (i, fill))
+        .map(|((zone, _), (fill, removed))| Filled {
+            zone,
+            fill,
+            removed,
+        })
         .collect())
+}
+
+/// The fill of one zone ([`fill_zones`]).
+struct Filled {
+    /// The zone, by its index in the zones given.
+    zone: usize,
+    /// Its pieces of copper.
+    fill: Vec<Area>,
+    /// The copper islands the zone's island setting took out of it (step 4).
+    removed: Vec<Area>,
 }
 
 /// How a pad of the zone's net joins the zone: the pad's own setting, else the zone's, with
@@ -372,25 +398,24 @@ fn without_dead_spokes(fill: Vec<Area>, art: &Artwork, layer: &str, z: &Zone) ->
 
 /// The fill less its copper islands (step 4): the pieces that touch no copper of the zone's net on
 /// `layer` and none of `others` (the pieces of the other zones of the net on the layer), as the
-/// zone's island setting says.
+/// zone's island setting says. The pieces kept, then the islands taken out.
 fn without_islands(
     fill: &[Area],
     art: &Artwork,
     layer: &str,
     z: &Zone,
     others: &[Area],
-) -> Vec<Area> {
+) -> (Vec<Area>, Vec<Area>) {
     if z.islands == Islands::Keep {
-        return fill.to_vec();
+        return (fill.to_vec(), Vec::new());
     }
     let isolated = isolated(fill, art, layer, z, others);
-    fill.iter()
-        .zip(isolated)
-        .filter(|(piece, isolated)| {
+    let (kept, removed): (Vec<_>, Vec<_>) =
+        fill.iter().zip(isolated).partition(|(piece, isolated)| {
             !isolated || matches!(z.islands, Islands::RemoveBelow(min) if piece.size() >= min)
-        })
-        .map(|(piece, _)| piece.clone())
-        .collect()
+        });
+    let pieces = |all: Vec<(&Area, bool)>| all.into_iter().map(|(a, _)| a.clone()).collect();
+    (pieces(kept), pieces(removed))
 }
 
 /// For each piece of `fill`, whether it is a copper island: it touches no copper of the zone's net
@@ -443,9 +468,19 @@ pub(crate) struct Judged {
     /// `island_removal_mode` keeps (the others are gone); of a fill the file holds, every one,
     /// since that copper is made as it is.
     pub islands: Vec<(Pt, f64)>,
+    /// The copper islands the fill took out, as the zone's `island_removal_mode` says: a corner
+    /// of each, and its area in mm². None of a fill the file holds.
+    pub removed: Vec<(Pt, f64)>,
     /// Each copper sliver of the fill ([`slivers`]), when the check asked for them: a corner of
     /// it and its area in mm².
     pub slivers: Vec<(Pt, f64)>,
+    /// The fill itself.
+    pub fill: Vec<Area>,
+}
+
+/// A piece of copper by a corner of it and its area in mm², as the check places it.
+fn piece_at(piece: &Area) -> Option<(Pt, f64)> {
+    Some((*piece.outer.first()?, piece.size()))
 }
 
 /// A thermal relief of a pad in a zone, as the fill leaves it.
@@ -529,6 +564,127 @@ pub fn thermal_joins(
         .collect())
 }
 
+/// How the fill of a zone joins one pad of its net (issue #1187).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Join {
+    /// Solid copper (the pad connection `solid`, or a surface pad of `thru_hole_only`):
+    /// `touched` says whether the fill reaches the pad at all.
+    Solid { touched: bool },
+    /// A thermal relief: how many spokes it has (none where the pad is too narrow for one), how
+    /// many of them reach the fill, and how many tracks of the pad's net on the layer run from
+    /// the pad onto the fill, which join it as a spoke does ([`ThermalJoin`]).
+    Thermal {
+        spokes: usize,
+        reach: usize,
+        tracks: usize,
+    },
+    /// Not at all: the zone's pad connection is `none`, and the fill keeps its clearance round
+    /// the pad.
+    Unjoined,
+}
+
+impl Join {
+    /// Whether the pour starves the pad: a thermal relief that fewer than [`MIN_SPOKES`] spokes
+    /// and tracks join to the fill, as the design rules check's `starved_thermal` says.
+    pub fn starved(self) -> bool {
+        matches!(self, Join::Thermal { reach, tracks, .. } if starved(reach, tracks))
+    }
+}
+
+/// A pad, by its footprint's designator and number, its net and its centre on the board.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PadAt {
+    pub part: String,
+    pub number: String,
+    pub net: Option<String>,
+    pub at: Pt,
+}
+
+/// What the fill of one zone on one layer does with the pads in it (issue #1187), from the
+/// fill [`pour`] draws (or the fill the file holds, where the zone holds one), the one the
+/// design rules check judges.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ZoneJoins {
+    /// The zone, by its index in the board's zones.
+    pub zone: usize,
+    /// Whether the fill is the one the board file holds (`filled_polygon`).
+    pub held: bool,
+    /// Each pad of the zone's net with copper on the layer and its centre in the zone's
+    /// outline, and how the fill joins it.
+    pub pads: Vec<(PadAt, Join)>,
+    /// Each pad of another net (or of none) with copper on the layer and its centre in the
+    /// zone's outline: the fill keeps its clearance round it.
+    pub cleared: Vec<PadAt>,
+    /// The copper islands the fill keeps (the zone's island setting keeps them; of a fill the
+    /// file holds, every one), each by a corner and its area in mm².
+    pub islands: Vec<(Pt, f64)>,
+    /// The copper islands the fill took out, each by a corner and its area in mm².
+    pub removed: Vec<(Pt, f64)>,
+    /// The pieces of the fill, as the Gerbers hold them.
+    pub fill: Vec<Area>,
+}
+
+/// What the fill of each zone of a net on `layer` does with the pads in it ([`ZoneJoins`]), in
+/// the order of the board's zones: the same fill and the same count of spokes as the design
+/// rules check's `starved_thermal` and `isolated_copper`, and the fill [`pour`] writes into the
+/// Gerbers.
+pub fn pad_joins(
+    art: &Artwork,
+    layer: &str,
+    edge: &BoardEdge,
+    rules: &Rules,
+) -> Result<Vec<ZoneJoins>, String> {
+    let at = |pad: &Pad| PadAt {
+        part: pad.part.clone(),
+        number: pad.number.clone(),
+        net: pad.net.clone(),
+        at: pad.at,
+    };
+    Ok(judge(art, layer, edge, rules, None)?
+        .into_iter()
+        .map(|j| {
+            let z = &art.zones[j.zone];
+            let outline = outline_area(z);
+            let mut pads = Vec::new();
+            let mut cleared = Vec::new();
+            for (k, pad) in art.pads.iter().enumerate().filter(|(_, p)| {
+                art.pad_copper_on(p, layer) && outline.iter().any(|a| a.contains(p.at))
+            }) {
+                if !own_net(z, &pad.net) {
+                    cleared.push(at(pad));
+                    continue;
+                }
+                let join = match connection(pad, z) {
+                    Connect::Thermal => match j.reliefs.iter().find(|r| r.pad == k) {
+                        Some(r) => Join::Thermal {
+                            spokes: r.spokes,
+                            reach: r.reach,
+                            tracks: r.tracks,
+                        },
+                        None => continue,
+                    },
+                    Connect::None => Join::Unjoined,
+                    _ => Join::Solid {
+                        touched: pads::outline(pad)
+                            .polygon()
+                            .is_some_and(|p| overlap(&j.fill, &[Area::of(&p)])),
+                    },
+                };
+                pads.push((at(pad), join));
+            }
+            ZoneJoins {
+                zone: j.zone,
+                held: j.held,
+                pads,
+                cleared,
+                islands: j.islands,
+                removed: j.removed,
+                fill: j.fill,
+            }
+        })
+        .collect())
+}
+
 /// Points along a track, at most 0.05 mm apart, its two ends among them.
 fn track_points(shape: &TrackShape) -> Vec<Pt> {
     match shape {
@@ -583,21 +739,22 @@ pub(crate) fn judge(
         .filter(|(_, z)| on_layer(z) && !holds(z))
         .map(|(i, _)| i)
         .collect();
-    // Each zone's fill, by its index in the board's zones, and whether the file holds it.
-    let mut fills: Vec<(usize, Vec<Area>, bool)> = Vec::new();
+    // Each zone's fill, by its index in the board's zones, whether the file holds it, and the
+    // islands the fill took out.
+    let mut fills: Vec<(usize, Vec<Area>, bool, Vec<Area>)> = Vec::new();
     if !index.is_empty() {
         let zones: Vec<&Zone> = index.iter().map(|&i| &art.zones[i]).collect();
-        for (i, fill) in fill_zones(art, layer, edge, rules, &zones)? {
-            fills.push((index[i], fill, false));
+        for f in fill_zones(art, layer, edge, rules, &zones)? {
+            fills.push((index[f.zone], f.fill, false, f.removed));
         }
     }
     for (i, z) in art.zones.iter().enumerate() {
         if on_layer(z) && holds(z) && !z.teardrop {
-            fills.push((i, held_fill(z, layer), true));
+            fills.push((i, held_fill(z, layer), true, Vec::new()));
         }
     }
     let mut out = Vec::new();
-    for (i, fill, held) in &fills {
+    for (i, fill, held, removed) in &fills {
         let z = &art.zones[*i];
         if z.net.is_none() || z.teardrop {
             continue;
@@ -638,16 +795,16 @@ pub(crate) fn judge(
         let others = || -> Vec<Area> {
             fills
                 .iter()
-                .filter(|(j, _, _)| j != i && art.zones[*j].net == z.net)
-                .flat_map(|(_, f, _)| f.iter().cloned())
+                .filter(|(j, _, _, _)| j != i && art.zones[*j].net == z.net)
+                .flat_map(|(_, f, _, _)| f.iter().cloned())
                 .collect()
         };
         let mut islands = Vec::new();
         if *held || z.islands != Islands::Remove {
             let others = others();
             for (piece, isolated) in fill.iter().zip(isolated(fill, art, layer, z, &others)) {
-                if isolated && let Some(&corner) = piece.outer.first() {
-                    islands.push((corner, piece.size()));
+                if isolated && let Some(island) = piece_at(piece) {
+                    islands.push(island);
                 }
             }
         }
@@ -664,8 +821,10 @@ pub(crate) fn judge(
         out.push(Judged {
             zone: *i,
             held: *held,
+            fill: fill.clone(),
             reliefs,
             islands,
+            removed: removed.iter().filter_map(piece_at).collect(),
             slivers,
         });
     }

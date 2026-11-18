@@ -3,7 +3,8 @@
 //! pour's minimum thickness, gets no spokes to the sides, as KiCad's filler makes none there.
 //! netsmith's design rules check then reports the same `starved_thermal` pads as KiCad's does
 //! after KiCad refills the zones (when KiCad is installed; the comparison is skipped where it
-//! is not, and runs in the `kicad` job).
+//! is not, and runs in the `kicad` job). The report of each pad's join to its pour (issue #1187,
+//! `netsmith_geom::pad_joins`, which `board fill` prints) counts the same pads of the same fill.
 
 use crate::common;
 
@@ -113,4 +114,106 @@ fn a_pad_whose_fill_beside_it_is_thinner_than_the_minimum_is_starved_as_kicad_fi
         .map(|k| format!("{} {:?}", k.description, k.items))
         .collect();
     assert_eq!(theirs, names, "KiCad's starved thermals: {said:?}");
+}
+
+/// The report of each pad's join to its pour (issue #1187), of the same board: pad A with the one
+/// spoke that reaches the fill, B with two, C with four, the other nets' pads beside A and B
+/// cleared, and counts that agree with the design rules check's `starved_thermal` findings and
+/// with the fill the Gerbers hold.
+#[test]
+fn the_report_of_the_pads_of_a_pour_counts_what_the_check_and_the_gerbers_have() {
+    use netsmith_geom::{Artwork, PadJoin, Polygons, edge_outline, fill_pour, pad_joins, plot_rules_of};
+
+    let mut b = board();
+    let (pcb, pro) = (b.pcb(), b.pro());
+    let art = Artwork::parse(&pcb).unwrap();
+    let edge = edge_outline(&art).unwrap();
+    let rules = plot_rules_of(Some(&pro));
+    let joins = pad_joins(&art, "F.Cu", &edge, &rules).unwrap();
+    assert_eq!(joins.len(), 1, "one GND zone");
+    let zone = &joins[0];
+    let mut joined: Vec<(&str, usize, usize)> = zone
+        .pads
+        .iter()
+        .map(|(p, join)| {
+            let name = pad_at(p.at).unwrap_or_else(|| panic!("a GND pad of the board: {p:?}"));
+            match *join {
+                PadJoin::Thermal { spokes, reach, .. } => (name, spokes, reach),
+                other => panic!("{name} is joined by a thermal relief: {other:?}"),
+            }
+        })
+        .collect();
+    joined.sort_unstable();
+    assert_eq!(joined, [("A", 4, 1), ("B", 4, 2), ("C", 4, 4)]);
+    let mut cleared: Vec<String> = zone
+        .cleared
+        .iter()
+        .map(|p| format!("{}.{} {}", p.part, p.number, p.net.as_deref().unwrap_or("")))
+        .collect();
+    cleared.sort_unstable();
+    assert_eq!(cleared, ["U1.1 SIG1", "U1.3 SIG2", "U2.1 SIG3", "U2.3 SIG4"]);
+    assert!(zone.islands.is_empty() && !zone.held);
+
+    // The starved pads are the check's `starved_thermal` findings.
+    let starved: Vec<&str> = zone
+        .pads
+        .iter()
+        .filter(|(_, j)| j.starved())
+        .filter_map(|(p, _)| pad_at(p.at))
+        .collect();
+    let ours = drc_check(&pcb, Some(&pro), &DrcExtras::default()).unwrap();
+    let mut found: Vec<&str> = ours
+        .findings
+        .iter()
+        .filter(|f| f.rule == DrcRule::StarvedThermal)
+        .filter_map(|f| f.items.iter().find_map(|i| pad_at(i.at)))
+        .collect();
+    found.sort_unstable();
+    assert_eq!(starved, found);
+    assert_eq!(starved, ["A"]);
+
+    // The fill is the one the Gerbers hold: the same pieces, the same area.
+    let mut pen = Polygons::new();
+    fill_pour(&mut pen, &art, "F.Cu", &edge, &rules).unwrap();
+    let gerber = pen.areas();
+    let area = |all: &[netsmith_geom::PolygonArea]| all.iter().map(|a| a.size()).sum::<f64>();
+    assert_eq!(gerber.len(), zone.fill.len());
+    assert!(
+        (area(&gerber) - area(&zone.fill)).abs() < 1e-6,
+        "{} and {}",
+        area(&gerber),
+        area(&zone.fill)
+    );
+}
+
+/// The islands the fill takes out are reported with their places and areas (issue #1187): a
+/// strip of the pour that a track of another net cuts off from the rest, which touches no GND
+/// copper, is one more than the board without the track has.
+#[test]
+fn the_report_says_which_copper_islands_the_fill_took_out() {
+    use netsmith_geom::{Artwork, edge_outline, pad_joins, plot_rules_of};
+
+    let removed = |b: &mut Pcb| {
+        let (pcb, pro) = (b.pcb(), b.pro());
+        let art = Artwork::parse(&pcb).unwrap();
+        let edge = edge_outline(&art).unwrap();
+        let joins = pad_joins(&art, "F.Cu", &edge, &plot_rules_of(Some(&pro))).unwrap();
+        assert!(joins[0].islands.is_empty(), "the zone removes its islands");
+        joins[0].removed.clone()
+    };
+    let before = removed(&mut board());
+    // A SIG track down the whole pour 2 mm from its left edge: the strip of fill left of it
+    // touches no GND copper (the via and the pads are further right).
+    let x = 3.0;
+    let mut b = board();
+    b.track("SIG1", "F.Cu", (x, 0.5), (x, 19.5), 0.25);
+    let after = removed(&mut b);
+    let left = |all: &[(Pt, f64)]| all.iter().filter(|(at, _)| at.x < x).count();
+    assert_eq!(left(&before), 0, "{before:?}");
+    assert_eq!(left(&after), 1, "the strip left of the track is an island: {after:?}");
+    assert_eq!(after.len(), before.len() + 1, "{before:?} {after:?}");
+    let (_, area) = after.iter().find(|(at, _)| at.x < x).unwrap();
+    // About 1.5 mm wide (from the pour's edge at 1 mm to the track's clearance at 2.575 mm) and
+    // 14.85 mm long, less its rounded corners.
+    assert!((15.0..25.0).contains(area), "{area}");
 }

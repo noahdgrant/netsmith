@@ -2,15 +2,15 @@
 // summary` prints. Wire length and crossings, how full each face is and where it is free, each
 // module's box, the decoupling distances, what the datasheets' layout guidelines measure (issue
 // 994), the longest nets, the parts near the selected parts, and
-// the distance between two pads typed in, and the copper areas (issue 1085, `netsmith board copper`): the planes, pours, the routes file's zones and the teardrop fills. A click on a box or a part zooms the canvas to it.
+// the distance between two pads typed in, and the copper areas (issue 1085, `netsmith board copper`): the planes, pours, the routes file's zones and the teardrop fills, and how the fill of the pours joins each pad (issue 1187, `netsmith board fill`): by how many thermal spokes, solid or not at all, the starved reliefs and the copper islands. A click on a box or a part zooms the canvas to it.
 
 import { useEffect, useState } from 'preact/hooks';
 
-import type { PcbBox, PcbCopper, PcbScene, PcbSummary } from '../api';
+import type { PcbBox, PcbCopper, PcbFill, PcbScene, PcbSummary } from '../api';
 import { api, ApiFailure } from '../client';
 import { EmptyState } from '../components/ui';
 import { select, selection } from '../pcbstore';
-import { copperLayerLine, copperZoneLine, fillWord, guidelineLine, mm, padName, padProblem, padsLine, sheetBox, summaryQuery, teardropsLine } from './summary';
+import { copperLayerLine, copperZoneLine, fillAreaLine, fillCountsLine, fillPadLine, fillStarvedLine, fillWord, guidelineLine, mm, padName, padProblem, padsLine, sheetBox, summaryQuery, teardropsLine } from './summary';
 
 /** How many of the longest nets the tab lists. */
 const LONGEST_NETS = 8;
@@ -72,6 +72,28 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
         if (!current) return;
         setCopperError(e instanceof ApiFailure || e instanceof Error ? e.message : String(e));
         setCopper(null);
+      });
+    return () => {
+      current = false;
+    };
+  }, [sc.board, sc.layoutStamp, sc.routesStamp, sc.routed]);
+  // The fill of the pours on the board as placed (and routed): asked again when the placement, the
+  // routes file or the routing changes. Filling takes longer than the rest of the tab.
+  const [fill, setFill] = useState<PcbFill | null>(null);
+  const [fillError, setFillError] = useState<string | null>(null);
+  useEffect(() => {
+    let current = true;
+    api
+      .pcbFill(sc.board)
+      .then((r) => {
+        if (!current) return;
+        setFill(r);
+        setFillError(null);
+      })
+      .catch((e) => {
+        if (!current) return;
+        setFillError(e instanceof ApiFailure || e instanceof Error ? e.message : String(e));
+        setFill(null);
       });
     return () => {
       current = false;
@@ -192,6 +214,39 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
               <b>Teardrop fills</b>: {teardropsLine(copper)}
             </div>
           )}
+          <div class="sub">Pads in the pours</div>
+          {fillError && (
+            <div class="note-line bad" data-testid="summary-fill-error">
+              {fillError}
+            </div>
+          )}
+          {fill && fill.fills.length === 0 && (
+            <div class="summary-line faint" data-testid="summary-fill-none">
+              No pour, plane or zone of a net
+            </div>
+          )}
+          {fill?.fills.map((f) => (
+            <details key={`${f.layer} ${f.net}`} class="summary-line" data-testid="summary-fill-area" data-layer={f.layer} data-net={f.net} data-starved={f.counts.starved}>
+              <summary>
+                <b>{f.layer}</b>: {fillAreaLine(f)}
+              </summary>
+              {f.pads.map((p) => (
+                <div key={`${p.part}.${p.pad}`} class={`summary-line${p.starved ? ' bad' : ' faint'}`} data-testid="summary-fill-pad" data-pad={`${p.part}.${p.pad}`} data-join={p.join} data-starved={p.starved}>
+                  {fillPadLine(p)}
+                </div>
+              ))}
+            </details>
+          ))}
+          {fill && fill.fills.length > 0 && (
+            <div class="summary-line" data-testid="summary-fill-counts" data-routed={fill.routed} data-starved={fill.counts.starved}>
+              <b>In all</b>: {fillCountsLine(fill.counts)}
+            </div>
+          )}
+          {fill?.starved.map((s) => (
+            <div key={`${s.layer} ${s.part}.${s.pad}`} class="summary-line bad" data-testid="summary-fill-starved">
+              Starved: {fillStarvedLine(s)}
+            </div>
+          ))}
           <div class="sub">Faces</div>
           {s.faces.map((f) => (
             <div key={f.face} class="summary-line" data-testid="summary-face" data-face={f.face}>

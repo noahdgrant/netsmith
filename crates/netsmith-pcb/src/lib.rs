@@ -42,6 +42,7 @@ mod copper;
 mod copper_areas;
 mod explain;
 mod export;
+mod fill_report;
 mod fit_report;
 mod footprint;
 mod generate;
@@ -108,6 +109,10 @@ pub use explain::{
     Fault, Precheck, RequirementReport, before_placing, explain as explain_requirements,
 };
 pub use export::{PATH_PROPERTY, kicad_pcb, kicad_pro, process_zones};
+pub use fill_report::{
+    ClearedPad, FillArea, FillIsland, FillPad, FillReport, FillSource, JoinCounts, JoinKind,
+    StarvedPad,
+};
 pub use fit_report::{FitReport, PartRef, Size};
 pub use footprint::{
     Drill, Footprint, FootprintError, FootprintLibrary, Graphic, Layer, Mount, Pad, PadKind,

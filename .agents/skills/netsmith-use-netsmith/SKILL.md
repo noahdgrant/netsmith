@@ -30,7 +30,7 @@ Every board goes through the same steps. Do them in this order and say what each
 |---|---|---|
 | Know why a part was picked, keep a pick, choose another row, add a catalog part | `board explain`, `board swap`, `project lock`, `catalog` | `netsmith-pick-parts` |
 | List the boards, systems, panels, files and orders, to learn the names `--board` and `--name` take | `project show` | `netsmith-design-a-board` |
-| See the parts and nets with what the solve left them, the bill of materials, the power tree, a system, a panel, the copper areas | `board show`, `board bom`, `board power`, `board system`, `board panel`, `board copper` | `netsmith-design-a-board` |
+| See the parts and nets with what the solve left them, the bill of materials, the power tree, a system, a panel, the copper areas, how the pours join each pad | `board show`, `board bom`, `board power`, `board system`, `board panel`, `board copper`, `board fill` | `netsmith-design-a-board` |
 | Compare two designs, or the project with a git ref | `board compare` | |
 | Say where parts are on the board | `layout` | `netsmith-use-layout` |
 | State where parts must be for a case or a carrier | the physical file, then `board fab` | `netsmith-use-constraints` |

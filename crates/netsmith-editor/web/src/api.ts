@@ -1710,6 +1710,67 @@ layers: Array<CopperLayer>,
  */
 zones: Array<CopperZone>, teardrops: CopperFills, };
 
+export type FillAt = { x: number, y: number, };
+
+export type FillPad = { part: string, pad: string, at: FillAt, 
+/**
+ * `solid`, `thermal` or `none`.
+ */
+join: string, 
+/**
+ * Of a thermal relief: its spokes, and how many of them reach the fill.
+ */
+spokes: number | null, joinedSpokes: number | null, 
+/**
+ * The tracks of its net that run from it onto the fill.
+ */
+tracks: number, 
+/**
+ * Whether the fill reaches it at all.
+ */
+joined: boolean, 
+/**
+ * Whether it is a starved thermal relief (`starved_thermal`).
+ */
+starved: boolean, };
+
+export type FillCleared = { part: string, pad: string, net: string | null, at: FillAt, };
+
+export type FillIsland = { at: FillAt, area: number, };
+
+export type FillCounts = { noSpokes: number, oneSpoke: number, twoOrMoreSpokes: number, solid: number, none: number, starved: number, };
+
+export type FillArea = { 
+/**
+ * `top`, `inner1`, `bottom`, and KiCad's name of it.
+ */
+layer: string, layerName: string, net: string, 
+/**
+ * `plane`, `pour` or `zone`.
+ */
+source: string, 
+/**
+ * Whether it is the fill the board file holds.
+ */
+held: boolean, 
+/**
+ * Its area in mm2.
+ */
+area: number, pads: Array<FillPad>, counts: FillCounts, cleared: Array<FillCleared>, islands: Array<FillIsland>, removedIslands: Array<FillIsland>, };
+
+export type FillStarved = { layer: string, net: string, part: string, pad: string, at: FillAt, spokes: number, joinedSpokes: number, tracks: number, };
+
+export type PcbFill = { board: string, 
+/**
+ * The stamps of the placement and of the routes file it was filled on, and whether it was
+ * routed.
+ */
+layoutStamp: string, routesStamp: string, routed: boolean, outlineAt: FillAt, 
+/**
+ * Each fill, by layer from the top.
+ */
+fills: Array<FillArea>, counts: FillCounts, starved: Array<FillStarved>, };
+
 export type PcbFitPart = { refdes: string, path: string, };
 
 export type PcbFitNear = { x: number, y: number, 

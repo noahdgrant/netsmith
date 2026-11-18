@@ -7,7 +7,7 @@
 The commands are grouped under nouns, each with its verbs (issue #1090): `netsmith <noun> <verb>`, so `netsmith --help` lists nine nouns and `netsmith board --help` the verbs of a board.
 
 - `project`: the project as a whole: make one (`init`), bring its agent files up to this netsmith (`refresh`), refresh or check its pick lock (`lock`), report what is worth changing in its sources (`lint`), rewrite its sources in the language's one layout (`fmt`), make one of its orders (`order`), print what it is made of (`show`).
-- `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `drc` alone, `explain` a pick, `compare` two designs or the project with a git ref, `swap` a part for another row, `pins` (show, lock, move), `copper` (the planes, pours, hand zones and teardrop fills), and the views of the solved design the editor shows, printed as text or `--format json`: `bom`, `power`, `system`, `panel`.
+- `board`: what is done to the boards of a file or of the project: `check`, `build`, `fab`, `drc` alone, `explain` a pick, `compare` two designs or the project with a git ref, `swap` a part for another row, `pins` (show, lock, move), `copper` (the planes, pours, hand zones and teardrop fills), `fill` (how the fill of the pours joins each pad, and the copper islands), and the views of the solved design the editor shows, printed as text or `--format json`: `bom`, `power`, `system`, `panel`.
 - `layout`: the layout file, where each part is.
 - `routes`: the routes file, the copper fixed by hand or imported.
 - `schematic`: the schematic layout file (`<stem>.sch.toml`), how the schematic is arranged: `show` it, `set` an entry, `check` it against the board, `arrange` the sheets of a big board (issue #1093). It is `layout`'s counterpart for the drawing: a noun is the thing a file holds, so the PCB's solution is `layout` and the schematic's arrangement is `schematic`, and the picture of it is the verb `view schematic`.
@@ -52,6 +52,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith board system` | new | `--name`, `--format` |
 | `netsmith board panel` | new | `--name`, `--format` |
 | `netsmith board copper` | new | `--board`, `--format` |
+| `netsmith board fill` | new (#1187) | `--board`, `--place-seeds`, `--place-budget`, `--format` |
 | `netsmith layout show` | the same | `--file` (was `--into`), `--board`, `--format` |
 | `netsmith layout set` | the same | `--file` (was `--into`), `--board`, `--at`, `--turn`, `--side`, `--lock`, `--unlock`, `--format` |
 | `netsmith layout check` | the same | `--file` (was `--into`), `--board`, `--format` |

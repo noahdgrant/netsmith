@@ -49,8 +49,8 @@ use netsmith_editor::{
     api::{
         Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
         FabReport, FileContent, GerberView, GitInfo, KeepoutPlacement, OrderInfo, OrderReport,
-        PanelView, PcbChange, PcbCopper, PcbEdit, PcbEdited, PcbFindings, PcbFit, PcbReport,
-        PcbScene, PcbSummary, PinLock, PinMove, PinWritten, PowerTree, Project, Saved,
+        PanelView, PcbChange, PcbCopper, PcbEdit, PcbEdited, PcbFill, PcbFindings, PcbFit,
+        PcbReport, PcbScene, PcbSummary, PinLock, PinMove, PinWritten, PowerTree, Project, Saved,
         SchematicHints, SystemView,
     },
 };
@@ -1581,6 +1581,30 @@ impl Backend for Workspace {
             .filter(|e| e.is_routed())
             .map(|e| &e.board);
         pcb::copper(&data, board, routed)
+    }
+
+    fn pcb_fill(&self, board: &str) -> Result<PcbFill, ApiError> {
+        // The placement `pcb_scene` draws, kept in `state.pcb`; placed here only when the board
+        // has not been placed since the files were read, and then kept for the 2D view too. The
+        // fill runs with no lock held.
+        let (version, data) = {
+            let state = self.fresh();
+            let data = state.snapshot.board_handle(board)?;
+            if let Some(entry) = state.pcb.get(board) {
+                let filling = pcb::Filling::of(entry);
+                drop(state);
+                return filling.fill(board);
+            }
+            (state.version, data)
+        };
+        let entry = pcb::place(&data, board)?;
+        let filling = pcb::Filling::of(&entry);
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.version == version {
+            state.pcb.entry(board.to_string()).or_insert(entry);
+        }
+        drop(state);
+        filling.fill(board)
     }
 
     fn gerber(&self, board: &str, layer: Option<&str>) -> Result<GerberView, ApiError> {

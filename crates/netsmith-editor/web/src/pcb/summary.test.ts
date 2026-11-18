@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { CopperLayer, CopperZone, PcbCopper, PcbScene, SummaryGuideline, SummaryPads } from '../api';
-import { copperLayerLine, copperZoneLine, fillWord, guidelineLine, mm, padName, padProblem, padsLine, pourFields, sheetBox, summaryQuery, teardropsLine } from './summary';
+import type { CopperLayer, CopperZone, FillArea, FillCounts, FillPad, PcbCopper, PcbScene, SummaryGuideline, SummaryPads } from '../api';
+import { copperLayerLine, copperZoneLine, fillAreaLine, fillCountsLine, fillPadLine, fillStarvedLine, fillWord, guidelineLine, mm, padName, padProblem, padsLine, pourFields, sheetBox, summaryQuery, teardropsLine } from './summary';
 
 describe('a number of the summary', () => {
   it('is to the hundredth with no trailing zeros', () => {
@@ -92,5 +92,18 @@ describe('the copper areas', () => {
     expect(teardropsLine(copper({ counted: false, total: 0, layers: [] }))).toMatch(/^not counted/);
     expect(teardropsLine(copper({ counted: true, total: 3, layers: [{ layer: 'top', count: 2 }, { layer: 'bottom', count: 1 }] }))).toBe('3 (2 on top, 1 on bottom)');
     expect(teardropsLine(copper({ counted: true, total: 0, layers: [] }))).toBe('0');
+  });
+  it('count the pads a fill joins by kind, and say how each is joined', () => {
+    const counts: FillCounts = { noSpokes: 0, oneSpoke: 1, twoOrMoreSpokes: 2, solid: 1, none: 0, starved: 1 };
+    expect(fillCountsLine(counts)).toBe('4 pads: 2 by 2 or more spokes, 1 by 1 spoke, 0 by no spoke, 1 solid, 0 none; 1 starved');
+    const pad = (p: Partial<FillPad>): FillPad => ({ part: 'U1', pad: '2', at: { x: 8, y: 15 }, join: 'thermal', spokes: 4, joinedSpokes: 1, tracks: 0, joined: true, starved: true, ...p });
+    expect(fillPadLine(pad({}))).toBe('U1.2: thermal, 1 of 4 spokes (starved)');
+    expect(fillPadLine(pad({ joinedSpokes: 1, tracks: 1, starved: false }))).toBe('U1.2: thermal, 1 of 4 spokes and 1 track');
+    expect(fillPadLine(pad({ join: 'solid', spokes: null, joinedSpokes: null, starved: false }))).toBe('U1.2: solid');
+    expect(fillPadLine(pad({ join: 'solid', spokes: null, joinedSpokes: null, joined: false, starved: false }))).toBe('U1.2: solid, the fill does not reach it');
+    expect(fillPadLine(pad({ join: 'none', spokes: null, joinedSpokes: null, joined: false, starved: false }))).toBe('U1.2: none');
+    const area: FillArea = { layer: 'top', layerName: 'F.Cu', net: 'GND', source: 'pour', held: false, area: 120.456, pads: [], counts, cleared: [], islands: [], removedIslands: [{ at: { x: 1, y: 2 }, area: 0.5 }] };
+    expect(fillAreaLine(area)).toBe(`pour on GND, 120.46 mm²: ${fillCountsLine(counts)}; clears 0 pads of other nets; islands: 0 kept, 1 removed`);
+    expect(fillStarvedLine({ layer: 'top', net: 'GND', part: 'U1', pad: '2', at: { x: 8, y: 15 }, spokes: 4, joinedSpokes: 1, tracks: 0 })).toBe('U1.2 on top (GND) at (8, 15): 1 of 4 spokes');
   });
 });
