@@ -2257,7 +2257,7 @@ The note, in `netsmith board build`'s output: `not evaluated: the absolute maxim
 
 Its catalog `sn74lvc1g04` has one row, TI's SN74LVC1G04DBVR in the SOT-23-5 (LCSC C7827, library type Extended), so a board that names the package is given that row and `fab` can order the part.
 
-`std::parts::mcu::Attiny13a` is the first standard part that states pin functions. It is Microchip's ATtiny13A (data sheet DS40002307A) in its 150 mil SOIC-8. Its pins `pb0` to `pb5` are `Logic` lines, and each has the functions of the data sheet's Table 10-3 (`.pb0` is `GPIO`, `MOSI`, `AIN0`, `OC0A` or `PCINT0`), with a kind after a function where the table says which way it goes (`OC0A:output`, `INT0:input`); `GPIO` is a class, so the board may choose it on several pins. A pin that is connected and has several functions needs the board to choose one, as in chapter 11. The part states the input levels of Table 18-1 for a supply of 2.4 V to 5.5 V as fractions of the supply (`vil` 0.3 VCC and `vih` 0.6 VCC; the reset pin, `.pb5`, 0.2 VCC and 0.9 VCC) and refuses a supply outside that range. It states no output level, because the table gives VOH and VOL at two supplies and two currents for each group of pins; a receiver on an output is listed as not evaluated against it. Its source is in the definition, table by table (`std/parts/mcu.nsm`). An inverter on 3.3 V drives a high of at least 3.035 V, which the microcontroller reads as a high at 3.3 V (it needs up to 2.079 V) and does not at 5 V, where it needs up to 3.15 V; the 5 V supply of the microcontroller's line also puts 5.25 V on the inverter's output, above its absolute maximum, which the second message says:
+`std::parts::mcu::Attiny13a` is the first standard part that states pin functions. It is Microchip's ATtiny13A (data sheet DS40002307A) in its 150 mil SOIC-8. Its pins `pb0` to `pb4` are plain pins with the levels of the part (see "The levels of a part's plain pins" below), `pb5` is a `Logic` line, and each has the functions of the data sheet's Table 10-3 (`.pb0` is `GPIO`, `MOSI`, `AIN0`, `OC0A` or `PCINT0`), with a kind after a function where the table says which way it goes (`OC0A:output`, `INT0:input`); `GPIO` is a class, so the board may choose it on several pins. A pin that is connected and has several functions needs the board to choose one, as in chapter 11. The part states the input levels of Table 18-1 for a supply of 2.4 V to 5.5 V as fractions of the supply (`vil` 0.3 VCC and `vih` 0.6 VCC for the I/O pins, once, as `.levels`; the reset pin, `.pb5`, 0.2 VCC and 0.9 VCC, its own) and refuses a supply outside that range. It states no output level, because the table gives VOH and VOL at two supplies and two currents for each group of pins; a receiver on an output is listed as not evaluated against it. Its source is in the definition, table by table (`std/parts/mcu.nsm`). An inverter on 3.3 V drives a high of at least 3.035 V, which the microcontroller reads as a high at 3.3 V (it needs up to 2.079 V) and does not at 5 V, where it needs up to 3.15 V; the 5 V supply of the microcontroller's line also puts 5.25 V on the inverter's output, above its absolute maximum, which the second message says:
 
 ```nsm fails
 import std::mfg::jlcpcb::TwoLayer
@@ -2276,41 +2276,172 @@ board Dimmer {
     .logic_supply ~ .inv.vcc
     .mcu_supply ~ .mcu.vcc
     .j.p1 ~ .inv.a.line
-    .inv.y.line ~ .mcu.pb2.line
-    .mcu.pb2.line.function &= GPIO
-    .j.p2 ~ .mcu.pb0.line
-    .mcu.pb0.line.function &= GPIO
+    .inv.y.line ~ .mcu.pb2
+    .mcu.pb2.function &= GPIO
+    .j.p2 ~ .mcu.pb0
+    .mcu.pb0.function &= GPIO
 }
 ```
 
 ```text
-error: net `net-inv.y.line`: `inv.y.voh` is 3.035V..3.365V but `mcu.pb2.vih` needs 2.85V..3.15V: a high of 3.035V is not always read as a high, which takes 3.15V
+error: net `net-inv.y.line`: `inv.y.voh` is 3.035V..3.365V but `mcu.levels.vih` needs 2.85V..3.15V: a high of 3.035V is not always read as a high, which takes 3.15V
    --> main.nsm:11:5
    |
 11 |     .inv: Sn74lvc1g04 { .package &= "SOT-23-5" }
    |     ^^^^^^^^^^^^^^^^^
-error: net `net-inv.y.line` reaches 5.25V above its ground `GND` (`mcu.pb2.line`, a line of `mcu.pb2.reference`) but `inv.y.line.abs_max` is 3.635V..3.965V: it must not exceed 3.635V
+error: net `net-inv.y.line` reaches 5.25V above its ground `GND` (`mcu.pb2`, a line of `mcu.levels.reference`) but `inv.y.line.abs_max` is 3.635V..3.965V: it must not exceed 3.635V
    --> main.nsm:11:5
    |
 11 |     .inv: Sn74lvc1g04 { .package &= "SOT-23-5" }
    |     ^^^^^^^^^^^^^^^^^
 ```
 
-The level checks apply to the lines that are `Logic` and to the pins of a bus interface that states `.levels` (see "Logic levels of a bus" below). A rating of any other pin is judged the same way, from its pin row (`abs_max 65V`), which names its ground. A rating is stated nowhere but in the row, so no pin has one whose ground is not known.
+The level checks apply to the lines that are `Logic`, to the pins of a bus interface that states `.levels` (see "Logic levels of a bus" below) and to the plain pins of a part that has `.levels` (below). A rating of any other pin is judged the same way, from its pin row (`abs_max 65V`), which names its ground. A rating is stated nowhere but in the row, so no pin has one whose ground is not known.
+
+#### The levels of a part's plain pins
+
+A datasheet gives the levels of a part's I/O pins once, in one table for a supply: the input thresholds as fractions of the supply, the output levels at a load. A part states that table once, as its own `.levels`, a `std::logic::Levels` as a bus has (issue #1190), and its pins stay plain: `.levels.reference ~ .vdd`, `.levels.vih &= 0.7 * .vdd.voltage`, `.levels.voh &= .vdd.voltage - 0.4V`. Every plain pin of the part whose row's kind is `input`, `output`, `bidirectional`, `tri_state` or `open_drain` is then judged by those levels, as a bus pin is by its bus's (`output` and `tri_state` by `voh` and `vol`, `input` by `vih` and `vil`, `bidirectional` by all four), and the notes that its levels are not known go away. Its absolute maximum is measured from the ground of `.levels.reference`, and `from` is refused in its row. A `power`, `passive` or `no_connect` pin takes no levels: an analog input written `passive` keeps the ground of its row.
+
+A pin with levels of its own (a reset input with a row of its own in the table) is a `Logic` in the part: a pin of an interface has its interface's levels and never the part's, so it keeps its own, all four. A part with two groups of pins on two supplies states the second group as `Logic` lines, or as a bus with its own `.levels`.
+
+The sensor below is invented: its I/O pins read a high from 70 % of its supply and drive within 0.4 V of it, and its reset input needs 90 %. A processor of the same supply drives its data input and reads its data output; nothing is said:
+
+```nsm module=src::zsensor
+import std::logic::{Levels, Logic}
+import std::sources::Rail
+
+/// Zsensor, an invented sensor: one table of levels for its I/O pins, and a reset input with
+/// levels of its own.
+part Zsensor {
+    .vdd: Rail
+    // Table 7, the DC characteristics of the I/O pins.
+    .levels: Levels
+    .levels.reference ~ .vdd
+    .levels.vih &= 0.7 * .vdd.voltage
+    .levels.vil &= 0.3 * .vdd.voltage
+    .levels.voh &= .vdd.voltage - 0.4V
+    .levels.vol &= 0.4V
+    // Table 8, the reset input.
+    .rst: Logic
+    .rst.reference ~ .vdd
+    .rst.reference.current &= 0A
+    .rst.vih &= 0.9 * .vdd.voltage
+    .rst.vil &= 0.1 * .vdd.voltage
+
+    pins {
+        .vdd.pos  power  "VDD"  "1"
+        .vdd.neg  power  "GND"  "2"
+        .dout     output "DOUT" "3"
+        .din      input  "DIN"  "4" abs_max 3.6V
+        .rst.line input  "RST"  "5" optional
+    }
+}
+
+/// Zhost, an invented processor that drives within 0.1 V of its supply and reads a high from
+/// 70 % of it.
+part Zhost {
+    .vdd: Rail
+    .tx: Logic
+    .rx: Logic
+    .tx.reference ~ .vdd
+    .rx.reference ~ .vdd
+    .tx.voh &= .vdd.voltage - 0.1V
+    .tx.vol &= 0.1V
+    .rx.vih &= 0.7 * .vdd.voltage
+    .rx.vil &= 0.3 * .vdd.voltage
+
+    pins {
+        .vdd.pos power  "VDD" "1"
+        .vdd.neg power  "GND" "2"
+        .tx.line output "TX"  "3"
+        .rx.line input  "RX"  "4"
+    }
+}
+```
+
+```nsm evaluate
+import std::sources::Rail
+
+import src::zsensor::{Zhost, Zsensor}
+
+board Agree {
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .host: Zhost
+    .sensor: Zsensor
+    .supply ~ .host.vdd
+    .supply ~ .sensor.vdd
+    .host.tx.line ~ .sensor.din
+    .sensor.dout ~ .host.rx.line
+}
+```
+
+With the processor on 1.8 V and the sensor on 3.3 V, the processor's high is not read as a high by the sensor's data input, which is judged with the part's levels, and the message names them:
+
+```nsm fails
+import std::sources::Rail
+
+import src::zsensor::{Zhost, Zsensor}
+
+board Mismatch {
+    .s3: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .s18: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8" }
+    .host: Zhost
+    .sensor: Zsensor
+    .s18 ~ .host.vdd
+    .s3 ~ .sensor.vdd
+    .host.tx.line ~ .sensor.din
+    .sensor.dout ~ .host.rx.line
+}
+```
+
+```text
+error: net `net-host.tx.line`: `host.tx.voh` is 1.61V..1.79V but `sensor.levels.vih` needs 2.194V..2.426V: a high of 1.61V is not always read as a high, which takes 2.426V
+  --> main.nsm:8:5
+  |
+8 |     .host: Zhost
+  |     ^^^^^^^^^^^^
+```
+
+The processor's line into the reset input is judged by the reset's own levels: on one 3.3 V supply, a high of 3.035 V is not always read as a high by an input that needs 90 % of up to 3.465 V, though the part's levels would have read it.
+
+```nsm fails
+import std::sources::Rail
+
+import src::zsensor::{Zhost, Zsensor}
+
+board Reset {
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .host: Zhost
+    .sensor: Zsensor
+    .supply ~ .host.vdd
+    .supply ~ .sensor.vdd
+    .host.tx.line ~ .sensor.rst.line
+    .host.tx.line ~ .sensor.din
+    .sensor.dout ~ .host.rx.line
+}
+```
+
+```text
+error: net `net-host.tx.line`: `host.tx.voh` is 3.035V..3.365V but `sensor.rst.vih` needs 2.821V..3.119V: a high of 3.035V is not always read as a high, which takes 3.119V
+  --> main.nsm:7:5
+  |
+7 |     .host: Zhost
+  |     ^^^^^^^^^^^^
+```
 
 #### A pin with no levels, and a level through a series part
 
 A pair is judged only when both ends have levels. When one end states them and the other cannot have any, the pair is named as not evaluated, never passed in silence (#850):
 
-- A pin that can drive the net and is not the `.line` of a `Logic` or a pin of an interface with `levels` (an `output`, `tri_state`, `bidirectional` or `open_drain` pin of a part that writes it plainly), on a net with a receiver that states `vih` or `vil`: `not evaluated: the logic levels from `m.stat` to `b.in` on net `...`: `m.stat` can drive it and is not the `line` of a `Logic` or a pin of an interface with `levels`, so its levels are not known`. A plain `open_drain` pin does not set its high: as for an `open_drain` line, the high is what the DC analysis or the pull-up gives the line, measured from the receiver's ground and judged against its `vih` (see "An open-drain line" below), and only its low is a note.
-- A pin that reads the net and has no levels (a plain `input` or `bidirectional` pin), on a net with a driver that states `voh`, `vol` or a swing: `... `q.en` reads it and is not the `line` of a `Logic` or a pin of an interface with `levels`, so the levels it needs are not known`. The gate of a `NMosfet` is such a pin: its own relations judge the voltage across it where the board states them.
+- A pin that can drive the net and is not the `.line` of a `Logic` or a pin of an interface or a part with `levels` (an `output`, `tri_state`, `bidirectional` or `open_drain` pin of a part that writes it plainly and has no `levels`), on a net with a receiver that states `vih` or `vil`: `not evaluated: the logic levels from `m.stat` to `b.in` on net `...`: `m.stat` can drive it and is not the `line` of a `Logic` or a pin of an interface or a part with `levels`, so its levels are not known`. A plain `open_drain` pin does not set its high: as for an `open_drain` line, the high is what the DC analysis or the pull-up gives the line, measured from the receiver's ground and judged against its `vih` (see "An open-drain line" below), and only its low is a note.
+- A pin that reads the net and has no levels (a plain `input` or `bidirectional` pin), on a net with a driver that states `voh`, `vol` or a swing: `... `q.en` reads it and is not the `line` of a `Logic` or a pin of an interface or a part with `levels`, so the levels it needs are not known`. The gate of a `NMosfet` is such a pin: its own relations judge the voltage across it where the board states them.
 - A receiver that states levels on a net that nothing on it drives, joined by a part with a `bridge` to a net that something drives: a series resistor, the top of a divider, a diode, or the channel of a MOSFET that translates a level. When the driver on the far net is a `Logic` line that the DC analysis models (its `voh` and `vol` state the current they are measured at, `at 100uA`, or it states `.roh` and `.rol`), the analysis solves the network once with the driver held high and once held low, and the receiver is judged by the voltage that gives its net: the lowest high against its `vih`, the highest low against its `vil`, over every corner of the ranges and every state of the other parts. An open-drain driver does not drive high, so its high is the net's voltage with every driver of the two nets letting go (what the pull-up gives it). A driver the analysis does not model (one with no test current, or a swing), behind a resistor into a net that nothing else is on (its other pins are `input`s that state no leakage), is judged as a pair on the far net: no current flows through the resistor, so the receiver sees the driver's own levels, and the message names the far net. Any other driver (a plain pin, a driver the analysis does not model into a net with a pull-up or a pull-down), a network the analysis does not solve, or a receiver on another ground is a note that names the part and the net the level comes from. A resistor to a rail or to ground only pulls the net there and is not named, and a net that has a driver of its own is judged on its own lines.
 - A receiver that states levels on a net whose own drivers can all let go of it (`tri_state`, `bidirectional` or `open_drain` pins), joined by a part with a `bridge` to a net with a driver that states levels: when the drivers on its own net let go, the far driver's level comes through the part. The low that one side of a MOSFET translator between two buses pulls the other side to is such a level. Each side's own lines are judged on that side. What crosses is judged as above, with every driver of the receiver's own net held letting go of it, where the DC analysis models the far driver: `net `...`: with `b.io` driving low and every driver of net `...` letting go of it, the DC analysis holds the line at ... through `q` from net `...` but `a.io.vil` allows ...`. For any other far driver it is named: `not evaluated: the logic levels that cross `r` from net `...` into net `...`: every driver of net `...` can let go of it, and then the level that `a.out` drives reaches `b.in` through `r`, which the levels check does not follow`. A net with an `output` on it is held by that output and is not named.
 - A MOSFET between the two nets. The DC analysis takes a MOSFET as a switch, on or off by its gate, and a translator has a state that only the MOSFET's body diode rules out: the far side pulls the drain low, and the MOSFET stays off with the source still at its pull-up. A MOSFET whose `.body_diode_voltage` is stated (the datasheet's drain-source diode forward voltage, VSD, at its test current; a member of `NMosfet` and `PMosfet` that the design states, `.q.body_diode_voltage &= 1.4V`) has its body diode in the network these levels are judged in, and the low is judged with it. One that does not is solved again with its channel held on: a level that fails with the channel on is refused, and one that holds only with it on is a note that names the body diode: `not evaluated: the low level into `a.io` on net `...` through `q` from net `...` with `b.io` driving low and every driver of net `...` letting go of it: with `q` on, the DC analysis holds the line at ..., which `a.io.vil` reads as a low, but in some states it finds `q` off and the line at ...; whether `q` turns on there rests on its body diode, which the analysis models only when `q.body_diode_voltage` states its forward voltage`.
 
 A pair of which neither end states a level is not looked at, as before. A level translator that is a part with a `Logic` line or a bus on each side (`LevelTranslator`, or a part of a project's own, as in "Logic levels of a bus") is judged on each side's net.
 
-The driver below feeds the receiver through a 100 ohm resistor and also drives the enable pin of a part that states no levels. Its levels state no test current, so the DC analysis does not model it, but nothing else is on the receiver's net: the receiver is judged against the driver's own levels, and holds. The enable pin is named among the notes of the build: `not evaluated: the logic levels from `a.out` to `q.en` on net `net-a.out.line`: `q.en` reads it and is not the `line` of a `Logic` or a pin of an interface with `levels`, so the levels it needs are not known`. With a pull-down on the receiver's net as well, the resistor would carry a current that the driver's levels do not say the drop of, and the level through it would be a note: `not evaluated: the logic levels into `b.in` on net `net-b.in.line`: nothing on the net drives it, and its level comes through `r` from net `net-a.out.line`, which the levels check does not follow`. The parts are invented.
+The driver below feeds the receiver through a 100 ohm resistor and also drives the enable pin of a part that states no levels. Its levels state no test current, so the DC analysis does not model it, but nothing else is on the receiver's net: the receiver is judged against the driver's own levels, and holds. The enable pin is named among the notes of the build: `not evaluated: the logic levels from `a.out` to `q.en` on net `net-a.out.line`: `q.en` reads it and is not the `line` of a `Logic` or a pin of an interface or a part with `levels`, so the levels it needs are not known`. With a pull-down on the receiver's net as well, the resistor would carry a current that the driver's levels do not say the drop of, and the level through it would be a note: `not evaluated: the logic levels into `b.in` on net `net-b.in.line`: nothing on the net drives it, and its level comes through `r` from net `net-a.out.line`, which the levels check does not follow`. The parts are invented.
 
 ```nsm evaluate
 import std::logic::Logic

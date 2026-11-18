@@ -250,7 +250,7 @@ fn a_plain_pin_that_drives_a_bus_net_is_a_note_that_says_it_is_not_a_bus_pin() {
     let s = solved(&body);
     let n = notes(&s);
     assert!(
-        n.contains(&"not evaluated: the absolute maximum of `s.spi.cs` against net `net-m.sel1`: `m.sel1` can drive it and is not the `line` of a `Logic` or a pin of an interface with `levels`, so how far it swings is not known".to_string()),
+        n.contains(&"not evaluated: the absolute maximum of `s.spi.cs` against net `net-m.sel1`: `m.sel1` can drive it and is not the `line` of a `Logic` or a pin of an interface or a part with `levels`, so how far it swings is not known".to_string()),
         "{n:#?}"
     );
 }

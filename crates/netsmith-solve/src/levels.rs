@@ -69,8 +69,8 @@
 //! the net states the levels the other end would be compared with:
 //!
 //! - A pin that can drive the net and has no levels (an `output`, `tri_state`, `bidirectional`
-//!   or `open_drain` pin that is not the `.line` of a `Logic` or a pin of an interface with
-//!   `levels`), with a receiver that states `vih` or `vil`: its levels are not known. A plain
+//!   or `open_drain` pin that is not the `.line` of a `Logic` or a pin of an interface or a part
+//!   with `levels`), with a receiver that states `vih` or `vil`: its levels are not known. A plain
 //!   `open_drain` pin leaves the high to the circuit around the line as an `open_drain` line
 //!   does, so its high is judged from the DC analysis or the pull-up, against the receiver's
 //!   ground, and only its low is a note.
@@ -109,6 +109,23 @@
 //!   solves, and is judged with it. One that does not is solved again with its channel held on:
 //!   a level that fails with the channel on is a fault, one that holds only with it on is a note
 //!   that names the body diode, never a pass.
+//!
+//! A part states the levels of its plain pins once (issue #1190). A datasheet gives one table of
+//! levels for the I/O pins of a supply, and a part whose pins were plain had no levels at all, so
+//! every net it shared with a `Logic` line was a note; giving each pin a `Logic` of its own only to
+//! repeat the same four statements was the only way out. A part that declares `.levels: Levels`
+//! (the interface a bus carries as `.levels`, ADR 0064) gives those levels to each of its plain
+//! pins whose row's kind is one this check reads (`input`, `output`, `bidirectional`, `tri_state`,
+//! `open_drain`): `Model::levels_of` returns the part's `levels` for such a pin, as it returns a
+//! bus's `levels` for a pin of the bus, so the pair, the absolute maximum (measured from the ground
+//! of `.levels.reference`, and `from` is refused in the row) and the DC analysis read it as they
+//! read a bus pin. A `power`, `passive` or `no_connect` pin keeps no levels and the ground of its
+//! row. A pin of an interface (a `Logic` line, a bus pin) has its interface's levels and never the
+//! part's, so a pin with a datasheet row of its own (a reset input) is a `Logic` and keeps them,
+//! whole: a `Logic` that states only `vih` does not take `voh` from the part. Not taken (the
+//! owner's choice, asked in the pull request): a word in the pin row naming the `Levels` it takes
+//! (`levels .io`), which would allow two groups on two supplies in one part (today one of them is
+//! an interface with `levels`, or `Logic` lines), and a block that lists the pins of a group.
 //!
 //! A pair of which neither end states a level is still not looked at. Not taken (#850, #1045):
 //! judging a receiver against a driver the DC analysis does not model behind a series part into
@@ -325,22 +342,12 @@ impl Run<'_> {
         }
     }
 
-    /// The interface that holds the levels of a pin: the `Logic` the pin is the line of, or the
-    /// `Levels` of the bus interface it is a pin of (ADR 0064). Both have the reference rail
-    /// and the four voltages, and everything below reads them from whichever it gets.
+    /// The interface that holds the levels of a pin: the `Logic` the pin is the line of, the
+    /// `Levels` of the bus interface it is a pin of (ADR 0064), or the `Levels` of its part for
+    /// a plain pin of a signal kind (issue #1190, [`Model::levels_of`]). All have the reference
+    /// rail and the four voltages, and everything below reads them from whichever it gets.
     pub(crate) fn logic_of(&self, pin: InstId) -> Option<InstId> {
-        let inst = self.model.instance(pin);
-        let parent = inst.parent?;
-        if self.model.instance(parent).kind != InstKind::Interface {
-            return None;
-        }
-        if inst.name == "line" && self.model.instance(parent).type_name == "Logic" {
-            return Some(parent);
-        }
-        match self.model.member(parent, "levels")? {
-            Member::Inst(levels) if self.model.is_levels(levels) => Some(levels),
-            _ => None,
-        }
+        self.model.levels_of(pin)
     }
 
     /// The value of a quantity field of an instance, if it has one.
@@ -505,7 +512,8 @@ impl Run<'_> {
     }
 
     /// The pins on a net that have a kind and no levels: not the `.line` of a `Logic` or a pin
-    /// of an interface with `levels`, and not on an interface the board states is unused.
+    /// of an interface or a part with `levels`, and not on an interface the board states is
+    /// unused.
     fn plain_on(&self, net: &Net) -> Vec<(InstId, InstId, PinKind)> {
         let model = self.model;
         net.terminals
@@ -524,7 +532,8 @@ impl Run<'_> {
         let model = self.model;
         let net = &model.nets()[index];
         let plain = self.plain_on(net);
-        let unknown = "is not the `line` of a `Logic` or a pin of an interface with `levels`";
+        let unknown =
+            "is not the `line` of a `Logic` or a pin of an interface or a part with `levels`";
         for &(pin, part, kind) in &plain {
             let p = model.path_of(pin);
             let inside = model.joined_inside(pin);
@@ -1423,7 +1432,7 @@ impl Run<'_> {
                             vec![owner],
                             Cause::PartModel,
                             format!(
-                                "not evaluated: the absolute maximum of `{path}`: it is not the `line` of a `Logic` or a pin of an interface with `levels`, and its pin row names no ground, so its ground is not known"
+                                "not evaluated: the absolute maximum of `{path}`: it is not the `line` of a `Logic` or a pin of an interface or a part with `levels`, and its pin row names no ground, so its ground is not known"
                             ),
                         );
                         continue;
@@ -1689,7 +1698,7 @@ impl Run<'_> {
             }
             let Some(logic) = self.logic_of(t) else {
                 return Err(format!(
-                    "`{path}` can drive it and is not the `line` of a `Logic` or a pin of an interface with `levels`, so how far it swings is not known"
+                    "`{path}` can drive it and is not the `line` of a `Logic` or a pin of an interface or a part with `levels`, so how far it swings is not known"
                 ));
             };
             let Some(g) = self.ground_pin(logic) else {

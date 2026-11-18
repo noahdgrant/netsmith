@@ -334,14 +334,21 @@ impl Checker<'_> {
         limits: &ast::PinLimits,
     ) -> Option<(RowLimit, bool)> {
         let text = row.pin.to_source();
-        let by_levels = self.model.grounded_by_levels(pin);
+        let levels = self.model.levels_of_kind(pin, Some(row.kind));
+        let by_levels = levels.is_some();
         let (reference, needs_ground) = match &limits.from {
             Some(from) if by_levels => {
+                let of_part = levels.is_some_and(|l| {
+                    self.model.is_levels(l) && self.model.instance(l).parent == Some(self.current())
+                });
+                let whose = if of_part {
+                    "its part's `levels` give, the `neg` of its reference rail"
+                } else {
+                    "its `Logic` or its bus's `levels` give, the `neg` of their reference rail"
+                };
                 self.error(
                     from.span,
-                    format!(
-                        "`{text}` is measured from the ground its `Logic` or its bus's `levels` give, the `neg` of their reference rail; leave out `from`"
-                    ),
+                    format!("`{text}` is measured from the ground {whose}; leave out `from`"),
                 );
                 return None;
             }

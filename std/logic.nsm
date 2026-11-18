@@ -107,6 +107,14 @@ interface Logic {
 /// its supply (`.spi.levels.reference ~ .vdd`) gives the net a rail whose current nobody could
 /// state, so `Levels` states it, `.reference.current &= 0A`, and the part's draw is all in its
 /// supply's `current`. The optional members `.ii`, `.roh` and `.rol` are those of `Logic`.
+///
+/// A part may carry one too, as `.levels: Levels`, for its plain pins (issue #1190): a
+/// datasheet's table of the levels of the I/O pins is then stated once for the part,
+/// `.levels.reference ~ .vdd` and `.levels.vih &= 0.7 * .vdd.voltage`, and every plain pin whose
+/// row has the kind `input`, `output`, `bidirectional`, `tri_state` or `open_drain` is judged by
+/// those levels, and has its absolute maximum measured from their ground. A `power`, `passive` or
+/// `no_connect` pin is not. A pin of an interface (the `.line` of a `Logic`, a pin of a bus) keeps
+/// its interface's levels, so a pin with a row of levels of its own is a `Logic` in that part.
 interface Levels {
     .reference: Rail
     .reference.current &= 0A

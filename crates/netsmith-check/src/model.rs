@@ -357,7 +357,8 @@ pub struct RowLimit {
     /// `abs_max 65V from .gnd`, as written: the tables of a part must agree on it.
     pub text: String,
     /// The pin the limit is measured from: the row's `from`, else the one rail ground of the
-    /// table. `None` for a pin whose ground its `Logic` or its bus's `levels` give.
+    /// table. `None` for a pin whose ground its `Logic`, its bus's `levels` or its part's `levels`
+    /// give.
     pub reference: Option<InstId>,
 }
 

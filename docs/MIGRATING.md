@@ -13,6 +13,26 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+### The ATtiny13A's I/O pins are plain pins with the part's levels (issue #1190)
+
+```text
+error: `Pin` has no member `line`
+   --> src/main.nsm:15:20
+   |
+15 |     .j.p1 ~ .u.pb0.line
+   |                    ^^^^
+```
+
+A part can state one table of logic levels for its plain pins, as its `.levels` (the guide's chapter 28, "The levels of a part's plain pins"). `std::parts::mcu::Attiny13a` does: its pins `pb0` to `pb4` are plain pins now, not `Logic` lines, and `pb5`, the reset pin with levels of its own, is still a `Logic`.
+
+| Before | Now |
+|---|---|
+| `.u.pb0.line ~ ...`, `.u.pb0.line.function &= GPIO` | `.u.pb0 ~ ...`, `.u.pb0.function &= GPIO` (the same for `pb1` to `pb4`) |
+| `.u.pb0.voh &= 4.0V at 20mA` | `.u.levels.voh &= 4.0V at 20mA`, for all of `pb0` to `pb4` |
+| `.u.pb5.line` | unchanged |
+
+A message names the part's levels where it named a pin's: `u.levels.vih` for `u.pb2.vih`.
+
 ## 0.3.0: changes since 0.2.0
 
 ### The commands are grouped under nouns (issue #1090)
