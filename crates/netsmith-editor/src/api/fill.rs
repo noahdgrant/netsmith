@@ -6,9 +6,10 @@
 //! has it placed (and routed), as the Gerbers fill them, and answers for each fill the pads of
 //! its net and how each is joined (`solid`, `thermal` with the spokes that reach the fill, or
 //! `none`), the counts, the pads of other nets it keeps clear of, its copper islands kept and
-//! removed, and the starved thermal reliefs of the board. The places are in mm in the frame of
-//! the board file, y down; `outlineAt` is the outline's top left corner there. `404` for a board
-//! that is not there; a board that cannot be filled is a `500` with the reason.
+//! removed (a removed island with its outline, which the 2D view draws, issue #1188), and the
+//! starved thermal reliefs of the board. The places are in mm in the frame of the board file, y
+//! down; `outlineAt` is the outline's top left corner there. `404` for a board that is not
+//! there; a board that cannot be filled is a `500` with the reason.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -56,6 +57,10 @@ pub struct FillCleared {
 pub struct FillIsland {
     pub at: FillAt,
     pub area: f64,
+    /// Of an island the fill took out: its rings, the outline first and then its holes, which
+    /// the 2D view outlines (issue 1188). Empty for an island kept, which is drawn as the fill.
+    #[serde(default)]
+    pub outline: Vec<Vec<FillAt>>,
 }
 
 /// How many pads are joined each way.

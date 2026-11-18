@@ -233,6 +233,9 @@
   --pcb-lock: #e5b53b;
   --pcb-lock-fg: #151618;
   --pcb-hl: #ffffff;
+  /* what the fill of a pour took out (hatched) and a pad it starves (ringed), pcb/fillMarks.ts, issue 1188: marks 3:1 on the board */
+  --pcb-island: #eef1f7;
+  --pcb-starved: #ff6b6b;
   /* the modules lit on the board (pcb/modules.ts, issue 1129), each in its own colour: netsmith_pcb::MODULE_COLOURS_DARK */
   --module-1: #ff5fa2;
   --module-2: #3ddc97;
@@ -483,6 +486,9 @@
   --pcb-lock: #b57400;
   --pcb-lock-fg: #ffffff;
   --pcb-hl: #000000;
+  /* what the fill of a pour took out (hatched) and a pad it starves (ringed), pcb/fillMarks.ts, issue 1188: marks 3:1 on the board */
+  --pcb-island: #262b36;
+  --pcb-starved: #c4302b;
   /* the modules lit on the board (pcb/modules.ts, issue 1129), each in its own colour: netsmith_pcb::MODULE_COLOURS_LIGHT */
   --module-1: #c2185b;
   --module-2: #1b8a5a;
@@ -730,6 +736,9 @@
   --pcb-lock: #ffd23f;
   --pcb-lock-fg: #000000;
   --pcb-hl: #ffffff;
+  /* what the fill of a pour took out (hatched) and a pad it starves (ringed), pcb/fillMarks.ts, issue 1188: marks 3:1 on the board */
+  --pcb-island: #ffffff;
+  --pcb-starved: #ff8a85;
   /* the modules lit on the board (pcb/modules.ts, issue 1129), each in its own colour: netsmith_pcb::MODULE_COLOURS_DARK */
   --module-1: #ff5fa2;
   --module-2: #3ddc97;
@@ -977,6 +986,9 @@
   --pcb-lock: #8a5a00;
   --pcb-lock-fg: #ffffff;
   --pcb-hl: #000000;
+  /* what the fill of a pour took out (hatched) and a pad it starves (ringed), pcb/fillMarks.ts, issue 1188: marks 3:1 on the board */
+  --pcb-island: #000000;
+  --pcb-starved: #9c0d08;
   /* the modules lit on the board (pcb/modules.ts, issue 1129), each in its own colour: netsmith_pcb::MODULE_COLOURS_LIGHT, darker for high contrast */
   --module-1: #a3134c;
   --module-2: #146b45;

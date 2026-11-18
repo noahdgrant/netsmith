@@ -252,7 +252,7 @@ fn pt(p: GeomPt) -> Pt {
     Pt::new(p.x, p.y)
 }
 
-fn area(a: PolygonArea) -> Area {
+pub(crate) fn area(a: PolygonArea) -> Area {
     Area {
         outer: a.outer.into_iter().map(pt).collect(),
         holes: a

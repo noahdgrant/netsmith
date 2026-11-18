@@ -155,9 +155,9 @@ pub use part_layout::{
     layout_findings, loop_pairs, measures, near_findings, near_pairs, pins_of,
 };
 pub use picture::{
-    BACKGROUND as PICTURE_BACKGROUND, COPPER as PICTURE_COPPER, Layers as PictureLayers, Lit,
-    MARGIN as PICTURE_MARGIN, Marker, Picture as PictureOptions, picture as picture_svg,
-    whole as picture_whole,
+    BACKGROUND as PICTURE_BACKGROUND, COPPER as PICTURE_COPPER, Island as PictureIsland,
+    Layers as PictureLayers, Lit, MARGIN as PICTURE_MARGIN, Marker, Picture as PictureOptions,
+    picture as picture_svg, whole as picture_whole,
 };
 pub use placement::{
     CarriedZone, DESCRIBED, DoesNotFit, ESCAPE_ROOM, Ended, FaceKeepout, Fixed, HeightZone, ORIGIN,

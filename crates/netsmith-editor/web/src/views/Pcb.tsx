@@ -23,6 +23,7 @@ import { prepare } from '../pcb/drawing';
 import { SIDES, type Side } from '../pcb/side';
 import { type Pt, unite } from '../pcb/geometry';
 import { POUR_HIDDEN, fills, poursMarkup } from '../pcb/pours';
+import { fillMarkup, fillOf } from '../pcb/fillMarks';
 import { placingLine, placingSvg, routingMarkup } from '../pcb/live';
 import { livePlace, liveRoute, liveSeen, placingSaid } from '../pcb/liveState';
 import {
@@ -36,6 +37,7 @@ import {
   pcbSide,
   pickedFinding,
   pours,
+  fillReport,
   recheck,
   redo,
   scene,
@@ -70,6 +72,8 @@ const LAYERS: { id: string; label: string }[] = [
   { id: 'vias', label: 'Vias' },
   { id: 'pads', label: 'Pads' },
   { id: 'planes', label: 'Planes' },
+  { id: 'islands', label: 'Removed islands' },
+  { id: 'starved', label: 'Starved pads' },
   { id: 'ratsnest', label: 'Ratsnest' },
   { id: 'silk', label: 'Silkscreen' },
   { id: 'fab', label: 'Fab' },
@@ -203,7 +207,14 @@ export function Pcb() {
   // While the board is routed, the copper the router has laid so far goes over it (issue 764).
   const routing = job.value?.task === 'route' && job.value.board === name;
   const laid = routing && liveRoute.value?.board === name ? routingMarkup(liveRoute.value) : '';
-  const drawing = useMemo(() => (sc ? prepare(sc.svg, poursMarkup(poured, pouredNow), laid) : null), [sc?.svg, poured, pouredNow, laid]);
+  // What the fill took out and the pads it starves (issue 1188) go over everything, from the report of the fill.
+  const filled = fillReport.value && fillReport.value.board === name ? fillReport.value : null;
+  const filledNow = fillOf(filled, sc);
+  const marks = fillMarkup(filled, filledNow);
+  const drawing = useMemo(
+    () => (sc ? prepare(sc.svg, poursMarkup(poured, pouredNow), laid + marks) : null),
+    [sc?.svg, poured, pouredNow, laid, marks],
+  );
   // The planes layer takes the planes' labels with it: a name on nothing is noise.
   // The marks of the routes file's copper go with the layer of their copper.
   const fixedOf: Record<string, string> = { 'front-copper': '[data-layer=top]', 'back-copper': '[data-layer=bottom]', vias: '.fixed-via' };

@@ -1,6 +1,7 @@
 //! The 2D picture of a board's copper (`netsmith view pcb`, issue #1086): a small board placed
 //! and routed by hand, so that neither the placer nor the router moves its pictures, drawn whole,
-//! as a region, and as its bottom layer seen from below, with one connection left open.
+//! as a region, and as its bottom layer seen from below, with one connection left open; and the
+//! same board routed so that the fill of its bottom pour starves a pad and takes islands out.
 //!
 //! The pictures' bytes are held by their hashes in `fixtures/pcb_picture/golden.txt`.
 //! `NETSMITH_PCB_PICTURE_OUT=<folder>` writes each picture there to look at, and
@@ -145,6 +146,7 @@ fn request(format: Format) -> Request {
         highlight: Vec::new(),
         only_open: false,
         drc: false,
+        islands: false,
         format,
     }
 }
@@ -172,7 +174,7 @@ fn goldens() -> Vec<(&'static str, Request, Drawn)> {
         only_open: true,
         ..request(Format::Png)
     };
-    [
+    let mut pictures: Vec<(&'static str, Request, Drawn)> = [
         ("whole", whole),
         ("region", region),
         ("bottom", bottom),
@@ -183,7 +185,13 @@ fn goldens() -> Vec<(&'static str, Request, Drawn)> {
         let drawn = draw(&board, &request, None).unwrap_or_else(|e| panic!("{name}: {e}"));
         (name, request, drawn)
     })
-    .collect()
+    .collect();
+    // The bottom pour with its thermal reliefs, the islands its fill took out and the pad it
+    // starves (issue #1188).
+    let fill = fill_request();
+    let drawn = draw(&fill_board(), &fill, None).unwrap_or_else(|e| panic!("fill: {e}"));
+    pictures.push(("fill", fill, drawn));
+    pictures
 }
 
 /// FNV-1a, 64 bits.
@@ -432,4 +440,124 @@ fn a_module_lights_its_parts_each_module_in_its_own_colour() {
     let e = svg(&["module:nope"]).unwrap_err();
     assert!(e.contains("`module:nope`") && e.contains("the modules: module:ind, module:io"), "{e}");
     assert!(svg(&["module:io.power_in"]).is_err());
+}
+
+/// The board of [`board`] with VCC routed on the bottom round the header's GND pad instead of
+/// straight to the via (issue #1188): the track so near the pad on its left and below it that
+/// the GND pour of the bottom has no room there, so of the pad's four thermal spokes only the one
+/// to the right reaches the pour (a starved pad), and the slivers of pour the track leaves
+/// between itself and the pad touch no GND copper (copper islands the fill takes out).
+fn fill_board() -> Board {
+    let mut board = board();
+    let min = board.outline.min;
+    let at = |x: f64, y: f64| min + Pt::new(x, y);
+    let j = refdes(&board, 'J');
+    let start = pad(&board, &j, "1");
+    assert!(
+        board.tracks[0].layer == CopperLayer::Back,
+        "the first track is VCC on the bottom"
+    );
+    board.tracks.remove(0);
+    let path = [
+        start,
+        at(1.8, 7.7),
+        at(1.8, 9.7),
+        at(2.3, 10.2),
+        at(6.3, 10.2),
+        board.vias[0].at,
+    ];
+    for w in path.windows(2) {
+        board
+            .tracks
+            .push(Track::straight("VCC", CopperLayer::Back, w[0], w[1], 0.3));
+    }
+    board
+}
+
+/// The region of [`fill_board`] round the header, at a scale its reliefs show at.
+fn fill_request() -> Request {
+    Request {
+        region: Some([0.5, 4.5, 8.0, 7.0]),
+        scale: 60.0,
+        islands: true,
+        drc: true,
+        ..request(Format::Png)
+    }
+}
+
+#[test]
+fn the_islands_the_fill_took_out_are_hatched_and_the_starved_pad_is_a_marker() {
+    let board = fill_board();
+    let report = netsmith_pcb::FillReport::of(&board).unwrap();
+    let removed: usize = report.fills.iter().map(|f| f.removed_islands.len()).sum();
+    assert!(removed >= 1, "{}", report.text());
+    assert!(
+        report
+            .fills
+            .iter()
+            .flat_map(|f| &f.removed_islands)
+            .all(|i| !i.outline.is_empty() && i.outline[0].len() >= 3),
+        "a removed island has its outline"
+    );
+    assert_eq!(report.starved.len(), 1, "{}", report.text());
+    let j = refdes(&board, 'J');
+    assert_eq!(
+        (report.starved[0].part.as_str(), report.starved[0].pad.as_str()),
+        (j.as_str(), "2")
+    );
+
+    let drawn = draw(
+        &board,
+        &Request {
+            format: Format::Svg,
+            ..fill_request()
+        },
+        None,
+    )
+    .unwrap();
+    assert_eq!(drawn.islands.len(), removed, "{:?}", drawn.islands);
+    assert!(
+        drawn.islands[0].starts_with("I1: bottom GND at ("),
+        "{:?}",
+        drawn.islands
+    );
+    let svg = String::from_utf8(drawn.bytes).unwrap();
+    assert_eq!(
+        svg.matches(r#"<g class="island" data-layer="B.Cu">"#).count(),
+        removed
+    );
+    // The starved pad is the check's `starved_thermal` finding, marked where the pad is.
+    let starved = drawn
+        .markers
+        .iter()
+        .find(|m| m.contains("[starved_thermal]"))
+        .unwrap_or_else(|| panic!("no marker of the starved pad: {:?}", drawn.markers));
+    assert!(starved.contains(&format!("of {j}")), "{starved}");
+    // The pour is drawn as its fill: the clearances and the thermal relief round the GND pad are
+    // a hole in it.
+    let pour = svg
+        .split(r#"<path class="pour" data-net="GND" d=""#)
+        .nth(1)
+        .expect("the GND pour is drawn");
+    let d = pour.split('"').next().unwrap();
+    assert!(d.matches('M').count() >= 2, "the fill has a hole: {d}");
+
+    // Without the flag, nothing of it is drawn; the top layer alone has none of the bottom's.
+    for request in [
+        Request {
+            islands: false,
+            format: Format::Svg,
+            ..fill_request()
+        },
+        Request {
+            layers: PictureLayers::One(CopperLayer::Front),
+            format: Format::Svg,
+            ..fill_request()
+        },
+    ] {
+        let drawn = draw(&board, &request, None).unwrap();
+        let svg = String::from_utf8(drawn.bytes).unwrap();
+        assert!(!svg.contains(r#"class="island""#));
+        assert!(drawn.islands.is_empty());
+    }
 }

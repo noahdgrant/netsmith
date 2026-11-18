@@ -8,6 +8,7 @@ import type {
   PcbChange,
   PcbCrossed,
   PcbFindings,
+  PcbFill,
   PcbPours,
   PcbRegenerated,
   PcbRoutesEdited,
@@ -41,6 +42,10 @@ import { litModules, litOn, setLit } from './pcb/modules';
 export const scene = signal<PcbScene | null>(null);
 /** The fill of the board's pours, planes and zones, as the server filled the placement it names (drawn only while that is the scene's). */
 export const pours = signal<PcbPours | null>(null);
+
+/** How the fill joins the pads, its removed islands and its starved pads (`GET /api/pcb/fill`, issue 1188), as the server filled
+ * the placement it names: the 2D view marks the islands and the pads (`pcb/fillMarks.ts`). */
+export const fillReport = signal<PcbFill | null>(null);
 /** Why the board could not be placed, if it could not. */
 export const sceneError = signal<string | null>(null);
 /** The parts picked, by their path in the design. */
@@ -212,7 +217,7 @@ function show(next: PcbScene) {
   // What is wrong with it may have changed with where things are.
   void loadFindings(next.board);
   // So may the pours and zones, which come after the board is drawn.
-  void loadPours(next.board);
+  void loadPours(next.board).then(() => loadFill(next.board));
 }
 
 let poursAsked = 0;
@@ -228,6 +233,21 @@ export async function loadPours(board: string): Promise<void> {
   } catch {
     // The scene's own load says why the board cannot be placed; the board is drawn with no fill.
     if (mine === poursAsked) pours.value = null;
+  }
+}
+
+let fillAsked = 0;
+
+/** Ask the server for the report of the fill of the board as it is placed now, after its pours (the two fills would race for
+ * the server's time); the answer of the last ask is kept. A board that cannot be filled has no marks. */
+export async function loadFill(board: string): Promise<void> {
+  const mine = ++fillAsked;
+  if (fillReport.peek()?.board !== board) fillReport.value = null;
+  try {
+    const answer = await api.pcbFill(board);
+    if (mine === fillAsked) fillReport.value = answer;
+  } catch {
+    if (mine === fillAsked) fillReport.value = null;
   }
 }
 

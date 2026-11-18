@@ -69,22 +69,25 @@ export function prepare(text: string, pours = '', over = ''): Drawing | null {
       if (copper && copper.parentNode === firstPart.parentNode) firstPart.parentNode.insertBefore(copper, firstPart);
     }
   }
-  // Keepouts are hatched; the patterns live in the drawing so that every view of it (the board, the panel's preview) has them.
+  // Keepouts are hatched, and so are the copper islands the fill took out (finer: an island is often a millimetre across); the
+  // patterns live in the drawing so that every view of it (the board, the panel's preview) has them.
   const defs = doc.createElementNS('http://www.w3.org/2000/svg', 'defs');
   defs.innerHTML = [
-    ['pcb-hatch-keepout', 'var(--pcb-keepout)', '.2'],
+    ['pcb-hatch-keepout', 'var(--pcb-keepout)', '.2', 1.1, 0.18],
+    ['pcb-hatch-island', 'var(--pcb-island)', '.75', 0.3, 0.06],
   ]
     .map(
-      ([id, colour, alpha]) =>
-        `<pattern id="${id}" patternUnits="userSpaceOnUse" width="1.1" height="1.1" patternTransform="rotate(45)"><rect width="1.1" height="1.1" style="fill:${colour};fill-opacity:.07"/><line x1="0" y1="0" x2="0" y2="1.1" style="stroke:${colour};stroke-opacity:${alpha};stroke-width:.18"/></pattern>`,
+      ([id, colour, alpha, size, width]) =>
+        `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${size}" height="${size}" patternTransform="rotate(45)"><rect width="${size}" height="${size}" style="fill:${colour};fill-opacity:.07"/><line x1="0" y1="0" x2="0" y2="${size}" style="stroke:${colour};stroke-opacity:${alpha};stroke-width:${width}"/></pattern>`,
     )
     .join('');
   svg.insertBefore(defs, svg.firstChild);
-  // What goes over everything: the copper the router is laying while it routes (`live.ts`, issue 764).
+  // What goes over everything: the copper the router is laying while it routes (`live.ts`, issue 764), and the islands the fill
+  // took out and the pads it starves (`fillMarks.ts`, issue 1188), each a group of its own.
   if (over) {
     const group = doc.createElementNS('http://www.w3.org/2000/svg', 'g');
     group.innerHTML = over;
-    if (group.firstElementChild) svg.appendChild(group.firstElementChild);
+    while (group.firstElementChild) svg.appendChild(group.firstElementChild);
   }
   stackLimitLabels(svg);
   svg.setAttribute('width', String(w * SCALE));

@@ -27,6 +27,10 @@ use crate::board::Board;
 use crate::copper::{CopperError, artwork};
 use crate::geometry::Pt;
 
+/// How far a point of a removed island's outline may move when it is simplified, in mm: the 2
+/// µm the 2D views simplify a pour within.
+const ISLAND_SIMPLIFY: f64 = 0.002;
+
 /// What the copper area on a layer is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -113,6 +117,12 @@ pub struct FillIsland {
     pub at: Pt,
     /// Its area, in mm².
     pub area: f64,
+    /// Of an island the fill took out: its rings, the outline first and then its holes, each
+    /// simplified within 2 µm, in the frame of the board file. `view pcb --islands` and the
+    /// editor's 2D view outline it there (issue #1188). Empty for an island kept: it is copper of
+    /// the fill and drawn with it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub outline: Vec<Vec<Pt>>,
 }
 
 /// How many pads the fill joins in each way.
@@ -227,7 +237,22 @@ impl FillReport {
         let rules = netsmith_geom::plot_rules_of(Some(&crate::export::kicad_pro(board)));
         let edge = netsmith_geom::edge_outline(&art).map_err(CopperError)?;
         let pt = |p: netsmith_geom::Pt| Pt::new(p.x, p.y);
-        let island = |(at, area): (netsmith_geom::Pt, f64)| FillIsland { at: pt(at), area };
+        let island = |(at, area): (netsmith_geom::Pt, f64)| FillIsland {
+            at: pt(at),
+            area,
+            outline: Vec::new(),
+        };
+        let removed = |(at, area): (netsmith_geom::Pt, f64), piece: netsmith_geom::PolygonArea| {
+            let piece = crate::copper::area(piece);
+            FillIsland {
+                outline: std::iter::once(&piece.outer)
+                    .chain(&piece.holes)
+                    .map(|ring| crate::simplify::simplify_ring(ring, ISLAND_SIMPLIFY))
+                    .filter(|ring| ring.len() >= 3)
+                    .collect(),
+                ..island((at, area))
+            }
+        };
         let mut fills = Vec::new();
         for layer in &art.copper {
             let copper = CopperLayer::of_name(layer);
@@ -273,7 +298,12 @@ impl FillReport {
                         })
                         .collect(),
                     islands: z.islands.into_iter().map(island).collect(),
-                    removed_islands: z.removed.into_iter().map(island).collect(),
+                    removed_islands: z
+                        .removed
+                        .into_iter()
+                        .zip(z.removed_fill)
+                        .map(|(at, piece)| removed(at, piece))
+                        .collect(),
                 });
             }
         }

@@ -471,6 +471,8 @@ pub(crate) struct Judged {
     /// The copper islands the fill took out, as the zone's `island_removal_mode` says: a corner
     /// of each, and its area in mm². None of a fill the file holds.
     pub removed: Vec<(Pt, f64)>,
+    /// The pieces of copper of `removed`, in its order: what a picture outlines (issue #1188).
+    pub removed_fill: Vec<Area>,
     /// Each copper sliver of the fill ([`slivers`]), when the check asked for them: a corner of
     /// it and its area in mm².
     pub slivers: Vec<(Pt, f64)>,
@@ -620,6 +622,9 @@ pub struct ZoneJoins {
     pub islands: Vec<(Pt, f64)>,
     /// The copper islands the fill took out, each by a corner and its area in mm².
     pub removed: Vec<(Pt, f64)>,
+    /// The pieces of copper of `removed`, in its order, as the fill had them before it took them
+    /// out: what the 2D view outlines (issue #1188).
+    pub removed_fill: Vec<Area>,
     /// The pieces of the fill, as the Gerbers hold them.
     pub fill: Vec<Area>,
 }
@@ -679,6 +684,7 @@ pub fn pad_joins(
                 cleared,
                 islands: j.islands,
                 removed: j.removed,
+                removed_fill: j.removed_fill,
                 fill: j.fill,
             }
         })
@@ -825,6 +831,11 @@ pub(crate) fn judge(
             reliefs,
             islands,
             removed: removed.iter().filter_map(piece_at).collect(),
+            removed_fill: removed
+                .iter()
+                .filter(|p| piece_at(p).is_some())
+                .cloned()
+                .collect(),
             slivers,
         });
     }

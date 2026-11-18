@@ -1736,7 +1736,12 @@ starved: boolean, };
 
 export type FillCleared = { part: string, pad: string, net: string | null, at: FillAt, };
 
-export type FillIsland = { at: FillAt, area: number, };
+export type FillIsland = { at: FillAt, area: number, 
+/**
+ * Of an island the fill took out: its rings, the outline first and then its holes, which
+ * the 2D view outlines (issue 1188). Empty for an island kept, which is drawn as the fill.
+ */
+outline: Array<Array<FillAt>>, };
 
 export type FillCounts = { noSpokes: number, oneSpoke: number, twoOrMoreSpokes: number, solid: number, none: number, starved: number, };
 
