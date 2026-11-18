@@ -16,8 +16,9 @@
 //!
 //! **Where.** On a straight track of the shorter net, the longest first, no nearer than one pitch
 //! to its ends, on an interval of it that runs no nearer than the scorecard's coupled distance
-//! (`netsmith_geom::COUPLED`, 0.5 mm) to the partner's track on its layer, so the pair's
-//! coupled run is left as it was. The meander's copper keeps every space the design rules check
+//! (`netsmith_geom::COUPLED`, 0.5 mm) to the partner's track on its layer, or for a pair with an
+//! impedance target (a `PairImpedance`) no nearer than twice its spacing, edge to edge, so the
+//! pair's coupled run is left as it was. The meander's copper keeps every space the design rules check
 //! asks of a track from the other nets' copper, holes, the edge, mask openings and rule areas
 //! (`netsmith_geom::Room`, the teardrops' room), and the pitch's gap from its own net's pads,
 //! vias and other tracks. A run that cannot take all the length takes what it can (three
@@ -62,7 +63,7 @@ const PLACES: usize = 24;
 /// A diff pair and its skew before and after the meanders.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Matched {
-    /// The two nets, in the order of `netsmith_geom::PAIR_SUFFIXES` (`dp` then `dm`).
+    /// The two nets, the positive first (`dp` then `dm`, a `DiffPair`'s `.p` then `.n`).
     pub p: String,
     pub n: String,
     /// The difference of the two nets' track lengths before, in mm.
@@ -71,26 +72,17 @@ pub struct Matched {
     pub after: f64,
 }
 
-/// The diff pairs of the board's routed nets: two nets whose names differ only in a suffix pair
-/// of `netsmith_geom::PAIR_SUFFIXES`, in the order of their first net's name.
+/// The diff pairs of the board's routed nets ([`Board::diff_pairs`]): two nets whose names
+/// differ only in a suffix pair of `netsmith_geom::PAIR_SUFFIXES`, in the order of their first
+/// net's name, then the pairs the design states (a `PairImpedance`, a `DiffPair` or the lines of a
+/// std bus such as `Can`, issue #1193).
 fn pairs(board: &Board) -> Vec<(String, String)> {
-    let mut nets: Vec<&str> = board.tracks.iter().map(|t| t.net.as_str()).collect();
-    nets.sort_unstable();
-    nets.dedup();
-    let mut out = Vec::new();
-    for &p in &nets {
-        for (sp, sn) in netsmith_geom::PAIR_SUFFIXES {
-            let Some(stem) = p.strip_suffix(sp) else {
-                continue;
-            };
-            let n = format!("{stem}{sn}");
-            if nets.contains(&n.as_str()) {
-                out.push((p.to_string(), n));
-                break;
-            }
-        }
-    }
-    out
+    let routed = |net: &str| board.tracks.iter().any(|t| t.net == net);
+    board
+        .diff_pairs()
+        .into_iter()
+        .filter(|(p, n)| routed(p) && routed(n))
+        .collect()
 }
 
 fn length(board: &Board, net: &str) -> f64 {
@@ -174,6 +166,8 @@ fn lengthen(board: &mut Board, net: &str, partner: &str, want: f64) {
         .filter(|t| t.net == partner)
         .cloned()
         .collect();
+    // The spacing of a pair with an impedance target (issue #1025), which its coupled run keeps.
+    let spacing = board.pair_spacing(net).map(|(_, s)| s);
     // The meanders drawn so far on this net, which later ones keep their gap from.
     let mut drawn: Vec<(usize, DrcShape)> = Vec::new();
     let mut left = want;
@@ -190,7 +184,7 @@ fn lengthen(board: &mut Board, net: &str, partner: &str, want: f64) {
         let plan = SHARES.iter().find_map(|share| {
             let ask = left * share;
             (ask >= LEAST)
-                .then(|| plan(&room, &track, layer, ask, &partner_tracks, &drawn))
+                .then(|| plan(&room, &track, layer, ask, &partner_tracks, spacing, &drawn))
                 .flatten()
         });
         if let Some(plan) = plan {
@@ -284,16 +278,22 @@ fn span(count: usize, a: f64, g: f64) -> f64 {
     count as f64 * (4.0 * c + top) + count.saturating_sub(1) as f64 * top
 }
 
-/// A meander on `track` that adds `want` mm, where it keeps every space, or `None`.
+/// A meander on `track` that adds `want` mm, where it keeps every space, or `None`. `spacing` is
+/// the pair's stated spacing, edge to edge, if it has an impedance target.
 fn plan(
     room: &Room<'_>,
     track: &Track,
     layer: usize,
     want: f64,
     partner: &[Track],
+    spacing: Option<f64>,
     drawn: &[(usize, DrcShape)],
 ) -> Option<Plan> {
     let w = track.width;
+    // How near the partner's centre line runs for the track to be coupled: the scorecard's
+    // distance, or for a pair with an impedance target out to twice its spacing, edge to edge,
+    // where the router's pass for pairs keeps it (a gap the target's tolerance still takes).
+    let near = netsmith_geom::COUPLED.max(spacing.map_or(0.0, |s| 2.0 * s + w));
     let gap = (SPACING_WIDTHS * w).max(room.clearance(&track.net));
     let g = w + gap;
     let length = track.from.distance(track.to);
@@ -324,7 +324,7 @@ fn plan(
         let steps = ((x1 - x0) / 0.05).ceil().max(1.0) as usize;
         (0..=steps).any(|k| {
             let p = along(x0 + (x1 - x0) * k as f64 / steps as f64);
-            distance_to(partner, track.layer, p) <= netsmith_geom::COUPLED
+            distance_to(partner, track.layer, p) <= near
         })
     };
     let most = (usable / (2.0 * g)).floor() as usize + 1;

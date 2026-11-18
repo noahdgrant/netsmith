@@ -94,7 +94,7 @@ fn the_check_names_a_track_of_a_target_net_drawn_at_another_width() {
 /// Four 0402 resistors: `A` from R1 to R2 and `B` from R3 to R4, the second two `apart` mm
 /// below the first and `out` mm further out to each side, on a four-layer board with a signal
 /// layer.
-fn pair_board(apart: f64, out: f64) -> Board {
+pub(crate) fn pair_board(apart: f64, out: f64) -> Board {
     let part = |refdes: &str| Part {
         provides: Vec::new(),
         declared_kind: netsmith_testkit::std_kind("Resistor")
@@ -167,6 +167,7 @@ fn a_pair_with_a_target_is_drawn_at_its_width_and_never_nearer_than_its_spacing(
     let routing = route_with(&mut board, RouteOptions::default());
     assert!(routing.left.is_empty(), "{:?}", routing.left.lines);
     println!("{} tries", routing.tries);
+    println!("{:?}", routing.pairs);
     let tracks = |net: &str| -> Vec<netsmith_pcb::Track> {
         board
             .tracks
@@ -218,6 +219,7 @@ fn a_pair_whose_pads_are_far_apart_is_pulled_together_to_its_spacing() {
     let routing = route_with(&mut board, RouteOptions::default());
     assert!(routing.left.is_empty(), "{:?}", routing.left.lines);
     println!("{} tries", routing.tries);
+    println!("{:?}", routing.pairs);
     let couplings = board.pair_couplings();
     assert_eq!(couplings.len(), 1);
     println!("{:?}", couplings[0]);

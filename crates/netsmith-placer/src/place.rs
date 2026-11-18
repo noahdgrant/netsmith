@@ -158,6 +158,9 @@ pub(crate) struct Context<'a> {
     /// The layers tracks run on: the two outer layers and each inner layer that is not a
     /// plane (ADR 0111).
     pub signal_layers: usize,
+    /// The diff pairs of the board (`netsmith_pcb::diff_pairs_of`): the placer pulls a
+    /// termination across one to the connector on it (issue #1193).
+    pub pairs: &'a [(String, String)],
 }
 
 /// A connector is a part of the kind `connector` (ADR 0125), whatever its name.
@@ -1430,6 +1433,7 @@ fn refine(
         zones: &options.height_zones,
         carried: &options.carried,
         face_keepouts: &options.face_keepouts,
+        pairs: context.pairs,
         overflow: options.track_overflow,
         escape_room: options.escape_room,
     };
@@ -1553,6 +1557,7 @@ pub(crate) fn anneal_within(
         zones: &options.height_zones,
         carried: &options.carried,
         face_keepouts: &options.face_keepouts,
+        pairs: context.pairs,
         overflow: options.track_overflow,
         escape_room: options.escape_room,
     };
@@ -1669,6 +1674,7 @@ pub fn place_subset(
     let zones = board.height_zones();
     let carried = board.carried_zones();
     let faces = board.face_keepouts();
+    let pairs = board.diff_pairs();
     let overhangs: Vec<Edges> = board
         .parts
         .iter()
@@ -1711,6 +1717,7 @@ pub fn place_subset(
         zones: &zones,
         carried: &carried,
         face_keepouts: &faces,
+        pairs: &pairs,
         overflow: 0.0,
         escape_room: 0.0,
     };
@@ -3815,6 +3822,92 @@ mod tests {
         assert_eq!(
             board.outline,
             Rect::new(Pt::new(20.0, 20.0), Pt::new(50.0, 24.0))
+        );
+    }
+
+    /// A bus connector `J1`, a part `U1` on the two lines of the bus, a resistor `R1` across them
+    /// and thirty resistors in a chain from `U1`'s third pin; with `paired`, the design states the
+    /// lines `H` and `L` a pair (issue #1193).
+    fn terminated(paired: bool) -> Board {
+        let mut parts = vec![
+            part("J1", "Header1x2", None),
+            regulator("U1", "xcvr"),
+            at_path(part("R1", "Resistor", Some("0603")), "term.resistor"),
+        ];
+        let (rest, mut nets) = chain("X", "other", 30);
+        parts.extend(rest);
+        nets.push(wire("H", &[("J1", "1"), ("U1", "2"), ("R1", "1")]));
+        nets.push(wire("L", &[("J1", "2"), ("U1", "1"), ("R1", "2")]));
+        nets.push(wire("S", &[("U1", "3"), ("X1", "1")]));
+        let mut features = netsmith_core::Features::default();
+        if paired {
+            features.pairs = vec![netsmith_core::NetPair {
+                path: "bus".into(),
+                p: "H".into(),
+                n: "L".into(),
+            }];
+        }
+        let design = Design {
+            modules: Vec::new(),
+            name: "T".into(),
+            process: Some(crate::testlib::test_process()),
+            features,
+            interfaces: Vec::new(),
+            notes: Vec::new(),
+            parts,
+            nets,
+        };
+        crate::board_from_design_placed(
+            &design,
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+            &PlaceOptions::default(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// The least distance from a pad of `a` to a pad of `b`, centre to centre, in mm.
+    fn pad_distance(board: &Board, a: &str, b: &str) -> f64 {
+        let (a, b) = (board.part(a).unwrap(), board.part(b).unwrap());
+        let mut least = f64::MAX;
+        for p in &a.footprint.pads {
+            for q in &b.footprint.pads {
+                least = least.min(a.pad_centre(p).distance(b.pad_centre(q)));
+            }
+        }
+        least
+    }
+
+    #[test]
+    fn a_termination_across_a_pair_is_pulled_to_the_connector_on_it() {
+        let board = terminated(true);
+        let pairs = board.diff_pairs();
+        assert_eq!(pairs, [("H".to_string(), "L".to_string())]);
+        let found = netsmith_pcb::termination_pairs(&board.parts, &board.nets, &pairs);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(board.parts[found[0].cap].refdes, "R1");
+        for side in &found[0].nets {
+            assert!(!side.pins.is_empty());
+            assert!(
+                side.pins
+                    .iter()
+                    .all(|(i, _)| board.parts[*i].refdes == "J1")
+            );
+        }
+        assert_eq!(board.check_placement(), vec![]);
+        let plain = terminated(false);
+        assert!(
+            netsmith_pcb::termination_pairs(&plain.parts, &plain.nets, &plain.diff_pairs())
+                .is_empty()
+        );
+        let (with, without) = (
+            pad_distance(&board, "R1", "J1"),
+            pad_distance(&plain, "R1", "J1"),
+        );
+        println!("R1 is {with:.2} mm from J1 as a termination, {without:.2} mm as a plain part");
+        assert!(
+            with < without,
+            "{with:.2} mm with the pair, {without:.2} mm without"
         );
     }
 }

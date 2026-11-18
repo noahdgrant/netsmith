@@ -159,6 +159,12 @@
 //! instance path are kept, so a module's capacitor goes with the module's part. The cost is the
 //! nearest pin pad of the part on each net. No number and no annotation is read.
 //!
+//! **Terminations** (issue #1193) are derived the same way ([`netsmith_pcb::termination_pairs`]):
+//! a two-pad part that is no connector, with one pad on each net of a diff pair (the router's
+//! pairs, `Problem::pairs`), is pulled to the pads of the connectors that have a pad on both nets,
+//! at the weight of a decoupling capacitor: a termination matches the line at its end, where the
+//! line leaves the board (a `std::bus::CanTermination`'s resistor by the bus's connector).
+//!
 //! **Datasheet guidelines** (ADR 0030, issues #829 and #994). Each part that a `near` statement
 //! of a part's `layout` block finds ([`netsmith_pcb::near_pairs`]) is one more pair of the same
 //! kind: its pads on the net of the pin after `to` are pulled to that pin's pads at the weight
@@ -269,7 +275,9 @@ use netsmith_pcb::{
     rect_distance,
 };
 
-use netsmith_pcb::{DecouplingPair, away_pairs, decoupling_pairs, loop_pairs, near_pairs};
+use netsmith_pcb::{
+    DecouplingPair, away_pairs, decoupling_pairs, loop_pairs, near_pairs, termination_pairs,
+};
 use netsmith_pcb::{Edges, Ended, OutsideAt, OverlapAt, Pt, Rect, Rules, short_mm};
 
 mod build;
@@ -440,6 +448,9 @@ pub(crate) struct Problem<'a> {
     /// The keepouts that forbid parts on one face only (issue #767): the courtyards of the
     /// parts on that face are kept out of them, as of `keepouts`.
     pub face_keepouts: &'a [netsmith_pcb::FaceKeepout],
+    /// The diff pairs of the board, the positive net first (`netsmith_pcb::diff_pairs_of`): a
+    /// part across one is pulled to the connector on it ([`netsmith_pcb::termination_pairs`]).
+    pub pairs: &'a [(String, String)],
     /// The weight of track overflow ([`overflow`]), 0 for none.
     pub overflow: f64,
     /// The weight of the escape shortfall of busy parts ([`escape`]), 0 for none.

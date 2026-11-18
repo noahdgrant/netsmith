@@ -825,3 +825,50 @@ fn a_target_that_is_not_one_value_above_zero_is_an_error_that_says_what_to_write
     ));
     assert!(one_net.contains("a pair is two nets"), "{one_net}");
 }
+
+#[test]
+fn a_diff_pair_and_a_can_bus_state_their_two_nets_a_pair_once() {
+    // Issue #1193: a `DiffPair` and the lines of a `Can` are a pair whatever the nets' names; the
+    // two state the same pair, which is listed once, by the first path.
+    let d = designed(&board(
+        "    .dp: DiffPair {\n        .p.net &= \"VIN\"\n        .n.net &= \"GND\"\n    }\n    .bus: Can {\n        .canh.net &= \"VIN\"\n        .canl.net &= \"GND\"\n    }\n",
+    )
+    .replace(
+        "import std::sources::Rail",
+        "import std::bus::Can\nimport std::sources::{DiffPair, Rail}",
+    ))
+    .unwrap();
+    assert_eq!(
+        d.features.pairs,
+        [netsmith_core::NetPair {
+            path: "bus".to_string(),
+            p: "VIN".to_string(),
+            n: "GND".to_string(),
+        }]
+    );
+    assert!(d.features.impedance_targets.is_empty());
+}
+
+#[test]
+fn a_diff_pair_on_one_net_or_on_a_net_of_another_pair_is_an_error() {
+    let with = |extra: &str| {
+        board(extra).replace(
+            "import std::sources::Rail",
+            "import std::sources::{DiffPair, Rail}",
+        )
+    };
+    let one_net = errors_of(&with(
+        "    .dp: DiffPair {\n        .p.net &= \"VIN\"\n        .n.net &= \"VIN\"\n    }\n",
+    ));
+    assert!(
+        one_net.contains("`dp` joins both of its pins to the net `VIN`: a pair is two nets"),
+        "{one_net}"
+    );
+    let two = errors_of(&with(
+        "    .a: DiffPair {\n        .p.net &= \"VIN\"\n        .n.net &= \"GND\"\n    }\n    .b: DiffPair {\n        .p.net &= \"VIN\"\n        .n.net &= \"OTHER\"\n    }\n",
+    ));
+    assert!(
+        two.contains("`b` makes `VIN` and `OTHER` a diff pair, but `a` already makes `VIN` and `GND` one: a net is one track of one pair"),
+        "{two}"
+    );
+}

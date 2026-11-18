@@ -334,7 +334,75 @@ The pad is not cut, and the sense pin is routed as any other line of its net, wh
 
 ### Diff pairs
 
-Two nets whose names differ only in a pair of suffixes, such as `dp` and `dm`, `D+` and `D-`, `_P` and `_N`, or `.p` and `.n`, are a diff pair, so the fields of `std::bus::Usb2` make one with nothing more said. When a try of the router has routed every connection, it routes each net of a pair again with a step within 0.5 mm of its partner's track (centre line to centre line) costing half, and keeps the new copper only where more of the net runs coupled and it is no longer (by more than 0.2 mm) and has no more vias. Then it routes both nets of the pair again together, one and then the other beside it (each first in turn), and keeps that copper only where more of the pair runs coupled, its longer net is no longer (by more than 0.2 mm) and no net has more vias than the pair's net with more had (issue #1010): the shorter net may grow up to the longer, which the meander makes it anyway, and take as many vias as its partner, so that the two change layer alike. So a pair runs side by side where that costs nothing, and a board routes exactly as completely as before. Then the shorter net of each pair whose nets' track lengths differ by more than 0.1 mm gets a meander, a row of bumps with 45 degree corners on one side of one of its straight runs, sized to add the difference: the fewest bumps no higher than 2 mm, legs three track widths apart edge to edge (or the clearance, if larger), on the longest runs first, only where the run is more than 0.5 mm from its partner's track, at least one bump's pitch from the run's ends, and only where the meander keeps every space the design rules check asks of a track and that gap from its own net's other copper. A run with too little room takes what it can and the next the rest; a pair no run has room for keeps its skew, and `fab` says so. No other net moves. It does not yet hold a fixed gap or mirror the pads' exits (issue #431). The route scorecard reports each pair's lengths, skew and the share of its track that runs coupled.
+Two nets are a diff pair when their names differ only in a pair of suffixes, such as `dp` and `dm`, `D+` and `D-`, `_P` and `_N`, or `.p` and `.n`, so the fields of `std::bus::Usb2` make one with nothing more said; when they are the two nets of a `PairImpedance` (chapter _The process of a board_, "Impedance targets"); and when the design states them a pair with no impedance (issue #1193), with the pins `.p` and `.n` of a `std::sources::DiffPair` joined to them, or as the two lines of a `std::bus::Can`, which are a pair whatever the board names their nets (below). When a try of the router has routed every connection, it routes each net of a pair again with a step within 0.5 mm of its partner's track (centre line to centre line) costing half, and keeps the new copper only where more of the net runs coupled and it is no longer (by more than 0.2 mm) and has no more vias. Then it routes both nets of the pair again together, one and then the other beside it (each first in turn), and keeps that copper only where more of the pair runs coupled, its longer net is no longer (by more than 0.2 mm) and no net has more vias than the pair's net with more had (issue #1010): the shorter net may grow up to the longer, which the meander makes it anyway, and take as many vias as its partner, so that the two change layer alike. So a pair runs side by side where that costs nothing, and a board routes exactly as completely as before. Then the shorter net of each pair whose nets' track lengths differ by more than 0.1 mm gets a meander, a row of bumps with 45 degree corners on one side of one of its straight runs, sized to add the difference: the fewest bumps no higher than 2 mm, legs three track widths apart edge to edge (or the clearance, if larger), on the longest runs first, only where the run is more than 0.5 mm from its partner's track, at least one bump's pitch from the run's ends, and only where the meander keeps every space the design rules check asks of a track and that gap from its own net's other copper. A run with too little room takes what it can and the next the rest; a pair no run has room for keeps its skew, and `fab` says so. No other net moves. It does not yet hold a fixed gap or mirror the pads' exits (issue #431). The route scorecard reports each pair's lengths, skew and the share of its track that runs coupled; it reads the KiCad board, so it knows a pair by its names alone.
+
+A pair the design states takes no width and no spacing of its own: each net keeps the width and the clearance it has, and a pair whose impedance matters is a `PairImpedance`, which is a diff pair too. A net is one track of one pair. Two `DiffPair`s that give a net two partners are an error that names both, and so is a `DiffPair` with both pins on one net or a pin on none. A pair that the design states takes its nets from a pair of names that has only one of them, and a `PairImpedance` comes before a `DiffPair` on the same net.
+
+```nsm
+import std::parts::connector::Header1x2
+import std::sources::DiffPair
+
+/// Two lines of a link that the board routes as a pair, with no impedance stated.
+board Link {
+    .near: Header1x2
+    .far: Header1x2
+    .lines: DiffPair
+    .near.p1 ~ .far.p1
+    .near.p2 ~ .far.p2
+    .lines.p ~ .near.p1
+    .lines.n ~ .near.p2
+}
+```
+
+A part with two pads that is no connector, with one pad on each net of a pair, is the pair's termination (a `std::bus::CanTermination`'s resistor): the placer pulls it to the pads of the connectors that have a pad on both nets, as it pulls a decoupling capacitor to its part (issue #1193), since a termination matches the line at its end, where the line leaves the board. A pair with no connector on both its nets has no termination to pull. A board at the end of a CAN bus:
+
+```nsm
+import std::bus::{Can, CanTermination}
+import std::parts::connector::Header1x4
+
+/// An invented CAN transceiver: its bus pins are `bidirectional`.
+part Xcvr {
+    .designator &= "U"
+    .can: Can
+    .can.bitrate <= 1MHz
+    pins {
+        .txd      input         "TXD"  "1"
+        .gnd      power         "GND"  "2"
+        .vcc      power         "VCC"  "3"
+        .rxd      output        "RXD"  "4"
+        .can.canl bidirectional "CANL" "6"
+        .can.canh bidirectional "CANH" "7"
+    }
+}
+
+/// An invented connector the bus leaves the board by.
+#[kind(connector)]
+part BusPort {
+    .designator &= "J"
+    .can: Can
+    pins {
+        .can.canh passive "H" "1"
+        .can.canl passive "L" "2"
+    }
+}
+
+board Node {
+    .logic: Header1x4
+    .xcvr: Xcvr
+    .port: BusPort
+    /// This board is an end of the bus.
+    .term: CanTermination
+    .xcvr.can.bitrate &= 500kHz
+    .xcvr.can ~ .port.can
+    .term.bus ~ .port.can
+    .logic.p1 ~ .xcvr.vcc
+    .logic.p2 ~ .xcvr.gnd
+    .logic.p3 ~ .xcvr.txd
+    .logic.p4 ~ .xcvr.rxd
+}
+```
+
+The nets of `canh` and `canl` are a pair to the router, and `.term`'s 120 ohm resistor goes by `port`. A board in the middle of the bus states no `CanTermination`: a bus is terminated at both its ends and nowhere between (ISO 11898-2).
 
 When a try of the router has routed every connection, and after the passes for diff pairs, pours and decoupling capacitors, it takes vias out (issue #431, as the "remove vias" pass of KiCad's router does): each connection with vias is routed again with a via three times its usual cost, against all the other copper, and the new copper is kept only if it has fewer vias, is at most 2 mm longer for each via it gives up (and at most 10 % longer), and lays at most 5 mm more track for each via on another net's pour. A connection that cannot lose a via so is tried once more with the one connection its way crosses routed again after it, kept only if the two together have fewer vias on the same terms. Vias that join a plane or a pour (every via of a poured or plane net, and a decoupling capacitor's via), vias side by side on a net whose current needs them, and a diff pair's vias are left where they are. No connection is left unrouted, so a board routes as completely as before; the diff pairs' meanders, which match the lengths it leaves, the teardrops and the rounded bends come after. Measured on the three ported boards (2026-11-13, the agent's decision under the owner's delegation): RP2350 142 to 134 vias, Orbit 94 to 85, the Easyduino 105 to 98, with routed length no longer and track on the pours within 4 mm of before.
 

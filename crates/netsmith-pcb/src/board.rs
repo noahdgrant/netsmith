@@ -16,6 +16,7 @@ use crate::shape::RoundRect;
 mod check;
 mod features;
 mod load;
+mod pairs;
 mod placed;
 mod problems;
 mod process;
@@ -28,6 +29,7 @@ pub(crate) mod tests;
 mod unplaced;
 
 pub use features::*;
+pub use pairs::diff_pairs_of;
 pub use placed::*;
 pub use problems::*;
 pub use process::ViasInPads;
@@ -214,6 +216,11 @@ pub struct Board {
     /// [`Board::set_impedance_targets`], which solves `impedance_widths` with it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub impedance_targets: Vec<netsmith_core::ImpedanceTarget>,
+    /// The pairs of nets the design states are diff pairs with no impedance (issue #1193): a
+    /// `DiffPair`, or the lines of a std bus such as `Can`. [`Board::diff_pairs`] has every pair
+    /// of the board.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pairs: Vec<netsmith_core::NetPair>,
     /// The width that gives each net of `impedance_targets` its impedance on each layer a track
     /// may be on (issue #1025), solved once from the build-up: what [`Board::track_width_on`]
     /// draws the net at.
