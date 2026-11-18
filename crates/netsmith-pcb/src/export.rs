@@ -889,7 +889,8 @@ fn teardrop(board: &Board, i: usize, drop: &crate::board::Teardrop, net: Sexp) -
 const TEARDROP_MIN_THICKNESS: f64 = 0.0254;
 
 /// The priority KiCad 9 gives its teardrop zones, above every pour, so that a pour KiCad fills
-/// again keeps its clearance from them.
+/// again keeps its clearance from them. Teardrops of one net that overlap (round a via two
+/// tracks leave) take this and the numbers above it, one each ([`zone_priorities`]).
 const TEARDROP_PRIORITY: f64 = 16962.0;
 
 /// A shape drawn on the board edge layer: one `gr_rect` if it is a rectangle with square
@@ -1425,7 +1426,135 @@ pub(crate) fn board_tree(board: &Board) -> Sexp {
             &format!("{}/cutout/{}", board.name, cutout.name),
         ));
     }
-    Sexp::List(items)
+    let mut tree = Sexp::List(items);
+    distinct_priorities(&mut tree);
+    tree
+}
+
+/// Gives the zones of the board in `tree` the priorities [`zone_priorities`] finds, so that no
+/// two zones of one net that meet on a layer share a priority. KiCad 9 (9.0.8, not 9.0.0) calls
+/// two such zones an error, `zones_intersect` ("intersecting zones must have distinct
+/// priorities"): the teardrops round a via that two tracks of one net leave are two zones, each
+/// at KiCad's teardrop priority. A zone of a footprint and a rule area keep theirs.
+fn distinct_priorities(tree: &mut Sexp) {
+    let Sexp::List(items) = &*tree else {
+        return;
+    };
+    let count = items.iter().filter(|i| i.head() == Some("zone")).count();
+    if count < 2 {
+        return;
+    }
+    let Ok(art) = netsmith_geom::Artwork::from_sexp(tree) else {
+        return;
+    };
+    // The zones of the board are the tree's `(zone` items, in the artwork's order; a
+    // footprint's zones come before them in the artwork.
+    let zones: Vec<&netsmith_geom::ArtworkZone> =
+        art.zones.iter().filter(|z| z.owner.is_empty()).collect();
+    if zones.len() != count {
+        return;
+    }
+    let priorities = zone_priorities(&zones);
+    let Sexp::List(items) = tree else {
+        return;
+    };
+    let written = items.iter_mut().filter(|i| i.head() == Some("zone"));
+    for (item, (z, &p)) in written.zip(zones.iter().zip(&priorities)) {
+        if p != z.priority {
+            set_priority(item, p);
+        }
+    }
+}
+
+/// The priority of each of `zones` (the zones of a board, in the file's order) as written: each
+/// zone's own, but where zones of one priority include two of one net that meet on a layer, each
+/// zone of that priority one of its own, the first in the file the highest, and the zones of
+/// higher priorities raised as far as that needs. The order is the one netsmith's fill already
+/// takes ([`netsmith_geom::zone_fills`]: the higher priority first, of equal ones the one first
+/// in the file), so the copper is the same: the numbers only say it, as KiCad 9 asks. A
+/// priority where two zones of different nets overlap (not teardrops) is left as it is: the
+/// fill refuses that board, and an order the writer chose would hide it. A rule area keeps its
+/// priority and takes no part.
+pub(crate) fn zone_priorities(zones: &[&netsmith_geom::ArtworkZone]) -> Vec<u32> {
+    let boxes: Vec<Option<[f64; 4]>> = zones.iter().map(|z| outline_box(z)).collect();
+    let meet = |a: usize, b: usize| match (boxes[a], boxes[b]) {
+        (Some(p), Some(q)) => {
+            const EPS: f64 = 1e-6;
+            p[0] <= q[2] + EPS && q[0] <= p[2] + EPS && p[1] <= q[3] + EPS && q[1] <= p[3] + EPS
+        }
+        _ => false,
+    } && share_layer(zones[a], zones[b]);
+    let mut out: Vec<u32> = zones.iter().map(|z| z.priority).collect();
+    // The lowest first; of equal priorities, the one last in the file.
+    let mut order: Vec<usize> = (0..zones.len())
+        .filter(|&i| zones[i].keepout.is_none())
+        .collect();
+    order.sort_by(|&a, &b| zones[a].priority.cmp(&zones[b].priority).then(b.cmp(&a)));
+    let mut top: Option<u32> = None;
+    for group in order.chunk_by(|&a, &b| zones[a].priority == zones[b].priority) {
+        let pairs = || {
+            group
+                .iter()
+                .enumerate()
+                .flat_map(move |(k, &a)| group[k + 1..].iter().map(move |&b| (a, b)))
+        };
+        let tied = pairs().any(|(a, b)| zones[a].net == zones[b].net && meet(a, b));
+        let refused = || {
+            pairs().any(|(a, b)| {
+                let (za, zb) = (zones[a], zones[b]);
+                za.net != zb.net
+                    && !za.teardrop
+                    && !zb.teardrop
+                    && meet(a, b)
+                    && netsmith_geom::zones_overlap(za, zb)
+            })
+        };
+        let order_them = tied && !refused();
+        let base = zones[group[0]]
+            .priority
+            .max(top.map_or(0, |t| t.saturating_add(1)));
+        let mut p = base;
+        for &i in group {
+            out[i] = p;
+            if order_them {
+                p = p.saturating_add(1);
+            }
+        }
+        top = group.last().map(|&i| out[i]);
+    }
+    out
+}
+
+/// The box round a zone's outline, `[min x, min y, max x, max y]`.
+fn outline_box(z: &netsmith_geom::ArtworkZone) -> Option<[f64; 4]> {
+    let mut points = z.outlines.iter().flatten();
+    let first = points.next()?;
+    Some(points.fold([first.x, first.y, first.x, first.y], |b, p| {
+        [b[0].min(p.x), b[1].min(p.y), b[2].max(p.x), b[3].max(p.y)]
+    }))
+}
+
+/// Whether two zones have a layer in common (a layer set such as `F&B.Cu` or `*.Cu` is taken to).
+fn share_layer(a: &netsmith_geom::ArtworkZone, b: &netsmith_geom::ArtworkZone) -> bool {
+    let wide = |z: &netsmith_geom::ArtworkZone| z.layers.iter().any(|l| l.contains(['*', '&']));
+    wide(a) || wide(b) || a.layers.iter().any(|l| b.layers.contains(l))
+}
+
+/// Sets the `(priority N)` of a `(zone`, after its `hatch` when it has none.
+fn set_priority(zone: &mut Sexp, priority: u32) {
+    let Sexp::List(fields) = zone else {
+        return;
+    };
+    let node = Sexp::node("priority", vec![Sexp::num(f64::from(priority))]);
+    if let Some(at) = fields.iter().position(|f| f.head() == Some("priority")) {
+        fields[at] = node;
+    } else {
+        let at = fields
+            .iter()
+            .position(|f| f.head() == Some("hatch"))
+            .map_or(fields.len(), |h| h + 1);
+        fields.insert(at, node);
+    }
 }
 
 #[cfg(test)]
@@ -2538,5 +2667,37 @@ mod tests {
         assert_eq!(paper_for(&outline), "A3");
         outline.max = Pt::new(300.0, 400.0);
         assert_eq!(paper_for(&outline), "A2");
+    }
+
+    /// Zones of one priority are numbered apart where two of one net meet on a layer, in the
+    /// order netsmith's fill takes them (the first in the file the highest), and a higher
+    /// priority stays higher; a priority with no such pair keeps its number.
+    #[test]
+    fn zones_of_one_net_that_meet_on_a_layer_take_distinct_priorities_in_the_fills_order() {
+        let square = |x: f64, layer: &str, net: &str, priority: u32| {
+            format!(
+                r#"(zone (net 1) (net_name "{net}") (layer "{layer}") (priority {priority})
+                  (polygon (pts (xy {x} 0) (xy {} 0) (xy {} 5) (xy {x} 5))))"#,
+                x + 5.0,
+                x + 5.0
+            )
+        };
+        let art = netsmith_geom::Artwork::parse(&format!(
+            r#"(kicad_pcb (layers (0 "F.Cu" signal) (2 "B.Cu" signal))
+            (net 0 "") (net 1 "GND") (net 2 "SIG")
+            {} {} {} {} {} {})"#,
+            // Two GND zones of priority 0 that overlap on F.Cu, and one on B.Cu.
+            square(0.0, "F.Cu", "GND", 0),
+            square(3.0, "F.Cu", "GND", 0),
+            square(0.0, "B.Cu", "GND", 0),
+            // SIG above them at 1, which must stay above both.
+            square(20.0, "F.Cu", "SIG", 1),
+            // Two SIG zones of priority 5 apart from each other: they keep 5.
+            square(40.0, "F.Cu", "SIG", 5),
+            square(60.0, "F.Cu", "SIG", 5),
+        ))
+        .unwrap();
+        let zones: Vec<_> = art.zones.iter().collect();
+        assert_eq!(zone_priorities(&zones), [2, 1, 0, 3, 5, 5]);
     }
 }

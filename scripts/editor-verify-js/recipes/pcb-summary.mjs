@@ -1,6 +1,6 @@
 // The Summary tab of the PCB view (issue 1003): the placed board as numbers (totals, faces, modules,
 // decoupling, nets), the parts near the selected part, and the distance between two pads typed in.
-import { whenIdle } from '../settle.mjs';
+import { gate, whenIdle } from '../settle.mjs';
 import { BOARD, PART, fresh, labelOf, openPcb, partOf, scene } from '../pcb-helpers.mjs';
 
 export const fixture = 'outline_and_pours';
@@ -32,11 +32,30 @@ export async function run(tools) {
   step('select a part: its neighbours are listed, nearest first');
   await page.locator('.side-tabs button', { hasText: 'Parts' }).click();
   await page.locator('.part-row', { hasText: labelOf(cap) }).first().click();
+  // The fill of the pours is held until a distance is typed: its answer, which takes a while on any machine, re-renders the tab
+  // while the box has not been left yet, and what is typed must stay.
+  const filled = gate();
+  let fillsHeld = 0;
+  await page.route('**/api/pcb/fill?*', async (route) => {
+    fillsHeld++;
+    try {
+      const answer = await route.fetch();
+      await filled.opened;
+      await route.fulfill({ response: answer });
+    } catch {
+      // The page was closed (a step before failed) while the answer was held: nothing is left to answer.
+    }
+  });
   await page.locator('.side-tabs button', { hasText: 'Summary' }).click();
   await page.waitForSelector('[data-testid=summary-near]');
   const near = await page.locator('[data-testid=summary-near]').first().innerText();
   expect(near.startsWith(labelOf(cap)), `the neighbours of ${labelOf(cap)} (${near})`);
   await page.locator('[data-testid=summary-within]').fill('200');
+  filled.open();
+  await page.waitForSelector('[data-testid=summary-fill-counts], [data-testid=summary-fill-none], [data-testid=summary-fill-error]');
+  expect(fillsHeld >= 1, 'the fill was asked for while the distance was typed');
+  expect((await page.locator('[data-testid=summary-within]').inputValue()) === '200', 'the distance typed stays when an answer arrives before the box is left');
+  await page.unroute('**/api/pcb/fill?*');
   await page.locator('[data-testid=summary-within]').blur();
   await whenIdle(page);
   const all = await page.locator('[data-testid=summary-near]').first().innerText();

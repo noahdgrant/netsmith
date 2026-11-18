@@ -1332,6 +1332,52 @@ fn kicads_check_of_a_via_cluster_board_calls_the_extra_vias_dangling_as_warnings
     assert!(errors.is_empty(), "KiCad's check has no error: {errors:#?}");
 }
 
+/// No two zones of one net that overlap on a layer of the board `fab` writes share a priority:
+/// KiCad 9.0.8 calls them an error, `zones_intersect` ("intersecting zones must have distinct
+/// priorities"), and the teardrops round a via of the via-cluster board, where two tracks of one
+/// net meet, were two such zones, each at KiCad's teardrop priority. With no KiCad: the check
+/// above holds the same board to KiCad's own.
+#[test]
+fn the_zones_of_one_net_that_overlap_on_a_layer_have_distinct_priorities() {
+    let dir = out("cluster-priorities");
+    fab(
+        "buck_converter.nsm",
+        BUCK_CONVERTER,
+        &dir,
+        &Catalogs::jlcpcb(),
+        &Libraries::standard(),
+        None,
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    let name = "BuckConverterExample";
+    let pcb = read(&dir, name, &format!("{name}.kicad_pcb"));
+    let art = netsmith_geom::Artwork::parse(&pcb).unwrap_or_else(|e| panic!("{e}"));
+    let zones: Vec<_> = art
+        .zones
+        .iter()
+        .filter(|z| z.owner.is_empty() && z.keepout.is_none())
+        .collect();
+    assert!(
+        zones.iter().filter(|z| z.teardrop).count() > 1,
+        "the board has teardrops"
+    );
+    let mut pairs = 0;
+    for (i, a) in zones.iter().enumerate() {
+        for b in &zones[i + 1..] {
+            let shared = a.layers.iter().any(|l| b.layers.contains(l));
+            if a.net == b.net && shared && netsmith_geom::zones_overlap(a, b) {
+                pairs += 1;
+                assert_ne!(
+                    a.priority, b.priority,
+                    "two zones of {:?} on {:?} overlap with one priority",
+                    a.net, a.layers
+                );
+            }
+        }
+    }
+    assert!(pairs > 0, "the board has zones of one net that overlap");
+}
+
 /// `--cross-check` with no KiCad runs netsmith's viewer comparison alone (issue #1158): the
 /// notes, `fab-notes.txt` too, say that it agrees and that it was the only one that ran.
 #[test]
