@@ -21,7 +21,7 @@ use crate::{outcome_with, render_problems};
 const VERSION: i64 = 1;
 
 /// The first lines of a written file.
-const HEADER: &str = "# The catalog row each part of each board was picked as, written by `netsmith board build` and\n# `netsmith board fab` when this file does not exist. Commit it: a change to a catalog or to the\n# solver that would move a pick shows here and not only in the bill of materials. Refresh it\n# with `netsmith project lock --update`. Nothing in it is edited by hand.\n";
+const HEADER: &str = "# The catalog row each part of each board was picked as, written by `netsmith board build` and\n# `netsmith board fab` when this file does not exist. Commit it: a change to a catalog or to the\n# solver that would move a pick shows here and not only in the bill of materials. Refresh it\n# with `netsmith project lock --update`. Nothing in it is edited by hand but `held = \"reason\"`,\n# which a person adds to a part's entry to keep the part on its row.\n";
 
 /// The lock of a source file: `led.nsm` has `led.lock.toml`.
 pub fn lock_path(source: &Path) -> PathBuf {
@@ -186,10 +186,10 @@ fn parse(text: &str, name: &str) -> Result<PickLock, String> {
                 .ok_or_else(|| wrong(format!("{at} must be a table")))?;
             if let Some(extra) = entry
                 .keys()
-                .find(|k| !["catalog", "row", "lcsc", "mpn"].contains(&k.as_str()))
+                .find(|k| !["catalog", "row", "lcsc", "mpn", "held"].contains(&k.as_str()))
             {
                 return Err(wrong(format!(
-                    "{at} has `{extra}`; it holds `catalog`, `row`, `lcsc` and `mpn`"
+                    "{at} has `{extra}`; it holds `catalog`, `row`, `lcsc`, `mpn` and `held`"
                 )));
             }
             let text = |key: &str, needed: bool| -> Result<Option<String>, String> {
@@ -206,6 +206,14 @@ fn parse(text: &str, name: &str) -> Result<PickLock, String> {
                 row: text("row", true)?.unwrap_or_default(),
                 lcsc: text("lcsc", false)?,
                 mpn: text("mpn", false)?,
+                held: match text("held", false)? {
+                    Some(reason) if reason.trim().is_empty() => {
+                        return Err(wrong(format!(
+                            "{at} `held` is empty: it says why the part is held to its row"
+                        )));
+                    }
+                    held => held,
+                },
             });
         }
         lock.set(unit, rows);
@@ -297,6 +305,9 @@ pub fn render(lock: &PickLock) -> String {
             if let Some(mpn) = &row.mpn {
                 let _ = writeln!(out, "mpn = {}", string(mpn));
             }
+            if let Some(reason) = &row.held {
+                let _ = writeln!(out, "held = {}", string(reason));
+            }
         }
     }
     out
@@ -330,13 +341,32 @@ pub fn diff(old: &PickLock, new: &PickLock) -> Vec<String> {
             let line = match before.iter().find(|b| b.path == row.path) {
                 None => format!("{unit}: `{}`: added as {}", row.path, describe(row, true)),
                 Some(b) if b != row => {
+                    let same_row = (&b.catalog, &b.row, &b.lcsc, &b.mpn)
+                        == (&row.catalog, &row.row, &row.lcsc, &row.mpn);
                     let with_catalog = b.catalog != row.catalog;
-                    format!(
-                        "{unit}: `{}`: {} -> {}",
-                        row.path,
-                        describe(b, with_catalog),
-                        describe(row, with_catalog)
-                    )
+                    let hold = match (&b.held, &row.held) {
+                        (Some(was), None) => format!("no longer held: {was}"),
+                        (None, Some(now)) => format!("now held: {now}"),
+                        (Some(was), Some(now)) => format!("held: {was} -> {now}"),
+                        (None, None) => String::new(),
+                    };
+                    if same_row {
+                        format!("{unit}: `{}`: {hold}", row.path)
+                    } else if hold.is_empty() {
+                        format!(
+                            "{unit}: `{}`: {} -> {}",
+                            row.path,
+                            describe(b, with_catalog),
+                            describe(row, with_catalog)
+                        )
+                    } else {
+                        format!(
+                            "{unit}: `{}`: {} -> {} ({hold})",
+                            row.path,
+                            describe(b, with_catalog),
+                            describe(row, with_catalog)
+                        )
+                    }
                 }
                 Some(_) => continue,
             };
@@ -432,6 +462,37 @@ pub struct Refresh {
     /// that no longer pass or are no longer in a catalog, in its own words (the messages of a
     /// `build`, with the relation and its numbers). Empty when every locked row still holds.
     pub reported: String,
+    /// The rows a person holds on purpose (`held = "reason"`, issue #1197) and that stay as they
+    /// are: they are not called not current, however the solver would pick now. In board order,
+    /// then path.
+    pub held: Vec<Kept>,
+    /// With `Parts::Except` on a check: the parts the run did not judge, held to the row the
+    /// lock has for them (a held row is in `held`, not here).
+    pub not_judged: Vec<Kept>,
+}
+
+/// A part of a board that a run left on the row the lock has for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Kept {
+    /// The board or system.
+    pub unit: String,
+    /// The part's path.
+    pub path: String,
+    /// The row as a line of a diff names it ([`describe`]).
+    pub row: String,
+    /// Why a person holds it, for a held row.
+    pub reason: Option<String>,
+}
+
+impl Kept {
+    /// `Board: `r1`: `A` in the `resistor` catalog (lcsc C1)`, then `: reason` for a held row.
+    pub fn line(&self) -> String {
+        let mut line = format!("{}: `{}`: {}", self.unit, self.path, self.row);
+        if let Some(reason) = &self.reason {
+            line.push_str(&format!(": {reason}"));
+        }
+        line
+    }
 }
 
 impl Refresh {
@@ -531,16 +592,32 @@ pub fn refresh_parts(
         Some(old) => migrate(old, catalogs),
         None => (None, Vec::new()),
     };
-    let held_by = |path: &str| {
-        !parts.refreshes(path) || (moved.iter().any(|m| m == path) && !parts.names(path))
+    // A row the lock says is held on purpose stays on its row unless the part is named for a new
+    // pick (issue #1197), as a part `Parts::Except` names does.
+    let held_on_purpose = |unit: &str, path: &str| {
+        !parts.names(path)
+            && old.as_ref().is_some_and(|o| {
+                o.rows(unit)
+                    .iter()
+                    .any(|r| r.path == path && r.held.is_some())
+            })
     };
-    let outcome = match (&old, &migrated, parts) {
-        (Some(old), migrated, Parts::Only(_) | Parts::Except(_))
-        | (Some(old), migrated @ Some(_), _) => {
+    let has_hold = old.as_ref().is_some_and(|o| {
+        o.units()
+            .any(|(u, rows)| rows.iter().any(|r| held_on_purpose(u, &r.path)))
+    });
+    let held_by = |unit: &str, path: &str| {
+        !parts.refreshes(path)
+            || (moved.iter().any(|m| m == path) && !parts.names(path))
+            || held_on_purpose(unit, path)
+    };
+    let narrowed = !matches!(parts, Parts::All) || migrated.is_some() || has_hold;
+    let outcome = match &old {
+        Some(old) if narrowed => {
             let from = migrated.as_ref().unwrap_or(old);
             let mut held = PickLock::new(&old.file);
             for (unit, rows) in from.units() {
-                let kept = rows.iter().filter(|r| held_by(&r.path)).cloned();
+                let kept = rows.iter().filter(|r| held_by(unit, &r.path)).cloned();
                 held.set(unit, kept.collect());
             }
             for (unit, providers) in old.provider_units() {
@@ -555,16 +632,21 @@ pub fn refresh_parts(
                     outcome
                 }
                 // A row moved to the built-in one that no longer passes takes a new pick.
-                Err(_) if *parts == Parts::All => {
+                Err(_) if *parts == Parts::All && !has_hold => {
                     reported = report_old(name, text, loader, catalogs, old);
                     outcome_with(name, text, loader, catalogs, None)
                         .map_err(|problems| render_problems(&problems))?
                 }
                 Err(problems) => {
+                    let how = if has_hold {
+                        "the parts held on purpose (`held` in the lock) and the parts not named for a new pick are held to the rows of {}, which no longer pass: name the part with `--update --part` to take a new pick, or remove its `held` line"
+                    } else {
+                        "the parts not named for a new pick are held to the rows of {}, which no longer pass: name them to take a new pick"
+                    };
                     return Err(format!(
-                        "{}the parts not named for a new pick are held to the rows of {}, which no longer pass: name them to take a new pick\n",
+                        "{}{}\n",
                         render_problems(&problems),
-                        file.display()
+                        how.replace("{}", &file.display().to_string())
                     ));
                 }
             }
@@ -578,7 +660,39 @@ pub fn refresh_parts(
             outcome
         }
     };
-    let now = outcome.lock;
+    let mut now = outcome.lock;
+    // The rows held on purpose keep their reason, when the pick is still the row the lock has.
+    let mut held = Vec::new();
+    let mut not_judged = Vec::new();
+    if let Some(old) = &old {
+        let base = migrated.as_ref().unwrap_or(old);
+        let units: Vec<String> = now.units().map(|(u, _)| u.to_string()).collect();
+        for unit in units {
+            let mut rows = now.rows(&unit).to_vec();
+            for row in &mut rows {
+                let was = base.rows(&unit).iter().find(|b| {
+                    b.path == row.path && (&b.catalog, &b.row) == (&row.catalog, &row.row)
+                });
+                let Some(was) = was else { continue };
+                let kept = Kept {
+                    unit: unit.clone(),
+                    path: row.path.clone(),
+                    row: describe(row, true),
+                    reason: was.held.clone(),
+                };
+                if was.held.is_some() && held_on_purpose(&unit, &row.path) {
+                    row.held = was.held.clone();
+                    held.push(kept);
+                } else if matches!(parts, Parts::Except(n) if n.contains(&row.path)) {
+                    not_judged.push(Kept {
+                        reason: None,
+                        ..kept
+                    });
+                }
+            }
+            now.set(&unit, rows);
+        }
+    }
     let mut paths: Vec<String> = now
         .units()
         .chain(old.iter().flat_map(PickLock::units))
@@ -588,7 +702,6 @@ pub fn refresh_parts(
     paths.dedup();
     let empty = PickLock::new("");
     let diff = diff(old.as_ref().unwrap_or(&empty), &now);
-    let mut now = now;
     now.file = file.display().to_string();
     Ok(Refresh {
         file,
@@ -597,6 +710,8 @@ pub fn refresh_parts(
         diff,
         paths,
         reported,
+        held,
+        not_judged,
     })
 }
 
@@ -806,6 +921,7 @@ mod tests {
             row: name.into(),
             lcsc: lcsc.map(str::to_string),
             mpn: None,
+            held: None,
         }
     }
 
@@ -1003,5 +1119,60 @@ mod tests {
                 "Board: `r2`: `B` in the `resistor` catalog (lcsc C6) -> `B` in the `capacitor` catalog (lcsc C7)"
             ]
         );
+    }
+
+    #[test]
+    fn a_held_row_is_read_back_written_and_told_when_it_is_released() {
+        let mut held = row("r1", "resistor", "A", Some("C1"));
+        held.held = Some("the supplier's stock of the other row is 0".into());
+        let made = lock(&[
+            ("Board", held.clone()),
+            ("Board", row("r2", "led", "L", None)),
+        ]);
+        let text = render(&made);
+        assert!(
+            text.contains("[Board.parts.\"r1\"]\ncatalog = \"resistor\"\nrow = \"A\"\nlcsc = \"C1\"\nheld = \"the supplier's stock of the other row is 0\"\n"),
+            "{text}"
+        );
+        assert_eq!(text.matches("\nheld = ").count(), 1, "{text}");
+        assert_eq!(parse(&text, "a.lock.toml").unwrap(), made);
+        assert_eq!(render(&made), text);
+        // A held row is equal to itself, and a hold that goes is a line of the diff.
+        assert!(diff(&made, &made).is_empty());
+        let released = lock(&[
+            ("Board", row("r1", "resistor", "A", Some("C1"))),
+            ("Board", row("r2", "led", "L", None)),
+        ]);
+        assert_eq!(
+            diff(&made, &released),
+            vec!["Board: `r1`: no longer held: the supplier's stock of the other row is 0"]
+        );
+        let moved = lock(&[
+            ("Board", row("r1", "resistor", "B", Some("C2"))),
+            ("Board", row("r2", "led", "L", None)),
+        ]);
+        assert_eq!(
+            diff(&made, &moved),
+            vec![
+                "Board: `r1`: `A` (lcsc C1) -> `B` (lcsc C2) (no longer held: the supplier's stock of the other row is 0)"
+            ]
+        );
+        // The lock a build compares picks with does not read the reason.
+        assert!(compare(&made, &released).is_empty());
+    }
+
+    #[test]
+    fn a_held_that_is_not_a_reason_is_refused_with_the_place_in_it() {
+        let wrong = |held: &str| {
+            parse(
+                &format!(
+                    "version = 1\n[B.parts.\"r1\"]\ncatalog = \"a\"\nrow = \"b\"\nheld = {held}"
+                ),
+                "x.lock.toml",
+            )
+            .unwrap_err()
+        };
+        assert!(wrong("\"  \"").contains("[B.parts.\"r1\"] `held` is empty"));
+        assert!(wrong("true").contains("`held` must be text"));
     }
 }

@@ -12,7 +12,7 @@ The solver picks, for each generic part, the first row of its catalog that fits 
 - A part number goes into a catalog only with a source: the supplier's record, and the datasheet for every rating the row states. Never write an LCSC or manufacturer's number from memory, and never guess a rating. If you cannot fetch the evidence, say so and add nothing.
 - Which part a design should use when several fit is the user's choice. List the rows that work and what differs (price, library type, rating margin); do not pick for them.
 - A change to what a stated value or relation means is a language decision: ask first (`AGENTS.md`).
-- Say what each command printed. Do not edit `<stem>.lock.toml` by hand: `project lock` writes it.
+- Say what each command printed. Do not edit `<stem>.lock.toml` by hand: `project lock` writes it. The one line a person adds is `held = "reason"` to a part's entry (below), and only when the user asks to hold that part.
 
 ## Why did it pick this one
 
@@ -25,10 +25,12 @@ The solver picks, for each generic part, the first row of its catalog that fits 
 
 `build` and `fab` write `<stem>.lock.toml` beside a source when it does not exist and never rewrite it; commit it. A change to a catalog, std or the solver cannot then move a pick unseen.
 
-- `netsmith project lock --check` exits 1 and prints the diff when the lock is stale or missing, 0 and nothing when current. In CI run it with `netsmith board build --locked`, which fails when a pick would change.
+- `netsmith project lock --check` exits 1 and prints the diff when the lock is stale or missing, 0 when current (rows held on purpose are listed, below). In CI run it with `netsmith board build --locked`, which fails when a pick would change.
 - `netsmith project lock --update` takes the solver's picks now and prints each change as `board: part: old -> new`. Read the diff to the user before it is committed. `--update --part r1,stage.cap` refreshes only those parts, `--update --except u1` all but those; the others stay on the lock's row until an update that does not name them. After a release added a part to a built-in catalog that the project's own catalog has, the build says "a part is in a catalog once" and names the built-in row: remove the project's row from its catalog file, then `project lock --update` sets the lock's `row` to the built-in row and changes no other row.
 - A row that no longer passes stops the build and says the lock held it and no other row was tried. Change the design or the catalog so it fits, or run `--update` and review the new row.
-- A decision that must outlive refreshes is a hand pick, not a held lock entry.
+- A pick held on purpose, one row kept even though the solver would take another, is `held = "reason"` in that part's entry of `<stem>.lock.toml` (ask the user for the reason and write theirs). `project lock --check` then passes on that row and lists it once as `held` with the reason (text; `held` in `--format json`), `--update` keeps the row and the key unless `--update --part <path>` names the part, and a held row that no longer passes is an error that says to remove the `held` line or name the part. Without `held` the same row is not current and `--check` exits 1.
+- `netsmith project lock --check --except r1,stage.cap` judges every part but those and lists them as not judged (`not_judged` in JSON): for a CI that must not fail on parts a person is not ready to move. Prefer `held` for a hold that should stay, as it is in the committed file with its reason.
+- A decision that is a requirement of the design (this part must be this row for every board) is a hand pick in source, not a held lock entry; `held` is a decision about the lock, and the source does not say it.
 
 ## Choose a row by hand
 
