@@ -8,7 +8,9 @@
 //!    the clearance round the copper of other nets (pads, vias, tracks, teardrops, drawings) and
 //!    round holes, and the thermal gaps round the pads of its own net, drawn as the four pieces
 //!    between the spokes so that the spokes stay copper. Where zones of one layer overlap, a
-//!    zone also gives up what a zone of higher priority has ([`fill_zones`]).
+//!    zone also gives up what a zone of higher priority has ([`fill_zones`]). Every space but
+//!    the thermal gap is 2.5 µm wider than the rule asks ([`MARGIN`], issue #1184), as KiCad's
+//!    filler makes it, so that the polygons keep it in full.
 //! 2. **Spokes KiCad would not make.** A spoke is kept only where KiCad's filler makes one
 //!    (below): the others are taken out, the pad's own copper left.
 //! 3. **The minimum thickness.** The copper narrower than the zone's `min_thickness` is taken
@@ -38,7 +40,9 @@
 //! (JLCPCB's page lists no rule about spokes), and matching KiCad costs nothing, so the file is
 //! the same as the one the designer sees (`crates/netsmith-fab/tests/known_differences.rs`). A via
 //! of the pour's net is joined solid, as KiCad joins it. Fills the file already holds
-//! (`filled_polygon`) are used as they are.
+//! (`filled_polygon`) are used as they are; the fill netsmith writes into the zones of the KiCad
+//! board it exports ([`zone_fills`], issue #1184) is not one of them when netsmith reads that
+//! file again (`crate::artwork::Zone::filled`), so it is made again here, the same.
 //!
 //! **Spokes (issue #1115).** netsmith makes the spokes KiCad 9's filler makes
 //! (`ZONE_FILLER::buildThermalSpokes` and `fillCopperZone`), so that its design rules check counts
@@ -92,9 +96,53 @@ const DEFAULT_CLEARANCE: f64 = 0.2;
 /// KiCad joins it solid (found by the cross-check, ADR 0034).
 const VIA_THERMAL: bool = false;
 
+/// How much more than its clearance the fill keeps from what it keeps clear of (other nets'
+/// copper, holes, the board's edge, rule areas that forbid pours, a zone of another net with a
+/// higher priority), in mm (issue #1184): the most a curve cut into straight pieces lies inside
+/// it ([`geom::ARC_ERROR`]), and the 0.5 µm KiCad 9's filler adds to every clearance (its
+/// advanced setting `ExtraClearance`, 0.0005 mm by default). A clearance round a round pad, a via
+/// or a track's end is cut as a polygon inside its circle, and trimming to the minimum thickness
+/// rounds the corner of a hole (a rule area's) into it, each by up to 2 µm; so the copper keeps
+/// every clearance and stays out of every rule area in full, as KiCad's fill, which cuts outside
+/// the curve, does. KiCad's check of the fill the board file holds then finds no clearance short
+/// by 2 µm, and no solder mask opening that ends where the clearance does (a fiducial's)
+/// touching the fill. The fill's own edges, where it meets another zone of its net, stay.
+const MARGIN: f64 = geom::ARC_ERROR + 0.0005;
+
 /// How far a piece of another zone of the net is grown to count as touching an island, in mm:
 /// two zones of one net that meet share an edge and no area.
 const TOUCH: f64 = 0.001;
+
+/// The fill of every zone of `layer` that holds no fill of its own in the file, by the zone's
+/// index in `art.zones`, in the four steps of the module docs: what [`pour`] draws, and what
+/// the KiCad export writes into its zones (`filled_polygon`, issue #1184). A zone whose fill
+/// is empty is listed with no areas.
+pub fn zone_fills(
+    art: &Artwork,
+    layer: &str,
+    edge: &BoardEdge,
+    rules: &Rules,
+) -> Result<Vec<(usize, Vec<Area>)>, String> {
+    let index: Vec<usize> = art
+        .zones
+        .iter()
+        .enumerate()
+        .filter(|(_, z)| {
+            z.keepout.is_none()
+                && z.layers.iter().any(|l| l == layer)
+                && !z.filled.iter().any(|(l, _)| l == layer)
+        })
+        .map(|(i, _)| i)
+        .collect();
+    if index.is_empty() {
+        return Ok(Vec::new());
+    }
+    let zones: Vec<&Zone> = index.iter().map(|&i| &art.zones[i]).collect();
+    Ok(fill_zones(art, layer, edge, rules, &zones)?
+        .into_iter()
+        .map(|f| (index[f.zone], f.fill))
+        .collect())
+}
 
 /// Writes the fill of every zone of `layer` that holds no fill of its own in the file.
 pub fn pour(
@@ -104,33 +152,16 @@ pub fn pour(
     edge: &BoardEdge,
     rules: &Rules,
 ) -> Result<(), String> {
-    let zones: Vec<&Zone> = art
-        .zones
-        .iter()
-        .filter(|z| {
-            z.keepout.is_none()
-                && z.layers.iter().any(|l| l == layer)
-                && !z.filled.iter().any(|(l, _)| l == layer)
-        })
-        .collect();
-    if zones.is_empty() {
-        return Ok(());
-    }
-    let filled = fill_zones(art, layer, edge, rules, &zones)?;
+    let filled = zone_fills(art, layer, edge, rules)?;
     // Each piece of copper as one dark region with its holes cleared, the pieces with the
     // largest box first, so that clearing a hole never takes copper drawn before it (a piece
     // inside a hole is smaller than the piece round it).
     let mut pieces: Vec<(f64, &Zone, &Area)> = Vec::new();
-    for Filled {
-        zone: i,
-        fill: areas,
-        ..
-    } in &filled
-    {
+    for (i, areas) in &filled {
         for a in areas {
             let size = Bounds::of(a.outer.iter().copied())
                 .map_or(0.0, |b| (b.max.x - b.min.x) * (b.max.y - b.min.y));
-            pieces.push((size, zones[*i], a));
+            pieces.push((size, &art.zones[*i], a));
         }
     }
     pieces.sort_by(|a, b| b.0.total_cmp(&a.0));
@@ -152,14 +183,17 @@ pub fn pour(
     Ok(())
 }
 
-/// Clears the rule areas of `layer` that forbid pours.
+/// Clears the rule areas of `layer` that forbid pours, each grown by [`MARGIN`].
 fn keep_out_of_rule_areas(g: &mut dyn Pen, art: &Artwork, layer: &str) {
     for k in art.zones.iter().filter(|z| {
         z.keepout.as_ref().is_some_and(|k| k.copperpour) && z.layers.iter().any(|l| l == layer)
     }) {
-        for o in &k.outlines {
-            if o.len() >= 3 {
-                g.region(Contour::polygon(o), None, &[]);
+        for o in k.outlines.iter().filter(|o| o.len() >= 3) {
+            g.region(Contour::polygon(o), None, &[]);
+            let mut ring = o.clone();
+            ring.push(o[0]);
+            for w in ring.windows(2) {
+                stroke(g, w[0], w[1], 2.0 * MARGIN);
             }
         }
     }
@@ -235,7 +269,7 @@ fn fill_zones(
         for h in z.holes.iter().filter(|h| h.len() >= 3) {
             p.region(Contour::polygon(h), None, &[]);
         }
-        keep_out_of_the_edge(&mut p, art, edge, rules.edge_clearance, &[z]);
+        keep_out_of_the_edge(&mut p, art, edge, rules.edge_clearance + MARGIN, &[z]);
         keep_out_of_rule_areas(&mut p, art, layer);
         around_copper(&mut p, art, layer, z, rules)?;
         let mut fill = p.areas();
@@ -247,7 +281,7 @@ fn fill_zones(
             } else {
                 taken.extend(grown(
                     higher,
-                    zone_clearance(z, rules).max(zone_clearance(h, rules)),
+                    zone_clearance(z, rules).max(zone_clearance(h, rules)) + MARGIN,
                 ));
             }
         }
@@ -1024,8 +1058,9 @@ fn around_copper(
     rules: &Rules,
 ) -> Result<(), String> {
     let clearance = zone_clearance(z, rules);
-    // The clearance from copper of `net`: the zone's, or the class's of `net` if larger.
-    let from = |net: &Option<String>| clearance.max(rules.class_clearance(net.as_deref()));
+    // The clearance from copper of `net`: the zone's, or the class's of `net` if larger, and
+    // MARGIN more, as every space this cuts is.
+    let from = |net: &Option<String>| clearance.max(rules.class_clearance(net.as_deref())) + MARGIN;
     let reach = clearance.max(rules.widest_class_clearance()) + z.thermal_gap.max(0.0);
     let Some(area) = zone_bounds(z).map(|b| b.expanded(reach)) else {
         return Ok(());
@@ -1038,7 +1073,7 @@ fn around_copper(
         if !copper {
             // A hole with no copper round it still keeps the clearance.
             if let Some(d) = &pad.drill {
-                let by = rules.hole_clearance.unwrap_or(clearance);
+                let by = rules.hole_clearance.unwrap_or(clearance) + MARGIN;
                 if hole_outline(pad, d).bounds().expanded(by).overlaps(&area) {
                     draw_grown(g, &hole_outline(pad, d), by, &pad.part, &pad.number)?;
                 }
@@ -1057,7 +1092,7 @@ fn around_copper(
         } else {
             let by = pad
                 .clearance
-                .map_or(from(&pad.net), |c| c.max(from(&pad.net)));
+                .map_or(from(&pad.net), |c| (c + MARGIN).max(from(&pad.net)));
             draw_grown(g, &shape, by, &pad.part, &pad.number)?;
         }
     }
@@ -1122,7 +1157,7 @@ fn around_copper(
         }
     }
     for gr in art.graphics.iter().filter(|gr| gr.layer == layer) {
-        let width = gr.width.max(0.0) + 2.0 * clearance;
+        let width = gr.width.max(0.0) + 2.0 * (clearance + MARGIN);
         if gr.fill
             && let Shape::Poly(p) = &gr.shape
             && p.len() >= 3
@@ -1730,7 +1765,9 @@ mod tests {
         assert!((sig_size - 100.0).abs() < 1e-6, "{sig_size}");
         // GND: the board less its edge band (19.6 - 2 * 0.2 on each side, 0.2 mm band from
         // the edge at 0) less SIG's square grown by 0.3 with round corners.
-        let grown = 10.6 * 10.6 - (4.0 - std::f64::consts::PI) * 0.3 * 0.3;
+        // The space round SIG's fill is MARGIN wider than its 0.3 mm.
+        let space = 0.3 + MARGIN;
+        let grown = (10.0 + 2.0 * space).powi(2) - (4.0 - std::f64::consts::PI) * space * space;
         let board = 19.6 * 19.6;
         assert!((gnd - (board - grown)).abs() < 0.01, "{gnd}");
         // The other way round, GND has the middle and SIG nothing.

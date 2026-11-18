@@ -49,6 +49,71 @@ impl Area {
         let a = |p: &[Pt]| geom::area2(p).abs() / 2.0;
         a(&self.outer) - self.holes.iter().map(|h| a(h)).sum::<f64>()
     }
+
+    /// The area as one ring with no holes, as KiCad keeps a zone's fill (a `filled_polygon` is
+    /// a "fractured" polygon, issue #1184): each hole joined to the ring round it by a bridge
+    /// of no width, two coincident edges that run from the hole's leftmost point straight to
+    /// the left to the nearest edge, the holes from left to right (KiCad's own way,
+    /// `SHAPE_POLY_SET::Fracture`). Read by the even-odd rule, as a Gerber region and KiCad
+    /// read it, the ring is the area: its shoelace sum is the area's, and no bridge crosses an
+    /// edge, since nothing of the ring lies between a hole and the nearest edge to its left,
+    /// and a hole further right is wholly right of the bridge.
+    pub fn fractured(&self) -> Vec<Pt> {
+        let mut ring = self.outer.clone();
+        let mut holes: Vec<(usize, &Vec<Pt>)> = self
+            .holes
+            .iter()
+            .filter(|h| h.len() >= 3)
+            .map(|h| {
+                let left = (0..h.len())
+                    .min_by(|&a, &b| h[a].x.total_cmp(&h[b].x).then(h[a].y.total_cmp(&h[b].y)))
+                    .unwrap_or(0);
+                (left, h)
+            })
+            .collect();
+        holes.sort_by(|(a, ha), (b, hb)| {
+            ha[*a]
+                .x
+                .total_cmp(&hb[*b].x)
+                .then(ha[*a].y.total_cmp(&hb[*b].y))
+        });
+        for (left, hole) in holes {
+            let p = hole[left];
+            // The nearest edge the ray from `p` to the left crosses (half-open in y, so a ray
+            // through a vertex crosses one of the two edges that meet there).
+            let mut best: Option<(f64, usize)> = None;
+            for i in 0..ring.len() {
+                let (a, b) = (ring[i], ring[(i + 1) % ring.len()]);
+                if (a.y > p.y) == (b.y > p.y) {
+                    continue;
+                }
+                let x = a.x + (p.y - a.y) * (b.x - a.x) / (b.y - a.y);
+                if x <= p.x && best.is_none_or(|(bx, _)| x > bx) {
+                    best = Some((x, i));
+                }
+            }
+            // A hole always has the ring round it to its left; were rounding to miss it, the
+            // nearest point of the ring stands in.
+            let (at, i) = match best {
+                Some((x, i)) => (Pt::new(x, p.y), i),
+                None => {
+                    let i = (0..ring.len())
+                        .min_by(|&a, &b| ring[a].dist(p).total_cmp(&ring[b].dist(p)))
+                        .unwrap_or(0);
+                    (ring[i], i)
+                }
+            };
+            let mut joined = Vec::with_capacity(ring.len() + hole.len() + 3);
+            joined.extend_from_slice(&ring[..=i]);
+            joined.push(at);
+            joined.extend_from_slice(&hole[left..]);
+            joined.extend_from_slice(&hole[..=left]);
+            joined.push(at);
+            joined.extend_from_slice(&ring[i + 1..]);
+            ring = joined;
+        }
+        ring
+    }
 }
 
 type Ring = Vec<[f64; 2]>;
@@ -452,6 +517,63 @@ mod tests {
             Pt::new(x0 + s, y0 + s),
             Pt::new(x0, y0 + s),
         ])
+    }
+
+    /// A 10 mm square with three 2 mm holes: one at the left, one to its right on the same
+    /// line (whose bridge meets the first hole), one lower down.
+    fn holed() -> Area {
+        let mut p = Polygons::new();
+        p.region(square(0.0, 0.0, 10.0), None, &[]);
+        p.polarity(false);
+        for (x, y) in [(2.0, 4.0), (6.0, 4.0), (5.0, 7.5)] {
+            p.region(square(x, y, 2.0), None, &[]);
+        }
+        let areas = p.areas();
+        assert_eq!(areas.len(), 1);
+        assert_eq!(areas[0].holes.len(), 3);
+        areas.into_iter().next().unwrap()
+    }
+
+    #[test]
+    fn a_fractured_area_is_one_ring_that_the_even_odd_rule_reads_as_the_area() {
+        let area = holed();
+        let ring = area.fractured();
+        // Every point of the outline and of each hole, and two for each bridge's ends.
+        assert_eq!(ring.len(), 4 + 3 * (4 + 1) + 3 * 2);
+        assert!((geom::area2(&ring) / 2.0 - area.size()).abs() < 1e-9);
+        assert!((area.size() - 88.0).abs() < 1e-6);
+        // Read back as a Gerber region is read, it is the same copper.
+        let mut back = Polygons::new();
+        back.region(Contour::polygon(&ring), None, &[]);
+        let read = back.areas();
+        assert_eq!(read.len(), 1);
+        assert_eq!(read[0].holes.len(), 3);
+        assert!((read[0].size() - area.size()).abs() < 1e-6);
+        for (p, copper) in [
+            ((1.0, 1.0), true),
+            ((3.0, 5.0), false),
+            ((7.0, 5.0), false),
+            ((6.0, 8.5), false),
+            ((5.0, 5.0), true),
+            ((9.0, 9.0), true),
+        ] {
+            assert_eq!(geom::contains(&ring, Pt::new(p.0, p.1)), copper, "{p:?}");
+        }
+        // Each bridge is level and ends on the hole's leftmost point.
+        for w in ring.windows(2) {
+            let (a, b) = (w[0], w[1]);
+            if (a.x - b.x).abs() > 1e-12 && (a.y - b.y).abs() > 1e-12 {
+                panic!("an edge that is not level or upright: {a:?} {b:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn an_area_with_no_holes_is_its_own_ring() {
+        let mut p = Polygons::new();
+        p.region(square(0.0, 0.0, 3.0), None, &[]);
+        let area = p.areas().remove(0);
+        assert_eq!(area.fractured(), area.outer);
     }
 
     #[test]

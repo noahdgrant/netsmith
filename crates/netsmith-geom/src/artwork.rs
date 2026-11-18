@@ -258,7 +258,11 @@ pub struct Zone {
     /// Its priority (`(priority N)`, 0 when the file gives none): where two zones of one layer
     /// overlap, the higher one has the area (see `crate::fill`).
     pub priority: u32,
-    /// The fill the file already holds: `(layer, polygon)`.
+    /// The fill the file already holds: `(layer, polygon)`. Of a zone of the board in a file
+    /// netsmith wrote (`(generator "netsmith")`), only a teardrop's: the fill netsmith writes into
+    /// its pours and planes (issue #1184) is the one [`crate::fill`] makes again from the zone,
+    /// so a board `fab` wrote is read as the board it was written from. A file KiCad saved says
+    /// `pcbnew`, and its fill, netsmith's or KiCad's refill, is the copper as it is.
     pub filled: Vec<(String, Vec<Pt>)>,
     /// A rule area, not a pour.
     pub keepout: Option<Keepout>,
@@ -601,6 +605,9 @@ struct Reader<'a> {
     copper: Vec<String>,
     nets: std::collections::BTreeMap<i64, String>,
     out: Artwork,
+    /// Whether netsmith wrote the file (its `generator`), whose fill of a zone of the board
+    /// is read as none ([`Zone::filled`]).
+    ours: bool,
 }
 
 /// A footprint's place on the board.
@@ -707,11 +714,16 @@ impl<'a> Reader<'a> {
                 .unwrap_or_default(),
             skipped: Vec::new(),
         };
+        let ours = root
+            .find("generator")
+            .and_then(|g| g.items().get(1)?.text())
+            == Some("netsmith");
         Ok(Self {
             root,
             copper,
             nets,
             out,
+            ours,
         })
     }
 
@@ -769,7 +781,14 @@ impl<'a> Reader<'a> {
                     self.out.tracks.push(track);
                 }
                 Some("via") => self.via(item)?,
-                Some("zone") => self.zone(item)?,
+                Some("zone") => {
+                    self.zone(item)?;
+                    if self.ours
+                        && let Some(z) = self.out.zones.last_mut().filter(|z| !z.teardrop)
+                    {
+                        z.filled.clear();
+                    }
+                }
                 Some(h) if h.starts_with("gr_") => self.drawing(item, None)?,
                 _ => {}
             }
@@ -1915,6 +1934,30 @@ mod tests {
             err.contains("zone gnd on F.Cu is filled in `hatch` mode"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn the_fill_netsmith_wrote_into_a_pour_is_read_as_none_and_a_teardrops_and_kicads_are_kept() {
+        let fill = "(filled_polygon (layer \"F.Cu\") (pts (xy 0 0) (xy 1 0) (xy 1 1)))";
+        let zones = format!(
+            "(zone (net 1) (net_name \"GND\") (layer \"F.Cu\") (fill yes) (polygon (pts (xy 0 0) (xy 1 0) (xy 1 1))) {fill})\n\t\
+             (zone (net 1) (net_name \"GND\") (layer \"F.Cu\") (attr (teardrop (type padvia))) (fill yes) (polygon (pts (xy 0 0) (xy 1 0) (xy 1 1))) {fill})\n\t(via (at 5 6)"
+        );
+        let held = |generator: &str| -> Vec<usize> {
+            let src = BOARD.replace("(via (at 5 6)", &zones).replacen(
+                "(kicad_pcb",
+                &format!("(kicad_pcb (generator \"{generator}\")"),
+                1,
+            );
+            Artwork::parse(&src)
+                .unwrap()
+                .zones
+                .iter()
+                .map(|z| z.filled.len())
+                .collect()
+        };
+        assert_eq!(held("netsmith"), [0, 1]);
+        assert_eq!(held("pcbnew"), [1, 1]);
     }
 
     #[test]

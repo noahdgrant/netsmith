@@ -43,9 +43,10 @@ impl std::error::Error for CliError {}
 /// What packaging asks of KiCad. Every method takes the `.kicad_pcb` path; a `.kicad_pro`
 /// next to it (design rules, net classes) is used when present.
 ///
-/// A board with zones (the planes of a board of four layers) is written without their
-/// fill, which only KiCad can compute. Each method has KiCad fill the zones first, on its
-/// own copy, so a check and a plot see the copper that the board house will make.
+/// A board with zones (the planes of a board of four layers) has KiCad fill the zones first,
+/// on its own copy, in each method, so that a check and a plot are KiCad's own, of KiCad's
+/// fill: the board `fab` writes holds netsmith's fill (issue #1184), which the cross-check
+/// compares with KiCad's. [`KicadCliExe::drc_json_as_filled`] checks the fill the file holds.
 pub trait KicadCli {
     /// KiCad's version as `kicad-cli version` prints it (`9.0.0`). The cross-check needs it
     /// to know which known difference of a release applies ([`crate::crosscheck`]).
@@ -162,7 +163,21 @@ impl KicadCliExe {
         })
     }
 
+    /// KiCad's design rules check of the board as its file is, as [`KicadCli::drc_json`]
+    /// reports it but with no refill first: the zones keep the fill the file holds, the one
+    /// `fab` writes (netsmith's own, issue #1184), so the check judges netsmith's copper.
+    pub fn drc_json_as_filled(&self, pcb: &Path) -> Result<String, CliError> {
+        let stage = self.stage_with(pcb, false)?;
+        stage.drc_json()
+    }
+
     fn stage(&self, pcb: &Path) -> Result<Stage<'_>, CliError> {
+        self.stage_with(pcb, true)
+    }
+
+    /// The board and the files beside it copied to a scratch folder, its zones refilled by
+    /// KiCad when `refill` says so and the board has any.
+    fn stage_with(&self, pcb: &Path, refill: bool) -> Result<Stage<'_>, CliError> {
         let io = |what: &str, e: std::io::Error| CliError::Io(format!("{what}: {e}"));
         let stage = self.scratch(
             &pcb.file_name()
@@ -179,10 +194,11 @@ impl KicadCliExe {
             }
         }
         let board = stage.dir.join(&stage.name);
-        if std::fs::read_to_string(&board)
-            .map_err(|e| io(&format!("cannot read {}", board.display()), e))?
-            // A zone of the board, not one inside a footprint, which is indented further.
-            .contains("\n\t(zone")
+        if refill
+            && std::fs::read_to_string(&board)
+                .map_err(|e| io(&format!("cannot read {}", board.display()), e))?
+                // A zone of the board, not one inside a footprint, which is indented further.
+                .contains("\n\t(zone")
         {
             stage.fill_zones()?;
         }
@@ -297,6 +313,24 @@ impl Stage<'_> {
     /// How `kicad-cli` should be told about a path inside the stage.
     fn arg(&self, path: &Path) -> Result<String, CliError> {
         self.cli.arg(path)
+    }
+
+    /// `kicad-cli pcb drc` of the staged board as JSON ([`KicadCli::drc_json`]).
+    fn drc_json(&self) -> Result<String, CliError> {
+        let report = self.dir.join("drc.json");
+        self.run(&[
+            "drc",
+            "--severity-all",
+            "--all-track-errors",
+            "--format",
+            "json",
+            "--units",
+            "mm",
+            "-o",
+            &self.arg(&report)?,
+        ])?;
+        std::fs::read_to_string(&report)
+            .map_err(|e| CliError::Io(format!("kicad-cli wrote no DRC report: {e}")))
     }
 
     /// Runs `kicad-cli pcb <args> <board>`.
@@ -439,21 +473,7 @@ impl KicadCli for KicadCliExe {
     }
 
     fn drc_json(&self, pcb: &Path) -> Result<String, CliError> {
-        let stage = self.stage(pcb)?;
-        let report = stage.dir.join("drc.json");
-        stage.run(&[
-            "drc",
-            "--severity-all",
-            "--all-track-errors",
-            "--format",
-            "json",
-            "--units",
-            "mm",
-            "-o",
-            &stage.arg(&report)?,
-        ])?;
-        std::fs::read_to_string(&report)
-            .map_err(|e| CliError::Io(format!("kicad-cli wrote no DRC report: {e}")))
+        self.stage(pcb)?.drc_json()
     }
 
     fn gerbers(&self, pcb: &Path, layers: &[String]) -> Result<Vec<Output>, CliError> {

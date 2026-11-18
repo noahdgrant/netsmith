@@ -108,7 +108,7 @@ A range on where a part, or the parts of a module, may go, stated in the board's
 _Avoid_: Constraint (as the name of the thing a person writes: a finding is a `constraint` finding), position (a position is what the layout file holds)
 
 **Plane**:
-An inner copper layer that is one sheet of copper on one net, such as ground. The board names the net (`.process.inner1.net &= "GND"`); a through-hole pad or a via on that net joins it where it stands, and any other pad is joined by a via. KiCad's type for its layer is `power`.
+An inner copper layer that is one sheet of copper on one net, such as ground. The board names the net (`.process.inner1.net &= "GND"`); a through-hole pad or a via on that net joins it where it stands, and any other pad is joined by a via. netsmith fills it, with the clearances and thermal reliefs KiCad's fill makes, for the Gerbers and the zone of the KiCad board `fab` writes (issue #1184). KiCad's type for its layer is `power`.
 _Avoid_: Copper fill, power layer (a pour is a different thing)
 
 **Planned crossing**:
@@ -123,7 +123,7 @@ _Avoid_: Sublayer (KiCad's word for a ply after the first in its board file)
 A pin of an interface on a module or board. A port only passes a connection along to the terminals behind it. An interface that a board declares directly (`.output: Rail`) is also the port of that board in a system, which can join it to another board's port and reach nothing else of the board.
 
 **Pour**:
-Copper filled on an outer layer round the tracks and joined to one net, such as ground: `.process.top.net &= "GND"`. Unlike a plane it leaves room for the tracks, KiCad fills it, and vias at a pitch the board states (`.stitch_pitch`) join it to the other layers of its net. Its thermal reliefs are KiCad's unless the process states the gap and the spoke width (`.thermal_gap`, `.spoke_width`), and it states its clearance, narrowest copper and pad connection as a zone does (`.clearance`, `.min_width`, `.pads`).
+Copper filled on an outer layer round the tracks and joined to one net, such as ground: `.process.top.net &= "GND"`. Unlike a plane it leaves room for the tracks, netsmith fills it as KiCad would (the fill is in the Gerbers and in the zones of the KiCad board `fab` writes, issue #1184), and vias at a pitch the board states (`.stitch_pitch`) join it to the other layers of its net. Its thermal reliefs are KiCad's unless the process states the gap and the spoke width (`.thermal_gap`, `.spoke_width`), and it states its clearance, narrowest copper and pad connection as a zone does (`.clearance`, `.min_width`, `.pads`).
 _Avoid_: Copper fill, ground plane (that is a plane)
 
 **Power symbol**:

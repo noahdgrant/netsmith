@@ -634,8 +634,7 @@ pub fn kicad_pro(board: &Board) -> String {
 /// `plane_clearance` from copper of other nets, joined to its own pads and vias with
 /// KiCad's thermal reliefs (gap and spoke width 0.5 mm, its defaults).
 ///
-/// The file holds no fill. KiCad fills a zone when a person opens the board and presses
-/// `B`; the fabrication step has KiCad fill it before it checks and plots the board.
+/// [`kicad_pcb`] writes no fill; [`kicad_pcb_filled`], the file `fab` writes, adds netsmith's.
 fn zone(board: &Board, plane: &Plane, net: Sexp) -> Sexp {
     zone_with(board, plane, net, &Fill::of(board, None))
 }
@@ -748,7 +747,7 @@ fn zone_with(board: &Board, plane: &Plane, net: Sexp, fill: &Fill) -> Sexp {
     )
 }
 
-/// A zone of the routes file as KiCad writes one, unfilled: its outline and each hole a
+/// A zone of the routes file as KiCad writes one, unfilled (the fill is [`kicad_pcb_filled`]'s): its outline and each hole a
 /// `(polygon`, and its settings, so that KiCad's fill makes the copper of the zone it was imported
 /// from (a priority of 0, and islands removed, are KiCad's defaults and not written).
 fn fixed_zone(board: &Board, i: usize, z: &crate::board::BoardZone, net: Sexp) -> Sexp {
@@ -1068,9 +1067,102 @@ fn sense_rule_areas(board: &Board) -> Vec<Sexp> {
     out
 }
 
-/// The text of a `.kicad_pcb` for the board.
+/// The text of a `.kicad_pcb` for the board, its pours and planes unfilled: what netsmith's own
+/// stages read the board from in memory (the check, the copper as data, the editor) and what
+/// `layout export` writes. [`kicad_pcb_filled`] is the file `fab` writes.
 pub fn kicad_pcb(board: &Board) -> String {
     board_tree(board).to_kicad_string()
+}
+
+/// The text of the `.kicad_pcb` that `fab` writes (issue #1184): [`kicad_pcb`] with netsmith's
+/// own fill in each zone of the board that pours copper, the planes, the outer pours and the
+/// zones of the routes file. The fill is the one the Gerbers get ([`netsmith_geom::zone_fills`]:
+/// the clearances round other nets' copper, the thermal reliefs with the spokes KiCad's filler
+/// makes, the copper under the zone's minimum thickness and the copper islands taken out, the
+/// rule areas of a Kelvin sense pin kept clear), each piece of each layer one `filled_polygon`
+/// with its holes joined to its outline by bridges of no width, as KiCad keeps a fill
+/// ([`netsmith_geom::PolygonArea::fractured`]). The zones already say `(fill yes ...)`, so
+/// KiCad 9 reads them as filled: the board opens poured, and `kicad-cli pcb drc` checks this
+/// fill unless it is told to refill. KiCad refills a zone only when a person asks it to (`B`).
+///
+/// The points are written to 0.1 µm (four decimals of a millimetre, [`netsmith_kicad::Sexp::num`]),
+/// so a fill is that much off the Gerbers' at most. netsmith reads the fill of a file it wrote
+/// as none and makes it again ([`netsmith_geom::ArtworkZone::filled`]), so its checks of the
+/// file are those of the board. An error is the filler's, the one [`crate::copper`] and the
+/// Gerbers would give for the board: two zones of different nets on one layer with one
+/// priority whose outlines overlap.
+pub fn kicad_pcb_filled(board: &Board) -> Result<String, crate::CopperError> {
+    let mut tree = board_tree(board);
+    write_fills(board, &mut tree)?;
+    Ok(tree.to_kicad_string())
+}
+
+/// Adds the fill of each zone of the board in `tree` to it ([`kicad_pcb_filled`]).
+fn write_fills(board: &Board, tree: &mut Sexp) -> Result<(), crate::CopperError> {
+    let err = |e: String| crate::CopperError(e);
+    let art = netsmith_geom::Artwork::from_sexp(tree).map_err(|e| err(e.to_string()))?;
+    if !art
+        .zones
+        .iter()
+        .any(|z| z.keepout.is_none() && !z.teardrop && z.owner.is_empty())
+    {
+        return Ok(());
+    }
+    let rules = netsmith_geom::plot_rules_of(Some(&kicad_pro(board)));
+    let outline = netsmith_geom::edge_outline(&art).map_err(err)?;
+    let mut fills: Vec<Vec<Sexp>> = vec![Vec::new(); art.zones.len()];
+    for layer in &art.copper {
+        for (i, areas) in netsmith_geom::zone_fills(&art, layer, &outline, &rules).map_err(err)? {
+            fills[i].extend(areas.iter().filter_map(|a| filled_polygon(layer, a)));
+        }
+    }
+    // The zones of the board are the tree's `(zone` items, in the artwork's order; a
+    // footprint's zones come before them in the artwork and are left as the library has them.
+    let board_zones: Vec<usize> = (0..art.zones.len())
+        .filter(|&i| art.zones[i].owner.is_empty())
+        .collect();
+    let Sexp::List(items) = tree else {
+        return Ok(());
+    };
+    let zones = items.iter_mut().filter(|i| i.head() == Some("zone"));
+    for (item, &i) in zones.zip(&board_zones) {
+        if let Sexp::List(fields) = item {
+            fields.append(&mut fills[i]);
+        }
+    }
+    Ok(())
+}
+
+/// One piece of a zone's fill as KiCad's `(filled_polygon (layer ...) (pts ...))`: its outline
+/// and holes as one ring, each point as the file writes it, and no point that is the one
+/// before it once written. `None` for a piece that is no polygon once written.
+fn filled_polygon(layer: &str, area: &netsmith_geom::PolygonArea) -> Option<Sexp> {
+    let mut points: Vec<(String, String)> = Vec::new();
+    for p in area.fractured() {
+        let q = (netsmith_kicad::fmt_num(p.x), netsmith_kicad::fmt_num(p.y));
+        if points.last() != Some(&q) {
+            points.push(q);
+        }
+    }
+    while points.len() > 1 && points.first() == points.last() {
+        points.pop();
+    }
+    if points.len() < 3 {
+        return None;
+    }
+    Some(Sexp::node(
+        "filled_polygon",
+        vec![
+            Sexp::node("layer", vec![Sexp::string(layer)]),
+            Sexp::node(
+                "pts",
+                points
+                    .into_iter()
+                    .map(|(x, y)| Sexp::node("xy", vec![Sexp::atom(&x), Sexp::atom(&y)]))
+                    .collect(),
+            ),
+        ],
+    ))
 }
 
 /// The `.kicad_pcb` of the board as a tree, before it is written as text: what
@@ -1747,6 +1839,44 @@ mod tests {
 
     fn six() -> Board {
         crate::board::tests::six_layer_board()
+    }
+
+    #[test]
+    fn the_board_fab_writes_holds_each_planes_fill_and_netsmith_reads_it_as_the_board() {
+        // Issue #1184: each plane's zone holds its fill, one `filled_polygon` for each piece on
+        // its layer, and is otherwise the zone `kicad_pcb` writes.
+        let board = six();
+        let plain = kicad_pcb(&board);
+        let filled = kicad_pcb_filled(&board).unwrap();
+        assert!(filled.len() > plain.len());
+        let mut tree = Sexp::parse(&filled).unwrap();
+        let zones: Vec<&Sexp> = tree.find_all("zone").collect();
+        assert_eq!(zones.len(), 2);
+        for z in &zones {
+            let layer = z.find("layer").unwrap().args()[0].text().unwrap();
+            let fills: Vec<&Sexp> = z.find_all("filled_polygon").collect();
+            assert!(!fills.is_empty(), "{layer}");
+            for f in fills {
+                assert_eq!(f.find("layer").unwrap().args()[0].text(), Some(layer));
+                assert!(f.find("pts").unwrap().find_all("xy").count() >= 3);
+            }
+        }
+        if let Sexp::List(items) = &mut tree {
+            for z in items.iter_mut().filter(|i| i.head() == Some("zone")) {
+                if let Sexp::List(fields) = z {
+                    fields.retain(|f| f.head() != Some("filled_polygon"));
+                }
+            }
+        }
+        assert_eq!(tree.to_kicad_string(), plain);
+        // A file netsmith wrote is read with no fill held, so its checks and its Gerbers fill
+        // the zones again, as of the board.
+        assert_eq!(
+            netsmith_geom::Artwork::parse(&filled).unwrap(),
+            netsmith_geom::Artwork::parse(&plain).unwrap()
+        );
+        // A board with no zone that pours copper is the same file either way.
+        assert_eq!(kicad_pcb_filled(&led()).unwrap(), kicad_pcb(&led()));
     }
 
     #[test]
