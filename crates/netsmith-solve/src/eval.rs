@@ -83,6 +83,17 @@ pub fn eval(model: &Model, e: &RExpr) -> Result<Val, EvalError> {
     tight(model, e, &Env::new(), &mut budget, 0)
 }
 
+/// The worst-case value of an expression with some fields held to the values given, in place
+/// of their domains: the values of a named corner of a board (issue #1256).
+pub fn eval_with(
+    model: &Model,
+    e: &RExpr,
+    values: &[(FieldId, Quantity)],
+) -> Result<Val, EvalError> {
+    let mut budget = BUDGET;
+    tight(model, e, &values.to_vec(), &mut budget, 0)
+}
+
 /// Whether `e` has a range with a value at an end somewhere in it (ADR 0066), or reads the end
 /// of a field's range (`min(.f)`, ADR 0098; also `max(.f)` and `nominal(.f)`): neither is a
 /// smooth function of its fields.

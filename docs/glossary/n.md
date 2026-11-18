@@ -1,5 +1,9 @@
 # Glossary: N
 
+**Named corner**:
+A temperature and a point of life a board states as a member of the type `std::env::Corner` (`.eol_cold: Corner { .temperature &= -20degC; .life &= Life::End }`), named by the member: every bound that reads a capacitor's effective capacitance or ESR is judged again there, with the capacitor's figures at that temperature and life, and a finding names it (issue #1256). Not the _Corner_ of the DC analysis, which is a combination of the ends of an island's ranges.
+_Avoid_: Scenario, condition
+
 **Narrowing**:
 Restricting a field to the values that both its current limit and a new constraint allow. `&=` does it (ADR 0018). A default (`?=`) is not a narrowing: it takes effect only when nothing narrows the field.
 

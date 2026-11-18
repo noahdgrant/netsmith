@@ -345,3 +345,54 @@ fn a_row_with_an_empty_esr_cell_leaves_the_ripple_open() {
     );
     assert!(range(&s, "stage.output_ripple").is_none());
 }
+
+/// The 47 uF capacitor of `CAPACITOR_ESR` with its life (issue #1256): it keeps 80 % of its
+/// capacitance and has twice its ESR at the end of its life (invented, as the rest).
+const CAPACITOR_LIFE: &str = "mpn,capacitance,effective_capacitance,max_voltage,package,dielectric,esr,capacitance_at_end_of_life,esr_growth,source
+C47U6,47uF +/- 20%,derate capacitance by bias: 0:1 3:0.8 6.3:0.5,6.3V,0805,X5R,4mohm,0.8,2,invented
+C4U35,4.7uF +/- 10%,derate capacitance by bias: 0:1 10:0.8 35:0.3,35V,1206,X7R,,,,invented
+";
+
+/// The board of `board` with a corner at the end of life.
+fn run_at_end_of_life(extra: &str) -> Solution {
+    let src = board(extra)
+        .replace(
+            "import std::sources::Rail\n",
+            "import std::sources::Rail\nimport std::env::{Corner, Life}\n",
+        )
+        .replace(
+            "board Converter {\n",
+            "board Converter {\n    .eol: Corner { .temperature &= 25degC; .life &= Life::End }\n",
+        );
+    let c = check("ripple.nsm", &src, &Loader::std());
+    assert!(c.is_ok(), "{}", c.render());
+    solve(&c.boards[0], &catalogs_with(CAPACITOR_LIFE))
+}
+
+/// The ripple of one capacitor is 8.50 mV new and 13.73 mV at the end of life (80 % of the
+/// capacitance, 8 mohm), so a limit of 12 mV holds new and fails at the corner, which the error
+/// names; left to choose, the solver takes two capacitors, which hold it at the corner too.
+#[test]
+fn the_ripple_is_judged_at_the_end_of_life_corner() {
+    near(output_ripple(1.0, 4e-3), 8.5013e-3);
+    let at_end = output_ripple(1.0, 8e-3) + output_ripple(1.0, 0.0) * 0.25;
+    near(at_end, 13.7318e-3);
+    let s = run_at_end_of_life("        .output_cap.count &= 1\n        .output_ripple <= 12mV\n");
+    let errors = messages(&s);
+    assert!(
+        errors.iter().any(|e| e.contains("at the corner `eol`")
+            && e.contains("stage.output_ripple must always be at most 12mV")),
+        "{errors:#?}"
+    );
+    let s = run_at_end_of_life("        .output_ripple <= 12mV\n");
+    assert!(messages(&s).is_empty(), "{:#?}", messages(&s));
+    assert_eq!(range(&s, "stage.output_cap.count"), Some((2.0, 2.0)));
+    // The input capacitor's row states nothing of its life, so its check is named, not passed.
+    let notes: Vec<&str> = s.not_evaluated.iter().map(|n| n.message.as_str()).collect();
+    assert!(
+        notes.iter().any(|n| n.contains("at the corner `eol`")
+            && n.contains("stage.input_cap.total_effective_capacitance >= stage.ic.min_input_capacitance")
+            && n.contains("states no `capacitance_at_end_of_life`")),
+        "{notes:#?}"
+    );
+}

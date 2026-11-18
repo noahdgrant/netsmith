@@ -5,8 +5,12 @@
 _Avoid_: Viewer, IDE, GUI
 
 **Effective capacitance**:
-A capacitor's `.effective_capacitance`: the marked value after the DC bias across it and its tolerance, in the worst case over the range the bias can take. A ceramic capacitor holds less than its marked value as the bias rises, so a design states what it needs of the effective capacitance where the circuit depends on it, such as a regulator's output capacitor. The solver works it out from the part's published curve, and a part with no curve cannot be used for it. Temperature and ageing are not part of it yet.
+A capacitor's `.effective_capacitance`: the marked value after the DC bias across it and its tolerance, in the worst case over the range the bias can take. A ceramic capacitor holds less than its marked value as the bias rises, so a design states what it needs of the effective capacitance where the circuit depends on it, such as a regulator's output capacitor. The solver works it out from the part's published curve, and a part with no curve cannot be used for it. Temperature is not part of it; ageing is, at a _Named corner_ at the end of life, where it is multiplied by the part's `.capacitance_at_end_of_life` (issue #1256).
 _Avoid_: Derated capacitance, usable capacitance
+
+**End of life**:
+The point of a capacitor's life its maker rates it for (`Life::End`), at which its endurance test states how much of its capacitance it keeps (`.capacitance_at_end_of_life`, `0.7`) and how many times its ESR it has (`.esr_growth`, `2`). A _Named corner_ at `Life::End` judges the bounds with those figures (issue #1256).
+_Avoid_: EOL (in messages and docs; a member name may use it), aged, worn
 
 **Enclosure**:
 A range that holds whatever a pick later chooses, written before the picks so that a pick that reads a voltage can be judged: each part still to be picked at the hull of what its candidates give its `dc` value (or, when the design limits its current, a load of at most that limit), and a regulator's load: the sum of what the loads on its output draw, each over every pick it could have, when every load has a current the design's relations give, and otherwise (a load that states nothing) from nothing up to the limit the regulator states on what its output supplies. The pass after the picks narrows it to the circuit that was picked (ADR 0076, amendments 5, 6, 7 and 11).

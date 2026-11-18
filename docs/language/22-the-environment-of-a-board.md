@@ -294,6 +294,89 @@ Rules.
 - **Only a part's `.max_voltage` takes steps.** Steps elsewhere (another member, a relation, a value inside arithmetic) are refused with a pointer to this form, and so is a second statement of steps for the same part.
 - **A catalog row can state them.** A `max_voltage` cell may be written in steps, quoted in the CSV for the commas (see Catalog columns, below). The column then holds the greatest step, and a row whose steps do not hold the voltage across the part at a temperature the board reaches is not offered: the solver tries the next row and says how many it left out and why. Steps stated by the design speak for the part, whatever its row says.
 
+### Named corners
+
+A capacitor is not the same part over its life or its temperatures: by the end of the life its maker rates it for it has lost some of its capacitance and its ESR has grown, and its ESR is higher when it is cold. A board says at which conditions it must still work by stating its corners (issue #1256), each a member of the type `std::env::Corner`: one temperature, `.temperature`, and a point of life, `.life`, which is `Life::New` or `Life::End` (both from `std::env`). The member's name is the corner's, and every message about the corner uses it.
+
+```nsm-fragment
+.new: Corner { .temperature &= 25degC; .life &= Life::New }
+.eol_cold: Corner { .temperature &= -20degC; .life &= Life::End }
+```
+
+Every bound (`<=`, `>=`) that reads a capacitor's `.effective_capacitance` or `.esr`, or a value worked out from them, is judged again at each corner: a bank's `.total_effective_capacitance`, the capacitance a regulator asks for (`.output_cap.total_effective_capacitance >= .ic.min_output_capacitance`), a buck stage's `.output_esr` and `.output_ripple`, and a bound of the board's own. At a corner a capacitor has:
+
+- **its effective capacitance** (after the DC bias and the tolerance), times its `.capacitance_at_end_of_life` at `Life::End`;
+- **its ESR** read at the corner's temperature off its row's curve file over `temperature` (see _Curve files_ in the catalogs chapter), times its `.esr_growth` at `Life::End`. A row with no curve gives one figure, which its datasheet states at 25 C, so it stands at a corner of 25degC only; an `.esr` the design states speaks for every temperature.
+
+`capacitance_at_end_of_life` and `esr_growth` are optional columns of the capacitor catalog and optional members of `Capacitor` and `CapacitorBank`, each a plain number from the maker's endurance test: `0.7` for "capacitance change within -30 % of the initial value", `2` for "ESR not more than 200 % of the initial specified value". A curve file of ESR over temperature is `curves/capacitor/<row>.csv` beside the catalog, with the axis `temperature` and the value `esr`:
+
+```text
+temperature,esr
+-40degC,200mohm
+25degC,20mohm
+85degC,15mohm
+```
+
+No standard row states any of them yet, because none has a recorded source (`data/jlcpcb/README.md`); a project adds them to its own rows. This file is invented, like the file of the catalogs chapter: a 100 uF capacitor that keeps half of its capacitance and has three times its ESR at the end of its life.
+
+```csv file=catalogs/capacitor.csv set=life
+mpn,capacitance,effective_capacitance,max_voltage,package,esr,capacitance_at_end_of_life,esr_growth,library,source
+ACME-C100U,100uF +/- 20%,derate capacitance by bias: 0:1 16:1,16V,1210,20mohm,0.5,3,Basic,https://example.invalid/acme-c100u.pdf page 4
+```
+
+A bank that must keep 66 uF is one capacitor for the row's own figures (80 uF at the least) and two at the end of its life (40 uF each at the least), and the solver picks two, because the trial of each candidate judges the bounds at every corner too:
+
+```nsm evaluate catalogs=life
+import std::env::{Corner, Environment, Life}
+import std::parts::passive::CapacitorBank
+import std::sources::Rail
+
+board Backup {
+    .environment: Environment { .temperature &= -20degC..85degC }
+    .new: Corner { .temperature &= 25degC; .life &= Life::New }
+    .eol: Corner { .temperature &= 25degC; .life &= Life::End }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VBAK" }
+    .bulk: CapacitorBank { .capacitance &= 100uF +/- 20% }
+    .supply.pos ~> .bulk ~> .supply.neg
+    .bulk.total_effective_capacitance >= 66uF
+}
+```
+
+A bound that no candidate holds at a corner is an error that names the corner and the values it read there. Here the ESR is 20 mohm for the row's figures and 60 mohm at the end of life:
+
+```nsm fails catalogs=life
+import std::env::{Corner, Environment, Life}
+import std::parts::passive::Capacitor
+import std::sources::Rail
+
+board Backup {
+    .environment: Environment { .temperature &= -20degC..85degC }
+    .eol: Corner { .temperature &= 25degC; .life &= Life::End }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VBAK" }
+    .hold: Capacitor { .capacitance &= 100uF +/- 20% }
+    .supply.pos ~> .hold ~> .supply.neg
+    .loss: Resistance
+    .loss == .hold.esr
+    .loss <= 50mohm
+}
+```
+
+```text
+error: no `capacitor` candidate satisfies `hold`: the closest of the 1 that fit, ACME-C100U, fails because at the corner `eol` (298.15 K (25degC), at the end of life), loss must always be at most 50mΩ, but 60mΩ is not always below 50mΩ (there `hold.esr` is 60mΩ) (rows with an empty cell are never offered, since a part with no stated rating cannot be shown to stay within it: 33 for `esr`)
+   --> main.nsm:13:5
+   |
+13 |     .loss <= 50mohm
+   |     ^^^^^^^^^^^^^^^
+```
+
+Rules.
+
+- **A corner is one temperature inside the board's environment, with a life.** A range, a temperature outside `.environment.temperature`, or a corner with no `.life` is an error that names the corner. A board with no environment may state corners at any temperature.
+- **Only a board states corners.** A `Corner` in a module is an error; each board of a system has its own.
+- **The row's own figures are judged as before.** A corner is a check more, never one less: a board that states no corner is judged as it always was, and the check of the row's figures reads the ESR over the whole environment where the row has a curve.
+- **What a corner cannot read is named, never passed.** A row that states no `capacitance_at_end_of_life` or `esr_growth` at an end-of-life corner, or no curve at a corner away from 25degC (or one that does not reach it), leaves each bound that reads it unjudged at that corner. The pick goes on, and the build lists the bound as not evaluated, with the corner, the part and what to add (`at the corner `eol` (298.15 K (25degC), at the end of life), `kept >= 66uF` is not evaluated: `c` states no `capacitance_at_end_of_life` ...`).
+- **Only bounds are judged at a corner.** An equation whose value a corner moves is worked out again from the corner's values, and is not held against a window stated on the same field. The marked `.capacitance` (a bill of materials' value) is not moved.
+
 ### The manifest's default
 
 `netsmith.toml` can name the environment every board of the project has when it declares none (the key `environment` under `[project]`): the definition of an interface with the field `.temperature`, written as `module::Name`, where the module is a standard one or a file of the project:

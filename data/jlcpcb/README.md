@@ -32,6 +32,7 @@ Every row has a `source` column (`considered.csv` calls it `evidence`) with, in 
 - `bias-curve:` and its test conditions, for a capacitor with a DC-bias curve (below).
 - `esr:` and the cell's figure, for a capacitor row that states an ESR (below): the document, the page, the table or graph and the point it was read at.
 - `curve:`, for a row with a curve file (above): the document, the figure and how its points were read.
+- `life:`, for a capacitor row that states `capacitance_at_end_of_life` or `esr_growth` (issue #1256): the maker's document, the page and the table of its endurance (life) test, with its hours, temperature and voltage, and the limits it prints ("capacitance change within -30 % of the initial value" is `0.7`, "ESR not more than 200 % of the initial specified value" is `2`). **No standard row states either yet**: none has a recorded source, so the solver's tests and the guide use invented rows. An ESR over temperature is a curve file of the `esr` column with the axis `temperature` (above).
 
 The row for C5446 (XC6206) has no date: its source is the two records and the datasheet.
 

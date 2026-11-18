@@ -773,6 +773,9 @@ impl Solver<'_> {
             // A row with no value for a column that the design does not ask about stays
             // unset (`fits` let it through).
             let Some(value) = c.column(key) else { continue };
+            if !self.corners.corners.is_empty() {
+                self.corner_curves.remove(f);
+            }
             let value = match value {
                 Value::Quantity(q) => Domain::Quantity(*q),
                 Value::Text(t) => Domain::Text(t.clone()),
@@ -786,7 +789,13 @@ impl Solver<'_> {
                     Err(_) => continue,
                 },
                 Value::Curved(v) => match self.curved(part, v) {
-                    Ok(q) => Domain::Quantity(q),
+                    Ok(q) => {
+                        if !self.corners.corners.is_empty() {
+                            self.corner_curves
+                                .insert(*f, (std::sync::Arc::clone(&v.curve), Domain::Quantity(q)));
+                        }
+                        Domain::Quantity(q)
+                    }
                     Err(_) => continue,
                 },
             };
@@ -918,7 +927,7 @@ impl Solver<'_> {
             fields_in(&r.lhs, &mut own);
             fields_in(&r.rhs, &mut own);
             let verdict = if whole {
-                self.verify(r)
+                self.verify_cornered(r)
             } else {
                 self.verify_possible(r)
             };

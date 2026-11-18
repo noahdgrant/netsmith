@@ -267,6 +267,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 mod ahead;
 mod candidates;
+mod corners;
 mod coupling;
 mod dcpass;
 mod equations;
@@ -906,7 +907,10 @@ pub fn solve_system(system: &System, catalogs: &Catalogs) -> Solution {
 }
 
 fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
+    let (corners, corners_refused) = corners::Corners::of(model, model.relations().len());
     let mut s = Solver {
+        corners,
+        corner_curves: Default::default(),
         model: model.clone(),
         catalogs,
         locked: catalogs
@@ -958,6 +962,9 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         aside: HashMap::new(),
     };
     job::checkpoint();
+    for (source, span, message) in corners_refused {
+        s.report(source, span, message);
+    }
     s.relax_pinned();
     s.refuse_stray_hand_picks();
     s.fed_at_start = s.fed_at_start();
@@ -1024,12 +1031,15 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         .collect();
     let mut chains_waiting: Vec<usize> = Vec::new();
     s.add_transfers();
+    // The design's bounds that held: a named corner that could not judge one says so.
+    let mut passed: Vec<usize> = Vec::new();
     for (i, r) in s.model.relations().to_vec().iter().enumerate() {
         job::checkpoint();
         // A bound that the solver added says nothing when it holds or cannot be judged (the
         // design's own bound is the line that waits), and says why when it fails.
         let own = i >= s.original_relations;
-        match s.verify(r) {
+        match s.verify_cornered(r) {
+            Verdict::Pass if !own => passed.push(i),
             Verdict::Pass => {}
             Verdict::Unknown if own || between_parts.contains(&i) => {}
             // A member that a catalog column provides and the picked row leaves empty (ADR
@@ -1057,6 +1067,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
             }
         }
     }
+    let corner_notes = s.corner_notes(&passed);
     s.drop_transfers();
     for i in chains_waiting {
         let r = &s.model.relations()[i];
@@ -1082,6 +1093,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
     not_evaluated.extend(crate::busclock::notes(&s.model));
     not_evaluated.extend(crate::busfigures::notes(&s.model, &deferred));
     not_evaluated.extend(dc_notes);
+    not_evaluated.extend(corner_notes);
     // A bus on which one part states its role and another does not (ADR 0064).
     for (at, message) in netsmith_check::unstated_roles(&s.model) {
         not_evaluated.push(crate::levels::NotEvaluated {
@@ -1327,6 +1339,11 @@ fn hand_picks(model: &Model) -> BTreeMap<String, HandPick> {
 
 struct Solver<'a> {
     model: Model,
+    /// The named corners the boards state and what they move (issue #1256).
+    corners: corners::Corners,
+    /// The curve each column read off a curve file was given from, with the domain it gave, so
+    /// that a corner reads the curve at its own temperature.
+    corner_curves: corners::CornerCurves,
     catalogs: &'a Catalogs,
     /// The rows a pick lock holds the parts of this board or system to, by path (see
     /// `PickLock`). A part held to a row by `Catalogs::with_pin` is not held by the lock.
