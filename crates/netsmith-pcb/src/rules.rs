@@ -253,7 +253,12 @@ impl Rules {
             ("track_dangling", "error"),
             ("track_width", "error"),
             ("unconnected_items", "error"),
-            ("via_dangling", "error"),
+            // KiCad's own default. `fab` puts vias of one net side by side where one does not
+            // carry its current (issue #431), and KiCad counts a via on its top layer alone, so it
+            // calls each extra via dangling although their copper runs together on every layer
+            // (issue #1207). netsmith's check judges the group, so a via it calls dangling is
+            // one; a warning keeps KiCad's own check from failing a board `fab` made.
+            ("via_dangling", "warning"),
         ]
         .iter()
         .map(|(k, v)| (*k, Text((*v).to_string())))
@@ -942,6 +947,8 @@ mod tests {
             r#""min_text_thickness": 0.15"#,
             r#""silk_over_copper": "warning""#,
             r#""solder_mask_bridge": "warning""#,
+            r#""via_dangling": "warning""#,
+            r#""track_dangling": "error""#,
             r#""clearance": "error""#,
             r#""filename": "Led.kicad_pro""#,
         ] {

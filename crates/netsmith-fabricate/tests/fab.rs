@@ -18,6 +18,7 @@ const REGULATOR: &str = include_str!("../../../examples/linear_regulator.nsm");
 const FOUR_LAYER: &str = include_str!("../../../examples/four_layer.nsm");
 const SIX_LAYER: &str = include_str!("../../../examples/six_layer.nsm");
 const TEN_LAYER: &str = include_str!("../../../examples/ten_layer.nsm");
+const BUCK_CONVERTER: &str = include_str!("../../../examples/buck_converter.nsm");
 const TWO_BOARDS: &str = include_str!("../../../examples/two_boards.nsm");
 const OUTLINE_AND_POURS: &str = include_str!("../../../examples/outline_and_pours.nsm");
 const OUTLINE_AND_POURS_PHYSICAL: &str =
@@ -1278,6 +1279,57 @@ fn cross_checked(name: &str, source: &str) {
         );
         assert!(!board.notes.contains("viewer comparison alone"), "{}", board.notes);
     }
+}
+
+/// The vias `fab` puts side by side for a current one via does not carry (issue #431) are
+/// `via_dangling` to KiCad, which counts a via on its top layer alone (issue #1207): the project
+/// file `fab` writes makes the rule a warning, so KiCad's own check of the board has no error,
+/// and the cross-check, which leaves a via of a cluster out, still agrees.
+#[test]
+fn kicads_check_of_a_via_cluster_board_calls_the_extra_vias_dangling_as_warnings_only() {
+    let Some(cli) = kicad() else { return };
+    let dir = out("cluster-dangling");
+    let made = fab_with_options(
+        "buck_converter.nsm",
+        BUCK_CONVERTER,
+        &netsmith_check::Loader::std(),
+        &dir,
+        &Catalogs::jlcpcb(),
+        &Libraries::standard(),
+        Some(&cli),
+        &FabOptions {
+            cross_check: true,
+            ..FabOptions::default()
+        },
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    for board in &made {
+        assert!(
+            board
+                .notes
+                .contains("cross-check against KiCad: the files agree"),
+            "{}",
+            board.notes
+        );
+    }
+    let name = "BuckConverterExample";
+    let pro = read(&dir, name, &format!("{name}.kicad_pro"));
+    assert!(pro.contains(r#""via_dangling": "warning""#), "{pro}");
+    let json = cli
+        .drc_json(&dir.join(name).join(format!("{name}.kicad_pcb")))
+        .unwrap_or_else(|e| panic!("{e}"));
+    let found = netsmith_fab::parse_kicad_drc(&json).unwrap();
+    let dangling: Vec<_> = found.iter().filter(|k| k.kind == "via_dangling").collect();
+    assert!(
+        !dangling.is_empty(),
+        "KiCad finds the extra vias of the cluster dangling:\n{found:#?}"
+    );
+    assert!(
+        dangling.iter().all(|k| k.severity.word() == "warning"),
+        "{dangling:#?}"
+    );
+    let errors: Vec<_> = found.iter().filter(|k| k.severity.word() == "error").collect();
+    assert!(errors.is_empty(), "KiCad's check has no error: {errors:#?}");
 }
 
 /// `--cross-check` with no KiCad runs netsmith's viewer comparison alone (issue #1158): the
