@@ -91,6 +91,10 @@
 //! the minimum thickness). On a routed board of four layers this was most pads of its ground pours
 //! that no spoke joins, and KiCad's refill makes none of their spokes either; KiCad's check leaves
 //! such a pad to its connection check, where netsmith's check calls it `unjoinable_thermal`.
+//! A pad that another fill of its net joins is not one ([`judge_board`], issue #1292): a zone of
+//! the net of a higher priority over it, whose area the lower zone gives up after its spokes are
+//! made, so that none of them is on the lower zone's fill, or a fill on another layer of a pad
+//! with a hole. Both the check and [`pad_joins`] judge every layer at once by that function.
 //!
 //! **Where it differs from KiCad.** Copper islands are removed once every zone of the layer is
 //! filled, and a zone of lower priority keeps away from a higher one's fill as it was before its
@@ -690,6 +694,23 @@ pub(crate) struct Relief {
     pub tracks: usize,
     /// Of a relief no spoke of which reaches the fill: why ([`Unjoinable`]).
     pub unjoinable: Option<Unjoinable>,
+    /// Whether another fill of the pad's net joins the pad, on this layer or another
+    /// ([`judge_board`], issue #1292): a zone of the net of a higher priority that joins it
+    /// solid, or whose spokes reach it. Such a pad is not [`unjoinable`].
+    pub elsewhere: bool,
+}
+
+impl Relief {
+    /// Whether the fill joins the relief by nothing and no other fill of its net joins the pad
+    /// ([`unjoinable`]): the design rules check's `unjoinable_thermal`.
+    pub(crate) fn unjoined(&self) -> bool {
+        unjoinable(self.reach, self.tracks, self.elsewhere)
+    }
+
+    /// Whether this fill joins the pad at all, by a spoke or a track.
+    fn joins(&self) -> bool {
+        self.reach + self.tracks > 0
+    }
 }
 
 /// The fewest spokes (or tracks of the pad's net onto the fill) that join a thermal relief to
@@ -719,7 +740,7 @@ impl ThermalJoin {
     /// relief ([`starved`]) or one it joins by nothing ([`unjoinable`]). The router keeps such a
     /// pad's own via and track.
     pub fn starved(&self) -> bool {
-        starved(self.reach, self.lone, self.tracks) || unjoinable(self.reach, self.tracks)
+        starved(self.reach, self.lone, self.tracks) || unjoinable(self.reach, self.tracks, false)
     }
 }
 
@@ -744,11 +765,14 @@ pub(crate) fn starved(reach: usize, lone: usize, tracks: usize) -> bool {
 }
 
 /// Whether the fill joins a relief by nothing: no spoke reaches the fill and no track of the
-/// pad's net runs from the pad onto it (issue #1222). The fill can do nothing about it (each
-/// spoke is made where its end is on the fill, [`Unjoinable`] says why none is), so the pad is
-/// joined to its net by its own copper, a via or a track, which the router keeps for it.
-pub(crate) fn unjoinable(reach: usize, tracks: usize) -> bool {
-    reach == 0 && tracks == 0
+/// pad's net runs from the pad onto it (issue #1222), and no other fill of the net joins the
+/// pad (`elsewhere`, issue #1292: a zone of the net of a higher priority over the pad, which the
+/// lower one gives its area, or a fill on another layer of a pad with a hole). The fill can do
+/// nothing about it (each spoke is made where its end is on the fill, [`Unjoinable`] says why
+/// none is), so the pad is joined to its net by its own copper, a via or a track, which the
+/// router keeps for it.
+pub(crate) fn unjoinable(reach: usize, tracks: usize, elsewhere: bool) -> bool {
+    reach == 0 && tracks == 0 && !elsewhere
 }
 
 /// Why the fill can join a thermal relief by none of its spokes (issue #1222).
@@ -881,13 +905,16 @@ pub enum Join {
     /// A thermal relief: how many spokes it has (none where the pad is too narrow for one), how
     /// many of them reach the fill, and how many tracks of the pad's net on the layer run from
     /// the pad onto the fill, which join it as a spoke does ([`ThermalJoin`]); and when no spoke
-    /// reaches the fill, why ([`Unjoinable`], issue #1222).
+    /// reaches the fill, why ([`Unjoinable`], issue #1222); and whether another fill of the
+    /// pad's net joins the pad, which makes it not unjoinable ([`Relief::elsewhere`], issue
+    /// #1292).
     Thermal {
         spokes: usize,
         reach: usize,
         lone: usize,
         tracks: usize,
         unjoinable: Option<Unjoinable>,
+        elsewhere: bool,
     },
     /// Not at all: the zone's pad connection is `none`, and the fill keeps its clearance round
     /// the pad.
@@ -904,15 +931,16 @@ impl Join {
 
     /// Why the pour joins the pad by nothing, a thermal relief no spoke and no track of which
     /// reaches the fill (the design rules check's `unjoinable_thermal`, issue #1222); `None`
-    /// for a pad it joins.
+    /// for a pad it joins, and for one another fill of its net joins (issue #1292).
     pub fn unjoinable(&self) -> Option<&Unjoinable> {
         match self {
             Join::Thermal {
                 reach,
                 tracks,
                 unjoinable: why,
+                elsewhere,
                 ..
-            } if unjoinable(*reach, *tracks) => why.as_ref(),
+            } if unjoinable(*reach, *tracks, *elsewhere) => why.as_ref(),
             _ => None,
         }
     }
@@ -954,23 +982,31 @@ pub struct ZoneJoins {
     pub fill: Vec<Area>,
 }
 
-/// What the fill of each zone of a net on `layer` does with the pads in it ([`ZoneJoins`]), in
-/// the order of the board's zones: the same fill and the same count of spokes as the design
-/// rules check's `starved_thermal` and `isolated_copper`, and the fill [`pour`] writes into the
-/// Gerbers.
+/// What the fill of each zone of a net on each copper layer of the board does with the pads in
+/// it ([`ZoneJoins`]), by layer from the top and in the order of the board's zones: the same
+/// fill, the same count of spokes and the same join ([`judge_board`]) as the design rules
+/// check's `starved_thermal`, `unjoinable_thermal` and `isolated_copper`, and the fill [`pour`]
+/// writes into the Gerbers.
 pub fn pad_joins(
     art: &Artwork,
-    layer: &str,
     edge: &BoardEdge,
     rules: &Rules,
-) -> Result<Vec<ZoneJoins>, String> {
+) -> Result<Vec<(String, Vec<ZoneJoins>)>, String> {
+    judge_board(art, &art.copper, edge, rules, None)
+        .into_iter()
+        .map(|(layer, judged)| Ok((layer.to_string(), zone_joins(art, layer, judged?))))
+        .collect()
+}
+
+/// [`pad_joins`] of one layer, from its fills as [`judge_board`] judges them.
+fn zone_joins(art: &Artwork, layer: &str, judged: Vec<Judged>) -> Vec<ZoneJoins> {
     let at = |pad: &Pad| PadAt {
         part: pad.part.clone(),
         number: pad.number.clone(),
         net: pad.net.clone(),
         at: pad.at,
     };
-    Ok(judge(art, layer, edge, rules, None)?
+    judged
         .into_iter()
         .map(|j| {
             let z = &art.zones[j.zone];
@@ -992,14 +1028,13 @@ pub fn pad_joins(
                             lone: r.lone,
                             tracks: r.tracks,
                             unjoinable: r.unjoinable.clone(),
+                            elsewhere: r.elsewhere,
                         },
                         None => continue,
                     },
                     Connect::None => Join::Unjoined,
                     _ => Join::Solid {
-                        touched: pads::outline(pad)
-                            .polygon()
-                            .is_some_and(|p| overlap(&j.fill, &[Area::of(&p)])),
+                        touched: touches(pad, &j.fill),
                     },
                 };
                 pads.push((at(pad), join));
@@ -1015,7 +1050,69 @@ pub fn pad_joins(
                 fill: j.fill,
             }
         })
-        .collect())
+        .collect()
+}
+
+/// Whether a fill reaches a pad's copper: how a zone that joins the pad solid joins it.
+fn touches(pad: &Pad, fill: &[Area]) -> bool {
+    pads::outline(pad)
+        .polygon()
+        .is_some_and(|p| overlap(fill, &[Area::of(&p)]))
+}
+
+/// The fills of every layer of `layers` ([`judge`]), with each thermal relief that joins nothing
+/// marked when another fill of its net joins the pad ([`Relief::elsewhere`], issue #1292): a zone
+/// of the net of a higher priority over the pad, which the lower one gives its area (so none of
+/// the lower one's spokes is on its fill, though the pad is in copper of its net), or, of a pad
+/// with copper on more than one layer, a fill of another layer. A fill joins a pad when it joins
+/// it solid and reaches it, or when a spoke or a track of its relief reaches it. The design rules
+/// check and [`pad_joins`] (`board fill`, `fab`'s notes, the editor) judge the pads by this one
+/// function, so they cannot differ. A layer whose zones cannot be filled is the error of that
+/// layer, and its fills join nothing.
+pub(crate) fn judge_board<'a>(
+    art: &Artwork,
+    layers: &'a [String],
+    edge: &BoardEdge,
+    rules: &Rules,
+    sliver_width: Option<f64>,
+) -> Vec<(&'a str, Result<Vec<Judged>, String>)> {
+    let mut judged: Vec<(&str, Result<Vec<Judged>, String>)> = layers
+        .iter()
+        .map(|l| (l.as_str(), judge(art, l, edge, rules, sliver_width)))
+        .collect();
+    // The fills that join each pad, by the zone's index and the layer.
+    let mut joined: std::collections::HashMap<usize, Vec<(usize, &str)>> = Default::default();
+    for (layer, j) in &judged {
+        for j in j.iter().flatten() {
+            let z = &art.zones[j.zone];
+            let outline = outline_area(z);
+            for (k, pad) in art.pads.iter().enumerate().filter(|(_, p)| {
+                own_net(z, &p.net)
+                    && art.pad_copper_on(p, layer)
+                    && outline.iter().any(|a| a.contains(p.at))
+            }) {
+                let joins = match connection(pad, z) {
+                    Connect::Thermal => j.reliefs.iter().any(|r| r.pad == k && r.joins()),
+                    Connect::None => false,
+                    _ => touches(pad, &j.fill),
+                };
+                if joins {
+                    joined.entry(k).or_default().push((j.zone, *layer));
+                }
+            }
+        }
+    }
+    for (layer, j) in &mut judged {
+        for j in j.iter_mut().flatten() {
+            let zone = j.zone;
+            for r in &mut j.reliefs {
+                r.elsewhere = joined
+                    .get(&r.pad)
+                    .is_some_and(|by| by.iter().any(|&(z, l)| (z, l) != (zone, &**layer)));
+            }
+        }
+    }
+    judged
 }
 
 /// Points along a track, at most 0.05 mm apart, its two ends among them.
@@ -1166,6 +1263,7 @@ pub(crate) fn judge(
                 lone,
                 tracks,
                 unjoinable,
+                elsewhere: false,
             });
         }
         let others = || -> Vec<Area> {
@@ -2367,6 +2465,16 @@ mod tests {
     }
 
     /// The spokes of each GND pad that reach the fill, by its part, as the check counts them.
+    /// [`pad_joins`] of F.Cu.
+    fn layer_joins(a: &Artwork, edge: &BoardEdge) -> Vec<ZoneJoins> {
+        pad_joins(a, edge, &rules())
+            .unwrap()
+            .into_iter()
+            .find(|(l, _)| l == "F.Cu")
+            .map(|(_, j)| j)
+            .unwrap_or_default()
+    }
+
     fn reaching(a: &Artwork) -> Vec<(String, usize, usize)> {
         let edge = crate::edge::outline(a).unwrap();
         let mut out: Vec<(String, usize, usize)> = judge(a, "F.Cu", &edge, &rules(), None)
@@ -2469,7 +2577,7 @@ mod tests {
         let a = with_relief(art(&pad), 0.2, 0.25, 0.25);
         assert_eq!(reaching(&a), [("U1".to_string(), 0, 0)]);
         let edge = crate::edge::outline(&a).unwrap();
-        let joins = pad_joins(&a, "F.Cu", &edge, &rules()).unwrap();
+        let joins = layer_joins(&a, &edge);
         let join = &joins[0].pads[0].1;
         assert_eq!(
             join.unjoinable(),
@@ -2529,7 +2637,7 @@ mod tests {
         let a = art(&items);
         assert_eq!(reaching(&a), [("U1".to_string(), 4, 0)]);
         let edge = crate::edge::outline(&a).unwrap();
-        let joins = pad_joins(&a, "F.Cu", &edge, &rules()).unwrap();
+        let joins = layer_joins(&a, &edge);
         let (_, join) = joins[0].pads.iter().find(|(p, _)| p.part == "U1").unwrap();
         assert!(!join.starved(), "no spoke: not starved");
         let Some(Unjoinable::Blocked(blockers)) = join.unjoinable() else {
@@ -2546,6 +2654,56 @@ mod tests {
                 "the clearance of track [SIG] (0.3 mm)",
                 "the clearance of track [SIG] (0.3 mm)",
             ]
+        );
+    }
+
+    #[test]
+    fn a_relief_no_spoke_reaches_is_not_unjoinable_where_another_fill_of_its_net_joins_the_pad() {
+        // Issue #1292. A 1 mm GND pad at (10, 10) whose four spokes on F.Cu SIG tracks cut.
+        let cut = r#"
+            (segment (start 8.7 5) (end 8.7 15) (width 0.2) (layer "F.Cu") (net 2))
+            (segment (start 11.3 5) (end 11.3 15) (width 0.2) (layer "F.Cu") (net 2))
+            (segment (start 9 8.7) (end 11 8.7) (width 0.2) (layer "F.Cu") (net 2))
+            (segment (start 9 11.3) (end 11 11.3) (width 0.2) (layer "F.Cu") (net 2))"#;
+        let unjoinable = |items: &str| -> Vec<(String, bool)> {
+            let a = art(&format!("{GND_VIA} {cut} {items}"));
+            let edge = crate::edge::outline(&a).unwrap();
+            let mut out: Vec<(String, bool)> = pad_joins(&a, &edge, &rules())
+                .unwrap()
+                .into_iter()
+                .flat_map(|(l, z)| z.into_iter().map(move |z| (l.clone(), z)))
+                .flat_map(|(l, z)| {
+                    z.pads
+                        .into_iter()
+                        .filter(|(_, j)| matches!(j, Join::Thermal { reach: 0, .. }))
+                        .map(move |(_, j)| (l.clone(), j.unjoinable().is_some()))
+                })
+                .collect();
+            out.sort();
+            out
+        };
+        let smd = r#"(footprint "L:R" (layer "F.Cu") (at 10 10) (property "Reference" "R1")
+            (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 1 "GND")))"#;
+        assert_eq!(unjoinable(smd), [("F.Cu".to_string(), true)]);
+        // A solid GND zone of a higher priority over the pad on F.Cu: the pour gives it the
+        // area, and its fill joins the pad.
+        let solid = r#"(zone (net 1) (net_name "GND") (layer "F.Cu") (priority 1) (connect_pads yes (clearance 0.3)) (min_thickness 0.25)
+            (fill yes (thermal_gap 0.5) (thermal_bridge_width 0.5))
+            (polygon (pts (xy 9.2 9.2) (xy 10.8 9.2) (xy 10.8 10.8) (xy 9.2 10.8))))"#;
+        assert_eq!(
+            unjoinable(&format!("{smd} {solid}")),
+            [("F.Cu".to_string(), false)]
+        );
+        // A through-hole pad that a solid GND zone on B.Cu joins.
+        let tht = r#"(footprint "L:R" (layer "F.Cu") (at 10 10) (property "Reference" "J1")
+            (pad "1" thru_hole rect (at 0 0) (size 1 1) (drill 0.5) (layers "*.Cu") (net 1 "GND")))"#;
+        assert_eq!(unjoinable(tht), [("F.Cu".to_string(), true)]);
+        let back = r#"(zone (net 1) (net_name "GND") (layer "B.Cu") (connect_pads yes (clearance 0.3)) (min_thickness 0.25)
+            (fill yes (thermal_gap 0.5) (thermal_bridge_width 0.5))
+            (polygon (pts (xy 0.2 0.2) (xy 19.8 0.2) (xy 19.8 19.8) (xy 0.2 19.8))))"#;
+        assert_eq!(
+            unjoinable(&format!("{tht} {back}")),
+            [("F.Cu".to_string(), false)]
         );
     }
 

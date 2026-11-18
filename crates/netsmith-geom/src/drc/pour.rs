@@ -29,7 +29,11 @@
 //! spokes (`fill::Unjoinable`: the spoke under the minimum thickness, or what keeps the fill off
 //! the end of each, another net's clearance by name, the edge, a keepout, a strip of fill
 //! narrower than the minimum thickness): nothing the fill can do, so the pad is joined by its own
-//! via or track, which the router keeps for it. With a track and no spoke, neither is reported. KiCad does not count a spoke onto a piece of the fill that joins
+//! via or track, which the router keeps for it. With a track and no spoke, neither is reported,
+//! nor where another fill of the pad's net joins it (issue #1292: a zone of the net of a higher
+//! priority over the pad, which the pour gives its area, or a fill on another layer of a pad with
+//! a hole): every layer is judged at once (`fill::judge_board`), by the one function `board fill`
+//! reads too. KiCad does not count a spoke onto a piece of the fill that joins
 //! nothing but the pad; here every spoke on the fill counts. Of a fill the file holds, a piece of
 //! copper across the gap off the spokes' axes is not counted, which KiCad counts.
 //!
@@ -88,9 +92,13 @@ pub(crate) fn run(out: &mut Out<'_>) {
             .cloned()
             .collect(),
     };
-    for layer in &m.layers {
+    // Every layer at once, so that a pad another fill of its net joins is not unjoinable
+    // (`fill::judge_board`, issue #1292).
+    for (layer, judged) in
+        fill::judge_board(m.art, &m.layers, &edge, &rules, slivers.then_some(width))
+    {
         // Two zones that overlap with the same priority cannot be filled: `fab` says so.
-        let Ok(judged) = fill::judge(m.art, layer, &edge, &rules, slivers.then_some(width)) else {
+        let Ok(judged) = judged else {
             continue;
         };
         for j in judged {
@@ -108,7 +116,7 @@ pub(crate) fn run(out: &mut Out<'_>) {
                 net: zone.net.clone(),
             };
             for r in j.reliefs {
-                let unjoined = fill::unjoinable(r.reach, r.tracks);
+                let unjoined = r.unjoined();
                 if !(starved && fill::starved(r.reach, r.lone, r.tracks) || unjoinable && unjoined)
                 {
                     continue;
@@ -308,6 +316,21 @@ mod tests {
         // With a track of the pad's net onto the fill, the pour joins it: neither.
         let joined = board("", &format!("{none} {TRACK}"));
         assert_eq!(joined.count(Rule::UnjoinableThermal), 0, "{joined}");
+    }
+
+    /// A solid GND zone of a higher priority over the pad, as a zone of the routes file over a
+    /// board's pour is.
+    const SOLID_ZONE: &str = r#"(zone (net 1) (net_name "GND") (layer "F.Cu") (priority 1) (connect_pads yes (clearance 0.3)) (min_thickness 0.25)
+        (fill yes (thermal_gap 0.5) (thermal_bridge_width 0.5))
+        (polygon (pts (xy 7 7) (xy 13 7) (xy 13 13) (xy 7 13))))"#;
+
+    #[test]
+    fn a_pad_a_solid_zone_of_its_net_joins_is_not_unjoinable_in_the_pour_under_it() {
+        // Issue #1292: the pour gives the higher zone its area, so none of the pour's spokes is
+        // on the pour's fill, but the zone's fill joins the pad solid.
+        let found = board("", &format!("{PAD} {SOLID_ZONE}"));
+        assert_eq!(found.count(Rule::UnjoinableThermal), 0, "{found}");
+        assert_eq!(found.count(Rule::StarvedThermal), 0, "{found}");
     }
 
     /// A GND track from the pad's centre out past its relief's corner, onto the fill.

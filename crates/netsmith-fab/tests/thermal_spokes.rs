@@ -135,14 +135,14 @@ fn a_pad_whose_fill_beside_it_is_thinner_than_the_minimum_is_starved_as_kicad_fi
 /// with the fill the Gerbers hold.
 #[test]
 fn the_report_of_the_pads_of_a_pour_counts_what_the_check_and_the_gerbers_have() {
-    use netsmith_geom::{Artwork, PadJoin, Polygons, edge_outline, fill_pour, pad_joins, plot_rules_of};
+    use netsmith_geom::{Artwork, PadJoin, Polygons, edge_outline, fill_pour, plot_rules_of};
 
     let mut b = board();
     let (pcb, pro) = (b.pcb(), b.pro());
     let art = Artwork::parse(&pcb).unwrap();
     let edge = edge_outline(&art).unwrap();
     let rules = plot_rules_of(Some(&pro));
-    let joins = pad_joins(&art, "F.Cu", &edge, &rules).unwrap();
+    let joins = front_joins(&art, &edge, &rules);
     assert_eq!(joins.len(), 1, "one GND zone");
     let zone = &joins[0];
     let mut joined: Vec<(&str, usize, usize)> = zone
@@ -204,13 +204,13 @@ fn the_report_of_the_pads_of_a_pour_counts_what_the_check_and_the_gerbers_have()
 /// copper, is one more than the board without the track has.
 #[test]
 fn the_report_says_which_copper_islands_the_fill_took_out() {
-    use netsmith_geom::{Artwork, edge_outline, pad_joins, plot_rules_of};
+    use netsmith_geom::{Artwork, edge_outline, plot_rules_of};
 
     let removed = |b: &mut Pcb| {
         let (pcb, pro) = (b.pcb(), b.pro());
         let art = Artwork::parse(&pcb).unwrap();
         let edge = edge_outline(&art).unwrap();
-        let joins = pad_joins(&art, "F.Cu", &edge, &plot_rules_of(Some(&pro))).unwrap();
+        let joins = front_joins(&art, &edge, &plot_rules_of(Some(&pro)));
         assert!(joins[0].islands.is_empty(), "the zone removes its islands");
         joins[0].removed.clone()
     };
@@ -273,12 +273,11 @@ fn swept(spoke: f64, gap: f64, min: f64) -> Pcb {
 /// `pad_joins` counts them: of the fill the file holds where it holds one (a board KiCad refilled
 /// and saved), else of netsmith's.
 fn reach_of(pcb: &str, pro: &str) -> Vec<(String, usize)> {
-    use netsmith_geom::{Artwork, PadJoin, edge_outline, pad_joins, plot_rules_of};
+    use netsmith_geom::{Artwork, PadJoin, edge_outline, plot_rules_of};
     let art = Artwork::parse(pcb).unwrap();
     let edge = edge_outline(&art).unwrap();
     let rules = plot_rules_of(Some(pro));
-    let mut out: Vec<(String, usize)> = pad_joins(&art, "F.Cu", &edge, &rules)
-        .unwrap()
+    let mut out: Vec<(String, usize)> = front_joins(&art, &edge, &rules)
         .into_iter()
         .flat_map(|z| z.pads)
         .filter_map(|(p, j)| match j {
@@ -427,7 +426,7 @@ fn meeting() -> Pcb {
 
 #[test]
 fn kicads_check_of_the_fill_netsmith_writes_finds_what_netsmiths_check_finds() {
-    use netsmith_geom::{Artwork, edge_outline, pad_joins, plot_rules_of};
+    use netsmith_geom::{Artwork, edge_outline, plot_rules_of};
     let mut b = meeting();
     let (pcb, pro) = (b.pcb(), b.pro());
     // D has the spoke to the right, into the strip beside the higher zone, and no other.
@@ -446,7 +445,7 @@ fn kicads_check_of_the_fill_netsmith_writes_finds_what_netsmiths_check_finds() {
     // E's two pieces are taken out, as islands.
     let art = Artwork::parse(&pcb).unwrap();
     let edge = edge_outline(&art).unwrap();
-    let joins = pad_joins(&art, "F.Cu", &edge, &plot_rules_of(Some(&pro))).unwrap();
+    let joins = front_joins(&art, &edge, &plot_rules_of(Some(&pro)));
     let inside = |p: &Pt| (14.0..20.0).contains(&p.x) && (6.0..12.0).contains(&p.y);
     let removed = joins
         .iter()
@@ -479,4 +478,18 @@ fn kicads_check_of_the_fill_netsmith_writes_finds_what_netsmiths_check_finds() {
     assert_eq!(of("isolated_copper"), Vec::<String>::new());
     assert_eq!(of("copper_sliver"), Vec::<String>::new());
     assert_eq!(of("clearance"), Vec::<String>::new());
+}
+
+/// What the fill of F.Cu does with the pads in it (`netsmith_geom::pad_joins` of that layer).
+fn front_joins(
+    art: &netsmith_geom::Artwork,
+    edge: &netsmith_geom::EdgeOutline,
+    rules: &netsmith_geom::PlotRules,
+) -> Vec<netsmith_geom::ZoneJoins> {
+    netsmith_geom::pad_joins(art, edge, rules)
+        .unwrap()
+        .into_iter()
+        .find(|(l, _)| l == "F.Cu")
+        .map(|(_, j)| j)
+        .unwrap_or_default()
 }
