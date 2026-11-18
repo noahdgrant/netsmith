@@ -11,7 +11,9 @@ How to move a project:
 
 Every change below that makes source an error was a pull request whose title has `!` (a breaking change in Conventional Commits), and the release notes on GitHub list those commits. A change that will make source an error adds its entry under _Unreleased_ in the same pull request (`AGENTS.md`, ADR 0134).
 
-## Unreleased: changes since 0.1.0
+## Unreleased
+
+## 0.3.0: changes since 0.2.0
 
 ### The commands are grouped under nouns (issue #1090)
 
@@ -53,6 +55,20 @@ Every command is `netsmith <noun> <verb>` now. An old command or flag is an erro
 | `netsmith board3d --json` | `netsmith dev board3d --format json` |
 
 The catalog commands (`netsmith catalog refresh`, `add`, `age`) and the verbs of `layout` and `routes` are as they were. No source file changes. A project's agent files name the old commands until `netsmith project refresh` rewrites them (a file you edited is listed with a diff, ADR 0131).
+
+### What changed with no error
+
+These change what `fab` makes or what the checks find, without an error in the source:
+
+- **Routing.** The router has a further stage when connections are still open: rounds that rip up and re-route whole nets (`--rip-rounds`, `rip_rounds` in `netsmith.toml`; 0 turns them off, issue #1088). A board that routed fully is unchanged; one that did not may now route.
+- **Pours.** A pour's thermal spokes follow KiCad's refill (a spoke never wider than its pad, none where not enough pour is left at its end), so `starved_thermal` names the pads KiCad's check does and a pad's own via stays where the pour would join it by fewer than two spokes (issue #1115). A pour also has `.clearance`, `.min_width` and `.pads` (issue #1084).
+- **Vias in pads.** `fab-notes.txt` and `order.txt` say how many vias stand in pads; `netsmith project order` stops until the extra cost is accepted (`via_in_pad = "accepted"` in the order's table, or `--accept-via-in-pad`; `.process.via_in_pad &= 0mm` forbids them) (issue #1118).
+- **Height check.** One `height_unknown` warning lists the parts of unknown height under a limit or under another part's body (issue #1117).
+- **`fab --cross-check`** runs netsmith's own comparison of the Gerbers with the board model as well, and runs it alone where KiCad is not installed (it was an error then) (issue #1158).
+- **The schematic.** `board fab` writes `<board>-schematic.pdf` into each package (`pdf = false` or `--no-pdf` leave it out) (issue #1091).
+- **Layout.** `netsmith project fmt` is the layout of `.nsm` source; the repository's examples and `std/` are formatted (issue #1103). A project's own files need no change.
+
+## 0.2.0: changes since 0.1.0
 
 ### A pin's function is a name from its part's pin table (ADR 0118)
 
