@@ -18,6 +18,10 @@ name: release
 on:
   push:
     tags: ["v*"]
+  # The release pull request calls this file (ci.yml, `release-build`): the same build, smoke test
+  # and pack on the three systems, before the tag is made, so a failure shows on the pull request
+  # and not after the release is published. `publish` runs for a tag only.
+  workflow_call:
   # A run by hand builds, smoke-tests and packs on the three systems of the branch it is run on,
   # attaches nothing to any release and checks nothing against a tag: a way to try this file
   # without cutting a release.
