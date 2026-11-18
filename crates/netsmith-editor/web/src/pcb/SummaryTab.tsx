@@ -22,6 +22,10 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
   // What the server said of the last pair asked for, which is then taken off again.
   const [refused, setRefused] = useState<string | null>(null);
   const [within, setWithin] = useState(2);
+  // The distance as typed, taken as `within` when the box is left (its change). Held apart so that
+  // a render while it is typed in (an answer that arrives: the fill's takes a while) keeps what is
+  // typed, where a box that shows `within` alone would be set back to the last distance.
+  const [withinText, setWithinText] = useState('2');
   const [pairs, setPairs] = useState<[string, string][]>([]);
   const [a, setA] = useState('');
   const [b, setB] = useState('');
@@ -137,12 +141,14 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
               type="number"
               min="0"
               step="0.5"
-              value={within}
+              value={withinText}
               aria-label="Distance in mm, courtyard to courtyard"
               data-testid="summary-within"
+              onInput={(e) => setWithinText((e.target as HTMLInputElement).value)}
               onChange={(e) => {
                 const v = parseFloat((e.target as HTMLInputElement).value);
                 if (Number.isFinite(v) && v >= 0) setWithin(v);
+                else setWithinText(String(within));
               }}
             />{' '}
             mm

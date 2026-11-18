@@ -227,6 +227,13 @@ fn outline_area(z: &Zone) -> Vec<Area> {
     p.areas()
 }
 
+/// Whether the outlines of two zones, less their holes, share an area: the overlap that
+/// [`fill_zones`] refuses between two zones of different nets with one priority, and that the
+/// `.kicad_pcb` writer looks for before it orders zones of one priority (`netsmith_pcb::export`).
+pub fn zones_overlap(a: &Zone, b: &Zone) -> bool {
+    overlap(&outline_area(a), &outline_area(b))
+}
+
 /// The fill of each zone of a layer (by its index in `zones`), in the four steps of the module
 /// docs. Where zones overlap, KiCad's rule holds: from the highest priority down, a zone gives
 /// up the outline of every zone of its net with a higher priority (that zone's settings hold
