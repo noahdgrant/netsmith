@@ -26,17 +26,23 @@ pub fn of_board(board: &Board, constraints: Option<Constraints>) -> Result<Check
         .map_err(|e| e.to_string())
 }
 
-/// The check of the KiCad board `pcb`, with the `.kicad_pro` beside it when there is one. A board
-/// KiCad wrote says nothing of the process it was made for, so the rules are those of the project
-/// file alone: none of `fab`'s extras (the process's mask web and via rules, the fiducials, the
-/// stackup) and no requirement of a design.
+/// The check of the KiCad board `pcb`, with the `.kicad_pro` beside it when there is one, and
+/// the process's rules of the `.kicad_dru` that `fab` writes beside it (issue #1185: the space
+/// between surface-mount pads, from holes to tracks, between pad holes, the least non-plated
+/// hole and slot, the copper round a plated hole). The board says nothing else of the process it
+/// was made for, so none of `fab`'s other extras (the via rules, the fiducials, the stackup) and
+/// no requirement of a design.
 pub fn of_kicad_pcb(pcb: &Path) -> Result<Checked, String> {
     let src =
         std::fs::read_to_string(pcb).map_err(|e| format!("cannot read {}: {e}", pcb.display()))?;
+    let mut options = Options::default();
+    if let Some(text) = netsmith_geom::drc_rules_file_of(pcb) {
+        options.drc = options.drc.with_rules_file(&text);
+    }
     netsmith_fab::check(
         &src,
         netsmith_geom::drc_project_of(pcb).as_deref(),
-        &Options::default(),
+        &options,
     )
     .map_err(|e| format!("{}: {e}", pcb.display()))
 }

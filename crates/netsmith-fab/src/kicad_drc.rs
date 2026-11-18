@@ -8,14 +8,27 @@
 //! same positions. A finding of one report that the other lacks is a difference unless it is
 //! one of the documented ones: a rule only netsmith has ([`Rule::HoleToEdge`],
 //! [`Rule::ViaInPad`]), or a kind of finding netsmith does not check ([`OUT_OF_SCOPE`]).
+//!
+//! **The process's rules in the `.kicad_dru`** (issue #1185). A finding KiCad makes of a rule
+//! that `fab` writes into the rules file beside the board (`netsmith_geom::drc_kicad_dru`) names
+//! it, `(rule 'netsmith pad_to_pad' ...)`, and [`parse`] gives it netsmith's rule for its kind,
+//! keeping KiCad's own in [`Reported::base`]. [`compare_with_rules_file`] compares those rules
+//! too, when both checks read the file; [`compare`] does not (the rules are netsmith's, as
+//! without the file). Either way a finding of netsmith's under KiCad's base rule at the same
+//! places agrees with it: a pad pair 0.08 mm apart breaks both `clearance` (0.1 mm) and
+//! `pad_to_pad` (0.15 mm) in netsmith's check, and KiCad, whose custom rule replaces the
+//! project's clearance for that pair, reports it once.
 
 use netsmith_geom::{DrcReport, DrcRule, DrcSeverity, Pt};
 
 /// A finding in KiCad's report.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reported {
-    /// KiCad's `type`, such as `clearance`.
+    /// The rule: KiCad's `type`, such as `clearance`, or for a finding of a rule of the
+    /// `.kicad_dru` that netsmith writes, netsmith's rule that it holds (`pad_to_pad`).
     pub kind: String,
+    /// KiCad's `type`, whatever the rule.
+    pub base: String,
     pub severity: DrcSeverity,
     pub description: String,
     /// The items it names: their descriptions and where they are.
@@ -99,15 +112,83 @@ pub fn parse(json: &str) -> Result<Vec<Reported>, String> {
                         .collect()
                 })
                 .unwrap_or_default();
+            let base = e["type"].as_str().unwrap_or("").to_string();
+            let description = e["description"].as_str().unwrap_or("").to_string();
             out.push(Reported {
-                kind: e["type"].as_str().unwrap_or("").to_string(),
+                kind: rule_of_rules_file(&description).unwrap_or_else(|| base.clone()),
+                base,
                 severity,
-                description: e["description"].as_str().unwrap_or("").to_string(),
+                description,
                 items,
             });
         }
     }
     Ok(out)
+}
+
+/// The rule of netsmith's that a finding of KiCad's names when a rule of the `.kicad_dru`
+/// netsmith writes made it: `Clearance violation (rule 'netsmith pad_to_pad' clearance 0.1500
+/// mm; actual 0.1448 mm)` is `pad_to_pad`. `None` for a finding of any other rule.
+fn rule_of_rules_file(description: &str) -> Option<String> {
+    let named = description.split("(rule '").nth(1)?;
+    let name = named
+        .split('\'')
+        .next()?
+        .strip_prefix(netsmith_geom::DRC_RULES_FILE_PREFIX)?;
+    let id = name.split(' ').next()?;
+    DrcRule::from_id(id).map(|r| r.id().to_string())
+}
+
+/// Whether a rule of netsmith's is one the `.kicad_dru` that netsmith writes holds, so that
+/// KiCad checks it when the file is beside the board.
+pub fn in_rules_file(rule: DrcRule) -> bool {
+    matches!(
+        rule,
+        DrcRule::PadToPad
+            | DrcRule::HoleToTrack
+            | DrcRule::PadHoleToHole
+            | DrcRule::NpthDrill
+            | DrcRule::SlotWidth
+            | DrcRule::PlatedRing
+    )
+}
+
+/// Takes out of KiCad's findings each `via_dangling` of a via whose copper overlaps another via
+/// of its net, where netsmith's check finds the via joined, and says how many (issue #1185). KiCad
+/// counts a via or a through-hole pad that a via touches on its top layer alone, so the vias of a
+/// cluster side by side (the router's, for a current one via does not carry, issue #431) are
+/// dangling to KiCad although their copper runs together on every layer and each carries its
+/// share; netsmith's rule counts the layers the touching copper is on.
+pub fn drop_dangling_vias_of_clusters(
+    kicad: &mut Vec<Reported>,
+    art: &netsmith_geom::Artwork,
+    ours: &DrcReport,
+) -> usize {
+    let near = |a: Pt, b: Pt| a.dist(b) <= 1e-3;
+    let in_cluster = |at: Pt| {
+        art.vias.iter().any(|v| {
+            near(v.at, at)
+                && v.net.is_some()
+                && art.vias.iter().any(|w| {
+                    !near(w.at, v.at)
+                        && w.net == v.net
+                        && w.at.dist(v.at) < (w.diameter + v.diameter) / 2.0
+                })
+        })
+    };
+    let dangling_to_us = |at: Pt| {
+        ours.findings
+            .iter()
+            .any(|f| f.rule == DrcRule::ViaDangling && f.items.iter().any(|i| near(i.at, at)))
+    };
+    let before = kicad.len();
+    kicad.retain(|k| {
+        !(k.kind == "via_dangling"
+            && k.items
+                .first()
+                .is_some_and(|(_, at)| in_cluster(*at) && !dangling_to_us(*at)))
+    });
+    before - kicad.len()
 }
 
 /// The comparison of netsmith's report with KiCad's.
@@ -126,7 +207,8 @@ pub struct Comparison {
     pub other_ends: usize,
     /// Findings of rules only netsmith has, which cannot be compared.
     pub netsmith_only_rules: usize,
-    /// Findings of kinds netsmith does not check.
+    /// Findings of kinds netsmith does not check, and of KiCad's that it counts otherwise
+    /// ([`drop_dangling_vias_of_clusters`]).
     pub out_of_scope: usize,
 }
 
@@ -187,12 +269,30 @@ fn same_places(a: &[Pt], b: &[Pt], tolerance: f64) -> bool {
 }
 
 /// Compares the two reports. `tolerance` is how far apart (mm) two items of the same
-/// finding may be reported.
+/// finding may be reported. The rules netsmith writes into the `.kicad_dru` are not compared
+/// (see [`compare_with_rules_file`]).
 pub fn compare(ours: &DrcReport, kicad: &[Reported], tolerance: f64) -> Comparison {
+    compare_rules(ours, kicad, tolerance, false)
+}
+
+/// [`compare`], with the rules of the `.kicad_dru` netsmith writes compared too: for two checks
+/// that both read that file beside the board (issue #1185).
+pub fn compare_with_rules_file(ours: &DrcReport, kicad: &[Reported], tolerance: f64) -> Comparison {
+    compare_rules(ours, kicad, tolerance, true)
+}
+
+fn compare_rules(
+    ours: &DrcReport,
+    kicad: &[Reported],
+    tolerance: f64,
+    rules_file: bool,
+) -> Comparison {
     let mut c = Comparison::default();
     let mut taken = vec![false; kicad.len()];
+    let places_of = |k: &Reported| k.items.iter().map(|(_, p)| *p).collect::<Vec<_>>();
+    let compared = |rule: DrcRule| !rule.is_netsmiths() || (rules_file && in_rules_file(rule));
     for f in &ours.findings {
-        if DrcRule::is_netsmiths(f.rule) {
+        if !compared(f.rule) {
             c.netsmith_only_rules += 1;
             continue;
         }
@@ -211,6 +311,18 @@ pub fn compare(ours: &DrcReport, kicad: &[Reported], tolerance: f64) -> Comparis
                     tolerance,
                 )
         });
+        // KiCad's rule of the `.kicad_dru` replaced its own for these items and reports them
+        // once, under netsmith's stricter rule.
+        let absorbed = found.is_none()
+            && kicad.iter().any(|k| {
+                k.base == f.rule.id()
+                    && k.kind != k.base
+                    && same_places(&places, &places_of(k), tolerance)
+            });
+        if absorbed {
+            c.agreed += 1;
+            continue;
+        }
         match found {
             Some((i, k)) => {
                 taken[i] = true;
@@ -270,6 +382,10 @@ pub fn compare(ours: &DrcReport, kicad: &[Reported], tolerance: f64) -> Comparis
         }
         if OUT_OF_SCOPE.contains(&k.kind.as_str()) {
             c.out_of_scope += 1;
+            continue;
+        }
+        if DrcRule::from_id(&k.kind).is_some_and(|r| !compared(r)) {
+            c.netsmith_only_rules += 1;
             continue;
         }
         let items: Vec<String> = k
@@ -360,5 +476,70 @@ mod tests {
         assert_eq!(c.netsmith_only_rules, 1);
         assert!(!c.agrees());
         assert!(c.to_string().contains("only KiCad:") && c.to_string().contains("clearance"));
+    }
+
+    /// KiCad's report of two pads 0.08 mm apart and two 0.1448 mm apart, with the rules file.
+    const RULES_FILE_JSON: &str = r#"{"violations": [
+      {"type": "clearance", "severity": "error",
+       "description": "Clearance violation (rule 'netsmith pad_to_pad' clearance 0.1500 mm; actual 0.0800 mm)",
+       "items": [{"description": "Pad 1", "pos": {"x": 1.0, "y": 2.0}},
+                 {"description": "Pad 2", "pos": {"x": 1.38, "y": 2.0}}]},
+      {"type": "clearance", "severity": "error",
+       "description": "Clearance violation (rule 'netsmith pad_to_pad' clearance 0.1500 mm; actual 0.1448 mm)",
+       "items": [{"description": "Pad 1", "pos": {"x": 5.0, "y": 2.0}},
+                 {"description": "Pad 2", "pos": {"x": 5.4448, "y": 2.0}}]},
+      {"type": "clearance", "severity": "error",
+       "description": "Clearance violation (rule 'netsmith clearance Clearance_1mm' clearance 1.0000 mm; actual 0.5000 mm)",
+       "items": [{"description": "Pad 1", "pos": {"x": 9.0, "y": 2.0}},
+                 {"description": "Pad 2", "pos": {"x": 9.8, "y": 2.0}}]}],
+     "unconnected_items": []}"#;
+
+    #[test]
+    fn a_finding_of_a_rule_of_the_rules_file_is_read_as_netsmiths_rule_with_kicads_kept() {
+        let k = parse(RULES_FILE_JSON).unwrap();
+        assert_eq!(
+            k.iter()
+                .map(|r| (r.kind.as_str(), r.base.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("pad_to_pad", "clearance"),
+                ("pad_to_pad", "clearance"),
+                // A net class's rule of the file is KiCad's clearance.
+                ("clearance", "clearance"),
+            ]
+        );
+        assert_eq!(
+            rule_of_rules_file("Clearance violation (netclass 'Default' ...)"),
+            None
+        );
+        assert_eq!(rule_of_rules_file("(rule 'mine' clearance 0.2 mm)"), None);
+    }
+
+    #[test]
+    fn with_the_rules_file_both_checks_rules_are_compared_and_the_stricter_one_absorbs_the_projects()
+     {
+        let k = parse(RULES_FILE_JSON).unwrap();
+        let ours = DrcReport {
+            findings: vec![
+                finding(DrcRule::Clearance, &[(1.0, 2.0), (1.38, 2.0)]),
+                finding(DrcRule::PadToPad, &[(1.0, 2.0), (1.38, 2.0)]),
+                finding(DrcRule::PadToPad, &[(5.0, 2.0), (5.4448, 2.0)]),
+                finding(DrcRule::Clearance, &[(9.0, 2.0), (9.8, 2.0)]),
+            ],
+        };
+        let c = compare_with_rules_file(&ours, &k, 0.01);
+        assert!(c.agrees(), "{c}");
+        assert_eq!((c.agreed, c.netsmith_only_rules), (4, 0));
+        // Without the file on both sides the rules are netsmith's and not compared; the clearance
+        // the stricter rule replaced still agrees.
+        let c = compare(&ours, &k, 0.01);
+        assert!(c.agrees(), "{c}");
+        assert_eq!((c.agreed, c.netsmith_only_rules), (2, 4));
+        // A finding of the file's rules that one side lacks is a difference.
+        let short = DrcReport {
+            findings: ours.findings[..2].to_vec(),
+        };
+        let c = compare_with_rules_file(&short, &k, 0.01);
+        assert_eq!(c.only_kicad.len(), 2, "{c}");
     }
 }

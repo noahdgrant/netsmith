@@ -772,7 +772,13 @@ pub fn run_kicad(board: &Board, routed: bool, say: &Say) -> KicadResult {
     let pcb = dir.join(format!("{}.kicad_pcb", board.name));
     let written = std::fs::create_dir_all(&dir)
         .and_then(|()| std::fs::write(&pcb, kicad_pcb(board)))
-        .and_then(|()| std::fs::write(pcb.with_extension("kicad_pro"), kicad_pro(board)));
+        .and_then(|()| std::fs::write(pcb.with_extension("kicad_pro"), kicad_pro(board)))
+        .and_then(|()| {
+            std::fs::write(
+                pcb.with_extension("kicad_dru"),
+                netsmith_pcb::kicad_dru(board),
+            )
+        });
     if let Err(e) = written {
         let _ = std::fs::remove_dir_all(&dir);
         return unavailable(format!("cannot write {}: {e}", pcb.display()));

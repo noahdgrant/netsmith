@@ -239,6 +239,36 @@ fn the_mask_web_comes_from_the_board_setup_or_else_from_the_caller() {
     );
 }
 
+/// Two pads of a part 0.2 mm apart, on the nets given (`None` is no net), checked to a mask
+/// web of 0.3 mm.
+fn mask_bridges(a: Option<&'static str>, b: Option<&'static str>) -> usize {
+    let mut board = Pcb::new(2);
+    let pad = |number, x, net| P {
+        net,
+        ..smd(number, x, 0.0, 0.6, 0.6, "")
+    };
+    board.part(
+        "U1",
+        (10.0, 10.0),
+        0.0,
+        &[pad("1", -0.4, a), pad("2", 0.4, b)],
+        NONE,
+    );
+    board.setup("(solder_mask_min_width 0.3)");
+    check(&mut board).count(DrcRule::SolderMaskBridge)
+}
+
+#[test]
+fn a_mask_web_between_two_pads_with_no_net_is_a_bridge_as_kicad_reports_it() {
+    // Issue #1185: KiCad counts two pads with no net as two nets (the unconnected pins of a QFN,
+    // side by side); so does the check.
+    assert_eq!(mask_bridges(None, None), 1);
+    assert_eq!(mask_bridges(None, Some("A")), 1);
+    assert_eq!(mask_bridges(Some("A"), Some("B")), 1);
+    // Two pads of one net may share their opening.
+    assert_eq!(mask_bridges(Some("A"), Some("A")), 0);
+}
+
 #[test]
 fn a_pour_joins_the_pads_and_vias_of_its_net_under_it_and_a_pad_set_to_no_connection_is_left_out() {
     let mut b = Pcb::new(4);

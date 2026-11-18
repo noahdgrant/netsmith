@@ -362,13 +362,23 @@ pub fn check(pcb: &Path, kicad: &dyn KicadCli, limits: &Limits) -> Result<Report
                     .any(|(a, b)| at.dist(*a) <= DRC_TOLERANCE || at.dist(*b) <= DRC_TOLERANCE)
             }))
     });
-    let ours = netsmith_geom::drc_check(
-        &src,
-        netsmith_geom::drc_project_of(pcb).as_deref(),
-        &Default::default(),
-    )
-    .map_err(|e| io("the design rules check", &e))?;
-    report.drc = crate::kicad_drc::compare(&ours, &theirs, DRC_TOLERANCE);
+    // Both checks read the rules file beside the board, the process's rules that the project
+    // file cannot hold (issue #1185), and are compared on them.
+    let rules_file = netsmith_geom::drc_rules_file_of(pcb);
+    let extras = match &rules_file {
+        Some(text) => netsmith_geom::DrcExtras::default().with_rules_file(text),
+        None => netsmith_geom::DrcExtras::default(),
+    };
+    let ours =
+        netsmith_geom::drc_check(&src, netsmith_geom::drc_project_of(pcb).as_deref(), &extras)
+            .map_err(|e| io("the design rules check", &e))?;
+    let clusters = crate::kicad_drc::drop_dangling_vias_of_clusters(&mut theirs, &art, &ours);
+    report.drc = if rules_file.is_some() {
+        crate::kicad_drc::compare_with_rules_file(&ours, &theirs, DRC_TOLERANCE)
+    } else {
+        crate::kicad_drc::compare(&ours, &theirs, DRC_TOLERANCE)
+    };
+    report.drc.out_of_scope += clusters;
     Ok(report)
 }
 
@@ -443,9 +453,11 @@ impl Unmarked {
         std::fs::create_dir_all(&dir)?;
         let out = dir.join(name);
         std::fs::write(&out, text)?;
-        let pro = pcb.with_extension("kicad_pro");
-        if pro.is_file() {
-            std::fs::copy(&pro, dir.join(pro.file_name().unwrap_or_default()))?;
+        for beside in ["kicad_pro", "kicad_dru"] {
+            let file = pcb.with_extension(beside);
+            if file.is_file() {
+                std::fs::copy(&file, dir.join(file.file_name().unwrap_or_default()))?;
+            }
         }
         Ok(Self { dir, pcb: out })
     }

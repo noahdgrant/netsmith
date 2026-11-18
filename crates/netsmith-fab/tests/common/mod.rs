@@ -433,6 +433,17 @@ pub fn kicad_findings(
     pcb: &str,
     pro: &str,
 ) -> Option<Vec<netsmith_fab::KicadDrcReported>> {
+    kicad_findings_with(name, pcb, pro, "")
+}
+
+/// [`kicad_findings`] with a custom rules file (`.kicad_dru`) beside the project when `rules` is
+/// not empty.
+pub fn kicad_findings_with(
+    name: &str,
+    pcb: &str,
+    pro: &str,
+    rules: &str,
+) -> Option<Vec<netsmith_fab::KicadDrcReported>> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static RUNS: AtomicUsize = AtomicUsize::new(0);
     let cli = netsmith_fab::KicadCliExe::locate_runnable()?;
@@ -444,6 +455,9 @@ pub fn kicad_findings(
     std::fs::write(&path, pcb).ok()?;
     if !pro.is_empty() {
         std::fs::write(path.with_extension("kicad_pro"), pro).ok()?;
+    }
+    if !rules.is_empty() {
+        std::fs::write(path.with_extension("kicad_dru"), rules).ok()?;
     }
     let json = cli
         .drc_json(&path)

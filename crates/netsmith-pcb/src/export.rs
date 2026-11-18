@@ -630,6 +630,12 @@ pub fn kicad_pro(board: &Board) -> String {
     board.rules.kicad_pro(&board.name, &board.net_classes())
 }
 
+/// The text of the `.kicad_dru` that goes beside the board's `.kicad_pro`: the process's rules
+/// that the project file cannot hold, as KiCad custom rules (issue #1185).
+pub fn kicad_dru(board: &Board) -> String {
+    board.rules.kicad_dru(&board.name, &board.net_classes())
+}
+
 /// The zone that pours a plane: the whole board inside the least space to the edge, kept
 /// `plane_clearance` from copper of other nets, joined to its own pads and vias with
 /// KiCad's thermal reliefs (gap and spoke width 0.5 mm, its defaults).

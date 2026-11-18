@@ -187,6 +187,36 @@ impl Rules {
         })
     }
 
+    /// The process's rules that a KiCad project file cannot hold and netsmith's design rules
+    /// check holds (issue #431), as the check's extras: the space between surface-mount pads,
+    /// from a via's or a non-plated hole and from a plated pad's hole to a track, between two
+    /// holes when one is a pad's, the least non-plated hole and slots, and the copper round a
+    /// plated pad's hole. The other extras are not set.
+    pub fn process_rules(&self) -> netsmith_geom::DrcExtras {
+        netsmith_geom::DrcExtras {
+            hole_to_track: Some(self.hole_clearance),
+            plated_hole_clearance: Some(self.plated_hole_clearance),
+            pad_to_pad: Some(self.pad_to_pad),
+            pad_hole_to_hole: Some(self.hole_to_hole),
+            plated_slot: Some(self.plated_slot),
+            npth_slot: Some(self.npth_slot),
+            npth_drill: Some(self.npth_drill),
+            pad_ring: Some(self.min_annular_ring),
+            ..netsmith_geom::DrcExtras::default()
+        }
+    }
+
+    /// The text of the `.kicad_dru` that goes beside the `.kicad_pro` of [`Rules::kicad_pro`]:
+    /// [`Rules::process_rules`] as KiCad custom rules, each where it asks more than the project
+    /// file (issue #1185), so that KiCad's check judges the board to the process as netsmith's
+    /// does: JLCPCB's 0.15 mm between surface-mount pads, where the project's least clearance is
+    /// 0.1 mm, among them.
+    pub fn kicad_dru(&self, name: &str, classes: &[NetClass]) -> String {
+        let project = netsmith_geom::DrcRules::from_project(&self.kicad_pro(name, classes))
+            .expect("the project file netsmith writes is JSON");
+        netsmith_geom::drc_kicad_dru(&project, &self.process_rules())
+    }
+
     /// The text of a `.kicad_pro` for a board with these rules, which KiCad's DRC reads when
     /// the file sits beside the `.kicad_pcb`. `classes` are the nets routed wider than the
     /// rules' track width or kept further than the rules' clearance, grouped by width and
@@ -773,6 +803,38 @@ mod tests {
         assert_eq!((r.npth_drill, r.plated_slot, r.npth_slot), (0.5, 0.5, 1.0));
         assert_eq!((r.min_text_height, r.min_text_thickness), (1.0, 0.15));
         assert_eq!(r.silk_to_pad, 0.15);
+    }
+
+    #[test]
+    fn the_rules_file_beside_the_project_holds_jlcpcbs_pad_to_pad_and_the_other_process_rules() {
+        // Issue #1185: the project file's least clearance is 0.1 mm, JLCPCB's surface-mount pads
+        // keep 0.15 mm; KiCad reads the rest from the rules file.
+        let r = rules();
+        let pro = r.kicad_pro("T", &[]);
+        assert!(pro.contains("\"min_clearance\": 0.1,"), "{pro}");
+        let dru = r.kicad_dru("T", &[]);
+        for (rule, least) in [
+            ("pad_to_pad", "clearance (min 0.15mm)"),
+            ("hole_to_track", "hole_clearance (min 0.2mm)"),
+            ("hole_to_track plated", "hole_clearance (min 0.28mm)"),
+            ("pad_hole_to_hole", "hole_to_hole (min 0.45mm)"),
+            ("npth_drill", "hole_size (min 0.5mm)"),
+            ("slot_width npth", "hole_size (min 1mm)"),
+            ("slot_width plated", "hole_size (min 0.5mm)"),
+            ("plated_ring", "annular_width (min 0.18mm)"),
+        ] {
+            assert!(
+                dru.contains(&format!(
+                    "(rule \"netsmith {rule}\"\n\t(constraint {least})"
+                )),
+                "no {rule} with {least} in\n{dru}"
+            );
+        }
+        // netsmith's check reads back what `fab` hands it.
+        assert_eq!(
+            netsmith_geom::DrcExtras::default().with_rules_file(&dru),
+            r.process_rules()
+        );
     }
 
     #[test]

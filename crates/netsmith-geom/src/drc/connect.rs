@@ -329,18 +329,43 @@ fn dangling(out: &mut Out<'_>, neighbours: &[Vec<usize>], poured: &[Vec<usize>])
                 }
             }
             Kind::Via(_) if c.net.is_some() => {
-                let mut layers: Vec<usize> = neighbours[i]
+                // The vias whose copper touches this one's, through others that touch, change
+                // layer together (a cluster side by side, issue #431): the group is joined on
+                // the layers where copper of the net that is no via of it touches one of them,
+                // a pour's fill among it (issue #1185).
+                let is_via = |j: usize| matches!(m.items[j].kind, Kind::Via(_));
+                let mut group = vec![i];
+                let mut k = 0;
+                while k < group.len() {
+                    for &j in &neighbours[group[k]] {
+                        if is_via(j) && !group.contains(&j) {
+                            group.push(j);
+                        }
+                    }
+                    k += 1;
+                }
+                let mut layers: Vec<usize> = group
                     .iter()
-                    .flat_map(|&j| m.items[j].layers.iter().copied())
+                    .flat_map(|&g| {
+                        neighbours[g]
+                            .iter()
+                            .filter(|&&j| !is_via(j))
+                            .flat_map(|&j| m.items[j].layers.iter().copied())
+                            .chain(poured[g].iter().map(|&p| m.pours[p].layer))
+                    })
                     .collect();
-                layers.extend(poured[i].iter().map(|&p| m.pours[p].layer));
                 layers.sort_unstable();
                 layers.dedup();
                 if layers.len() < 2 {
+                    let beside = if group.len() > 1 {
+                        format!(" with the {} via(s) its copper touches", group.len() - 1)
+                    } else {
+                        String::new()
+                    };
                     out.push(
                         Rule::ViaDangling,
                         format!(
-                            "{} is joined to copper of its net on {} layer(s); a via needs at least two",
+                            "{}{beside} is joined to copper of its net on {} layer(s); a via needs at least two",
                             c.item.what,
                             layers.len()
                         ),
