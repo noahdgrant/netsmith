@@ -221,7 +221,7 @@ fn fab_writes_the_processs_rules_beside_the_project_and_a_kicad_boards_check_rea
     let file = dir.join("first/LedExample/LedExample.kicad_dru");
     let rules = fs::read_to_string(&file).unwrap();
     assert!(
-        rules.contains("(rule \"netsmith pad_to_pad\"\n\t(constraint clearance (min 0.15mm))"),
+        rules.contains("(rule \"netsmith pad_to_pad\"\n\t(constraint physical_clearance (min 0.15mm))"),
         "{rules}"
     );
     let pcb = "first/LedExample/LedExample.kicad_pcb";

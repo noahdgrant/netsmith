@@ -16,8 +16,17 @@
 //! too, when both checks read the file; [`compare`] does not (the rules are netsmith's, as
 //! without the file). Either way a finding of netsmith's under KiCad's base rule at the same
 //! places agrees with it: a pad pair 0.08 mm apart breaks both `clearance` (0.1 mm) and
-//! `pad_to_pad` (0.15 mm) in netsmith's check, and KiCad, whose custom rule replaces the
-//! project's clearance for that pair, reports it once.
+//! `pad_to_pad` (0.15 mm) in netsmith's check, and KiCad reports it twice, once for each (the
+//! rule of the `.kicad_dru` for the pads' space is a `physical_clearance`, which sits beside the
+//! project's `clearance`; a finding under a base rule KiCad names also agrees, for the files that
+//! hold another kind of rule there).
+//!
+//! **Pads of one footprint** (issue #1229). KiCad's check measures the space between two pads of
+//! one footprint as it does that between two parts' pads, so the rule of the `.kicad_dru` reports
+//! both; its `clearance` constraint is silent where a pad or its footprint states a clearance of
+//! its own (a library's), and the rule is a `physical_clearance` so that it is not (see
+//! `netsmith_geom::drc_kicad_dru`). KiCad's report of two pads that touch is the short's,
+//! counted in [`Comparison::measured_otherwise`].
 //!
 //! **Measured otherwise** (issue #1186). A finding of a silkscreen rule one check alone makes of
 //! a pair that netsmith's report says the font decides (`DrcReport::font_dependent`: a text in
@@ -459,6 +468,22 @@ fn compare_rules(
                     )
             });
         if twice {
+            continue;
+        }
+        // The rule of the pads' space is a `physical_clearance` in the `.kicad_dru`, which KiCad
+        // also reports of two pads that touch (a distance of 0): netsmith's report has that pair
+        // as the short, `shorting_items`, alone (issue #1229).
+        if k.kind == "pad_to_pad"
+            && ours.findings.iter().any(|f| {
+                f.rule == DrcRule::ShortingItems
+                    && same_places(
+                        &places_of(k),
+                        &f.items.iter().map(|i| i.at).collect::<Vec<_>>(),
+                        tolerance,
+                    )
+            })
+        {
+            c.measured_otherwise += 1;
             continue;
         }
         if OUT_OF_SCOPE.contains(&k.kind.as_str()) {
