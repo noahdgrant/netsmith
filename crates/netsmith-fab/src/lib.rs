@@ -136,6 +136,13 @@ pub struct Options {
     /// Package a board even though netsmith's design rules check reports errors (a
     /// violation, an unconnected pad or a footprint error). The notes say so.
     pub allow_drc_violations: bool,
+    /// Package a board that the check finds errors in, for a person to look at and not to order
+    /// (`board fab --for-review`, issue #1189): the errors of the design rules check and the
+    /// requirements on where parts go that are not met are waived, the notes and the Gerber zip's
+    /// name say "FOR REVIEW, NOT FOR ORDER", and [`Package::write`] writes no `bom.csv` and no
+    /// `cpl.csv`. A board that passes is packaged as usual. [`package`] still returns the
+    /// package: the caller ends the run in an error while the check has errors.
+    pub for_review: bool,
     /// What the design rules check needs that the board file does not say (the process's
     /// mask web and the widest via it fills).
     pub drc: DrcExtras,
@@ -241,7 +248,8 @@ impl std::fmt::Display for Error {
             Self::DrcInput(e) => write!(f, "design rules check: {e}"),
             Self::Drc { counts, report, .. } => write!(
                 f,
-                "the design rules check found {} violation(s), {} unconnected pad(s) and {} footprint error(s); fix them, or allow packaging anyway (Options::allow_drc_violations, --allow-drc-violations). The errors:\n\n{}",
+                "{}\n{} violation(s), {} unconnected pad(s) and {} footprint error(s); fix them, or package the board anyway (Options::allow_drc_violations) or for review (Options::for_review). The errors:\n\n{}",
+                drc_stop_line(counts, None),
                 counts.violations,
                 counts.unconnected,
                 counts.footprint_errors,
@@ -260,6 +268,24 @@ impl std::fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+/// The first line of the message when the design rules check stops packaging (issue #1189): that
+/// it did, that no package was written (and where the KiCad board is, when the caller wrote it),
+/// and what each of the two flags does.
+pub fn drc_stop_line(counts: &DrcCounts, board_in: Option<&Path>) -> String {
+    let errors = counts.violations + counts.unconnected + counts.footprint_errors;
+    let written = match board_in {
+        Some(dir) => format!(" (the KiCad board is in {})", dir.display()),
+        None => String::new(),
+    };
+    format!(
+        "design rules check: {errors} error{}: no package written{written}; --allow-drc-violations packages the board anyway and says in fab-notes.txt that it is not clean; --for-review writes the files to look at",
+        if errors == 1 { "" } else { "s" }
+    )
+}
+
+/// What the notes and the files of a package made for review say they are.
+pub const FOR_REVIEW: &str = "FOR REVIEW, NOT FOR ORDER";
 
 impl From<board::BoardError> for Error {
     fn from(e: board::BoardError) -> Self {
@@ -448,6 +474,9 @@ pub enum DrcOutcome {
     Passed,
     /// Failed, but [`Options::allow_drc_violations`] let packaging go on.
     Waived(DrcCounts),
+    /// Failed, and [`Options::for_review`] made the package to look at: it is marked
+    /// [`FOR_REVIEW`] and has no BOM and no placement file.
+    ForReview(DrcCounts),
 }
 
 /// The finished package, ready to write.
@@ -473,20 +502,52 @@ pub struct Package {
 }
 
 impl Package {
-    pub fn zip_name(&self) -> String {
-        format!("{}-gerbers.zip", self.name)
+    /// Whether this package was made for review and not for order ([`Options::for_review`]).
+    pub fn for_review(&self) -> bool {
+        matches!(self.drc, DrcOutcome::ForReview(_))
     }
 
-    /// Writes the four files into `dir` (created if needed) and returns their paths.
+    /// `<board>-gerbers.zip`, and `<board>-gerbers-REVIEW.zip` for a package made for review.
+    pub fn zip_name(&self) -> String {
+        if self.for_review() {
+            format!("{}-gerbers-REVIEW.zip", self.name)
+        } else {
+            format!("{}-gerbers.zip", self.name)
+        }
+    }
+
+    /// Writes the files into `dir` (created if needed) and returns their paths: the Gerber zip,
+    /// `bom.csv`, `cpl.csv` and `fab-notes.txt`; for a package made for review the zip and the
+    /// notes alone, and the files of an earlier package of the board that an order could use
+    /// (`bom.csv`, `cpl.csv`, `<board>-gerbers.zip`) are removed, so that the folder holds nothing
+    /// that is not marked.
     pub fn write(&self, dir: &Path) -> Result<Vec<PathBuf>, Error> {
         std::fs::create_dir_all(dir)
             .map_err(|e| Error::Io(format!("cannot create {}: {e}", dir.display())))?;
-        let files: [(String, &[u8]); 4] = [
-            (self.zip_name(), &self.gerber_zip),
-            ("bom.csv".to_string(), self.bom_csv.as_bytes()),
-            ("cpl.csv".to_string(), self.cpl_csv.as_bytes()),
-            ("fab-notes.txt".to_string(), self.notes.as_bytes()),
-        ];
+        let mut files: Vec<(String, &[u8])> = vec![(self.zip_name(), &self.gerber_zip)];
+        // The other kind of package of this board leaves nothing behind that an order could take.
+        let stale = if self.for_review() {
+            vec![
+                "bom.csv".to_string(),
+                "cpl.csv".to_string(),
+                format!("{}-gerbers.zip", self.name),
+            ]
+        } else {
+            vec![format!("{}-gerbers-REVIEW.zip", self.name)]
+        };
+        for stale in stale {
+            match std::fs::remove_file(dir.join(&stale)) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                    return Err(Error::Io(format!("cannot remove {stale}: {e}")));
+                }
+                _ => {}
+            }
+        }
+        if !self.for_review() {
+            files.push(("bom.csv".to_string(), self.bom_csv.as_bytes()));
+            files.push(("cpl.csv".to_string(), self.cpl_csv.as_bytes()));
+        }
+        files.push(("fab-notes.txt".to_string(), self.notes.as_bytes()));
         files
             .into_iter()
             .map(|(name, bytes)| {
@@ -586,6 +647,8 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
     };
     let drc = if drc_report.is_clean() {
         DrcOutcome::Passed
+    } else if options.for_review {
+        DrcOutcome::ForReview(drc_report.counts())
     } else if options.allow_drc_violations && unmet.is_empty() {
         DrcOutcome::Waived(drc_report.counts())
     } else if options.allow_drc_violations {
@@ -707,6 +770,12 @@ fn notes(
         Some(revision) => format!("fab-notes for {name}, revision {revision}"),
         None => format!("fab-notes for {name}"),
     }];
+    if let DrcOutcome::ForReview(c) = drc {
+        lines.push(format!(
+            "{FOR_REVIEW}: the design rules check found {} error(s), so this package is made to look at, not to order; it has no bom.csv and no cpl.csv, and `project order` refuses it",
+            c.violations + c.unconnected + c.footprint_errors
+        ));
+    }
     if let Some(process) = process {
         lines.push(format!("process: {process}"));
     }
@@ -791,10 +860,14 @@ fn notes(
             "design rules check: NOT clean, packaged anyway: {} violation(s), {} unconnected pad(s), {} footprint error(s)",
             c.violations, c.unconnected, c.footprint_errors
         ),
+        DrcOutcome::ForReview(c) => format!(
+            "design rules check: NOT clean, {FOR_REVIEW}: {} violation(s), {} unconnected pad(s), {} footprint error(s)",
+            c.violations, c.unconnected, c.footprint_errors
+        ),
     });
     // A package made past the check lists what it waived, each but a connection left (those are
     // in `routing-failure.txt`), so the person ordering reads what the board breaks.
-    if matches!(drc, DrcOutcome::Waived(_)) {
+    if matches!(drc, DrcOutcome::Waived(_) | DrcOutcome::ForReview(_)) {
         lines.extend(
             report
                 .errors()
@@ -809,6 +882,11 @@ fn notes(
         let unmet = constraints.len() - met;
         lines.push(if unmet == 0 {
             format!("constraints: {met} of {} satisfied", constraints.len())
+        } else if matches!(drc, DrcOutcome::ForReview(_)) {
+            format!(
+                "constraints: {met} of {} satisfied; {unmet} not met (each is an error above): {FOR_REVIEW}",
+                constraints.len()
+            )
         } else {
             format!(
                 "constraints: {met} of {} satisfied; {unmet} not met, listed as warnings because the project or this run asked for `constraints = \"warn\"`; check the board against the case before ordering",

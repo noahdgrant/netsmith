@@ -647,3 +647,132 @@ fn constraints_warn_makes_the_lines_that_cannot_hold_a_place_warning_with_data()
         "{finding}"
     );
 }
+
+/// The project of `BOARD` whose header is moved out of its window, with an order of the board,
+/// run with the sample libraries and no KiCad: a board that fails the check (an unmet
+/// requirement is an error of it).
+fn failing_project(name: &str) -> TempDir {
+    let root = out(name);
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("netsmith.toml"),
+        "[project]\nname = \"widget\"\ntop_level = [\"src/main.nsm\"]\n\n[order.kit.boards]\nWidget = 2\n",
+    )
+    .unwrap();
+    fs::write(root.join("src/main.nsm"), BOARD).unwrap();
+    fs::write(root.join("src/main.physical.nsm"), PHYSICAL).unwrap();
+    fs::write(root.join("src/main.pcb.toml"), MOVED).unwrap();
+    root
+}
+
+fn netsmith_here(root: &std::path::Path, args: &[&str]) -> std::process::Output {
+    std::process::Command::new(env!("CARGO_BIN_EXE_netsmith"))
+        .args(args)
+        .current_dir(root)
+        .env("KICAD_CLI", "/nonexistent/kicad-cli")
+        .env("NETSMITH_KICAD_SYMBOLS", netsmith_testkit::sample_symbols())
+        .env(
+            "NETSMITH_KICAD_FOOTPRINTS",
+            netsmith_testkit::sample_footprints(),
+        )
+        .output()
+        .unwrap()
+}
+
+fn files_of(dir: &std::path::Path) -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(dir)
+        .map(|rd| {
+            rd.map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    names.sort();
+    names
+}
+
+/// Issue #1189: the stop of the check says first that no package was written, and
+/// `--for-review` writes the files to look at, marked, and nothing an order could take.
+#[test]
+fn a_board_with_findings_says_it_wrote_no_package_and_for_review_writes_the_files_to_look_at() {
+    let root = failing_project("for-review");
+    let said = |run: &std::process::Output| String::from_utf8_lossy(&run.stderr).to_string();
+    let board = root.join("fab/Widget");
+
+    // The check stops `fab`: the message says what was and was not written, and the flags.
+    let run = netsmith_here(&root, &["board", "fab", "--out", "fab"]);
+    assert_eq!(run.status.code(), Some(1), "{}", said(&run));
+    let error = said(&run)
+        .lines()
+        .find(|l| l.starts_with("error: Widget: "))
+        .unwrap_or_else(|| panic!("{}", said(&run)))
+        .to_string();
+    assert!(
+        error.starts_with("error: Widget: design rules check: ")
+            && error.contains(": no package written (the KiCad board is in ")
+            && error.contains("--allow-drc-violations packages the board anyway")
+            && error.contains("--for-review writes the files to look at"),
+        "{error}"
+    );
+    let files = files_of(&board);
+    assert!(files.contains(&"Widget.kicad_pcb".to_string()), "{files:?}");
+    assert!(
+        !files.iter().any(|f| f.ends_with(".zip") || f.ends_with(".csv")),
+        "{files:?}"
+    );
+    // The same sentence is a finding of code `fab`.
+    let run = netsmith_here(&root, &["board", "fab", "--out", "fab", "--format", "json"]);
+    let doc: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+    assert!(
+        doc["findings"].as_array().unwrap().iter().any(|f| f["code"] == "fab"
+            && f["severity"] == "error"
+            && f["message"]
+                .as_str()
+                .unwrap()
+                .starts_with("Widget: design rules check: ")
+            && f["message"].as_str().unwrap().contains(": no package written")),
+        "{doc}"
+    );
+
+    // `--for-review` writes the files to look at, and the run still fails.
+    let run = netsmith_here(&root, &["board", "fab", "--out", "fab", "--for-review"]);
+    assert_eq!(run.status.code(), Some(1), "{}", said(&run));
+    assert!(said(&run).contains("FOR REVIEW, NOT FOR ORDER"), "{}", said(&run));
+    let files = files_of(&board);
+    for file in [
+        "Widget.kicad_pcb",
+        "Widget.kicad_pro",
+        "Widget.svg",
+        "Widget-gerbers-REVIEW.zip",
+        "fab-notes.txt",
+    ] {
+        assert!(files.contains(&file.to_string()), "{file} in {files:?}");
+    }
+    assert!(
+        !files.iter().any(|f| f == "bom.csv" || f == "cpl.csv" || f == "Widget-gerbers.zip"),
+        "{files:?}"
+    );
+    let notes = fs::read_to_string(board.join("fab-notes.txt")).unwrap();
+    assert!(
+        notes.lines().nth(1).unwrap().starts_with("FOR REVIEW, NOT FOR ORDER: "),
+        "{notes}"
+    );
+    assert!(notes.contains("power_in.place.left"), "{notes}");
+
+    // An order does not take the folder: it makes the board again, and the check stops it.
+    let run = netsmith_here(&root, &["project", "order", "kit", "--out", "fab"]);
+    assert!(!run.status.success(), "{}", said(&run));
+    assert!(!root.join("fab/order.txt").exists());
+    assert!(!files_of(&board).iter().any(|f| f == "bom.csv" || f == "cpl.csv"));
+    // It has no such flag, and the flags that package for an order are not combined with it.
+    assert_eq!(
+        netsmith_here(&root, &["project", "order", "kit", "--for-review"])
+            .status
+            .code(),
+        Some(2)
+    );
+    let run = netsmith_here(
+        &root,
+        &["board", "fab", "--for-review", "--allow-drc-violations"],
+    );
+    assert_eq!(run.status.code(), Some(2), "{}", said(&run));
+}

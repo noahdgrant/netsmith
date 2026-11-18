@@ -23,6 +23,13 @@ For each board, in `fab/<Board>/`:
 
 For a system, each board has its own directory under `fab/<System>/`, and each is ordered on its own.
 
+## When the design rules check stops `fab`
+
+An error of the check (a clearance, a short, a hole, the edge, a courtyard) stops `board fab` and **no package is written**: only the KiCad board, its project, the SVG and the other files that are not for the board house are in the folder. The first line of the error says so (`design rules check: N errors: no package written (the KiCad board is in <folder>); ...`) and what each flag does. There are two ways on, and they are not the same:
+
+- `--allow-drc-violations` packages the board **to order from**: `fab-notes.txt` says `design rules check: NOT clean, packaged anyway` and lists the errors. It is never yours to use for an order: ask the user, and name the errors you would waive.
+- `--for-review` packages it **to look at**: the KiCad board and project, `<Board>-gerbers-REVIEW.zip`, the SVG, the `.glb`, `.step`, the schematic PDF and `fab-notes.txt` with the findings, each marked `FOR REVIEW, NOT FOR ORDER`, and **no** `bom.csv` and **no** `cpl.csv`. The run still exits 1 while the check has errors, and `project order` refuses the folder (it makes the board again, and the check stops it). Use it when a person must look at a board with a known finding (one the board house accepts, a clearance to fix later). Never order from it; never give its zip to the board house. A requirement on where a part goes that is not met is waived by it too (only a review, never an order: `--allow-drc-violations` still never waives one). It takes neither `--allow-drc-violations` nor `--cross-check`.
+
 ## An order: several boards, several copies
 
 If the user orders some of the project's boards, or more than one copy, use a named order (ADR 0035). `netsmith project order` lists the orders of `netsmith.toml`. To add one, write
@@ -60,7 +67,7 @@ The surface finish is in `order.txt` (`finish HASL lead-free`, the process's `.f
 | `bottom side unverified` | Parts on the back: their rotation and mirroring in the placement file are unchecked. Look at them in the order preview. |
 | `turn off the right angles unverified` | Parts on the top turned by other than 0, 90, 180 or 270 degrees: JLCPCB's correction for such a turn is not measured, and the placement file has KiCad's turn plus the footprint's offset. Look at them in the order preview. |
 | `origin:` | The placement origin. Nothing to do unless the user needs a particular one. |
-| `design rules check: passed` | netsmith's own check found no error. If the line is missing or says `NOT clean`, stop. |
+| `design rules check: passed` | netsmith's own check found no error. If the line is missing or says `NOT clean` (or `FOR REVIEW, NOT FOR ORDER`), stop. |
 | `design rules warnings: N` | Findings that do not stop a package but should be read: silkscreen over a pad (the fabricator clips it), a solder mask web narrower than the process makes, a via in a pad the process cannot fill. Each is listed with its place. |
 | `zone fill:` | netsmith filled the planes and pours itself. Look at every inner layer and pour in the order preview: clearances round holes and pads, thermal spokes on the plane's own pads. |
 | `text ... has ... the built-in stroke font does not have` | Silkscreen text with a character netsmith's font lacks was drawn as a box. Change the text or tell the user. |
