@@ -833,6 +833,10 @@ pub struct Decl {
     /// `4 x` before the type: a group of that many identical members, `.decoupling[0]` to
     /// `.decoupling[3]` (ADR 0119). `None` for a declaration of one member.
     pub count: Option<Count>,
+    /// `[Pin]`, the type in brackets (issue #1252): a list of members whose number is not
+    /// written, `.lines[0]`, `.lines[1]`, ..., one for each index a statement names. The
+    /// brackets' place. Only an interface declares one, and only of pins.
+    pub list: Option<Span>,
     /// `optional` after the type (ADR 0074): a value that a design may leave unstated, and
     /// the checks that read it are then skipped. The word's place.
     pub optional: Option<Span>,

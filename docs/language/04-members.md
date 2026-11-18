@@ -203,3 +203,30 @@ error: a group has at least two members; `1 x` is not one, so declare the member
 4 |     .c: 1 x Capacitor
   |         ^^^
 ```
+
+### A list of pins
+
+An interface whose number of pins its user decides declares them as a list, the type in brackets (issue #1252): `.lines: [Pin]`. No count is written. The list has a pin for each index a statement names, `.lines[0]`, `.lines[1]`, ..., in its block or by its path from outside (`.lane.lines[3] ~ .u.d3`), and no other; the indices count from 0, as a group's do, up to 999. A `std::sources::LengthGroup` is one (chapter _The shape of a board_, "Diff pairs"): a byte lane joins `.lane.lines[0]` to `.lane.lines[7]` and is a group of eight nets. What a skipped index means is the interface's to say: a `LengthGroup` has a line for each index up to the highest, so a skipped one is a line on no net, an error of the build.
+
+Rules.
+
+- Only an interface declares a list, and only of pins: a part, a module or a board knows how many members it has, and writes a group (`4 x Capacitor`).
+- A list has no block and no `optional`: a statement about one pin names it by its index.
+- A path to the whole list (`.lane.lines.net`) is an error that says to name each pin by its index, and so is a number written in the brackets (`[Pin; 8]`).
+
+```nsm fails
+import std::sources::LengthGroup
+
+board Whole {
+    .lane: LengthGroup { .tolerance &= 0mm..0.5mm }
+    .lane.lines.net &= "D0"
+}
+```
+
+```text
+error: `.lines` is a list of pins, not one pin: name each by its index, `.lines[0]`, `.lines[1]`, ..., and the list has as many as the indices named
+  --> main.nsm:5:11
+  |
+5 |     .lane.lines.net &= "D0"
+  |           ^^^^^
+```

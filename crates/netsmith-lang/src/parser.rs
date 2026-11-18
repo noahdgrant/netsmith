@@ -660,10 +660,25 @@ impl Parser {
                 let name = as_path(lhs, "a name before `:`")?;
                 self.bump();
                 let count = self.group_count()?;
-                let ty = if self.at(&Tok::LeadingDot) && count.is_none() {
+                // `[Pin]`: a list whose number is the indices the statements name (issue #1252).
+                let list_start = self.peek().span.start;
+                let open_list = count.is_none() && self.eat(&Tok::LBracket);
+                let ty = if self.at(&Tok::LeadingDot) && count.is_none() && !open_list {
                     self.request_type()?
                 } else {
                     self.type_path()?
+                };
+                let list = if open_list {
+                    if self.at(&Tok::Semi) {
+                        return Err(ParseError::new(
+                            self.peek().span,
+                            "a list's number is not written: it has as many members as the indices the statements name (`.lines[0]` to `.lines[7]` is 8), so write `[Pin]`",
+                        ));
+                    }
+                    let close = self.expect(&Tok::RBracket, "`]` after the type of a list")?;
+                    Some(Span::new(list_start, close.span.end))
+                } else {
+                    None
                 };
                 // `optional` after the type is a modifier of the declaration (ADR 0074), the
                 // word a pin row also uses. It is read as a plain word, so a member or a type
@@ -695,6 +710,7 @@ impl Parser {
                     name,
                     ty,
                     count,
+                    list,
                     optional,
                     body,
                     span: self.span_from(start),

@@ -7,9 +7,10 @@
 
 use netsmith_check::{Domain, GuidelineRule, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
-    CaseModel, Cutout, Features, ImpedanceTarget, Keepout, Label, Logo, LogoLayer, NetPair, Offset,
-    OffsetEnd, Outline, PadConnection, PartHeight, PartHeightGrowth, PartKind, PartSilk,
-    PartStandoff, PinProtrusion, PlaceBound, PlaceField, Placement, Pour, SilkPrint, StepModel,
+    CaseModel, Cutout, Features, ImpedanceTarget, Keepout, Label, LengthGroup, Logo, LogoLayer,
+    NetPair, Offset, OffsetEnd, Outline, PadConnection, PartHeight, PartHeightGrowth, PartKind,
+    PartSilk, PartStandoff, PinProtrusion, PlaceBound, PlaceField, Placement, Pour, SilkPrint,
+    StepModel,
 };
 use netsmith_lang::Span;
 use std::collections::{BTreeMap, BTreeSet};
@@ -412,6 +413,118 @@ fn stated_pairs(model: &Model, errors: &mut Vec<String>) -> Vec<NetPair> {
         found.push(NetPair { path, p, n, skew });
     }
     found
+}
+
+/// The groups of nets the design matches in length (issue #1252): each `LengthGroup`, with the
+/// nets of its lines in the order of their indices and the top of its `.tolerance`, in the
+/// order of the paths. The group has as many lines as the indices the board joins, from
+/// `lines[0]` to the highest: an index skipped is a line on no net, an error, as are two lines on
+/// one net, a group of fewer than two nets and a tolerance with no top or a top of 0.
+fn length_groups(model: &Model, errors: &mut Vec<String>) -> Vec<LengthGroup> {
+    let mut members: Vec<(String, InstId)> = model
+        .instances()
+        .filter(|(_, i)| i.kind == InstKind::Interface && i.type_name == "LengthGroup")
+        .map(|(id, _)| (model.path_of(id), id))
+        .collect();
+    members.sort();
+    let mut found = Vec::new();
+    for (path, id) in members {
+        // The lines the statements named, by index; the highest says how many there are.
+        let mut lines: Vec<(usize, InstId)> = model
+            .instance(id)
+            .children
+            .iter()
+            .filter_map(|(name, m)| {
+                let index = name
+                    .strip_prefix("lines[")?
+                    .strip_suffix(']')?
+                    .parse()
+                    .ok()?;
+                match m {
+                    Member::Inst(pin) => Some((index, *pin)),
+                    _ => None,
+                }
+            })
+            .collect();
+        lines.sort();
+        let Some(&(last, _)) = lines.last() else {
+            errors.push(format!(
+                "`{path}` has no lines: join each net of the group to one, `{path}.lines[0] ~ .u.d0`, `{path}.lines[1] ~ .u.d1`, ..."
+            ));
+            continue;
+        };
+        let mut nets: Vec<String> = Vec::new();
+        let mut faulty = false;
+        for k in 0..=last {
+            let net = lines
+                .iter()
+                .find(|(i, _)| *i == k)
+                .and_then(|(_, pin)| model.nets().iter().find(|n| n.pins.contains(pin)))
+                .map(|n| n.name.clone());
+            let Some(net) = net else {
+                errors.push(format!(
+                    "`{path}.lines[{k}]` is on no net, and the group has a line for each index up to `[{last}]`: join it with `~` to a net of the group, or number the lines from `[0]` with none skipped"
+                ));
+                faulty = true;
+                continue;
+            };
+            if let Some(j) = nets.iter().position(|n| *n == net) {
+                errors.push(format!(
+                    "`{path}.lines[{j}]` and `{path}.lines[{k}]` are both on the net `{net}`: each line of a length group is a net of its own"
+                ));
+                faulty = true;
+                continue;
+            }
+            nets.push(net);
+        }
+        if faulty {
+            continue;
+        }
+        if nets.len() < 2 {
+            errors.push(format!(
+                "`{path}` has one line, on `{}`, and a net is matched in length to other nets: join a line for each net of the group, `{path}.lines[1] ~ ...`",
+                nets[0]
+            ));
+            continue;
+        }
+        let Some(tolerance) = tolerance_of(model, id, &path, errors) else {
+            continue;
+        };
+        found.push(LengthGroup {
+            path,
+            nets,
+            tolerance,
+        });
+    }
+    found
+}
+
+/// The top of a length group's `.tolerance`, in mm (issue #1252): stated, with a top, above 0.
+fn tolerance_of(model: &Model, inst: InstId, path: &str, errors: &mut Vec<String>) -> Option<f64> {
+    let q = match domain(model, inst, "tolerance") {
+        Some(Domain::Quantity(q)) => q,
+        _ => {
+            errors.push(format!(
+                "`{path}.tolerance` is not stated, and it is the most the group's nets may differ by: say it with `{path}.tolerance &= 0mm..0.5mm`"
+            ));
+            return None;
+        }
+    };
+    let top = q.hi();
+    if !top.is_finite() {
+        errors.push(format!(
+            "`{path}.tolerance` is {q}, with no top, and a tolerance is the most the group's nets may differ by: say it with `&= 0mm..0.5mm`"
+        ));
+        return None;
+    }
+    let limit = mm(top);
+    if limit <= 0.0 {
+        errors.push(format!(
+            "`{path}.tolerance` is {q}, and no two routed tracks are as long to the nanometre: give it a top above 0, `&= 0mm..0.5mm`"
+        ));
+        return None;
+    }
+    Some(limit)
 }
 
 /// The height limit a keepout states, in mm: one value above zero, or none.
@@ -1339,6 +1452,7 @@ pub(crate) fn features_of(
         rail_nets: rail_nets(model),
         impedance_targets: impedance_targets(model, errors),
         pairs: stated_pairs(model, errors),
+        length_groups: length_groups(model, errors),
         pours: pours(model, nets, least, errors),
         labels: labels(model, least_text, errors),
         heights: heights(model, errors),

@@ -17,7 +17,7 @@ The most current a logic pin takes or gives when it is high impedance, at any vo
 _Avoid_: Input current (a part's `.current` is its draw), bias current, input impedance
 
 **Length group**:
-Nets whose track lengths are matched to each other, a parallel bus or a byte lane (issue #1234, `netsmith_core::LengthGroup`): the router lengthens each shorter net towards the group's longest with a _Meander_ until the **spread**, the longest less the shortest, is within the group's **tolerance**, and the _Net table_ lists each group's lengths and spread. The board and the router hold groups; the source's `LengthGroup` interface waits on the spelling of the count of its lines (issue #1252). A _Diff pair_ is matched within itself by its _Skew_, not as a group.
+Nets whose track lengths are matched to each other, a parallel bus or a byte lane (issue #1234, `netsmith_core::LengthGroup`): the router lengthens each shorter net towards the group's longest with a _Meander_ until the **spread**, the longest less the shortest, is within the group's **tolerance**, and the _Net table_ lists each group's lengths and spread. The source states one with a `std::sources::LengthGroup`, whose `.lines` are a _List_ of pins with one line for each index the board joins (issue #1252). A _Diff pair_ is matched within itself by its _Skew_, not as a group.
 _Avoid_: Match group, length-matched bus, net class (a class sets widths and clearances, not lengths)
 
 **Level translator**:
@@ -39,6 +39,10 @@ _Avoid_: Feed, bridge, jumper (a jumper is a part)
 **Linter**:
 `netsmith project lint` (issue #1104): what reads a source that checks and finds what is worth changing in it as a source, one rule for each kind of finding (`unused_import`, `unused_definition`, `redundant`, `naming`), each with the code `lint.` and its name. It never changes a file. A rule is turned off for a project by `[lint] off` in `netsmith.toml` and for one line by `// lint: off <rule>`. Not the checker, whose errors say a source is wrong, and not a _Guideline_, which judges a design against engineering advice.
 _Avoid_: Style check, guideline (a guideline judges the design), warning (as a name: a finding is a warning unless `--strict` makes it an error)
+
+**List**:
+`.lines: [Pin]` in an interface (issue #1252): pins whose number is not written, one for each index a statement names (`.lane.lines[0]` to `.lane.lines[7]` is eight). Only an interface declares one, and only of pins. A _Group_ (`4 x Capacitor`) has a count its declaration writes.
+_Avoid_: Array, vector, open group
 
 **Load group**:
 `shared HEATERS limit 1 { .heater_a .heater_b }` in a board or a module: loads (rails that draw, by path) of which at most `limit` are on at once, one without `limit` (issue #806). A load that is off draws the low end of its range, so the members on one net add up to their low ends plus the `limit` largest spans; the balance of the net, a budget, the DC analysis, the track widths and the power view read that sum, and a message about the net's currents names the group. A load is in one group. It is the statement of a part's shared resource, with loads as its members.

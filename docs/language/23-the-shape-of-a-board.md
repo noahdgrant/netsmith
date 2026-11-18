@@ -338,7 +338,27 @@ Two nets are a diff pair when their names differ only in a pair of suffixes, suc
 
 A pair the design states takes no width and no spacing of its own: each net keeps the width and the clearance it has, and the pair runs at its clearance; a pair whose impedance matters is a `PairImpedance`, which is a diff pair too and runs at its spacing. A pair's **skew limit** is its `.skew` (issue #1234), a field of `DiffPair`, `PairImpedance`, `Can` and `Usb2`: the most its two track lengths may differ by. It is the top of the field's range: `DiffPair`, `PairImpedance` and `Usb2` offer `0mm..0.1mm`, the router's grid, and `Can` `0mm..2.5mm` (its standard states no length, and 2.5 mm of track is under a ten-thousandth of its shortest bit), and a board whose link asks for less narrows it, `.lines.skew &= 0mm..0.05mm`. The meander matches the pair to it, and `board nets` and `board drc` judge the pair against it. Two members that state one pair give it the less of their limits, and a pair that only its names make has the router's 0.1 mm. A `.skew` with no top, or with a top of 0, is an error that says what to write. A net is one track of one pair. Two `DiffPair`s that give a net two partners are an error that names both, and so is a `DiffPair` with both pins on one net or a pin on none. A pair that the design states takes its nets from a pair of names that has only one of them, and a `PairImpedance` comes before a `DiffPair` on the same net.
 
-A **length group** is a set of nets matched in length to each other, a parallel bus or a byte lane (issue #1234): the router lengthens each shorter net of the group towards its longest, with the meanders of a pair, until no two differ by more than the group's tolerance, before it matches the pairs (so a pair in a group is matched within itself after it has the group's length); `board nets` lists each group's nets, their lengths and its spread, `board drc` notes a group whose spread is over its tolerance (`length group: ...`) and `fab` says when a group keeps one. The board and the router hold groups already; the source does not state one yet, since the spelling of the count of the lines of the `LengthGroup` interface is open (issue #1252).
+A **length group** is a set of nets matched in length to each other, a parallel bus or a byte lane (issue #1234): the router lengthens each shorter net of the group towards its longest, with the meanders of a pair, until no two differ by more than the group's tolerance, before it matches the pairs (so a pair in a group is matched within itself after it has the group's length); `board nets` lists each group's nets, their lengths and its spread, `board drc` notes a group whose spread is over its tolerance (`length group: ...`) and `fab` says when a group keeps one. The design states a group with a `std::sources::LengthGroup` (issue #1252): its `.lines` are a list of pins (`[Pin]`, chapter _Members_), each joined with `~` to a net of the group, `.lane.lines[0]` up to `.lane.lines[7]` for a byte lane, and the group has as many nets as the indices the board joins; no count is written. Its `.tolerance` is the most the longest and the shortest net may differ by, the top of its range (`.lane.tolerance &= 0mm..0.5mm`), and it has no default, since what a bus allows depends on its clock and its parts' timing. An index skipped (`[0]` and `[2]` joined, `[1]` not) is a line on no net, an error that names it, and so are two lines on one net, a group of fewer than two nets, and a tolerance unstated, with no top or with a top of 0. A module carries a group out through its interface as it carries a `DiffPair`.
+
+```nsm
+import std::parts::connector::Header1x4
+import std::sources::LengthGroup
+
+/// Four lines of a parallel bus, matched in length to within 0.2 mm.
+board Lane {
+    .near: Header1x4
+    .far: Header1x4
+    .lane: LengthGroup { .tolerance &= 0mm..0.2mm }
+    .near.p1 ~ .far.p4
+    .near.p2 ~ .far.p2
+    .near.p3 ~ .far.p3
+    .near.p4 ~ .far.p1
+    .lane.lines[0] ~ .near.p1
+    .lane.lines[1] ~ .near.p2
+    .lane.lines[2] ~ .near.p3
+    .lane.lines[3] ~ .near.p4
+}
+```
 
 ```nsm
 import std::parts::connector::Header1x2

@@ -341,6 +341,11 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     d.ty.to_source()
                 };
                 let count = d.count.map_or(String::new(), |c| format!("{} x ", c.n));
+                let ty = if d.list.is_some() {
+                    format!("[{ty}]")
+                } else {
+                    ty
+                };
                 let _ = write!(out, "{}: {count}{ty}", d.name.to_source());
                 if d.optional.is_some() {
                     out.push_str(" optional");
