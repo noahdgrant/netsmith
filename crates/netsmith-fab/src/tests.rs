@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::board::tests::SAMPLE;
-use netsmith_testkit::TempFile;
+use netsmith_testkit::{TempDir, TempFile};
 
 fn entry(designators: &[&str], value: &str, lcsc: Option<&str>) -> BomEntry {
     BomEntry {
@@ -411,8 +411,9 @@ fn a_failing_design_rules_check_stops_packaging_and_names_what_it_found() {
     let err = package(&pcb, &sample_bom(), &Options::default()).unwrap_err();
     let text = err.to_string();
     assert!(matches!(err, Error::Drc { .. }), "{text}");
-    assert!(text.contains("design rules check found"), "{text}");
+    assert!(text.contains("design rules check: "), "{text}");
     assert!(text.contains("--allow-drc-violations"), "{text}");
+    assert!(text.contains("--for-review"), "{text}");
     assert!(text.contains("[clearance]"), "{text}");
     assert!(text.contains("PTH pad 1 [A] of J1"), "{text}");
     assert!(
@@ -445,6 +446,111 @@ fn the_option_waives_the_gate_and_the_notes_say_so() {
     {
         assert!(pkg.notes.contains(&format!("  {e}")), "{e}\n{}", pkg.notes);
     }
+}
+
+#[test]
+fn the_stop_of_the_check_says_first_that_no_package_was_written() {
+    let pcb = write_pcb("stop-line", &crowded_board());
+    let err = package(&pcb, &sample_bom(), &Options::default()).unwrap_err();
+    let text = err.to_string();
+    let first = text.lines().next().unwrap();
+    assert!(
+        first.starts_with("design rules check: ")
+            && first.contains(" error")
+            && first.contains(": no package written")
+            && first.contains("--allow-drc-violations packages the board anyway")
+            && first.contains("not clean")
+            && first.contains("--for-review writes the files to look at"),
+        "{text}"
+    );
+    // The caller that wrote the board says where it is.
+    let Error::Drc { counts, .. } = err else {
+        panic!("{text}")
+    };
+    let line = drc_stop_line(&counts, Some(std::path::Path::new("out/Board")));
+    assert!(
+        line.contains(": no package written (the KiCad board is in out/Board); --allow-drc"),
+        "{line}"
+    );
+}
+
+#[test]
+fn a_package_for_review_is_marked_and_has_no_bom_and_no_placement_file() {
+    let pcb = write_pcb("review", &crowded_board());
+    let options = Options {
+        for_review: true,
+        ..Options::default()
+    };
+    let pkg = package(&pcb, &sample_bom(), &options).unwrap();
+    assert!(matches!(pkg.drc, DrcOutcome::ForReview(c) if c.violations >= 1));
+    assert!(pkg.for_review());
+    assert_eq!(pkg.zip_name(), "sample-gerbers-REVIEW.zip");
+    // The notes carry the mark in their second line, and the findings under the check's line.
+    let marked = pkg.notes.lines().nth(1).unwrap();
+    assert!(
+        marked.starts_with("FOR REVIEW, NOT FOR ORDER: ") && marked.contains("project order"),
+        "{}",
+        pkg.notes
+    );
+    assert!(
+        pkg.notes
+            .contains("design rules check: NOT clean, FOR REVIEW, NOT FOR ORDER:"),
+        "{}",
+        pkg.notes
+    );
+    assert!(pkg.notes.contains("[clearance]"), "{}", pkg.notes);
+
+    // Only the zip and the notes are written, and what an earlier package left that an order
+    // could take is gone.
+    let dir = TempDir::new("fab-test-review-write");
+    for stale in ["bom.csv", "cpl.csv", "sample-gerbers.zip"] {
+        std::fs::write(dir.join(stale), "old").unwrap();
+    }
+    let written = pkg.write(&dir).unwrap();
+    let names: Vec<String> = written
+        .iter()
+        .map(|f| f.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names, ["sample-gerbers-REVIEW.zip", "fab-notes.txt"]);
+    let mut left: Vec<String> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    left.sort();
+    assert_eq!(left, ["fab-notes.txt", "sample-gerbers-REVIEW.zip"]);
+
+    // A package to order from, made after it, takes the review zip away and writes the files.
+    let clean = package(
+        &write_pcb("review-then-clean", &all_top_board()),
+        &sample_bom(),
+        &Options::default(),
+    )
+    .unwrap();
+    assert!(!clean.for_review() && clean.zip_name() == "sample-gerbers.zip");
+    assert!(!clean.notes.contains("FOR REVIEW"), "{}", clean.notes);
+    clean.write(&dir).unwrap();
+    let mut left: Vec<String> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    left.sort();
+    assert_eq!(
+        left,
+        ["bom.csv", "cpl.csv", "fab-notes.txt", "sample-gerbers.zip"]
+    );
+}
+
+#[test]
+fn a_board_that_passes_is_packaged_as_usual_with_the_review_option() {
+    let pcb = write_pcb("review-clean", &all_top_board());
+    let options = Options {
+        for_review: true,
+        ..Options::default()
+    };
+    let pkg = package(&pcb, &sample_bom(), &options).unwrap();
+    assert_eq!(pkg.drc, DrcOutcome::Passed);
+    assert_eq!(pkg.zip_name(), "sample-gerbers.zip");
+    assert!(!pkg.notes.contains("FOR REVIEW"), "{}", pkg.notes);
 }
 
 #[test]

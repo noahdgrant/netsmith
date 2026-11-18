@@ -165,6 +165,14 @@ pub struct FabOptions {
     /// Package a board although netsmith's design rules check finds errors. The notes say
     /// so. Nothing else needs this: the check runs without KiCad.
     pub allow_drc_violations: bool,
+    /// Write the files of a board that fails netsmith's design rules check for a person to look
+    /// at, and say so (`board fab --for-review`, issue #1189): the KiCad board and project, the
+    /// Gerber zip as `<board>-gerbers-REVIEW.zip`, the SVG, the 3D scene, the STEP file, the
+    /// schematic and `fab-notes.txt` with the findings, each marked "FOR REVIEW, NOT FOR ORDER",
+    /// and no `bom.csv` and no `cpl.csv`. The run still ends in an error while the check has
+    /// errors, and an order never takes such a package (it makes the board again, and the check
+    /// stops it). A board that passes is packaged as usual. Not with `allow_drc_violations`.
+    pub for_review: bool,
     /// After the files are written, compare the copper of each layer of the Gerbers with the
     /// board model's with netsmith's own viewer (`gerber_compare`, issue #1158; needs no KiCad),
     /// and with KiCad installed plot each board with KiCad too and compare the two sets
@@ -378,6 +386,7 @@ impl Default for FabOptions {
             progress: None,
             layout: None,
             allow_drc_violations: false,
+            for_review: false,
             cross_check: false,
             only: None,
             strict_heights: false,
@@ -1593,6 +1602,8 @@ fn fab_board(
             // The check finds the unrouted connections as unconnected pads; the package is made
             // anyway, for the person to look at, and the run still fails.
             allow_drc_violations: options.allow_drc_violations || incomplete.is_some(),
+            // A board the router left open is packaged as before, marked INCOMPLETE.
+            for_review: options.for_review && incomplete.is_none(),
             drc: drc_extras(&board),
             trim: board.trims().iter().map(Trim::note).collect(),
             process: Some(board.process_note()),
@@ -1626,10 +1637,63 @@ fn fab_board(
             package(&pcb_path, &entries, &package_options)
         })
         .map_err(|e| FabFailure {
-            text: fail(e.to_string()),
+            text: fail(match &e {
+                // The first line says that nothing was written, and what each flag does.
+                netsmith_fab::Error::Drc { counts, report, .. } => {
+                    format!(
+                        "{}\n\n{}",
+                        netsmith_fab::drc_stop_line(counts, Some(&dir)),
+                        report.trim_end()
+                    )
+                }
+                e => e.to_string(),
+            }),
             requirements: unmet_requirements(&e),
             ..FabFailure::default()
         })?;
+        if pkg.for_review() {
+            // Written for a person to look at; the run still fails, as the check does.
+            let mut written = vec![
+                pcb_path.clone(),
+                pcb_path.with_extension("kicad_pro"),
+                pcb_path.with_extension("svg"),
+            ];
+            written.extend(pin_files);
+            written.extend(glb_file);
+            written.extend(step_file);
+            written.extend(pdf_file);
+            written.extend(
+                timings::stage("fab.write", &label, || pkg.write(&dir))
+                    .map_err(|e| fail(e.to_string()))?,
+            );
+            let names: Vec<String> = written
+                .iter()
+                .filter_map(|f| f.file_name())
+                .map(|n| n.to_string_lossy().into_owned())
+                .collect();
+            let counts = pkg.drc_report.counts();
+            return Err(FabFailure {
+                text: fail(format!(
+                    "design rules check: {} errors: {}: files to look at are in {}: {}; no bom.csv and no cpl.csv, and `project order` refuses this package; the run still fails while the check has errors\n\n{}",
+                    counts.violations + counts.unconnected + counts.footprint_errors,
+                    netsmith_fab::FOR_REVIEW,
+                    dir.display(),
+                    names.join(", "),
+                    pkg.drc_report
+                        .errors()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )),
+                requirements: pkg
+                    .constraints
+                    .iter()
+                    .filter(|o| !o.satisfied)
+                    .map(netsmith_pcb::RequirementMiss::of_outcome)
+                    .collect(),
+                ..FabFailure::default()
+            });
+        }
         // The viewer comparison of `--cross-check` (issue #1158): the copper of the board model
         // and of the Gerbers just made, each layer, with no KiCad. Its lines are in the notes
         // before they are written, so `fab-notes.txt` has them, a difference too.
