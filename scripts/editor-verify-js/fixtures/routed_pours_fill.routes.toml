@@ -1,7 +1,9 @@
 # The routes file of routed_pours.nsm with VCC routed on the back round the header's ground pad, so
-# close that the back pour joins the pad with none of its spokes (a starved pad), and a closed ring of
-# VCC on the back whose inside the fill takes out (a removed island): the recipe pcb-fill-marks
-# (issue 1188). Written with `netsmith routes add-track` on the fixture's own file.
+# close that the back pour joins the pad with none of its spokes (a pad it joins by nothing), and a
+# closed ring of VCC on the back whose inside the fill takes out (a removed island): the recipe
+# pcb-fill-marks (issue 1188). The top zone and the first inner layer's zone leave a hole round that
+# pad, so no other fill of its net joins it (issue 1292). Written with `netsmith routes add-track` on
+# the fixture's own file.
 version = 1
 
 [LedExample.nets.GND]
@@ -31,6 +33,24 @@ islands = "remove"
 outline = [[0.8, 0.8], [13.2, 0.8], [13.2, 6.2], [0.8, 6.2]]
 holes = [
   [[4.0, 4.6], [6.0, 4.6], [6.0, 5.6], [4.0, 5.6]],
+  [[2.0, 2.1], [3.4, 2.1], [3.4, 3.5], [2.0, 3.5]],
+]
+
+# The ground plane of the first inner layer as a zone, with the same hole round the header's ground
+# pad, so that no other fill of its net joins the pad and the back pour's is the only one (issue
+# 1292): the GND via joins the zone.
+[[LedExample.nets.GND.zones]]
+layers = ["inner1"]
+priority = 0
+clearance = 0.2
+min_width = 0.15
+pads = "thermal"
+thermal_gap = 0.3
+spoke_width = 0.3
+islands = "remove"
+outline = [[0.3, 0.3], [13.7, 0.3], [13.7, 6.7], [0.3, 6.7]]
+holes = [
+  [[2.0, 2.1], [3.4, 2.1], [3.4, 3.5], [2.0, 3.5]],
 ]
 
 [LedExample.nets.VCC]

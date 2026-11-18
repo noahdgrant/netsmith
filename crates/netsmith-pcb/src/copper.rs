@@ -970,12 +970,14 @@ mod tests {
         let (same, _) = poured_with(|p| p.min_width = Some(crate::export::ZONE_MIN_THICKNESS));
         assert!((same - default).abs() < 1e-9);
         // Spokes 0.5 mm wide are narrower than 0.6 mm: the fill drops them, the pour is left
-        // joined to nothing and goes, and both GND pads' reliefs are joined by nothing, which the
-        // check says with the reason (issue #1222).
+        // joined to nothing and goes, and both GND pads' reliefs are joined by nothing. The check
+        // says so with the reason (issue #1222) of D1's surface pad; J1's through-hole pad is
+        // joined by the GND plane inside, another fill of its net, so it is not unjoinable
+        // (issue #1292).
         let (narrowest, after) = poured_with(|p| p.min_width = Some(0.6));
         assert!(narrowest + 10.0 < default, "{narrowest} and {default}");
         assert_eq!(count(&before, "unjoinable_thermal"), 0, "{before:?}");
-        assert_eq!(count(&after, "unjoinable_thermal"), 2, "{after:?}");
+        assert_eq!(count(&after, "unjoinable_thermal"), 1, "{after:?}");
     }
 
     #[test]

@@ -6,6 +6,8 @@
 // switch in the Layers menu, and both read in the light and the dark theme. The routes file here
 // (`routed_pours_fill.routes.toml`) routes VCC on the back round the header's ground pad, so close that the back pour joins it
 // with none of its spokes (an unjoinable pad), and draws a closed ring of VCC on the back whose inside the fill takes out.
+// The top zone and a zone of the first inner layer leave a hole round that pad, so no other fill of its net joins it and it
+// is joined by nothing on any layer (issue 1292: a pad another fill of its net joins is not unjoinable).
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
