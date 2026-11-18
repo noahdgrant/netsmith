@@ -71,7 +71,7 @@ pub enum Command {
     Capture(CaptureArgs),
     /// Say where one part fits with every other part where it is: the nearest place for each turn and face, or what is in the way.
     #[command(
-        after_long_help = "The board is placed as `dev board3d` places it (the layout file and the physical file read, nothing written), and the part at PATH (a path or a designator) is tried on a grid of origins every `--step` mm from the outline's top left corner, for each of the four right-angle turns from its own and on each face (one face when a requirement states it, or `--side` names it; a turn a requirement rules out is not tried). Each place is measured as the placer and `fab` measure it: the placement check of that part against every other part where it is (courtyards, holes, keepouts, height limits, the edge, cutouts) and the requirements of the physical file about it (its windows, its modules' and the relations it is an end of). For each turn and face it gives the place nearest `--near` where nothing is found, or, when there is none, the closest try (the fewest findings, then the nearest) with what is in the way there. `--near` is a part (path or designator: the centre of its courtyard) or a point `X,Y` in mm from the outline's top left corner, y down; with none, where the part is now. Distances are from that point to the centre of the part's courtyard. Nothing is written: `netsmith layout set PATH --at X,Y --turn T --side S` writes a place, as the text says for each.\n\nWith `--as-laid-out` the board is not placed: it is made exactly as the layout file has it, each part where its entry puts it (or where a requirement pins it) and the outline the physical file states, in milliseconds where placing a nearly full board takes seconds or more. It is refused, naming what is missing, when a part has no entry in the layout file and no requirement pins it, or when the outline's size is not stated exactly (a width or height left open or given as a range is known only by placing); `--place-seeds` and `--place-budget` cannot go with it. Run `netsmith layout capture` to give every part an entry.\n\n`--format json` prints one JSON document on one line: `board`, `part` (`refdes`, `path`), `near` (`x`, `y`, and `part` when it is one), `step`, `now` (the part where it is) and `poses`, each a place with `turn`, `side`, `at` (the footprint's origin, as the layout file's `at`), `distance`, `fits`, and where it does not fit `placement` (the placement check's findings as `board fab --format json` has them), `requirements` (the requirements it does not meet) and `messages` (their sentences). The poses that fit come first, nearest first. The exit code is 0 when some pose fits, 1 when none does or the part or board is refused (a part the board does not have, a board that does not build or place), and 2 when it could not run."
+        after_long_help = "The board is placed as `dev board3d` places it (the layout file and the physical file read, nothing written), and the part at PATH (a path or a designator) is tried on a grid of origins every `--step` mm from the outline's top left corner, for each of the four right-angle turns from its own and on each face (one face when a requirement states it, or `--side` names it; a turn a requirement rules out is not tried). Each place is measured as the placer and `fab` measure it: the placement check of that part against every other part where it is (courtyards, holes, keepouts, height limits, the edge, cutouts) and the requirements of the physical file about it (its windows, its modules' and the relations it is an end of). For each turn and face it gives the place nearest `--near` where nothing is found, or, when there is none, the closest try (the fewest findings, then the nearest) with what is in the way there. `--near` is a part (path or designator: the centre of its courtyard) or a point `X,Y` in mm from the outline's top left corner, y down; with none, where the part is now. Distances are from that point to the centre of the part's courtyard. Nothing is written: `netsmith layout set PATH --at X,Y --turn T --side S` writes a place, as the text says for each.\n\nWith `--as-laid-out` the board is not placed: it is made exactly as the layout file has it, each part where its entry puts it (or where a requirement pins it) and the outline the physical file states, in milliseconds where placing a nearly full board takes seconds or more. It is refused, naming what is missing, when a part has no entry in the layout file and no requirement pins it, or when the outline's size is not stated exactly (a width or height left open or given as a range is known only by placing); `--place-seeds` and `--place-budget` cannot go with it. Run `netsmith layout capture` to give every part an entry. Without it, when the layout file has a place for every part (or a requirement pins it) and the outline's size is stated exactly, a note on stderr says so before the placer starts, since `--as-laid-out` then answers at once; with a part that has no place the placer is the only way to know, and nothing is said.\n\nOn stderr the placing says how far it has got (the seed, the run, the placer's counts, and how long it has been going), as `fab` does; `--progress json` prints each line as `{\"board\", \"stage\": \"placing\", \"unit\", \"done\", \"total\", \"detail\", \"elapsedMs\", \"message\"}` and the note as `{\"message\"}`, and `--to-editor` sends them to a running editor. With `--format json` the progress is printed only with `--progress json`.\n\n`--format json` prints one JSON document on one line: `board`, `part` (`refdes`, `path`), `near` (`x`, `y`, and `part` when it is one), `step`, `now` (the part where it is) and `poses`, each a place with `turn`, `side`, `at` (the footprint's origin, as the layout file's `at`), `distance`, `fits`, and where it does not fit `placement` (the placement check's findings as `board fab --format json` has them), `requirements` (the requirements it does not meet) and `messages` (their sentences). The poses that fit come first, nearest first. The exit code is 0 when some pose fits, 1 when none does or the part or board is refused (a part the board does not have, a board that does not build or place), and 2 when it could not run."
     )]
     Fit(FitArgs),
     /// Give each part's frame, courtyard shapes and pads (net, place, size) as data, with no editor.
@@ -146,6 +146,8 @@ pub struct FitArgs {
     pub as_laid_out: bool,
     #[command(flatten)]
     pub placing: common::Placing,
+    #[command(flatten)]
+    pub watching: common::Watching,
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
@@ -434,20 +436,43 @@ fn fit(args: &FitArgs) -> ExitCode {
         Side::Top => netsmith_pcb::Side::Front,
         Side::Bottom => netsmith_pcb::Side::Back,
     });
-    let made = common::with_placed_board(
-        args.target.file.as_deref(),
-        args.target.board.as_deref(),
-        Some(&args.placing),
-        |placed| {
-            let query = |built: &netsmith_pipeline::Built, board: &netsmith_pcb::Board| {
-                board.fit_part(&built.design, &args.part, &near, args.step, face)
-            };
-            if args.as_laid_out {
-                placed.with_board_as_laid_out(query)
-            } else {
-                placed.with_board(query)
-            }
-            .and_then(|done| done.map_err(|e| format!("error: {e}\n")))
+    // As `fab` and `routes tidy`: with `--format json` the progress is printed only when it is
+    // asked for as JSON (issue #1282).
+    args.watching.tell_progress(
+        "layout fit",
+        args.format == common::Format::Json
+            && args.watching.progress == crate::progress::Print::Text,
+    );
+    let made = common::with_stage_events(|| {
+        common::with_placed_board(
+            args.target.file.as_deref(),
+            args.target.board.as_deref(),
+            Some(&args.placing),
+            |placed| {
+                let query = |built: &netsmith_pipeline::Built, board: &netsmith_pcb::Board| {
+                    board.fit_part(&built.design, &args.part, &near, args.step, face)
+                };
+                if args.as_laid_out {
+                    placed.with_board_as_laid_out(query)
+                } else {
+                    // The board is placed, which takes seconds or minutes on a nearly full board:
+                    // when the layout file has a place for every part, `--as-laid-out` answers at
+                    // once, and the person is told before the placer starts.
+                    if placed.with_board_as_laid_out(|_, _| ()).is_ok() {
+                        say_as_laid_out_answers_at_once();
+                    }
+                    placed.with_board(query)
+                }
+                .and_then(|done| done.map_err(|e| format!("error: {e}\n")))
+            },
+        )
+    });
+    crate::progress::ended(
+        made.is_ok(),
+        if made.is_ok() {
+            "layout fit: done"
+        } else {
+            "layout fit: failed (its output says why)"
         },
     );
     match made {
@@ -466,6 +491,15 @@ fn fit(args: &FitArgs) -> ExitCode {
         }
         Err(code) => code,
     }
+}
+
+/// The note up front of a placed `layout fit` on a board the layout file has a place for every part
+/// of (issue #1282): text on stderr in any progress mode (as the notes of `fab` are), and posted
+/// to the editor when `--to-editor` is given.
+fn say_as_laid_out_answers_at_once() {
+    const NOTE: &str = "note: the layout file has a place for every part (or a requirement pins it): `--as-laid-out` answers at once, without placing the board, and is what the layout file says; the board is placed now, as `--as-laid-out` is not given";
+    eprintln!("{NOTE}");
+    crate::progress::post_only(NOTE);
 }
 
 /// `layout parts`: each part's frame, courtyard shapes and pads as data, findings beside them.
@@ -877,6 +911,15 @@ mod tests {
             })) if near == "-1,2"
         ));
         assert_eq!(kind(&["layout", "fit"]), ErrorKind::MissingRequiredArgument);
+        // Its progress, as `fab`'s (issue #1282).
+        let Ok(Top::Layout(Args {
+            command: Command::Fit(f),
+        })) = parse(&["layout", "fit", "R1", "--progress", "json", "--to-editor"])
+        else {
+            panic!("`layout fit --progress json --to-editor` parses");
+        };
+        assert_eq!(f.watching.progress, crate::progress::Print::Json);
+        assert_eq!(f.watching.to_editor, Some(8787));
         assert!(matches!(
             parse(&["layout", "fit", "R1", "--as-laid-out"]),
             Ok(Top::Layout(Args {
