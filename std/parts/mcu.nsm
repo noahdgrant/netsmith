@@ -4,7 +4,7 @@
 //! `std::parts::logic` does. Where a level depends on the supply, the part is restricted to the
 //! supply range of the row it states, and a board outside that range is refused.
 
-import std::logic::Logic
+import std::logic::{Levels, Logic}
 import std::sources::Rail
 
 /// Microchip's ATtiny13A, an 8-bit AVR microcontroller, in the 8-pin 150 mil (3.9 mm) SOIC that
@@ -35,21 +35,24 @@ import std::sources::Rail
 ///   low up to 0.2 VCC and a high from 0.9 VCC (note 4, "Not tested in production"). The
 ///   datasheet gives other levels for a supply of 1.8 V to 2.4 V (0.2 VCC and 0.7 VCC), which
 ///   are not stated here, so the part is restricted to 2.4 V to 5.5 V and refuses a supply
-///   outside it (the datasheet's operating range is 1.8 V to 5.5 V).
+///   outside it (the datasheet's operating range is 1.8 V to 5.5 V). The I/O levels are the
+///   part's `.levels` (issue #1190), the levels of each of its plain pins `pb0` to `pb4`; the
+///   reset pin `pb5` is a `Logic` line with the levels of its own rows.
 /// - Outputs state no level. The datasheet gives VOL and VOH only at two supplies and two load
 ///   currents for each group of pins (PB0 and PB1: 0.8 V and 4.0 V at 20 mA and 5 V, 0.6 V and
 ///   2.3 V at 10 mA and 3 V; PB2 to PB4: 0.8 V and 4.2 V at 10 mA and 5 V, 0.6 V and 2.5 V at
 ///   5 mA and 3 V), which one statement cannot hold, as for the output of `LevelTranslator`; a
 ///   receiver on an output of this part is listed as not evaluated against it, and a board
-///   that wants a pair states it (`.u.pb0.voh &= 4.0V at 20mA`).
+///   that wants a pair states it for the I/O pins (`.u.levels.voh &= 2.3V at 10mA`, the
+///   lower of the two groups at 3 V).
 /// - Absolute maximums (section 18.1, p.123): the voltage on any pin but RESET is -0.5 V to
 ///   VCC + 0.5 V, and on RESET -0.5 V to 13 V. The maximum operating voltage of 6 V, the
 ///   current per I/O pin (40 mA) and the current in VCC and GND (200 mA) are not stated: the
 ///   supply is held to 5.5 V, and a board states the currents it puts on the part.
 ///
 /// The supply current is not stated: the datasheet gives it by mode and clock (Table 18-1, p.124),
-/// so a board states `.vcc.current` for its use. The lines name the supply for their levels and
-/// carry nothing, as in `LevelTranslator`. The part is named for the part number because its
+/// so a board states `.vcc.current` for its use. The levels and the reset line name the supply
+/// for their levels and carry nothing, as in `LevelTranslator`. The part is named for the part number because its
 /// numbers are that datasheet's. `std/kicad.toml` maps it to the generated footprint
 /// `SOIC-8_3.9x4.9mm_P1.27mm` and names no symbol, so the symbol is drawn from the pin table.
 /// The catalog is keyed by `.mpn`, so a board that has several rows names the one it buys.
@@ -58,39 +61,18 @@ part Attiny13a {
     .designator &= "U"
 
     .vcc: Rail
-    .pb0: Logic
-    .pb1: Logic
-    .pb2: Logic
-    .pb3: Logic
-    .pb4: Logic
-    .pb5: Logic
-    .pb0.reference ~ .vcc
-    .pb1.reference ~ .vcc
-    .pb2.reference ~ .vcc
-    .pb3.reference ~ .vcc
-    .pb4.reference ~ .vcc
-    .pb5.reference ~ .vcc
-    .pb0.reference.current &= 0A
-    .pb1.reference.current &= 0A
-    .pb2.reference.current &= 0A
-    .pb3.reference.current &= 0A
-    .pb4.reference.current &= 0A
-    .pb5.reference.current &= 0A
-
-    // Table 18-1, the rows "VCC = 2.4 - 5.5V" of VIL and VIH for any pin as I/O.
+    // Table 18-1, the rows "VCC = 2.4 - 5.5V" of VIL and VIH for any pin as I/O: the levels
+    // of the plain pins `pb0` to `pb4`.
     .vcc.voltage >= 2.4V
     .vcc.voltage <= 5.5V
-    .pb0.vil &= 0.3 * .vcc.voltage
-    .pb1.vil &= 0.3 * .vcc.voltage
-    .pb2.vil &= 0.3 * .vcc.voltage
-    .pb3.vil &= 0.3 * .vcc.voltage
-    .pb4.vil &= 0.3 * .vcc.voltage
-    .pb0.vih &= 0.6 * .vcc.voltage
-    .pb1.vih &= 0.6 * .vcc.voltage
-    .pb2.vih &= 0.6 * .vcc.voltage
-    .pb3.vih &= 0.6 * .vcc.voltage
-    .pb4.vih &= 0.6 * .vcc.voltage
-    // The rows "RESET Pin as Reset", VCC = 1.8 - 5.5V.
+    .levels: Levels
+    .levels.reference ~ .vcc
+    .levels.vil &= 0.3 * .vcc.voltage
+    .levels.vih &= 0.6 * .vcc.voltage
+    // The rows "RESET Pin as Reset", VCC = 1.8 - 5.5V: the reset pin has levels of its own.
+    .pb5: Logic
+    .pb5.reference ~ .vcc
+    .pb5.reference.current &= 0A
     .pb5.vil &= 0.2 * .vcc.voltage
     .pb5.vih &= 0.9 * .vcc.voltage
 
@@ -98,12 +80,12 @@ part Attiny13a {
     // (section 18.1) in the rows.
     pins "SOIC-8" {
         .pb5.line bidirectional "PB5" "1" fn RESET:input dW:bidirectional ADC0:input PCINT5 abs_min -0.5V abs_max 13V
-        .pb3.line bidirectional "PB3" "2" fn GPIO:bidirectional class CLKI:input ADC3:input PCINT3 abs_min -0.5V abs_max .vcc.voltage + 0.5V
-        .pb4.line bidirectional "PB4" "3" fn GPIO:bidirectional class ADC2:input PCINT4 abs_min -0.5V abs_max .vcc.voltage + 0.5V
+        .pb3      bidirectional "PB3" "2" fn GPIO:bidirectional class CLKI:input ADC3:input PCINT3 abs_min -0.5V abs_max .vcc.voltage + 0.5V
+        .pb4      bidirectional "PB4" "3" fn GPIO:bidirectional class ADC2:input PCINT4 abs_min -0.5V abs_max .vcc.voltage + 0.5V
         .vcc.neg  power         "GND" "4"
-        .pb0.line bidirectional "PB0" "5" fn GPIO:bidirectional class MOSI AIN0:input OC0A:output PCINT0 abs_min -0.5V abs_max .vcc.voltage + 0.5V
-        .pb1.line bidirectional "PB1" "6" fn GPIO:bidirectional class MISO AIN1:input OC0B:output INT0:input PCINT1 abs_min -0.5V abs_max .vcc.voltage + 0.5V
-        .pb2.line bidirectional "PB2" "7" fn GPIO:bidirectional class SCK:input ADC1:input T0:input PCINT2 abs_min -0.5V abs_max .vcc.voltage + 0.5V
+        .pb0      bidirectional "PB0" "5" fn GPIO:bidirectional class MOSI AIN0:input OC0A:output PCINT0 abs_min -0.5V abs_max .vcc.voltage + 0.5V
+        .pb1      bidirectional "PB1" "6" fn GPIO:bidirectional class MISO AIN1:input OC0B:output INT0:input PCINT1 abs_min -0.5V abs_max .vcc.voltage + 0.5V
+        .pb2      bidirectional "PB2" "7" fn GPIO:bidirectional class SCK:input ADC1:input T0:input PCINT2 abs_min -0.5V abs_max .vcc.voltage + 0.5V
         .vcc.pos  power         "VCC" "8"
     }
 

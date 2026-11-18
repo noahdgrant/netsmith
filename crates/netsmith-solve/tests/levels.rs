@@ -585,7 +585,7 @@ fn a_plain_output_into_a_receiver_that_states_levels_is_named() {
     assert_eq!(faults(&s), Vec::<String>::new());
     assert!(
         notes(&s).contains(
-            &"not evaluated: the logic levels from `m.stat` to `b.in` on net `net-b.in.line`: `m.stat` can drive it and is not the `line` of a `Logic` or a pin of an interface with `levels`, so its levels are not known".to_string()
+            &"not evaluated: the logic levels from `m.stat` to `b.in` on net `net-b.in.line`: `m.stat` can drive it and is not the `line` of a `Logic` or a pin of an interface or a part with `levels`, so its levels are not known".to_string()
         ),
         "{:#?}",
         notes(&s)
@@ -601,7 +601,7 @@ fn a_driver_into_a_plain_input_is_named() {
     assert_eq!(
         notes(&s),
         [
-            "not evaluated: the logic levels from `a.out` to `q.en` on net `net-a.out.line`: `q.en` reads it and is not the `line` of a `Logic` or a pin of an interface with `levels`, so the levels it needs are not known"
+            "not evaluated: the logic levels from `a.out` to `q.en` on net `net-a.out.line`: `q.en` reads it and is not the `line` of a `Logic` or a pin of an interface or a part with `levels`, so the levels it needs are not known"
         ]
     );
 }
@@ -626,7 +626,7 @@ fn a_plain_open_drain_pin_takes_its_high_from_its_pull_up_and_its_low_is_named()
     };
     let s = pulled("s3", "Pad");
     assert_eq!(faults(&s), Vec::<String>::new());
-    let low = "not evaluated: the low level from `u.alert` to `b.in` on net `net-b.in.line`: `u.alert` is not the `line` of a `Logic` or a pin of an interface with `levels`, so its `vol` is not known";
+    let low = "not evaluated: the low level from `u.alert` to `b.in` on net `net-b.in.line`: `u.alert` is not the `line` of a `Logic` or a pin of an interface or a part with `levels`, so its `vol` is not known";
     assert!(notes(&s).contains(&low.to_string()), "{:#?}", notes(&s));
     assert!(
         notes(&s).iter().all(|n| !n.contains("high level")),

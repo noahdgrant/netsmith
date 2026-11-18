@@ -3,8 +3,8 @@
 
 use crate::diag::SourceId;
 use crate::model::{
-    Domain, InstId, Member, Model, Net, Peripheral, PeripheralFunction, PinKind, PinRow, PinTable,
-    Pinout, Tie,
+    Domain, InstId, InstKind, Member, Model, Net, Peripheral, PeripheralFunction, PinKind, PinRow,
+    PinTable, Pinout, Tie,
 };
 use netsmith_lang::Span;
 
@@ -73,21 +73,48 @@ impl Model {
         self.pin_facts(pin)?.limits.as_ref()?.reference
     }
 
-    /// Whether the pin's ground is that of an interface it belongs to: it is the `.line` of a
-    /// `Logic`, or a pin of an interface with `levels` (a bus), as the levels check reads it.
+    /// Whether the pin's ground is that of the levels it has ([`Model::levels_of`]): it is the
+    /// `.line` of a `Logic`, a pin of an interface with `levels` (a bus), or a plain pin of a
+    /// signal kind of a part with `levels`, as the levels check reads it.
     pub fn grounded_by_levels(&self, pin: InstId) -> bool {
+        self.levels_of(pin).is_some()
+    }
+
+    /// The interface that holds the logic levels of a pin, which the levels check reads: the
+    /// `Logic` the pin is the `.line` of, the `Levels` of the bus interface it is a pin of
+    /// (ADR 0064), or, for a plain pin of a part (`.dout`, declared by its row) whose row's kind
+    /// is one the levels check reads, the part's own `.levels` (issue #1190). Each has the
+    /// reference rail and the four voltages. A pin of an interface takes its interface's levels
+    /// and never the part's, so a pin that states its own (a `Logic`) keeps them.
+    pub fn levels_of(&self, pin: InstId) -> Option<InstId> {
+        let kind = self.pin_facts(pin).map(|r| r.kind);
+        self.levels_of_kind(pin, kind)
+    }
+
+    /// [`Model::levels_of`], with the kind of the pin's row given: the checker asks while it
+    /// reads the row, before the row is in the part's table.
+    pub fn levels_of_kind(&self, pin: InstId, kind: Option<PinKind>) -> Option<InstId> {
         let inst = self.instance(pin);
-        let Some(parent) = inst.parent else {
-            return false;
-        };
+        let parent = inst.parent?;
         let p = self.instance(parent);
-        if p.kind != crate::model::InstKind::Interface {
-            return false;
+        match p.kind {
+            InstKind::Interface => {
+                if inst.name == "line" && p.type_name == "Logic" {
+                    return Some(parent);
+                }
+                self.own_levels(parent)
+            }
+            InstKind::Part if kind.is_some_and(takes_part_levels) => self.own_levels(parent),
+            _ => None,
         }
-        if inst.name == "line" && p.type_name == "Logic" {
-            return true;
+    }
+
+    /// The member `levels` of a part or an interface, when it is a `std::logic::Levels`.
+    fn own_levels(&self, inst: InstId) -> Option<InstId> {
+        match self.member(inst, "levels")? {
+            Member::Inst(l) if self.is_levels(l) => Some(l),
+            _ => None,
         }
-        matches!(self.member(parent, "levels"), Some(Member::Inst(l)) if self.is_levels(l))
     }
 
     /// Whether the pin is the ground of a rail: the `neg` of an interface that also has a
@@ -449,3 +476,18 @@ impl Model {
 
 /// How many modules deep a function choice is followed from the part's pin out.
 const FORWARD_DEPTH: usize = 6;
+
+/// Whether a plain pin of this kind takes the `levels` of its part (issue #1190): the kinds the
+/// levels check reads, the ones that drive a line or read it. A `power`, `passive` or
+/// `no_connect` pin has no logic levels, so a part's levels leave it alone, and its absolute
+/// limits are measured from the ground its row names or the part's (ADR 0124).
+fn takes_part_levels(kind: PinKind) -> bool {
+    matches!(
+        kind,
+        PinKind::Input
+            | PinKind::Output
+            | PinKind::Bidirectional
+            | PinKind::TriState
+            | PinKind::OpenDrain
+    )
+}

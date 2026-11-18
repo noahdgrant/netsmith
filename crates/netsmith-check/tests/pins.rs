@@ -692,6 +692,28 @@ fn a_logic_line_takes_its_ground_from_its_logic() {
     );
 }
 
+/// A plain pin of a signal kind of a part with `.levels` takes its ground from them (issue
+/// #1190), as a bus pin does, so a table with two rail grounds needs no `from` for it, and `from`
+/// is refused; a `passive` pin takes no levels and keeps the ground of its row.
+#[test]
+fn a_plain_pin_takes_its_ground_from_the_levels_of_its_part() {
+    let src = "import std::sources::Rail\nimport std::logic::Levels\npart P {\n    .vcc: Rail\n    .vio: Rail\n    .levels: Levels\n    .levels.reference ~ .vio\n    pins {\n        .vcc.pos power \"VCC\" \"1\"\n        .vcc.neg power \"GND\" \"2\"\n        .vio.pos power \"VIO\" \"3\"\n        .vio.neg power \"GNDIO\" \"4\"\n        .a input \"A\" \"5\" abs_max 2.1V\n    }\n}\n";
+    let c = run(src);
+    assert!(c.is_ok(), "{}", c.render());
+    let c = run(&src.replace("abs_max 2.1V", "abs_max 2.1V from .vcc.neg"));
+    assert_eq!(
+        messages(&c),
+        ["`.a` is measured from the ground its part's `levels` give, the `neg` of its reference rail; leave out `from`"]
+    );
+    let c = run(&src.replace(".a input", ".a passive"));
+    assert_eq!(
+        messages(&c),
+        ["the limits of `.a` are measured from the part's ground, the `neg` of its rail, and this table has several, `.vcc.neg` and `.vio.neg`; name the pin they are measured from, such as `abs_max 65V from .gnd`"]
+    );
+    let c = run(&src.replace(".a input", ".a passive").replace("abs_max 2.1V", "abs_max 2.1V from .vio.neg"));
+    assert!(c.is_ok(), "{}", c.render());
+}
+
 #[test]
 fn a_pin_has_one_absolute_maximum_in_every_package() {
     part_error(

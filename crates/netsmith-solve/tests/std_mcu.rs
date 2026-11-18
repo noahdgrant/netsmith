@@ -29,7 +29,7 @@ fn messages(s: &Solution) -> Vec<String> {
 #[test]
 fn the_part_is_picked_from_its_catalog_row_and_builds_on_a_3v3_supply() {
     let s = run(&format!(
-        "{}    .u: Attiny13a {{ .package &= \"SOIC-8\" }}\n    .j: Header1x2\n    .v ~ .u.vcc\n    .j.p1 ~ .u.pb0.line\n    .u.pb0.line.function &= GPIO\n",
+        "{}    .u: Attiny13a {{ .package &= \"SOIC-8\" }}\n    .j: Header1x2\n    .v ~ .u.vcc\n    .j.p1 ~ .u.pb0\n    .u.pb0.function &= GPIO\n",
         rail("v", "3.3V +/- 5%")
     ));
     assert_eq!(messages(&s), Vec::<String>::new());
@@ -77,7 +77,7 @@ fn a_supply_above_5v5_is_refused() {
 fn an_inverter_output_is_read_as_a_high_at_3v3_and_not_at_5v() {
     let board = |mcu: &str| {
         format!(
-            "{}{}    .i: Sn74lvc1g04\n    .u: Attiny13a\n    .j: Header1x2\n    .a ~ .i.vcc\n    .b ~ .u.vcc\n    .j.p1 ~ .i.a.line\n    .i.y.line ~ .u.pb2.line\n    .u.pb2.line.function &= GPIO\n",
+            "{}{}    .i: Sn74lvc1g04\n    .u: Attiny13a\n    .j: Header1x2\n    .a ~ .i.vcc\n    .b ~ .u.vcc\n    .j.p1 ~ .i.a.line\n    .i.y.line ~ .u.pb2\n    .u.pb2.function &= GPIO\n",
             rail("a", "3.3V +/- 5%"),
             rail("b", mcu),
         )
@@ -85,7 +85,7 @@ fn an_inverter_output_is_read_as_a_high_at_3v3_and_not_at_5v() {
     assert_eq!(messages(&run(&board("3.3V +/- 5%"))), Vec::<String>::new());
     let m = messages(&run(&board("5V +/- 5%")));
     assert!(
-        m.iter().any(|m| m.contains("u.pb2.vih") && m.contains("i.y.voh")),
+        m.iter().any(|m| m.contains("u.levels.vih") && m.contains("i.y.voh")),
         "{m:?}"
     );
 }
@@ -93,7 +93,7 @@ fn an_inverter_output_is_read_as_a_high_at_3v3_and_not_at_5v() {
 #[test]
 fn a_connected_pin_with_several_functions_needs_one_chosen() {
     let src = format!(
-        "{HEAD}\nboard B {{\n{}    .u: Attiny13a\n    .j: Header1x2\n    .v ~ .u.vcc\n    .j.p1 ~ .u.pb0.line\n}}\n",
+        "{HEAD}\nboard B {{\n{}    .u: Attiny13a\n    .j: Header1x2\n    .v ~ .u.vcc\n    .j.p1 ~ .u.pb0\n}}\n",
         rail("v", "3.3V +/- 5%")
     );
     let checked = check("test.nsm", &src, &Loader::std());
@@ -104,7 +104,7 @@ fn a_connected_pin_with_several_functions_needs_one_chosen() {
         checked.render()
     };
     assert!(
-        text.contains("u.pb0.line") && text.contains("several functions") && text.contains("MOSI"),
+        text.contains("u.pb0") && text.contains("several functions") && text.contains("MOSI"),
         "{text}"
     );
 }
