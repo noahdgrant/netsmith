@@ -1049,6 +1049,7 @@ impl Solver<'_> {
                                 height: c.height,
                                 temp_min: c.temp_min,
                                 temp_max: c.temp_max,
+                                max_voltage_steps: c.max_voltage_steps.clone(),
                                 qualification: c.qualification.clone(),
                                 temp_class: c.class_range(),
                                 generic: c.generic.as_ref().map(|g| g.with_needs(&needs)),

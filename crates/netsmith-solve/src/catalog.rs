@@ -171,6 +171,9 @@ pub struct Candidate {
     /// row states none, which is not a range of zero kelvin.
     pub temp_min: Option<f64>,
     pub temp_max: Option<f64>,
+    /// The row's `max_voltage` written in steps over temperature (`5.5V to 70degC, 4.2V to
+    /// 85degC`, issue #1257); the column holds the greatest step. `None` for a cell of one value.
+    pub max_voltage_steps: Option<netsmith_check::environment::RatingSteps>,
     /// The qualification the row's datasheet states for its ordering code, the row's
     /// `qualification` cell (ADR 0099): `Some("Aec")`, `Some("None")` where the datasheet says
     /// the ordering code is not qualified, and `None` where the row says nothing.

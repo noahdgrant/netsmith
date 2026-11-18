@@ -280,6 +280,20 @@ pub struct LevelTest {
     pub span: Span,
 }
 
+/// A part's `.max_voltage` stated in steps over temperature (`.max_voltage &= 5.5V to 70degC,
+/// 4.2V to 85degC`, issue #1257). The statement also narrows the member to the greatest step;
+/// this records the steps, which the design stage judges against the board's environment and
+/// the voltage across the part (`crate::environment::RatingSteps`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct VoltageSteps {
+    /// The `max_voltage` field of a part.
+    pub field: FieldId,
+    pub steps: crate::environment::RatingSteps,
+    pub source: SourceId,
+    /// The whole statement.
+    pub span: Span,
+}
+
 /// One part or module that can stand where a generic is used (ADR 0068).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Provider {
@@ -1172,6 +1186,8 @@ pub struct Model {
     pub(crate) rail_aliases: Vec<(InstId, InstId)>,
     /// The output levels stated with a test current, in the order they were read (ADR 0076).
     pub(crate) level_tests: Vec<LevelTest>,
+    /// The `.max_voltage` members stated in steps over temperature (issue #1257).
+    pub(crate) voltage_steps: Vec<VoltageSteps>,
     /// The interfaces the board states are not used (ADR 0083), in path order.
     pub(crate) unused: Vec<Unused>,
     /// The enums that fields of this model have the type of.
@@ -1427,6 +1443,7 @@ impl Model {
             part_joins: Vec::new(),
             rail_aliases: Vec::new(),
             level_tests: Vec::new(),
+            voltage_steps: Vec::new(),
             unused: Vec::new(),
             enums: Vec::new(),
             uses: Vec::new(),
@@ -1501,6 +1518,13 @@ impl Model {
 
     pub fn level_tests(&self) -> &[LevelTest] {
         &self.level_tests
+    }
+
+    /// The steps over temperature a part's `.max_voltage` is stated in, if it is (issue #1257).
+    pub fn voltage_steps_of(&self, part: InstId) -> Option<&VoltageSteps> {
+        self.voltage_steps
+            .iter()
+            .find(|s| self.field(s.field).owner == part)
     }
 
     /// The test current a level was stated at, if it was (ADR 0076).

@@ -220,6 +220,80 @@ error: the `schottky` catalog has nothing for `d`, which needs max_reverse_volta
 
 What it proves. The check says what the datasheet of the ordering code says and nothing about the board: a part qualified to AEC-Q200 is not shown to have passed any other test, and the sentence of a datasheet is not a certificate. The `Qualification` of a stricter standard is not a stronger claim: there is one variant, `Aec`, so a board cannot ask for AEC-Q100 Grade 0 by this member (the temperature range of the part says what a grade says).
 
+### A rating that falls with temperature
+
+The board's `.environment.temperature` is its operating temperature range, and it is the one range that every check which depends on how hot or cold the board is reads. One such check is a rating that falls when the part is hot (issue #1257). Some parts (a supercapacitor, a cell, some capacitors) are rated for less voltage when hot, and their datasheets print it in steps, such as 5.5 V up to 70 C and 4.2 V up to 85 C. A part states it the same way, as its `.max_voltage` in steps over temperature: each step is a voltage, `to`, and the temperature it holds up to and at, with the steps written from the coldest and separated by commas.
+
+```nsm evaluate
+import std::env::Environment
+import std::sources::Rail
+
+/// A supercapacitor of an invented datasheet, rated 5.5 V up to 70 C and 4.2 V up to 85 C.
+part Supercap {
+    .designator &= "C"
+    pins {
+        .a passive "+" "1"
+        .b passive "-" "2"
+    }
+    /// The voltage across it, which the rail it sits across gives it.
+    #[role(bias)]
+    .bias: Voltage
+    .max_voltage: Voltage
+    .max_voltage &= 5.5V to 70degC, 4.2V to 85degC
+    bridge .a ~> .b
+}
+
+board Backup {
+    .environment: Environment { .temperature &= -20degC..85degC }
+    .supply: Rail { .voltage &= 3.6V +/- 5%; .pos.net &= "VBAK" }
+    .hold: Supercap {}
+    .supply.pos ~> .hold ~> .supply.neg
+}
+```
+
+The voltage across the part is its `#[role(bias)]` member, which the checker gives the voltage of the rail it sits across (a `Capacitor` has one, `.bias`; a part of a project's own that states steps declares it, with a `bridge` between the two pins, as above). Each step that the board's range reaches must hold the highest of that voltage, here 3.78 V, which is within both 5.5 V and 4.2 V. The same part on a rail of 5 V is within its rating up to 70 C and not above it, and the error names the temperature:
+
+```nsm fails
+import std::env::Environment
+import std::sources::Rail
+
+/// A supercapacitor of an invented datasheet, rated 5.5 V up to 70 C and 4.2 V up to 85 C.
+part Supercap {
+    .designator &= "C"
+    pins {
+        .a passive "+" "1"
+        .b passive "-" "2"
+    }
+    /// The voltage across it, which the rail it sits across gives it.
+    #[role(bias)]
+    .bias: Voltage
+    .max_voltage: Voltage
+    .max_voltage &= 5.5V to 70degC, 4.2V to 85degC
+    bridge .a ~> .b
+}
+
+board Backup {
+    .environment: Environment { .temperature &= -20degC..85degC }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VBAK" }
+    .hold: Supercap {}
+    .supply.pos ~> .hold ~> .supply.neg
+}
+```
+
+```text
+error: Backup: `hold` is rated for 4.2 V only above 343.15 K (70degC), up to 358.15 K (85degC) (the design states `.hold.max_voltage &= 5.5V to 70degC, 4.2V to 85degC`), under the 5.25 V across it (`hold.bias`), and the board's environment reaches 358.15 K (85degC) (`environment.temperature` 253.15 K to 358.15 K (-20degC to 85degC)): choose a part rated for it, lower the voltage or narrow the environment
+```
+
+Rules.
+
+- **A step holds up to and at its temperature.** `5.5V to 70degC, 4.2V to 85degC` is 5.5 V at any temperature up to 70 C, and 4.2 V above 70 C up to 85 C. Each value is one voltage and each temperature one temperature, as the datasheet prints them (`85degC` or `358.15K`; `85C` is a charge), and the temperatures rise from the first step to the last. Above the last step the part is not rated at all, so a board whose range reaches past it is an error.
+- **Only the steps the board reaches are judged.** A step is reached when the board's range overlaps the temperatures it covers: the same part on a board of `-20degC..70degC` is judged by its first step alone, and holds 5 V. The cold end is the part's `.temp_min`, which the steps do not replace.
+- **`.max_voltage` is the greatest step.** The statement narrows the member to its greatest value, the datasheet's maximum, so a relation that reads `.max_voltage` (a converter's rating check) reads 5.5 V and is not told the temperature; the steps are judged by this check, which is.
+- **The voltage is the rail's steady voltage.** It is the voltage across the part, the rail's `.voltage`, not its transient `.peak`: a design that needs the peak within the hot rating states a relation of its own. A diode, whose voltage across it has a sign (`bridge_voltage`), is judged by its size.
+- **What cannot be judged is named.** Steps on a board that states no `.environment.temperature`, or on a part whose voltage across it is not known (a part across no rail), are kept, and a guideline finding names the part and what to state. A part whose definition has no voltage across it at all (no `#[role(bias)]` member and no `bridge`) is an error.
+- **Only a part's `.max_voltage` takes steps.** Steps elsewhere (another member, a relation, a value inside arithmetic) are refused with a pointer to this form, and so is a second statement of steps for the same part.
+- **A catalog row can state them.** A `max_voltage` cell may be written in steps, quoted in the CSV for the commas (see Catalog columns, below). The column then holds the greatest step, and a row whose steps do not hold the voltage across the part at a temperature the board reaches is not offered: the solver tries the next row and says how many it left out and why. Steps stated by the design speak for the part, whatever its row says.
+
 ### The manifest's default
 
 `netsmith.toml` can name the environment every board of the project has when it declares none (the key `environment` under `[project]`): the definition of an interface with the field `.temperature`, written as `module::Name`, where the module is a standard one or a file of the project:
@@ -260,4 +334,32 @@ ACME-R316,316ohm +/- 1%,62.5mW,0402,85,https://example.invalid/acme-r316.pdf
 
 ```text
 catalogs/resistor.csv:2: `temp_max`: `85` is a plain number, but a part's highest temperature is a temperature such as `85degC` or `358.15K`
+```
+
+A `max_voltage` cell may be written in steps over temperature, as a design writes them after `&=` (see A rating that falls with temperature), quoted for the commas. The column holds the greatest step, and a row whose steps do not hold the voltage across the part at a temperature the board reaches is not offered. Here the one row of 1 F holds 5.5 V only up to 70 C, and the board reaches 85 C on a rail of 5 V:
+
+```csv file=catalogs/capacitor.csv set=supercap
+mpn,capacitance,effective_capacitance,max_voltage,package,library,source
+ACME-SC1F,1F +/- 20%,derate capacitance by bias:,"5.5V to 70degC, 4.2V to 85degC",1210,Extended,https://example.invalid/acme-sc1f.pdf page 2
+```
+
+```nsm fails catalogs=supercap
+import std::env::Environment
+import std::parts::passive::Capacitor
+import std::sources::Rail
+
+board Backup {
+    .environment: Environment { .temperature &= -20degC..85degC }
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VBAK" }
+    .hold: Capacitor { .capacitance &= 1F +/- 20% }
+    .supply.pos ~> .hold ~> .supply.neg
+}
+```
+
+```text
+error: the `capacitor` catalog has nothing for `hold`, which needs capacitance within 800mF..1.2F (1 row was left out because its maximum voltage, stated in steps over temperature, is under the 5.25 V across `hold` at a temperature the board's environment reaches, `.environment.temperature` 253.15 K to 358.15 K (-20degC to 85degC))
+  --> main.nsm:8:5
+  |
+8 |     .hold: Capacitor { .capacitance &= 1F +/- 20% }
+  |     ^^^^^^^^^^^^^^^^
 ```

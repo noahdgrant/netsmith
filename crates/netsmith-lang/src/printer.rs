@@ -210,6 +210,11 @@ impl Expr {
             Self::Tolerance { center, tol, .. } => {
                 format!("{} +/- {}", center.to_source(), tol.to_source())
             }
+            Self::Steps { steps, .. } => steps
+                .iter()
+                .map(|s| format!("{} to {}", s.value.to_source(), s.to.to_source()))
+                .collect::<Vec<_>>()
+                .join(", "),
             Self::Binary { op, lhs, rhs, .. } => {
                 let sym = match op {
                     BinOp::Add => "+",

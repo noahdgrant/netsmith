@@ -340,6 +340,12 @@ fn expr_paths<'a>(e: &'a Expr, out: &mut Vec<&'a Path>) {
                 expr_paths(arg, out);
             }
         }
+        Expr::Steps { steps, .. } => {
+            for step in steps {
+                expr_paths(&step.value, out);
+                expr_paths(&step.to, out);
+            }
+        }
         Expr::Number(..) | Expr::Str(..) | Expr::Variant { .. } => {}
     }
 }

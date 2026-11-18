@@ -31,6 +31,7 @@ fn resistor(ohms: f64) -> Candidate {
         height: None,
         temp_min: None,
         temp_max: None,
+        max_voltage_steps: None,
         qualification: None,
         generic: None,
     }
@@ -56,6 +57,7 @@ fn capacitor(name: &str, effective_uf: f64) -> Candidate {
         height: None,
         temp_min: None,
         temp_max: None,
+        max_voltage_steps: None,
         qualification: None,
         generic: None,
     }

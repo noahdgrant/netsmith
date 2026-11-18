@@ -212,6 +212,10 @@ fn places_in(e: &Expr, out: &mut Vec<(String, String)>) {
             places_in(tol, out);
         }
         Expr::Call { args, .. } => args.iter().for_each(|a| places_in(a, out)),
+        Expr::Steps { steps, .. } => steps.iter().for_each(|s| {
+            places_in(&s.value, out);
+            places_in(&s.to, out);
+        }),
         Expr::Number(..) | Expr::Str(..) | Expr::Variant { .. } => {}
     }
 }

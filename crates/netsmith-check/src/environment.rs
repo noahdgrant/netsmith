@@ -181,6 +181,97 @@ impl ClassRange {
     }
 }
 
+/// A part's maximum voltage stated in steps over temperature, as a datasheet prints a rating
+/// that falls when the part is hot (issue #1257): `5.5V to 70degC, 4.2V to 85degC` is 5.5 V
+/// at any temperature up to and at 70 degC, and 4.2 V above 70 degC up to and at 85 degC.
+/// Above the last step the part is not rated at all.
+///
+/// The steps are judged against the board's `.environment.temperature` and the voltage across
+/// the part (its `#[role(bias)]` member, which the checker gives the voltage of the rail the
+/// part sits across): every step that the environment reaches must hold the highest of that
+/// voltage, and the environment must not reach past the last step. A step is reached when the
+/// environment overlaps the temperatures it covers, so a board that never gets hotter than
+/// 70 degC is judged by the first step alone. The voltage is the rail's steady `.voltage`, not
+/// its transient `.peak`, which a design that needs it compares in a relation of its own.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RatingSteps {
+    /// `(volts, kelvin)`: each value and the temperature it holds up to, the temperatures rising.
+    pub steps: Vec<(f64, f64)>,
+}
+
+/// What [`RatingSteps::judge`] found.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StepFit {
+    /// Every step the environment reaches holds the voltage across the part.
+    Met,
+    /// A step the environment reaches is under the voltage across the part: the first such
+    /// step, from the cold end.
+    Broken {
+        /// The step's rating, in volts.
+        volts: f64,
+        /// The temperature the step starts above (the previous step's), when the environment
+        /// is colder than it, so that the rating is broken only above it; `None` when the
+        /// rating is broken at the coldest the environment reaches.
+        above: Option<f64>,
+        /// The temperature the step holds up to.
+        to: f64,
+    },
+    /// The environment reaches past the last step, where the part has no rating.
+    Beyond {
+        /// The last step's temperature.
+        last: f64,
+    },
+}
+
+impl RatingSteps {
+    /// The greatest value of the steps: the part's `.max_voltage` with no temperature named,
+    /// the figure a catalog row's `max_voltage` cell and a relation on the member read.
+    pub fn greatest(&self) -> f64 {
+        self.steps
+            .iter()
+            .map(|s| s.0)
+            .fold(f64::NEG_INFINITY, f64::max)
+    }
+
+    /// Judge the steps against `environment`, `(lowest, highest)` in kelvin, and `across`, the
+    /// highest voltage across the part (its size: the sign of a bias does not matter).
+    pub fn judge(&self, environment: (f64, f64), across: f64) -> StepFit {
+        const EPS: f64 = 1e-9;
+        let (lo, hi) = environment;
+        let mut below = f64::NEG_INFINITY;
+        for &(volts, to) in &self.steps {
+            // The step covers the temperatures above `below` up to and at `to`.
+            let reached = lo <= to + EPS && hi > below + EPS;
+            if reached && across > volts + EPS {
+                return StepFit::Broken {
+                    volts,
+                    above: (below > lo + EPS).then_some(below),
+                    to,
+                };
+            }
+            below = to;
+        }
+        if hi > below + EPS {
+            return StepFit::Beyond { last: below };
+        }
+        StepFit::Met
+    }
+
+    /// The steps as the source writes them, in degC: `5.5V to 70degC, 4.2V to 85degC`.
+    pub fn to_source(&self) -> String {
+        self.steps
+            .iter()
+            .map(|&(v, t)| format!("{}V to {}degC", trim(v), trim(t - 273.15)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+/// `4.2 V`: a voltage as the messages about rating steps show it.
+pub fn show_volts(volts: f64) -> String {
+    format!("{} V", trim(volts))
+}
+
 /// `358.15 K (85degC)`: a temperature as the messages show it.
 pub fn show(kelvin: f64) -> String {
     format!("{} K ({}degC)", trim(kelvin), trim(kelvin - 273.15))
@@ -230,6 +321,50 @@ mod tests {
         assert_eq!(Fit::of(env, None, None).missing(), ["temp_min", "temp_max"]);
         // A refused end is refused whatever the other end says.
         assert!(Fit::of(env, None, Some(358.15)).refused());
+    }
+
+    #[test]
+    fn rating_steps_are_judged_at_each_temperature_the_environment_reaches() {
+        let steps = RatingSteps {
+            steps: vec![(5.5, 343.15), (4.2, 358.15)],
+        };
+        assert_eq!(steps.greatest(), 5.5);
+        assert_eq!(steps.to_source(), "5.5V to 70degC, 4.2V to 85degC");
+        // 5 V is within 5.5 V up to 70 degC, and not within 4.2 V above it.
+        assert_eq!(steps.judge((253.15, 343.15), 5.0), StepFit::Met);
+        assert_eq!(
+            steps.judge((253.15, 358.15), 5.0),
+            StepFit::Broken {
+                volts: 4.2,
+                above: Some(343.15),
+                to: 358.15
+            }
+        );
+        // A board that is always above 70 degC breaks the second step from its coldest.
+        assert_eq!(
+            steps.judge((348.15, 358.15), 5.0),
+            StepFit::Broken {
+                volts: 4.2,
+                above: None,
+                to: 358.15
+            }
+        );
+        assert_eq!(steps.judge((253.15, 358.15), 4.0), StepFit::Met);
+        // Past the last step the part has no rating.
+        assert_eq!(
+            steps.judge((253.15, 378.15), 4.0),
+            StepFit::Beyond { last: 358.15 }
+        );
+        // A step the environment does not reach is not judged: 6 V breaks only the first step.
+        assert_eq!(
+            steps.judge((348.15, 358.15), 4.0),
+            StepFit::Met,
+            "the first step is colder than the board"
+        );
+        assert!(matches!(
+            steps.judge((253.15, 343.15), 6.0),
+            StepFit::Broken { volts: 5.5, .. }
+        ));
     }
 
     #[test]

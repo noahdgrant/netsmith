@@ -987,6 +987,21 @@ pub enum Expr {
         args: Vec<Expr>,
         span: Span,
     },
+    /// `5.5V to 70degC, 4.2V to 85degC`: a value that holds in steps over temperature, each
+    /// value up to and at the temperature after its `to` (issue #1257). The parser reads it
+    /// after `&=` and in a catalog cell; where it may stand, and the kind of each side, are the
+    /// checker's to say. At least one step is written.
+    Steps {
+        steps: Vec<Step>,
+        span: Span,
+    },
+}
+
+/// One step of an [`Expr::Steps`]: `value to temperature`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Step {
+    pub value: Expr,
+    pub to: Expr,
 }
 
 impl Expr {
@@ -999,6 +1014,7 @@ impl Expr {
             | Self::Binary { span: s, .. }
             | Self::Variant { span: s, .. }
             | Self::Call { span: s, .. }
+            | Self::Steps { span: s, .. }
             | Self::Range { span: s, .. }
             | Self::Tolerance { span: s, .. } => *s,
             Self::Path(p) => p.span,

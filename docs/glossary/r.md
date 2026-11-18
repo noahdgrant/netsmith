@@ -20,6 +20,10 @@ _Avoid_: Half-open range, unbounded range, infinite end, a very large number sta
 A range whose ends are values, `0A .. .max_supply_current` (ADR 0066): a member or an expression over members, read when both have a value, as the range from the low end's lowest value to the high end's highest. While an end has no value the statement claims nothing and is listed as not evaluated. It is how a part states its own draw from a catalog column. A tolerance (`+/-`) still needs numbers.
 _Avoid_: Computed range, dynamic range
 
+**Rating step**:
+One step of a part's `.max_voltage` stated over temperature, as a datasheet prints a rating that falls when the part is hot: `.max_voltage &= 5.5V to 70degC, 4.2V to 85degC` is 5.5 V up to and at 70 C and 4.2 V above it up to and at 85 C, and no rating above the last step (issue #1257). A catalog row's `max_voltage` cell may be written the same way. The member holds the greatest step; each step the board's `.environment.temperature` reaches must hold the voltage across the part (its `#[role(bias)]` member), and the error names the temperature where it does not.
+_Avoid_: Derating curve (a curve is interpolated; steps are not), temperature derating table, hot rating
+
 **Ratsnest**:
 The connections a board still needs, drawn as straight lines between pads, before any track is routed.
 
