@@ -494,8 +494,8 @@ pub struct ZoneFill {
     pub areas: Vec<Area>,
 }
 
-/// The fill of each layer that has a zone of a routes file ([`Board::zoned`]), by net: what
-/// the Gerbers hold, filled by `netsmith_geom::fill` from the board file in memory (each zone
+/// The fill of each layer that has a zone of a routes file ([`Board::zoned`]), by net, the pour
+/// or plane drawn under the zones too ([`Board::replaced`]): what the Gerbers hold, filled by `netsmith_geom::fill` from the board file in memory (each zone
 /// less its clearances round other nets' copper, by KiCad's priority rule where zones overlap).
 /// Empty for a board with no such zone, at no cost.
 pub fn zone_fills(board: &Board) -> Result<Vec<ZoneFill>, CopperError> {
@@ -506,7 +506,7 @@ pub fn zone_fills(board: &Board) -> Result<Vec<ZoneFill>, CopperError> {
 }
 
 /// The fill of each outer pour of a net that is also a plane, on a layer with no zone of a
-/// routes file, by net: what the Gerbers hold, which is trimmed to the pour's minimum width
+/// routes file (on such a layer [`zone_fills`] has the pour's fill), by net: what the Gerbers hold, which is trimmed to the pour's minimum width
 /// (KiCad's `min_thickness`) and has its islands removed, as KiCad's fill does
 /// (`netsmith_geom::fill`), so that a pad it joins is one KiCad's fill joins too. The ratsnest
 /// takes it as the way from such a pad to its plane through a via the pour reaches (issue
@@ -536,7 +536,9 @@ pub fn starved_pour_pads(board: &Board) -> Result<Vec<(String, String, Pt)>, Cop
     let layers: Vec<&str> = board
         .pours
         .iter()
-        .filter(|p| board.planes.iter().any(|q| q.net == p.net) && !board.zoned(p.layer.name()))
+        .filter(|p| {
+            board.planes.iter().any(|q| q.net == p.net) && !board.replaced(p.layer.name(), &p.net)
+        })
         .map(|p| p.layer.name())
         .collect();
     if layers.is_empty() {

@@ -1677,8 +1677,9 @@ net: string | null, pour: CopperPour | null,
  */
 zones: number, 
 /**
- * Whether those zones replace the plane or the pour: the design's copper on the layer is
- * not drawn.
+ * Whether a zone of the plane's or the pour's own net replaces it: the design's copper on
+ * the layer is then not drawn. Zones of other nets cut it and leave it drawn round them
+ * (issue #1314).
  */
 replacedByZones: boolean, };
 

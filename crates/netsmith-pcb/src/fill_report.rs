@@ -294,14 +294,26 @@ impl FillReport {
                 Some(c) => c.word(),
                 None => layer,
             };
-            let source = if board.zoned(layer) {
-                FillSource::Zone
-            } else if matches!(copper, Some(CopperLayer::Inner(_))) {
-                FillSource::Plane
-            } else {
-                FillSource::Pour
-            };
             for z in joins {
+                let net = art.zones[z.zone].net.clone().unwrap_or_default();
+                // A zone of the routes file restates a pour or a plane of its net; one of another
+                // net leaves the pour drawn round it (issue #1314).
+                let source = if board.replaced(layer, &net)
+                    || !board
+                        .pours
+                        .iter()
+                        .any(|p| p.layer.name() == layer && p.net == net)
+                        && !board
+                            .planes
+                            .iter()
+                            .any(|p| p.layer == *layer && p.net == net)
+                {
+                    FillSource::Zone
+                } else if matches!(copper, Some(CopperLayer::Inner(_))) {
+                    FillSource::Plane
+                } else {
+                    FillSource::Pour
+                };
                 let mut counts = JoinCounts::default();
                 let pads: Vec<FillPad> = z
                     .pads
@@ -315,7 +327,7 @@ impl FillReport {
                 fills.push(FillArea {
                     layer: word.to_string(),
                     layer_name: layer.clone(),
-                    net: art.zones[z.zone].net.clone().unwrap_or_default(),
+                    net,
                     source,
                     held: z.held,
                     area: z.fill.iter().map(|a| a.size()).sum(),

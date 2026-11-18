@@ -624,13 +624,18 @@ pub fn record_of_text(
         .ok_or_else(|| format!("the text holds no record of net {net} of {board}"))
 }
 
-/// `board`'s KiCad layers that a zone of the routes file's table is on.
-fn zoned_layers(table: &netsmith_pcb::BoardRoutes) -> Vec<String> {
+/// `board`'s KiCad layers that a zone of the routes file's table is on, each with the zone's net.
+fn zoned_layers(table: &netsmith_pcb::BoardRoutes) -> Vec<(String, String)> {
     table
         .nets
-        .values()
-        .flat_map(|r| r.zones.iter().flat_map(|z| z.layers.iter()))
-        .filter_map(|l| netsmith_pcb::routes_kicad_layer(l))
+        .iter()
+        .flat_map(|(net, r)| {
+            r.zones
+                .iter()
+                .flat_map(|z| z.layers.iter())
+                .filter_map(|l| netsmith_pcb::routes_kicad_layer(l))
+                .map(move |l| (l, net.clone()))
+        })
         .collect()
 }
 
@@ -638,7 +643,7 @@ fn change_record(
     board: &Board,
     record: &mut NetRoutes,
     change: &Edit,
-    zoned: &[String],
+    zoned: &[(String, String)],
 ) -> Result<String, Refusal> {
     let missing = |net: &str, what: &str, n: usize, have: usize| {
         Refusal::Refused(format!(
@@ -750,20 +755,50 @@ fn change_record(
             }
             let words = layers.join(" and ");
             record.zones.push(zone);
-            let replaced: Vec<String> = layers
-                .iter()
-                .filter_map(|l| {
-                    let kicad = netsmith_pcb::routes_kicad_layer(l)?;
-                    let had = board.pours.iter().any(|p| p.layer.name() == kicad)
-                        || board.planes.iter().any(|p| p.layer == kicad);
-                    (had && !zoned.contains(&kicad)).then(|| l.clone())
-                })
-                .collect();
+            // A zone of the pour's or the plane's own net restates it; one of another net cuts
+            // it (issue #1314).
+            let mut replaced: Vec<String> = Vec::new();
+            let mut cut: Vec<String> = Vec::new();
+            for l in layers.iter() {
+                let Some(kicad) = netsmith_pcb::routes_kicad_layer(l) else {
+                    continue;
+                };
+                let process = board
+                    .pours
+                    .iter()
+                    .filter(|p| p.layer.name() == kicad)
+                    .map(|p| p.net.as_str())
+                    .chain(
+                        board
+                            .planes
+                            .iter()
+                            .filter(|p| p.layer == kicad)
+                            .map(|p| p.net.as_str()),
+                    )
+                    .next();
+                let Some(theirs) = process else {
+                    continue;
+                };
+                let restated = zoned.iter().any(|(k, n)| *k == kicad && n == theirs);
+                if theirs == net.as_str() {
+                    if !restated {
+                        replaced.push(l.clone());
+                    }
+                } else if !restated {
+                    cut.push(format!("{l} ({theirs})"));
+                }
+            }
             let mut said = format!("added a zone to net {net} on {words}");
             if !replaced.is_empty() {
                 said.push_str(&format!(
-                    "; the design's pour or plane on {} is not drawn now: that layer takes its zones from the routes file alone",
+                    "; the design's pour or plane on {} is not drawn now: a zone of its own net restates it",
                     replaced.join(" and ")
+                ));
+            }
+            if !cut.is_empty() {
+                said.push_str(&format!(
+                    "; the design's pour or plane on {} is drawn round it: the zone has the area it covers",
+                    cut.join(" and ")
                 ));
             }
             Ok(said)
@@ -1393,5 +1428,33 @@ mod tests {
         )
         .unwrap();
         assert_eq!(said, "added a zone to net GND on top");
+    }
+
+    #[test]
+    fn a_zone_of_another_net_on_a_pour_cuts_it_and_says_so() {
+        let mut board = led();
+        board.pours.push(netsmith_pcb::BoardPour {
+            layer: netsmith_pcb::CopperLayer::Front,
+            net: "GND".into(),
+            stitch_pitch: None,
+            thermal_gap: None,
+            spoke_width: None,
+            clearance: None,
+            min_width: None,
+            pads: None,
+        });
+        let mut routes = Routes::default();
+        // At priority 0, as the pour is: the zone is still raised above it (issue #1314).
+        let said = edit(
+            &board,
+            &mut routes,
+            &zone("VCC", rect(1.0, 1.0, 3.0, 3.0), 0),
+        )
+        .unwrap();
+        assert!(
+            said.contains("the design's pour or plane on top (GND) is drawn round it"),
+            "{said}"
+        );
+        assert!(!said.contains("not drawn"), "{said}");
     }
 }

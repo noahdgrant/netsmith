@@ -628,12 +628,18 @@ impl<'a> Work<'a> {
         }
         let mut whole = shell.clone();
         whole.parts = parts.clone();
+        // The zones are raised above the pours drawn under them, as the board file has them
+        // (`Board::zone_lift`, issue #1314).
+        let lift = shell.zone_lift();
         let mut zones = shell.zones.clone();
+        for z in &mut zones {
+            z.priority = z.priority.saturating_add(lift);
+        }
         zones.extend(
             netsmith_pcb::process_zones(&whole)
                 .into_iter()
                 .map(|(net, z)| z.on(&whole, &net))
-                .filter(|z| !z.layers.iter().any(|l| shell.zoned(l))),
+                .filter(|z| !z.layers.iter().any(|l| shell.replaced(l, &z.net))),
         );
         Ok(Work {
             board,
