@@ -366,6 +366,11 @@ pub struct BoardOut {
     /// straight length, the ratio and its vias. Left out when there are none.
     #[serde(skip_serializing_if = "netsmith_fab::NetRoutes::is_empty")]
     pub routes: netsmith_fab::NetRoutes,
+    /// For `board drc` of a design's board: the diff pairs whose skew is over the router's
+    /// target (issue #1223), each with the numbers `board nets` gives a pair. Left out when there
+    /// are none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub pair_skews: Vec<netsmith_fab::PairRow>,
 }
 
 /// The count of the notes of the run, for each cause, whether or not they are listed.

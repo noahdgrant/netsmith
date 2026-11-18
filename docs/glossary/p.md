@@ -12,6 +12,10 @@ _Avoid_: Number, pin number
 How a _Pour_ or a _Zone_ joins the pads of its net: a thermal relief (the default), solid copper, not at all, or a relief round a through-hole pad and solid copper up to a surface pad. A pour states it as a variant of the std enum `PadConnection` (`.process.top.pads &= PadConnection::Solid`), a zone of the routes file as `pads = "solid"`; KiCad's zone writes it as `connect_pads` (issue #1084).
 _Avoid_: pad connect mode, zone connection
 
+**Pair pitch**:
+The distance, centre to centre, at which the two lines of a _Diff pair_ run: half of each width and the pair's gap, which is the stated spacing of a `PairImpedance` and, for any other pair, its nets' clearance, rounded up to the router's grid (issue #1223). The router pulls every pair to it from its pads by 45 degree jogs, so that the pair runs as one object; the _Net table_ gives the least and the largest gap where it runs coupled.
+_Avoid_: Diff pair gap (KiCad's field of a net class, which `fab` writes for a `PairImpedance`), coupling distance
+
 **Pair satellite**:
 A satellite whose two pins are on two different pins of one main part, such as a crystal across `XL1` and `XL2`, a resonator, or a series element across two pins. The schematic stands it beside both pins, turned so that its two wires are short, have as few bends as can be, and cross nothing, and never writes a name on its nets. The metric `pair_crossings` (target 0) counts the crossings on those wires.
 _Avoid_: Crystal rule, two-pin satellite

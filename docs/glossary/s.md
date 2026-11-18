@@ -66,6 +66,10 @@ _Avoid_: host port, device port (for the power direction), DRP
 The first source of a port, which `netsmith import port skeleton <original.kicad_pcb>` writes with the port's _Parts file_ (#452): one member for each footprint of the original, named by its designator, and one join for each net, with the original's net names. A footprint that is not a plain resistor, capacitor, inductor or LED is a **gap** (marked `GAP`) until the project has its part file, so the skeleton does not build until each has one.
 _Avoid_: scaffold (the word for `netsmith project init`), template, stub
 
+**Skew**:
+The difference of the track lengths of the two nets of a _Diff pair_, in mm, each measured along its centre line (an arc by its chords). The router matches a pair to 0.1 mm (`netsmith_router::meander::SKEW_TARGET`) with a _Meander_ on the shorter net, and `fab`, `board drc` (a note) and the _Net table_ say which pair keeps more; no source states another limit for a pair yet (issue #1223).
+_Avoid_: Length mismatch, delay skew (netsmith measures length, not time)
+
 **Skill**:
 A directory in `.agents/skills/` with a `SKILL.md`: instructions an agent loads when its description matches the task. `netsmith-*` skills are for working in a netsmith project and `netsmith project init` copies them into one and `netsmith project refresh` updates the copies you have not edited; `netsmith-dev-*` skills are for working on netsmith and stay in its repository (ADR 0015).
 _Avoid_: Prompt, plugin

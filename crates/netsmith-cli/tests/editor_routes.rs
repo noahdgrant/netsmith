@@ -140,6 +140,7 @@ const ROUTES: &[(&str, Way)] = &[
     ("GET /api/pcb/summary", Command(&["layout summary"])),
     ("GET /api/pcb/copper", Command(&["board copper"])),
     ("GET /api/pcb/fill", Command(&["board fill"])),
+    ("GET /api/pcb/nets", Command(&["board nets"])),
     ("GET /api/pcb/fit", Command(&["layout fit"])),
     // KiCad's check of the board runs in `fab` when KiCad is installed.
     ("POST /api/pcb/drc", Command(&["board fab"])),

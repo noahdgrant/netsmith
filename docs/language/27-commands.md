@@ -53,6 +53,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith board panel` | new | `--name`, `--format` |
 | `netsmith board copper` | new | `--board`, `--format` |
 | `netsmith board fill` | new (#1187) | `--board`, `--place-seeds`, `--place-budget`, `--format` |
+| `netsmith board nets` | new (#1223) | `--board`, `--lengths`, `--route`, `--route-timeout`, `--place-seeds`, `--place-budget`, `--format` |
 | `netsmith layout show` | the same | `--file` (was `--into`), `--board`, `--format` |
 | `netsmith layout set` | the same | `--file` (was `--into`), `--board`, `--at`, `--turn`, `--side`, `--lock`, `--unlock`, `--format` |
 | `netsmith layout check` | the same | `--file` (was `--into`), `--board`, `--format` |
@@ -281,6 +282,15 @@ netsmith view pcb --region 10,5,20,15 --scale 40 --only-open   # main-pcb.png: a
 netsmith view pcb --layer bottom --designators --drc            # main-pcb-bottom.png: the bottom seen from below
 netsmith view pcb --route --format svg --picture routed.svg     # route first, then draw the result
 netsmith view pcb --layer bottom --islands --drc                # the bottom pour, what its fill took out and the pads it starves
+```
+
+### The lengths of the nets and the pairs
+
+`netsmith board nets [FILE.NSM]` (issue #1223) measures the copper `view pcb` draws (the routes file and the router's kept copper, routed first with `--route`, `--route-timeout` as for `view pcb`) and prints a table of it, with no KiCad and no picture. For each net that no zone pours and that has copper: its routed length, its straight length (the shortest tree of straight lines between its pads' centres) and their ratio, its vias, its layer changes (the vias where its tracks meet on two layers or more) and its layers; by name, or longest first with `--lengths`. Then each diff pair (chapter _The shape of a board_, "Diff pairs"): both lengths, the skew against the router's target (0.1 mm), the length of the first net that runs coupled (the other within 0.5 mm, centre to centre) and its share, the least and the largest gap edge to edge over it (the two are equal for a pair at one pitch), and both nets' vias with how many stand side by side. The numbers are the router's: a track is measured along its centre line, an arc by its chords, as the meanders measure it, so a pair the router matched has the skew `fab` says it left. `--format json` prints `board`, `nets` and `pairs` as data. It is a sibling of `board fill`, not an option of `board drc`: the check fails a board and the table judges nothing; `board drc` notes each pair whose skew is over the target (`pair skew: ...`, a note that does not fail the check, and `pair_skews` in its JSON). The editor's PCB summary tab shows the same table (`GET /api/pcb/nets`).
+
+```sh
+netsmith board nets --route --lengths     # route, then the nets longest first and each pair's skew
+netsmith board nets --format json         # the copper as it stands, for a program
 ```
 `netsmith view gerber PACKAGE` reads the Gerber (RS-274X) and Excellon drill files of a fab package and draws them as the board house will get them, with netsmith's own reader and no KiCad (issue #1105): the files `board fab` wrote (the zip, or `board fab`'s output folder of a board, which opens as its `<board>-gerbers.zip`), or a package another tool made, zipped or in a folder. Each file's function is taken from its X2 attribute (`%TF.FileFunction`), or else from its name (KiCad's `<board>-F_Cu.gbr`, `-In1_Cu`, `-Edge_Cuts`; Protel's `.GTL`, `.GBL`, `.G1`, `.GTS`, `.GTO`, `.GTP`, `.GKO`; Eagle's `.cmp`, `.sol`); a file neither names is drawn only with `--layer all`. A file with a construct the reader does not support (a step and repeat `%SR`, a block aperture, an arc routed in a drill file) is never drawn: it is named on stderr with its line and command, the rest is drawn, and the exit code is 1.
 - `--layer top` (the default) draws the top copper, the mask's openings, the paste, the silkscreen, the outline and the holes, as a person sees the top; `bottom` the same of the bottom, mirrored as a person sees it; `inner<n>` that inner copper layer with the outline and the holes; `all` every layer, seen from the top. Each file is drawn in the colour of its function, the objects of each combined as its polarity says (a clear object takes away from what is under it in its own file, not from the other files).

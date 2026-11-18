@@ -6,9 +6,9 @@ use netsmith_core::job::Cancel;
 use crate::api::{
     Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
     FabReport, FileContent, GerberView, GitInfo, OrderInfo, OrderReport, PanelView, PcbCopper,
-    PcbEdit, PcbEdited, PcbFill, PcbFindings, PcbFit, PcbPours, PcbReport, PcbScene, PcbSummary,
-    PinLock, PinMove, PinWritten, PowerTree, Project, Saved, SchematicHints, Swap, SwapApply,
-    Swapped, SystemView,
+    PcbEdit, PcbEdited, PcbFill, PcbFindings, PcbFit, PcbNets, PcbPours, PcbReport, PcbScene,
+    PcbSummary, PinLock, PinMove, PinWritten, PowerTree, Project, Saved, SchematicHints, Swap,
+    SwapApply, Swapped, SystemView,
 };
 
 /// A refusal, with the HTTP status that says why.
@@ -388,6 +388,13 @@ pub trait Backend: Send + Sync + 'static {
     fn pcb_fill(&self, board: &str) -> Result<PcbFill, ApiError> {
         Err(ApiError::not_found(format!(
             "there is no fill report of `{board}`"
+        )))
+    }
+    /// The table of the board's nets and diff pairs (issue #1223): what `netsmith board nets`
+    /// prints, of the board as [`Backend::pcb_scene`] has it placed (and routed).
+    fn pcb_nets(&self, board: &str) -> Result<PcbNets, ApiError> {
+        Err(ApiError::not_found(format!(
+            "there is no table of the nets of `{board}`"
         )))
     }
     /// The package `fab` last wrote for `board` (in this session, else the one an earlier run left

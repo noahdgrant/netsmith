@@ -565,6 +565,7 @@ fn run_fab(
                             parts: b.origins.clone(),
                             outline_at: None,
                             routes: b.routes.clone(),
+                            pair_skews: Vec::new(),
                         });
                         continue;
                     }

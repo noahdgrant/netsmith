@@ -20,6 +20,8 @@ pub fn of_board(board: &Board, constraints: Option<Constraints>) -> Result<Check
     let options = Options {
         drc: crate::fab::drc_extras(board),
         constraints,
+        pairs: board.diff_pairs(),
+        pair_skew_limit: netsmith_router::meander::SKEW_TARGET,
         ..Options::default()
     };
     netsmith_fab::check(&kicad_pcb(board), Some(&kicad_pro(board)), &options)

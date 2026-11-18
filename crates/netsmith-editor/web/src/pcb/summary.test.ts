@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { CopperLayer, CopperZone, FillArea, FillCounts, FillPad, PcbCopper, PcbScene, SummaryGuideline, SummaryPads } from '../api';
-import { copperLayerLine, copperZoneLine, fillAreaLine, fillCountsLine, fillPadLine, fillStarvedLine, fillWord, guidelineLine, mm, padName, padProblem, padsLine, pourFields, sheetBox, summaryQuery, teardropsLine } from './summary';
+import type { CopperLayer, CopperZone, FillArea, FillCounts, FillPad, NetsPair, NetsRow, PcbCopper, PcbScene, SummaryGuideline, SummaryPads } from '../api';
+import { copperLayerLine, copperZoneLine, fillAreaLine, fillCountsLine, fillPadLine, fillStarvedLine, fillWord, guidelineLine, mm, netPairLine, netRowLine, padName, padProblem, padsLine, pourFields, sheetBox, summaryQuery, teardropsLine } from './summary';
 
 describe('a number of the summary', () => {
   it('is to the hundredth with no trailing zeros', () => {
@@ -105,5 +105,16 @@ describe('the copper areas', () => {
     const area: FillArea = { layer: 'top', layerName: 'F.Cu', net: 'GND', source: 'pour', held: false, area: 120.456, pads: [], counts, cleared: [], islands: [], removedIslands: [{ at: { x: 1, y: 2 }, area: 0.5, outline: [] }] };
     expect(fillAreaLine(area)).toBe(`pour on GND, 120.46 mm²: ${fillCountsLine(counts)}; clears 0 pads of other nets; islands: 0 kept, 1 removed`);
     expect(fillStarvedLine({ layer: 'top', net: 'GND', part: 'U1', pad: '2', at: { x: 8, y: 15 }, spokes: 4, joinedSpokes: 1, tracks: 0 })).toBe('U1.2 on top (GND) at (8, 15): 1 of 4 spokes');
+  });
+});
+
+describe('the table of the nets', () => {
+  it('says a net and a pair in words', () => {
+    const row: NetsRow = { net: 'CANH', length: 63.094, straight: 60.2, ratio: 1.0481, vias: 2, layerChanges: 2, layers: ['F.Cu', 'B.Cu'] };
+    expect(netRowLine(row)).toBe('CANH: 63.09 mm routed, straight 60.2 mm (1.05x), 2 vias, 2 layer changes, on F.Cu B.Cu');
+    expect(netRowLine({ ...row, ratio: 0, vias: 1, layerChanges: 1, layers: [] })).toBe('CANH: 63.09 mm routed, straight 60.2 mm, 1 via, 1 layer change');
+    const pair: NetsPair = { p: 'CANH', n: 'CANL', lengthP: 63.09, lengthN: 63.11, skew: 0.02, limit: 0.1, over: false, coupled: 60.5, share: 0.959, gaps: [0.1, 0.12], viasP: 2, viasN: 2, viaPairs: 2 };
+    expect(netPairLine(pair)).toBe('CANH/CANL: 63.09 and 63.11 mm, skew 0.02 mm (within 0.1 mm); coupled 60.5 mm (96%), gap 0.1 to 0.12 mm; vias 2 and 2, 2 side by side');
+    expect(netPairLine({ ...pair, skew: 2.5, over: true, coupled: 0, share: 0, gaps: null })).toBe('CANH/CANL: 63.09 and 63.11 mm, skew 2.5 mm (over 0.1 mm); coupled 0 mm (0%); vias 2 and 2, 2 side by side');
   });
 });

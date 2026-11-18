@@ -21,6 +21,10 @@ _Avoid_: Corner-wise sum, worst-case current (a worst case is an end of a range,
 How the editor's schematic shows a signal net that is not drawn as one wire: the net's name as plain text at the end of a short stub out of each group of its pins (a main part and the small parts that serve its pins, which stay wired to that stub), like KiCad's local label. A net is named, not wired, when it joins more than one such group and its wire would be long (over 48 grid steps), fan out to three groups over 30 steps, or cross more than one other wire; a rail is never named (a power symbol is drawn), nor is the net of a part that serves a pin. A net with a generated name is shown by the first pin of its main part (`J2.3`), as KiCad names such a net. The pieces of a net that carry the same name in a module are one net.
 _Avoid_: Bare name, off-page connector (a flag is that), global label
 
+**Net table**:
+The numbers of a board's routed copper, net by net (`netsmith board nets`, the editor's PCB summary, `netsmith_fab::NetTable`, issue #1223): each net no zone pours with its routed length, _Straight length_, their ratio, its vias, its layer changes (the vias where its tracks meet on two layers or more) and its layers; and each _Diff pair_ with both lengths, its _Skew_ against the router's target, the length that runs coupled (the partner's track on its layer within 0.5 mm, centre to centre) and its share, the least and the largest gap over that length, and its _Via pair_s. A measurement and never a check: `board drc` notes a pair over its skew.
+_Avoid_: Length report, net report (the _Route scorecard_ is the board's sums)
+
 **Netlist comparison**:
 Deciding whether two designs are the same circuit by connectivity (`netsmith board compare`, ADR 0017). Components are matched by value and footprint and by how their pins are wired, so net names and, unless told otherwise, designators may differ; a two-pad part without polarity may have its pads either way round (#67). It succeeds with the pairing of components and nets, or fails with the nets and pins that differ.
 _Avoid_: Netlist diff (a diff compares names)

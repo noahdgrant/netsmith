@@ -11,6 +11,10 @@ _Avoid_: Case, member (a member is a `.name` of a definition), mode
 **Via in pad**:
 A via whose centre is on a surface-mount pad. The fabricator fills it with epoxy and caps it with plating so that the solder stays on the pad; the process says up to what size it does that (`.via_in_pad`), and `fab-notes.txt` says how many there are and on which parts, in a line of its own, because the fill costs extra; `project order` stops until the cost is accepted (issue #1118). The router uses one only when a pad cannot be reached any other way.
 
+**Via pair**:
+Two vias of the two nets of a _Diff pair_ that stand side by side, their copper no more than 0.5 mm apart edge to edge, where the pair changes layer together (issue #1223). The router routes both nets of a pair again together so that they take their vias alike, and the _Net table_ counts how many of a pair's vias stand in pairs.
+_Avoid_: Differential via, via couple
+
 **Via span**:
 The two copper layers a _Blind via_ or a _Buried via_ ends on, the upper first, and the layers between: the via's copper and hole are on them and nowhere else (`netsmith_pcb::ViaSpan`, issue #1015). A through via has none. The router changes layer through the via of fewest layers whose span holds both; the routes file writes a span as `layers = ["top", "inner1"]`, `netsmith routes add-via --layers top,inner1` and the editor's via tool choose one by hand (issue #1071), and the design rules check refuses a span the process does not make (`via_span`).
 _Avoid_: Via layer pair, drill pair (KiCad's names)

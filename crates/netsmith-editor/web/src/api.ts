@@ -1776,6 +1776,61 @@ layoutStamp: string, routesStamp: string, routed: boolean, outlineAt: FillAt,
  */
 fills: Array<FillArea>, counts: FillCounts, starved: Array<FillStarved>, };
 
+export type NetsRow = { net: string, 
+/**
+ * The length of all its tracks.
+ */
+length: number, 
+/**
+ * The shortest tree of straight lines between its pads' centres.
+ */
+straight: number, 
+/**
+ * `length` over `straight`; 0 for pads on one point.
+ */
+ratio: number, vias: number, 
+/**
+ * The vias where its tracks meet on two layers or more.
+ */
+layerChanges: number, 
+/**
+ * The copper layers its tracks are on, front to back, as the board file names them.
+ */
+layers: Array<string>, };
+
+export type NetsPair = { 
+/**
+ * The two nets, the positive first.
+ */
+p: string, n: string, lengthP: number, lengthN: number, skew: number, 
+/**
+ * The skew the pair may have: the router's target.
+ */
+limit: number, over: boolean, 
+/**
+ * The length of `p` that runs coupled, and its share of `p`, 0 to 1.
+ */
+coupled: number, share: number, 
+/**
+ * The least and the largest gap, edge to edge, over the coupled length.
+ */
+gaps: [number, number] | null, viasP: number, viasN: number, 
+/**
+ * The vias of `p` with a via of `n` beside them.
+ */
+viaPairs: number, };
+
+export type PcbNets = { board: string, 
+/**
+ * The stamps of the placement and of the routes file it was measured on, and whether it
+ * was routed.
+ */
+layoutStamp: string, routesStamp: string, routed: boolean, 
+/**
+ * The nets, by name.
+ */
+nets: Array<NetsRow>, pairs: Array<NetsPair>, };
+
 export type PcbFitPart = { refdes: string, path: string, };
 
 export type PcbFitNear = { x: number, y: number, 

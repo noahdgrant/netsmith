@@ -27,6 +27,7 @@ mod lint;
 mod lock;
 mod mcp;
 pub mod moved;
+mod nets;
 mod order;
 mod panel;
 mod parity;
@@ -151,6 +152,8 @@ pub enum Board {
     Copper(copper::Args),
     /// Fill the pours as `fab` does and say how each pad of their nets is joined: solid, by how many thermal spokes, or not, and the copper islands.
     Fill(fill::Args),
+    /// Print each net's routed and straight length, vias, layer changes and layers, and each diff pair's lengths, skew, coupled length, gaps and vias side by side.
+    Nets(nets::Args),
 }
 
 /// `netsmith view ...`.
@@ -227,6 +230,7 @@ pub fn run(command: Command) -> ExitCode {
             Board::Panel(args) => panel::run(args),
             Board::Copper(args) => copper::run(args),
             Board::Fill(args) => fill::run(args),
+            Board::Nets(args) => nets::run(args),
         },
         Command::Layout(args) => layout::run(args),
         Command::Routes(args) => routes::run(args),

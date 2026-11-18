@@ -21,7 +21,7 @@ The distance between the faces of the two boards of a _Mate_: the two connectors
 _Avoid_: Stack height, board spacing, standoff height (a standoff is another part)
 
 **Meander**:
-A serpentine of 45 degree bends that the router draws on a straight run of the shorter net of a diff pair, so that the pair's two nets are as long as each other (issue #431). Its bumps stand on one side of the run, away from the partner, with an edge gap of three track widths (or the clearance, if larger) between neighbouring legs; it goes only where the run is not coupled to the partner and where it keeps every space the design rules check asks of a track (`netsmith_router::meander`).
+A serpentine of 45 degree bends that the router draws on a straight run of the shorter net of a diff pair, so that the pair's two nets are as long as each other (issue #431). Its bumps stand on one side of the run, away from the partner, with an edge gap of three track widths (or the clearance, if larger) between neighbouring legs; it goes first where the run is not coupled to the partner and, for what is left, on the coupled run with its bumps away from the partner (not on a pair with an impedance target, issue #1223), and only where it keeps every space the design rules check asks of a track (`netsmith_router::meander`).
 _Avoid_: Serpentine, trombone, tuning (for the copper itself)
 
 **Member role**:

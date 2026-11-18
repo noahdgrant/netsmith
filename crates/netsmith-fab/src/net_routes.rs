@@ -22,9 +22,7 @@
 //! and the scorecard list them, with `--format json` as data. A net that must be short says
 //! how short in a part's `layout` block (`route NAME .pin length LENGTH`), and that is checked.
 
-use std::collections::BTreeMap;
-
-use netsmith_geom::{Artwork, Pt};
+use netsmith_geom::Artwork;
 
 /// A net is long when its routed length is more than this many times its straight length.
 pub const LONG_RATIO: f64 = 2.0;
@@ -64,55 +62,14 @@ impl NetRoutes {
     /// The numbers of the board file's routed nets: the nets no zone pours, with a track or a
     /// via.
     pub fn of(art: &Artwork) -> NetRoutes {
-        let poured: Vec<&str> = art
-            .zones
-            .iter()
-            .filter(|z| z.keepout.is_none() && !z.teardrop)
-            .filter_map(|z| z.net.as_deref())
-            .collect();
-        let routed = |net: &str| !net.is_empty() && !poured.contains(&net);
-        let mut length: BTreeMap<String, f64> = BTreeMap::new();
-        for (net, _, a, b, _) in crate::score::lines(art) {
-            if routed(&net) {
-                *length.entry(net).or_default() += a.dist(b);
-            }
-        }
-        let mut vias: BTreeMap<String, usize> = BTreeMap::new();
-        for v in &art.vias {
-            if let Some(net) = v.net.as_deref().filter(|n| routed(n)) {
-                *vias.entry(net.to_string()).or_default() += 1;
-            }
-        }
-        let mut pads: BTreeMap<&str, Vec<Pt>> = BTreeMap::new();
-        for p in &art.pads {
-            if let Some(net) = p.net.as_deref().filter(|n| routed(n)) {
-                let at = pads.entry(net).or_default();
-                if !at.iter().any(|q| q.dist(p.at) <= SAME) {
-                    at.push(p.at);
-                }
-            }
-        }
-        let mut nets: Vec<NetRoute> = length
-            .keys()
-            .chain(vias.keys())
-            .collect::<std::collections::BTreeSet<_>>()
+        let mut nets: Vec<NetRoute> = crate::net_table::rows(art)
             .into_iter()
-            .map(|net| {
-                let length = length.get(net).copied().unwrap_or_default();
-                let straight = pads
-                    .get(net.as_str())
-                    .map_or(0.0, |pts| crate::score::prim(pts));
-                NetRoute {
-                    net: net.clone(),
-                    length,
-                    straight,
-                    ratio: if straight > SAME {
-                        length / straight
-                    } else {
-                        0.0
-                    },
-                    vias: vias.get(net).copied().unwrap_or_default(),
-                }
+            .map(|row| NetRoute {
+                net: row.net,
+                length: row.length,
+                straight: row.straight,
+                ratio: row.ratio,
+                vias: row.vias,
             })
             .collect();
         let mut long: Vec<NetRoute> = nets

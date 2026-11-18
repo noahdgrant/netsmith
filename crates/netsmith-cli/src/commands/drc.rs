@@ -77,6 +77,7 @@ pub fn run(args: Args) -> ExitCode {
                 parts: Vec::new(),
                 outline_at: made.outline_at,
                 routes: made.checked.routes.clone(),
+                pair_skews: made.checked.skewed.clone(),
             });
             report
                 .findings
@@ -101,6 +102,10 @@ pub fn run(args: Args) -> ExitCode {
                     Some(net) => println!("  {net}"),
                     None => println!("{}: note: {line}", made.board),
                 }
+            }
+            // The diff pairs whose skew is over the router's target (issue #1223): notes too.
+            for pair in &made.checked.skewed {
+                println!("{}: note: {}", made.board, pair.over_line());
             }
             let counts = made.checked.report.counts();
             let warnings = made.checked.report.warnings().count();

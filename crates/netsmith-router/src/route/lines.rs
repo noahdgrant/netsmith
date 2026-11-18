@@ -147,11 +147,7 @@ impl<'a> Router<'a> {
                             masks.estimate = FOLLOW;
                             // A pair with a stated spacing jogs from its pads' pitch to the
                             // spacing at a bend that costs little (issue #1054).
-                            if self
-                                .board
-                                .pair_spacing(&self.board.nets[net].name)
-                                .is_some()
-                            {
+                            if self.paired(net) {
                                 masks.turn = masks.turn.min(PAIR_TURN);
                             }
                         }

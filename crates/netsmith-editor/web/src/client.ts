@@ -33,6 +33,7 @@ import type {
   PcbSummary,
   PcbCopper,
   PcbFill,
+  PcbNets,
   PcbFit,
   PcbPours,
   PcbReport,
@@ -213,6 +214,8 @@ export const api = {
   /** The board's copper areas (`netsmith board copper`): the planes, pours, the routes file's zones and the teardrop fills, from the source with no placing and no routing. */
   pcbCopper: (board: string) => getJson<PcbCopper>(`/api/pcb/copper?${q({ board })}`),
   pcbFill: (board: string) => getJson<PcbFill>(`/api/pcb/fill?${q({ board })}`),
+  /** The table of the board's nets and diff pairs (`netsmith board nets`): lengths, vias, layer changes, and each pair's skew, coupled length and vias side by side, of the board as placed (and routed). */
+  pcbNets: (board: string) => getJson<PcbNets>(`/api/pcb/nets?${q({ board })}`),
   /** Where one part fits with every other part where it is (`netsmith layout fit`): `part` (a path or a designator), `near` (a part, or `X,Y` in mm), `step` (mm) and `side` (`top` or `bottom`), the last three optional. Nothing is written. `ApiFailure` 400 says what the board has none of or what is wrong with the query. */
   pcbFit: (board: string, part: string, ask: { near?: string; step?: number; side?: 'top' | 'bottom' } = {}) =>
     getJson<PcbFit>(
