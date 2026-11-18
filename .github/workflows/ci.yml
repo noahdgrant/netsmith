@@ -102,10 +102,13 @@
 # at work, and push the caches of main out. A narrowed pull request also compiles little that
 # main's cache lacks. Do not enable `save-if` for pull requests unless the quota is raised.)
 # The release pull request that release-please opens (`release-please--branches--main`: a version
-# bump, the changelog) runs nothing here: `changes`, `fmt` and `ci-ok` are skipped by that branch
-# name, and every other job needs `changes`, so it is skipped too. Only the title check
-# (pr-title.yml) runs on it. The release commit's content is a version number and prose; what
-# it releases was tested when each change merged, and a push to main runs everything.
+# bump, the changelog) runs no test here: `changes`, `fmt` and `ci-ok` are skipped by that branch
+# name, and every other job needs `changes`, so it is skipped too. The release commit's content is
+# a version number and prose; what it releases was tested when each change merged, and a push to
+# main runs everything. What it does run is `release-build`: the release workflow (release.yml),
+# which builds, smoke-tests and packs netsmith on the three systems as the tag will, so a release
+# that cannot be built shows on the pull request and not after the tag (0.2.0 and 0.3.0 each
+# failed their first build). Its Cargo.lock is put right by release-please.yml (`lock`).
 name: ci
 
 on:
@@ -936,6 +939,15 @@ jobs:
             status=1
           fi
           exit "$status"
+
+  # The release build of the release pull request (the header says why): the `release` workflow
+  # without its `publish` job, which a tag alone starts. The callee asks for `contents: write`,
+  # so the caller grants it; nothing here writes.
+  release-build:
+    if: github.head_ref == 'release-please--branches--main'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
 
   # The one check that says whether the run is good: it fails if a job failed or was cancelled,
   # and passes if each one passed or was left out for want of a reason to run (`changes` says

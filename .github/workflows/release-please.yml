@@ -34,3 +34,57 @@ jobs:
       - uses: googleapis/release-please-action@v5
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+
+  # release-please sets the workspace version in Cargo.toml but cannot keep Cargo.lock in step: its
+  # config needed one entry for each crate of the workspace, and a crate with none (#1078 first,
+  # then netsmith-draw and netsmith-lint of 0.3.0) left a lock that `cargo build --locked` refuses,
+  # which the release build found only after the tag was made. The lock records the version of each
+  # workspace crate and nothing else changes with it, so this job runs `cargo update --workspace`
+  # (which touches no other entry) on the release pull request's branch and pushes the lock. The
+  # pull request's own run (ci.yml, `release-build`) then builds the release before anyone merges.
+  lock:
+    name: Cargo.lock of the release pull request
+    needs: release-please
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BRANCH: release-please--branches--main
+    steps:
+      - name: Is there a release pull request?
+        id: branch
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+        run: |
+          if gh api "repos/$GITHUB_REPOSITORY/branches/$BRANCH" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No release pull request: nothing to do."
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.branch.outputs.exists == 'true'
+        with:
+          ref: ${{ env.BRANCH }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+
+      - name: Rust toolchain
+        if: steps.branch.outputs.exists == 'true'
+        # The version and components of rust-toolchain.toml.
+        run: rustup toolchain install
+
+      - name: Set the workspace crates' versions in Cargo.lock
+        if: steps.branch.outputs.exists == 'true'
+        run: |
+          cargo update --workspace
+          if git diff --quiet -- Cargo.lock; then
+            echo "Cargo.lock is in step with the workspace version."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(release): set the workspace crates' versions in Cargo.lock" -- Cargo.lock
+          git push origin "HEAD:$BRANCH"
+          # What the commit changed, in the log; only workspace crates' versions move.
+          git show --stat --format=%s HEAD
+          # The pushed lock must be one that `--locked` accepts.
+          cargo metadata --locked --format-version 1 > /dev/null
