@@ -22,6 +22,7 @@ fi
 cd "$(dirname "$0")/.." || exit 2
 bin=$(cargo test -p netsmith-fabricate --test main --no-run 2>&1 | sed -n 's/^ *Executable tests\/main.rs (\(.*\))$/\1/p')
 [ -x "$bin" ] || { echo "cannot find the netsmith test binary" >&2; exit 2; }
+bin=$(realpath "$bin")
 out=$(mktemp -d /tmp/stress-kicad.XXXXXX)
 cd crates/netsmith-fabricate || exit 2
 per=$(( (runs + procs - 1) / procs ))
@@ -37,6 +38,6 @@ for p in $(seq 1 "$procs"); do
     ) &
 done
 wait
-failed=$(grep -l "^test result: FAILED\|panicked" "$out"/run-*.log 2>/dev/null | wc -l)
+failed=$(grep -L "^test result: ok" "$out"/run-*.log 2>/dev/null | wc -l)
 echo "$runs runs of ${#filters[@]} tests in $procs processes: $failed failed (logs in $out)"
 [ "$failed" -eq 0 ]
