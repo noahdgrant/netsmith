@@ -79,6 +79,7 @@ fn a_hand_pick_comes_before_the_lock() {
             row: "330Ω 1% 0402 C25104".into(),
             lcsc: Some(SOLVER_ROW.into()),
             mpn: Some("0402WGF3300TCE".into()),
+            held: None,
         }],
     );
     let held = Catalogs::jlcpcb().with_pick_lock(lock);

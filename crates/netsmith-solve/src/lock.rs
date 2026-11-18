@@ -25,6 +25,10 @@ pub struct LockedRow {
     /// row that was renamed or changed in place is found and not taken for the locked one.
     pub lcsc: Option<String>,
     pub mpn: Option<String>,
+    /// Why a person holds the part to this row (`held = "reason"` in the lock file, issue
+    /// #1197): `project lock --check` does not call the row not current, and `--update` keeps it
+    /// unless the part is named. The solver does not read it; a person writes it.
+    pub held: Option<String>,
 }
 
 impl LockedRow {
@@ -36,6 +40,7 @@ impl LockedRow {
             row: pick.candidate.clone(),
             lcsc: pick.lcsc.clone(),
             mpn: pick.mpn.clone(),
+            held: None,
         }
     }
 }

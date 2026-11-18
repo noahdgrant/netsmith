@@ -4,14 +4,14 @@ use std::process::ExitCode;
 use clap::{ArgGroup, Args as ClapArgs};
 use netsmith_fabricate::dependency_lock;
 use netsmith_fabricate::project::{Project, Target};
-use netsmith_pipeline::pick_lock::Parts;
+use netsmith_pipeline::pick_lock::{Kept, Parts};
 
 use super::common::{Format, no_boards, print_json, target};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`project lock --update` solves each board without the pick lock's holding (a hand pick in the source, `.lcsc &= ...`, still holds its part) and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed). `project lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist (for CI). Both exit 2 when they cannot tell: the lock is not readable, a picks file from an older netsmith is beside the source (move its entries into the source as the message says), or the design does not build. With no file it acts on the project's boards. A source the project leaves out of the locks (`lock` in netsmith.toml) is skipped. A project with a dependency by `git` has a dependency lock too, `dependencies.lock.toml` beside netsmith.toml, the commit each one was read at: `--update` fetches each again and takes the commit its `rev` or `version` names now, printing the entries that changed, and `--check` fails when the lock lacks an entry for one or holds one no manifest asks for, fetching nothing. `project lock --update --part r1,stage.cap` takes new picks for those parts only, and `--except r1` for every part but those: the other parts stay on the row the lock has for them, which is judged by everything the design says, and an error says so when it no longer passes. A part named is looked for by its path in every board of the file (or of the project), and one that no board has is an error that lists the parts there are. A release can add to a built-in catalog a part that a project's own catalog already has: the build then stops with \"a part is in a catalog once\", naming the built-in row and what differs. Remove the project's row by hand; a lock row that names it (its `row`) is then no longer a row of the catalog, and `--update` rewrites it to the built-in row that has the same LCSC number (or manufacturer part number), and changes no other row, also with `--part` or `--except` (a part `--part` names takes a new pick as it does without a collision). `--check` prints that change and exits 1 until `--update` has written it."
+    after_long_help = "`project lock --update` solves each board without the pick lock's holding (a hand pick in the source, `.lcsc &= ...`, still holds its part) and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed). `project lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist (for CI). Both exit 2 when they cannot tell: the lock is not readable, a picks file from an older netsmith is beside the source (move its entries into the source as the message says), or the design does not build. With no file it acts on the project's boards. A source the project leaves out of the locks (`lock` in netsmith.toml) is skipped. A project with a dependency by `git` has a dependency lock too, `dependencies.lock.toml` beside netsmith.toml, the commit each one was read at: `--update` fetches each again and takes the commit its `rev` or `version` names now, printing the entries that changed, and `--check` fails when the lock lacks an entry for one or holds one no manifest asks for, fetching nothing. `project lock --update --part r1,stage.cap` takes new picks for those parts only, and `--except r1` for every part but those: the other parts stay on the row the lock has for them, which is judged by everything the design says, and an error says so when it no longer passes. `project lock --check --except r1,stage.cap` judges every part but those, which stay on the row the lock has for them and are listed as not judged (text and JSON). A lock row can say it is held on purpose: a person adds `held = \"reason\"` to its entry. A held row is not called not current whatever the solver would pick now; it is listed as held with its reason (text and JSON, `--update` too), and is judged by everything the design says as any locked row is, so a held row that no longer passes is an error. `--update` keeps a held row and its `held` key unless the part is named by `--part`, which takes a new pick and drops the key. A part named is looked for by its path in every board of the file (or of the project), and one that no board has is an error that lists the parts there are. A release can add to a built-in catalog a part that a project's own catalog already has: the build then stops with \"a part is in a catalog once\", naming the built-in row and what differs. Remove the project's row by hand; a lock row that names it (its `row`) is then no longer a row of the catalog, and `--update` rewrites it to the built-in row that has the same LCSC number (or manufacturer part number), and changes no other row, also with `--part` or `--except` (a part `--part` names takes a new pick as it does without a collision). `--check` prints that change and exits 1 until `--update` has written it."
 )]
 #[command(group(ArgGroup::new("mode").required(true).args(["update", "check"])))]
 pub struct Args {
@@ -32,7 +32,7 @@ pub struct Args {
         conflicts_with = "except"
     )]
     pub part: Vec<String>,
-    /// With `--update`, take new picks for every part but these (by path, comma-separated).
+    /// Take new picks for every part but these (by path, comma-separated); with `--check`, judge every part but these and say which were not judged.
     #[arg(long, value_name = "PATH", value_delimiter = ',')]
     pub except: Vec<String>,
     /// Text for a person, or one JSON document on stdout.
@@ -43,7 +43,7 @@ pub struct Args {
     /// `updated` for `--update` when it changed, `current`, and for `--check` `not_current`, or
     /// `missing` when there is none), the `changes`, one line for each part whose row changed, as
     /// the text prints them, and `no_longer_pass`, what the solver said of the rows the file holds
-    /// that no longer pass, when there are some. The `dependencies` are the dependency lock's
+    /// that no longer pass, when there are some, `held`, the rows a person holds on purpose (`held = "reason"` in the lock row; each with its `board`, `part`, `row` and `reason`) and `not_judged`, the parts `--check --except` left out (each with its `board`, `part` and `row`), when there are some. The `dependencies` are the dependency lock's
     /// `file`, its `status` (as for a pick lock, without `missing`) and its `changes`, the lines
     /// the text prints. What the text says on stderr as an error (a lock that cannot be read, a
     /// part no board has, a design that does not build) is still on stderr, as text, with exit
@@ -75,8 +75,10 @@ impl Args {
 
 /// Refreshes or checks the pick lock of each source file (ADR 0100).
 pub fn run(args: Args) -> ExitCode {
-    if args.mode() == LockMode::Check && args.parts() != Parts::All {
-        eprintln!("error: --part and --except go with --update: a check compares every part");
+    if args.mode() == LockMode::Check && !args.part.is_empty() {
+        eprintln!(
+            "error: --part goes with --update; a check judges every part, or every part but those `--except` names"
+        );
         return ExitCode::from(2);
     }
     run_lock(
@@ -240,11 +242,31 @@ fn run_lock(file: Option<&str>, mode: LockMode, parts: &Parts, format: Format) -
             }
             _ => {}
         }
+        if !json {
+            if !found.held.is_empty() {
+                println!("held in {name}:");
+                for kept in &found.held {
+                    println!("  {}", kept.line());
+                }
+            }
+            if mode == LockMode::Check && !found.not_judged.is_empty() {
+                println!("not judged in {name} (--except):");
+                for kept in &found.not_judged {
+                    println!("  {}", kept.line());
+                }
+            }
+        }
         files.push(Locked {
             file: name,
             status,
             changes: found.diff.clone(),
             no_longer_pass: found.reported.trim_end().to_string(),
+            held: found.held.clone(),
+            not_judged: if mode == LockMode::Check {
+                found.not_judged.clone()
+            } else {
+                Vec::new()
+            },
         });
     }
     let stale = stale || dependencies.as_ref().is_some_and(|d| d.stale);
@@ -266,6 +288,9 @@ struct Locked {
     changes: Vec<String>,
     /// The solver's words about the rows the lock holds that no longer pass.
     no_longer_pass: String,
+    /// The rows held on purpose, and the parts a check did not judge.
+    held: Vec<Kept>,
+    not_judged: Vec<Kept>,
 }
 
 /// The document of `project lock --format json`.
@@ -283,6 +308,27 @@ fn document(
         });
         if !l.no_longer_pass.is_empty() {
             lock["no_longer_pass"] = l.no_longer_pass.clone().into();
+        }
+        let list = |kept: &[Kept], reason: bool| {
+            kept.iter()
+                .map(|k| {
+                    let mut entry = serde_json::json!({
+                        "board": k.unit,
+                        "part": k.path,
+                        "row": k.row,
+                    });
+                    if let (true, Some(why)) = (reason, &k.reason) {
+                        entry["reason"] = why.clone().into();
+                    }
+                    entry
+                })
+                .collect::<Vec<_>>()
+        };
+        if !l.held.is_empty() {
+            lock["held"] = list(&l.held, true).into();
+        }
+        if !l.not_judged.is_empty() {
+            lock["not_judged"] = list(&l.not_judged, false).into();
         }
         lock
     };
@@ -342,6 +388,8 @@ fn dependency_lock(
                     },
                     changes: found.diff,
                     no_longer_pass: String::new(),
+                    held: Vec::new(),
+                    not_judged: Vec::new(),
                 },
             })
         }
@@ -371,6 +419,8 @@ fn dependency_lock(
                     },
                     changes: found.stale,
                     no_longer_pass: String::new(),
+                    held: Vec::new(),
+                    not_judged: Vec::new(),
                 },
             })
         }

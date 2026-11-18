@@ -618,11 +618,10 @@ fn a_held_row_that_no_longer_passes_stops_a_partial_update_and_says_how_to_move_
 }
 
 #[test]
-fn part_and_except_need_update_and_are_not_said_together() {
+fn part_needs_update_and_is_not_said_with_except() {
     let root = led_project("lock-part-flags", LED);
     for (args, said) in [
         (vec!["project", "lock", "--check", "--part", "r"], "--update"),
-        (vec!["project", "lock", "--check", "--except", "r"], "--update"),
         (
             vec!["project", "lock", "--update", "--part", "r", "--except", "led"],
             "cannot be used with",
@@ -853,4 +852,191 @@ fn update_part_rewrites_a_row_that_moved_to_the_built_in_one_whether_it_is_named
     let update = netsmith(&root, &["project", "lock", "--update", "--part", "r2"]);
     assert!(update.status.success(), "{}", stderr(&update));
     assert_eq!(read_lock(&root), before);
+}
+
+/// Adds `held = "reason"` to the lock's entry of the part `path` of `Zz9Two`.
+fn hold(root: &Path, path: &str, reason: &str) {
+    let text = read_lock(root);
+    let header = format!("[Zz9Two.parts.\"{path}\"]\n");
+    let at = text.find(&header).expect("the part is in the lock") + header.len();
+    let held = format!("{}held = \"{reason}\"\n{}", &text[..at], &text[at..]);
+    fs::write(lock_file(root), held).unwrap();
+}
+
+const WHY: &str = "the qualified row, kept for the first article";
+
+#[test]
+fn check_accepts_a_pick_held_on_purpose_and_lists_it_with_its_reason() {
+    let root = two_regulators_due_to_move("lock-check-held");
+    // Without a hold both parts are due to move, as before.
+    let check = netsmith(&root, &["project", "lock", "--check"]);
+    assert_eq!(check.status.code(), Some(1));
+    assert_eq!(diff_lines(&check).len(), 2, "{}", stdout(&check));
+
+    hold(&root, "u", WHY);
+    let before = read_lock(&root);
+    // `v` is still due, so the lock is not current, and the diff says nothing of `u`.
+    let check = netsmith(&root, &["project", "lock", "--check"]);
+    assert_eq!(check.status.code(), Some(1), "{}", stderr(&check));
+    let listed = "Zz9Two: `u`: `ZZ9-33-S` in the `zz9` catalog (lcsc C9001, mpn ZZ9-33-S): ";
+    assert!(
+        diff_lines(&check)
+            .iter()
+            .all(|l| !l.starts_with("Zz9Two: `u`: `ZZ9-33-S` (")),
+        "{}",
+        stdout(&check)
+    );
+    assert_eq!(
+        stdout(&check).matches(&format!("{listed}{WHY}")).count(),
+        1,
+        "{}",
+        stdout(&check)
+    );
+    assert_eq!(read_lock(&root), before, "--check writes nothing");
+
+    // `--update` moves `v`, and keeps `u` on its row with its key.
+    let update = netsmith(&root, &["project", "lock", "--update"]);
+    assert!(update.status.success(), "{}", stderr(&update));
+    assert_eq!(locked_row(&root, "u").as_deref(), Some("ZZ9-33-S"));
+    assert_eq!(locked_row(&root, "v").as_deref(), Some("ZZ9-33-A"));
+    assert_eq!(
+        read_lock(&root).matches(&format!("held = \"{WHY}\"")).count(),
+        1,
+        "{}",
+        read_lock(&root)
+    );
+    let moved = |run: &std::process::Output| {
+        diff_lines(run).into_iter().filter(|l| l.contains(" -> ")).count()
+    };
+    assert_eq!(moved(&update), 1, "{}", stdout(&update));
+
+    // Now the lock is current: `--check` passes and says what it holds on purpose, once.
+    let check = netsmith(&root, &["project", "lock", "--check"]);
+    assert!(check.status.success(), "{}", stderr(&check));
+    assert!(!stdout(&check).contains("not current"), "{}", stdout(&check));
+    assert_eq!(
+        stdout(&check).matches(&format!("{listed}{WHY}")).count(),
+        1,
+        "{}",
+        stdout(&check)
+    );
+    let doc = json(&netsmith(&root, &["project", "lock", "--check", "--format", "json"]));
+    assert_eq!(doc["ok"], true);
+    assert_eq!(doc["files"][0]["status"], "current");
+    assert_eq!(
+        doc["files"][0]["held"],
+        serde_json::json!([{
+            "board": "Zz9Two",
+            "part": "u",
+            "row": "`ZZ9-33-S` in the `zz9` catalog (lcsc C9001, mpn ZZ9-33-S)",
+            "reason": WHY,
+        }])
+    );
+    assert!(doc["files"][0].get("not_judged").is_none());
+
+    // A second update changes no byte.
+    let kept = read_lock(&root);
+    assert!(netsmith(&root, &["project", "lock", "--update"]).status.success());
+    assert_eq!(read_lock(&root), kept);
+
+    // Naming the part takes a new pick and drops the key.
+    // `v` is held to the row too, as a part not named: both are named to move.
+    let run = netsmith(&root, &["project", "lock", "--update", "--part", "u,v"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    assert_eq!(locked_row(&root, "u").as_deref(), Some("ZZ9-33-A"));
+    assert!(!read_lock(&root).contains(WHY), "{}", read_lock(&root));
+    assert_eq!(diff_lines(&run).len(), 1, "{}", stdout(&run));
+    assert!(
+        diff_lines(&run)[0].ends_with(&format!("(no longer held: {WHY})")),
+        "{}",
+        stdout(&run)
+    );
+    let check = netsmith(&root, &["project", "lock", "--check"]);
+    assert!(check.status.success(), "{}", stderr(&check));
+    assert!(!stdout(&check).contains("held in"), "{}", stdout(&check));
+}
+
+#[test]
+fn update_except_and_part_leave_a_held_row_on_its_row_unless_it_is_named() {
+    let root = two_regulators_due_to_move("lock-update-held-except");
+    hold(&root, "u", WHY);
+    // `--update --except v` would take a new pick for `u`, but `u` is held.
+    let run = netsmith(&root, &["project", "lock", "--update", "--except", "v"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    assert_eq!(locked_row(&root, "u").as_deref(), Some("ZZ9-33-S"));
+    assert_eq!(locked_row(&root, "v").as_deref(), Some("ZZ9-33-S"));
+    assert!(read_lock(&root).contains(WHY), "{}", read_lock(&root));
+}
+
+#[test]
+fn a_held_row_that_no_longer_passes_is_an_error_that_says_how_to_release_it() {
+    let root = two_regulators_due_to_move("lock-check-held-failing");
+    hold(&root, "u", WHY);
+    set_rows(&root, &format!("{ROW_A}{ROW_S_WEAK}"));
+    let before = read_lock(&root);
+    for mode in ["--check", "--update"] {
+        let run = netsmith(&root, &["project", "lock", mode]);
+        assert_eq!(run.status.code(), Some(2), "{mode}");
+        assert!(
+            stderr(&run).contains("held on purpose") && stderr(&run).contains("remove its `held` line"),
+            "{}",
+            stderr(&run)
+        );
+        assert_eq!(read_lock(&root), before);
+    }
+    // `v` is held to the row too, as a part not named: both are named to move.
+    let run = netsmith(&root, &["project", "lock", "--update", "--part", "u,v"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    assert_eq!(locked_row(&root, "u").as_deref(), Some("ZZ9-33-A"));
+    assert!(!read_lock(&root).contains(WHY), "{}", read_lock(&root));
+}
+
+#[test]
+fn check_except_judges_every_part_but_the_named_ones_and_lists_them() {
+    let root = two_regulators_due_to_move("lock-check-except");
+    let before = read_lock(&root);
+    // `u` is not judged, `v` is due.
+    let check = netsmith(&root, &["project", "lock", "--check", "--except", "u"]);
+    assert_eq!(check.status.code(), Some(1), "{}", stderr(&check));
+    let diff = diff_lines(&check);
+    assert!(
+        diff.iter().any(|l| l.starts_with("Zz9Two: `v`: `ZZ9-33-S` (")),
+        "{}",
+        stdout(&check)
+    );
+    assert!(
+        !diff.iter().any(|l| l.starts_with("Zz9Two: `u`: `ZZ9-33-S` (")),
+        "{}",
+        stdout(&check)
+    );
+    assert!(stdout(&check).contains("not judged in "), "{}", stdout(&check));
+    // Both not judged: the lock passes, and both are listed, in the text and the JSON.
+    let check = netsmith(&root, &["project", "lock", "--check", "--except", "u,v"]);
+    assert!(check.status.success(), "{}", stderr(&check));
+    let text = stdout(&check);
+    assert!(
+        text.contains("Zz9Two: `u`: `ZZ9-33-S` in the `zz9` catalog (lcsc C9001, mpn ZZ9-33-S)\n")
+            && text.contains("Zz9Two: `v`: "),
+        "{text}"
+    );
+    let doc = json(&netsmith(
+        &root,
+        &["project", "lock", "--check", "--except", "u,v", "--format", "json"],
+    ));
+    assert_eq!(doc["ok"], true);
+    let skipped = doc["files"][0]["not_judged"].as_array().unwrap();
+    assert_eq!(
+        skipped.iter().map(|k| k["part"].as_str().unwrap()).collect::<Vec<_>>(),
+        ["u", "v"]
+    );
+    assert!(doc["files"][0].get("held").is_none());
+    // A part no board has is an error, as for `--update`.
+    let unknown = netsmith(&root, &["project", "lock", "--check", "--except", "w"]);
+    assert_eq!(unknown.status.code(), Some(2));
+    assert!(
+        stderr(&unknown).contains("no board has the part `w`"),
+        "{}",
+        stderr(&unknown)
+    );
+    assert_eq!(read_lock(&root), before, "--check writes nothing");
 }

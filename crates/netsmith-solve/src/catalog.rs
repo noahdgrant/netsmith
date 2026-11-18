@@ -502,6 +502,7 @@ impl Catalogs {
             row,
             lcsc,
             mpn,
+            held: locked.held.clone(),
         })
     }
 
