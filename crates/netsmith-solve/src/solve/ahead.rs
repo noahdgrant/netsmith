@@ -877,7 +877,7 @@ fn column_hull(candidates: &[&Candidate], key: &str) -> Option<Domain> {
                 }
                 text = Some(t);
             }
-            Value::Open(_) | Value::Derated(_) => return None,
+            Value::Open(_) | Value::Derated(_) | Value::Curved(_) => return None,
         }
     }
     match (range, text) {
@@ -916,7 +916,7 @@ fn column_core(candidates: &[&Candidate], key: &str) -> Option<Option<Domain>> {
                 }
                 text = Some(t);
             }
-            Value::Open(_) | Value::Derated(_) => return None,
+            Value::Open(_) | Value::Derated(_) | Value::Curved(_) => return None,
         }
     }
     match (range, text) {

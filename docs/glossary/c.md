@@ -101,6 +101,10 @@ _Avoid_: congestion (the router's negotiation over cells), demand
 The router's count, for each 1 mm square of a board, of how often its searches for the nets in a line's way (paths that may cross other nets' copper, in rip-up, negotiation and the chain of rip-ups) passed through the square, over a whole run (`Routing::crowding`, written to `routing-report.json` when connections are left, and drawn as `crowding.png` by `netsmith dev route --stages`). A high count is where lines fought over the room.
 _Avoid_: congestion map, heat map
 
+**Curve file**:
+The points of one column of one catalog row over the part's operating conditions (a diode's forward voltage at each current and temperature), `curves/<catalog>/<row>.csv` beside the catalog file and named by the row's `lcsc` or `mpn`. The solver reads the column off it, interpolated, at the ranges the design gives the part; the row keeps its single figure for a design that gives none (`netsmith_solve::curve`, issue #1260).
+_Avoid_: bias curve (a capacitor's curve in its `effective_capacitance` cell), lookup table
+
 **Cutout**:
 A rectangular hole inside the outline, with an optional corner radius (`std::pcb::Cutout`).
 _Avoid_: Slot, notch, hole (a hole is drilled)

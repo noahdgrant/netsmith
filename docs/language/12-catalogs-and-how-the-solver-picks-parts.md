@@ -347,6 +347,27 @@ board NarrowedMcu {
 }
 ```
 
+#### Curve files
+
+A row holds one figure for each column: a diode's `forward_voltage` is the datasheet's maximum at the rated current. A datasheet also draws how the figure moves with the current and the temperature, and a check that reads a diode's drop at a small current, or at a cold corner, needs that. A **curve file** gives it (issue #1260): the points of one column of one row, beside the catalog, which the solver reads at the current and the temperature the design gives the part. The row keeps its single figure, and the column is that figure wherever the design gives the part no current.
+
+- **Where.** `curves/<catalog>/<row>.csv` in the folder of the catalog's file: `data/jlcpcb/catalog/curves/schottky/C2480.csv` for a standard row, `catalogs/curves/schottky/ZZD1.csv` in a project (in any `catalog_dirs` folder, or beside a file that `catalogs` lists). The file is named by its row: the row's `lcsc`, or its `mpn` where it has none. A project's curve may be for a row of a standard catalog. A file whose name is no row's, a `.csv` in `curves/` outside a catalog's folder, and a second curve of the same row and column are errors that name the file.
+- **The columns.** The first line names the axes and then, last, the column the points give, which is a quantity column of the catalog (`forward_voltage`). An axis is a field of the part by its path without the dot (`current`), or `temperature`, the temperature of the board's `.environment`. Each cell is a value in the language's syntax with its unit; a cell of an axis is one value, and a value may be a range (`0.40V..0.45V`), so a file can give a typical curve or its bounds.
+- **The points.** The lines with the same first axis are one curve over the next, as a datasheet draws one line for each temperature, and each line may have currents of its own. The lines may come in any order.
+
+```text
+temperature,current,forward_voltage
+25degC,1mA,0.30V
+25degC,100mA,0.42V
+25degC,1A,0.55V
+125degC,1mA,0.18V
+125degC,1A,0.45V
+```
+
+**How it is read.** Between two points the value is a straight line, along the current and then between the temperatures. Over a range (a `.current` of `10mA..200mA`, an environment of `-40degC..85degC`) it is the lowest to the highest value the lines reach there, so the part's `.forward_voltage` is an interval that holds every value of the file over the range, and `.drop == .forward_voltage`, the DC analysis and `.bias >= -.forward_voltage` read that interval. A board with no `.environment` is read over every temperature of the file. A current or a temperature past the points is not assumed: the row is not offered where the design asks for the column, and the message names the curve file and the range it covers (a curve that starts at 1 mA does not answer for a `.current` of `0A..100mA`; give a point at `0A`). The file is read at what the design states or the solver has worked out when it picks the part; a current that depends on the drop itself is not solved again with the curve. A bend between two points is read as the chord, so give points close enough for the use.
+
+No standard row has a curve file yet: a curve is added, as a row is, only with its recorded source (the datasheet's figure, read as `data/jlcpcb/README.md` says). A regulator's dropout over its load and its temperature is the next column to use the same files (issue #1258).
+
 #### An optional column
 
 A column that a row may leave empty says so with the word `optional` after it in the `catalog` statement (ADR 0078), the word that a member (ADR 0074) and a `pins` row already use for "may be absent". The standard library does it for `temperature_coefficient`, `dielectric`, a capacitor's `esr`, `rms_current`, a TVS diode's `breakdown_voltage` and the `efficiency` of a buck IC (below), and a project's own part does it for a column of its own catalog. A fuse that records a surge rating only for some parts (invented, like the file below):

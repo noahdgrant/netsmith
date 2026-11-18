@@ -1132,7 +1132,116 @@ fn one_file_each(found: &[CatalogFile]) -> Result<(), String> {
     Ok(())
 }
 
+/// One curve file of a project (`netsmith_solve::curve`, issue #1260):
+/// `curves/<catalog>/<row>.csv` in a `catalog_dirs` folder or beside a file `catalogs` lists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CurveFile {
+    /// The catalog it belongs to: the name of its folder.
+    pub catalog: String,
+    /// The row it is for: the file's name without `.csv`, the row's `lcsc` or `mpn`.
+    pub row: String,
+    /// The file as messages name it: relative to the project root, with `/`.
+    pub file: String,
+    pub path: PathBuf,
+}
+
 impl Project {
+    /// The curve files a build reads: the project's own and then those of each dependency,
+    /// named from this project's root. In a `catalog_dirs` folder every `curves/<catalog>/`
+    /// folder is read (a curve may be for a row of a standard catalog); beside a file `catalogs`
+    /// lists, the folder of its catalog. A `.csv` in `curves/` that is not in a catalog's folder,
+    /// and a catalog folder whose name is not a catalog name, are errors that name them.
+    pub fn all_curve_files(&self) -> Result<Vec<CurveFile>, String> {
+        let mut found = self.own_curve_files()?;
+        for dependency in self.dependencies()? {
+            for mut file in dependency.project.own_curve_files()? {
+                file.file = format!("{}/{}", dependency.folder, file.file);
+                found.push(file);
+            }
+        }
+        Ok(found)
+    }
+
+    fn own_curve_files(&self) -> Result<Vec<CurveFile>, String> {
+        let curves = netsmith_solve::curve::FOLDER;
+        // The folders to read, as (shown name, path, the one catalog to read or every one).
+        let mut roots: Vec<(String, PathBuf, Option<String>)> = Vec::new();
+        for dir in &self.manifest.catalog_dirs {
+            let folder = tidy(dir);
+            let shown = if folder.is_empty() {
+                curves.to_string()
+            } else {
+                format!("{folder}/{curves}")
+            };
+            roots.push((shown, self.root.join(dir).join(curves), None));
+        }
+        for file in &self.manifest.catalogs {
+            let name = catalog_name(file).expect("the manifest was validated");
+            let parent = Path::new(file).parent().map(|p| tidy(&p.to_string_lossy()));
+            let shown = match parent.as_deref() {
+                None | Some("") => curves.to_string(),
+                Some(p) => format!("{p}/{curves}"),
+            };
+            let path = self.root.join(file).with_file_name(curves);
+            roots.push((shown, path, Some(name.to_string())));
+        }
+        let mut found: Vec<CurveFile> = Vec::new();
+        let mut seen: Vec<PathBuf> = Vec::new();
+        for (shown, root, only) in roots {
+            if !root.is_dir() {
+                continue;
+            }
+            let io = |e: io::Error| format!("{MANIFEST}: {shown}: {e}");
+            let mut folders: Vec<(String, PathBuf)> = Vec::new();
+            for entry in fs::read_dir(&root).map_err(io)? {
+                let entry = entry.map_err(io)?;
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let path = entry.path();
+                if path.is_dir() {
+                    if only.as_ref().is_none_or(|o| *o == name) {
+                        folders.push((name, path));
+                    }
+                } else if name.ends_with(".csv") && only.is_none() {
+                    return Err(format!(
+                        "{MANIFEST}: {shown}/{name} is not in the folder of a catalog: a curve file is {shown}/<catalog>/<row>.csv"
+                    ));
+                }
+            }
+            folders.sort();
+            for (catalog, folder) in folders {
+                if !is_identifier(&catalog) {
+                    return Err(format!(
+                        "{MANIFEST}: {shown}/{catalog} is not named after a catalog (letters, digits and `_`, not starting with a digit): a curve file is {shown}/<catalog>/<row>.csv"
+                    ));
+                }
+                let key = fs::canonicalize(&folder).unwrap_or_else(|_| folder.clone());
+                if seen.contains(&key) {
+                    continue;
+                }
+                seen.push(key);
+                let mut names: Vec<String> = Vec::new();
+                for entry in fs::read_dir(&folder).map_err(io)? {
+                    let entry = entry.map_err(io)?;
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    if name.ends_with(".csv") && entry.path().is_file() {
+                        names.push(name);
+                    }
+                }
+                names.sort();
+                for name in names {
+                    let row = name.strip_suffix(".csv").expect("a .csv").to_string();
+                    found.push(CurveFile {
+                        catalog: catalog.clone(),
+                        row,
+                        file: format!("{shown}/{catalog}/{name}"),
+                        path: folder.join(&name),
+                    });
+                }
+            }
+        }
+        Ok(found)
+    }
+
     /// The catalog files to watch for changes: those of `catalog_dirs` folders as they are
     /// now (a new or a removed file changes the list, so the editor sees it) and those
     /// `catalogs` lists. A mistake in a name is reported by [`Project::catalogs`], not here.
@@ -1158,6 +1267,13 @@ impl Project {
             .map(|(_, _, path, _)| path)
             .collect();
         paths.extend(self.manifest.catalogs.iter().map(|c| self.root.join(c)));
+        // The curve files as they are now: a new or a removed one changes the list.
+        paths.extend(
+            self.own_curve_files()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|c| c.path),
+        );
         // Watched only when it is there (a missing file would read as changed on every look);
         // its first write lengthens the list, which is a change too.
         let preferred = self.root.join(PREFERRED);
@@ -1182,6 +1298,16 @@ impl Project {
         {
             let text = fs::read_to_string(&path).map_err(|e| format!("{MANIFEST}: {file}: {e}"))?;
             catalogs.add_file(&name, &file, &text)?;
+        }
+        for CurveFile {
+            catalog,
+            row,
+            file,
+            path,
+        } in self.all_curve_files()?
+        {
+            let text = fs::read_to_string(&path).map_err(|e| format!("{MANIFEST}: {file}: {e}"))?;
+            catalogs.add_curve(&catalog, &row, &file, &text)?;
         }
         if let Some(preferred) = self.preferred()? {
             catalogs = catalogs.with_preferred(preferred);

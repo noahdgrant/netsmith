@@ -64,7 +64,8 @@ product-repo/
 ├── docs/netsmith/language/           the guide's chapters
 ├── catalogs/                         project catalogs (CSV rows with sources), ADR 0022
 │   ├── regulator_ic.csv
-│   └── sensor_ic.csv
+│   ├── sensor_ic.csv
+│   └── curves/<catalog>/<row>.csv    optional: a column of a row over current and temperature (guide chapter 12)
 ├── preferred.csv                     optional: the rows a generic part takes first (guide chapter 26)
 ├── kicad.toml                        KiCad mapping and project libraries, ADR 0021
 ├── libraries/                        the project's own symbols and footprints

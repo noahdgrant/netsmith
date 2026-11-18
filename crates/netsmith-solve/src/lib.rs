@@ -4,6 +4,7 @@
 mod busclock;
 mod busfigures;
 mod catalog;
+pub mod curve;
 mod cycles;
 mod dc;
 mod eval;
@@ -20,8 +21,8 @@ mod standard;
 mod table;
 
 pub use catalog::{
-    Availability, Candidate, Catalog, Catalogs, Derating, DeratingError, Library, SearchBudget,
-    SoldOut, Value,
+    Availability, Candidate, Catalog, Catalogs, Curved, Derating, DeratingError, Library,
+    SearchBudget, SoldOut, Value,
 };
 pub use eval::{EvalError, Val, eval};
 pub use generic::{
