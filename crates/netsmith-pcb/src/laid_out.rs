@@ -9,6 +9,11 @@
 //!
 //! A board that is short of a place or of a size is refused, with what it lacks: the board
 //! cannot be known without placing it, and a guess would be an answer about a board nobody has.
+//!
+//! [`Board::laid_out_entries`] is the board of what the layout file decides, whatever it lacks
+//! (issue #1224): the parts it places, each where it says, and no other. `netsmith layout check`
+//! runs the placement check `fab` runs ([`Board::placement_faults`]) on it, so that a fault among
+//! those parts, which no seed of the placer changes, is found before anything is placed.
 
 use netsmith_core::Design;
 use netsmith_kicad::Mapping;
@@ -47,20 +52,7 @@ impl Board {
         }
         let mut u =
             Board::unplaced(design, mapping, library, options).map_err(|e| e.to_string())?;
-        let entries = layout.and_then(|(l, _)| l.boards.get(&design.name));
-        let mut lacking = Vec::new();
-        for part in &mut u.parts {
-            // A part the layout file locks, or a requirement pins, is where it says; the other
-            // entries are put on the board afterwards, as for a placed board.
-            if let Some(f) = u.placement.fixed.get(&part.refdes) {
-                part.at = ORIGIN + f.at;
-                part.rotation = f.rotation;
-                part.side = f.side;
-                part.reference_side = f.text;
-            } else if !entries.is_some_and(|e| e.parts.contains_key(&part.path)) {
-                lacking.push(part.path.clone());
-            }
-        }
+        let lacking = put_decided(&mut u, design, layout);
         if !lacking.is_empty() {
             let shown: Vec<String> = lacking
                 .iter()
@@ -88,6 +80,81 @@ impl Board {
         }
         Ok(board)
     }
+
+    /// The board of what `layout` decides: each part it places (or a requirement of the physical
+    /// file pins) where it says, and the parts the placer places left out, on the outline the
+    /// design states. Nothing is placed, and a part with no place is no refusal: it is not on
+    /// this board. An outline whose size is a range is as big as the range allows, and a size
+    /// the design leaves open is a metre, so that only an edge every size has (the left and the
+    /// top, and the others of a size that is stated) is measured.
+    ///
+    /// The placement check ([`Board::placement_faults`]) on this board finds what it finds on
+    /// the placed board about these parts among themselves and against the outline, the
+    /// keepouts and the cutouts: `fab` puts every part with an entry where the entry says,
+    /// whatever the seed, so these are the faults the layout file makes (issue #1224).
+    ///
+    /// Refused, with the reason: a design that does not make a board ([`Board::unplaced`]) and a
+    /// layout entry that is wrong.
+    pub fn laid_out_entries(
+        design: &Design,
+        mapping: &Mapping,
+        library: &FootprintLibrary,
+        options: &PlaceOptions,
+        layout: Option<&(Layout, String)>,
+    ) -> Result<Board, String> {
+        let (rect, _, _) = outline_box(design);
+        let open = |v: f64| {
+            if v.is_finite() {
+                v
+            } else {
+                ORIGIN.x + OPEN_SIZE
+            }
+        };
+        let rect = crate::geometry::Rect::new(
+            rect.min,
+            crate::geometry::Pt::new(open(rect.max.x), open(rect.max.y)),
+        );
+        let mut u =
+            Board::unplaced(design, mapping, library, options).map_err(|e| e.to_string())?;
+        let lacking = put_decided(&mut u, design, layout);
+        u.parts.retain(|p| !lacking.contains(&p.path));
+        let corner_radius = design
+            .features
+            .outline
+            .as_ref()
+            .map_or(0.0, |o| o.corner_radius);
+        let mut board = u.into_board(design, rect, corner_radius);
+        if let Some((layout, file)) = layout {
+            apply_layout(&mut board, layout, file).map_err(|e| e.to_string())?;
+        }
+        Ok(board)
+    }
+}
+
+/// The size of an outline the design leaves open, for [`Board::laid_out_entries`], in mm.
+const OPEN_SIZE: f64 = 1000.0;
+
+/// Put each part of `u` that the layout file locks, or a requirement pins, where it says (the
+/// other entries are put on the board afterwards, as for a placed board), and give the paths of
+/// the parts that have no place: no entry and no requirement that pins them.
+fn put_decided(
+    u: &mut crate::board::Unplaced,
+    design: &Design,
+    layout: Option<&(Layout, String)>,
+) -> Vec<String> {
+    let entries = layout.and_then(|(l, _)| l.boards.get(&design.name));
+    let mut lacking = Vec::new();
+    for part in &mut u.parts {
+        if let Some(f) = u.placement.fixed.get(&part.refdes) {
+            part.at = ORIGIN + f.at;
+            part.rotation = f.rotation;
+            part.side = f.side;
+            part.reference_side = f.text;
+        } else if !entries.is_some_and(|e| e.parts.contains_key(&part.path)) {
+            lacking.push(part.path.clone());
+        }
+    }
+    lacking
 }
 
 #[cfg(test)]

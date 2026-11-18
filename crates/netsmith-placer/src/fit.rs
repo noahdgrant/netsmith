@@ -1,8 +1,10 @@
 //! Placing the parts inside an outline the design states (ADR 0020, item 3).
 //!
 //! The parts that are not mechanical are arranged as for a board that is sized to fit, and
-//! the arrangement is centred in the outline. If the outline is too small for it, the
-//! error says by how much. Mounting holes and fiducials go in the corners of the outline.
+//! the arrangement is centred in the outline; with a part the layout file locks, or a
+//! requirement on where a part is, they are laid out in the outline itself, round what stays
+//! (issue #1224). If the outline is too small for it, the error says by how much. Mounting
+//! holes and fiducials go in the corners of the outline.
 
 use netsmith_core::{Outline, PartKind};
 
@@ -187,8 +189,19 @@ pub(crate) fn fit(
     // (Not with requirements on positions: shifting the arrangement would move the parts
     // out of their windows, so the parts are laid out and annealed in the size instead. A
     // relation between two parts is one too: the arrangement that stands is the rows', which
-    // do not know it.)
-    if w.is_ok() && h.is_ok() && placement.wants.is_empty() && placement.offsets.is_empty() {
+    // do not know it. Nor with a part the layout file locks (issue #1224): the other parts
+    // would be moved to the middle and the lock would stay, so that a part moved onto a
+    // locked courtyard, or onto one of its shapes, would stand there; laid out in the size,
+    // they are placed round it.)
+    let locked = originals
+        .iter()
+        .any(|p| placement.fixed.contains_key(&p.refdes));
+    if w.is_ok()
+        && h.is_ok()
+        && placement.wants.is_empty()
+        && placement.offsets.is_empty()
+        && !locked
+    {
         // The arrangement the parts make fits the size: it stands, in the middle of the
         // outline, and moves only where a hole or a keepout is in its way.
         let spare = Pt::new(size.0 - arranged.width(), size.1 - arranged.height());

@@ -743,23 +743,26 @@ fn set(args: &SetArgs) -> ExitCode {
     };
     let written = with_design(&args.target, |design, file, libraries| {
         let written = lib::set(design, file, &args.path, &change)?;
-        // A locked entry that breaks a requirement is written, and said.
-        let warnings = if written.entry.lock {
-            lib::check(design, file, libraries)
-                .map(|checked| {
-                    checked
-                        .findings
-                        .into_iter()
-                        .filter(|f| {
-                            f.kind == "requirement" && f.path.as_deref() == Some(&args.path)
-                        })
-                        .map(|f| f.message)
-                        .collect()
-                })
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
+        // A locked entry that breaks a requirement is written, and said; so is an entry the
+        // placement check `fab` runs finds a fault of (issue #1224).
+        let path = written.path.clone();
+        let warnings: Vec<String> = lib::check(design, file, libraries)
+            .map(|checked| {
+                checked
+                    .findings
+                    .into_iter()
+                    .filter(|f| match f.kind {
+                        "requirement" => f.path.as_deref() == Some(path.as_str()),
+                        "placement" => f
+                            .fault
+                            .as_ref()
+                            .is_some_and(|fault| fault.parts.iter().any(|p| p.part.path == path)),
+                        _ => false,
+                    })
+                    .map(|f| f.message)
+                    .collect()
+            })
+            .unwrap_or_default();
         Ok((written, warnings))
     });
     match written {

@@ -257,6 +257,32 @@ impl PlacementProblem {
 }
 
 impl Board {
+    /// The box two parts' courtyards share, on the sheet: where the most of any two of their
+    /// shapes (each a room of its own, [`Placed::courtyards`]) overlap, so that for a part of
+    /// several shapes it is where the overlap is and not a piece of the box round a shape and
+    /// its far neighbour. `None` where no two shapes overlap or touch, or the board has no such
+    /// part. The one measure of the placement check's data ([`PlacementFault::shared`]) and of
+    /// the editor's findings (issue #1224).
+    ///
+    /// [`Placed::courtyards`]: crate::Placed::courtyards
+    pub fn shared_courtyard(&self, a: &str, b: &str) -> Option<Rect> {
+        let (ra, rb) = (self.part(a)?.courtyards(), self.part(b)?.courtyards());
+        let share = |x: &Rect, y: &Rect| {
+            Rect::new(
+                Pt::new(x.min.x.max(y.min.x), x.min.y.max(y.min.y)),
+                Pt::new(x.max.x.min(y.max.x), x.max.y.min(y.max.y)),
+            )
+        };
+        let area = |r: &Rect| r.width().max(0.0) * r.height().max(0.0);
+        ra.iter()
+            .flat_map(|x| rb.iter().map(move |y| share(x, y)))
+            .filter(|r| r.min.x <= r.max.x && r.min.y <= r.max.y)
+            .fold(None, |best: Option<Rect>, r| match best {
+                Some(b) if area(&b) >= area(&r) => Some(b),
+                _ => Some(r),
+            })
+    }
+
     /// The placement check's faults ([`Board::check_placement`]) as data, each with its
     /// sentence in `text`.
     pub fn placement_faults(&self) -> Vec<PlacementFault> {
@@ -280,12 +306,7 @@ impl Board {
                 courtyard: placed.map(|p| Span::of(&p.courtyard(), origin)),
             }
         };
-        let shared = |a: &str, b: &str| {
-            let (a, b) = (self.part(a)?.courtyard(), self.part(b)?.courtyard());
-            let min = Pt::new(a.min.x.max(b.min.x), a.min.y.max(b.min.y));
-            let max = Pt::new(a.max.x.min(b.max.x), a.max.y.min(b.max.y));
-            (min.x <= max.x && min.y <= max.y).then(|| Span::of(&Rect::new(min, max), origin))
-        };
+        let shared = |a: &str, b: &str| self.shared_courtyard(a, b).map(|r| Span::of(&r, origin));
         let mut fault = PlacementFault {
             kind: problem.rule(),
             parts: problem.parts().into_iter().map(part).collect(),
