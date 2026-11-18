@@ -96,6 +96,7 @@ with `top_level = ["src/devkit/devkit.nsm", "src/unit/unit.nsm"]` and the order 
 
 - `netsmith board fab` makes every package. `netsmith board fab src/unit/unit.nsm` makes only the unit's. `netsmith project order devkit` makes the order below.
 - Each board of the development kit is a stand-alone board (its own `board`, its own process, its own outputs). `DevKit` only says which ports meet and checks voltages and currents across the joins.
+- `netsmith board build --portable` and `netsmith board fab --portable` make each board's folder a self-contained KiCad project: `libs/` (the symbols and footprints it uses), `models/` (their 3D models), `sym-lib-table` and `fp-lib-table` with paths inside the folder, and `LICENSES.md` (the notice of KiCad's libraries) are written into it, so the folder can be moved or sent (guide chapter 27, _A self-contained KiCad project_).
 - The production unit and the development kit share `PowerStage` and `SensorBlock`; a change to a module shows up in both on the next build, and `netsmith board compare` can show what changed.
 
 ## Ordering boards: orders

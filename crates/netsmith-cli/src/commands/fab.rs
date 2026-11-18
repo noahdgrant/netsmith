@@ -118,6 +118,17 @@ pub struct Args {
     /// take it.
     #[arg(long)]
     pub reuse_routes: bool,
+    /// Write the KiCad files as a self-contained project: libraries and 3D models copied in.
+    ///
+    /// The symbols and footprints the board uses (netsmith's own, the project's, and KiCad's
+    /// library entries it references) are copied into `libs/` of the board's folder, its 3D
+    /// models (a part's `.model` STEP file and the libraries' models) into `models/`, and the
+    /// library tables and each footprint's `(model ...)` name them by paths inside the folder,
+    /// so the folder opens in KiCad on any machine. `LICENSES.md` carries the notice that
+    /// KiCad's libraries (CC-BY-SA 4.0 with a design exception) ask for. A model that cannot be
+    /// found is a warning and the footprint has none. `project order` does not take it.
+    #[arg(long)]
+    pub portable: bool,
     /// Ask no supplier for stock or price; say in `fab-notes.txt` that they were not checked.
     ///
     /// No provider that would use the network is asked, and an answer kept earlier is used at any
@@ -197,6 +208,7 @@ fn run_chosen(args: &Args, format: Format) -> ExitCode {
             args.save_placed,
             args.reuse_routes,
             args.offline,
+            args.portable,
             &args.placing,
             FabOutput {
                 quiet: args.quiet,
@@ -323,6 +335,7 @@ fn run_fab(
     save_placed: bool,
     reuse_routes: bool,
     offline: bool,
+    portable: bool,
     placing: &common::Placing,
     output: FabOutput,
 ) -> ExitCode {
@@ -392,6 +405,7 @@ fn run_fab(
         place_budget: placing.budget(&target),
         seed_writes: netsmith_fabricate::fab::SeedWrites::Write,
         offline,
+        portable,
         // What an order reuses a package by (issue #841).
         reuse: netsmith_fabricate::fab::Reuse::Record,
     };
@@ -740,6 +754,7 @@ pub(super) fn run_order(
         // An order is a release: a seed that would change stops it (issue #458).
         seed_writes: netsmith_fabricate::fab::SeedWrites::Order,
         offline,
+        portable: false,
         reuse: netsmith_fabricate::fab::Reuse::Off,
     };
     let out = out.unwrap_or(&target.fab_out);
@@ -885,6 +900,7 @@ mod tests {
                 save_placed: false,
                 reuse_routes: false,
                 offline: false,
+                portable: false,
                 quiet: false,
                 placing: crate::commands::common::Placing {
                     place_seeds: None,

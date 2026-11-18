@@ -62,6 +62,19 @@ pub struct Args {
     /// before the solve (a name that is not defined) leaves none and nothing is written.
     #[arg(long, value_name = "FILE")]
     pub emit_solved: Option<PathBuf>,
+    /// Write a self-contained KiCad project: libraries and 3D models copied into the folder.
+    ///
+    /// The symbols and footprints the board uses (netsmith's own, the project's, and KiCad's
+    /// library entries it references) are copied into `libs/` of the board's folder, the models
+    /// its footprints name into `models/`, and `sym-lib-table`, `fp-lib-table` and each
+    /// footprint's `(model ...)` name them by paths inside the folder (`${KIPRJMOD}/...`), so the
+    /// folder opens in KiCad on any machine, moved or sent. `LICENSES.md` carries the notice that
+    /// KiCad's libraries (CC-BY-SA 4.0 with a design exception) ask for. KiCad's own models are
+    /// read from `KICAD9_3DMODEL_DIR` or the `3dmodels` folder of the install; one that cannot be
+    /// found is a warning, and its footprint has no model. `board fab --portable` does the same
+    /// for the KiCad board it writes, with the models of the parts.
+    #[arg(long)]
+    pub portable: bool,
     #[command(flatten)]
     pub output: common::Output,
 }
@@ -84,6 +97,7 @@ pub fn run(args: Args) -> ExitCode {
             write: true,
             emit_design: args.emit_design.as_deref(),
             emit_solved: args.emit_solved.as_deref(),
+            portable: args.portable,
             explain: None,
         })
     })
@@ -103,6 +117,8 @@ pub(super) struct BuildRun<'a> {
     pub(super) emit_design: Option<&'a Path>,
     /// The file to write the members' solved values to (`board build --emit-solved`).
     pub(super) emit_solved: Option<&'a Path>,
+    /// Write a self-contained KiCad folder (`board build --portable`, issue #1198).
+    pub(super) portable: bool,
     /// What to print as text of what the solve left (`explain`).
     pub(super) explain: Option<Explain<'a>>,
 }
@@ -386,8 +402,25 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
                     }
                 };
                 // The project's own libraries and the standard library's own files that
-                // the board uses, so KiCad finds the symbols.
-                if let Err(e) = libraries.write_tables(&dir, &b.design) {
+                // the board uses, so KiCad finds the symbols; with `--portable`, the folder
+                // holds every library entry and model it refers to (issue #1198).
+                if run.portable {
+                    let mut project_files = libraries.portable(&dir);
+                    let written = project_files
+                        .libraries(&b.design)
+                        .and_then(|()| project_files.finish());
+                    match written {
+                        Ok(written) => {
+                            for w in &written.warnings {
+                                eprintln!("{}: warning: {w}", b.label());
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("{}: {e}", dir.display());
+                            return ExitCode::from(2);
+                        }
+                    }
+                } else if let Err(e) = libraries.write_tables(&dir, &b.design) {
                     eprintln!("{}: {e}", dir.display());
                     return ExitCode::from(2);
                 }
@@ -509,6 +542,7 @@ mod tests {
             locked: false,
             emit_design: None,
             emit_solved: None,
+            portable: false,
             output: output(),
         }
     }

@@ -678,8 +678,18 @@ fn write_sample(dir: &Path) -> std::io::Result<()> {
         let folder = dir.join("footprints").join(format!("{library}.pretty"));
         std::fs::create_dir_all(&folder)?;
         std::fs::write(folder.join(format!("{name}.kicad_mod")), text)?;
+        // The model each footprint names (`${KICAD9_3DMODEL_DIR}/<name>.wrl`), a stub: the
+        // folder is where KiCad's `3dmodels` is, beside `footprints`.
+        let models = dir.join("3dmodels");
+        std::fs::create_dir_all(&models)?;
+        std::fs::write(models.join(format!("{name}.wrl")), model_stub(&name))?;
     }
     Ok(())
+}
+
+/// A file that stands for a 3D model in the sample's `3dmodels` folder.
+fn model_stub(name: &str) -> String {
+    format!("#VRML V2.0 utf8\n# a stand-in for the 3D model of {name} (netsmith test sample)\n")
 }
 
 /// A folder holding `symbols/` and `footprints/` with the libraries the standard mapping
@@ -693,9 +703,13 @@ pub fn sample_root() -> PathBuf {
     for (_, _, text) in footprints() {
         text.hash(&mut hasher);
     }
+    // The models' stubs are part of the sample.
+    model_stub("").hash(&mut hasher);
     let target =
         std::env::temp_dir().join(format!("netsmith-sample-libraries-{:x}", hasher.finish()));
-    if !target.join("footprints").is_dir() || !target.join("symbols/Mechanical.kicad_sym").is_file()
+    if !target.join("footprints").is_dir()
+        || !target.join("3dmodels").is_dir()
+        || !target.join("symbols/Mechanical.kicad_sym").is_file()
     {
         // Written beside the target and moved in, so a process that reads the folder while
         // another writes it never sees half of it.
@@ -750,6 +764,115 @@ pub fn sample_symbols() -> PathBuf {
 /// Our sample footprint libraries.
 pub fn sample_footprints() -> PathBuf {
     sample_root().join("footprints")
+}
+
+/// Our sample 3D models, where KiCad's `3dmodels` is beside `footprints`: a stub file for each
+/// footprint, named as the footprint's `(model ...)` line names it (`<name>.wrl`).
+pub fn sample_models() -> PathBuf {
+    sample_root().join("3dmodels")
+}
+
+/// What [`assert_self_contained`] found.
+#[derive(Debug, Default)]
+pub struct SelfContained {
+    /// The libraries of the tables: (table, library name, path from the folder).
+    pub libraries: Vec<(String, String, String)>,
+    /// The models named by the footprints and boards of the folder: (file, path from the folder).
+    pub models: Vec<(String, String)>,
+}
+
+/// Walk the library tables (`sym-lib-table`, `fp-lib-table`) and every footprint (`.kicad_mod`,
+/// and the footprints of a `.kicad_pcb`) of the KiCad project in `dir`, and fail unless every
+/// library and every `(model ...)` is `${KIPRJMOD}/<path>` with a relative path that stays inside
+/// `dir` and names a file (a folder, for a `.pretty` library) that is there; and fail when any
+/// file of the project still holds the path of a machine (`machine`, the absolute folders of the
+/// test) or a variable of KiCad's. Issue #1198: the folder opens in KiCad wherever it is moved to.
+pub fn assert_self_contained(dir: &Path, machine: &[&str]) -> SelfContained {
+    fn files(dir: &Path, out: &mut Vec<PathBuf>) {
+        for entry in std::fs::read_dir(dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display())) {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                files(&path, out);
+            } else {
+                out.push(path);
+            }
+        }
+    }
+    // The quoted text after each `marker` in `text`.
+    fn quoted<'a>(text: &'a str, marker: &str) -> Vec<&'a str> {
+        text.match_indices(marker)
+            .filter_map(|(at, _)| {
+                let rest = &text[at + marker.len()..];
+                rest.split_once('"').map(|(inside, _)| inside)
+            })
+            .collect()
+    }
+    let inside = |what: &str, stated: &str| -> PathBuf {
+        let relative = stated
+            .strip_prefix("${KIPRJMOD}/")
+            .unwrap_or_else(|| panic!("{what}: `{stated}` does not start with ${{KIPRJMOD}}/"));
+        let path = Path::new(relative);
+        assert!(
+            path.is_relative()
+                && path
+                    .components()
+                    .all(|c| matches!(c, std::path::Component::Normal(_))),
+            "{what}: `{stated}` leaves the project folder"
+        );
+        let found = dir.join(path);
+        assert!(found.exists(), "{what}: `{stated}` is not in the folder");
+        found
+    };
+    let mut found = SelfContained::default();
+    for table in ["sym-lib-table", "fp-lib-table"] {
+        let Ok(text) = std::fs::read_to_string(dir.join(table)) else {
+            continue;
+        };
+        for line in text.lines().filter(|l| l.contains("(lib ")) {
+            let name = quoted(line, "(name \"").first().copied().unwrap_or("");
+            let uri = quoted(line, "(uri \"")
+                .first()
+                .copied()
+                .unwrap_or_else(|| panic!("{table}: `{line}` has no uri"));
+            inside(table, uri);
+            found
+                .libraries
+                .push((table.to_string(), name.to_string(), uri.to_string()));
+        }
+    }
+    let mut all = Vec::new();
+    files(dir, &mut all);
+    all.sort();
+    for file in all {
+        let name = file
+            .strip_prefix(dir)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        let Ok(text) = std::fs::read_to_string(&file) else {
+            continue; // a model, a zip: not text
+        };
+        // The files KiCad reads; fab's own records and reports may name this machine.
+        let kicad_file = name.contains(".kicad_") || name.ends_with("-lib-table");
+        for machine in machine.iter().filter(|_| kicad_file) {
+            assert!(
+                !text.contains(machine),
+                "{name} holds the path `{machine}` of this machine"
+            );
+        }
+        if !(name.ends_with(".kicad_mod") || name.ends_with(".kicad_pcb")) {
+            continue;
+        }
+        assert!(
+            !text.contains("3DMODEL_DIR"),
+            "{name} still names a variable of KiCad's for a model"
+        );
+        for stated in quoted(&text, "(model \"") {
+            inside(&name, stated);
+            found.models.push((name.clone(), stated.to_string()));
+        }
+    }
+    found
 }
 
 #[cfg(test)]

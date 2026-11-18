@@ -53,6 +53,7 @@ pub fn run(args: Args) -> ExitCode {
         write: false,
         emit_design: None,
         emit_solved: None,
+        portable: false,
         explain: Some(Explain {
             path: &args.path,
             board: args.board.as_deref(),

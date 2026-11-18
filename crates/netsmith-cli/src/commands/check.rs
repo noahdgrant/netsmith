@@ -34,6 +34,7 @@ pub fn run(args: Args) -> ExitCode {
         write: false,
         emit_design: None,
         emit_solved: None,
+        portable: false,
         explain: None,
     })
 }
