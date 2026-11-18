@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use netsmith_fab::KicadCliExe;
-use netsmith_pcb::{Board, kicad_pcb, kicad_pro};
+use netsmith_pcb::{Board, kicad_dru, kicad_pcb, kicad_pro};
 use netsmith_testkit::TempDir;
 
 /// What a DRC run found: the type of each violation, how many connections are missing, and
@@ -27,11 +27,15 @@ impl Report {
     }
 }
 
-/// Run KiCad's DRC on a board and its project file (KiCad fills the zones first), and
-/// netsmith's own on the same files, and require the two to agree on everything they both
-/// check (ADR 0037). `None` if KiCad is not here.
-pub fn drc(name: &str, pcb: &str, pro: &str) -> Option<Report> {
-    use netsmith_fab::{KICAD_DRC_OUT_OF_SCOPE, KicadCli, compare_kicad_drc, parse_kicad_drc};
+/// Run KiCad's DRC on a board, its project file and the rules file beside it (`rules`, the
+/// `.kicad_dru` that `fab` writes; none when empty; KiCad fills the zones first), and netsmith's
+/// own on the same files, and require the two to agree on everything they both check (ADR 0037,
+/// issue #1185). `None` if KiCad is not here.
+pub fn drc(name: &str, pcb: &str, pro: &str, rules: &str) -> Option<Report> {
+    use netsmith_fab::{
+        KICAD_DRC_OUT_OF_SCOPE, KicadCli, compare_kicad_drc, compare_kicad_drc_with_rules_file,
+        drop_dangling_vias_of_clusters, parse_kicad_drc,
+    };
     let cli = KicadCliExe::locate_runnable()?;
     // Tests run side by side, so each run gets a folder of its own.
     static RUNS: AtomicUsize = AtomicUsize::new(0);
@@ -40,14 +44,24 @@ pub fn drc(name: &str, pcb: &str, pro: &str) -> Option<Report> {
     let path = dir.join(format!("{name}.kicad_pcb"));
     std::fs::write(&path, pcb).ok()?;
     std::fs::write(path.with_extension("kicad_pro"), pro).ok()?;
+    if !rules.is_empty() {
+        std::fs::write(path.with_extension("kicad_dru"), rules).ok()?;
+    }
     let json = cli
         .drc_json(&path)
         .unwrap_or_else(|e| panic!("{name}: {e}"));
-    let theirs = parse_kicad_drc(&json).unwrap();
+    let mut theirs = parse_kicad_drc(&json).unwrap();
 
-    let ours = netsmith_geom::drc_check(pcb, Some(pro), &Default::default())
-        .unwrap_or_else(|e| panic!("{name}: {e}"));
-    let comparison = compare_kicad_drc(&ours, &theirs, 0.1);
+    let extras = netsmith_geom::DrcExtras::default().with_rules_file(rules);
+    let ours =
+        netsmith_geom::drc_check(pcb, Some(pro), &extras).unwrap_or_else(|e| panic!("{name}: {e}"));
+    let art = netsmith_geom::Artwork::parse(pcb).unwrap_or_else(|e| panic!("{name}: {e}"));
+    drop_dangling_vias_of_clusters(&mut theirs, &art, &ours);
+    let comparison = if rules.is_empty() {
+        compare_kicad_drc(&ours, &theirs, 0.1)
+    } else {
+        compare_kicad_drc_with_rules_file(&ours, &theirs, 0.1)
+    };
     let mut skipped: Vec<&str> = theirs
         .iter()
         .map(|f| f.kind.as_str())
@@ -91,12 +105,13 @@ pub fn keep(name: &str, b: &Board) {
         let _ = std::fs::create_dir_all(&dir);
         let _ = std::fs::write(dir.join(format!("{name}.kicad_pcb")), kicad_pcb(b));
         let _ = std::fs::write(dir.join(format!("{name}.kicad_pro")), kicad_pro(b));
+        let _ = std::fs::write(dir.join(format!("{name}.kicad_dru")), kicad_dru(b));
     }
 }
 
 pub fn check(name: &str, b: &Board) -> Option<Report> {
     keep(name, b);
-    drc(name, &kicad_pcb(b), &kicad_pro(b))
+    drc(name, &kicad_pcb(b), &kicad_pro(b), &kicad_dru(b))
 }
 
 /// KiCad's check of a four-layer board, with its planes filled by KiCad (a board netsmith
@@ -104,7 +119,7 @@ pub fn check(name: &str, b: &Board) -> Option<Report> {
 /// `None` if KiCad is not here.
 pub fn plane_drc(name: &str, b: &Board) -> Option<netsmith_geom::DrcCounts> {
     keep(name, b);
-    let r = drc(name, &kicad_pcb(b), &kicad_pro(b))?;
+    let r = drc(name, &kicad_pcb(b), &kicad_pro(b), &kicad_dru(b))?;
     Some(netsmith_geom::DrcCounts {
         violations: r.violations.len() as u32,
         unconnected: r.unconnected as u32,

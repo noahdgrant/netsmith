@@ -110,7 +110,9 @@ pub use gerber::zip as gerber_zip;
 pub use kicad::{CliError, KicadCli, KicadCliExe, Output};
 pub use kicad_drc::{
     Comparison as KicadDrcComparison, OUT_OF_SCOPE as KICAD_DRC_OUT_OF_SCOPE,
-    Reported as KicadDrcReported, compare as compare_kicad_drc, parse as parse_kicad_drc,
+    Reported as KicadDrcReported, compare as compare_kicad_drc,
+    compare_with_rules_file as compare_kicad_drc_with_rules_file, drop_dangling_vias_of_clusters,
+    in_rules_file as in_kicad_dru, parse as parse_kicad_drc,
 };
 pub use panel::{
     Cell as PanelCell, CellFacts as PanelCellFacts, CellInput as PanelCellInput,

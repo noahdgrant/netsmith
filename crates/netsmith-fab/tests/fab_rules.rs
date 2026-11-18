@@ -169,20 +169,23 @@ fn slots_small_holes_thin_rings_and_near_pad_holes_are_named() {
 }
 
 #[test]
-fn the_fabricators_rules_are_netsmiths_and_not_compared_with_kicad() {
-    for rule in [
-        DrcRule::HoleToTrack,
-        DrcRule::PadToPad,
-        DrcRule::PadHoleToHole,
-        DrcRule::MaskToTrack,
-        DrcRule::SlotWidth,
-        DrcRule::NpthDrill,
-        DrcRule::PlatedRing,
-        DrcRule::TrackCurrent,
-        DrcRule::ViaCurrent,
-        DrcRule::TrackAngle,
+fn the_fabricators_rules_are_netsmiths_and_kicad_checks_those_of_the_rules_file() {
+    // KiCad's project file has none of them; the `.kicad_dru` beside it holds the first six for
+    // KiCad's check (issue #1185), which the cross-check then compares.
+    for (rule, in_rules_file) in [
+        (DrcRule::HoleToTrack, true),
+        (DrcRule::PadToPad, true),
+        (DrcRule::PadHoleToHole, true),
+        (DrcRule::SlotWidth, true),
+        (DrcRule::NpthDrill, true),
+        (DrcRule::PlatedRing, true),
+        (DrcRule::MaskToTrack, false),
+        (DrcRule::TrackCurrent, false),
+        (DrcRule::ViaCurrent, false),
+        (DrcRule::TrackAngle, false),
     ] {
         assert!(rule.is_netsmiths(), "{rule:?}");
+        assert_eq!(netsmith_fab::in_kicad_dru(rule), in_rules_file, "{rule:?}");
         assert_eq!(DrcRule::from_id(rule.id()), Some(rule));
     }
 }

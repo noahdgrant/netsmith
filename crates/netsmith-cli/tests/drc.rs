@@ -206,3 +206,35 @@ fn a_kicad_board_is_checked_with_the_project_file_beside_it() {
     assert_eq!(run.status.code(), Some(2), "{}", text(&run));
     assert!(text(&run).contains("nothing.kicad_pcb"), "{}", text(&run));
 }
+
+#[test]
+fn fab_writes_the_processs_rules_beside_the_project_and_a_kicad_boards_check_reads_them() {
+    // Issue #1185: the project file's least clearance is 0.1 mm, the process's space between
+    // surface-mount pads 0.15 mm, which the `.kicad_dru` holds for KiCad and for this check.
+    let dir = led("drc-rules-file");
+    ok(&netsmith(&dir, &["board", "fab", "led.nsm", "--locked", "--out", "first"]));
+    let file = dir.join("first/LedExample/LedExample.kicad_dru");
+    let rules = fs::read_to_string(&file).unwrap();
+    assert!(
+        rules.contains("(rule \"netsmith pad_to_pad\"\n\t(constraint clearance (min 0.15mm))"),
+        "{rules}"
+    );
+    let pcb = "first/LedExample/LedExample.kicad_pcb";
+    ok(&netsmith(&dir, &["board", "drc", "--kicad-pcb", pcb]));
+    // A process that asked 1 mm between the pads would refuse the LED's and the resistor's.
+    fs::write(&file, rules.replace("(min 0.15mm)", "(min 1mm)")).unwrap();
+    let run = netsmith(&dir, &["board", "drc", "--kicad-pcb", pcb, "--format", "json"]);
+    assert_eq!(run.status.code(), Some(1), "{}", text(&run));
+    let report = json(&run);
+    let pads: Vec<&serde_json::Value> = report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|f| f["rule"] == "pad_to_pad")
+        .collect();
+    assert_eq!(pads.len(), 2, "{report:#}");
+    assert!(
+        pads.iter().all(|f| f["message"].as_str().unwrap().contains("1.0000 mm")),
+        "{pads:#?}"
+    );
+}

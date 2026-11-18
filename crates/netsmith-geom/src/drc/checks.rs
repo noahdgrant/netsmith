@@ -157,7 +157,7 @@ fn outline(out: &mut Out<'_>) {
 fn sizes(out: &mut Out<'_>) {
     let m = out.m;
     let r = m.rules;
-    for c in &m.items {
+    for (index, c) in m.items.iter().enumerate() {
         match c.kind {
             Kind::Track(i) => {
                 let t = &m.art.tracks[i];
@@ -220,7 +220,7 @@ fn sizes(out: &mut Out<'_>) {
                     .find(|h| h.owner.is_some_and(|o| m.items[o].kind == c.kind));
                 let Some(hole) = hole else { continue };
                 let _ = d;
-                let ring = ring_width(&c.shapes, &hole.shape);
+                let ring = ring_width(&pad_copper(m, index), &hole.shape);
                 if ring < r.annular_width - EPS / 100.0 {
                     out.push(
                         Rule::AnnularWidth,
@@ -255,6 +255,34 @@ fn sizes(out: &mut Out<'_>) {
             );
         }
     }
+}
+
+/// The copper a plated pad's ring is measured in: its own, and that of the other pads of its
+/// part with its number whose copper touches it, on any layer (a pad made of several, such as
+/// an exposed pad with vias in it). So KiCad measures it (KiCad 9.0.0: a plated pad inside an
+/// SMD pad of its number has no `annular_width` finding, issue #1185).
+pub(crate) fn pad_copper(m: &Model<'_>, item: usize) -> Vec<Shape> {
+    let c = &m.items[item];
+    let Kind::Pad(i) = c.kind else {
+        return c.shapes.clone();
+    };
+    let pad = &m.art.pads[i];
+    let mut shapes = c.shapes.clone();
+    for o in &m.items {
+        let Kind::Pad(j) = o.kind else { continue };
+        let other = &m.art.pads[j];
+        if j == i || other.part != pad.part || other.number != pad.number {
+            continue;
+        }
+        let touches = o
+            .shapes
+            .iter()
+            .any(|so| c.shapes.iter().any(|sc| gap(sc, so).d == 0.0));
+        if touches {
+            shapes.extend(o.shapes.iter().cloned());
+        }
+    }
+    shapes
 }
 
 /// The copper left between a hole and the edge of the pad round it, the least all round.
@@ -940,7 +968,16 @@ fn mask_bridges(out: &mut Out<'_>) {
         let boxes: Vec<Bounds> = openings.iter().map(|o| o.2).collect();
         for (i, j) in near_pairs(&boxes, web) {
             let (a, b) = (&m.art.pads[openings[i].0], &m.art.pads[openings[j].0]);
-            if a.net == b.net || (m.bridges_in_footprints && a.part == b.part) {
+            // Two copper pads with no net are not of one net: solder that bridges them joins two
+            // pins the design keeps apart, and KiCad reports them (issue #1185). The opening of a
+            // hole with no plating bares no copper, and two of them are no bridge, as in KiCad.
+            let copper = |p: &crate::artwork::Pad| p.kind != crate::artwork::PadKind::Npth;
+            let one_net = match (&a.net, &b.net) {
+                (Some(x), Some(y)) => x == y,
+                (None, None) => !(copper(a) && copper(b)),
+                _ => false,
+            };
+            if one_net || (m.bridges_in_footprints && a.part == b.part) {
                 continue;
             }
             let mut best: Option<super::shape::Gap> = None;

@@ -9,7 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use netsmith_pcb::{Board, kicad_pcb, kicad_pro, render_svg};
+use netsmith_pcb::{Board, kicad_dru, kicad_pcb, kicad_pro, render_svg};
 pub use netsmith_router::{CoarsePlan, LineClasses};
 use netsmith_router::{Costs, RouteOptions};
 use serde::{Deserialize, Serialize};
@@ -180,6 +180,7 @@ pub fn route(
     for (path, contents) in [
         (out.join(format!("{name}.kicad_pcb")), kicad_pcb(&board)),
         (out.join(format!("{name}.kicad_pro")), kicad_pro(&board)),
+        (out.join(format!("{name}.kicad_dru")), kicad_dru(&board)),
         (out.join(format!("{name}.svg")), render_svg(&board)),
     ] {
         fs::write(&path, contents).map_err(|e| format!("{}: {e}", path.display()))?;

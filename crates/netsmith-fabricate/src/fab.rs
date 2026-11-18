@@ -24,7 +24,7 @@ use netsmith_fab::{
 };
 use netsmith_kicad::Mapping;
 use netsmith_pcb::{
-    Board, Trim, kicad_pcb, kicad_pcb_filled, kicad_pro, place_options, render_svg,
+    Board, Trim, kicad_dru, kicad_pcb, kicad_pcb_filled, kicad_pro, place_options, render_svg,
 };
 use netsmith_router::{RouteOptions, route_with};
 use netsmith_solve::Catalogs;
@@ -1484,6 +1484,7 @@ fn fab_board(
         for (file, contents) in [
             (pcb_path.clone(), pcb),
             (dir.join(format!("{name}.kicad_pro")), kicad_pro(&board)),
+            (dir.join(format!("{name}.kicad_dru")), kicad_dru(&board)),
             (dir.join(format!("{name}.svg")), render_svg(&board)),
         ] {
             fs::write(&file, contents).map_err(|e| fail(format!("{}: {e}", file.display())))?;
@@ -3052,15 +3053,7 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
         mask_web: Some(board.rules.mask_bridge),
         via_in_pad: Some(board.process.via_in_pad),
         excused_courtyards: board.excused_courtyards(),
-        hole_to_track: Some(board.rules.hole_clearance),
-        plated_hole_clearance: Some(board.rules.plated_hole_clearance),
-        pad_to_pad: Some(board.rules.pad_to_pad),
-        pad_hole_to_hole: Some(board.rules.hole_to_hole),
         mask_to_track: Some(board.rules.mask_to_track),
-        plated_slot: Some(board.rules.plated_slot),
-        npth_slot: Some(board.rules.npth_slot),
-        npth_drill: Some(board.rules.npth_drill),
-        pad_ring: Some(board.rules.min_annular_ring),
         least_widths: board.least_widths(),
         inner_least_widths: board.inner_least_widths(),
         target_widths: board.target_track_widths(),
@@ -3102,6 +3095,8 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
             })
             .collect(),
         sizing: netsmith_design::guidelines::sizing_of(&board.process),
+        // The rules the `.kicad_dru` beside the board holds for KiCad too (issue #1185).
+        ..board.rules.process_rules()
     }
 }
 

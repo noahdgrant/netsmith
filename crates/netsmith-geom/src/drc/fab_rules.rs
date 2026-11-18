@@ -1,8 +1,11 @@
 //! The rules of a fabricator's capabilities page that a KiCad project file cannot say, which
 //! the caller passes in [`Extras`](super::Extras) from the board's process (issue #431). Each is
-//! netsmith's own: the cross-check counts its findings and does not compare them. A rule the
-//! caller does not pass is not checked, so a board read with no process (a port, the `drc`
-//! example) is checked as KiCad would check it.
+//! netsmith's own. Those a KiCad custom rule can say (`pad_to_pad`, `hole_to_track`,
+//! `pad_hole_to_hole`, `npth_drill`, `slot_width`, `plated_ring`) `fab` also writes into the
+//! `.kicad_dru` beside the project (`rules_file.rs`, issue #1185), so KiCad's check judges them
+//! and the cross-check compares them; the others it counts and does not compare. A rule the
+//! caller does not pass is not checked, so a board read with no process and no rules file (a
+//! port, the `drc` example) is checked as KiCad would check it.
 //!
 //! **The hole rules are to tracks.** The page writes "via hole to track", "NPTH to track" and
 //! "PTH to track", and a footprint's own pads may sit nearer its holes: the USB-C receptacle of
@@ -13,12 +16,13 @@
 //! hole-to-hole"); the project file's `min_hole_to_hole` is the vias' figure, so KiCad's check
 //! sees it, and `pad_hole_to_hole` adds the pad figure.
 //!
-//! **Rejected:** a reader of a fabricator's KiCad rules file (`.kicad_dru`): the owner chose the
-//! std processes (2026-11-11), and JLCPCB publishes none. One hole clearance for every hole and
+//! **Rejected:** a reader of a fabricator's KiCad rules file (`.kicad_dru`) as the source of a
+//! process: the owner chose the std processes (2026-11-11), and JLCPCB publishes none. The file
+//! netsmith writes is read back for its own rules only. One hole clearance for every hole and
 //! every copper, as KiCad's single number invites: it refuses land patterns the page does not,
 //! or, at 0.28 mm, makes every via wider in effect.
 
-use super::checks::{EPS, Out, ring_width, same_net};
+use super::checks::{EPS, Out, pad_copper, ring_width, same_net};
 use super::model::{Kind, Model};
 use super::shape::{Shape, gap, near_pairs};
 use super::{Item, Rule};
@@ -563,7 +567,7 @@ fn holes(out: &mut Out<'_>) {
             );
         }
     }
-    for c in &m.items {
+    for (index, c) in m.items.iter().enumerate() {
         let Kind::Pad(p) = c.kind else { continue };
         let pad = &m.art.pads[p];
         let Some(d) = &pad.drill else { continue };
@@ -602,7 +606,7 @@ fn holes(out: &mut Out<'_>) {
                 .iter()
                 .find(|h| h.owner.is_some_and(|o| m.items[o].kind == c.kind))
         {
-            let ring = ring_width(&c.shapes, &hole.shape);
+            let ring = ring_width(&pad_copper(m, index), &hole.shape);
             if ring < limit - EPS / 100.0 {
                 out.push(
                     Rule::PlatedRing,

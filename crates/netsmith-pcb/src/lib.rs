@@ -108,7 +108,7 @@ pub use copper_areas::{
 pub use explain::{
     Fault, Precheck, RequirementReport, before_placing, explain as explain_requirements,
 };
-pub use export::{PATH_PROPERTY, kicad_pcb, kicad_pcb_filled, kicad_pro, process_zones};
+pub use export::{PATH_PROPERTY, kicad_dru, kicad_pcb, kicad_pcb_filled, kicad_pro, process_zones};
 pub use fill_report::{
     ClearedPad, FillArea, FillIsland, FillPad, FillReport, FillSource, JoinCounts, JoinKind,
     StarvedPad,
