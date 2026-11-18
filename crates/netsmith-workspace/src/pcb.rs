@@ -361,11 +361,10 @@ pub fn place_watched(
         let say = say.clone();
         move |line: &str| say(line)
     });
-    let glimpses = live_sink(name, "place", show);
     job::catch(|| {
         job::scope(token, || {
             job::reporting(progress, || {
-                netsmith_pcb::watching_glimpses(glimpses, || place(data, name))
+                watching_live(name, "place", show, || place(data, name))
             })
         })
     })
@@ -381,19 +380,38 @@ pub fn place_watched(
 /// its glimpses are all passed.
 const LIVE_EVERY: Duration = Duration::from_millis(200);
 
-/// A sink of the placer's or the router's glimpses that passes them to `show` as [`PcbLive`]s
-/// of `task`, the placer's at most once in [`LIVE_EVERY`].
-fn live_sink(name: &str, task: &str, show: &Show) -> std::rc::Rc<dyn Fn(&netsmith_pcb::Glimpse)> {
-    let (name, task, show) = (name.to_string(), task.to_string(), show.clone());
-    let last = std::cell::Cell::new(None::<Instant>);
-    std::rc::Rc::new(move |g: &netsmith_pcb::Glimpse| {
-        let placing = matches!(g, netsmith_pcb::Glimpse::Placing { .. });
-        if placing && last.get().is_some_and(|at| at.elapsed() < LIVE_EVERY) {
-            return;
-        }
-        last.set(Some(Instant::now()));
-        show(&live_of(&name, &task, g));
-    })
+/// `work` with the placer's or the router's glimpses passed to `show` as [`PcbLive`]s of
+/// `task`, the placer's at most once in [`LIVE_EVERY`]. The last glimpse the pace held back is
+/// passed when `work` ends, so the page is left with where the placer had the parts last, on a
+/// machine of any speed: a placing that ends within [`LIVE_EVERY`] of its first glimpse (which
+/// may be of an earlier part of the placing, with fewer parts) still shows its last (issue
+/// #1249). A `work` that unwinds (a cancel) passes nothing more.
+fn watching_live<T>(name: &str, task: &str, show: &Show, work: impl FnOnce() -> T) -> T {
+    let held = std::rc::Rc::new(std::cell::RefCell::new(None::<netsmith_pcb::Glimpse>));
+    let sink = {
+        let (name, task, show, held) = (
+            name.to_string(),
+            task.to_string(),
+            show.clone(),
+            held.clone(),
+        );
+        let last = std::cell::Cell::new(None::<Instant>);
+        std::rc::Rc::new(move |g: &netsmith_pcb::Glimpse| {
+            let placing = matches!(g, netsmith_pcb::Glimpse::Placing { .. });
+            if placing && last.get().is_some_and(|at| at.elapsed() < LIVE_EVERY) {
+                *held.borrow_mut() = Some(g.clone());
+                return;
+            }
+            held.borrow_mut().take();
+            last.set(Some(Instant::now()));
+            show(&live_of(&name, &task, g));
+        })
+    };
+    let out = netsmith_pcb::watching_glimpses(sink, work);
+    if let Some(g) = held.borrow_mut().take() {
+        show(&live_of(name, task, &g));
+    }
+    out
 }
 
 /// A glimpse as the page takes it.
@@ -638,8 +656,9 @@ impl Entry {
         show: &Show,
         before: Option<(&Board, &BTreeSet<String>)>,
     ) -> RoutedBoard {
-        let glimpses = live_sink(name, "route", show);
-        netsmith_pcb::watching_glimpses(glimpses, || self.route_unwatched(name, say, before))
+        watching_live(name, "route", show, || {
+            self.route_unwatched(name, say, before)
+        })
     }
 
     fn route_unwatched(
@@ -2477,4 +2496,52 @@ fn track_layer(board: &Board, word: &str) -> Result<CopperLayer, ApiError> {
                 board.name
             ))
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use netsmith_pcb::{Glimpse, GlimpsePart, Pt, Rect};
+    use std::sync::{Arc, Mutex};
+
+    fn placing(parts: usize) -> Glimpse {
+        Glimpse::Placing {
+            region: Rect::new(Pt::new(0.0, 0.0), Pt::new(10.0, 5.0)),
+            parts: (0..parts)
+                .map(|i| GlimpsePart {
+                    refdes: format!("R{i}"),
+                    court: Rect::new(Pt::new(1.0, 1.0), Pt::new(3.0, 2.0)),
+                    back: false,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn the_last_glimpse_of_a_placing_reaches_the_page_however_soon_it_ends() {
+        // Two glimpses one after the other: the second is within the pace of the first on any
+        // machine but the slowest, and is held back; it is passed when the placing ends
+        // (issue #1249), so the page is left with it, whatever the speed.
+        let shown = Arc::new(Mutex::new(Vec::<PcbLive>::new()));
+        let show: Show = {
+            let shown = Arc::clone(&shown);
+            Arc::new(move |l: &PcbLive| shown.lock().unwrap().push(l.clone()))
+        };
+        watching_live("B", "place", &show, || {
+            netsmith_pcb::show_glimpse(|| placing(6));
+            netsmith_pcb::show_glimpse(|| placing(12));
+        });
+        let shown = shown.lock().unwrap();
+        assert_eq!(
+            shown.first().map(|l| l.parts.len()),
+            Some(6),
+            "the first is passed at once"
+        );
+        assert_eq!(
+            shown.last().map(|l| l.parts.len()),
+            Some(12),
+            "the last is passed: {shown:?}"
+        );
+        assert!(shown.len() <= 2, "no glimpse is passed twice: {shown:?}");
+    }
 }

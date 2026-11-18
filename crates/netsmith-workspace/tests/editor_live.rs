@@ -58,7 +58,8 @@ fn the_scene_shows_the_parts_where_the_placer_has_them_while_it_places() {
     let (say, _said, show, shown) = watchers();
     let scene = editor.pcb_scene_watched(BOARD, &say, &show).unwrap();
     let shown = shown.lock().unwrap();
-    // The first glimpse is always passed on; the others at most five a second.
+    // The first glimpse is always passed on; the others at most five a second, and the last one
+    // held back when the placing ends (issue #1249).
     assert!(!shown.is_empty());
     for live in shown.iter() {
         assert_eq!((live.board.as_str(), live.task.as_str()), (BOARD, "place"));
