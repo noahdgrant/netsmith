@@ -107,7 +107,7 @@ How far the underside of a part's body is above the face of the board it is on (
 _Avoid_: Lift, clearance height, stand-off (a standoff is the part's own member, `.standoff`)
 
 **Starved thermal**:
-A pad in a _Pour_, a _Plane_ or a _Zone_ of its net, joined by a thermal relief, that fewer than two of the relief's spokes, and the tracks of its net that run from it onto the fill, join to the fill: the others end in another net's clearance, a keepout, the edge band or a strip of fill thinner than the pour's minimum width, and the fill does not make them, as KiCad's refill does not (issue #1115). A warning of the design rules check, `starved_thermal`, by KiCad's name and its least of two spokes (issue #838); a pad that no spoke and no track joins is one too, since the pour joins it by nothing.
+A pad in a _Pour_, a _Plane_ or a _Zone_ of its net, joined by a thermal relief, that fewer than two of the relief's spokes, and the tracks of its net that run from it onto the fill, join to the fill: the others end in another net's clearance, a keepout, the edge band or a strip of fill thinner than the pour's minimum width, and the fill does not make them, as KiCad's refill does not (issue #1115). A warning of the design rules check, `starved_thermal`, by KiCad's name and its least of two spokes (issue #838), counted as KiCad counts them; a pad that no spoke and no track joins is no starved thermal but an _Unjoinable thermal_ (issue #1222).
 _Avoid_: Weak thermal, starved pad, thermal starvation (the issue's word for the rule)
 
 **Stated rail**:

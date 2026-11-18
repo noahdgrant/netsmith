@@ -353,6 +353,9 @@ pub enum Rule {
     TestPointEdge,
     /// A pad that fewer than two of its thermal spokes join to the fill of its pour (issue #838).
     StarvedThermal,
+    /// A pad that the fill of its pour can join by none of its thermal spokes and no track, with
+    /// the reason (netsmith's, issue #1222).
+    UnjoinableThermal,
     /// A piece of a pour's fill that touches no copper of its net, which the zone's island
     /// setting keeps (issue #838).
     IsolatedCopper,
@@ -379,7 +382,7 @@ pub enum Rule {
 }
 
 impl Rule {
-    pub const ALL: [Rule; 56] = [
+    pub const ALL: [Rule; 57] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -429,6 +432,7 @@ impl Rule {
         Rule::TestPointBody,
         Rule::TestPointEdge,
         Rule::StarvedThermal,
+        Rule::UnjoinableThermal,
         Rule::IsolatedCopper,
         Rule::AcidTrap,
         Rule::CopperSliver,
@@ -490,6 +494,7 @@ impl Rule {
             Rule::TestPointBody => "test_point_body",
             Rule::TestPointEdge => "test_point_edge",
             Rule::StarvedThermal => "starved_thermal",
+            Rule::UnjoinableThermal => "unjoinable_thermal",
             Rule::IsolatedCopper => "isolated_copper",
             Rule::AcidTrap => "acid_trap",
             Rule::CopperSliver => "copper_sliver",
@@ -531,6 +536,7 @@ impl Rule {
                 | Rule::TestPointBody
                 | Rule::TestPointEdge
                 | Rule::AcidTrap
+                | Rule::UnjoinableThermal
                 | Rule::Stackup
                 | Rule::ViaSpan
                 | Rule::ViaAspectRatio
@@ -564,6 +570,7 @@ impl Rule {
             | Rule::TestPointBody
             | Rule::TestPointEdge
             | Rule::StarvedThermal
+            | Rule::UnjoinableThermal
             | Rule::IsolatedCopper
             | Rule::AcidTrap
             | Rule::CopperSliver => Severity::Warning,

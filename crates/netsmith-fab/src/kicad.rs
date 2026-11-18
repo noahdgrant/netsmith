@@ -194,6 +194,16 @@ impl KicadCliExe {
         }
     }
 
+    /// The text of the board as KiCad's own filler fills its zones and saves it (KiCad's Python,
+    /// [`FILL_ZONES`]): what a test compares netsmith's fill with, spoke for spoke (issue #1222).
+    /// A board with no zone comes back as it is.
+    pub fn refilled(&self, pcb: &Path) -> Result<String, CliError> {
+        let stage = self.stage_with(pcb, true)?;
+        let board = stage.dir.join(&stage.name);
+        std::fs::read_to_string(&board)
+            .map_err(|e| CliError::Io(format!("cannot read {}: {e}", board.display())))
+    }
+
     fn stage(&self, pcb: &Path) -> Result<Stage<'_>, CliError> {
         self.stage_with(pcb, true)
     }

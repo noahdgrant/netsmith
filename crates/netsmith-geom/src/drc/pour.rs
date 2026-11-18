@@ -1,8 +1,9 @@
-//! The rules that judge a pour by its fill (issues #838, #993): `starved_thermal`, a pad that
-//! fewer than two of its thermal spokes join to the fill, `isolated_copper`, a piece of the fill
-//! that touches no copper of its net and that the zone's island setting keeps, and
-//! `copper_sliver`, copper of the fill narrower than the least track. All three are KiCad's
-//! names. The fill is the one `fab` plots: the fill the board file holds where a zone holds
+//! The rules that judge a pour by its fill (issues #838, #993, #1222): `starved_thermal`, a pad
+//! that one or more but fewer than two of its thermal spokes join to the fill,
+//! `unjoinable_thermal`, a pad that none of them and no track joins to it, `isolated_copper`, a
+//! piece of the fill that touches no copper of its net and that the zone's island setting keeps,
+//! and `copper_sliver`, copper of the fill narrower than the least track. All but
+//! `unjoinable_thermal` are KiCad's names. The fill is the one `fab` plots: the fill the board file holds where a zone holds
 //! one (`filled_polygon`, as a board ported from KiCad does), else the fill [`crate::fill`]
 //! works out, again here, which makes a spoke only where KiCad's refill makes one (its module
 //! header has the rule, issue #1115).
@@ -21,10 +22,14 @@
 //! carries the pad's current and heat to the pour as one does. A pad is judged when the zone
 //! joins it with thermal spokes and its centre is in the zone's outline.
 //!
-//! **Where it differs from KiCad's check.** A relief with no spoke on the fill and no track is
-//! starved here; KiCad skips it and reports the pad as unconnected instead, which netsmith's
-//! connection check (it joins every pad in a pour's outline) does not see. With a track and no
-//! spoke, neither reports it. KiCad does not count a spoke onto a piece of the fill that joins
+//! **A pad no spoke joins (issue #1222).** A relief with no spoke on the fill and no track is not
+//! starved, as KiCad's check skips it too (and reports the pad as unconnected instead, which
+//! netsmith's connection check, which joins every pad in a pour's outline, does not see). It is
+//! `unjoinable_thermal`, netsmith's own warning, which says why the fill makes none of its
+//! spokes (`fill::Unjoinable`: the spoke under the minimum thickness, or what keeps the fill off
+//! the end of each, another net's clearance by name, the edge, a keepout, a strip of fill
+//! narrower than the minimum thickness): nothing the fill can do, so the pad is joined by its own
+//! via or track, which the router keeps for it. With a track and no spoke, neither is reported. KiCad does not count a spoke onto a piece of the fill that joins
 //! nothing but the pad; here every spoke on the fill counts. Of a fill the file holds, a piece of
 //! copper across the gap off the spokes' axes is not counted, which KiCad counts.
 //!
@@ -55,10 +60,11 @@ use crate::plot;
 pub(crate) fn run(out: &mut Out<'_>) {
     let m = out.m;
     let starved = m.rules.severity(Rule::StarvedThermal).is_some();
+    let unjoinable = m.rules.severity(Rule::UnjoinableThermal).is_some();
     let islands = m.rules.severity(Rule::IsolatedCopper).is_some();
     let width = m.rules.track_width;
-    let slivers = width > 0.0 && m.rules.severity(Rule::CopperSliver).is_some();
-    if !(starved || islands || slivers)
+    let slivers = m.rules.severity(Rule::CopperSliver).is_some();
+    if !(starved || unjoinable || islands || slivers)
         || !m
             .art
             .zones
@@ -101,47 +107,57 @@ pub(crate) fn run(out: &mut Out<'_>) {
                 pad: None,
                 net: zone.net.clone(),
             };
-            if starved {
-                for r in j.reliefs {
-                    if !fill::starved(r.reach, r.tracks) {
-                        continue;
-                    }
-                    let Some(item) = m
-                        .items
-                        .iter()
-                        .find(|c| c.kind == Kind::Pad(r.pad))
-                        .map(|c| c.item.clone())
-                    else {
-                        continue;
-                    };
-                    let at = item.at;
-                    let joined = match r.reach {
-                        0 => "none".to_string(),
-                        n => n.to_string(),
-                    };
-                    let tracks = match r.tracks {
-                        0 => String::new(),
-                        1 => " and 1 track".to_string(),
-                        n => format!(" and {n} tracks"),
-                    };
-                    let message = if r.spokes == 0 {
-                        format!(
-                            "thermal relief has no spokes: the pad is narrower than the zone's minimum thickness, so the fill makes none; the least is {MIN_SPOKES}"
-                        )
-                    } else {
-                        format!(
-                            "thermal relief joins the pour with {joined} of its {} spokes{tracks}; the least is {MIN_SPOKES}",
-                            r.spokes
-                        )
-                    };
+            for r in j.reliefs {
+                let unjoined = fill::unjoinable(r.reach, r.tracks);
+                if !(starved && fill::starved(r.reach, r.lone, r.tracks) || unjoinable && unjoined)
+                {
+                    continue;
+                }
+                let Some(item) = m
+                    .items
+                    .iter()
+                    .find(|c| c.kind == Kind::Pad(r.pad))
+                    .map(|c| c.item.clone())
+                else {
+                    continue;
+                };
+                let at = item.at;
+                if unjoined {
+                    let why = r
+                        .unjoinable
+                        .as_ref()
+                        .map_or_else(String::new, |w| format!(": {w}"));
                     out.push(
-                        Rule::StarvedThermal,
-                        message,
+                        Rule::UnjoinableThermal,
+                        format!(
+                            "thermal relief joins the pour by none of its {} spokes and no track{why}; nothing the fill can do; the pad's own via or track joins it to its net",
+                            r.spokes
+                        ),
                         at,
                         Some(layer),
                         vec![item, zone_item(at)],
                     );
+                    continue;
                 }
+                let tracks = match r.tracks {
+                    0 => String::new(),
+                    1 => " and 1 track".to_string(),
+                    n => format!(" and {n} tracks"),
+                };
+                let lone = match r.lone {
+                    0 => String::new(),
+                    n => format!(" ({n} onto copper of the pour that joins nothing but the pad)"),
+                };
+                out.push(
+                    Rule::StarvedThermal,
+                    format!(
+                        "thermal relief joins the pour with {} of its {} spokes{lone}{tracks}; the least is {MIN_SPOKES}",
+                        r.reach, r.spokes
+                    ),
+                    at,
+                    Some(layer),
+                    vec![item, zone_item(at)],
+                );
             }
             let whose = if j.held {
                 "the fill the board file holds"
@@ -160,6 +176,17 @@ pub(crate) fn run(out: &mut Out<'_>) {
                 }
             }
             if slivers {
+                for at in j.spikes {
+                    out.push(
+                        Rule::CopperSliver,
+                        format!(
+                            "{whose} comes to a point sharper than 20 degrees, a copper sliver as KiCad's check measures it; a fabricator may not etch it or it may lift"
+                        ),
+                        at,
+                        Some(layer),
+                        vec![zone_item(at)],
+                    );
+                }
                 for (at, area) in j.slivers {
                     out.push(
                         Rule::CopperSliver,
@@ -252,7 +279,7 @@ mod tests {
     }
 
     #[test]
-    fn a_pad_no_spoke_joins_is_a_starved_thermal() {
+    fn a_pad_no_spoke_joins_is_unjoinable_with_the_reason_and_not_starved() {
         let none = format!(
             "{PAD} {} {} {} {}",
             cut("right"),
@@ -260,13 +287,27 @@ mod tests {
             cut("down"),
             cut("up")
         );
-        let found = starved(&none);
+        assert_eq!(starved(&none), Vec::<String>::new());
+        let found: Vec<String> = board("", &none)
+            .findings
+            .iter()
+            .filter(|f| f.rule == Rule::UnjoinableThermal)
+            .map(|f| {
+                assert_eq!(f.severity, Severity::Warning);
+                f.with_items()
+            })
+            .collect();
         assert_eq!(found.len(), 1, "{found:?}");
         assert!(
-            found[0].contains("with none of its 4 spokes"),
+            found[0].starts_with(
+                "thermal relief joins the pour by none of its 4 spokes and no track: the end of each spoke is off the fill: the clearance of track [SIG] (0.3 mm) (4 spokes)"
+            ),
             "{}",
             found[0]
         );
+        // With a track of the pad's net onto the fill, the pour joins it: neither.
+        let joined = board("", &format!("{none} {TRACK}"));
+        assert_eq!(joined.count(Rule::UnjoinableThermal), 0, "{joined}");
     }
 
     /// A GND track from the pad's centre out past its relief's corner, onto the fill.
