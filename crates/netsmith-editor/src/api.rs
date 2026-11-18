@@ -44,6 +44,7 @@ use ts_rs::TS;
 
 mod compare;
 mod copper;
+mod fill;
 mod fit;
 mod gerber;
 mod hints;
@@ -52,6 +53,7 @@ mod view;
 
 pub use compare::*;
 pub use copper::*;
+pub use fill::*;
 pub use fit::*;
 pub use gerber::*;
 pub use hints::*;
@@ -2497,6 +2499,14 @@ pub fn typescript() -> String {
         CopperTeardrops,
         CopperFills,
         PcbCopper,
+        FillAt,
+        FillPad,
+        FillCleared,
+        FillIsland,
+        FillCounts,
+        FillArea,
+        FillStarved,
+        PcbFill,
         PcbFitPart,
         PcbFitNear,
         PcbFitFault,

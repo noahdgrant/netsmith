@@ -2,7 +2,7 @@
 // reads the answer. The numbers are the server's (`netsmith layout summary` has the same); this
 // file only turns them into the words and boxes the tab shows.
 
-import type { CopperLayer, CopperPour, CopperZone, PcbBox, PcbCopper, PcbScene, SummaryBox, SummaryGuideline, SummaryPads } from '../api';
+import type { CopperLayer, CopperPour, CopperZone, FillArea, FillCounts, FillPad, FillStarved, PcbBox, PcbCopper, PcbScene, SummaryBox, SummaryGuideline, SummaryPads } from '../api';
 
 /** A number to the hundredth, without trailing zeros: `3.5`, `12`. */
 export function mm(v: number): string {
@@ -102,4 +102,34 @@ export function teardropsLine(c: PcbCopper): string {
   if (!t.counted) return 'not counted: the router makes them when it routes the board';
   const by = t.layers.map((l) => `${l.count} on ${l.layer}`).join(', ');
   return `${t.total}${by ? ` (${by})` : ''}`;
+}
+
+/** The pads a fill joins, counted by kind (issue 1187, `netsmith board fill`): `12 pads: 9 by 2 or more spokes, 1 by 1 spoke, 0 by no spoke, 2 solid, 0 none; 1 starved`. */
+export function fillCountsLine(c: FillCounts): string {
+  const pads = c.noSpokes + c.oneSpoke + c.twoOrMoreSpokes + c.solid + c.none;
+  return `${pads} pad${pads === 1 ? '' : 's'}: ${c.twoOrMoreSpokes} by 2 or more spokes, ${c.oneSpoke} by 1 spoke, ${c.noSpokes} by no spoke, ${c.solid} solid, ${c.none} none; ${c.starved} starved`;
+}
+
+/** A fill in words: `pour on GND, 120.5 mm²: <counts>; clears 4 pads of other nets; islands: 0 kept, 1 removed`. */
+export function fillAreaLine(f: FillArea): string {
+  return [
+    `${f.source} on ${f.net}${f.held ? ' (the fill the board file holds)' : ''}, ${mm(f.area)} mm²: ${fillCountsLine(f.counts)}`,
+    `clears ${f.cleared.length} pad${f.cleared.length === 1 ? '' : 's'} of other nets`,
+    `islands: ${f.islands.length} kept, ${f.removedIslands.length} removed`,
+  ].join('; ');
+}
+
+/** How the fill joins a pad: `U1.2: thermal, 1 of 4 spokes (starved)`, `J1.1: solid`. */
+export function fillPadLine(p: FillPad): string {
+  let how: string = p.join;
+  if (p.join === 'thermal') how = p.spokes === 0 ? 'thermal, no spokes (the pad is narrower than the minimum width)' : `thermal, ${p.joinedSpokes} of ${p.spokes} spokes`;
+  else if (p.join === 'solid' && !p.joined) how = 'solid, the fill does not reach it';
+  const tracks = p.tracks === 0 ? '' : ` and ${p.tracks} track${p.tracks === 1 ? '' : 's'}`;
+  return `${p.part}.${p.pad}: ${how}${tracks}${p.starved ? ' (starved)' : ''}`;
+}
+
+/** A starved thermal relief: `U1.2 on top (GND) at (8, 15): 1 of 4 spokes`. */
+export function fillStarvedLine(s: FillStarved): string {
+  const tracks = s.tracks === 0 ? '' : `, ${s.tracks} track${s.tracks === 1 ? '' : 's'}`;
+  return `${s.part}.${s.pad} on ${s.layer} (${s.net}) at (${mm(s.at.x)}, ${mm(s.at.y)}): ${s.joinedSpokes} of ${s.spokes} spokes${tracks}`;
 }

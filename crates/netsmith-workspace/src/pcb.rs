@@ -80,7 +80,7 @@ use netsmith_editor::{
     api::{
         ComparePcbPlace, CompareSize, DrawnKeepout, KeepoutOrigin, KeepoutPlacement, KicadState,
         PartPlacement, PcbBox, PcbChange, PcbCopper, PcbCrossed, PcbCrossedTrack, PcbCrossedVia,
-        PcbCutout, PcbFinding, PcbFindings, PcbFit, PcbFitFault, PcbFitMiss, PcbFitNear,
+        PcbCutout, PcbFill, PcbFinding, PcbFindings, PcbFit, PcbFitFault, PcbFitMiss, PcbFitNear,
         PcbFitPart, PcbFitPlace, PcbKeepout, PcbLive, PcbLivePart, PcbLiveTrack, PcbLiveVia,
         PcbNetWidth, PcbPad, PcbPart, PcbPoint, PcbRegenerate, PcbRegenerated, PcbRegeneratedPart,
         PcbReport, PcbRequirement, PcbRerouted, PcbRouteNet, PcbRouteTrack, PcbRouteVia, PcbScene,
@@ -936,6 +936,40 @@ pub fn copper(data: &BoardData, name: &str, routed: Option<&Board>) -> Result<Pc
     let value = serde_json::to_value(&areas).expect("plain data");
     serde_json::from_value(camel_keys(value))
         .map_err(|e| ApiError::internal(format!("the copper areas of {name}: {e}")))
+}
+
+/// The board of an entry and the stamps of what it was placed from, copied out so that the fill
+/// of [`fill`], which takes longer than anything else the view asks for, runs with no lock held.
+pub struct Filling {
+    board: Board,
+    layout_stamp: String,
+    routes_stamp: String,
+    routed: bool,
+}
+
+impl Filling {
+    pub fn of(entry: &Entry) -> Filling {
+        Filling {
+            board: entry.board.clone(),
+            layout_stamp: entry.layout_stamp().to_string(),
+            routes_stamp: entry.routes_stamp().to_string(),
+            routed: entry.is_routed(),
+        }
+    }
+
+    /// How the fill of the board's pours joins its pads (`netsmith board fill`, issue #1187), as
+    /// the entry has it placed (and routed): [`netsmith_pcb::FillReport`] with camelCase keys.
+    pub fn fill(self, name: &str) -> Result<PcbFill, ApiError> {
+        let report = netsmith_pcb::FillReport::of(&self.board)
+            .map_err(|e| ApiError::internal(format!("the fill of {name}: {e}")))?;
+        let mut value = serde_json::to_value(&report).expect("plain data");
+        value["board"] = name.into();
+        value["layout_stamp"] = self.layout_stamp.into();
+        value["routes_stamp"] = self.routes_stamp.into();
+        value["routed"] = self.routed.into();
+        serde_json::from_value(camel_keys(value))
+            .map_err(|e| ApiError::internal(format!("the fill of {name}: {e}")))
+    }
 }
 
 /// Where the part `part` fits on the board of `entry` as placed now, with every other part where

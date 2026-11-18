@@ -17,6 +17,7 @@ mod dxf;
 mod editor;
 mod explain;
 mod fab;
+mod fill;
 mod fmt;
 mod gerber;
 mod init;
@@ -148,6 +149,8 @@ pub enum Board {
     Panel(panel::Args),
     /// Say which layers carry a plane or a pour, the hand zones of the routes file and the teardrop fills.
     Copper(copper::Args),
+    /// Fill the pours as `fab` does and say how each pad of their nets is joined: solid, by how many thermal spokes, or not, and the copper islands.
+    Fill(fill::Args),
 }
 
 /// `netsmith view ...`.
@@ -223,6 +226,7 @@ pub fn run(command: Command) -> ExitCode {
             Board::System(args) => system::run(args),
             Board::Panel(args) => panel::run(args),
             Board::Copper(args) => copper::run(args),
+            Board::Fill(args) => fill::run(args),
         },
         Command::Layout(args) => layout::run(args),
         Command::Routes(args) => routes::run(args),
