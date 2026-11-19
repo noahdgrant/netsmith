@@ -166,7 +166,9 @@ interface Pour {
 /// How a pour or a zone joins the pads of its net (issue #1084): the `.pads` of a `Pour`,
 /// `.process.top.pads &= PadConnection::Solid`. The routes file and `netsmith routes add-zone
 /// --pads` spell the same four `thermal`, `solid`, `none` and `thru_hole_only` (the command
-/// line `thru-hole-only`); KiCad's zone writes them in its `connect_pads`.
+/// line `thru-hole-only`); KiCad's zone writes them in its `connect_pads`. A pin of a part
+/// states its own for its pads, `Solid` or `Thermal` (`.gnd.pour_connection`, with the width of
+/// its spokes in `.gnd.spoke_width`, issue #1276), which the pours of its net take over theirs.
 enum PadConnection {
     /// A thermal relief: a gap round the pad (`.thermal_gap`), crossed by four spokes
     /// (`.spoke_width`). It keeps the heat of soldering in the pad.

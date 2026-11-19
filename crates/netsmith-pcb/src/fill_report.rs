@@ -108,6 +108,14 @@ pub struct FillPad {
     /// another layer of a pad with a hole), which makes it not unjoinable (issue #1292).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub joined_elsewhere: bool,
+    /// The pin whose own setting joins the pad (issue #1276), by its path in the design: its
+    /// `.pour_connection`, `.spoke_width` or both, which the fill takes over the pour's. `None`
+    /// for a pad joined as the pour says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stated_by: Option<String>,
+    /// The width of the spokes the pad's pin states, in mm (`.spoke_width`), if it does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spoke_width: Option<f64>,
 }
 
 /// A pad of another net (or of none) in the fill's outline, which the fill keeps clear of.
@@ -390,7 +398,10 @@ impl FillReport {
                     .pads
                     .into_iter()
                     .map(|(p, join)| {
-                        let pad = fill_pad(p.part, p.number, pt(p.at), join);
+                        let own = board.pad_pour(&p.part, &p.number);
+                        let mut pad = fill_pad(p.part, p.number, pt(p.at), join);
+                        pad.stated_by = own.map(|o| o.path.clone());
+                        pad.spoke_width = own.and_then(|o| o.spoke_width);
                         counts.add(&pad);
                         pad
                     })
@@ -506,8 +517,14 @@ impl FillReport {
                     None if p.joined_elsewhere => " (joined by another fill of its net)".into(),
                     None => String::new(),
                 };
+                // A pad its pin joins otherwise than the pour (issue #1276).
+                let own = match (&p.stated_by, p.spoke_width) {
+                    (Some(pin), Some(w)) => format!(" (as its pin `{pin}` states, {w} mm spokes)"),
+                    (Some(pin), None) => format!(" (as its pin `{pin}` states)"),
+                    _ => String::new(),
+                };
                 out.push_str(&format!(
-                    "  {} at {}: {how}{tracks}{flag}\n",
+                    "  {} at {}: {how}{tracks}{own}{flag}\n",
                     pad_name(&p.part, &p.pad),
                     at(p.at),
                 ));
@@ -622,6 +639,8 @@ fn fill_pad(part: String, pad: String, at: Pt, join: netsmith_geom::PadJoin) -> 
             starved,
             unjoinable,
             joined_elsewhere,
+            stated_by: None,
+            spoke_width: None,
         },
         netsmith_geom::PadJoin::Thermal {
             spokes,
@@ -640,6 +659,8 @@ fn fill_pad(part: String, pad: String, at: Pt, join: netsmith_geom::PadJoin) -> 
             starved,
             unjoinable,
             joined_elsewhere,
+            stated_by: None,
+            spoke_width: None,
         },
         netsmith_geom::PadJoin::Unjoined => FillPad {
             part,
@@ -653,6 +674,8 @@ fn fill_pad(part: String, pad: String, at: Pt, join: netsmith_geom::PadJoin) -> 
             starved,
             unjoinable,
             joined_elsewhere,
+            stated_by: None,
+            spoke_width: None,
         },
     }
 }
