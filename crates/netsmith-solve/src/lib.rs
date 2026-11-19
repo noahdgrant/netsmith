@@ -19,6 +19,7 @@ mod lock;
 mod ohm;
 mod place;
 mod preferred;
+mod scenario;
 mod sequence;
 mod solve;
 mod standard;
