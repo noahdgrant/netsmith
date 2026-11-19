@@ -17,6 +17,8 @@ fn mate(a: &str, b: &str, height: Option<(f64, f64)>) -> MateInput {
         b_member: member(b),
         a_seat: height.map(|(lo, hi)| (lo / 2.0, hi / 2.0)),
         b_seat: height.map(|(lo, hi)| (lo / 2.0, hi / 2.0)),
+        a_body: None,
+        b_body: None,
         mated_height: height,
         unknown: height
             .is_none()
@@ -284,4 +286,61 @@ fn pads_that_do_not_turn_onto_pads_key_the_connector() {
     let s = system(&[("carrier", &carrier), ("card", &card)], vec![unkeyed()]);
     let parts: Vec<&str> = unmarked(&s).iter().map(|f| f.parts[0].as_str()).collect();
     assert_eq!(parts, ["carrier/row"]);
+}
+
+/// The carrier's row, 5.4 mm tall, seated 5.4 +/- 0.4 mm, with `body` as its
+/// `.mating.body_height`, mated with the card's row, 0.2 mm tall and seated at 0.2 mm: the
+/// boards' faces are 5.2 mm apart at the least.
+fn seated(body: Option<(f64, f64)>) -> SystemScene {
+    let (mut carrier, mut card) = (board(), board());
+    for (b, h) in [(&mut carrier, 5.4), (&mut card, 0.2)] {
+        b.parts.iter_mut().find(|p| p.path == "row").unwrap().height = Some(h);
+    }
+    let input = MateInput {
+        a_seat: Some((5.0, 5.8)),
+        b_seat: Some((0.2, 0.2)),
+        a_body: body,
+        mated_height: Some((5.2, 6.0)),
+        ..mate("carrier.row", "card.row", Some((5.2, 6.0)))
+    };
+    system(&[("carrier", &carrier), ("card", &card)], vec![input])
+}
+
+fn row_collisions(s: &SystemScene) -> Vec<&netsmith_3d::SystemFinding> {
+    s.findings
+        .iter()
+        .filter(|f| f.code == SystemCode::SystemCollision && f.parts.contains(&"carrier/row".to_string()))
+        .collect()
+}
+
+#[test]
+fn a_connectors_body_is_its_seat_and_keeps_out_of_the_other_board_for_the_whole_tolerance() {
+    // The row's 5.4 mm height is its seat's middle, and the scene places the card at the least
+    // mated height, 5.2 mm: the body is the seat, one surface with one tolerance, so it moves
+    // with the seat and the card, resting on its partner, never meets it (issue 1324).
+    let s = seated(None);
+    assert_eq!(s.member("card").unwrap().motion.offset[2], 5.2);
+    assert!(row_collisions(&s).is_empty(), "{:?}", codes(&s));
+}
+
+#[test]
+fn a_stated_body_height_is_kept_out_of_the_other_board_at_its_most() {
+    // A body stated apart from the seat reaches to its most, 5.4 mm, 0.2 mm into the card at
+    // the least mated height.
+    let s = seated(Some((5.4, 5.4)));
+    let [f] = &row_collisions(&s)[..] else {
+        panic!("{:?}", codes(&s))
+    };
+    assert_eq!(f.parts, ["carrier/row", "card/"]);
+    assert_eq!(f.z, Some((5.2, 5.4)));
+    assert!(
+        f.code.error()
+            && f.message.contains("`carrier.row.mating.body_height` reaches 5.400 mm at its most")
+            && f.message.contains("5.200 mm apart at the least mated height"),
+        "{}",
+        f.message
+    );
+    // A body whose most is below the least mated height stays out.
+    let s = seated(Some((4.9, 5.1)));
+    assert!(row_collisions(&s).is_empty(), "{:?}", codes(&s));
 }
