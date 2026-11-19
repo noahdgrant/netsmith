@@ -1373,6 +1373,14 @@ error: d.supply_fault_current must always be at most d.max_forward_current, but 
 
 `Crystal` has `.frequency` (state it with its tolerance, `16MHz +/- 20ppm`) and `.load_capacitance`, and no relation: the two load capacitors are the design's. Pins `.a` and `.b` are the two terminals in every package; the four-pad 3225 package (3.2 x 2.5 mm) also has `.case`, its two case pads (2 and 4, which the makers' drawings call GND), which a board may join to ground or leave open like any passive pin, and a board that joins `.case` of a crystal in a two-pad package is refused because the pin is not there. A provider of `Crystal` gives `.case` a row. `FerriteBead` has `.impedance` at `.impedance_frequency`.
 
+`Supercap` is a supercapacitor of one cell, or of two cells in series in one case (issue #1261). Its pins are `.p` and `.n`, and `.mid`, the node between two cells that a balancing circuit holds at half the voltage, which only the three-lead package brings out: a board that joins `.mid` is given a row in that package, as a crystal's `.case` is the four-pad package's. Every value is the whole part's: `.capacitance` (rated at the rated voltage, so with no curve over the bias, and `.effective_capacitance` is the same value, which a burst of a load and a corner read), `.esr` at AC and `.dc_esr` at DC, `.leakage_current`, and `.max_voltage`, which a row writes in steps over temperature where the datasheet derates it (`5.5V to 65degC, 4.2V to 85degC`). `.cell_voltage` is worked out, `.bias / .cells`. `.bias` is the voltage at `.p` relative to `.n`, given by the rail it is across the way round it is wired, so one wired backwards fails `.bias >= 0V`. A row states `height_growth`, how much the case swells over its life, which the height check adds, and `soldering`, a `Soldering`: the board house solders what it places in a reflow oven, so a part that allows `Hand` only must be `.assembly &= AssemblyMode::Hand`, and one that allows `None` must not be fitted by solder:
+
+```text
+error: `hold` may be soldered by hand only (its catalog row ZZS-0F5 states `soldering` Hand), and its assembly is `AssemblyMode::Fab`: the board house solders the parts it places in a reflow oven, which the part's datasheet forbids; state `.hold.assembly &= AssemblyMode::Hand`, or choose a part that allows reflow
+```
+
+The standard catalog `supercap` has no row: no part has a recorded source yet, so a project brings its own rows in a file of the catalog `supercap`.
+
 ### Transistors
 
 `NMosfet` and `PMosfet` have the pins `gate` (an input, which must be connected), `source` and `drain`. All their voltages and currents are magnitudes. The design states the stress it puts on the part: `.drain_source_voltage`, the voltage the part blocks while off, and `.gate_source_voltage`, the voltage the gate is driven to while on. They are checked against the maxima, and the gate drive against the threshold, which is a range: the drive must be above the highest threshold.
