@@ -13,52 +13,60 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
-### `TrackPath` gains `.frequency`, `Stackup` gains `.loss_tangent` (issue #1405)
+## 0.7.0: changes since 0.6.0
 
-`std::sources::TrackPath` declares `.frequency`, the frequency its tracks' loss is worked out at, and `std::mfg::stackup::Stackup` declares `.loss_tangent`, the build-up's dissipation factor. A use's block or a provider of yours that declared either member stops at the declaration:
+### A provider or a use does not declare a member std now declares (issues #1258, #1324, #1405)
+
+The same break as 0.6.0's below, for members added since that the entries after this one do not cover. Delete the declaration and keep the narrowing:
+
+| Where it is declared | Members it gained | Pull request |
+|---|---|---|
+| `std::parts::regulator::LinearRegulator`, `BuckIc`, `std::parts::switch::LoadSwitch` | `.reverse`, a `std::sources::Reverse`: how current flows backwards through the part when its output is held up and its input is not (a body diode by default, or `ReversePath::Blocking`), which a board's `scenario` reads | #1369 |
+| `std::parts::connector::Mating` | `.body_height`, how far above its board a connector's body reaches where that is not its seat | #1395 |
+| `std::mfg::stackup::Stackup` | `.loss_tangent`, the build-up's dissipation factor | #1420 |
 
 ```text
-error: `frequency` is declared by `TrackPath`; do not declare it again in a use of it: narrow it with `.frequency &= ...`, or state it with a relation
+error: `reverse` is declared by `LoadSwitch`, which this part provides; do not declare it again: state its values with statements, `.reverse.<field> &= ...`
+error: `body_height` is declared by `Mating`; do not declare it again in a use of it: narrow it with `.body_height &= ...`, or state it with a relation
+error: `loss_tangent` is declared by `Stackup`; do not declare it again in a use of it: narrow it with `.loss_tangent &= ...`, or state it with a relation
 ```
 
-Delete the declaration and keep the narrowing (`.rf.frequency &= 2.4GHz`, `.process.stackup.loss_tangent &= 0.02`). `.budget_loss` is now judged when `.frequency` is stated and the build-up has a loss tangent; no build-up of the standard library states one, so a board that states neither builds as before.
-
-There is no ADR: the owner decided it on the issue.
+A `.reverse` of your own that was not a `Reverse` is renamed; the generic's is a block, narrowed member by member (`.reverse.path &= ReversePath::Blocking`). `.process.stackup.loss_tangent` (with a `TrackPath`'s `.frequency`) is what `.budget_loss` is judged at; no build-up of the standard library states one, so a board that states neither builds as before. `TrackPath` itself is new in 0.7.0 (#1409), so nothing written for 0.6.0 declares its members.
 
 ### `LoadSwitch` gains `.needs` (issue #1402)
 
-`std::parts::switch::LoadSwitch` declares `.needs: String optional`, what a board needs of a load switch's order code, so that a board that uses the generic reaches it (`.sw: LoadSwitch`, then `.sw.needs &= QuickDischarge`) and a provider with a `.variants` table fills it. A provider of yours that declared a member `.needs` for itself stops at the declaration:
+`std::parts::switch::LoadSwitch` declares `.needs: String optional`, what a board needs of a load switch's order code, so that a board that uses the generic reaches it (`.sw: LoadSwitch`, then `.sw.needs &= QuickDischarge`) and a provider with a `.variants` table fills it. A provider of yours that declared a member `.needs` for itself stops at the declaration (#1416):
 
 ```text
 error: `needs` is declared by `LoadSwitch`, which this part provides; do not declare it again: narrow it with `.needs &= ...`, or state it with a relation
 ```
 
-Delete the declaration. An IC sold as several order codes lists them in a `.variants` table (guide chapter 10, _Order codes and their features_). There is no ADR: the owner decided it on the issue.
+Delete the declaration. An IC sold as several order codes lists them in a `.variants` table (guide chapter 10, _Order codes and their features_). There is no ADR: the owner decided it on the issue. A part of your own that provides no generic may still declare `.needs` until it states a `.variants` table.
 
 ### `Resistor`, `Capacitor` and `Inductor` gain `.fitted` and `.tune`; `Bool`, `true` and `false` are known everywhere (issue #1273)
 
-A part that provides `std::parts::passive::Resistor`, `Capacitor` or `Inductor` and declared `.fitted` or `.tune` for itself stops at the declaration:
+A part that provides `std::parts::passive::Resistor`, `Capacitor` or `Inductor`, or a use of one whose block declared `.fitted` or `.tune` for itself (`.r: Resistor { .fitted: String }`), stops at the declaration (#1408):
 
 ```text
 error: `tune` is declared by `Capacitor`, which this part provides; do not declare it again: narrow it with `.tune &= ...`, or state it with a relation
+error: `fitted` is declared by `Resistor`; do not declare it again in a use of it: narrow it with `.fitted &= ...`, or state it with a relation
 ```
 
-Delete the declaration. `.fitted` is a `Bool` (`.fitted &= false` marks a position that is not fitted until it is tuned on the bench), and `.tune` is the value's own quantity (`.tune &= 1pF..10pF`). `true` and `false` are written bare; `Bool::true` is refused.
+Delete the declaration. `.fitted` is a `Bool` (`.fitted &= false` marks a position that is not fitted until it is tuned on the bench), and `.tune` is the value's own quantity (`.tune &= 1pF..10pF`). `true` and `false` are written bare; `Bool::true` is refused. An `enum Bool` of your own still builds.
 
 There is no ADR: the owner decided it on the issue.
 
-### A provider does not declare `.assembly_size_source` (issue 1393)
+### A provider does not declare `.assembly_size_source` (issue #1393)
 
-`std::mfg::jlcpcb::TwoLayer`, `FourLayer`, `SixLayer`, `HdiFourLayer`, `HdiSixLayer`, `HdiEightLayer` and `std::mfg::acme::EightLayer`, `TenLayer` declare `.assembly_size_source`, the page, service and day of their assembly size figures, which the `assembly_size` finding quotes. A provider of yours that declared a member of that name (it is unlikely) deletes the declaration and keeps the narrowing (ADR 0134):
+`std::mfg::jlcpcb::TwoLayer`, `FourLayer`, `SixLayer`, `HdiFourLayer`, `HdiSixLayer`, `HdiEightLayer` and `std::mfg::acme::EightLayer`, `TenLayer` declare `.assembly_size_source`, the page, service and day of their assembly size figures, which the `assembly_size` finding quotes (#1398). A provider or a use of yours that declared a member of that name (it is unlikely) deletes the declaration and keeps the narrowing (ADR 0134):
 
 ```text
 error: `assembly_size_source` is declared by `TwoLayer`, which this interface provides; do not declare it again: narrow it with `.assembly_size_source &= ...`, or state it with a relation
 ```
 
-
 ### A net with a `TrackImpedance` is routed on one layer with no via (issue #1274)
 
-A net of a `TrackImpedance` is now an RF net: the router routes it first, on the outer layer all its pads are on, with no via. A board whose RF line could only cross other copper through a via now leaves it unrouted, and `fab` stops with `N connections could not be routed`; copper of the routes file that gives such a net a via is a finding of the rule `constraint`:
+A net of a `TrackImpedance` is now an RF net: the router routes it first, on the outer layer all its pads are on, with no via (#1386). A board whose RF line could only cross other copper through a via now leaves it unrouted, and `fab` stops with `N connections could not be routed`; copper of the routes file that gives such a net a via is a finding of the rule `constraint`:
 
 ```text
 error [constraint] constraint rf_line route one_layer (an RF net: its impedance is stated; `route any_layer` lets it change layers) is violated: the net `RF` has tracks on B.Cu, F.Cu and 1 via, ...
@@ -71,6 +79,20 @@ Old: nothing written, and the line changed layers where the router chose. New: g
 ```
 
 There is no ADR: the owner decided it on the issue.
+
+### What changed with no error
+
+The new statements (`alternate`, `direction`, `scenario`, `.variants`, and in the physical file `keep ... between`, `soft margin`, `within` and `route`) and the members every part or pin now has (`.underside_keepout`, a pin's `.pour_connection` and `.spoke_width`, a pad's `.contact_offset`) are read only where they are written, so a part of your own that declares a member of one of those names still builds. These change what `board check`, `board drc`, `board fab` and `import` report or write without an error in the source:
+
+- **Heights.** Every row of the built-in resistor, capacitor and LED catalogs has a height, its maker series' greatest (#1421), so a chip part that was `height_unknown` is measured: under a lid, a case or another part's `.underside_keepout` (#1407) it can now be `too tall`, and its height reaches the 3D view and the design file.
+- **`board drc`.** An item that only touches a rule area's edge, or sits in a hole of the area, is no longer in it, as in KiCad's check, so `items_not_allowed` flags fewer pads of a footprint's own keepout; each such finding ends with what of the area flags it, `(no tracks)`, `(no vias)`, `(no pads)` or `(no footprints)` (#1378, #1396). A footprint's keepout drawn with arcs is read and written moved with the footprint (#1403). `track_current` and `via_current` name the width or vias the copper has, the width or vias needed, the current and where it comes from, and `--format json` carries them as fields (#1381).
+- **The `assembly_size` finding** quotes where the board house's least size comes from and spells out a panel, and its JSON carries `source` (#1398).
+- **Bill of materials.** A passive with `.fitted &= false` and each `alternate` of a member are listed not fitted (DNP) in `fab-notes.txt`; `fab` writes `bom-alternates.csv` beside `bom.csv` when a board has an alternate, with the designator each replaces (#1408, #1413, #1428).
+- **A routes file record whose pads moved** keeps all its copper; the warning names each end that now runs into nothing of its net, and the router routes the connections left open. `routes lock` is refused only for an error in that net's own copper (#1385).
+- **Systems.** Each board of a system has its own process (#1404); a mated connector's body is measured up to its seat (#1395); a board keeps its tall parts out from under the board mated on it (#1390); and logic levels, an open-drain pull-up, a driver behind a series part and the DC analysis are read across a mate (#1425, #1434, #1437, #1442, #1447). A system that built may get a finding it did not have, or lose one.
+- **New checks.** A load's burst reflected to the input of the converter that feeds it (#1412), a host's pin budget in `board explain` (#1380), and a contradiction every provider has said at the narrowing rather than at the use (#1419).
+- **Land patterns.** The tapped supercapacitor and a coin cell with tabs use netsmith's own footprints and export with no KiCad install (#1417).
+- **`netsmith import footprint`** is new: it takes a land pattern from a KiCad, Eagle or Altium file or rebuilds one from a reference board's Gerber files (#1435, #1439, #1443, #1445, #1446).
 
 ## 0.6.0: changes since 0.5.0
 
