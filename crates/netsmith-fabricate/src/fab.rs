@@ -3602,6 +3602,8 @@ pub fn marks_of(board: &Board) -> netsmith_geom::DrcMarks {
         round_angle: p.fiducial_round_angle,
         fine_pitch: p.fine_pitch,
         uneven_finish: p.finish.starts_with("HASL").then(|| p.finish.clone()),
+        min_single_sided_assembly_size: p.min_single_sided_assembly_size,
+        min_double_sided_assembly_size: p.min_double_sided_assembly_size,
     }
 }
 
@@ -4146,7 +4148,7 @@ mod tests {
 
     /// The fields of a process that are not a rule the router and the design rules check keep,
     /// each with the reason (issue #431).
-    const NOT_A_COPPER_RULE: [(&str, &str); 34] = [
+    const NOT_A_COPPER_RULE: [(&str, &str); 36] = [
         (
             "finish",
             "the surface finish, a word for the notes and the order",
@@ -4242,6 +4244,14 @@ mod tests {
         (
             "fine_pitch",
             "the pitch of an ultra-fine-pitch part, to the finish advice, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
+        (
+            "min_single_sided_assembly_size",
+            "the least single board the assembly house places parts on one face of, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
+        (
+            "min_double_sided_assembly_size",
+            "the least single board the assembly house places parts on both faces of, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
         ),
         (
             "min_round_track_angle",
@@ -4378,6 +4388,8 @@ mod tests {
                 min_test_point_tall_body: p.min_test_point_tall_body,
                 round_angle: p.fiducial_round_angle,
                 fine_pitch: p.fine_pitch,
+                min_single_sided_assembly_size: p.min_single_sided_assembly_size,
+                min_double_sided_assembly_size: p.min_double_sided_assembly_size,
                 ..Default::default()
             }),
             ..Default::default()
@@ -4413,6 +4425,8 @@ mod tests {
             ("min_test_point_tall_body", "5mm.."),
             ("fiducial_round_angle", "120"),
             ("fine_pitch", "0.5mm"),
+            ("min_single_sided_assembly_size", "20mm.."),
+            ("min_double_sided_assembly_size", "100mm.."),
         ] {
             let narrowed = format!(".{field} &= {raised}");
             let after =

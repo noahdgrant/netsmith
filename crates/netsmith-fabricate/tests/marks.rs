@@ -143,3 +143,19 @@ fn a_part_is_tall_by_a_stated_height_above_6_4_mm_and_one_with_no_height_is_not(
     assert_eq!(marks.tall_part_height, 6.4);
     assert_eq!(marks.min_test_point_tall_body, 2.0);
 }
+
+#[test]
+fn the_least_assembly_board_comes_from_the_process_and_a_board_may_raise_it() {
+    // JLCPCB's assembly capabilities page (issue 1285): 10 mm for one face, 70 mm for both.
+    let board = board();
+    let marks = netsmith_fabricate::fab::marks_of(&board);
+    assert_eq!(marks.min_single_sided_assembly_size, Some(10.0));
+    assert_eq!(marks.min_double_sided_assembly_size, Some(70.0));
+    // A process that states none (the model's `None`) is not judged.
+    let mut none = board.clone();
+    none.process.min_single_sided_assembly_size = None;
+    none.process.min_double_sided_assembly_size = None;
+    let marks = netsmith_fabricate::fab::marks_of(&none);
+    assert_eq!(marks.min_single_sided_assembly_size, None);
+    assert_eq!(marks.min_double_sided_assembly_size, None);
+}

@@ -249,7 +249,7 @@ The rules of netsmith's that KiCad's check lacks:
 | `via_in_pad` | KiCad does not know which vias the board house fills and caps. |
 | `track_current`, `via_current`, `track_impedance` | They need the design's currents and impedance targets, and allow a narrower track by a pad, which KiCad's `track_width` constraint cannot. |
 | `track_angle`, `acid_trap` | KiCad checks no angle. |
-| `fiducial_*`, `test_point_*`, `finish_fine_pitch` | The board house's assembly rules, which KiCad does not know. |
+| `fiducial_*`, `test_point_*`, `finish_fine_pitch`, `assembly_size` | The board house's assembly rules, which KiCad does not know. |
 | `stackup`, `via_span`, `via_aspect_ratio` | The process's stackup, which the project file does not hold. |
 | `constraint` | A requirement of the design on where a part goes. |
 | `unjoinable_thermal` | A pad the fill joins by no spoke and no track, and no other fill of its net joins (issue #1292), with why the fill can make none of its spokes (issue #1222): KiCad leaves such a pad to its connection check, which a via or a track of the pad's own satisfies. |
