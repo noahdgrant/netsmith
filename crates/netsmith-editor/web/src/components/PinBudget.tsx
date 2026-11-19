@@ -26,6 +26,7 @@ export function PinBudgets({ budgets }: { budgets: PinBudget[] | undefined }) {
                 </li>
               ))}
             </ul>
+            {b.blocks.length > 0 && <p class="pb-head faint">Serial blocks, by bus</p>}
             {b.blocks.length > 0 && (
               <ul class="pb-list" aria-label={`Serial blocks of ${b.host}`}>
                 {budgetBuses(b).map((s) => (
