@@ -5044,6 +5044,129 @@ error: the SIM host `radio.sim` supplies classes B and C (`radio.sim.classes`) a
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
+### A radio's certification and its antenna
+
+A radio module is sold with a certification, a modular grant (an FCC ID, an ISED number, a RED certificate), that holds only under conditions its maker lists: the most gain an antenna may have in each band, the type of antenna it was tested with, often a reference design of the trace to the antenna, a least distance between the antenna and a person (exposure) and limits on radios beside it (co-location). A radio part states them as data, a `std::radio::Radio` (issue #1278): its RF pin `.rf` (optional: a module with its antenna on it has none), `.grant` (what names it), `.antenna_type` (an `AntennaType`) and the optional `.reference_design`, `.exposure_distance` and `.colocation`, with a `RadioBand` nested in it for each band of the grant, its `.band` (a range of frequency) and `.max_antenna_gain`. An antenna part states a `std::radio::Antenna`: its pin `.feed` and its `.type`, with an `AntennaBand` nested in it for each band it works in, its `.band` and its peak `.gain`. Gains are in dBi, written as a plain number (`2` is 2 dBi), because the language has no unit for decibels.
+
+After the solve the checker follows the RF path from the radio's `.rf`: its net, and on through each part with two pins (a DC block, a 0 ohm link, a series part of a match) to the net of its other pin, never into a rail's net, so a shunt part of a match to ground ends the path there. Each antenna whose `.feed` is on the path is held against each band of the radio: its gain at its most, in its bands that overlap the radio's, must be no more than the radio's `.max_antenna_gain` there. A gain over it is an error. An antenna that states no gain in a band of the radio, and a path that reaches no antenna (one that ends at a connector, for an antenna on a cable), are listed as not evaluated. The other conditions are not judged: `fab-notes.txt` lists each one, and the gain where no antenna part is on the path, as a line `verify: radio ...: a person must verify ...`.
+
+```nsm module=src::wifi
+import std::radio::{Antenna, AntennaBand, AntennaType, Radio, RadioBand}
+import std::sources::Rail
+
+/// A Wi-Fi module whose grant allows a chip antenna of up to 2 dBi in 2.4 GHz and 4 dBi in 5 GHz.
+/// Illustrative; not a real part.
+part WifiModule {
+    .designator &= "U"
+    .vdd: Rail
+    .radio: Radio {
+        .grant &= "FCC ID 2ABCD-EXAMPLE"
+        .antenna_type &= AntennaType::Chip
+        .exposure_distance &= 200mm
+        .low: RadioBand { .band &= 2.4GHz..2.4835GHz; .max_antenna_gain &= 2 }
+        .high: RadioBand { .band &= 5.15GHz..5.85GHz; .max_antenna_gain &= 4 }
+    }
+
+    pins {
+        .vdd.pos  power   "VDD" "1"
+        .vdd.neg  power   "GND" "2"
+        .radio.rf passive "RF"  "3"
+    }
+}
+
+/// A dual-band chip antenna. Illustrative.
+part ChipAntenna {
+    .designator &= "AE"
+    .antenna: Antenna {
+        .type &= AntennaType::Chip
+        .low: AntennaBand { .band &= 2.4GHz..2.5GHz; .gain &= 1.5 }
+        .high: AntennaBand { .band &= 5.1GHz..5.9GHz; .gain &= 3.5 }
+    }
+
+    pins {
+        .antenna.feed passive "FEED" "1"
+        .gnd          passive "GND"  "2"
+    }
+}
+
+/// A chip antenna with more gain in 2.4 GHz. Illustrative.
+part HighGainAntenna {
+    .designator &= "AE"
+    .antenna: Antenna {
+        .type &= AntennaType::Chip
+        .low: AntennaBand { .band &= 2.4GHz..2.5GHz; .gain &= 3.2 }
+        .high: AntennaBand { .band &= 5.1GHz..5.9GHz; .gain &= 3.5 }
+    }
+
+    pins {
+        .antenna.feed passive "FEED" "1"
+        .gnd          passive "GND"  "2"
+    }
+}
+
+/// A two-pin part in the RF path: a DC block or a 0 ohm link. Illustrative.
+part RfLink {
+    .designator &= "R"
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+}
+```
+
+The board joins the module's RF pin through a link to the antenna, whose gain is within the grant in both bands:
+
+```nsm evaluate
+import std::sources::Rail
+
+import src::wifi::{ChipAntenna, RfLink, WifiModule}
+
+board Sensor {
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .u1: WifiModule
+    .r1: RfLink
+    .ae1: ChipAntenna
+    .supply ~ .u1.vdd
+    .u1.radio.rf ~ .r1.a
+    .r1.b ~ .ae1.antenna.feed
+    .ae1.gnd ~ .u1.vdd.neg
+}
+```
+
+`fab-notes.txt` of it says:
+
+```text
+verify: radio `u1.radio` (FCC ID 2ABCD-EXAMPLE): a person must verify that the antenna is of the type the grant was tested with, Chip (`ae1.antenna` is Chip)
+verify: radio `u1.radio` (FCC ID 2ABCD-EXAMPLE): a person must verify that the product keeps a person at least 200mm from the antenna (the grant's exposure condition)
+```
+
+An antenna with more gain than the grant allows in 2.4 GHz:
+
+```nsm fails
+import std::sources::Rail
+
+import src::wifi::{HighGainAntenna, RfLink, WifiModule}
+
+board TooMuchGain {
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .u1: WifiModule
+    .r1: RfLink
+    .ae1: HighGainAntenna
+    .supply ~ .u1.vdd
+    .u1.radio.rf ~ .r1.a
+    .r1.b ~ .ae1.antenna.feed
+    .ae1.gnd ~ .u1.vdd.neg
+}
+```
+
+```text
+error: the antenna `ae1.antenna` on the RF path of the radio `u1.radio` has a gain of 3.2 dBi in 2.4GHz to 2.4835GHz (`ae1.antenna.low.gain`), above the 2 dBi the radio's grant allows there (`u1.radio.low.max_antenna_gain`), through `r1`: use an antenna with no more gain, or a radio whose grant allows it
+   --> src/wifi.nsm:44:54
+   |
+44 |         .low: AntennaBand { .band &= 2.4GHz..2.5GHz; .gain &= 3.2 }
+   |                                                      ^^^^^^^^^^^^
+```
+
 ### The rise time of an I2C bus
 
 The rise time of an I2C line is a closed-form check, not a simulation (`docs/research/closed-form-checks.md`, check 5). The pull-up resistance and the capacitance of the line set how long the line takes to go from 30 % to 70 % of the supply, `tr = 0.8473 * Rp * Cb` (`0.8473` is `ln(7/3)`, and the NXP I2C-bus specification UM10204, Rev. 7.0, section 7.1, derives the same figure and measures the rise time between these two points). `I2cPullups` has `.rise_time` for it and `.bus_capacitance`, the capacitance of one line. A board bounds the rise time with the limit of the mode it runs, and the bound holds in the worst case: the highest resistance (the tolerance the board states) and the highest capacitance. The supply does not enter, since both points are fractions of it. The limits are in UM10204 Table 11: 1000 ns for Standard-mode, 300 ns for Fast-mode, 120 ns for Fast-mode Plus, and at most 400 pF on a line (550 pF in Fast-mode Plus; Table 10 gives each pin at most 10 pF). The module builds none of them in: the board states the one of its mode (`.pullups.rise_time <= 300ns`, `.pullups.bus_capacitance <= 400pF`), because which mode a bus runs is the board's, and a table of the modes in `std::bus` is the owner's to decide. The lower bound of the resistance, from the sink current, is the next section.

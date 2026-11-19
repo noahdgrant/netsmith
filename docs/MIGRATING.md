@@ -13,6 +13,16 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+### `LoadSwitch` gains `.needs` (issue #1402)
+
+`std::parts::switch::LoadSwitch` declares `.needs: String optional`, what a board needs of a load switch's order code, so that a board that uses the generic reaches it (`.sw: LoadSwitch`, then `.sw.needs &= QuickDischarge`) and a provider with a `.variants` table fills it. A provider of yours that declared a member `.needs` for itself stops at the declaration:
+
+```text
+error: `needs` is declared by `LoadSwitch`, which this part provides; do not declare it again: narrow it with `.needs &= ...`, or state it with a relation
+```
+
+Delete the declaration. An IC sold as several order codes lists them in a `.variants` table (guide chapter 10, _Order codes and their features_). There is no ADR: the owner decided it on the issue.
+
 ### `Resistor`, `Capacitor` and `Inductor` gain `.fitted` and `.tune`; `Bool`, `true` and `false` are known everywhere (issue #1273)
 
 A part that provides `std::parts::passive::Resistor`, `Capacitor` or `Inductor` and declared `.fitted` or `.tune` for itself stops at the declaration:

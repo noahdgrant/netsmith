@@ -416,10 +416,76 @@ error: during a burst of `radio` (`radio.peak_current` 500mA for 200us) the othe
 
 Rules.
 
-- `.burst` and `.duty` are optional (ADR 0074) and the load's own: `~` shares neither, as it does not share `.peak_current`. A rail with a peak and no burst is an inrush, checked alone (_A peak current_). A rail whose source states no `.max_peak_current` is not looked at.
+- `.burst` and `.duty` are optional (ADR 0074) and the load's own: `~` shares neither, as it does not share `.peak_current`. A rail with a peak and no burst is an inrush, checked alone (_A peak current_). A net whose source states no `.max_peak_current` is not judged.
 - `.duty` is the fraction of the time the load bursts (one 3 ms slot in every 100 ms is `0.03`). The bursts alone average the peak times the duty, so the most of the stated average must be at least that: `max(.current) >= max(.peak_current) * max(.duty)`, which a radio of `10mA..40mA` with `.duty &= 0.1` and a 500 mA peak fails (40 mA is below 50 mA).
 - A peak above the source's limit alone is refused by `Rail`'s own `.peak_current <= .max_peak_current`, which also makes the solver pick a regulator that gives it. The capacitance across the rail helps only with the other loads' share.
-- The capacitance is read at 25 C and new, and its ESR is not added to the fall (issue #1256 has the corners). A burst seen on the input of the converter that feeds the load is not judged (issue #1340).
+- The capacitance is read at 25 C and new, and its ESR is not added to the fall (issue #1256 has the corners).
+
+The converter that feeds the rail draws the burst from its input too, and a source in front that cannot give it (a cell, a long cable, a port that limits its current) leans on the input's capacitance (issue #1340). The burst is reflected through the converter by its own `dc` statement, so a project's converter is judged as the standard library's are: a `dc linear_regulator` draws at its input what its output gives, and a `dc switching_regulator` the output's power, at the highest output voltage, over the least input voltage and the least efficiency. What the output gives is the burst with the other loads there, at most its own `.max_peak_current`. On the input that current is added to the other loads there and held against the input rail's `.max_peak_current`, and the capacitors across the input hold the rest as they do on the output, down to the highest least voltage a rail on the input states. The converter's own least input counts: a buck's `.ic.min_input_voltage`, a linear regulator's output plus its `.dropout`. A radio behind the buck above, on a USB port that gives 500 mA:
+
+```nsm evaluate
+import std::parts::passive::CapacitorBank
+import std::parts::regulator::{Buck, Lmr16006y}
+import std::sources::Rail
+
+board Radio {
+    .usb: Rail {
+        .voltage &= 5V +/- 5%
+        .peak &= 5.5V
+        .pos.net &= "VBUS"
+        .max_peak_current &= 500mA
+    }
+    .reg: Buck<Lmr16006y> { .vout.pos.net &= "V3V3"; .vout.voltage &= 3.3V +/- 5% }
+    .usb ~ .reg.vin
+    .mcu: Rail { .current &= 5mA..150mA }
+    .reg.vout ~ .mcu
+    .radio: Rail { .current &= 10mA..40mA; .peak_current &= 500mA; .burst &= 200us; .voltage >= 3V }
+    .reg.vout ~ .radio
+    .bulk: CapacitorBank
+    .bulk.total_effective_capacitance >= 80uF
+    .reg.vout.pos ~> .bulk ~> .reg.vout.neg
+    .input_bulk: CapacitorBank
+    .input_bulk.total_effective_capacitance >= 40uF
+    .usb.pos ~> .input_bulk ~> .usb.neg
+}
+```
+
+During the burst the buck gives its 600 mA (the bank holds the rest of the 650 mA on its output) and draws that, scaled up by 3.465 V over 4.75 V and the least efficiency 0.75, from the port: more than the port's 500 mA. The bank across the input gives the rest with the input above the 4 V the buck needs (the buck's own input capacitor is too small to hold it alone). Without it the build fails, and the message says what holding the burst takes across the input:
+
+```nsm fails
+import std::parts::passive::CapacitorBank
+import std::parts::regulator::{Buck, Lmr16006y}
+import std::sources::Rail
+
+board Radio {
+    .usb: Rail {
+        .voltage &= 5V +/- 5%
+        .peak &= 5.5V
+        .pos.net &= "VBUS"
+        .max_peak_current &= 500mA
+    }
+    .reg: Buck<Lmr16006y> { .vout.pos.net &= "V3V3"; .vout.voltage &= 3.3V +/- 5% }
+    .usb ~ .reg.vin
+    .mcu: Rail { .current &= 5mA..150mA }
+    .reg.vout ~ .mcu
+    .radio: Rail { .current &= 10mA..40mA; .peak_current &= 500mA; .burst &= 200us; .voltage >= 3V }
+    .reg.vout ~ .radio
+    .bulk: CapacitorBank
+    .bulk.total_effective_capacitance >= 80uF
+    .reg.vout.pos ~> .bulk ~> .reg.vout.neg
+}
+```
+
+```text
+error: during a burst of `radio` (for 200us) `reg.ic`, which feeds it, draws up to 583.6mA from its input (the 600mA its output gives at 3.465V, over the least input 4.75V and the least efficiency 0.75), so the source in front gives up to 583.6mA, above `reg.ic.vin.max_peak_current` (500mA); the 1.715uF across the input give the other 83.58mA for 200us, and the input falls by 9.749V from 4.75V, below the 4V that `reg.vin` needs: holding the burst takes 22.29uF of effective capacitance across the input
+   --> main.nsm:16:68
+   |
+16 |     .radio: Rail { .current &= 10mA..40mA; .peak_current &= 500mA; .burst &= 200us; .voltage >= 3V }
+   |                                                                    ^^^^^^^^^^^^^^^
+```
+
+- An input that states no `.max_peak_current` is not judged, and passes the whole of the burst on to the converter in front of it, if there is one; an input whose capacitance holds the burst passes its limit on. The walk finds the converter through series parts between it and the load (a buck's inductor, a ferrite bead, a load switch).
+- The current is taken at the least steady input voltage: a switching regulator draws a little more as its input falls during the burst, which is not added.
 
 ### Holding a rail up
 
