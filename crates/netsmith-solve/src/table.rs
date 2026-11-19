@@ -1074,6 +1074,10 @@ fn constant(e: &Expr) -> Result<Quantity, String> {
             "`{}` is steps over temperature, which only a `max_voltage` cell holds",
             e.to_source()
         )),
+        Expr::SupplySteps { .. } => Err(format!(
+            "`{}` is an input level in rows by the supply, which a part states and no catalog cell holds",
+            e.to_source()
+        )),
         Expr::Path(p) => Err(format!(
             "`{}` is a name; a value is a number with its unit (`10kohm`, `3.3V +/- 5%`, `1.8V..5.5V`)",
             p.to_source()

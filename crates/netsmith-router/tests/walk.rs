@@ -375,6 +375,7 @@ fn errors(board: &Board) -> Vec<String> {
         stackup: None,
         vias: None,
         branches: Vec::new(),
+        pin_currents: Vec::new(),
         sizing: None,
         waivers: Vec::new(),
     };

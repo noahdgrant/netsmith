@@ -222,6 +222,30 @@
           "vias": 1
         }
       ],
+      "pin_currents": [
+        {
+          "net": "net-led.anode",
+          "path": "led.anode",
+          "pins": [
+            {
+              "refdes": "D1",
+              "pin": "2"
+            }
+          ],
+          "current": 0.010560146923783289
+        },
+        {
+          "net": "net-led.anode",
+          "path": "r1.b",
+          "pins": [
+            {
+              "refdes": "R1",
+              "pin": "2"
+            }
+          ],
+          "current": 0.010560146923783289
+        }
+      ],
       "outline": {
         "width": [
           40.0,

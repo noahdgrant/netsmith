@@ -11,6 +11,13 @@
 //! it has. With no such piece (a net of branches only) it is all of them but the largest piece's.
 //! Copper whose removal leaves one piece (it closes a loop) or two pieces of trunk is the net's,
 //! and is held to the net's current as before.
+//!
+//! A pin need not state its current to be such a branch (issue #1333): a pin whose current the
+//! model knows and is less than its net's (the design's `pin_currents`: what the rails and the
+//! parts that pass a current through it carry, as a buck's feedback divider takes microamps
+//! from its output) counts as one, with that current. A pad of a pin whose current is not
+//! known (a capacitor's, a connector's that no rail names) is of the trunk, so the copper is
+//! sized by the sum of the known currents of the pins past it and never by a guess.
 
 use std::collections::HashSet;
 
@@ -21,7 +28,11 @@ use super::model::{Kind, Model};
 /// amperes, when it only feeds branches, as the header says; `None` when it may carry the net's
 /// current.
 pub(crate) fn current_through(m: &Model<'_>, net: &str, removed: &[usize]) -> Option<f64> {
-    let branches: Vec<&super::Branch> = m.extras.branches.iter().filter(|b| b.net == net).collect();
+    // The stated branches first, so that a pad of a pin in both is the stated branch's.
+    let branches: Vec<&super::Branch> = (m.extras.branches.iter())
+        .chain(&m.extras.pin_currents)
+        .filter(|b| b.net == net)
+        .collect();
     if branches.is_empty() {
         return None;
     }

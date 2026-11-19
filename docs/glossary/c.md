@@ -44,11 +44,11 @@ The function of a pin row that is the pin's channel of a class, written `of CLAS
 _Avoid_: Channel for a line of a bus (that is a _Line_) or for the room between two rows of pads (that is a _Corridor_)
 
 **Charge time limit**:
-The longest a charge of the storage on a rail may take, `Rail.charge_time_limit` (issue #1262): a field of the connection between a charger and what it charges, shared by `~`, which the check of the charge time reads (issue #1264).
+The longest a charge of the storage on a rail may take, `Rail.charge_time_limit` (issue #1262): a field of the connection between a charger and what it charges, shared by `~`, which the check of the charge time reads (issue #1264): the storage on the net (a _Cell_'s capacity, the capacitance across the rail from the least of its window to the charger's least float voltage) over the least charge current less the storage's leakage must take no longer.
 _Avoid_: Charge timeout, safety timer (the charger's own timer is a part of the IC)
 
 **Charger**:
-A charger IC for one rechargeable cell, a part that provides `std::parts::regulator::Charger` (issue #1262): the rails `.vin` and `.out`, and its `.float_voltage`, `.charge_current` (set by its programming pin) and `.thermistor_window`. When its `.out` is joined with `~` to a _Cell_'s terminals, its float voltage and thermistor window must lie within the cell's float voltage and charge window, and the most of its charge current within the cell's limit.
+A charger IC for one rechargeable cell, a part that provides `std::parts::regulator::Charger` (issue #1262): the rails `.vin` and `.out`, and its `.float_voltage`, `.charge_current` (set by its programming pin) and `.thermistor_window`. When its `.out` is joined with `~` to a _Cell_'s terminals, its float voltage and thermistor window must lie within the cell's float voltage and charge window, and the most of its charge current within the cell's limit. What it takes from `.vin` while it charges, with the other loads on the net, must be within the `.max_peak_current` of the source in front of it (issue #1264).
 _Avoid_: Battery charger, charge controller
 
 **Checkpoint**:

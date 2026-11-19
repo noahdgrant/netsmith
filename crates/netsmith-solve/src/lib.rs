@@ -6,6 +6,7 @@ mod busclock;
 mod busfigures;
 mod catalog;
 mod charge;
+mod charging;
 pub mod curve;
 mod cycles;
 mod dc;
@@ -21,6 +22,7 @@ mod preferred;
 mod sequence;
 mod solve;
 mod standard;
+mod supply_levels;
 mod table;
 
 pub use catalog::{

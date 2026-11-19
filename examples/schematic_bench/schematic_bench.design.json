@@ -3592,6 +3592,107 @@
           "vias": 1
         }
       ],
+      "pin_currents": [
+        {
+          "net": "GND",
+          "path": "adc.r_bottom.b",
+          "pins": [
+            {
+              "refdes": "R1",
+              "pin": "2"
+            }
+          ],
+          "current": 2.6870017289034133e-6
+        },
+        {
+          "net": "GND",
+          "path": "buck.r_bottom.b",
+          "pins": [
+            {
+              "refdes": "R4",
+              "pin": "2"
+            }
+          ],
+          "current": 0.000014354068000000003
+        },
+        {
+          "net": "GND",
+          "path": "buck.r_rt.b",
+          "pins": [
+            {
+              "refdes": "R6",
+              "pin": "2"
+            }
+          ],
+          "current": 1e-12
+        },
+        {
+          "net": "+1V8",
+          "path": "buck.r_top.a",
+          "pins": [
+            {
+              "refdes": "R7",
+              "pin": "1"
+            }
+          ],
+          "current": 0.000014354068
+        },
+        {
+          "net": "+3V3",
+          "path": "modem.rc_a.a",
+          "pins": [
+            {
+              "refdes": "R14",
+              "pin": "1"
+            }
+          ],
+          "current": 1.0000000935515504e-12
+        },
+        {
+          "net": "+3V3",
+          "path": "modem.rc_b.a",
+          "pins": [
+            {
+              "refdes": "R15",
+              "pin": "1"
+            }
+          ],
+          "current": 1.0000000935515504e-12
+        },
+        {
+          "net": "+3V3",
+          "path": "modem.rc_c.a",
+          "pins": [
+            {
+              "refdes": "R16",
+              "pin": "1"
+            }
+          ],
+          "current": 1e-12
+        },
+        {
+          "net": "+3V3",
+          "path": "modem.rc_d.a",
+          "pins": [
+            {
+              "refdes": "R17",
+              "pin": "1"
+            }
+          ],
+          "current": 1e-12
+        },
+        {
+          "net": "+3V3",
+          "path": "modem.rc_e.a",
+          "pins": [
+            {
+              "refdes": "R18",
+              "pin": "1"
+            }
+          ],
+          "current": 1.000000019986013e-12
+        }
+      ],
       "outline": null,
       "cutouts": [],
       "pours": [],

@@ -3501,6 +3501,63 @@
           "vias": 1
         }
       ],
+      "pin_currents": [
+        {
+          "net": "net-buck_boost.divider.rbottom.a",
+          "path": "buck_boost.divider.rbottom.a",
+          "pins": [
+            {
+              "refdes": "R2",
+              "pin": "1"
+            }
+          ],
+          "current": 5.101010101010102e-6
+        },
+        {
+          "net": "+3.3V",
+          "path": "buck_boost.divider.rtop.a",
+          "pins": [
+            {
+              "refdes": "R3",
+              "pin": "1"
+            }
+          ],
+          "current": 5.222098328158936e-6
+        },
+        {
+          "net": "+3.3V",
+          "path": "buck_boost.pg_pullup.resistor.a",
+          "pins": [
+            {
+              "refdes": "R4",
+              "pin": "1"
+            }
+          ],
+          "current": 0.00003424375063769004
+        },
+        {
+          "net": "+3.3V",
+          "path": "i2c_pullups.scl_pullup.a",
+          "pins": [
+            {
+              "refdes": "R7",
+              "pin": "1"
+            }
+          ],
+          "current": 0.0015565341198950017
+        },
+        {
+          "net": "+3.3V",
+          "path": "i2c_pullups.sda_pullup.a",
+          "pins": [
+            {
+              "refdes": "R8",
+              "pin": "1"
+            }
+          ],
+          "current": 0.0015565341198950017
+        }
+      ],
       "outline": {
         "width": [
           50.0,
