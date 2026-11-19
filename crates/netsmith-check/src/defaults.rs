@@ -612,5 +612,6 @@ fn item_span(item: &Item) -> Span {
         Item::PhysicalFile(f) => f.span,
         Item::Anchor(a) => a.span,
         Item::SoftMargin(m) => m.span,
+        Item::Variants(v) => v.span,
     }
 }

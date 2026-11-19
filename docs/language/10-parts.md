@@ -264,6 +264,99 @@ error: Letters: `mcu` has `.designator` "U1", which is not one or more capital l
 
 A kind's letters are one value, so a board that contradicts them gets the usual empty-intersection error at the part: ``contradiction on `r.designator`: it is already "R", which does not overlap "Z"``. A saved placement is keyed by the part's path, not by its designator (ADR 0032), so changing letters or numbers moves no part in the layout file. A fab package that was ordered before the letters changed keeps the designators it was made with.
 
+### Order codes and their features
+
+A part that is sold as several order codes with different features, such as a radio module with and without a GNSS receiver, lists them in a `.variants` table: an order code in quotes to a row, and after it the names of the features that code has (issue #1311, owner decision). A board, or a module, states what it needs of the part with `.needs &=` and the name of a feature, one statement for each, and the part's `.mpn` is then the one order code that has every need. The bill of materials names that code.
+
+```nsm
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+/// A radio module sold with and without a GNSS receiver.
+part Modem {
+    .variants {
+        "MDM-100-G" GNSS LTE
+        "MDM-100" LTE
+    }
+    .vcc: Rail
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+    }
+}
+
+board Tracker {
+    .input: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC" }
+    .j: Header1x2
+    .input.pos ~ .j.p1
+    .input.neg ~ .j.p2
+    /// The board tracks its position: its `.mpn` is `MDM-100-G`.
+    .u: Modem { .assembly &= AssemblyMode::Hand }
+    .u.needs &= GNSS
+    .input ~ .u.vcc
+}
+```
+
+- A feature is a plain name that the table writes after a code. It is the part's own, so `.needs` takes it bare, with no import, as a pin's `.function` takes a name of its pin table. A name the table does not write is refused, with the features listed.
+- Each `.needs &= F` leaves the codes that have `F`, so two statements need both features. A module that places the part may state a need of its own, and the board one from outside (`.tracker.u.needs &= GNSS`, ADR 0116: only `&=` reaches inside a module).
+- The design must leave one code. With no need stated and several codes, or with needs that several codes meet, the board names the code with `.mpn &=`, and the message lists the codes with their features. A part with one code needs neither.
+- A code the board names with `.mpn &=` must be a row of the table and have every feature the design needs: a code without one is refused, at the `.mpn`, with the need and the codes that have it.
+- The `.needs` member is a part's only when the part states `.variants`; a part that states the table may not declare a `.needs` of its own. A part has one table, and a code is in it once.
+- The code is the part's `.mpn`, so a part that also has a catalog keyed by `.mpn` (`catalog modem by .mpn { .mpn, .package }`, chapter 12) is held to the row of that code, as a hand pick holds it, and takes its supplier's number from the row. A part with no catalog has no supplier's number: the bill of materials shows the code, and the board house does not assemble it unless it is `Hand` or `Consigned` (Who assembles a part, above).
+
+A code that lacks a feature the board needs is refused:
+
+```nsm fails
+part Modem {
+    .variants {
+        "MDM-100-G" GNSS LTE
+        "MDM-100" LTE
+    }
+    pins {
+        .a passive "A" "1"
+    }
+}
+
+board Tracker {
+    .u: Modem { .mpn &= "MDM-100" }
+    .u.needs &= GNSS
+}
+```
+
+```text
+error: `u.mpn` is `MDM-100`, which has no `GNSS`, and the design needs `GNSS` (main.nsm:13); the order codes that have them are `MDM-100-G`
+   --> main.nsm:12:17
+   |
+12 |     .u: Modem { .mpn &= "MDM-100" }
+   |                 ^^^^^^^^^^^^^^^^^
+```
+
+A board that leaves two codes is asked which:
+
+```nsm fails
+part Modem {
+    .variants {
+        "MDM-100-G" GNSS LTE
+        "MDM-100" LTE
+    }
+    pins {
+        .a passive "A" "1"
+    }
+}
+
+board Tracker {
+    .u: Modem
+}
+```
+
+```text
+error: `u` is a `Modem`, which is sold as `MDM-100-G` (GNSS, LTE) and `MDM-100` (LTE); state what the design needs of it (`.u.needs &= GNSS`, one statement for each feature) or name the order code (`.u.mpn &= "MDM-100-G"`)
+   --> main.nsm:12:5
+   |
+12 |     .u: Modem
+   |     ^^^^^^^^^
+```
+
 ### What the datasheet says about layout
 
 A datasheet's layout section says where the parts around a part go: "the input capacitor close to the VIN pin", "the inductor next to SW", "the feedback resistors within 2 mm of FB". A part states it once, in a `layout` block, with the document and the section it comes from (ADR 0030, issues #829 and #994). Every board that uses the part gets it.

@@ -294,6 +294,8 @@ fn visit<'a>(
         }
         // A peripheral names functions, which are words and not paths.
         Item::Peripheral(_) => {}
+        // A part's `.variants` names order codes and features, not members (issue 1311).
+        Item::Variants(_) => {}
         // A polygon's corners are numbers; a path in one is refused by the checker.
         Item::Polygon(_) => {}
         // A module's `physical "..."` names a file, not a member.

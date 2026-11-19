@@ -447,6 +447,14 @@ fn opens_item(head: &[T]) -> bool {
             }
         }
     }
+    // `.variants { ... }`, a part's table of order codes (issue 1311): one row to a line.
+    if head.get(k).is_some_and(|t| t.is(&Tok::LeadingDot))
+        && head
+            .get(k + 1)
+            .is_some_and(|t| matches!(&t.tok, Some(Tok::Ident(w)) if w == "variants"))
+    {
+        return true;
+    }
     head.get(k)
         .is_some_and(|t| matches!(&t.tok, Some(Tok::Ident(w)) if is_item_word(w)))
 }

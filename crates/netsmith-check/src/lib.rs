@@ -40,6 +40,7 @@ mod shared;
 mod soft_margin;
 mod support;
 mod unused;
+mod variants;
 
 pub use assign::{BusLine, PartSpace, PinsOutcome, RootPins, SpaceRequest, Unserved};
 pub use attrs::{Marks, MemberRole, SERIES_NAMES};
@@ -59,11 +60,12 @@ pub use model::{
     Contact, ContactSide, DcElement, DcKind, DefaultFrom, DefaultNote, Domain, Draw, EnumId,
     EnumInfo, EventKind, Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet,
     GuidelineRule, InstId, InstKind, Instance, JoinedByName, LayoutGuideline, LevelTest, Mate,
-    Member, Model, NearSelect, Net, OptionalMark, OutlinePolygon, PartRules, Peripheral,
-    PeripheralBus, PeripheralFunction, PinAssignment, PinKind, PinRequest, PinRow, PinTable,
-    Pinout, PolygonCorner, Provider, RExpr, RangeEnd, Relation, Requirement, Role, RowLimit,
-    Scenario, ScenarioPath, SequenceEvent, SequenceOrder, SharedMember, SharedRes, Snapshot,
-    SoftMargin, SupplyRow, SupplySteps, Tie, Unused, VoltageSteps, Written,
+    Member, Model, NearSelect, Need, Net, OptionalMark, OrderCode, OutlinePolygon, PartRules,
+    PartVariants, Peripheral, PeripheralBus, PeripheralFunction, PinAssignment, PinKind,
+    PinRequest, PinRow, PinTable, Pinout, PolygonCorner, Provider, RExpr, RangeEnd, Relation,
+    Requirement, Role, RowLimit, Scenario, ScenarioPath, SequenceEvent, SequenceOrder,
+    SharedMember, SharedRes, Snapshot, SoftMargin, SupplyRow, SupplySteps, Tie, Unused,
+    VoltageSteps, Written,
 };
 pub use pinedit::edit_entry;
 pub use pinfile::{BusEntry, EntrySource, PinEntry, PinFile, PinFileError};

@@ -561,6 +561,7 @@ impl Parser {
                     | Item::PhysicalFile(_)
                     | Item::Anchor(_)
                     | Item::SoftMargin(_)
+                    | Item::Variants(_)
                     | Item::Constraint(_)
                     | Item::Connect(_)
                     | Item::JoinMap(_),
@@ -672,6 +673,14 @@ impl Parser {
                 }
                 _ => {}
             }
+        }
+        // `.variants { ... }`: the order codes of a part (issue 1311). A member that a part
+        // declared as `.variants` is followed by `:`, `&=` or the like, never by `{`.
+        if self.at(&Tok::LeadingDot)
+            && matches!(self.peek_second(), Tok::Ident(w) if w == "variants")
+            && matches!(self.peek_third(), Tok::LBrace)
+        {
+            return only_decls(self.order_codes(start)?);
         }
         let lhs = self.expr()?;
         let t = self.peek().clone();
@@ -973,6 +982,65 @@ impl Parser {
             axis,
             axis_span,
             pitch,
+            span: self.span_from(start),
+        }))
+    }
+
+    /// `.variants { "CODE" FEATURE ... }`: one row to a line (or parted by `;`), each an order
+    /// code in quotes and the names of its features (issue 1311).
+    fn order_codes(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        self.bump();
+        let open = self.expect(&Tok::LBrace, "`{` after `.variants`")?;
+        let mut rows = Vec::new();
+        loop {
+            self.skip_separators();
+            let t = self.peek().clone();
+            match t.tok {
+                Tok::RBrace => {
+                    self.bump();
+                    break;
+                }
+                Tok::Eof => return Err(ParseError::new(open.span, "this `{` is never closed")),
+                Tok::DocOuter(_) | Tok::DocInner(_) => {
+                    return Err(ParseError::new(
+                        t.span,
+                        "a `.variants` table takes `//` notes, not doc comments",
+                    ));
+                }
+                Tok::Str(code) => {
+                    self.bump();
+                    if code.is_empty() {
+                        return Err(ParseError::new(t.span, "an order code cannot be empty"));
+                    }
+                    let mut features = Vec::new();
+                    while matches!(self.peek().tok, Tok::Ident(_) | Tok::QuotedIdent(_)) {
+                        features.push(self.ident("a feature")?);
+                    }
+                    rows.push(VariantRow {
+                        code,
+                        code_span: t.span,
+                        features,
+                        span: self.span_from(t.span.start),
+                    });
+                    self.end_statement(true)?;
+                }
+                _ => {
+                    return Err(unexpected(
+                        &t,
+                        "an order code in quotes and the names of its features (`\"MOD-100-G\" GNSS`), or `}`",
+                    ));
+                }
+            }
+        }
+        if rows.is_empty() {
+            return Err(ParseError::new(
+                open.span,
+                "`.variants` has no rows; write each order code in quotes and its features after it, one to a line",
+            ));
+        }
+        Ok(Item::Variants(Variants {
+            rows,
             span: self.span_from(start),
         }))
     }

@@ -1410,6 +1410,14 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
         // and listed as the `Capacitor` it is.
         let kind = &kinds[id];
         let pick = solution.picks.iter().find(|p| p.part == *id);
+        // The order code of a part that states `.variants` (issue 1311), which the checker
+        // narrowed its `.mpn` to: the number and the value of a part that picks from no catalog,
+        // so that the bill of materials names the code.
+        let order_code = model
+            .variants
+            .contains_key(id)
+            .then(|| text_of(model, *id, "mpn"))
+            .flatten();
         // A label's value is the text it prints.
         let value = match (inst.marks.declared_kind, text_of(model, *id, "text")) {
             (Some(PartKind::Label), Some(text)) => text,
@@ -1419,6 +1427,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
             }
             _ => pick
                 .map(|p| p.label.clone())
+                .or_else(|| order_code.clone())
                 .unwrap_or_else(|| default_value(inst, kind)),
         };
         let package =
@@ -1470,7 +1479,9 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
                 value: value.clone(),
                 package: package.clone(),
                 lcsc: pick.and_then(|p| p.lcsc.clone()),
-                mpn: pick.and_then(|p| p.mpn.clone()),
+                mpn: pick
+                    .and_then(|p| p.mpn.clone())
+                    .or_else(|| order_code.clone()),
                 library: pick.and_then(|p| p.library),
                 assembly,
                 assembly_stated,

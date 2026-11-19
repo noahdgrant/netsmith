@@ -1344,6 +1344,9 @@ pub struct Model {
     pub(crate) polygons: Vec<OutlinePolygon>,
     /// The `soft margin` statements of a physical file (issue 1310), in the order they were read.
     pub(crate) soft_margins: Vec<SoftMargin>,
+    /// The order codes of each part that states `.variants`, and what the design needs of it
+    /// (issue 1311).
+    pub variants: std::collections::BTreeMap<InstId, PartVariants>,
     /// The lines of the boards' `defaults` blocks that gave their value to no field (issue
     /// #625), in the order they were read.
     pub default_notes: Vec<DefaultNote>,
@@ -1367,6 +1370,72 @@ pub struct Model {
     /// The equations that pass a pin's function on (`pinout.rs`), found once for a list of
     /// relations.
     pub(crate) forwards: ForwardCache,
+}
+
+/// The order codes a part is sold as, from its `.variants` table, and the features the design
+/// needs of it, from `.needs &= FEATURE` (issue 1311). The checker narrows the part's `.mpn` to
+/// the one code that has every need, so the solver and the bill of materials read the code as
+/// they read a hand pick.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PartVariants {
+    /// The rows of the table, in the order written.
+    pub codes: Vec<OrderCode>,
+    /// The features needed, each with the statement that needs it, in the order read.
+    pub needs: Vec<Need>,
+    /// Where the table is written.
+    pub at: (SourceId, Span),
+}
+
+/// One row of a part's `.variants` table: an order code and its features.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OrderCode {
+    pub code: String,
+    pub features: Vec<String>,
+}
+
+/// One `.needs &= FEATURE` statement.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Need {
+    pub feature: String,
+    pub at: (SourceId, Span),
+}
+
+impl PartVariants {
+    /// The row of `code`, if the table has it.
+    pub fn code(&self, code: &str) -> Option<&OrderCode> {
+        self.codes.iter().find(|c| c.code == code)
+    }
+
+    /// Every feature the table names, in the order first written.
+    pub fn features(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for c in &self.codes {
+            for f in &c.features {
+                if !out.contains(f) {
+                    out.push(f.clone());
+                }
+            }
+        }
+        out
+    }
+
+    /// The features needed, without repeats, in the order first needed.
+    pub fn needed(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for n in &self.needs {
+            if !out.contains(&n.feature) {
+                out.push(n.feature.clone());
+            }
+        }
+        out
+    }
+}
+
+impl OrderCode {
+    /// Whether the code has every feature of `needed`.
+    pub fn has_all(&self, needed: &[String]) -> bool {
+        needed.iter().all(|n| self.features.contains(n))
+    }
 }
 
 /// The equations `.a.function == .b.function` between two pins' functions, by the field on
@@ -1610,6 +1679,7 @@ impl Model {
             sources: SourceTexts::default(),
             polygons: Vec::new(),
             soft_margins: Vec::new(),
+            variants: std::collections::BTreeMap::new(),
             default_notes: Vec::new(),
             support_sections: Vec::new(),
             layout: Vec::new(),
