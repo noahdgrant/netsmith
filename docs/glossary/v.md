@@ -5,7 +5,7 @@ A line cut part way through the panel from both faces, straight across the whole
 _Avoid_: V-score, scoring
 
 **Variant**:
-One value of an enum, written `Enum::Variant` (`AssemblyMode::Hand`). Not a text: `"hand"` is refused where a variant belongs, and the message names the variant it was meant to be.
+One value of an enum, written `Enum::Variant` (`AssemblyMode::Hand`). Not a text: `"hand"` is refused where a variant belongs, and the message names the variant it was meant to be. A row of a part's `.variants` table is an **Order code**, not a variant.
 _Avoid_: Case, member (a member is a `.name` of a definition), mode
 
 **Via in pad**:

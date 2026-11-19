@@ -140,6 +140,8 @@ pub struct Finding {
     pub waiver: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// Where a source comes from: for a waived finding, the waiver's; for an `assembly_size`
+    /// finding, where the board house's least size comes from (issue 1393).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
     /// For a `track_current` or `via_current` finding (issue 1373): the copper, the current it
@@ -274,6 +276,7 @@ pub fn of_drc_finding(f: &netsmith_geom::DrcFinding, board: Option<&str>) -> Fin
         parts: f.parts(),
         footprint: f.own_part().map(str::to_string),
         carrying: f.carrying.as_ref().map(Carrying::from),
+        source: f.source.clone(),
         ..Finding::plain(
             match f.severity {
                 netsmith_geom::DrcSeverity::Error => Severity::Error,
@@ -519,6 +522,32 @@ mod tests {
         );
     }
 
+    /// Issue 1393: the source of the figure an `assembly_size` finding is judged against is the
+    /// finding's `source` in the JSON, and a finding with none has no such field.
+    #[test]
+    fn an_assembly_size_finding_has_its_source_as_a_field() {
+        use netsmith_geom::{DrcFinding, DrcRule, DrcSeverity};
+        let finding = |source| DrcFinding {
+            rule: DrcRule::AssemblySize,
+            severity: DrcSeverity::Warning,
+            message: "m".to_string(),
+            at: Default::default(),
+            layer: Some("Edge.Cuts".to_string()),
+            items: Vec::new(),
+            carrying: None,
+            source,
+        };
+        let with = serde_json::to_value(of_drc_finding(
+            &finding(Some("a page, read 2026-11-19".to_string())),
+            None,
+        ))
+        .unwrap();
+        assert_eq!(with["rule"], "assembly_size");
+        assert_eq!(with["source"], "a page, read 2026-11-19");
+        let without = serde_json::to_value(of_drc_finding(&finding(None), None)).unwrap();
+        assert!(without.get("source").is_none(), "{without}");
+    }
+
     /// Issue 1373: a `track_current` finding has the width, the width needed and the current as
     /// fields of its own, and a finding of another rule has none of them.
     #[test]
@@ -532,6 +561,7 @@ mod tests {
             layer: Some("F.Cu".to_string()),
             items: Vec::new(),
             carrying,
+            source: None,
         };
         let with = finding(Some(DrcCarrying {
             current: Some(2.5),

@@ -778,6 +778,13 @@ impl Checker<'_> {
         self.narrowing = c.op == CmpOp::Narrow;
         let target = self.resolve_path(p);
         self.narrowing = false;
+        // `.u.needs &= GNSS`: a feature the design needs of the part's order code (issue 1311).
+        if let Res::Field(f) = target
+            && self.is_needs(f)
+        {
+            self.need_statement(f, c);
+            return Some(f);
+        }
         if let Expr::Steps { steps, span } = &c.rhs {
             return self.steps_statement(target, p, c, steps, *span);
         }

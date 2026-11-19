@@ -601,6 +601,20 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     a.target.to_source()
                 );
             }
+            Item::Variants(v) => {
+                out.push_str(".variants {\n");
+                for row in &v.rows {
+                    out.push_str(&"    ".repeat(depth + 2));
+                    out.push_str(&quote(&row.code));
+                    for feature in &row.features {
+                        out.push(' ');
+                        out.push_str(&feature.to_source());
+                    }
+                    out.push('\n');
+                }
+                out.push_str(&"    ".repeat(depth + 1));
+                out.push('}');
+            }
             Item::Within(w) => {
                 let _ = write!(
                     out,
@@ -619,6 +633,15 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     "soft margin {} round {}",
                     m.margin.to_source(),
                     m.part.to_source()
+                );
+            }
+            Item::KeepApart(k) => {
+                let _ = write!(
+                    out,
+                    "keep {} between {} and {}",
+                    k.distance.to_source(),
+                    k.kinds[0].name,
+                    k.kinds[1].name
                 );
             }
             Item::Row(r) => {

@@ -1377,6 +1377,28 @@ fn fab_board(
         for b in &broken {
             say(format!("{}: warning: {b}", built.label()));
         }
+        // Two parts nearer each other than a `keep` statement asks (issue 1277): a requirement
+        // on where parts go, which stops `fab` as one the check after routing finds does, unless
+        // constraints are only warnings for this run; `--for-review` lists it under FOR REVIEW.
+        let apart = board.kept_apart_broken();
+        if !apart.is_empty() && !catalogs.constraints_warn() && !options.for_review {
+            return Err(FabFailure {
+                text: apart.iter().map(|b| fail(b.to_string())).collect(),
+                requirements: apart.iter().map(netsmith_pcb::ApartBroken::miss).collect(),
+                ..FabFailure::default()
+            });
+        }
+        for b in apart {
+            say(format!("{}: warning: {b}", built.label()));
+            if options.for_review {
+                waived.push(Waived {
+                    rule: "constraint".to_string(),
+                    message: b.to_string(),
+                    placement: None,
+                    drc: None,
+                });
+            }
+        }
         // Two parts where an imported KiCad board has them may share courtyard area: that
         // board was made with its own footprints (`Board::imported`).
         for overlap in board.imported_overlaps() {
@@ -3691,6 +3713,7 @@ pub fn marks_of(board: &Board) -> netsmith_geom::DrcMarks {
         uneven_finish: p.finish.starts_with("HASL").then(|| p.finish.clone()),
         min_single_sided_assembly_size: p.min_single_sided_assembly_size,
         min_double_sided_assembly_size: p.min_double_sided_assembly_size,
+        assembly_size_source: p.assembly_size_source.clone(),
     }
 }
 
@@ -4235,7 +4258,7 @@ mod tests {
 
     /// The fields of a process that are not a rule the router and the design rules check keep,
     /// each with the reason (issue #431).
-    const NOT_A_COPPER_RULE: [(&str, &str); 36] = [
+    const NOT_A_COPPER_RULE: [(&str, &str); 37] = [
         (
             "finish",
             "the surface finish, a word for the notes and the order",
@@ -4266,6 +4289,10 @@ mod tests {
         ("inner8", "a plane or a signal layer, which the board says"),
         ("fabricator", "a name, for the notes"),
         ("source", "where the numbers are published, for the notes"),
+        (
+            "assembly_size_source",
+            "where the assembly size figures come from, a sentence the `assembly_size` finding quotes (issue 1393)",
+        ),
         (
             "stackup",
             "the build of the board: the writers' and the current check's",
@@ -4477,6 +4504,7 @@ mod tests {
                 fine_pitch: p.fine_pitch,
                 min_single_sided_assembly_size: p.min_single_sided_assembly_size,
                 min_double_sided_assembly_size: p.min_double_sided_assembly_size,
+                assembly_size_source: p.assembly_size_source.clone(),
                 ..Default::default()
             }),
             ..Default::default()

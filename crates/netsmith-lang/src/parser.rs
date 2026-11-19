@@ -565,6 +565,8 @@ impl Parser {
                     | Item::PhysicalFile(_)
                     | Item::Anchor(_)
                     | Item::SoftMargin(_)
+                    | Item::Variants(_)
+                    | Item::KeepApart(_)
                     | Item::Constraint(_)
                     | Item::Connect(_)
                     | Item::JoinMap(_),
@@ -639,6 +641,14 @@ impl Parser {
                 "soft" if matches!(self.peek_second(), Tok::Ident(w) if w == "margin") => {
                     return only_decls(self.soft_margin(start)?);
                 }
+                "keep"
+                    if matches!(
+                        self.peek_second(),
+                        Tok::Number(_) | Tok::LParen | Tok::Minus
+                    ) =>
+                {
+                    return only_decls(self.keep_apart(start)?);
+                }
                 "polygon" if matches!(self.peek_second(), Tok::LParen) => {
                     return only_decls(self.polygon(start)?);
                 }
@@ -682,6 +692,14 @@ impl Parser {
                 }
                 _ => {}
             }
+        }
+        // `.variants { ... }`: the order codes of a part (issue 1311). A member that a part
+        // declared as `.variants` is followed by `:`, `&=` or the like, never by `{`.
+        if self.at(&Tok::LeadingDot)
+            && matches!(self.peek_second(), Tok::Ident(w) if w == "variants")
+            && matches!(self.peek_third(), Tok::LBrace)
+        {
+            return only_decls(self.order_codes(start)?);
         }
         let lhs = self.expr()?;
         let t = self.peek().clone();
@@ -1026,6 +1044,65 @@ impl Parser {
         }))
     }
 
+    /// `.variants { "CODE" FEATURE ... }`: one row to a line (or parted by `;`), each an order
+    /// code in quotes and the names of its features (issue 1311).
+    fn order_codes(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        self.bump();
+        let open = self.expect(&Tok::LBrace, "`{` after `.variants`")?;
+        let mut rows = Vec::new();
+        loop {
+            self.skip_separators();
+            let t = self.peek().clone();
+            match t.tok {
+                Tok::RBrace => {
+                    self.bump();
+                    break;
+                }
+                Tok::Eof => return Err(ParseError::new(open.span, "this `{` is never closed")),
+                Tok::DocOuter(_) | Tok::DocInner(_) => {
+                    return Err(ParseError::new(
+                        t.span,
+                        "a `.variants` table takes `//` notes, not doc comments",
+                    ));
+                }
+                Tok::Str(code) => {
+                    self.bump();
+                    if code.is_empty() {
+                        return Err(ParseError::new(t.span, "an order code cannot be empty"));
+                    }
+                    let mut features = Vec::new();
+                    while matches!(self.peek().tok, Tok::Ident(_) | Tok::QuotedIdent(_)) {
+                        features.push(self.ident("a feature")?);
+                    }
+                    rows.push(VariantRow {
+                        code,
+                        code_span: t.span,
+                        features,
+                        span: self.span_from(t.span.start),
+                    });
+                    self.end_statement(true)?;
+                }
+                _ => {
+                    return Err(unexpected(
+                        &t,
+                        "an order code in quotes and the names of its features (`\"MOD-100-G\" GNSS`), or `}`",
+                    ));
+                }
+            }
+        }
+        if rows.is_empty() {
+            return Err(ParseError::new(
+                open.span,
+                "`.variants` has no rows; write each order code in quotes and its features after it, one to a line",
+            ));
+        }
+        Ok(Item::Variants(Variants {
+            rows,
+            span: self.span_from(start),
+        }))
+    }
+
     /// `soft margin 3mm round .u1`.
     fn soft_margin(&mut self, start: usize) -> Res<Item> {
         self.bump();
@@ -1043,6 +1120,37 @@ impl Parser {
         Ok(Item::SoftMargin(SoftMargin {
             margin,
             part,
+            span: self.span_from(start),
+        }))
+    }
+
+    /// `keep 10mm between BuckIc and Crystal`.
+    fn keep_apart(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        let distance = self.additive()?;
+        let t = self.peek().clone();
+        if !matches!(&t.tok, Tok::Ident(w) if w == "between") {
+            return Err(unexpected(
+                &t,
+                "`between` and two kinds of parts after the distance (`keep 10mm between BuckIc and Crystal`)",
+            ));
+        }
+        self.bump();
+        let first =
+            self.ident("a kind of part after `between` (`keep 10mm between BuckIc and Crystal`)")?;
+        let t = self.peek().clone();
+        if !matches!(&t.tok, Tok::Ident(w) if w == "and") {
+            return Err(unexpected(
+                &t,
+                "`and` and the second kind of part (`keep 10mm between BuckIc and Crystal`)",
+            ));
+        }
+        self.bump();
+        let second =
+            self.ident("a kind of part after `and` (`keep 10mm between BuckIc and Crystal`)")?;
+        Ok(Item::KeepApart(KeepApart {
+            distance,
+            kinds: [first, second],
             span: self.span_from(start),
         }))
     }

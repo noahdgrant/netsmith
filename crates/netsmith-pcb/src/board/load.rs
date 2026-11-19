@@ -115,6 +115,7 @@ impl Board {
                     routing_margin: 0.0,
                     soft_margin: 0.0,
                     soft_margin_source: String::new(),
+                    apart: Vec::new(),
                     protrusion: None,
                     hand_fitted: true,
                     symbol,
@@ -207,6 +208,7 @@ impl Board {
                     .iter()
                     .find(|m| m.path == part.path)
                     .map_or_else(String::new, |m| m.source.clone()),
+                apart: crate::keep_apart::apart_of(&design.features, &part.path),
                 protrusion: design
                     .features
                     .protrusions

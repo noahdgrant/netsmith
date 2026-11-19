@@ -468,6 +468,55 @@ pub enum Item {
     Anchor(Anchor),
     /// A `soft margin 3mm round .u1` statement; only a physical file may hold one (issue 1310).
     SoftMargin(SoftMargin),
+    /// A `.variants { "MOD-G" GNSS  "MOD" }` table: the order codes of a part and the features
+    /// each has (issue 1311); only a part may hold one.
+    Variants(Variants),
+    /// A `keep 10mm between BuckIc and Crystal` statement; only a board's physical file may hold
+    /// one (issue 1277).
+    KeepApart(KeepApart),
+}
+
+/// `.variants { "MOD-100-G" GNSS LTE  "MOD-100" LTE }`: the order codes a part is sold as, one
+/// row each, and the features the code has (issue 1311, owner decision). A board states what it
+/// needs (`.u.needs &= GNSS`), and the part's `.mpn` is the one code that has every need.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Variants {
+    pub rows: Vec<VariantRow>,
+    pub span: Span,
+}
+
+/// One row of a `.variants` table: an order code and its features, in the order written.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VariantRow {
+    pub code: String,
+    pub code_span: Span,
+    pub features: Vec<Ident>,
+    pub span: Span,
+}
+
+/// `keep 10mm between BuckIc and Crystal`: every part of the first kind and every part of the
+/// second keep at least this distance between their courtyards, a requirement on where parts go
+/// that the placer keeps and `fab` checks (issue 1277, owner decision: a distance between kinds
+/// of parts, the kinds those of the standard library and the project).
+#[derive(Debug, Clone, PartialEq)]
+pub struct KeepApart {
+    /// The least distance between the courtyards: one length.
+    pub distance: Expr,
+    /// The two kinds, a part or a generic in scope (`BuckIc`, `Crystal`); they may be the same.
+    pub kinds: [Ident; 2],
+    pub span: Span,
+}
+
+impl KeepApart {
+    /// The statement as it reads, for a message: `keep 10mm between BuckIc and Crystal`.
+    pub fn span_text(&self) -> String {
+        format!(
+            "keep {} between {} and {}",
+            self.distance.to_source(),
+            self.kinds[0].name,
+            self.kinds[1].name
+        )
+    }
 }
 
 /// `soft margin 3mm round .u1`: the placer keeps other parts at least this far from the part's

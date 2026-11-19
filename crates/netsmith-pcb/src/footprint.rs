@@ -300,9 +300,10 @@ pub struct SilkText {
 /// it too (issue #1291).
 #[derive(Debug, Clone, PartialEq)]
 pub struct FootprintKeepout {
-    /// Its outline, in the footprint's frame (the `xy` points of the first `(polygon` of the
-    /// zone). An `(arc` among them is not read, as the board file's reader does not read one
-    /// (`netsmith_geom::Artwork`): a zone drawn with arcs alone is left out.
+    /// Its outline, in the footprint's frame (the points of the first `(polygon` of the zone).
+    /// An `(arc` among them is read as points no further than `netsmith_geom::ARC_ERROR` (2 µm)
+    /// from it, as the board file's reader reads it (issue 1299), so a circle drawn as one arc
+    /// is a polygon of many points.
     pub polygon: Vec<Pt>,
     /// KiCad's names of the copper layers it is on, as the library has them (for the part on
     /// the front): `F.Cu`, `B.Cu`, `In1.Cu`, or `*.Cu` for every one.
@@ -390,14 +391,10 @@ impl Footprint {
             let polygon: Vec<Pt> = zone
                 .find("polygon")
                 .and_then(|p| p.find("pts"))
-                .map(|pts| {
-                    pts.find_all("xy")
-                        .filter_map(|xy| {
-                            let n = |i: usize| xy.items().get(i)?.text()?.parse::<f64>().ok();
-                            Some(Pt::new(n(1)?, n(2)?))
-                        })
-                        .collect()
-                })
+                // An arc of the outline is read as points no further than `ARC_ERROR` from it
+                // (issue 1299), as the board file's reader reads it.
+                .and_then(netsmith_geom::outline_points)
+                .map(|points| points.into_iter().map(|p| Pt::new(p.x, p.y)).collect())
                 .unwrap_or_default();
             let keepout = FootprintKeepout {
                 polygon,

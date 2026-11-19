@@ -1241,7 +1241,13 @@ impl<'a> Checker<'a> {
         self.model.root = root;
         self.apply_default_joins();
         self.apply_board_defaults();
+        self.resolve_keep_apart();
         self.resolve_defaults();
+        // The order code of each part that states `.variants`, from what the design needs of
+        // it (issue 1311): only a design that places the part needs one.
+        if matches!(def.kind, DefKind::Board | DefKind::System | DefKind::Panel) {
+            self.resolve_variants();
+        }
         match def.kind {
             DefKind::Board | DefKind::System => self.assign_pins(&name, true),
             DefKind::Module => self.assign_pins(&name, false),
@@ -1769,6 +1775,10 @@ impl<'a> Checker<'a> {
                 self.declare_support(support);
                 continue;
             }
+            if let Item::Variants(v) = item {
+                self.declare_variants(v);
+                continue;
+            }
             let Item::Decl(d) = item else { continue };
             let cur = self.current();
             let key = (self.cur_source().0, d.span.start);
@@ -2208,6 +2218,9 @@ impl<'a> Checker<'a> {
                 Item::PhysicalFile(f) => self.physical_file_here(f),
                 Item::Anchor(a) => self.anchor_here(a),
                 Item::SoftMargin(m) => self.soft_margin(m),
+                // Read in the first pass (`declare_variants`).
+                Item::Variants(_) => {}
+                Item::KeepApart(k) => self.keep_apart(k),
                 Item::Connect(c) if self.phys.is_none() => self.connect(c),
                 Item::JoinMap(b) if self.phys.is_none() => self.join_map(b),
                 Item::Bridge(b) if self.phys.is_none() => self.bridge(b),
