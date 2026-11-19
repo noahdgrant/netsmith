@@ -467,23 +467,57 @@ fn locked_breaks(
 
 /// The faults the placement check `fab` runs ([`Board::placement_faults`]) finds on the board of
 /// the parts `layout` places, each where it says ([`Board::laid_out_entries`]): `fab` puts them
-/// there whatever the seed, so a fault among them stops it. Nothing is placed.
+/// there whatever the seed, so a fault among them stops it. Nothing is placed. `layout.1` is the
+/// layout file's name for the messages. `layout check` gives these as its `placement` findings,
+/// and `fab` runs the same function before the placer starts (issue 1309), so that a group of
+/// parts placed by hand is known to be consistent, as one list, before any placing.
+pub fn entry_faults(
+    design: &Design,
+    layout: &(Layout, String),
+    libraries: &netsmith_pipeline::Libraries,
+) -> Result<Vec<PlacementFault>, String> {
+    entry_check(design, layout, libraries).map(|(faults, _)| faults)
+}
+
+/// [`entry_faults`] with the lines and locks of the physical file that cannot all hold on that
+/// board (two locks whose courtyards overlap), as data, which `fab` hands on as a refusal's
+/// `conflicts` as it does for a placed board.
+pub fn entry_check(
+    design: &Design,
+    layout: &(Layout, String),
+    libraries: &netsmith_pipeline::Libraries,
+) -> Result<(Vec<PlacementFault>, Vec<netsmith_pcb::Conflict>), String> {
+    let options = netsmith_pcb::place_options(design, Some(&layout.0));
+    let board = Board::laid_out_entries(
+        design,
+        &libraries.mapping,
+        &libraries.footprints,
+        &options,
+        Some(layout),
+    )?;
+    let faults = board.placement_faults();
+    let conflicts = if faults.is_empty() {
+        Vec::new()
+    } else {
+        board
+            .explain_requirements(design, &options)
+            .map(|r| r.proofs)
+            .unwrap_or_default()
+    };
+    Ok((faults, conflicts))
+}
+
 fn placement_faults(
     design: &Design,
     layout: &Layout,
     file: &Path,
     libraries: &netsmith_pipeline::Libraries,
 ) -> Result<Vec<PlacementFault>, String> {
-    let options = netsmith_pcb::place_options(design, Some(layout));
-    let laid = (layout.clone(), file.display().to_string());
-    let board = Board::laid_out_entries(
+    entry_faults(
         design,
-        &libraries.mapping,
-        &libraries.footprints,
-        &options,
-        Some(&laid),
-    )?;
-    Ok(board.placement_faults())
+        &(layout.clone(), file.display().to_string()),
+        libraries,
+    )
 }
 
 /// What the layout file at `file` has wrong against `design`: a part with no entry (a note: the

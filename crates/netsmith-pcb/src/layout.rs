@@ -5,7 +5,8 @@
 //! build, and written by the editor or the placer, not by the language: the source holds no
 //! geometry. One table for each board of the file, keyed by the board's name; inside it,
 //! the parts are keyed by their path in the design (`stage.output_cap`), which a renumbered
-//! reference designator does not change.
+//! reference designator does not change. A board of a system defined in another file has its
+//! table in the layout file beside that file (issue #1327, `netsmith_fabricate::layout::board_file`).
 //!
 //! ```toml
 //! version = 1

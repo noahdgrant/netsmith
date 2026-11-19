@@ -158,8 +158,9 @@ pub enum ZoneIslands {
 
 /// A zone a routes file fixed ([`crate::routes`]): copper filled inside `outline`, less its
 /// holes, on each of `layers`, joined to `net`, with the settings of KiCad's zone that change
-/// the copper. A layer that has one takes its zones from the routes file alone: the design's
-/// pour or plane on it is not drawn ([`Board::zoned`]).
+/// the copper. One of the net of the design's pour or plane on its layer restates it, which is
+/// then not drawn ([`Board::replaced`]); one of another net has the area it covers, and the pour
+/// is drawn round it (issue #1314, [`Board::zone_lift`]).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BoardZone {
     pub net: String,

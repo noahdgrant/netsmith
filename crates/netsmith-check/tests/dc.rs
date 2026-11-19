@@ -37,7 +37,7 @@ fn part(body: &str) -> String {
 fn element(c: &Checked, path: &str) -> Option<(DcKind, Vec<String>, Vec<String>)> {
     let model = &c.board("B").unwrap().model;
     let inst = model.inst_at(path)?;
-    let dc = model.instance(inst).dc.as_ref()?;
+    let dc = model.instance(inst).dc.first()?;
     Some((
         dc.kind,
         dc.pins.iter().map(|p| model.path_below(*p, inst)).collect(),
@@ -64,7 +64,7 @@ fn the_standard_parts_state_their_dc_element() {
         &'static [&'static str],
         &'static [&'static str],
     );
-    let cases: [Case; 10] = [
+    let cases: [Case; 11] = [
         (
             "passive::Resistor",
             "Resistor",
@@ -135,6 +135,13 @@ fn the_standard_parts_state_their_dc_element() {
             &["vin", "vout"],
             &["quiescent_current"],
         ),
+        (
+            "switch::LoadSwitch",
+            "LoadSwitch",
+            DcKind::LoadSwitch,
+            &["in", "out", "enable"],
+            &["on_resistance", "quiescent_current"],
+        ),
     ];
     for (import, name, kind, pins, values) in cases {
         let src = format!("import std::parts::{import}\nboard B {{\n    .x: {name}\n}}\n");
@@ -187,10 +194,10 @@ board B {
     assert!(c.is_ok(), "{}", c.render());
     let model = &c.board("B").unwrap().model;
     // A module has no element of its own: the parts in it do.
-    assert!(model.instance(model.inst_at("m").unwrap()).dc.is_none());
+    assert!(model.instance(model.inst_at("m").unwrap()).dc.is_empty());
     for path in ["m.f", "m.g"] {
         let inst = model.inst_at(path).unwrap();
-        let dc = model.instance(inst).dc.as_ref().unwrap();
+        let dc = model.instance(inst).dc.first().unwrap();
         assert_eq!(dc.kind, DcKind::Resistor, "{path}");
         // The element is on this instance: its pins and value belong to it.
         for pin in &dc.pins {
@@ -226,7 +233,12 @@ board B {
         m.starts_with("this part already has a `dc` statement (at std/parts/passive.nsm:"),
         "{m}"
     );
-    assert!(m.ends_with("a part is one element at DC"), "{m}");
+    assert!(
+        m.ends_with(
+            "a part is one element at DC, or a `dc source` or a regulator for each rail it gives"
+        ),
+        "{m}"
+    );
 }
 
 #[test]
@@ -273,7 +285,7 @@ fn an_unknown_element_lists_the_known_ones() {
     let m = only(&run(&part("dc coil .a .b .resistance")));
     assert_eq!(
         m,
-        "`dc` does not know the element `coil`; the elements are resistor, diode, nmos, pmos, linear_regulator, switching_regulator and source"
+        "`dc` does not know the element `coil`; the elements are resistor, diode, nmos, pmos, linear_regulator, switching_regulator, source and load_switch"
     );
 }
 
@@ -497,6 +509,47 @@ fn a_regulator_operand_must_be_a_rail_of_the_part_and_the_efficiency_a_number() 
     );
 }
 
+/// A part with two rails, an enable pin and an on resistance, whose body is `body`.
+fn switch(body: &str) -> String {
+    format!(
+        "import std::sources::Rail\npart S {{\n    .in: Rail\n    .out: Rail\n    pins {{\n        .enable input \"ON\" \"1\" optional\n    }}\n    .ron: Resistance\n    .iq: Current\n    {body}\n}}\nboard B {{\n    .s: S\n}}\n"
+    )
+}
+
+/// A load switch names its two rails, then its enable pin, then its on resistance and, when it
+/// has one, its quiescent current (issue 1269).
+#[test]
+fn a_load_switch_names_two_rails_its_enable_and_its_on_resistance() {
+    let c = run(&switch("dc load_switch .in .out .enable .ron .iq"));
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(
+        element(&c, "s"),
+        Some((
+            DcKind::LoadSwitch,
+            names(&["in", "out", "enable"]),
+            names(&["ron", "iq"])
+        ))
+    );
+    let c = run(&switch("dc load_switch .in .out .enable .ron"));
+    assert!(c.is_ok(), "{}", c.render());
+    // The enable is a pin, and the first two operands rails.
+    let m = only(&run(&switch("dc load_switch .in .out .out .ron")));
+    assert_eq!(
+        m,
+        "`dc load_switch` takes the enable here, a pin, and `.out` is not one; the statement is `dc load_switch .in .out .enable .on_resistance`"
+    );
+    let m = only(&run(&switch("dc load_switch .in .enable .enable .ron")));
+    assert!(
+        m.contains("takes the output rail here, a rail, and `.enable` is not one"),
+        "{m}"
+    );
+    let m = only(&run(&switch("dc load_switch .in .out .enable .iq")));
+    assert_eq!(
+        m,
+        "`dc load_switch` takes the on resistance here, a resistance, and `.iq` is a current"
+    );
+}
+
 /// A part with a supply rail, whose body is `body`.
 fn supply_part(body: &str) -> String {
     format!(
@@ -511,6 +564,49 @@ fn a_part_that_gives_a_supply_names_its_rail() {
     assert_eq!(
         element(&c, "s"),
         Some((DcKind::Source, names(&["vbatt"]), vec![]))
+    );
+}
+
+#[test]
+fn a_part_that_gives_two_rails_states_a_source_for_each() {
+    // Issue 1271: one `dc` for each rail the part gives, each seen by the later stages.
+    let c = run(&supply_part("dc source .vbatt\n    dc source .other"));
+    assert!(c.is_ok(), "{}", c.render());
+    let model = &c.board("B").unwrap().model;
+    let s = model.inst_at("s").unwrap();
+    let rails: Vec<String> = model
+        .instance(s)
+        .dc
+        .iter()
+        .map(|d| model.path_below(d.pins[0], s))
+        .collect();
+    assert_eq!(rails, names(&["vbatt", "other"]));
+    assert_eq!(model.dc_elements().count(), 2);
+}
+
+#[test]
+fn a_part_that_gives_one_rail_twice_is_refused() {
+    let m = only(&run(&supply_part("dc source .vbatt\n    dc source .vbatt")));
+    assert_eq!(
+        m,
+        "`dc source` gives the rail `.vbatt`, and this part's `dc source` (at test.nsm:6) gives it already; a part states one `dc` for each rail it gives"
+    );
+}
+
+#[test]
+fn a_regulator_and_a_source_of_one_part_are_two_rails() {
+    // A module that gives its input rail to the board and regulates a second rail from it.
+    let c = run(&supply_part(
+        "dc source .vbatt\n    dc linear_regulator .vbatt .other",
+    ));
+    assert!(c.is_ok(), "{}", c.render());
+    // A regulator whose output is the rail the source gives is refused.
+    let m = only(&run(&supply_part(
+        "dc source .vbatt\n    dc linear_regulator .other .vbatt",
+    )));
+    assert!(
+        m.starts_with("`dc linear_regulator` gives the rail `.vbatt`, and this part's `dc source`"),
+        "{m}"
     );
 }
 
@@ -598,8 +694,10 @@ fn a_source_operand_must_be_a_rail_of_the_part() {
         m.contains("`dc source` takes 1 pins and then 0 values, as in `dc source .vbatt`; this has 2 operands"),
         "{m}"
     );
-    // One `dc` statement per part.
-    let m = only(&run(&supply_part("dc source .vbatt\n    dc source .other")));
+    // A source and an element that gives no rail.
+    let m = only(&run(&supply_part(
+        "dc source .vbatt\n    dc diode .vbatt.pos .other.pos .vref",
+    )));
     assert!(m.contains("this part already has a `dc` statement"), "{m}");
 }
 
@@ -635,7 +733,7 @@ fn a_second_dc_statement_names_the_first() {
     )));
     assert_eq!(
         m,
-        "this part already has a `dc` statement (at test.nsm:8); a part is one element at DC"
+        "this part already has a `dc` statement (at test.nsm:8); a part is one element at DC, or a `dc source` or a regulator for each rail it gives"
     );
 }
 

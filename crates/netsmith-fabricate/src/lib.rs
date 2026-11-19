@@ -12,6 +12,7 @@ pub mod fab;
 mod fab_environment;
 pub mod gerber_compare;
 pub mod git_dependency;
+pub mod join_pad;
 pub mod kept_routes;
 pub mod layout;
 pub mod layout_capture;

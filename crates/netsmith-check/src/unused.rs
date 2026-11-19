@@ -340,16 +340,17 @@ fn rail_pins(model: &crate::model::Model) -> HashSet<InstId> {
 /// The pins that put a voltage on a net on the board: the `pos` pin of the rail that a `dc
 /// source` gives (also the `dc source .vbus` that a std connector states: a supply joined to a
 /// connector has a source on the board) and of the output rail of a `dc linear_regulator` or `dc switching_regulator`,
-/// and every terminal whose table says it is an output (`output` or `tri_state`), such as a
+/// or of a `dc load_switch` whose enable can turn it on (issue 1269), and every terminal whose table says it is an output (`output` or `tri_state`), such as a
 /// charger's, unless it is in an interface stated `unused` (a pin that the board says nothing
 /// uses sources nothing). A `power` pin with no `dc` statement is not told from a load's by the checker, so
 /// it is not a source here.
 fn sourced_pins(model: &crate::model::Model) -> HashSet<InstId> {
     let mut sourced = HashSet::new();
-    for (_, dc) in model.dc_elements() {
+    for (part, dc) in model.dc_elements() {
         let rail = match dc.kind {
             DcKind::Source => dc.pins.first(),
             DcKind::LinearRegulator | DcKind::SwitchingRegulator => dc.pins.get(1),
+            DcKind::LoadSwitch if model.load_switch_can_turn_on(part) => dc.pins.get(1),
             _ => None,
         };
         if let Some((_, pos, _)) = rail.and_then(|&r| model.rail_of(r))

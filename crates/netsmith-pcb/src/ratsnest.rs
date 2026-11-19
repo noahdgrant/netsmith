@@ -21,7 +21,10 @@
 //! copper added (the plated holes a QFN footprint draws inside its exposed pad, as KiCad and the
 //! design rules check count them): the router draws no track between them.
 //!
-//! Copper joins where it touches: a track's end on a pad or a track over a pad, two tracks of one layer whose copper
+//! Copper joins where it runs into other copper, as KiCad's connectivity has it (issue #1334): a
+//! track's end nearer to a pad (its box) than half the track's width, so an end on the pad's
+//! edge, joins it, and a round end that only touches the edge does not (the design rules check
+//! says so: [`netsmith_geom::COPPER_JOIN`]); a track over a pad, two tracks of one layer whose copper
 //! meets (end to end, or an end on the other's middle, as a hand-routed board has them), and a
 //! via on a pad or on a track. A net a routes file locks ([`crate::routes`]) is joined by its
 //! pours on the outer layers too: the router adds nothing to it, so the pour is how its pads
@@ -35,7 +38,10 @@
 //! its net with copper on its layer whose centre it covers or whose box holds a corner of it
 //! (a thermal relief's spokes reach the pad's centre; a pad the zone does not join keeps its
 //! clearance), the vias whose centre it covers, and the tracks of its layer that run into it. On
-//! a layer with such a zone, the design's pour or plane is not drawn, and does not join its net.
+//! a layer with such a zone, the design's pour or plane is not drawn where a zone of its own net
+//! restates it; under zones of other nets it is drawn round them, and its fill, computed with
+//! theirs, joins what it reaches as theirs does (issue #1314). Either way it gives no join of its
+//! own there.
 
 use crate::board::rect_distance;
 use crate::board::{
@@ -46,6 +52,12 @@ use crate::geometry::{Pt, Rect};
 
 /// Copper this close to a pad, or to other copper, touches it.
 const TOUCH: f64 = 1e-6;
+
+/// Whether copper at `distance` from other copper, reaching `reach` round its centre line, runs
+/// into it: KiCad joins it when the distance is less than the reach, strictly (issue #1334).
+fn runs_into(distance: f64, reach: f64) -> bool {
+    distance < reach - netsmith_geom::COPPER_JOIN
+}
 
 /// One line still to be routed.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -151,8 +163,12 @@ fn near(a: Pt, b: Pt) -> bool {
 /// Whether the copper of two tracks of one layer meets: an end of one lies on the other's
 /// copper (a track that ends on another's middle), or their centre lines cross.
 fn tracks_touch(a: &Track, b: &Track) -> bool {
-    let reach = (a.width + b.width) / 2.0 + TOUCH;
-    let ends_on = |x: &Track, y: &Track| [x.from, x.to].iter().any(|&e| y.distance_to(e) <= reach);
+    let reach = (a.width + b.width) / 2.0;
+    let ends_on = |x: &Track, y: &Track| {
+        [x.from, x.to]
+            .iter()
+            .any(|&e| runs_into(y.distance_to(e), reach))
+    };
     if ends_on(a, b) || ends_on(b, a) {
         return true;
     }
@@ -178,12 +194,14 @@ fn has_layer(node: &Node, layer: CopperLayer) -> bool {
     }
 }
 
-fn on_pad(node: &Node, at: Pt, layer: Option<CopperLayer>) -> bool {
+/// Whether copper round `at`, reaching `reach` from it (half a track's width, a via's radius),
+/// runs into the pad's box on the layer.
+fn on_pad(node: &Node, at: Pt, reach: f64, layer: Option<CopperLayer>) -> bool {
     let on_layer = match layer {
         Some(layer) => has_layer(node, layer),
         None => node.front || node.back,
     };
-    on_layer && node.bounds.expanded(TOUCH).contains(&Rect::new(at, at))
+    on_layer && runs_into(rect_distance(&node.bounds, &Rect::new(at, at)), reach)
 }
 
 /// Whether the copper of two pads lies one on the other: the centre of one is inside the box of
@@ -573,7 +591,7 @@ fn copper_joins(
         for (ni, node) in nodes.iter().enumerate() {
             let touches = [track.from, track.to]
                 .iter()
-                .any(|&end| on_pad(node, end, Some(track.layer)))
+                .any(|&end| on_pad(node, end, track.width / 2.0, Some(track.layer)))
                 || runs_over(node, track);
             if touches {
                 out.push((ni, n + ti));
@@ -595,7 +613,7 @@ fn copper_joins(
             let shares = (node.front && via.on(CopperLayer::Front, layers))
                 || (node.back && via.on(CopperLayer::Back, layers))
                 || (node.front && node.back);
-            if shares && on_pad(node, via.at, None) {
+            if shares && on_pad(node, via.at, via.diameter / 2.0, None) {
                 out.push((ni, n + t + vi));
             }
         }
@@ -605,7 +623,10 @@ fn copper_joins(
             }
             if near(via.at, track.from)
                 || near(via.at, track.to)
-                || track.distance_to(via.at) <= (track.width + via.diameter) / 2.0 + TOUCH
+                || runs_into(
+                    track.distance_to(via.at),
+                    (track.width + via.diameter) / 2.0,
+                )
             {
                 out.push((n + t + vi, n + ti));
             }
@@ -1217,6 +1238,48 @@ mod tests {
     }
 
     #[test]
+    fn a_track_whose_end_is_on_a_pads_edge_joins_it_and_one_whose_copper_only_touches_does_not() {
+        // Issue #1334: KiCad joins a track's end to a pad nearer than half the track's width.
+        let board = crate::board::tests::led_board();
+        let (a, b) = pad_centres(&board, "VCC");
+        let n = board.nets.iter().find(|n| n.name == "VCC").unwrap();
+        let far = nodes_of(&board.parts, n)
+            .into_iter()
+            .find(|node| node.centre == b)
+            .unwrap()
+            .bounds;
+        // The end of a track from `a`, `beyond` past the edge of `b`'s pad that faces `a`.
+        let end = |beyond: f64| {
+            if a.x < b.x {
+                Pt::new(far.min.x - beyond, b.y)
+            } else {
+                Pt::new(far.max.x + beyond, b.y)
+            }
+        };
+        let width = 0.2;
+        let open = |beyond: f64| {
+            let mut board = board.clone();
+            board.tracks.push(Track::straight(
+                "VCC",
+                CopperLayer::Front,
+                a,
+                end(beyond),
+                width,
+            ));
+            Ratsnest::of(&board).lines.iter().any(|l| l.net == "VCC")
+        };
+        assert!(!open(-0.3), "an end inside the pad");
+        assert!(!open(0.0), "an end on the pad's edge");
+        assert!(!open(width / 4.0), "a round end that runs into the pad");
+        // KiCad does not join copper that only touches, nor copper that misses.
+        assert!(open(width / 2.0), "a round end that only touches the edge");
+        assert!(
+            open(width / 2.0 + 0.005),
+            "a round end 5 um short of the edge"
+        );
+    }
+
+    #[test]
     fn a_track_that_runs_over_a_pad_of_its_net_joins_it() {
         let mut board = crate::board::tests::led_board();
         let (a, b) = pad_centres(&board, "VCC");
@@ -1304,10 +1367,56 @@ mod tests {
         });
         board.fixed.locked.insert("GND".into());
         assert!(Ratsnest::of(&board).lines.iter().all(|l| l.net != "GND"));
-        // A VCC zone on the front: the GND pour is not drawn there, and GND is left.
+        // A VCC zone of the whole front has all of it: the GND pour, drawn under it, has no
+        // copper, and GND is left.
         board.zones.push(whole_board_zone(&board, "VCC", "F.Cu"));
         let lines = Ratsnest::of(&board).lines;
         assert!(lines.iter().any(|l| l.net == "GND"), "{lines:?}");
         assert!(lines.iter().all(|l| l.net != "VCC"), "{lines:?}");
+    }
+
+    #[test]
+    fn a_zone_of_another_net_leaves_the_pour_to_join_its_net_round_it() {
+        // Issue #1314: a small VCC zone in a corner of the front, away from every pad, leaves
+        // the GND pour round it, and its fill joins GND's pads as it did with no zone.
+        let mut board = crate::board::tests::led_board();
+        board.pours.push(BoardPour {
+            layer: CopperLayer::Front,
+            net: "GND".into(),
+            stitch_pitch: None,
+            thermal_gap: None,
+            spoke_width: None,
+            clearance: None,
+            min_width: None,
+            pads: None,
+        });
+        let o = board.outline;
+        let corner = |x: f64, y: f64| o.min + Pt::new(x, y);
+        let mut zone = whole_board_zone(&board, "VCC", "F.Cu");
+        zone.outline = vec![
+            corner(0.5, 0.5),
+            corner(2.0, 0.5),
+            corner(2.0, 2.0),
+            corner(0.5, 2.0),
+        ];
+        board.zones.push(zone);
+        let fills = crate::copper::zone_fills(&board).unwrap();
+        let gnd: f64 = fills
+            .iter()
+            .filter(|f| f.net == "GND" && f.layer == "F.Cu")
+            .flat_map(|f| f.areas.iter())
+            .map(Area::size)
+            .sum();
+        assert!(
+            gnd > 0.5 * o.width() * o.height(),
+            "the GND pour: {gnd} mm²"
+        );
+        let lines = Ratsnest::of(&board).lines;
+        assert!(lines.iter().all(|l| l.net != "GND"), "{lines:?}");
+        // A GND zone there instead restates the pour: only the corner is GND's, and GND is left.
+        board.zones[0].net = "GND".into();
+        assert!(board.replaced("F.Cu", "GND"));
+        let lines = Ratsnest::of(&board).lines;
+        assert!(lines.iter().any(|l| l.net == "GND"), "{lines:?}");
     }
 }

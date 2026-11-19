@@ -112,8 +112,8 @@ pub use export::{
     FilledPcb, PATH_PROPERTY, kicad_dru, kicad_pcb, kicad_pcb_filled, kicad_pro, process_zones,
 };
 pub use fill_report::{
-    ClearedPad, FillArea, FillIsland, FillPad, FillReport, FillSource, JoinCounts, JoinKind,
-    StarvedPad,
+    ClearedPad, FillArea, FillIsland, FillPad, FillPolygon, FillReport, FillSource, JoinCounts,
+    JoinKind, StarvedPad,
 };
 pub use fit_report::{FitReport, PartRef, Size};
 pub use footprint::{
@@ -152,7 +152,7 @@ pub use overhang::{
     reached as overhang_reached,
 };
 pub use part_fit::{FIT_STEP, FitNear, FitPlace, FitTarget, PartFit};
-pub use part_geometry::{PadGeometry, PartFrame, PartGeometries, PartGeometry};
+pub use part_geometry::{NoEntry, PadGeometry, PartFrame, PartGeometries, PartGeometry};
 pub use part_layout::{
     LayoutFinding, Limit, LoopPair, Measure, NearPair, PartGuideline, away_pairs, edge_parts,
     layout_findings, loop_pairs, measures, near_findings, near_pairs, pins_of,

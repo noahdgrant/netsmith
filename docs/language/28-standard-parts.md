@@ -374,9 +374,9 @@ board TooTight {
 
 ```text
 error: no combination of candidates satisfies `divider.rbottom` and `divider.rtop` together: the closest, divider.rbottom = 20kΩ 1% 0402 C25765 and divider.rtop = 56kΩ 1% 0603 C23206, fails because `divider.vout` must stay within 3.762V..3.838V, but (divider.vref * (1 + (divider.rtop.resistance / divider.rbottom.resistance))) works out to 3.707V..3.896V
-    --> std/parts/regulator.nsm:138:5
+    --> std/parts/regulator.nsm:156:5
     |
-138 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
+156 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -500,9 +500,9 @@ board TooMuchMargin {
 
 ```text
 error: no `capacitor` candidate satisfies `reg.input_cap`: the closest of the 36 that fit, 1 x 2.2uF 10% 100V X7R 1210 C55151, fails because reg.input_cap.max_voltage must always be at least (reg.vin.voltage * reg.voltage_margin), but 100V is not always above 95V..105V (`reg.input_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 25)
-    --> std/parts/regulator.nsm:621:5
+    --> std/parts/regulator.nsm:649:5
     |
-621 |     .input_cap.max_voltage >= .vin.voltage * .voltage_margin
+649 |     .input_cap.max_voltage >= .vin.voltage * .voltage_margin
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -539,14 +539,14 @@ board Overload {
 
 ```text
 error: -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 15.11uA..3.001A is not always below 2A, and whichever parts are picked, its range reaches 3A or higher (the currents on net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3.001A..-15.11uA) + reg.inductor.current (15.11uA..3.001A) add up to zero; net `1V8` in `reg`: reg.divider.supply.current (14.62uA..16.37uA) + -reg.inductor.current (15.11uA..3.001A) + -reg.vout.current (-3A..0A) add up to zero; net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..0A) add up to zero; net `1V8` in `reg.divider`: -reg.divider.supply.current (14.62uA..16.37uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled)
-    --> std/parts/regulator.nsm:230:5
+    --> std/parts/regulator.nsm:248:5
     |
-230 |     -.sw.current <= .max_output_current
+248 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -reg.vout.current must always be at most reg.ic.max_output_current, but 0A..3A is not always below 2A, and whichever parts are picked, its range reaches 3A or higher (the currents on net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..0A) add up to zero; net `1V8` in `reg`: reg.divider.supply.current (14.62uA..16.37uA) + -reg.inductor.current (15.11uA..3.001A) + -reg.vout.current (-3A..0A) add up to zero; net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3.001A..-15.11uA) + reg.inductor.current (15.11uA..3.001A) add up to zero; net `1V8` in `reg.divider`: -reg.divider.supply.current (14.62uA..16.37uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled)
-    --> std/parts/regulator.nsm:618:5
+    --> std/parts/regulator.nsm:646:5
     |
-618 |     -.vout.current <= .ic.max_output_current
+646 |     -.vout.current <= .ic.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -603,9 +603,9 @@ board HighInput {
 
 ```text
 error: reg.on_time must always be at least reg.ic.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:636:5
+    --> std/parts/regulator.nsm:664:5
     |
-636 |     .on_time >= .ic.min_on_time
+664 |     .on_time >= .ic.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -654,9 +654,9 @@ board TooQuiet {
 
 ```text
 error: no `capacitor` candidate satisfies `reg.output_cap`: the closest of the 36 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because reg.output_cap.total_effective_capacitance must always be at least reg.ic.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`reg.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 25)
-    --> std/parts/regulator.nsm:651:5
+    --> std/parts/regulator.nsm:679:5
     |
-651 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
+679 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -934,9 +934,9 @@ board Converter {
 
 ```text
 error: the `lt8641` catalog is empty (no file of it has a row), so nothing can be picked for `reg.ic`: add rows to `catalogs/lt8641.csv` in the project (docs/language/12, "Catalog files")
-    --> std/parts/regulator.nsm:516:5
+    --> std/parts/regulator.nsm:544:5
     |
-516 |     .ic: Ic
+544 |     .ic: Ic
     |     ^^^^^^^
 ```
 
@@ -1022,6 +1022,75 @@ The datasheet's other parts (the feedback phase-lead capacitor, an enable divide
 
 A footprint is added only from a package drawing that was read: each pad's size and place is a dimension of the manufacturer's land pattern, `std/libs/README.md` says which were read from the drawing and which were assumed, and a package with a dimension that cannot be read is not added.
 
+### Load switches
+
+A load switch passes its input rail to its output rail while its enable turns it on (issue 1269). `std::parts::switch::LoadSwitch` is the IC, a generic with the rails `in` and `out` on one ground, the pin `enable` (an input, high for on), `.on_resistance`, `.max_current` and `.quiescent_current` (default none). A concrete IC is a part that provides it and writes its pin table and its datasheet's numbers. It is a converter between the two rails, as a regulator is: the output supplies what its loads draw, the input draws that and the quiescent current, and the output's voltage is the input's less the drop, `.on_resistance` times the load. So the current budget sees the output's loads on the input's rail, the power tree has the switch as an edge from the one rail to the other, with its `.max_current` as what the output can give, and the DC analysis puts the on resistance between the two rails (`dc load_switch`, "What a part is at DC").
+
+The output is supplied when the enable can turn the switch on, and the switch is then taken as on, the worst case for what the input supplies: a host's pin that drives the enable (`output`, `tri_state` or `bidirectional`), the enable joined to a rail's `pos` (the input's own, for a switch that is always on), or a passive part on its net (a pull-up, a series resistor, a connector). An enable on a ground, on a net with nothing else, stated `unused`, or with only inputs and open-drain outputs on its net cannot: the DC analysis leaves the switch open, and the power tree says why its output has no source (`3V3_A has no source: the load switch `sw` is off, since its enable `sw.enable` is held low: ...`). An enable that a pull-up inside the IC holds high when it floats is taken as off, since the pin table does not say so: tie it to the input. The switch's own heat, its turn-on time and inrush current, and an enable that is active low are not modelled.
+
+`std::parts::switch::PmosLoadSwitch` is the same use of a P-channel MOSFET, which the solver picks from `p_mosfet`: its source on `.in`, its drain on `.out`, its gate `.enable`, low for on. The MOSFET is a `~>` chain from the input to the output, so the input draws what the output's loads draw, and its `.on_resistance` and `.max_current` are the MOSFET's. It assumes that the gate is pulled to the input's ground to turn it on and that the channel blocks the input's voltage while it is off; the board puts the pull-up that holds the gate at the input. The DC analysis models the MOSFET as a switch when what sets its gate is known ("DC analysis").
+
+Here an invented IC, which a host's pin turns on, feeds a sensor:
+
+```nsm evaluate
+import std::logic::Logic
+import std::parts::switch::LoadSwitch
+import std::sources::Rail
+
+/// Invented: a load switch IC, 2 A, 40 to 80 mohm.
+part Zsw provides LoadSwitch {
+    .on_resistance &= 40mohm..80mohm
+    .max_current &= 2A
+    .quiescent_current &= 0A..10uA
+    pins {
+        .in.pos  power "VIN"  "1"
+        .in.neg  power "GND"  "2"
+        .enable  input "ON"   "3"
+        .out.pos power "VOUT" "4"
+    }
+}
+
+/// Invented: a host whose pin turns the switch on.
+part Host {
+    .vdd: Rail
+    .vdd.current &= 1mA..20mA
+    .en: Logic
+    .en.reference ~ .vdd
+    .en.reference.current &= 0A
+    .en.voh &= .vdd.voltage - 0.4V at 4mA
+    .en.vol &= 0.4V at 4mA
+    pins {
+        .vdd.pos power  "VDD" "1"
+        .vdd.neg power  "GND" "2"
+        .en.line output "PA0" "3"
+    }
+}
+
+/// Invented: a sensor on the switched rail.
+part Sensor {
+    .vdd: Rail
+    .vdd.current &= 5mA..150mA
+    pins {
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+    }
+}
+
+board Switched {
+    .supply: Rail { .voltage &= 3.3V +/- 3%; .pos.net &= "3V3"; .neg.net &= "GND" }
+    .host: Host
+    .supply ~ .host.vdd
+    .sw: Zsw
+    .supply ~ .sw.in
+    .sw.enable ~ .host.en.line
+    .sw.out.pos.net &= "3V3_A"
+    .sensor: Sensor
+    .sw.out ~ .sensor.vdd
+}
+```
+
+`netsmith board power` shows `3V3 -> 3V3_A (converts: sw (Zsw))`, the sensor's 5 mA to 150 mA as the load `sw.in` of `3V3` (with the switch's own 10 uA), and `3V3_A` at 3.189 V to 3.399 V: the supply's least, 3.201 V, less 80 mohm times 150 mA.
+
 ### Dropout
 
 A regulator whose input falls toward its output stops regulating: its output follows the input, less a drop that grows with the load (issue #1259). A linear regulator's output is then the input less its `.dropout`, and a buck converter's, with its high-side switch held on for the whole period, the input less the load's drop across that switch and the inductor's winding. The output is the lower of the set point and that, so it still reaches the least voltage of its rail while the input is at least that voltage plus the drop: that is the least input the regulator needs, and it is what the two check.
@@ -1090,6 +1159,142 @@ board FallingCell {
     .u.vout ~ .load
     .environment: Environment { .temperature &= 25degC }
 }
+```
+
+### The power-up order of a board
+
+A board states the order in which its rails come up and its enable pins go high with a `sequence` (issue #1267), as a datasheet gives it ("apply VDD_IO at least 2 ms after VDD_CORE"): events one to a statement, parted by `then`, which takes the least delay between the event before it and the one after it, or none for "at or after". `after .e` below an event says that event also comes at or after `.e`, which is not in the order with the others:
+
+```nsm-fragment
+sequence {
+    .core.vout
+    then 2ms
+    .io.vout
+    after .radio.en
+}
+```
+
+The statements may be parted by `;` on one line (`sequence { .core.vout; then 2ms; .io.vout }`), and `netsmith project fmt` writes them one to a line. An event is a rail, which comes up (reaches its voltage), or a pin, which goes high. A part, a module or a value is refused, with what to write (`.core` is a module: write `.core.vout`), and so are a delay that is not a time and one of nothing (write `then` alone). Only a board states a sequence: a part or a module states the delays of its own, and the board says what order it needs.
+
+The solver gives each event a window of time from power-on, from the earliest it can happen to the latest, and an order holds when the earliest of the later event is at least the delay after the latest of the earlier one. The windows come from what the board is:
+
+- A net that holds the `pos` of a rail and that no regulator drives is a supply, up at power-on.
+- A regulator (a part with a `dc linear_regulator` or `dc switching_regulator` element) drives the `pos` net of its output rail, and the nets an inductor, a ferrite bead or a fuse joins to it (a `Buck`'s output). It starts when its input is up and its enable pin, the member `.en` when it has one, is high; then it waits `.enable_delay` and rises for `.soft_start_time`. `LinearRegulator` and `BuckIc` have both: `.enable_delay` defaults to none (`?= 0s`) on both, `.soft_start_time` to none on `LinearRegulator` and is optional on `BuckIc` (above). A part states them from its datasheet as ranges, and the window takes the least of each for its earliest time and the most for its latest. A soft-start that has no value adds nothing to the earliest time and leaves the latest one not known. An enable pin that nothing on the board joins follows the input, as an IC with an internal pull-up does.
+- A load switch (`dc load_switch`, _Load switches_ above) drives its output as a regulator does, from its input and its enable. Its turn-on time is not modelled, so it adds nothing to the earliest time and an order that needs its latest time is not evaluated.
+- A pin on a supply or a regulator's output goes high as the rail rises: from the start of the rise to the time the rail is up.
+- A pin pulled up from a rail by one resistor, with a resistor to ground or none, and capacitors to ground, crosses the threshold `Vth` of its part (`.enable_threshold`, an optional member of both generics, rising, as the datasheet gives it) after `R * C * ln(V / (V - Vth))`, with `R` and `V` the Thevenin resistance and voltage of the resistors. The earliest time takes the least `R` and `C`, the most `V` and the least `Vth`, counted from the start of the rail's rise; the latest the other ends, counted from the time the rail is up. A part that states no threshold leaves the latest time not known.
+
+An order that is not kept is an error that names the two events, when each happens and why, and the margin. One that cannot be judged is listed as not evaluated with the reason: a window whose latest time is not known where it is needed, an enable that an output pin drives (a GPIO, whose time is the firmware's), a pin pulled up from two nets, a rail that a MOSFET switches, or the latest time of a load switch's output (neither turn-on time is modelled).
+
+This IC, invented for this guide, is `Zbk4` with its enable left to the board:
+
+```nsm module=src::zbk6
+import std::parts::regulator::BuckIc
+
+/// A 2 A buck converter for 4.5 V to 6 V with an enable pin. Illustrative; not a real part.
+part Zbk6 provides BuckIc {
+    .vref &= 0.8V +/- 1.5%
+    .fsw &= 1.2MHz +/- 15%
+    .min_input_voltage &= 4.5V
+    .max_input_voltage &= 6V
+    .max_output_current &= 2A
+    .efficiency &= 0.85..0.95
+    .min_inductance &= 1.5uH
+    .min_inductor_saturation &= 3A
+    .max_inductor_dcr &= 0.1ohm
+    .min_input_capacitance &= 2uF
+    .min_output_capacitance &= 10uF
+    .soft_start_time &= 2ms..4ms
+    .enable_delay &= 0.2ms..0.5ms
+    .enable_threshold &= 1.1V..1.3V
+    .vin.current == -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)
+    dc switching_regulator .vin .sw .efficiency
+
+    pins {
+        //  pin          kind    name   pads
+        .vin.pos power "VIN" "1" "2"
+        .vin.neg power "GND" "3" "9"
+        .sw.pos  power "SW"  "4" "5"
+        .fb      input "FB"  "6"
+        .en      input "EN"  "7"
+    }
+}
+```
+
+The core rail is up by 4 ms at the latest. The I/O rail's enable is held by 100 kohm and 1 uF from the input, a time constant of 89 ms at the least, so it goes high about 21 ms after power-on at the earliest and its rail is up long after the 2 ms the board asks:
+
+```nsm evaluate
+import std::parts::passive::{Capacitor, Resistor}
+import std::parts::regulator::Buck
+import std::sources::Rail
+
+import src::zbk4::Zbk4
+import src::zbk6::Zbk6
+
+board Ordered {
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .core: Buck<Zbk4> { .vout.voltage &= 1.8V +/- 3% }
+    .io: Buck<Zbk6> { .vout.voltage &= 3.3V +/- 5% }
+    .core_load: Rail { .pos.net &= "1V8"; .current &= 0mA..500mA }
+    .io_load: Rail { .pos.net &= "3V3"; .current &= 0mA..500mA }
+    .input ~ .core.vin
+    .input ~ .io.vin
+    .core.vout ~ .core_load
+    .io.vout ~ .io_load
+
+    .delay: Resistor { .resistance &= 100kohm +/- 1% }
+    .hold: Capacitor { .capacitance &= 1uF +/- 10% }
+    .input.pos ~> .delay ~> .io.ic.en
+    .io.ic.en ~> .hold ~> .input.neg
+
+    sequence {
+        .core.vout
+        then 2ms
+        .io.vout
+    }
+}
+```
+
+With 100 nF the enable goes high from about 2.1 ms, so the I/O rail may be up 4.3 ms after power-on, only 0.3 ms after the core rail is up at the latest:
+
+```nsm fails
+import std::parts::passive::{Capacitor, Resistor}
+import std::parts::regulator::Buck
+import std::sources::Rail
+
+import src::zbk4::Zbk4
+import src::zbk6::Zbk6
+
+board TooSoon {
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .core: Buck<Zbk4> { .vout.voltage &= 1.8V +/- 3% }
+    .io: Buck<Zbk6> { .vout.voltage &= 3.3V +/- 5% }
+    .core_load: Rail { .pos.net &= "1V8"; .current &= 0mA..500mA }
+    .io_load: Rail { .pos.net &= "3V3"; .current &= 0mA..500mA }
+    .input ~ .core.vin
+    .input ~ .io.vin
+    .core.vout ~ .core_load
+    .io.vout ~ .io_load
+
+    .delay: Resistor { .resistance &= 100kohm +/- 1% }
+    .hold: Capacitor { .capacitance &= 100nF +/- 10% }
+    .input.pos ~> .delay ~> .io.ic.en
+    .io.ic.en ~> .hold ~> .input.neg
+
+    sequence {
+        .core.vout
+        then 2ms
+        .io.vout
+    }
+}
+```
+
+```text
+error: the `sequence` says `io.vout` comes at least 2ms after `core.vout`, but it may come only 294.9us after it: `core.vout` is up by 4ms at the latest (`core.ic` starts when its input is up and `core.ic.en` is high, then waits 0s and rises for 2ms to 4ms) and `io.vout` is up from 4.295ms at the earliest (`io.ic` starts when its input is up and `io.ic.en` is high, then waits 200us to 500us and rises for 2ms to 4ms); the margin is -1.705ms, 1.705ms short
+   --> main.nsm:25:9
+   |
+25 |         .core.vout
+   |         ^^^^^^^^^^
 ```
 
 ### Current through a part
@@ -1238,6 +1443,14 @@ error: d.supply_fault_current must always be at most d.max_forward_current, but 
 
 `Crystal` has `.frequency` (state it with its tolerance, `16MHz +/- 20ppm`) and `.load_capacitance`, and no relation: the two load capacitors are the design's. Pins `.a` and `.b` are the two terminals in every package; the four-pad 3225 package (3.2 x 2.5 mm) also has `.case`, its two case pads (2 and 4, which the makers' drawings call GND), which a board may join to ground or leave open like any passive pin, and a board that joins `.case` of a crystal in a two-pad package is refused because the pin is not there. A provider of `Crystal` gives `.case` a row. `FerriteBead` has `.impedance` at `.impedance_frequency`.
 
+`Supercap` is a supercapacitor of one cell, or of two cells in series in one case (issue #1261). Its pins are `.p` and `.n`, and `.mid`, the node between two cells that a balancing circuit holds at half the voltage, which only the three-lead package brings out: a board that joins `.mid` is given a row in that package, as a crystal's `.case` is the four-pad package's. Every value is the whole part's: `.capacitance` (rated at the rated voltage, so with no curve over the bias, and `.effective_capacitance` is the same value, which a burst of a load and a corner read), `.esr` at AC and `.dc_esr` at DC, `.leakage_current`, and `.max_voltage`, which a row writes in steps over temperature where the datasheet derates it (`5.5V to 65degC, 4.2V to 85degC`). `.cell_voltage` is worked out, `.bias / .cells`. `.bias` is the voltage at `.p` relative to `.n`, given by the rail it is across the way round it is wired, so one wired backwards fails `.bias >= 0V`. A row states `height_growth`, how much the case swells over its life, which the height check adds, and `soldering`, a `Soldering`: the board house solders what it places in a reflow oven, so a part that allows `Hand` only must be `.assembly &= AssemblyMode::Hand`, and one that allows `None` must not be fitted by solder:
+
+```text
+error: `hold` may be soldered by hand only (its catalog row ZZS-0F5 states `soldering` Hand), and its assembly is `AssemblyMode::Fab`: the board house solders the parts it places in a reflow oven, which the part's datasheet forbids; state `.hold.assembly &= AssemblyMode::Hand`, or choose a part that allows reflow
+```
+
+The standard catalog `supercap` has no row: no part has a recorded source yet, so a project brings its own rows in a file of the catalog `supercap`.
+
 ### Transistors
 
 `NMosfet` and `PMosfet` have the pins `gate` (an input, which must be connected), `source` and `drain`. All their voltages and currents are magnitudes. The design states the stress it puts on the part: `.drain_source_voltage`, the voltage the part blocks while off, and `.gate_source_voltage`, the voltage the gate is driven to while on. They are checked against the maxima, and the gate drive against the threshold, which is a range: the drive must be above the highest threshold.
@@ -1357,7 +1570,7 @@ error: no `p_mosfet` candidate satisfies `q`: the closest of the 4 that fit, ZP-
 
 ### What a part is at DC
 
-A part says what it is to a DC analysis with a `dc` statement, once, in the part or in the generic that it provides (ADR 0076, amendment 1). The statement names the element, then its pins, then its values, in the order the element fixes:
+A part says what it is to a DC analysis with a `dc` statement, once, in the part or in the generic that it provides (ADR 0076, amendment 1). A part that gives several rails states one for each rail it gives (see "A part that gives several rails" below). The statement names the element, then its pins, then its values, in the order the element fixes:
 
 ```nsm-fragment
 dc resistor .a .b .resistance
@@ -1367,6 +1580,7 @@ dc pmos .gate .drain .source .gate_threshold .on_resistance
 dc linear_regulator .vin .vout .quiescent_current
 dc switching_regulator .vin .sw .efficiency
 dc source .vbatt
+dc load_switch .in .out .enable .on_resistance .quiescent_current
 ```
 
 - `dc resistor <terminal> <terminal> <resistance>`: a resistance between two pins, over the range of the field (a resistor, a fuse, a ferrite bead's `.dc_resistance`).
@@ -1374,10 +1588,11 @@ dc source .vbatt
 - `dc nmos` and `dc pmos`, `<gate> <drain> <source> <gate threshold> <on resistance>`: a MOSFET as a switch, `.on_resistance` between drain and source when the gate drive is above the threshold and open when it is below. The gate draws nothing, and the values are magnitudes as in `NMosfet` and `PMosfet`.
 - `dc linear_regulator <input rail> <output rail> [<quiescent current>]` and `dc switching_regulator <input rail> <output rail> <efficiency> [<quiescent current>]` (ADR 0076, amendment 3; the optional operand, ADR 0096): a regulator. The first two operands are the part's rails (a rail inside an interface is named through it: `.out.sw`), not pins. The output rail is an ideal source over the range of its `.voltage`; the input rail draws what the output asks. A linear regulator draws what it supplies and its quiescent current, a range of currents that is not negative, taken at both ends (amendment 9): the third operand is optional, a field of the part that is a current, and a linear regulator that leaves it out draws what it supplies alone. A switching one draws `Pout / (efficiency * Vin)`, with the efficiency a number (a range, `0.85..0.95`, is taken at both ends); an efficiency has to be above 0 and at most 1 (ADR 0076, amendment 14), and one that is not (`85..95` for `85%..95%`, a converter that makes power) is an error that names the part and the value, and the regulator is not modelled. A switching regulator draws its quiescent current too when its statement names one, as a fourth operand that is optional in the same way (ADR 0096); with the output unloaded it still draws that current. A quiescent current that the part names and leaves with no value (or a negative one) is a number nothing can model with: the regulator is not modelled and the island in front of it is left alone, as for a regulator that states no `dc`.
 - `dc source <supply rail>` (ADR 0076, amendment 5): the part gives this rail from outside the board, as a connector gives the supply of a vehicle. The operand is a rail of the part. Its `pos` net is held over the range of the rail's `.voltage` that the design states, and its `neg` net at zero, as a `Rail` that the board declares itself is (see "Supplies" below). A part with a rail it takes its supply from (what a load is) does not state it.
+- `dc load_switch <input rail> <output rail> <enable> <on resistance> [<quiescent current>]` (issue 1269): a switch between two rails of the part that share a ground. The first two operands are rails, the third the enable pin. While the enable can turn the switch on (see "Load switches") it is its on resistance between the two rails' `pos` nets, and the input draws the quiescent current as well when the statement names one; while it cannot, it is open. The standard `LoadSwitch` states it.
 
-The standard `Resistor`, `Fuse`, `FerriteBead`, `NtcThermistor` (over the range of its maker's resistance-temperature table), `Inductor` (its winding: `dc resistor .a .b .dc_resistance`, ADR 0076, amendment 6), `Diode`, `Schottky`, `Led` (a diode that drops its `.forward_voltage`, ADR 0113), `NMosfet`, `PMosfet`, `LinearRegulator`, `Lt8641`, and the two connectors that give a supply, `Obd2M` (`.vbatt`) and `UsbCPower` (`.vbus`), state theirs (any other buck converter's IC is a part of the design's own, and states `dc switching_regulator` itself, as the one in "Switching regulators" does; the statement is a power balance that assumes no topology, so a buck-boost or boost IC states it the same way on its own input and output rails), so a provider of one of them has it on its own pins and fields without writing it. A part with a `bridge` and no `dc` statement is a boundary: a DC analysis cannot see through it. An inductor is its winding at DC, so the node past a buck stage's inductor is the switch node less what the load makes the winding drop, and the output side of the stage is an island of its own. `Switch`, `Zener` and `Tvs` are boundaries for now. A module has no `dc` statement of its own: its network is the elements of the parts inside it.
+The standard `Resistor`, `Fuse`, `FerriteBead`, `NtcThermistor` (over the range of its maker's resistance-temperature table), `Inductor` (its winding: `dc resistor .a .b .dc_resistance`, ADR 0076, amendment 6), `Diode`, `Schottky`, `Led` (a diode that drops its `.forward_voltage`, ADR 0113), `NMosfet`, `PMosfet`, `LinearRegulator`, `LoadSwitch`, `Lt8641`, and the two connectors that give a supply, `Obd2M` (`.vbatt`) and `UsbCPower` (`.vbus`), state theirs (any other buck converter's IC is a part of the design's own, and states `dc switching_regulator` itself, as the one in "Switching regulators" does; the statement is a power balance that assumes no topology, so a buck-boost or boost IC states it the same way on its own input and output rails), so a provider of one of them has it on its own pins and fields without writing it. A part with a `bridge` and no `dc` statement is a boundary: a DC analysis cannot see through it. An inductor is its winding at DC, so the node past a buck stage's inductor is the switch node less what the load makes the winding drop, and the output side of the stage is an island of its own. `Switch`, `Zener` and `Tvs` are boundaries for now. A module has no `dc` statement of its own: its network is the elements of the parts inside it.
 
-The rules. A `dc` statement is in a part (or a generic that has pins); the element is one of `resistor`, `diode`, `nmos`, `pmos`, `linear_regulator`, `switching_regulator` and `source`; the pins are pins of the part (the rails of a regulator or a source are rails of the part) and are different; each value is a field of the part with the quantity of its place; a part has one `dc` statement; and when the part has a `bridge`, the element runs between the two pins the `bridge` joins (the drain and the source for a MOSFET). The order of the statements does not matter.
+The rules. A `dc` statement is in a part (or a generic that has pins); the element is one of `resistor`, `diode`, `nmos`, `pmos`, `linear_regulator`, `switching_regulator`, `source` and `load_switch`; the pins are pins of the part (the rails of a regulator, a source or a load switch are rails of the part) and are different; each value is a field of the part with the quantity of its place; a part has one `dc` statement, or one `dc source`, `dc linear_regulator` or `dc switching_regulator` for each rail it gives, each a different rail (issue 1271); and when the part has a `bridge`, the element runs between the two pins the `bridge` joins (the drain and the source for a MOSFET). The order of the statements does not matter.
 
 The resistor, the diode, the regulators and the MOSFET are solved by the DC analysis (next section).
 
@@ -1461,7 +1676,7 @@ board B {
 ```
 
 ```text
-error: `dc` does not know the element `coil`; the elements are resistor, diode, nmos, pmos, linear_regulator, switching_regulator and source
+error: `dc` does not know the element `coil`; the elements are resistor, diode, nmos, pmos, linear_regulator, switching_regulator, source and load_switch
   --> main.nsm:8:8
   |
 8 |     dc coil .a .b .resistance
@@ -1547,7 +1762,7 @@ error: `dc resistor` runs between .a and .c, and this part's `bridge` joins .a a
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-A part is one element, so a second statement is refused, with the place of the first (a provider that repeats the statement of its generic gets the same message):
+A part is one element, so a second statement is refused, with the place of the first (a provider that repeats the statement of its generic gets the same message), unless each statement gives a rail (below):
 
 ```nsm fails
 part Shunt {
@@ -1567,11 +1782,61 @@ board B {
 ```
 
 ```text
-error: this part already has a `dc` statement (at main.nsm:8); a part is one element at DC
+error: this part already has a `dc` statement (at main.nsm:8); a part is one element at DC, or a `dc source` or a regulator for each rail it gives
   --> main.nsm:9:5
   |
 9 |     dc diode .a .b .forward_voltage
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+#### A part that gives several rails
+
+A part with two output rails, a radio module that gives the board an I/O reference and a SIM supply, or a regulator IC with two outputs, states a `dc` for each rail it gives (issue 1271): a `dc source` for a rail it gives from outside the board, a `dc linear_regulator` or `dc switching_regulator` for a rail it makes from another. Each rail has its own `.voltage` and its own `.current`, so each holds its net in the DC analysis, a `.current` that the part or the board states is a budget of that rail alone (see "Supplies" below), and the checks that look for a source on a net (two power sources on one net, a pull to a rail nothing sources) see every one. Two regulators of one part that take the same input rail draw through it what both outputs ask: the DC analysis writes the sum to the input's `.current`.
+
+```nsm
+import std::sources::Rail
+
+/// Invented: a module that gives the board two rails, each with its own limit.
+part Radio {
+    .vio: Rail
+    .vsim: Rail
+    .vio.neg ~ .vsim.neg
+    .vio.voltage &= 1.8V
+    .vio.current &= -50mA..0A
+    .vsim.voltage &= 3V
+    .vsim.current &= -20mA..0A
+    dc source .vio
+    dc source .vsim
+}
+
+board B {
+    .radio: Radio
+}
+```
+
+An element that gives no rail (a resistor, a diode, a MOSFET) is still the part's only one, and two statements that give the same rail are refused:
+
+```nsm fails
+import std::sources::Rail
+
+part Radio {
+    .vio: Rail
+    .vsim: Rail
+    dc source .vio
+    dc linear_regulator .vsim .vio
+}
+
+board B {
+    .radio: Radio
+}
+```
+
+```text
+error: `dc linear_regulator` gives the rail `.vio`, and this part's `dc source` (at main.nsm:6) gives it already; a part states one `dc` for each rail it gives
+  --> main.nsm:7:5
+  |
+7 |     dc linear_regulator .vsim .vio
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A module has no element of its own (nor has a board): its network is the elements of the parts inside it.
@@ -1736,6 +2001,8 @@ What it models in this stage:
 - **Loads.** A rail of a part, or a rail of the board that is not a supply, with a `.current` that is never negative is a current source over that range from its `pos` to its `neg`. A part with a `bridge` and no `dc` statement (an LED, an inductor) that has a `.current` with a value, stated or worked out, is a current source over it between the pins of its `bridge`: this is how a board states what is behind a pin that nothing models (a boundary takes a stated `.current`). A pin that the checker says draws nothing (ADR 0027: a capacitor, an input) adds nothing, and a capacitor is open at DC.
 
 - **Regulators.** A part with `dc linear_regulator` or `dc switching_regulator` holds the net of its output rail over the range of the rail's `.voltage` (an ideal source, so what is behind it is an island of its own) and draws from its input what its output asks. A board rail on the output net is then what the regulator supplies: a load, whatever voltage the board states for it. A linear regulator draws what it supplies and its quiescent current, when its statement names one (the range of the current, both ends added to the load's: the load and the quiescent current are drawn at once). A switching one draws `Pout / (efficiency * Vin)`, and `Vin` is what the parts in front of it leave after the current they carry, so the current is the solution of a fixed point, which the pass finds from zero: the iterates rise to the least solution, and when there is none the input falls to nothing. The power tree is solved in order, the output side first: what the loads behind a regulator take (as a range, summed over everything on its output net) is the regulator's load when the island in front of it is solved. A regulator whose output has a pin that nothing models falls back on its own `.vout.current` when something states it (or the balances worked it out), and is otherwise left alone, with the island in front of it. The pass writes the regulator's `.vin.current` and `.vin.voltage` by the rules below, so the part's own relations (`.vin.voltage >= min(.vout.voltage) + .dropout`, `.vin.voltage >= .buck.min_input_voltage`, a stage's `.vin.voltage <= ...`) are judged with the voltage the circuit gives it, and the parts in front (a fuse, a diode, a shunt, a bead) take their currents from it.
+
+- **Load switches** (issue 1269). A part with `dc load_switch` whose enable can turn it on is its on resistance between the `pos` nets of its two rails, so its output's net is a node behind its input's: the output is the input less the drop, and what the output's loads draw is drawn through the input, from the source or the regulator that holds it. Its quiescent current, when the statement names one, is drawn from the input as well. A switch whose enable cannot turn it on is left out with the net of its output, since the part's relations are those of a switch that is on, and a note says why: `the DC analysis does not work out what is behind the load switch `sw`: its enable `sw.enable` is held low: ...`.
 
 - **Logic pins that drive** (ADR 0076, amendment 4). A pin of kind `output`, `tri_state` or `bidirectional` that states its `voh` and its `vol` with the current each is measured at, as the datasheet does (`.voh &= .vdd.voltage - 0.4V at 2mA`, `.vol &= 0.4V at 2mA`), is high, low or (a tri-state or bidirectional pin) high impedance. High joins the line to the pin's supply through an output resistance, low joins it to the pin's ground, and high impedance joins it to nothing. The resistance is the drop over the test current, `0.4 V / 2 mA` = 200 ohm, taken from zero up to that (a lighter load drops less; under 1 mohm the pin is a branch with its own resistance, as a resistor is), so the pin can be exactly at its supply. The pass tries every state of every pin with the states of everything else, and writes what the pin's load carries: a pull-down on the line gets its `.current` and `.drop`, and its relations are judged. The pin needs a reference rail whose two nets a supply or a regulator's output holds, no `.swing` (a line that goes to a supply with no pin has a high the reference rail does not give), and no other pin that could drive its net: two such pins are not modelled, since their states include driving it apart (an input that only leaks, below, is no driver, and may share the net). A pin that states a level without its test current, or a `voh` and no `vol`, is a boundary, unless the part states the output resistances itself (below).
 
@@ -2509,13 +2776,13 @@ A pair is judged only when both ends have levels. When one end states them and t
 
 - A pin that can drive the net and is not the `.line` of a `Logic` or a pin of an interface or a part with `levels` (an `output`, `tri_state`, `bidirectional` or `open_drain` pin of a part that writes it plainly and has no `levels`), on a net with a receiver that states `vih` or `vil`: `not evaluated: the logic levels from `m.stat` to `b.in` on net `...`: `m.stat` can drive it and is not the `line` of a `Logic` or a pin of an interface or a part with `levels`, so its levels are not known`. A plain `open_drain` pin does not set its high: as for an `open_drain` line, the high is what the DC analysis or the pull-up gives the line, measured from the receiver's ground and judged against its `vih` (see "An open-drain line" below), and only its low is a note.
 - A pin that reads the net and has no levels (a plain `input` or `bidirectional` pin), on a net with a driver that states `voh`, `vol` or a swing: `... `q.en` reads it and is not the `line` of a `Logic` or a pin of an interface or a part with `levels`, so the levels it needs are not known`. The gate of a `NMosfet` is such a pin: its own relations judge the voltage across it where the board states them.
-- A receiver that states levels on a net that nothing on it drives, joined by a part with a `bridge` to a net that something drives: a series resistor, the top of a divider, a diode, or the channel of a MOSFET that translates a level. When the driver on the far net is a `Logic` line that the DC analysis models (its `voh` and `vol` state the current they are measured at, `at 100uA`, or it states `.roh` and `.rol`), the analysis solves the network once with the driver held high and once held low, and the receiver is judged by the voltage that gives its net: the lowest high against its `vih`, the highest low against its `vil`, over every corner of the ranges and every state of the other parts. An open-drain driver does not drive high, so its high is the net's voltage with every driver of the two nets letting go (what the pull-up gives it). A driver the analysis does not model (one with no test current, or a swing), behind a resistor into a net that nothing else is on (its other pins are `input`s that state no leakage), is judged as a pair on the far net: no current flows through the resistor, so the receiver sees the driver's own levels, and the message names the far net. Any other driver (a plain pin, a driver the analysis does not model into a net with a pull-up or a pull-down), a network the analysis does not solve, or a receiver on another ground is a note that names the part and the net the level comes from. A resistor to a rail or to ground only pulls the net there and is not named, and a net that has a driver of its own is judged on its own lines.
+- A receiver that states levels on a net that nothing on it drives, joined by a part with a `bridge` to a net that something drives: a series resistor, the top of a divider, a diode, or the channel of a MOSFET that translates a level. When the driver on the far net is a `Logic` line that the DC analysis models (its `voh` and `vol` state the current they are measured at, `at 100uA`, or it states `.roh` and `.rol`), the analysis solves the network once with the driver held high and once held low, and the receiver is judged by the voltage that gives its net: the lowest high against its `vih`, the highest low against its `vil`, over every corner of the ranges and every state of the other parts. An open-drain driver does not drive high, so its high is the net's voltage with every driver of the two nets letting go (what the pull-up gives it). A driver the analysis does not model (one with no test current, or a swing), behind a resistor into a net that nothing else is on (its other pins are `input`s that state no leakage), is judged as a pair on the far net: no current flows through the resistor, so the receiver sees the driver's own levels, and the message names the far net. A driver the analysis does not model behind a two-resistor divider (a series resistor into a net whose only other resistor goes to a rail or to ground) is judged at the divider's levels (see "A level through a two-resistor divider" below). Any other driver (a plain pin, an open-drain driver the analysis does not model, a driver the analysis does not model into any other network of resistors), a network the analysis does not solve, or a receiver on another ground is a note that names the part and the net the level comes from. A resistor to a rail or to ground only pulls the net there and is not named, and a net that has a driver of its own is judged on its own lines.
 - A receiver that states levels on a net whose own drivers can all let go of it (`tri_state`, `bidirectional` or `open_drain` pins), joined by a part with a `bridge` to a net with a driver that states levels: when the drivers on its own net let go, the far driver's level comes through the part. The low that one side of a MOSFET translator between two buses pulls the other side to is such a level. Each side's own lines are judged on that side. What crosses is judged as above, with every driver of the receiver's own net held letting go of it, where the DC analysis models the far driver: `net `...`: with `b.io` driving low and every driver of net `...` letting go of it, the DC analysis holds the line at ... through `q` from net `...` but `a.io.vil` allows ...`. For any other far driver it is named: `not evaluated: the logic levels that cross `r` from net `...` into net `...`: every driver of net `...` can let go of it, and then the level that `a.out` drives reaches `b.in` through `r`, which the levels check does not follow`. A net with an `output` on it is held by that output and is not named.
 - A MOSFET between the two nets. The DC analysis takes a MOSFET as a switch, on or off by its gate, and a translator has a state that only the MOSFET's body diode rules out: the far side pulls the drain low, and the MOSFET stays off with the source still at its pull-up. A MOSFET whose `.body_diode_voltage` is stated (the datasheet's drain-source diode forward voltage, VSD, at its test current; a member of `NMosfet` and `PMosfet` that the design states, `.q.body_diode_voltage &= 1.4V`) has its body diode in the network these levels are judged in, and the low is judged with it. One that does not is solved again with its channel held on: a level that fails with the channel on is refused, and one that holds only with it on is a note that names the body diode: `not evaluated: the low level into `a.io` on net `...` through `q` from net `...` with `b.io` driving low and every driver of net `...` letting go of it: with `q` on, the DC analysis holds the line at ..., which `a.io.vil` reads as a low, but in some states it finds `q` off and the line at ...; whether `q` turns on there rests on its body diode, which the analysis models only when `q.body_diode_voltage` states its forward voltage`.
 
 A pair of which neither end states a level is not looked at, as before. A level translator that is a part with a `Logic` line or a bus on each side (`LevelTranslator`, or a part of a project's own, as in "Logic levels of a bus") is judged on each side's net.
 
-The driver below feeds the receiver through a 100 ohm resistor and also drives the enable pin of a part that states no levels. Its levels state no test current, so the DC analysis does not model it, but nothing else is on the receiver's net: the receiver is judged against the driver's own levels, and holds. The enable pin is named among the notes of the build: `not evaluated: the logic levels from `a.out` to `q.en` on net `net-a.out.line`: `q.en` reads it and is not the `line` of a `Logic` or a pin of an interface or a part with `levels`, so the levels it needs are not known`. With a pull-down on the receiver's net as well, the resistor would carry a current that the driver's levels do not say the drop of, and the level through it would be a note: `not evaluated: the logic levels into `b.in` on net `net-b.in.line`: nothing on the net drives it, and its level comes through `r` from net `net-a.out.line`, which the levels check does not follow`. The parts are invented.
+The driver below feeds the receiver through a 100 ohm resistor and also drives the enable pin of a part that states no levels. Its levels state no test current, so the DC analysis does not model it, but nothing else is on the receiver's net: the receiver is judged against the driver's own levels, and holds. The enable pin is named among the notes of the build: `not evaluated: the logic levels from `a.out` to `q.en` on net `net-a.out.line`: `q.en` reads it and is not the `line` of a `Logic` or a pin of an interface or a part with `levels`, so the levels it needs are not known`. With a pull-down and a pull-up on the receiver's net as well, the level through the resistor would be a note: `not evaluated: the logic levels into `b.in` on net `net-b.in.line`: nothing on the net drives it, and its level comes through `r` from net `net-a.out.line`, which the levels check does not follow`. The parts are invented.
 
 ```nsm evaluate
 import std::logic::Logic
@@ -2695,6 +2962,70 @@ error: net `net-a.io.line`: with `b.io` driving low and every driver of net `net
    --> main.nsm:43:5
    |
 43 |     .a: BusPin
+   |     ^^^^^^^^^^
+```
+
+#### A level through a two-resistor divider
+
+A divider is a common level shifter: a host's 3.3 V output through a series resistor into a 1.8 V input, with a resistor from the input to ground (#1270). When the driver is a `Logic` line that the DC analysis does not model (its levels state no test current, and it does not state both `.roh` and `.rol`), the levels check still follows the divider. It does so when the receiver's net has nothing that drives it and holds exactly two resistors: the series resistor from the driver's net, and one resistor to a rail or to ground on the receiver's ground; every other pin on it is an `input` that states no leakage. The driver is taken as a source at its own levels, behind its `.roh` (for the high) or `.rol` (for the low) when it states one. The receiver's net is then at `e + (v - e) * rb / (ra + rb)`, where `v` is the driver's level, `ra` the series resistance, `rb` the resistance to the rail or ground and `e` the rail's voltage (0 V for ground). Its lowest value with the driver high, over the tolerances of both resistors and the range of the rail, must be at least the receiver's `vih`, and its highest value with the driver low at most its `vil`. The receiver's absolute maximum is held against the divided swing of the driver's net (the top of the driver's reference rail, or its stated swing), in the worst case of the same ranges.
+
+Any other network stays a note that names the series part and the net the level comes from: a third resistor on the net, an open-drain driver, a series part that is not a resistor, a resistor whose resistance has no value, or a rail on another ground.
+
+Below, a 3.3 V host drives a 1.8 V input through 10 kohm, with 6.8 kohm to ground. The lowest high is 1.214 V, which a pin that reads a high from 70 % of 1.8 V does not read as a high. With 10 kohm to ground the lowest high is 1.502 V and the highest 1.75 V, which the pin reads as a high and survives. The parts are invented.
+
+```nsm fails
+import std::logic::Logic
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+/// Invented: drives a high to its supply less 0.1 V and a low to 0.1 V.
+part Host {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.voh &= .vdd.voltage - 0.1V
+    .out.vol &= 0.1V
+    pins {
+        .vdd.pos  power  "VDD" "1"
+        .vdd.neg  power  "GND" "2"
+        .out.line output "OUT" "3"
+    }
+}
+
+/// Invented: reads a high from 70 % of its supply and a low up to 30 %, and survives 2.1 V.
+part Sensor {
+    .vdd: Rail
+    .in: Logic
+    .in.reference ~ .vdd
+    .in.vih &= 0.7 * .vdd.voltage
+    .in.vil &= 0.3 * .vdd.voltage
+    pins {
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+        .in.line input "IN"  "3" abs_max 2.1V
+    }
+}
+
+board Shifted {
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .core: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8" }
+    .core.neg ~ .supply.neg
+    .a: Host
+    .b: Sensor
+    .supply ~ .a.vdd
+    .core ~ .b.vdd
+    .top: Resistor { .resistance &= 10kohm +/- 1% }
+    .bottom: Resistor { .resistance &= 6.8kohm +/- 1% }
+    .a.out.line ~> .top ~> .b.in.line
+    .b.in.line ~> .bottom ~> .supply.neg
+}
+```
+
+```text
+error: net `net-b.in.line`: with `a.out` driving high, the divider of `top` from net `net-a.out.line` and `bottom` to ground `GND` holds the line at 1.213V..1.379V but `b.in.vih` needs 1.197V..1.323V: a high of 1.214V is not always read as a high, which takes 1.323V
+   --> main.nsm:38:5
+   |
+38 |     .b: Sensor
    |     ^^^^^^^^^^
 ```
 

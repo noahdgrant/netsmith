@@ -334,3 +334,23 @@ fn the_examples_are_complete_except_where_a_logic_pin_pulls_an_led_down() {
         "{incomplete:?}"
     );
 }
+
+/// A load's burst is its own (issue #1279): `~` equates the voltage of two rails, and neither
+/// their `.peak_current`, nor `.burst`, nor `.duty`, while the source's `.max_peak_current` is
+/// shared.
+#[test]
+fn a_join_shares_no_figure_of_a_burst() {
+    let m = board(
+        "    .radio: Rail { .current &= 10mA..40mA; .peak_current &= 500mA; .burst &= 3ms; .duty &= 0.05 }\n    \
+         .supply ~ .radio\n",
+    );
+    let shared = |name: &str| {
+        let (a, b) = (format!("supply.{name}"), format!("radio.{name}"));
+        equated(&m, &a, &b) || equated(&m, &b, &a)
+    };
+    assert!(shared("voltage"));
+    assert!(shared("max_peak_current"));
+    for name in ["peak_current", "burst", "duty"] {
+        assert!(!shared(name), "`~` equates `{name}`");
+    }
+}

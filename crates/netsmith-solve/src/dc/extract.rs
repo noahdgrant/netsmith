@@ -29,6 +29,13 @@
 //!   that the regulator's output sets: it joins the island of the input net, and the order in
 //!   which islands are solved (`super::analyze`) is the order of the power tree, the output
 //!   side first.
+//! - **Load switches** (`dc load_switch`, issue 1269). A switch whose enable can turn it on
+//!   (`Model::load_switch_can_turn_on`) is its on resistance between the positive nets of its
+//!   input and output rails, so the output's net is a free node behind the input's: its voltage
+//!   is the input's less the drop, and what its loads draw is drawn through the input, from
+//!   whatever holds it (a regulator's output, a board's supply). One whose enable cannot is
+//!   open. Its rails are no loads of their own, and its quiescent current, when the statement
+//!   names one, is a current from the input's positive net to its ground.
 //! - **Logic pins that drive** (ADR 0076, amendment 4): a pin with `voh` and `vol` stated at
 //!   their test currents, on a supply that a source holds, alone on its net, is an element with
 //!   its states. **MOSFETs** (`dc nmos`, `dc pmos`) are switches when what sets their gate is
@@ -69,6 +76,9 @@ pub(crate) struct Modelled {
     pub drop: Option<FieldId>,
     /// A diode: its current is never below zero in its own direction.
     pub diode: bool,
+    /// The other elements whose current is drawn through `current` too, and added to the
+    /// element's own: the other regulators of the part on the same input rail (issue 1271).
+    pub with: Vec<usize>,
 }
 
 /// A regulator of the model: the part, the net its output holds, and what it says of itself.
@@ -233,8 +243,9 @@ pub(crate) struct Index {
     /// For each net, the instances with a pin on it that an element is made from: a part's
     /// `dc` pins and its `bridge`, and a rail's `pos` and `neg`. In the order of their ids.
     by_net: Vec<Vec<InstId>>,
-    /// The parts that state a regulator, and those that state a source.
-    regulators: Vec<InstId>,
+    /// The regulators, each a part and the index of its element in the part's `dc` (a part may
+    /// state a regulator for each rail it gives, issue 1271), and the parts that state a source.
+    regulators: Vec<(InstId, usize)>,
     sources: Vec<InstId>,
     /// The rails that can be a source: a board's own, and a part's that it says it gives.
     supplies: Vec<InstId>,
@@ -270,17 +281,31 @@ impl Index {
         // others for those under the root, as `extract` does.
         let (mut regulators, mut sources) = (Vec::new(), Vec::new());
         let mut supplies: BTreeSet<InstId> = BTreeSet::new();
-        for (i, dc) in model.dc_elements() {
-            add(i, &dc.pins);
-            match dc.kind {
-                DcKind::LinearRegulator | DcKind::SwitchingRegulator => regulators.push(i),
-                DcKind::Source => {
-                    sources.push(i);
-                    supplies.extend(dc.pins.first().copied());
+        for (i, inst) in model.instances() {
+            for (k, dc) in inst.dc.iter().enumerate() {
+                add(i, &dc.pins);
+                // A load switch is made from the pins of its rails, besides its enable.
+                if dc.kind == DcKind::LoadSwitch {
+                    let pins: Vec<InstId> = dc.pins[..2]
+                        .iter()
+                        .filter_map(|&r| model.rail_of(r))
+                        .flat_map(|(_, pos, neg)| [pos, neg])
+                        .collect();
+                    add(i, &pins);
                 }
-                _ => {}
+                match dc.kind {
+                    DcKind::LinearRegulator | DcKind::SwitchingRegulator => {
+                        regulators.push((i, k));
+                    }
+                    DcKind::Source => {
+                        sources.push(i);
+                        supplies.extend(dc.pins.first().copied());
+                    }
+                    _ => {}
+                }
             }
         }
+        sources.dedup();
         let (mut board_ports, mut rails) = (Vec::new(), Vec::new());
         for (i, inst) in model.instances() {
             if let Some((a, b)) = inst.bridge {
@@ -418,7 +443,7 @@ fn extract_in(
         match &pool {
             Some(pool) => Box::new(
                 pool.iter()
-                    .filter_map(|&i| model.instance(i).dc.as_ref().map(|d| (i, d))),
+                    .flat_map(|&i| model.instance(i).dc.iter().map(move |d| (i, d))),
             ),
             None => Box::new(model.dc_elements()),
         }
@@ -456,8 +481,9 @@ fn extract_in(
     let mut reg_rails: HashSet<InstId> = HashSet::new();
     let mut reg_pins: Vec<[InstId; 4]> = Vec::new();
     let mut out_nets: Vec<(usize, usize)> = Vec::new();
-    for &part in &ix.regulators {
-        let Some(dc) = &model.instance(part).dc else {
+    let mut reg_own_rails: Vec<[InstId; 2]> = Vec::new();
+    for &(part, k) in &ix.regulators {
+        let Some(dc) = model.instance(part).dc.get(k) else {
             continue;
         };
         let switching = match dc.kind {
@@ -531,8 +557,7 @@ fn extract_in(
             current,
             voltage: v_in,
         });
-        reg_rails.insert(dc.pins[0]);
-        reg_rails.insert(dc.pins[1]);
+        reg_own_rails.push([dc.pins[0], dc.pins[1]]);
         reg_pins.push([in_pos, in_neg, out_pos, out_neg]);
         out_nets.push((op, oneg));
     }
@@ -563,13 +588,13 @@ fn extract_in(
         k += 1;
         keep[k - 1]
     });
+    // The rails of the regulators that are modelled (a part's other regulator may not be).
+    for (rails, keep) in reg_own_rails.iter().zip(&keep) {
+        if *keep {
+            reg_rails.extend(rails);
+        }
+    }
     let reg_out_nets: BTreeSet<usize> = regs.iter().map(|r| r.out_net).collect();
-    let modelled_regs: HashSet<InstId> = regs.iter().map(|r| r.part).collect();
-    reg_rails.retain(|i| {
-        model
-            .owner_of(*i)
-            .is_some_and(|p| modelled_regs.contains(&p))
-    });
 
     // The sources and the nets they hold: the supply rails a board declares, and the rails a part
     // says it gives from outside (`dc source`: a connector's supply).
@@ -580,7 +605,7 @@ fn extract_in(
     let supply_rails: HashSet<InstId> = ix
         .sources
         .iter()
-        .filter_map(|&part| Some((part, model.instance(part).dc.as_ref()?)))
+        .flat_map(|&part| model.instance(part).dc.iter().map(move |dc| (part, dc)))
         .filter(|(part, dc)| {
             dc.kind == DcKind::Source && model.instance(*part).kind == InstKind::Part
         })
@@ -698,6 +723,9 @@ fn extract_in(
     let mut enclosed_loads: Vec<(String, usize, usize, Range)> = Vec::new();
     // The MOSFETs are decided after everything else is known (below).
     let mut switches: Vec<(InstId, &netsmith_check::DcElement)> = Vec::new();
+    // The rails of the load switches that are modelled: the element stands for what they draw
+    // and give, so they are no loads of their own.
+    let mut switch_rails: HashSet<InstId> = HashSet::new();
     for (part, dc) in dc_elements() {
         if model.instance(part).kind != InstKind::Part {
             continue;
@@ -757,6 +785,96 @@ fn extract_in(
                     vec![a, k],
                     [dc.pins[0], dc.pins[1]],
                 )
+            }
+            // A load switch (issue 1269): its on resistance between the positive nets of its
+            // two rails when its enable can turn it on, open when it cannot, and the quiescent
+            // current its statement names drawn from the input either way.
+            DcKind::LoadSwitch => {
+                let rails = (model.rail_of(dc.pins[0]), model.rail_of(dc.pins[1]));
+                let (Some((_, in_pos, in_neg)), Some((_, out_pos, out_neg))) = rails else {
+                    continue;
+                };
+                let (Some(ip), Some(ineg), Some(op), Some(oneg)) =
+                    (net(in_pos), net(in_neg), net(out_pos), net(out_neg))
+                else {
+                    continue;
+                };
+                if ineg != oneg || ip == ineg || op == oneg {
+                    continue;
+                }
+                let off = match model.load_switch_enable(part) {
+                    Some((enable, Some(why))) => Some((enable, why)),
+                    _ => None,
+                };
+                let on = off.is_none();
+                let ron = value(dc.values[0], Dimension::RESISTANCE).filter(|r| r.hi > 0.0);
+                let quiescent = match dc.values.get(1) {
+                    Some(&f) => match value(f, Dimension::CURRENT).filter(|r| r.lo >= 0.0) {
+                        Some(q) => Some((f, q)),
+                        // A quiescent current the part leaves open is not guessed.
+                        None => continue,
+                    },
+                    None => None,
+                };
+                // An on resistance the part leaves open is not guessed either: the switch stays
+                // unmodelled, and so do the nets it is on.
+                let element = match (on, ron) {
+                    (true, Some(r)) if ip != op => Some(Range::new(
+                        r.lo.max(MIN_RESISTANCE),
+                        r.hi.max(MIN_RESISTANCE),
+                    )),
+                    (true, Some(_)) | (false, _) => None,
+                    (true, None) => continue,
+                };
+                // A switch that is never on supplies nothing, and its part's relations (the
+                // output is the input less the drop) are a switch that is on: the output's net
+                // is left open, so nothing behind it is worked out against them, and a note says
+                // why.
+                if let Some((enable, why)) = off {
+                    accounted.extend([in_pos, in_neg, out_neg, dc.pins[2]]);
+                    left.push(Left {
+                        at: part,
+                        involves: vec![part],
+                        cause: netsmith_core::Cause::Unjudged,
+                        message: format!(
+                            "the DC analysis does not work out what is behind the load switch `{}`: its enable `{}` {}, so the switch is never on and its output has no source; join the enable to what turns the switch on (a host's pin, a pull-up, or the input for a switch that is always on)",
+                            model.path_of(part),
+                            model.path_of(enable),
+                            why.text()
+                        ),
+                    });
+                } else {
+                    accounted.extend([in_pos, in_neg, out_pos, out_neg, dc.pins[2]]);
+                }
+                modelled_parts.insert(part);
+                switch_rails.extend([dc.pins[0], dc.pins[1]]);
+                if let Some(r) = element {
+                    items.push(Item {
+                        kind: Kind::Resistor { a: 0, b: 0, r },
+                        name: model.path_of(part),
+                        part: Some(part),
+                        flipped: false,
+                        current: None,
+                        drop: None,
+                        nets: vec![ip, op],
+                        reg: None,
+                        reads: vec![dc.values[0]],
+                    });
+                }
+                if let Some((field, i)) = quiescent {
+                    items.push(Item {
+                        kind: Kind::Current { from: 0, to: 0, i },
+                        name: model.path_of(dc.pins[0]),
+                        part: None,
+                        flipped: false,
+                        current: None,
+                        drop: None,
+                        nets: vec![ip, ineg],
+                        reg: None,
+                        reads: vec![field],
+                    });
+                }
+                continue;
             }
             // A MOSFET as a switch is decided below, when the nets its gate can be on are known.
             DcKind::Nmos | DcKind::Pmos => {
@@ -1032,7 +1150,10 @@ fn extract_in(
         let Some((_, pos, neg)) = model.rail_of(iface) else {
             continue;
         };
-        if reg_rails.contains(&iface) || supply_rails.contains(&iface) {
+        if reg_rails.contains(&iface)
+            || supply_rails.contains(&iface)
+            || switch_rails.contains(&iface)
+        {
             continue;
         }
         let Some(owner) = model.owner_of(iface) else {
@@ -1490,13 +1611,33 @@ fn extract_in(
                 });
             }
             if let Some(part) = item.part {
+                // Two regulators of one part that take the same input rail (a part that states
+                // a regulator for each rail it gives, issue 1271) draw through one `.current`:
+                // the first writes the sum of both.
+                let shared = item.current.and_then(|f| {
+                    matches!(item.kind, Kind::Regulator { .. })
+                        .then(|| {
+                            parts
+                                .iter_mut()
+                                .find(|m: &&mut Modelled| m.current == Some(f))
+                        })
+                        .flatten()
+                });
+                let current = match shared {
+                    Some(first) => {
+                        first.with.push(island.elements.len());
+                        None
+                    }
+                    None => item.current,
+                };
                 parts.push(Modelled {
                     element: island.elements.len(),
                     part,
                     flipped: item.flipped,
-                    current: item.current,
+                    current,
                     drop: item.drop,
                     diode: matches!(item.kind, Kind::Diode { .. }),
+                    with: Vec::new(),
                 });
             }
             // A load of a group of loads (issue #806): a rail's current, or a part's that a

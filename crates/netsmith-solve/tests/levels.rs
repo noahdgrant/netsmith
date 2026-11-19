@@ -215,6 +215,22 @@ part Measured {
     }
 }
 
+/// Like `Driver`, with the output resistance of its high and none of its low, so the DC
+/// analysis does not model it.
+part Resisted {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.voh &= .vdd.voltage - 0.1V
+    .out.vol &= 0.1V
+    .out.roh &= 10kohm
+    pins {
+        .vdd.pos   power  "VDD" "1"
+        .vdd.neg   power  "GND" "2"
+        .out.line  output "OUT" "3"
+    }
+}
+
 /// A receiver that states no levels.
 part Bare {
     .vdd: Rail
@@ -686,12 +702,102 @@ fn a_level_through_a_resistor_into_a_net_nothing_else_is_on_is_judged_as_a_pair(
 }
 
 #[test]
-fn a_level_through_a_series_resistor_into_a_loaded_net_is_named_with_the_resistor_and_the_net_it_comes_from()
- {
-    // A pull-down on the receiver's net draws through the resistor, and the driver's output
-    // resistance is not known: the level is not judged.
+fn a_level_through_a_two_resistor_divider_is_judged_at_the_divided_levels() {
+    // A 100 ohm resistor into a 10 kohm pull-down: the driver states no test current, so the
+    // DC analysis does not model it, but the divider's ratio is known (#1270). The high is about
+    // 99 % of the driver's and is read as a high.
     let s = solved(&format!(
         "{S3}    .a: Driver\n    .b: Receiver\n    .r: Resistor {{ .resistance &= 100ohm +/- 1% }}\n    .p: Resistor {{ .resistance &= 10kohm +/- 1% }}\n    .s3 ~ .a.vdd\n    .s3 ~ .b.vdd\n    .a.out.line ~> .r ~> .b.in.line\n    .b.in.line ~> .p ~> .s3.neg\n"
+    ));
+    assert_eq!(faults(&s), Vec::<String>::new());
+    assert!(
+        notes(&s).iter().all(|n| !n.contains("comes through")),
+        "{:#?}",
+        notes(&s)
+    );
+}
+
+#[test]
+fn a_divider_to_ground_that_halves_the_high_is_a_fault_with_its_numbers() {
+    // 10 kohm into 10 kohm to ground: the high is about half of the driver's.
+    let s = solved(&format!(
+        "{S3}    .a: Driver\n    .b: Receiver\n    .r: Resistor {{ .resistance &= 10kohm +/- 1% }}\n    .p: Resistor {{ .resistance &= 10kohm +/- 1% }}\n    .s3 ~ .a.vdd\n    .s3 ~ .b.vdd\n    .a.out.line ~> .r ~> .b.in.line\n    .b.in.line ~> .p ~> .s3.neg\n"
+    ));
+    let f = faults(&s);
+    assert_eq!(f.len(), 1, "{f:?}");
+    assert!(
+        f[0].starts_with(
+            "net `net-b.in.line`: with `a.out` driving high, the divider of `r` from net `net-a.out.line` and `p` to ground `GND` holds the line at 1.502V.."
+        ) && f[0].contains(" but `b.in.vih` needs 2.194V..2.426V: a high of 1.502V is not always read as a high, which takes 2.426V"),
+        "{f:?}"
+    );
+    assert!(
+        notes(&s).iter().all(|n| !n.contains("comes through")),
+        "{:#?}",
+        notes(&s)
+    );
+}
+
+#[test]
+fn a_divider_to_a_rail_lifts_the_low_and_a_low_not_read_as_one_is_a_fault() {
+    // 10 kohm against 10 kohm to the supply: the low is about half the supply.
+    let s = solved(&format!(
+        "{S3}    .a: Driver\n    .b: Receiver\n    .r: Resistor {{ .resistance &= 10kohm +/- 1% }}\n    .p: Resistor {{ .resistance &= 10kohm +/- 1% }}\n    .s3 ~ .a.vdd\n    .s3 ~ .b.vdd\n    .a.out.line ~> .r ~> .b.in.line\n    .s3.pos ~> .p ~> .b.in.line\n"
+    ));
+    let f = faults(&s);
+    assert_eq!(f.len(), 1, "{f:?}");
+    assert!(
+        f[0].starts_with(
+            "net `net-b.in.line`: with `a.out` driving low, the divider of `r` from net `net-a.out.line` and `p` to rail `s3` holds the line at "
+        ) && f[0].contains(" but `b.in.vil` allows 940.5mV..1.04V: a low of "),
+        "{f:?}"
+    );
+}
+
+#[test]
+fn a_divider_from_a_higher_supply_is_held_against_the_absolute_maximum_of_the_pin() {
+    // A 5 V driver into a 3.6 V pad: 10 kohm over 20 kohm keeps the pad at 3.52 V at the most and
+    // reads as a high; 10 kohm over 30 kohm reaches 3.96 V.
+    let board = |shunt: &str| {
+        solved(&format!(
+            "{S3}{S5}    .a: Driver\n    .b: Pad\n    .r: Resistor {{ .resistance &= 10kohm +/- 1% }}\n    .p: Resistor {{ .resistance &= {shunt} +/- 1% }}\n    .s5 ~ .a.vdd\n    .s3 ~ .b.vdd\n    .a.out.line ~> .r ~> .b.in.line\n    .b.in.line ~> .p ~> .s3.neg\n"
+        ))
+    };
+    let s = board("20kohm");
+    assert_eq!(faults(&s), Vec::<String>::new());
+    let s = board("30kohm");
+    let f = faults(&s);
+    assert_eq!(f.len(), 1, "{f:?}");
+    assert!(
+        f[0].starts_with("net `net-b.in.line` reaches 3.957V above its ground `GND` (the divider of `r` from net `net-a.out.line` and `p` to ground `GND`) but `b.in.line.abs_max` is 3.6V: it must not exceed 3.6V"),
+        "{f:?}"
+    );
+}
+
+#[test]
+fn a_divider_takes_the_output_resistance_a_driver_states_as_part_of_its_series_resistor() {
+    // 1 kohm into 10 kohm reads as a high from `Driver`, but `Resisted` drives its high through
+    // 10 kohm of its own, which leaves about a third of the supply.
+    let board = |part: &str| {
+        solved(&format!(
+            "{S3}    .a: {part}\n    .b: Receiver\n    .r: Resistor {{ .resistance &= 1kohm +/- 1% }}\n    .p: Resistor {{ .resistance &= 10kohm +/- 1% }}\n    .s3 ~ .a.vdd\n    .s3 ~ .b.vdd\n    .a.out.line ~> .r ~> .b.in.line\n    .b.in.line ~> .p ~> .s3.neg\n"
+        ))
+    };
+    assert_eq!(faults(&board("Driver")), Vec::<String>::new());
+    let f = faults(&board("Resisted"));
+    assert_eq!(f.len(), 1, "{f:?}");
+    assert!(
+        f[0].contains("with `a.out` driving high, the divider of `r` from net `net-a.out.line` and `p` to ground `GND` holds the line at 1.436V..1.612V but"),
+        "{f:?}"
+    );
+}
+
+#[test]
+fn a_network_that_is_not_a_two_resistor_divider_stays_named() {
+    // A pull-down and a pull-up on the receiver's net besides the series resistor: three
+    // resistors, which the levels check does not follow (#1270).
+    let s = solved(&format!(
+        "{S3}    .a: Driver\n    .b: Receiver\n    .r: Resistor {{ .resistance &= 100ohm +/- 1% }}\n    .p: Resistor {{ .resistance &= 10kohm +/- 1% }}\n    .u: Resistor {{ .resistance &= 10kohm +/- 1% }}\n    .s3 ~ .a.vdd\n    .s3 ~ .b.vdd\n    .a.out.line ~> .r ~> .b.in.line\n    .b.in.line ~> .p ~> .s3.neg\n    .s3.pos ~> .u ~> .b.in.line\n"
     ));
     assert_eq!(faults(&s), Vec::<String>::new());
     let through: Vec<String> = notes(&s)

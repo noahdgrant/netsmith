@@ -552,3 +552,125 @@ part Switch {
 
     .package: Package
 }
+
+/// How a part may be soldered, as its datasheet says (issue #1261): the type of
+/// `Supercap.soldering`, and of a `.soldering` a project's own part declares. A
+/// supercapacitor's electrolyte boils at a reflow oven's peak, so many datasheets forbid reflow
+/// and allow only a soldering iron, and a part held in a clip or a holder is not soldered at all.
+///
+/// The design stage holds it against who puts the part on the board (`.assembly`): the board
+/// house (`AssemblyMode::Fab` or `AssemblyMode::Consigned`) solders the parts it places in its
+/// reflow oven, so a part that allows only `Hand` is refused there unless the design says
+/// `.assembly &= AssemblyMode::Hand` (or `None`), and a part that allows `None` is refused
+/// unless it is not fitted (`AssemblyMode::None`). A part that allows `Reflow` may be soldered
+/// any way. A row states the variant's name as it is (`Hand`).
+enum Soldering {
+    /// Reflow, and so by hand too: the board house may place it.
+    Reflow,
+    /// By hand only, with a soldering iron; never in a reflow oven.
+    Hand,
+    /// Not soldered at all: held by a clip, a holder or a press fit.
+    None,
+}
+
+/// A supercapacitor (an electric double-layer capacitor): one cell, or two cells in series in
+/// one case (issue #1261). `.p` is the positive terminal and `.n` the negative one. A part of
+/// two cells may bring out the node between them, `.mid`, the balance tap, which a balancing
+/// circuit holds at half the voltage. `.mid` is a pin of the packages that have three leads only
+/// (as `Crystal.case` is of the four-pad package), so a board that connects `.mid` is given a
+/// row in such a package, and a board that leaves it open may be given any row.
+///
+/// Every value is the whole part's, as its datasheet states it, and the voltage of one cell is
+/// worked out from it: `.cell_voltage` is `.bias / .cells`, the share of each cell when the
+/// cells are balanced. `.cells` is how many cells the case holds in series (1 or 2), a column of
+/// the row: a part of two cells with no tap has two leads and states `2`.
+///
+/// - `.capacitance` is the rated value with its tolerance (`1F +/- 20%`), measured at the
+///   rated voltage, so it has no curve over the bias. `.effective_capacitance` is the same
+///   value: what a bound reads, the burst of a load (`std::sources::Rail.burst`) and a corner
+///   (`std::env::Corner`), which multiplies it by `.capacitance_at_end_of_life` at the end of
+///   life, as it does a `Capacitor`'s.
+/// - `.esr` is the ESR at AC, at the frequency the row's `notes` name (1 kHz on most
+///   datasheets), the figure a ripple reads and a corner multiplies by `.esr_growth`.
+///   `.dc_esr` is the ESR at DC, from the step of the voltage when a constant current starts or
+///   stops, the figure that says how far the voltage falls at the start of a burst. A datasheet
+///   prints the DC figure higher than the AC one.
+/// - `.leakage_current` is the current the part draws at its rated voltage once it has
+///   settled (the datasheet states the time, 72 h on most), its largest figure.
+/// - `.max_voltage` is the rated voltage of the whole part, in steps over temperature where
+///   the datasheet derates it when hot: `5.5V to 65degC, 4.2V to 85degC` (issue #1257). Each
+///   step the board's `.environment.temperature` reaches must hold `.bias`.
+/// - `.bias` is the voltage at `.p` relative to `.n`. A supercapacitor across a rail takes it
+///   from the rail, the way round it is wired (`.bridge_voltage`, as a diode's), so one wired
+///   with `.p` on the rail's `neg` is refused (`.bias >= 0V`).
+/// - `.height_growth` (every part has it, issue #1263) is how much the case may swell over its
+///   life, as the datasheet's drawing allows: a column of the row, added to its height before a
+///   height limit is checked.
+/// - `.soldering` is how the part may be soldered (`Soldering`), a column of the row.
+///
+/// The standard catalog `supercap` has no row yet: no part has a recorded source
+/// (`data/jlcpcb/README.md`). A project adds rows in a file of its own catalog `supercap`, in a
+/// package of the tables below, or with the table of a package it adds to this list together
+/// with its rows.
+///
+/// Not modelled: the current the balance tap carries, the self-discharge over time, and the
+/// share of the voltage two cells take when they are not balanced; a board that needs them
+/// states the bound itself.
+#[kind(capacitor)]
+generic Supercap {
+    .designator &= "C"
+
+    pins "Radial_D5.0mm_P2.00mm" "Radial_D6.3mm_P2.50mm" "Radial_D8.0mm_P3.50mm" "Radial_D10.0mm_P5.00mm" "Radial_D12.5mm_P5.00mm" "Radial_D16.0mm_P7.50mm" {
+        .p passive "+" "1"
+        .n passive "-" "2"
+    }
+
+    pins "Radial_D16.0mm_P7.50mm_Tap" {
+        .p   passive "+"   "1"
+        .mid passive "MID" "2"
+        .n   passive "-"   "3"
+    }
+
+    /// The rated value, with its tolerance.
+    .capacitance: Capacitance
+    /// What the circuit can use: the rated value within its tolerance.
+    .effective_capacitance: Capacitance
+    .effective_capacitance == .capacitance
+    /// The ESR at AC, at the frequency the row's `notes` name.
+    .esr: Resistance
+    /// The ESR at DC.
+    .dc_esr: Resistance
+    /// The current it draws at its rated voltage once settled.
+    .leakage_current: Current
+    /// The rated voltage of the whole part; in steps over temperature where it is derated.
+    .max_voltage: Voltage
+    /// How many cells the case holds in series: 1 or 2.
+    .cells: Number
+    .cells >= 1
+    .cells <= 2
+    /// The voltage of one cell when the cells are balanced.
+    .cell_voltage: Voltage
+    .cell_voltage == .bias / .cells
+    /// How the part may be soldered.
+    .soldering: Soldering
+    /// The voltage at `.p` relative to `.n`.
+    #[role(bias)]
+    .bias: Voltage
+    /// The voltage at `.p` relative to `.n` that a rail the part is across gives it.
+    #[role(bridge_voltage)]
+    .bridge_voltage: Voltage optional
+    .bias == .bridge_voltage
+    .bias >= 0V
+    .bias <= .max_voltage
+    /// The share of its capacitance left at the end of its life, as `Capacitor`'s.
+    .capacitance_at_end_of_life: Number optional
+    /// How many times its ESR is at the end of its life, as `Capacitor`'s.
+    .esr_growth: Number optional
+    bridge .p ~> .n
+
+    .package: Package
+    catalog supercap {
+        .capacitance, .esr, .dc_esr, .leakage_current, .max_voltage, .cells, .soldering, .package,
+        .height_growth optional, .capacitance_at_end_of_life optional, .esr_growth optional
+    }
+}

@@ -48,6 +48,10 @@ _Avoid_: Array, vector, open group
 `shared HEATERS limit 1 { .heater_a .heater_b }` in a board or a module: loads (rails that draw, by path) of which at most `limit` are on at once, one without `limit` (issue #806). A load that is off draws the low end of its range, so the members on one net add up to their low ends plus the `limit` largest spans; the balance of the net, a budget, the DC analysis, the track widths and the power view read that sum, and a message about the net's currents names the group. A load is in one group. It is the statement of a part's shared resource, with loads as its members.
 _Avoid_: Duty group, exclusive loads, load set
 
+**Load switch**:
+A part that passes its input rail to its output rail while its enable turns it on (issue 1269): an IC that provides `std::parts::switch::LoadSwitch`, or a P-channel MOSFET used as one (`PmosLoadSwitch`). It is a converter between two rails: its output supplies its loads, its input draws them (and its quiescent current), and its output is its input less the on resistance times the load. Its output has a source only when its enable can turn it on, and it is then taken as on.
+_Avoid_: Power switch (also a part that chooses between supplies), high-side switch (says where it is, not what it does), gate (the enable of the IC is not a gate)
+
 **Logic level**:
 One of the four voltages of a `Logic` line, or of the `Levels` of a bus interface (`.spi.levels`, ADR 0064) or of a part, for its plain pins (`.levels`, issue #1190), as a datasheet gives them and relative to the line's ground (the `neg` of its `.reference` rail): `.vih` the lowest an input reads as high, `.vil` the highest it reads as low, `.voh` the lowest an output drives a high to, `.vol` the highest it drives a low to. After the rails are solved, the solver requires `voh >= vih` and `vol <= vil` for every output and input on a net, and says "not evaluated" when a level has no value or the grounds differ (ADR 0046).
 _Avoid_: Threshold, noise margin

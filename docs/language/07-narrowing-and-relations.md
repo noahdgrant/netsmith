@@ -371,7 +371,7 @@ board Pulls {
 ```
 
 ```text
-main.nsm:8:62: lint.redundant: `.neg.net &= "GND"` says what the default at std/sources.nsm:108 already gives; delete it
+main.nsm:8:62: lint.redundant: `.neg.net &= "GND"` says what the default at std/sources.nsm:115 already gives; delete it
 main.nsm:9:53: lint.redundant: `.package &= "0402"` says what the default at main.nsm:6 already gives; delete it
 ```
 
@@ -794,7 +794,7 @@ error: `processor.usb.vbus.pos` is connected here through `fuse` (a `Fuse`) to `
    |     ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-A pull to a rail that nothing on the board sources is no use. A series part whose far end is the return `neg`, or the `pos` of a rail of the board that nothing on the board sources (the supply, which comes from outside the board), only pulls the pin up or down: a pull-up or a pull-down on a pin of the interface does not make the pin used, although the supply's net has pins of other parts that are not passive. A rail that something on the board sources is not the supply, and a path to it is a use, as it was before: the rail is made or fed on the board, so the interface's pin feeds the board. A rail is sourced on the board when its `pos` net holds the output rail of a `dc linear_regulator` or `dc switching_regulator`, the rail of a `dc source`, or a pin whose table says it is an `output` (a charger's). A path from the pin to another part's pin that is not passive is still a use, also when the same pin has a pull as well. Here `.processor.usb.dp` has a pull-up to the supply and nothing else, and the board builds:
+A pull to a rail that nothing on the board sources is no use. A series part whose far end is the return `neg`, or the `pos` of a rail of the board that nothing on the board sources (the supply, which comes from outside the board), only pulls the pin up or down: a pull-up or a pull-down on a pin of the interface does not make the pin used, although the supply's net has pins of other parts that are not passive. A rail that something on the board sources is not the supply, and a path to it is a use, as it was before: the rail is made or fed on the board, so the interface's pin feeds the board. A rail is sourced on the board when its `pos` net holds the output rail of a `dc linear_regulator` or `dc switching_regulator` (or of a `dc load_switch` whose enable can turn it on), the rail of a `dc source`, or a pin whose table says it is an `output` (a charger's). A path from the pin to another part's pin that is not passive is still a use, also when the same pin has a pull as well. Here `.processor.usb.dp` has a pull-up to the supply and nothing else, and the board builds:
 
 ```nsm evaluate
 import std::parts::passive::Resistor

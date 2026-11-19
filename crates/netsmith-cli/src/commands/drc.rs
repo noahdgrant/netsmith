@@ -155,7 +155,8 @@ fn of_design(args: &Args) -> Result<Made, ExitCode> {
                     let fail = |e: String| format!("error: {}: {e}\n", built.label());
                     let mut board = board.clone();
                     let notes =
-                        routes::apply_beside(&mut board, Some(&placed.layout)).map_err(&fail)?;
+                        routes::apply_beside(&mut board, Some(&placed.layout_of(built).file))
+                            .map_err(&fail)?;
                     let constraints = netsmith_pipeline::constraints::of_design(
                         &built.design,
                         placed.catalogs.constraints_warn(),

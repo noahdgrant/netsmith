@@ -40,7 +40,7 @@ pub struct Target {
 pub enum Command {
     /// Write the routes file (and the layout file's places) from a KiCad board.
     #[command(
-        after_long_help = "Every track, arc and through via of F.Cu, B.Cu and the inner signal layers becomes the copper of the design's net its pads are on: a KiCad net is the design's net that most of its pads are on, with the parts paired by a port's parts file (`--parts`, default `reference/parts.toml` of the project when there is one; without one, by reference designator). A KiCad net on no pad of a part the design has keeps its name if the design has a net of that name, and is left out otherwise; copper on an inner layer is left out unless the layer is one of the process's signal layers (an inner plane holds no track); each is said. Each zone of copper that is not the process's own plane or pour becomes a zone of its net's record, on its layers, with its outline, holes and the settings that change its copper (priority, clearance, minimum thickness, pad connection, thermal gap and spoke width, island removal); a layer with such a zone takes its zones from the routes file alone, and the design's pour or plane on it is not drawn. A zone that is the process's own plane or pour (the same net, layer and outline, and the same clearance, minimum width, pad connection and thermal relief as the process states, which is what `fab` writes) is left out and said, so that `fab` and then `routes import` of its board leaves a file of tracks and vias; one that differs from it is imported, as a hand zone. Rule areas, teardrops and hatched zones are left out and said.\n\nEach part of the design that the KiCad board has is written to the layout file at the KiCad board's place, turn and face, locked (`source = \"import\"`), unless `--no-places`, or the physical file pins it (its requirement places it). Places are from the top left corner of the KiCad board's Edge.Cuts box. Then the board is placed again and each net's record takes its pads as they are. Every net is locked (the router adds nothing to it) unless `--unlocked`. The routes file is written over; the layout file keeps its seed, keepouts and the parts the import does not place."
+        after_long_help = "Every track, arc and through via of F.Cu, B.Cu and the inner signal layers becomes the copper of the design's net its pads are on: a KiCad net is the design's net that most of its pads are on, with the parts paired by a port's parts file (`--parts`, default `reference/parts.toml` of the project when there is one; without one, by reference designator). A KiCad net on no pad of a part the design has keeps its name if the design has a net of that name, and is left out otherwise; copper on an inner layer is left out unless the layer is one of the process's signal layers (an inner plane holds no track); each is said. Each zone of copper that is not the process's own plane or pour becomes a zone of its net's record, on its layers, with its outline, holes and the settings that change its copper (priority, clearance, minimum thickness, pad connection, thermal gap and spoke width, island removal); such a zone of the net of the design's pour or plane on its layer restates it, which is not drawn, and one of another net cuts it (`fab` writes the zones one priority above the pour, and the import takes that one off again). A zone that is the process's own plane or pour (the same net, layer and outline, and the same clearance, minimum width, pad connection and thermal relief as the process states, which is what `fab` writes) is left out and said, so that `fab` and then `routes import` of its board leaves a file of tracks and vias; one that differs from it is imported, as a hand zone. Rule areas, teardrops and hatched zones are left out and said.\n\nEach part of the design that the KiCad board has is written to the layout file at the KiCad board's place, turn and face, locked (`source = \"import\"`), unless `--no-places`, or the physical file pins it (its requirement places it). Places are from the top left corner of the KiCad board's Edge.Cuts box. Then the board is placed again and each net's record takes its pads as they are. Every net is locked (the router adds nothing to it) unless `--unlocked`. The routes file is written over; the layout file keeps its seed, keepouts and the parts the import does not place."
     )]
     Import(ImportArgs),
     /// Print the routes file's copper and what the router would still route.
@@ -57,7 +57,7 @@ pub enum Command {
     /// Add a zone (copper area) of a net on a layer, refused if it breaks the design rules.
     #[command(
         name = "add-zone",
-        after_long_help = "The outline is a polygon given by `--outline X,Y` once for each corner (three or more, in order), by `--rect X,Y,W,H` for a rectangle, or by `--board-outline` for the board's whole outline. Places are mm from the outline's top left corner, y down, as for `add-track`. The zone is filled inside the outline on each `--layer` (`top`, `bottom`, `inner1`, ...; repeat the flag for several), joined to its net; where two zones of a layer overlap the higher `--priority` has the area, and two zones of different nets with the same priority must not overlap. Without a setting the zone has the design's own plane's: the clearance the process's planes keep, a minimum width of 0.25 mm, thermal relief gap and spokes of 0.5 mm, priority 0, a thermal relief at each pad of its net.\n\nA layer that has a zone of the routes file takes its zones from the file alone: the design's pour or plane on it is not drawn (the command says so when this zone makes that so). A zone is refused when a corner is off the board, a setting is wrong, or the design rules check finds an error with it that the board did not have (a short, a clearance, a track of another net it covers); the file is then as it was. The zone is written to the net's record (made, with the net's pad hash, if the net has none); `routes show` numbers it, and `delete`, `lock` and `unlock` name it with `--zone N`."
+        after_long_help = "The outline is a polygon given by `--outline X,Y` once for each corner (three or more, in order), by `--rect X,Y,W,H` for a rectangle, or by `--board-outline` for the board's whole outline. Places are mm from the outline's top left corner, y down, as for `add-track`. The zone is filled inside the outline on each `--layer` (`top`, `bottom`, `inner1`, ...; repeat the flag for several), joined to its net; where two zones of a layer overlap the higher `--priority` has the area, and two zones of different nets with the same priority must not overlap. Without a setting the zone has the design's own plane's: the clearance the process's planes keep, a minimum width of 0.25 mm, thermal relief gap and spokes of 0.5 mm, priority 0, a thermal relief at each pad of its net.\n\nA zone of the net of the design's pour or plane on its layer restates it: the pour or plane there is not drawn. A zone of another net cuts it: the zone has the area it covers, at any priority, and the pour is drawn round it, keeping its clearance (`fab` writes the routes file's zones one priority above the pour so that KiCad's fill agrees). The command says which it is. A zone is refused when a corner is off the board, a setting is wrong, or the design rules check finds an error with it that the board did not have (a short, a clearance, a track of another net it covers); the file is then as it was. The zone is written to the net's record (made, with the net's pad hash, if the net has none); `routes show` numbers it, and `delete`, `lock` and `unlock` name it with `--zone N`."
     )]
     AddZone(AddZoneArgs),
     /// Route one net, or one connection of it, round the copper there; say which nets stood in
@@ -66,6 +66,13 @@ pub enum Command {
         after_long_help = "The router routes the net (or the connection, `NET:REF.PAD-REF.PAD`: the lines that join those two pads alone) on the board as placed with the routes file's copper, every other net held as it is, and writes its tracks and vias to the net's record, unlocked. A connection joined already is said, and nothing is written. The text says the narrowest place of the new way and the widest track of the net that has room there, with every space of the design rules.\n\nWhen the net has no way round the copper there, it is routed again with the unlocked tracks and vias of the other nets taken away, and the nets whose copper that way crosses are named (exit 1, nothing written); where there is no way even so, what walls it in is said: pads, vias, the copper of locked nets, the edge. With `--rip NET,...` the copper of those nets alone may be taken away: it is removed, the net is routed through the room it left, and each ripped net is routed again after it (it may rip in turn, from the nets named). A locked net or a locked shape is never ripped, nor is a zone. The rounds are bounded by counts, those of the router's rounds of rip-up: 6 rounds, 3 rips of one net, 64 runs of the router. A ripped net left with more connections open than it had, or a result the design rules check finds a new error with, is refused and the file is as it was. `--dry-run` says what it would do and writes nothing."
     )]
     Route(RouteArgs),
+    /// Join a pad the fill leaves unjoined to the fill of its net with a short track, or a track
+    /// and a via, in the direction with room.
+    #[command(
+        name = "join-pad",
+        after_long_help = "The pad (`REF.PAD`) is joined when a fill of its net that covers its centre joins it (by a spoke or a track, and not starved: `board fill` says how) or another fill of its net does, or, when no fill covers it, when the design rules check finds it connected; a joined pad is said and nothing is written. Otherwise a track of the net's own width is drawn from the pad's centre straight out, in each of 16 directions, to the first place (0.025 mm at a time, at most 5 mm out) where its round end lies wholly on the fill of its net on that layer, as `board fill --format json` outlines it; the shortest is tried first, and each is checked as `add-track` checks a track. When no track fits, a track to a through via of the process placed on the fill of its net on another layer, clear of the pad. The first one the design rules check takes and that joins the pad is written to the net's record, unlocked. At most 24 are tried; when none is taken the command is refused (exit 1, nothing written) and says how many were tried and why the shortest was refused. `--dry-run` says what it would add and writes nothing. With `--format json`: `board`, `pad`, `net`, `before` (how the fill had the pad), `already`, `join` (`layer`, `from`, `to`, `width`, `length`, `direction` in degrees counterclockwise from +x, and `via` and `fill_layer` with a via), `tried` (`layer`, `direction`, `length`, `via`, `why`), `refused`, `said`, `dry_run`, `written` and `file`."
+    )]
+    JoinPad(JoinPadArgs),
     /// Delete a net's record, or one of its shapes; a locked one is refused. A record of a net the board no longer has (a net renamed, say: `fab` names it) is deleted whole, even when locked.
     Delete(ShapeArgs),
     /// Lock a net (the router adds no copper to it) or one shape (kept when the net's pads move).
@@ -76,9 +83,10 @@ pub enum Command {
     /// Unlock a net or one shape.
     Unlock(ShapeArgs),
     /// Cut corners to 45 degrees, merge collinear tracks, remove dangling vias, stubs and acid
-    /// traps, refusing any change that adds a finding or loses a connection.
+    /// traps, and with `--widen` widen narrow tracks, refusing any change that adds a finding or
+    /// loses a connection.
     #[command(
-        after_long_help = "A pass over the routes file's copper (and with `--reuse-routes` the router's copper kept in `.netsmith/routes/`, as `board fab --reuse-routes` starts from it) that makes four repairs:\n\n- a corner: two straight tracks of a net that meet outside its pads and bend by more than 45 degrees (the design rules check's `track_angle`) are cut into bends of 45 degrees at most, a 45 degree chamfer at a right angle; the chamfer starts four widths from the corner, and two and one width when the larger is refused;\n- a collinear pair: two straight tracks of one net, layer and width that meet end to end on one line, with nothing else there, become one;\n- a dangling via or a stub: a via joined to copper of its net on fewer than two layers (`via_dangling`) and a track with an end that touches nothing (`track_dangling`) are removed when the copper makes every connection of the net (the router may still start from a stub of a net it has to finish), and a via that joins nothing at all is removed in any net;\n- an acid trap (`acid_trap`): a track that leaves a pad or a via at an acute angle to its edge is made to leave it at a right angle and bend after the edge, and a track that ends on the middle of another at an acute angle is made to meet it at a right angle.\n\nEach change is made only when the design rules check of the board with it (the check `add-track` makes, with its warnings) finds nothing it did not find before and the connections left to route are the same; a refused change is listed with the first new finding or the connection it changes, and left as it was. The changes of each net are checked together where they are: over the copper, pads and zones within the board's largest space of what they change, with and without them, and the whole board is checked once after each pass, which checks the pass's changes again against the whole board when it finds what they add beyond where they are. The text ends with how many checks ran and the items they looked at (`checks` and `items_checked` in the JSON). A locked net or shape, an arc, a zone and a record whose pads moved are never touched. `--dry-run` says what would change, by kind, net, layer and place, and writes nothing. With `--reuse-routes` the kept file is written again, so that `board fab --reuse-routes` still starts from it; without it, a change to the routes file makes a kept file stale, and the command says so. The exit code is 0 when the pass ran (whether or not it changed or refused anything), 2 when it could not run.\n\nOn stderr each pass says how far it has got, net by net: the net, how many of the pass's nets, the changes made so far and about how long the pass has left; `--progress json` prints each line as `{\"board\", \"stage\": \"tidying\", \"unit\": \"nets tidied\", \"done\", \"total\", \"detail\", \"elapsedMs\", \"message\"}`, and `--to-editor` sends them to a running editor, as `board fab` does. With `--format json` the progress is printed only with `--progress json`. Nothing is written until the whole pass has run, so Ctrl+C leaves the files as they were."
+        after_long_help = "A pass over the routes file's copper (and with `--reuse-routes` the router's copper kept in `.netsmith/routes/`, as `board fab --reuse-routes` starts from it) that makes four repairs (five with `--widen`):\n\n- a corner: two straight tracks of a net that meet outside its pads and bend by more than 45 degrees (the design rules check's `track_angle`) are cut into bends of 45 degrees at most, a 45 degree chamfer at a right angle; the chamfer starts four widths from the corner, and two and one width when the larger is refused;\n- a collinear pair: two straight tracks of one net, layer and width that meet end to end on one line, with nothing else there, become one;\n- a dangling via or a stub: a via joined to copper of its net on fewer than two layers (`via_dangling`) and a track with an end that touches nothing (`track_dangling`) are removed when the copper makes every connection of the net (the router may still start from a stub of a net it has to finish), and a via that joins nothing at all is removed in any net;\n- an acid trap (`acid_trap`): a track that leaves a pad or a via at an acute angle to its edge is made to leave it at a right angle and bend after the edge, and a track that ends on the middle of another at an acute angle is made to meet it at a right angle.\n\nWith `--widen`, a fifth: a narrow track, a straight track narrower than the width its net wants on its layer (the width the router draws the net at there: for its current, its class or its impedance target, and for a net with pins that state the current of their branch the narrowest of its lines), is widened to it; a widening the check refuses (the wider track comes too near copper of another net) is tried at three quarters, half and a quarter of the way, so that each track is as wide as the clearance to its neighbours allows. A track is never made narrower; the text lists each widening with the width it had, the width it has and the width its net wants (`counts.widened` in the JSON).\n\nEach change is made only when the design rules check of the board with it (the check `add-track` makes, with its warnings) finds nothing it did not find before and the connections left to route are the same; a refused change is listed with the first new finding or the connection it changes, and left as it was. The changes of each net are checked together where they are: over the copper, pads and zones within the board's largest space of what they change, with and without them, and the whole board is checked once after each pass, which checks the pass's changes again against the whole board when it finds what they add beyond where they are. The text ends with how many checks ran and the items they looked at (`checks` and `items_checked` in the JSON). A locked net or shape, an arc, a zone and a record whose pads moved are never touched. `--dry-run` says what would change, by kind, net, layer and place, and writes nothing. With `--reuse-routes` the kept file is written again, so that `board fab --reuse-routes` still starts from it; without it, a change to the routes file makes a kept file stale, and the command says so. The exit code is 0 when the pass ran (whether or not it changed or refused anything), 2 when it could not run.\n\nOn stderr each pass says how far it has got, net by net: the net, how many of the pass's nets, the changes made so far and about how long the pass has left; `--progress json` prints each line as `{\"board\", \"stage\": \"tidying\", \"unit\": \"nets tidied\", \"done\", \"total\", \"detail\", \"elapsedMs\", \"message\"}`, and `--to-editor` sends them to a running editor, as `board fab` does. With `--format json` the progress is printed only with `--progress json`. Nothing is written until the whole pass has run, so Ctrl+C leaves the files as they were."
     )]
     Tidy(TidyArgs),
 }
@@ -93,6 +101,10 @@ pub struct TidyArgs {
     /// Tidy the router's copper kept on disk too, as `board fab --reuse-routes` would start from it.
     #[arg(long)]
     pub reuse_routes: bool,
+    /// Widen each track narrower than its net wants, as far as the clearance to its neighbours
+    /// allows.
+    #[arg(long)]
+    pub widen: bool,
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
@@ -138,6 +150,21 @@ pub struct RouteArgs {
     #[arg(long, value_name = "NET,...", value_delimiter = ',')]
     pub rip: Vec<String>,
     /// Say what it would do, and write nothing.
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Text for a person, or one JSON document on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: common::Format,
+}
+
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct JoinPadArgs {
+    /// The pad, `REF.PAD` (`C1.2`).
+    #[arg(value_name = "REF.PAD")]
+    pub pad: String,
+    #[command(flatten)]
+    pub target: Target,
+    /// Say what it would add, and write nothing.
     #[arg(long)]
     pub dry_run: bool,
     /// Text for a person, or one JSON document on stdout.
@@ -386,6 +413,7 @@ pub fn run(args: Args) -> ExitCode {
             lock: a.lock,
         }),
         Command::Route(a) => route(&a),
+        Command::JoinPad(a) => join_pad(&a),
         Command::Delete(a) => edit(&a.target, |_| lib::Edit::Delete {
             net: a.net.clone(),
             shape: shape(&a),
@@ -415,7 +443,7 @@ fn tidy(args: &TidyArgs) -> ExitCode {
             && args.watching.progress == crate::progress::Print::Text,
     );
     let tidied = common::with_stage_events(|| {
-        with_board(&args.target, |placed, board| {
+        with_board(&args.target, |layout, board| {
             let sink = netsmith_fabricate::layout::tidy_progress(
                 board.name.clone(),
                 crate::progress::tell,
@@ -423,8 +451,9 @@ fn tidy(args: &TidyArgs) -> ExitCode {
             netsmith_core::job::reporting(sink, || {
                 netsmith_fabricate::routes_tidy::tidy_files(
                     board,
-                    &placed.layout,
+                    layout,
                     args.reuse_routes,
+                    args.widen,
                     args.dry_run,
                 )
             })
@@ -494,30 +523,37 @@ fn zone_outline(args: &AddZoneArgs, board: &Board) -> Vec<[f64; 2]> {
     }
 }
 
-/// The routes file of the placed board's source: beside its layout file.
-fn routes_file(placed: &Placed) -> PathBuf {
-    lib::beside_layout(&placed.layout)
+/// The routes file of a board whose layout file is `layout`: beside it.
+fn routes_file(layout: &Path) -> PathBuf {
+    lib::beside_layout(layout)
 }
 
-/// `then` of the placed board (no routes on it) and its routes file. The error is printed.
+/// The placed board (no routes on it) and its layout file ([`Placed::layout_of`]: a board of a
+/// system defined in another file has its own, issue #1327).
+fn board_and_layout(placed: &Placed) -> Result<(Board, PathBuf), String> {
+    placed.with_board(|built, board| (board.clone(), placed.layout_of(built).file))
+}
+
+/// `then` of the placed board (no routes on it) and its layout file, beside which is its routes
+/// file. The error is printed.
 fn with_board<T>(
     target: &Target,
-    then: impl Fn(&Placed, &Board) -> Result<T, String>,
+    then: impl Fn(&Path, &Board) -> Result<T, String>,
 ) -> Result<T, ExitCode> {
     common::with_placed_board(
         target.file.as_deref(),
         target.board.as_deref(),
         None,
         |placed| {
-            let board = placed.with_board(|_, board| board.clone())?;
-            then(placed, &board).map_err(|e| format!("error: {e}\n"))
+            let (board, layout) = board_and_layout(placed)?;
+            then(&layout, &board).map_err(|e| format!("error: {e}\n"))
         },
     )
 }
 
 fn show(args: &ShowArgs) -> ExitCode {
-    let shown = with_board(&args.target, |placed, board| {
-        lib::show(board, &lib::load(&routes_file(placed))?)
+    let shown = with_board(&args.target, |layout, board| {
+        lib::show(board, &lib::load(&routes_file(layout))?)
     });
     match shown {
         Ok(shown) => {
@@ -549,10 +585,10 @@ fn edit_all(target: &Target, changes: impl Fn(&Board) -> Vec<lib::Edit>) -> Exit
         target.board.as_deref(),
         None,
         |placed| {
-            let board = placed.with_board(|_, board| board.clone())?;
+            let (board, layout) = board_and_layout(placed)?;
             Ok(lib::edit_file_all(
                 &board,
-                &routes_file(placed),
+                &routes_file(&layout),
                 &changes(&board),
             ))
         },
@@ -579,8 +615,8 @@ fn edit_all(target: &Target, changes: impl Fn(&Board) -> Vec<lib::Edit>) -> Exit
 /// be tried.
 fn route(args: &RouteArgs) -> ExitCode {
     use netsmith_fabricate::route_net;
-    let done = with_board(&args.target, |placed, board| {
-        let file = routes_file(placed);
+    let done = with_board(&args.target, |layout, board| {
+        let file = routes_file(layout);
         let routes = lib::load(&file)?;
         let ask = match route_net::Ask::of(board, &args.net, &args.rip) {
             Ok(ask) => ask,
@@ -636,6 +672,67 @@ fn route(args: &RouteArgs) -> ExitCode {
     }
 }
 
+/// `routes join-pad` (issue #1293, `netsmith_fabricate::join_pad`): exit 0 when the pad is joined
+/// (or would be, with `--dry-run`) or was joined already, 1 when it is refused, 2 when it could
+/// not be tried.
+fn join_pad(args: &JoinPadArgs) -> ExitCode {
+    use netsmith_fabricate::join_pad;
+    let done = with_board(&args.target, |layout, board| {
+        let file = routes_file(layout);
+        let routes = lib::load(&file)?;
+        let joined = match join_pad::join_pad(board, &routes, &args.pad) {
+            Ok(j) => j,
+            Err(lib::Refusal::Refused(e)) => return Ok(Err(e)),
+            Err(lib::Refusal::Failed(e)) => return Err(e),
+        };
+        let written = match (&joined.routes, args.dry_run) {
+            (Some(r), false) => {
+                lib::save(&file, r)?;
+                true
+            }
+            _ => false,
+        };
+        Ok(Ok((joined, file, written)))
+    });
+    let (joined, file, written) = match done {
+        Ok(Ok(done)) => done,
+        Ok(Err(e)) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+        Err(code) => return code,
+    };
+    match args.format {
+        common::Format::Json => {
+            let mut doc = serde_json::to_value(&joined).expect("plain data");
+            doc["dry_run"] = args.dry_run.into();
+            doc["written"] = written.into();
+            doc["file"] = file.display().to_string().into();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&doc).expect("plain data")
+            );
+        }
+        common::Format::Text => {
+            print!("{}", joined.text());
+            if written {
+                println!("wrote {}", file.display());
+            } else if args.dry_run && joined.routes.is_some() {
+                println!("dry run: {} is not written", file.display());
+            }
+        }
+    }
+    match &joined.refused {
+        Some(e) => {
+            if args.format == common::Format::Text {
+                eprintln!("error: {e}");
+            }
+            ExitCode::FAILURE
+        }
+        None => ExitCode::SUCCESS,
+    }
+}
+
 fn import(args: &ImportArgs) -> ExitCode {
     let pcb = match fs::read_to_string(&args.pcb) {
         Ok(text) => text,
@@ -661,10 +758,10 @@ fn import(args: &ImportArgs) -> ExitCode {
         None => None,
     };
     // First the design's board as it is placed now, for its parts, nets and paths.
-    let imported = with_board(&args.target, |placed, board| {
+    let imported = with_board(&args.target, |layout, board| {
         let import = routes_import::import(board, &pcb, parts.as_ref(), !args.unlocked)?;
         if !args.no_places {
-            write_places(&placed.layout, board, &import)?;
+            write_places(layout, board, &import)?;
         }
         Ok(import)
     });
@@ -673,8 +770,8 @@ fn import(args: &ImportArgs) -> ExitCode {
         Err(code) => return code,
     };
     // Then placed again with those places, for each net's pads as they are.
-    let written = with_board(&args.target, |placed, board| {
-        let file = routes_file(placed);
+    let written = with_board(&args.target, |layout, board| {
+        let file = routes_file(layout);
         let mut routes = lib::load(&file).unwrap_or_default();
         routes
             .boards
@@ -914,6 +1011,21 @@ mod tests {
             kind(&["routes", "add-via", "--net", "GND"]),
             ErrorKind::MissingRequiredArgument
         );
+        // `join-pad` (issue #1293).
+        assert!(matches!(
+            parse(&["routes", "join-pad", "C1.2", "--dry-run", "--file", "a.nsm"]),
+            Ok(Leaf::Routes(routes::Args {
+                command: routes::Command::JoinPad(routes::JoinPadArgs {
+                    ref pad,
+                    dry_run: true,
+                    ..
+                })
+            })) if pad == "C1.2"
+        ));
+        assert_eq!(
+            kind(&["routes", "join-pad"]),
+            ErrorKind::MissingRequiredArgument
+        );
         // `tidy` (issue #1192).
         assert!(matches!(
             parse(&[
@@ -921,6 +1033,7 @@ mod tests {
                 "tidy",
                 "--dry-run",
                 "--reuse-routes",
+                "--widen",
                 "--format",
                 "json"
             ]),
@@ -928,6 +1041,7 @@ mod tests {
                 command: routes::Command::Tidy(routes::TidyArgs {
                     dry_run: true,
                     reuse_routes: true,
+                    widen: true,
                     format: crate::commands::common::Format::Json,
                     ..
                 })

@@ -90,7 +90,8 @@
 //!   nets letting go. A driver the analysis does not model, behind a resistor into a net that
 //!   nothing else is on (its other pins are `input`s that state no leakage), is judged as a pair
 //!   on the far net (#1045): no current flows through the resistor, so the two nets are at one
-//!   voltage. Any other driver, an island the analysis did not solve, and a receiver whose ground
+//!   voltage. Such a driver behind a two-resistor divider is judged at the divider's levels
+//!   (#1270, below). Any other driver, an island the analysis did not solve, and a receiver whose ground
 //!   is not the island's are a note that names the part and the net the level comes from. A part
 //!   that only pulls the net to a rail or to ground has no driver on its far side and is not
 //!   named.
@@ -141,6 +142,23 @@
 //! voltage, and a rail or a ground that is not the pin's ground are notes. Not taken: judging a
 //! pin on a rail against `vil` as well (a strap to a rail means a high), and a rail that is the
 //! output of a part that may be off (a load switch), which is held at its range as any rail is.
+//!
+//! A level through a two-resistor divider is followed (#1270; the owner's decision: two-resistor
+//! dividers only). A board shifts a host's 3.3 V output into a 1.8 V input with a series resistor
+//! and a resistor to ground, and the driver, which states no test current, was a note. Where the
+//! DC analysis does not model a `Logic` driver behind a series resistor, and the receiver's net is
+//! a divider's middle (`divider`: nothing drives or holds it, its only resistors are the series
+//! one and one to a rail or a ground on the receiver's ground, and every other pin on it is an
+//! `input` that states no leakage), the driver is a source at its own levels, behind its `roh` or
+//! `rol` where it states one, and the net is `e + (v - e) * rb / (ra + rb)`, monotonic in each of
+//! the driver's level, the rail's voltage and the two resistances, so its range is taken at their
+//! corners (`Divider::range`). The lowest high is held against the receiver's `vih`, the highest
+//! low against its `vil`, with the fault naming both resistors, the net the level comes from and
+//! the rail or ground. The net's absolute maximum is the divided swing of the driver's net with no
+//! source resistance (`divided_range`), where `net_range` saw only the resistor to the rail or
+//! ground. Every other network keeps the note: a third resistor, an open-drain driver (its high
+//! is its circuit's), a series part that is not a resistor, a resistance with no value, a rail on
+//! another ground or with no voltage, a driver on another ground.
 //!
 //! A pair of which neither end states a level is still not looked at. Not taken (#850, #1045):
 //! judging a receiver against a driver the DC analysis does not model behind a series part into
@@ -863,6 +881,13 @@ impl Run<'_> {
                             self.pair(from, d, r);
                             continue;
                         }
+                        if let Some(div) = self
+                            .ground_pin(r.logic)
+                            .and_then(|g| self.divider(index, part, g))
+                            && self.through_divider(net, d, r, from, &div)
+                        {
+                            continue;
+                        }
                     }
                     self.note(
                         r.part,
@@ -903,6 +928,176 @@ impl Run<'_> {
                         self.value(logic, "ii").is_none_or(|(_, q)| q.hi() <= 0.0)
                     })
             })
+    }
+
+    /// Whether a pin draws nothing from its net: an `input` that states no leakage, or a
+    /// leakage of nothing (#1045, #1270).
+    fn draws_nothing(&self, pin: InstId) -> bool {
+        self.model.pin_kind(pin) == Some(PinKind::Input)
+            && self
+                .logic_of(pin)
+                .is_none_or(|logic| self.value(logic, "ii").is_none_or(|(_, q)| q.hi() <= 0.0))
+    }
+
+    /// The two-resistor divider a net is the middle of (#1270): `series`, a resistor from a net
+    /// that something drives, and one other resistor from the net to a rail or a ground whose
+    /// ground is `ground`, and on the net nothing else but pins that draw nothing. None for any
+    /// other network, a resistance with no value, and a rail with no voltage.
+    fn divider(&self, index: usize, series: InstId, ground: InstId) -> Option<Divider> {
+        let model = self.model;
+        let net = &model.nets()[index];
+        if self.drives(net) || self.holder(index).is_some() {
+            return None;
+        }
+        let mut series_seen = false;
+        let mut shunt: Option<(InstId, usize)> = None;
+        for &t in &net.terminals {
+            if model.unused_by(t).is_some() {
+                continue;
+            }
+            let far = self.resistor_far_end(t).and_then(|f| self.net_index(f));
+            let part = model.owner_of(t)?;
+            match far {
+                Some(_) if part == series => series_seen = true,
+                Some(far) if far != index && shunt.is_none() => shunt = Some((part, far)),
+                Some(_) => return None,
+                None if part == series => return None,
+                None if self.draws_nothing(t) => {}
+                None => return None,
+            }
+        }
+        let (shunt, far) = shunt.filter(|_| series_seen)?;
+        let end = match self.holder(far)? {
+            Holder::Ground { neg } if self.same_ground(neg, ground) => Rail {
+                range: (0.0, 0.0),
+                name: format!("ground `{}`", model.nets()[far].name),
+            },
+            Holder::Rail { path, voltage, neg } if self.same_ground(neg, ground) => {
+                if self.net_index(ground) == Some(far) {
+                    return None;
+                }
+                let Domain::Quantity(q) = model.field(voltage).domain else {
+                    return None;
+                };
+                Rail {
+                    range: (q.lo(), q.hi()),
+                    name: format!("rail `{path}`"),
+                }
+            }
+            _ => return None,
+        };
+        let ohms = |part: InstId| {
+            let (_, q) = self.value(part, "resistance")?;
+            (q.lo() > 0.0 && q.hi().is_finite()).then_some((q.lo(), q.hi()))
+        };
+        Some(Divider {
+            series,
+            shunt,
+            rs: ohms(series)?,
+            rsh: ohms(shunt)?,
+            end,
+        })
+    }
+
+    /// The divider of a net with no driver of its own, behind the one resistor whose far net
+    /// something drives, for its absolute maximum (#1270): the divider and the net it is fed from.
+    fn divider_of(&self, index: usize, ground: InstId) -> Option<(Divider, usize)> {
+        let model = self.model;
+        let mut fed: Option<(InstId, usize)> = None;
+        for &t in &model.nets()[index].terminals {
+            if self.resistor_far_end(t).is_none() {
+                continue;
+            }
+            let Some((part, far)) = self.far_end(t, index) else {
+                continue;
+            };
+            if self.drives(&model.nets()[far]) && self.holder(far).is_none() {
+                if fed.is_some_and(|f| f != (part, far)) {
+                    return None;
+                }
+                fed = Some((part, far));
+            }
+        }
+        let (part, far) = fed?;
+        Some((self.divider(index, part, ground)?, far))
+    }
+
+    /// A receiver behind a two-resistor divider from a `Logic` driver the DC analysis does not
+    /// model (#1270): the driver is a source at its own levels, behind its `roh` or `rol` when it
+    /// states one, and the receiver's `vih` is held against the lowest voltage the divider gives
+    /// with the driver high, its `vil` against the highest with the driver low, over the
+    /// tolerances of both resistors and the range of the rail. An open-drain driver keeps the
+    /// note (false), as does a driver on another ground.
+    fn through_divider(
+        &mut self,
+        net: &Net,
+        d: &Line,
+        r: &Line,
+        from: &Net,
+        div: &Divider,
+    ) -> bool {
+        let model = self.model;
+        if d.kind == PinKind::OpenDrain
+            || (self.value(d.logic, "voh").is_none() && self.value(d.logic, "vol").is_some())
+        {
+            return false;
+        }
+        let (Some(dg), Some(rg)) = (self.ground_pin(d.logic), self.ground_pin(r.logic)) else {
+            return false;
+        };
+        if !self.same_ground(dg, rg) {
+            return false;
+        }
+        let (dl, rl) = (model.path_of(d.logic), model.path_of(r.logic));
+        let source = |name: &str| {
+            self.value(d.logic, name)
+                .map_or((0.0, 0.0), |(_, q)| (q.lo().max(0.0), q.hi()))
+        };
+        let (roh, rol) = (source("roh"), source("rol"));
+        let words = format!(
+            "the divider of `{}` from net `{}` and `{}` to {}",
+            model.path_of(div.series),
+            from.name,
+            model.path_of(div.shunt),
+            div.end.name
+        );
+        match (
+            self.output_level(d.logic, "voh"),
+            self.value(r.logic, "vih"),
+        ) {
+            (Some((_, voh, _)), Some(vih)) => {
+                let range = div.range((voh.lo(), voh.hi()), roh);
+                self.held_high(net, r, vih, range, |v| {
+                    format!("with `{dl}` driving high, {words} holds the line at {v}")
+                });
+            }
+            (o, i) => self.missing(
+                net,
+                d,
+                r,
+                "high",
+                [(&dl, "voh", o.is_none()), (&rl, "vih", i.is_none())],
+            ),
+        }
+        match (
+            self.output_level(d.logic, "vol"),
+            self.value(r.logic, "vil"),
+        ) {
+            (Some((_, vol, _)), Some(vil)) => {
+                let range = div.range((vol.lo(), vol.hi()), rol);
+                self.held_low(net, r, vil, range, |v| {
+                    format!("with `{dl}` driving low, {words} holds the line at {v}")
+                });
+            }
+            (o, i) => self.missing(
+                net,
+                d,
+                r,
+                "low",
+                [(&dl, "vol", o.is_none()), (&rl, "vil", i.is_none())],
+            ),
+        }
+        true
     }
 
     /// A receiver judged by the voltage the DC analysis gives its net with a driver behind a
@@ -1592,7 +1787,7 @@ impl Run<'_> {
             // it: a divider's middle is not the rail it hangs from.
             let swing = match self
                 .node_range(index, ground)
-                .map_or_else(|| self.net_range(index, ground), Ok)
+                .map_or_else(|| self.divided_range(index, ground), Ok)
             {
                 Ok(range) => range,
                 Err(why) => {
@@ -1770,6 +1965,32 @@ impl Run<'_> {
         let mut swing = Swing::none();
         swing.add(lo, hi, from);
         Some(swing)
+    }
+
+    /// The worst-case voltage of a net that is the middle of a two-resistor divider (#1270): the
+    /// divider of the swing of the net it is fed from, with the driver taken as a source of no
+    /// resistance, over the tolerances of the resistors and the range of the rail. Any other net
+    /// is `net_range`'s.
+    fn divided_range(&self, index: usize, ground: InstId) -> Result<Swing, String> {
+        let Some((div, far)) = self.divider_of(index, ground) else {
+            return self.net_range(index, ground);
+        };
+        let fed = self.net_range(far, ground)?;
+        let (lo, hi) = div.range((fed.lo, fed.hi), (0.0, 0.0));
+        let model = self.model;
+        let mut swing = Swing::none();
+        swing.add(
+            lo,
+            hi,
+            &format!(
+                "the divider of `{}` from net `{}` and `{}` to {}",
+                model.path_of(div.series),
+                model.nets()[far].name,
+                model.path_of(div.shunt),
+                div.end.name
+            ),
+        );
+        Ok(swing)
     }
 
     /// The worst-case voltage of a net relative to a ground, and what sets each end. The
@@ -1981,6 +2202,45 @@ impl Swing {
             self.hi_from = from.to_string();
         }
         self.any = true;
+    }
+}
+
+/// A two-resistor divider (#1270): a resistor from a driven net into the middle, and one from the
+/// middle to a rail or a ground.
+struct Divider {
+    series: InstId,
+    shunt: InstId,
+    /// The range of each resistance, in ohms.
+    rs: (f64, f64),
+    rsh: (f64, f64),
+    /// What the shunt resistor's far end is held at.
+    end: Rail,
+}
+
+/// The voltage a divider's shunt resistor ends at, and the words for it.
+struct Rail {
+    range: (f64, f64),
+    name: String,
+}
+
+impl Divider {
+    /// The range of the middle with the far end of the series resistor at `fed` behind a source
+    /// resistance of `source` ohms: `v = e + (f - e) * rsh / (rs + source + rsh)` is monotonic in
+    /// each of the four, so its extremes are at the corners of their ranges.
+    fn range(&self, fed: (f64, f64), source: (f64, f64)) -> (f64, f64) {
+        let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+        for f in [fed.0, fed.1] {
+            for e in [self.end.range.0, self.end.range.1] {
+                for rs in [self.rs.0 + source.0, self.rs.1 + source.1] {
+                    for rsh in [self.rsh.0, self.rsh.1] {
+                        let v = e + (f - e) * rsh / (rs + rsh);
+                        lo = lo.min(v);
+                        hi = hi.max(v);
+                    }
+                }
+            }
+        }
+        (lo, hi)
     }
 }
 

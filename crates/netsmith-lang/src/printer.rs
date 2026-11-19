@@ -403,6 +403,27 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
             Item::Unused(u) => {
                 let _ = write!(out, "unused {}", u.path.to_source());
             }
+            Item::Sequence(q) => {
+                out.push_str("sequence {\n");
+                for step in &q.steps {
+                    out.push_str(&"    ".repeat(depth + 2));
+                    let _ = match step {
+                        SequenceStep::Event(p) => writeln!(out, "{}", p.to_source()),
+                        SequenceStep::Then {
+                            delay: Some((n, _)),
+                            ..
+                        } => {
+                            writeln!(out, "then {}", n.text)
+                        }
+                        SequenceStep::Then { delay: None, .. } => writeln!(out, "then"),
+                        SequenceStep::After { event, .. } => {
+                            writeln!(out, "after {}", event.to_source())
+                        }
+                    };
+                }
+                out.push_str(&"    ".repeat(depth + 1));
+                out.push('}');
+            }
             Item::Peripheral(p) => {
                 let functions: Vec<String> =
                     p.functions.iter().map(PinFunction::to_source).collect();

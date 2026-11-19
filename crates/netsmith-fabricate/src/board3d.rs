@@ -1246,6 +1246,7 @@ fn run_with(
         catalogs,
         libraries,
         layout,
+        false,
         board,
         seeds,
         models,
@@ -1295,6 +1296,7 @@ pub fn scene_and_label(
         catalogs,
         libraries,
         layout,
+        false,
         board,
         crate::layout::DEFAULT_PLACE_SEEDS.into(),
         None,
@@ -1320,7 +1322,8 @@ pub struct Placed<'a> {
     pub loader: &'a netsmith_check::Loader,
     pub catalogs: &'a netsmith_solve::Catalogs,
     pub libraries: &'a netsmith_pipeline::Libraries,
-    /// The layout file beside the source (read if it exists).
+    /// The layout file beside the source (read if it exists). A board of a system defined in
+    /// another file reads the one beside that file instead ([`Placed::layout_of`]).
     pub layout: std::path::PathBuf,
     /// The board to pick, by name or label.
     pub board: Option<&'a str>,
@@ -1334,6 +1337,13 @@ pub struct Placed<'a> {
 }
 
 impl Placed<'_> {
+    /// The layout file `built`, a board of this source, reads and writes: the one beside the
+    /// source, or for a board of a system defined in another file the one beside that file
+    /// ([`crate::layout::board_file`], issue #1327). Every placing of [`Placed`] reads it.
+    pub fn layout_of(&self, built: &Built) -> crate::layout::BoardFile {
+        crate::layout::board_file(built, self.loader, &self.layout)
+    }
+
     /// [`run`]: the report and the scene.
     pub fn run(&self) -> Result<(Report, Scene), String> {
         run_with(
@@ -1369,6 +1379,7 @@ impl Placed<'_> {
             self.catalogs,
             self.libraries,
             Some(&self.layout),
+            false,
             self.board,
             false,
             true,
@@ -1393,6 +1404,7 @@ impl Placed<'_> {
             self.catalogs,
             self.libraries,
             Some(layout),
+            layout != self.layout,
             self.board,
             self.seeds,
             None,
@@ -1407,6 +1419,37 @@ impl Placed<'_> {
     pub fn with_board_as_laid_out<T>(
         &self,
         then: impl FnOnce(&Built, &Board) -> T,
+    ) -> Result<T, String> {
+        self.laid_out(
+            |design, mapping, library, options, layout| {
+                Board::as_laid_out(design, mapping, library, options, layout)
+                    .map(|board| (board, Vec::new()))
+            },
+            |built, board, _| then(built, board),
+        )
+    }
+
+    /// [`Placed::with_board_as_laid_out`] for the parts that have a place: a part with no entry
+    /// in the layout file and no requirement that pins it is no refusal, it is left off the
+    /// board and `then` is given it as `(designator, path)` (issue 1308). An outline whose size
+    /// is not stated exactly is still refused.
+    pub fn with_board_as_laid_out_partial<T>(
+        &self,
+        then: impl FnOnce(&Built, &Board, &[(String, String)]) -> T,
+    ) -> Result<T, String> {
+        self.laid_out(Board::as_laid_out_partial, then)
+    }
+
+    fn laid_out<T>(
+        &self,
+        make: impl FnOnce(
+            &netsmith_core::Design,
+            &netsmith_kicad::Mapping,
+            &netsmith_pcb::FootprintLibrary,
+            &netsmith_pcb::PlaceOptions,
+            Option<&(netsmith_pcb::Layout, String)>,
+        ) -> Result<(Board, Vec<(String, String)>), String>,
+        then: impl FnOnce(&Built, &Board, &[(String, String)]) -> T,
     ) -> Result<T, String> {
         let outcome = netsmith_pipeline::outcome_with(
             self.name,
@@ -1424,10 +1467,11 @@ impl Placed<'_> {
             .iter()
             .map(|b| b.design.name.clone())
             .collect();
-        let layout = crate::layout::read(&self.layout, &names).map_err(&fail)?;
+        let (layout, _) =
+            crate::layout::read_board(built, self.loader, &self.layout, &names).map_err(&fail)?;
         let mut options = netsmith_pcb::place_options(&built.design, layout.as_ref().map(|l| &l.0));
         options.lines_warn = self.catalogs.constraints_warn();
-        let board = Board::as_laid_out(
+        let (board, absent) = make(
             &built.design,
             &self.libraries.mapping,
             &self.libraries.footprints,
@@ -1435,7 +1479,7 @@ impl Placed<'_> {
             layout.as_ref(),
         )
         .map_err(fail)?;
-        Ok(then(built, &board))
+        Ok(then(built, &board, &absent))
     }
 
     /// `then` of the board picked, checked, solved and designed but not placed: what a command
@@ -1476,6 +1520,7 @@ impl Placed<'_> {
             self.catalogs,
             self.libraries,
             Some(&self.layout),
+            false,
             self.board,
             self.seeds,
             self.models.as_ref(),
@@ -1533,6 +1578,7 @@ impl Placed<'_> {
             self.catalogs,
             self.libraries,
             Some(&self.layout),
+            false,
             self.board,
             true,
             true,
@@ -1573,6 +1619,7 @@ impl Placed<'_> {
             self.catalogs,
             self.libraries,
             Some(&self.layout),
+            false,
             self.board,
             true,
             false,
@@ -1620,6 +1667,9 @@ fn placed<T>(
     catalogs: &netsmith_solve::Catalogs,
     libraries: &netsmith_pipeline::Libraries,
     layout: Option<&std::path::Path>,
+    // Whether `layout` is read as it is, for every board: a file a command was given, not the
+    // one beside the source (`Placed::with_board_laid_out`).
+    exact: bool,
     board: Option<&str>,
     seeds: crate::layout::Seeding,
     models: Option<&crate::models::Places>,
@@ -1633,6 +1683,7 @@ fn placed<T>(
         catalogs,
         libraries,
         layout,
+        exact,
         board,
         false,
         false,
@@ -1658,6 +1709,9 @@ fn picked<T>(
     catalogs: &netsmith_solve::Catalogs,
     libraries: &netsmith_pipeline::Libraries,
     layout: Option<&std::path::Path>,
+    // Whether `layout` is read as it is, for every board: a file a command was given, not the
+    // one beside the source (`Placed::with_board_laid_out`).
+    exact: bool,
     want: Option<&str>,
     systems: bool,
     show_refused: bool,
@@ -1701,11 +1755,17 @@ fn picked<T>(
     if systems {
         labels.extend(outcome.systems.iter().map(|s| s.name.clone()));
     }
-    let read_layout = |label: &str| -> Result<_, String> {
+    // Each board's own table: a board of a system defined in another file reads the layout
+    // file beside that file (issue #1327); what is said of it goes with the board's warnings.
+    let read_layout = |built: &Built| -> Result<_, String> {
         match layout {
-            Some(file) => crate::layout::read(file, &names)
-                .map_err(|what| format!("error: {label}: {what}\n")),
-            None => Ok(None),
+            Some(file) if exact => crate::layout::read(file, &names)
+                .map(|read| (read, None))
+                .map_err(|what| format!("error: {}: {what}\n", built.label())),
+            Some(file) => crate::layout::read_board(built, loader, file, &names)
+                .map(|(read, at)| (read, at.note))
+                .map_err(|what| format!("error: {}: {what}\n", built.label())),
+            None => Ok((None, None)),
         }
     };
     let place = |built: &Built, layout: Option<&(netsmith_pcb::Layout, String)>| {
@@ -1771,20 +1831,23 @@ fn picked<T>(
         && let Some(want) = want
         && let Some(solved) = outcome.systems.iter().find(|s| s.name == want)
     {
-        let layout = read_layout(want)?;
         let members = crate::system3d::members(solved, &outcome.boards);
         let mut placed = Vec::new();
         let mut warnings = BTreeMap::new();
         for built in &members {
-            warnings.insert(built.label(), located(&built.label())?);
+            let (layout, note) = read_layout(built)?;
+            let mut said = located(&built.label())?;
+            said.extend(note);
+            warnings.insert(built.label(), said);
             placed.push(place(built, layout.as_ref())?.0);
         }
         let pairs: Vec<(&Built, &Board)> = members.iter().copied().zip(&placed).collect();
         return Ok(system(solved, &pairs, &warnings));
     }
     let built = pick_board(&outcome.boards, name, want, &labels)?;
-    let warnings = located(&built.label())?;
-    let layout = read_layout(&built.label())?;
+    let mut warnings = located(&built.label())?;
+    let (layout, note) = read_layout(built)?;
+    warnings.extend(note);
     let (placed, placing) = place(built, layout.as_ref())?;
     Ok(board(built, &placed, warnings, placing))
 }

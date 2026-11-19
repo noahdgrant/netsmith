@@ -45,7 +45,7 @@ A role that an interface has no `lines` for, such as `UsbRole::Passthrough`, whi
 _Avoid_: Transparent end, bypass, receptacle role, none (there is no role `none`)
 
 **Peak current**:
-The most current one load draws at an instant, transients included: the `.peak_current` of a `Rail`, such as the inrush of a capacitor charged through a resistor. `.current` is the steady range, and the DC analysis never reads the peak, so it enters no balance or power. Each rail has its own (`~` does not share it), and it is checked against the rail's `.max_peak_current`, what the source gives at an instant, which a regulator states and joined rails share (issue #750).
+The most current one load draws at an instant, transients included: the `.peak_current` of a `Rail`, such as the inrush of a capacitor charged through a resistor. `.current` is the steady range, and the DC analysis never reads the peak, so it enters no balance or power. Each rail has its own (`~` does not share it), and it is checked against the rail's `.max_peak_current`, what the source gives at an instant, which a regulator states and joined rails share (issue #750). A load that states `.burst` draws it for that long at a stretch, and its `.current` is its average; see _Burst_.
 _Avoid_: Inrush current (the inrush is one cause; the peak is the number), surge current
 
 **Peak voltage**:

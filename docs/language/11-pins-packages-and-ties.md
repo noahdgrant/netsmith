@@ -99,7 +99,7 @@ Rules.
 - `tie .a ~ .b` says that the board must put the two pins on one net. The tie is skipped in a package that lacks either pin.
 - The faults on a board are reported when it is checked. A rule that needs the package waits for the solver when the board does not name the package (a catalog row chooses it). The solver does not choose a catalog row whose package lacks a pin that the board connects, nor one whose package has both pins of a `tie` that the board does not make: it looks ahead to the tie, so a board that leaves the sense pin open gets the package without one.
 - A port of a module is only a way through: a pin whose net reaches nothing but ports of modules that the board leaves open is not connected. A rail or a port of the board is a connection, since that is where a board brings one in.
-- Two power sources on one net are refused. A source is the rail of a part's `dc source` and the output rail of a `dc linear_regulator` or `dc switching_regulator` ("Standard parts"). A `power` pin with no `dc` statement is not told from a load's, so it is not counted.
+- Two power sources on one net are refused. A source is the rail of a part's `dc source` and the output rail of a `dc linear_regulator` or `dc switching_regulator` ("Standard parts"). A `power` pin with no `dc` statement is not told from a load's, so it is not counted. The output of a load switch (`dc load_switch`) is not a source here: it passes on its input's, and two switches on one output (a power multiplexer) are a choice between their inputs.
 
 Messages.
 

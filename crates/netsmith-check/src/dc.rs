@@ -1,7 +1,9 @@
 //! The `dc` statement: what a part is in a DC analysis (ADR 0076, amendment 1).
 //!
 //! A part says it once, in the part or in the generic it provides, and the checker records
-//! the element on the part's instance ([`DcElement`]). The solver's DC analysis reads the
+//! the element on the part's instance ([`DcElement`]). A part that gives several rails (a
+//! module with two outputs) states a `dc source` or a regulator for each, one to a rail
+//! (issue 1271). The solver's DC analysis reads the
 //! records (`netsmith-solve`, `dc/`).
 
 use netsmith_lang::ast;
@@ -82,10 +84,11 @@ impl Checker<'_> {
         }
         let mut ok = true;
         let mut pins = Vec::new();
-        for (path, role) in d.operands.iter().zip(pin_roles) {
+        for (index, (path, role)) in d.operands.iter().zip(pin_roles).enumerate() {
+            let rail = kind.takes_rail(index);
             match self.resolve_path(path) {
                 Res::Inst(i)
-                    if kind.takes_rails()
+                    if rail
                         && self.model.instance(i).kind == InstKind::Interface
                         && self.model.rail_of(i).is_some() =>
                 {
@@ -103,9 +106,7 @@ impl Checker<'_> {
                         ok = false;
                     }
                 }
-                Res::Inst(i)
-                    if !kind.takes_rails() && self.model.instance(i).kind == InstKind::Pin =>
-                {
+                Res::Inst(i) if !rail && self.model.instance(i).kind == InstKind::Pin => {
                     if self.model.owner_of(i) == Some(cur) {
                         pins.push(i);
                     } else {
@@ -126,7 +127,7 @@ impl Checker<'_> {
                         format!(
                             "`dc {}` takes the {role} here, {}, and `{}` is not one; the statement is `{}`",
                             kind.word(),
-                            if kind.takes_rails() { "a rail" } else { "a pin" },
+                            if rail { "a rail" } else { "a pin" },
                             path.to_source(),
                             kind.example()
                         ),
@@ -190,30 +191,51 @@ impl Checker<'_> {
         if !ok {
             return;
         }
-        if (1..pins.len()).any(|i| pins[..i].contains(&pins[i])) {
+        if let Some(i) = (1..pins.len()).find(|&i| pins[..i].contains(&pins[i])) {
             self.error(
                 d.span,
                 format!(
                     "`dc {}` names the same {what} twice; its {what}s are different ones, as in `{}`",
                     kind.word(),
                     kind.example(),
-                    what = if kind.takes_rails() { "rail" } else { "pin" }
+                    what = if kind.takes_rail(i) { "rail" } else { "pin" }
                 ),
             );
             return;
         }
-        if let Some(earlier) = &self.model.instance(cur).dc {
+        // A part is one element at DC, or one element that gives a rail for each rail it gives
+        // (issue 1271): a part with two output rails states a `dc` for each.
+        let output = match kind {
+            DcKind::Source => Some(pins[0]),
+            DcKind::LinearRegulator | DcKind::SwitchingRegulator => Some(pins[1]),
+            _ => None,
+        };
+        for earlier in &self.model.instance(cur).dc {
             let place = self.place_of(earlier.source, earlier.span);
-            self.error(
-                d.span,
-                format!(
-                    "this part already has a `dc` statement (at {place}); a part is one element at DC"
-                ),
-            );
-            return;
+            if !kind.gives_rail() || !earlier.kind.gives_rail() {
+                self.error(
+                    d.span,
+                    format!(
+                        "this part already has a `dc` statement (at {place}); a part is one element at DC, or a `dc source` or a regulator for each rail it gives"
+                    ),
+                );
+                return;
+            }
+            if earlier.output_rail() == output {
+                let rail = output.map_or_else(String::new, |r| self.model.path_below(r, cur));
+                self.error(
+                    d.span,
+                    format!(
+                        "`dc {}` gives the rail `.{rail}`, and this part's `dc {}` (at {place}) gives it already; a part states one `dc` for each rail it gives",
+                        kind.word(),
+                        earlier.kind.word()
+                    ),
+                );
+                return;
+            }
         }
         let source = self.cur_source();
-        self.model.instances[cur.0].dc = Some(DcElement {
+        self.model.instances[cur.0].dc.push(DcElement {
             kind,
             pins,
             values,
@@ -233,31 +255,40 @@ impl Checker<'_> {
     /// Statement order never matters, so this waits for the `bridge`.
     pub(crate) fn finish_dc(&mut self, part: InstId) {
         let inst = self.model.instance(part);
-        let (Some(el), Some((a, b))) = (inst.dc.clone(), inst.bridge) else {
+        let Some((a, b)) = inst.bridge else {
             return;
         };
-        // The pins the element runs between: both of a two-terminal element, the drain and the
-        // source of a transistor.
-        let channel = match el.kind {
-            DcKind::Resistor | DcKind::Diode => [el.pins[0], el.pins[1]],
-            DcKind::Nmos | DcKind::Pmos => [el.pins[1], el.pins[2]],
-            // A regulator is between rails, a source is one rail, and a `bridge` is no part of
-            // either.
-            DcKind::LinearRegulator | DcKind::SwitchingRegulator | DcKind::Source => return,
-        };
-        if (channel[0] == a && channel[1] == b) || (channel[0] == b && channel[1] == a) {
-            return;
+        let mut messages = Vec::new();
+        for el in &inst.dc {
+            // The pins the element runs between: both of a two-terminal element, the drain and
+            // the source of a transistor.
+            let channel = match el.kind {
+                DcKind::Resistor | DcKind::Diode => [el.pins[0], el.pins[1]],
+                DcKind::Nmos | DcKind::Pmos => [el.pins[1], el.pins[2]],
+                // A regulator and a load switch are between rails, a source is one rail, and a
+                // `bridge` is no part of either.
+                DcKind::LinearRegulator
+                | DcKind::SwitchingRegulator
+                | DcKind::Source
+                | DcKind::LoadSwitch => continue,
+            };
+            if (channel[0] == a && channel[1] == b) || (channel[0] == b && channel[1] == a) {
+                continue;
+            }
+            let name = |pin: InstId| format!(".{}", self.model.path_below(pin, part));
+            let message = format!(
+                "`dc {}` runs between {} and {}, and this part's `bridge` joins {} and {}: a `~>` chain passes through the element the part is at DC, so the two must be the same pins",
+                el.kind.word(),
+                name(channel[0]),
+                name(channel[1]),
+                name(a),
+                name(b)
+            );
+            messages.push((el.source, el.span, message));
         }
-        let name = |pin: InstId| format!(".{}", self.model.path_below(pin, part));
-        let message = format!(
-            "`dc {}` runs between {} and {}, and this part's `bridge` joins {} and {}: a `~>` chain passes through the element the part is at DC, so the two must be the same pins",
-            el.kind.word(),
-            name(channel[0]),
-            name(channel[1]),
-            name(a),
-            name(b)
-        );
-        self.report(el.source, el.span, message);
+        for (source, span, message) in messages {
+            self.report(source, span, message);
+        }
     }
 }
 

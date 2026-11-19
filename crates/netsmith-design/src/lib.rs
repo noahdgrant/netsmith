@@ -16,6 +16,7 @@ mod polygon;
 pub use features::Sites;
 pub mod guidelines;
 mod mates;
+mod soldering;
 pub use mates::{SystemMate, system_mates};
 
 use std::cell::RefCell;
@@ -1650,6 +1651,8 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     // Every fitted part against the board's environment, if it states one (ADR 0099).
     let judged = environment::judge(model, &fitted, &mut errors);
     guideline_findings.extend(judged.findings);
+    // How each part may be soldered against who solders it (issue #1261).
+    soldering::judge(model, &fitted, &mut errors);
 
     if errors.is_empty() {
         Ok(Designed {
@@ -1844,6 +1847,7 @@ mod tests {
             ("Label", "LBL"),
             ("Logo", "LOGO"),
             ("LinearRegulator", "U"),
+            ("LoadSwitch", "U"),
         ];
         let parts = std_parts();
         for (kind, letters) in expected {

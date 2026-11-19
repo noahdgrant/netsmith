@@ -123,9 +123,9 @@ board Overload {
 
 ```text
 error: no `ldo` candidate satisfies `stage.regulator`: the closest of the 1 that fit, XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446, fails because -stage.regulator.vout.current must always be at most stage.regulator.max_current, but 0A..50A is not always below 100mA (the currents on net `3V3` in `stage`: stage.regulator.vout.current (-50A..0A) + -stage.vout.current (-50A..0A) add up to zero; net `3V3`: output.current (0A..50A) + stage.vout.current (-50A..0A) add up to zero)
-   --> std/parts/regulator.nsm:55:5
+   --> std/parts/regulator.nsm:73:5
    |
-55 |     -.vout.current <= .max_current
+73 |     -.vout.current <= .max_current
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -303,13 +303,15 @@ board Heaters {
 
 ```text
 error: no `ldo` candidate satisfies `regulator`: the closest of the 1 that fit, XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446, fails because -regulator.vout.current must always be at most regulator.max_current, but 0A..120mA is not always below 100mA (the currents on net `3V3`: heater_a.current (0A..60mA) + heater_b.current (0A..60mA) + heater_c.current (0A..60mA) + regulator.vout.current (-120mA..0A) add up to zero, with at most 2 of `HEATERS` on at once)
-   --> std/parts/regulator.nsm:55:5
+   --> std/parts/regulator.nsm:73:5
    |
-55 |     -.vout.current <= .max_current
+73 |     -.vout.current <= .max_current
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A group in a module holds for each instance of the module. A load is in one group, and a group lists each load once, at least two of them, and a limit fewer than its loads (one that allows every load at once says nothing). The members are not worked out from the rest of the net: a load that is on or off is not what the others leave. The group says which loads run together and nothing about when: a load's peak (below) is checked alone, as before.
+
+The power view and `netsmith board power` weigh the demand of a rail against what its regulator can give, the rating the part states for its output: `.max_current` of a `LinearRegulator`, `.max_output_current` of a `Buck`'s IC (issue #1316). A buck converter that feeds a rail has the IC's rating as the rail's capacity, so loads that can draw more than it are a power issue (an error) and `board power` no longer says `no limit stated for the supply`; no new member is needed. A source that is no regulator with such a rating (a connector, a rail the board states) still has no limit there.
 
 ### A peak current
 
@@ -355,3 +357,66 @@ error: store.supply.peak_current must always be at most store.supply.max_peak_cu
 ```
 
 The rail's voltage is the regulator's output, whose range the solver widens by the tolerance of the divider, so the peak is 3.1 A to 3.5 A. A 10 ohm resistor limits it to 0.35 A, and the board builds; a load that states its peak directly states `.load.peak_current &= 0.4A`.
+
+### A load that bursts
+
+A radio draws little most of the time and much while it transmits: 0.5 A for a few hundred microseconds, and 10 to 40 mA on average. One range hides which is which. A rail that states `.burst`, how long one burst lasts, is such a load (issue #1279): its `.current` is its average, the bursts included, and its `.peak_current` is what it draws during a burst. The average is what the balance of the net, a regulator's `.max_current`, its dissipation and every other check of the steady state read. The peak is what the source must give, and the source gives it while the other loads on the net keep drawing, so after the solve the peak and the other loads' steady current (each at its most; a group of loads that take turns at its worst) are added and held against the rail's `.max_peak_current`.
+
+What the source cannot give comes from the capacitors across the rail: every part with a bias between the rail's `pos` and `neg` nets, a bank by its `.total_effective_capacitance`, at the least of each. They give the rest for the length of the burst, and the rail falls by that charge over their capacitance from the least of its steady voltage. It must stay at or above the least voltage the parts on the net need, the highest that a `.voltage >= ...` of a rail on the net states. A net on which no part states one cannot lend the burst anything.
+
+```nsm evaluate
+import std::parts::passive::CapacitorBank
+import std::parts::regulator::{Buck, Lmr16006y}
+import std::sources::Rail
+
+board Radio {
+    .input: Rail { .voltage &= 9V..16V; .peak &= 24V; .pos.net &= "VIN" }
+    .reg: Buck<Lmr16006y> { .vout.pos.net &= "V3V3"; .vout.voltage &= 3.3V +/- 5% }
+    .input ~ .reg.vin
+    .mcu: Rail { .current &= 5mA..150mA }
+    .reg.vout ~ .mcu
+    .radio: Rail {
+        .current &= 10mA..40mA
+        .peak_current &= 500mA
+        .burst &= 200us
+        .duty &= 0.05
+        .voltage >= 3V
+    }
+    .reg.vout ~ .radio
+    .bulk: CapacitorBank
+    .bulk.total_effective_capacitance >= 80uF
+    .reg.vout.pos ~> .bulk ~> .reg.vout.neg
+}
+```
+
+The regulator gives 0.6 A, and during a burst the radio and the MCU draw 650 mA. The 50 mA the regulator cannot give for 200 us is 10 uC, and the bank and the regulator's own output capacitor hold it with the rail above the radio's 3 V. Without the bank the build fails, and the message says how much capacitance holding the burst takes:
+
+```nsm fails
+import std::parts::regulator::{Buck, Lmr16006y}
+import std::sources::Rail
+
+board Radio {
+    .input: Rail { .voltage &= 9V..16V; .peak &= 24V; .pos.net &= "VIN" }
+    .reg: Buck<Lmr16006y> { .vout.pos.net &= "V3V3"; .vout.voltage &= 3.3V +/- 5% }
+    .input ~ .reg.vin
+    .mcu: Rail { .current &= 5mA..150mA }
+    .reg.vout ~ .mcu
+    .radio: Rail { .current &= 10mA..40mA; .peak_current &= 500mA; .burst &= 200us; .voltage >= 3V }
+    .reg.vout ~ .radio
+}
+```
+
+```text
+error: during a burst of `radio` (`radio.peak_current` 500mA for 200us) the other loads on its net draw up to 150mA, so the source gives up to 650mA, above `radio.max_peak_current` (600mA); the 16.09uF across the rail give the other 50mA for 200us, and the rail falls by 621.4mV from 3.135V, below the 3V that `radio` needs: holding the burst takes 74.07uF of effective capacitance across the rail
+   --> main.nsm:10:68
+   |
+10 |     .radio: Rail { .current &= 10mA..40mA; .peak_current &= 500mA; .burst &= 200us; .voltage >= 3V }
+   |                                                                    ^^^^^^^^^^^^^^^
+```
+
+Rules.
+
+- `.burst` and `.duty` are optional (ADR 0074) and the load's own: `~` shares neither, as it does not share `.peak_current`. A rail with a peak and no burst is an inrush, checked alone (_A peak current_). A rail whose source states no `.max_peak_current` is not looked at.
+- `.duty` is the fraction of the time the load bursts (one 3 ms slot in every 100 ms is `0.03`). The bursts alone average the peak times the duty, so the most of the stated average must be at least that: `max(.current) >= max(.peak_current) * max(.duty)`, which a radio of `10mA..40mA` with `.duty &= 0.1` and a 500 mA peak fails (40 mA is below 50 mA).
+- A peak above the source's limit alone is refused by `Rail`'s own `.peak_current <= .max_peak_current`, which also makes the solver pick a regulator that gives it. The capacitance across the rail helps only with the other loads' share.
+- The capacitance is read at 25 C and new, and its ESR is not added to the fall (issue #1256 has the corners). A burst seen on the input of the converter that feeds the load is not judged (issue #1340).

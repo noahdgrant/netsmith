@@ -87,9 +87,11 @@ pub struct Instance {
     pub children: Vec<(String, Member)>,
     /// Terminals a `~>` chain enters and leaves a part by.
     pub bridge: Option<(InstId, InstId)>,
-    /// For a part: the element it is in a DC analysis, from its `dc` statement or its
-    /// generic's (ADR 0076, amendment 1). None for a part that states none.
-    pub dc: Option<DcElement>,
+    /// For a part: the elements it is in a DC analysis, from its `dc` statements or its
+    /// generic's (ADR 0076, amendment 1), in the order they were read. Empty for a part that
+    /// states none. A part is one element, or one element that gives an output rail (a
+    /// `dc source` or a regulator) for each rail it gives (issue 1271).
+    pub dc: Vec<DcElement>,
     pub catalog: Option<Catalog>,
     /// For a part: its `pins` tables, in source order (ADR 0016).
     pub tables: Vec<PinTable>,
@@ -157,10 +159,18 @@ pub enum DcKind {
     /// net at zero, as a board's own supply rail is (ADR 0076, amendment 5). The operand is a
     /// rail, not a pin.
     Source,
+    /// `dc load_switch .in .out .enable .on_resistance [.quiescent_current]`: a switch between
+    /// two rails (issue 1269). When its enable can turn it on (see
+    /// [`Model::load_switch_can_turn_on`]) it is its on resistance between the input's and the
+    /// output's positive nets, so the output's voltage is the input's less the drop and the
+    /// input passes on the output's load; and the input draws the quiescent current when the
+    /// statement names one. When the enable cannot, it is open and its output has no source.
+    /// The first two operands are rails, the third the enable pin.
+    LoadSwitch,
 }
 
 impl DcKind {
-    pub const ALL: [DcKind; 7] = [
+    pub const ALL: [DcKind; 8] = [
         Self::Resistor,
         Self::Diode,
         Self::Nmos,
@@ -168,6 +178,7 @@ impl DcKind {
         Self::LinearRegulator,
         Self::SwitchingRegulator,
         Self::Source,
+        Self::LoadSwitch,
     ];
 
     /// The word after `dc`.
@@ -180,16 +191,32 @@ impl DcKind {
             Self::LinearRegulator => "linear_regulator",
             Self::SwitchingRegulator => "switching_regulator",
             Self::Source => "source",
+            Self::LoadSwitch => "load_switch",
         }
     }
 
-    /// Whether the first operands are rails (interfaces with a `pos`, a `neg` and a `voltage`)
-    /// and not pins.
-    pub fn takes_rails(self) -> bool {
+    /// Whether the element gives a rail (a `dc source`, or a regulator's output): a part may
+    /// state one of these for each rail it gives (issue 1271).
+    pub fn gives_rail(self) -> bool {
         matches!(
             self,
             Self::LinearRegulator | Self::SwitchingRegulator | Self::Source
         )
+    }
+
+    /// How many of the first operands are rails (interfaces with a `pos`, a `neg` and a
+    /// `voltage`) and not pins: the rest of the pins are pins.
+    pub fn rail_operands(self) -> usize {
+        match self {
+            Self::LinearRegulator | Self::SwitchingRegulator | Self::LoadSwitch => 2,
+            Self::Source => 1,
+            _ => 0,
+        }
+    }
+
+    /// Whether the pin operand at `index` is a rail and not a pin.
+    pub fn takes_rail(self, index: usize) -> bool {
+        index < self.rail_operands()
     }
 
     pub fn from_word(word: &str) -> Option<Self> {
@@ -204,6 +231,7 @@ impl DcKind {
             Self::Nmos | Self::Pmos => &["gate", "drain", "source"],
             Self::LinearRegulator | Self::SwitchingRegulator => &["input rail", "output rail"],
             Self::Source => &["supply rail"],
+            Self::LoadSwitch => &["input rail", "output rail", "enable"],
         }
     }
 
@@ -212,7 +240,7 @@ impl DcKind {
     /// element without it, as before.
     pub fn optional_value_roles(self) -> &'static [(&'static str, Dimension)] {
         match self {
-            Self::LinearRegulator | Self::SwitchingRegulator => {
+            Self::LinearRegulator | Self::SwitchingRegulator | Self::LoadSwitch => {
                 &[("quiescent current", Dimension::CURRENT)]
             }
             _ => &[],
@@ -230,6 +258,7 @@ impl DcKind {
             ],
             Self::LinearRegulator | Self::Source => &[],
             Self::SwitchingRegulator => &[("efficiency", Dimension::NONE)],
+            Self::LoadSwitch => &[("on resistance", Dimension::RESISTANCE)],
         }
     }
 
@@ -243,6 +272,7 @@ impl DcKind {
             Self::LinearRegulator => "dc linear_regulator .vin .vout",
             Self::SwitchingRegulator => "dc switching_regulator .vin .sw .efficiency",
             Self::Source => "dc source .vbatt",
+            Self::LoadSwitch => "dc load_switch .in .out .enable .on_resistance",
         }
     }
 }
@@ -261,6 +291,18 @@ pub struct DcElement {
     pub values: Vec<FieldId>,
     pub source: SourceId,
     pub span: Span,
+}
+
+impl DcElement {
+    /// The rail the element gives: a `dc source`'s rail, a regulator's output rail. None for an
+    /// element that gives no rail.
+    pub fn output_rail(&self) -> Option<InstId> {
+        match self.kind {
+            DcKind::Source => self.pins.first().copied(),
+            DcKind::LinearRegulator | DcKind::SwitchingRegulator => self.pins.get(1).copied(),
+            _ => None,
+        }
+    }
 }
 
 /// An output level that a part states with the current it is measured at, as its datasheet
@@ -1075,6 +1117,38 @@ pub struct Unused {
     pub span: Span,
 }
 
+/// What happens at an event of a `sequence` (issue #1267).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EventKind {
+    /// A rail comes up: its `pos` net reaches its voltage.
+    Rail,
+    /// A pin goes high: its net crosses the threshold of the pin's part.
+    Pin,
+}
+
+/// One event of a `sequence`: a rail or a pin, by its path, and where it is written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SequenceEvent {
+    pub inst: InstId,
+    pub kind: EventKind,
+    /// The path as the board writes it (`.radio.en`).
+    pub written: String,
+    pub span: Span,
+}
+
+/// One order of a `sequence` statement: `later` comes at least `delay` (seconds) after
+/// `earlier` (issue #1267). `then 6ms` between two events makes one; `after .e` makes one with
+/// no delay, `.e` before the event above it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SequenceOrder {
+    pub earlier: SequenceEvent,
+    pub later: SequenceEvent,
+    pub delay: f64,
+    pub source: SourceId,
+    /// From the earlier event to the later one, or the `after` statement.
+    pub span: Span,
+}
+
 /// A request for a pin by capability (`.status: .u.GPIO`, ADR 0101): the pin of the board it
 /// declares, the part it asks and what it needs the pin to offer. Which pin it gets is decided
 /// after the elaboration, in `assign.rs`.
@@ -1190,6 +1264,8 @@ pub struct Model {
     pub(crate) voltage_steps: Vec<VoltageSteps>,
     /// The interfaces the board states are not used (ADR 0083), in path order.
     pub(crate) unused: Vec<Unused>,
+    /// The orders of the board's `sequence` statements (issue #1267), in the order written.
+    pub(crate) sequence: Vec<SequenceOrder>,
     /// The enums that fields of this model have the type of.
     pub(crate) enums: Vec<EnumInfo>,
     /// The members declared with the type of a generic, in the order they were made.
@@ -1445,6 +1521,7 @@ impl Model {
             level_tests: Vec::new(),
             voltage_steps: Vec::new(),
             unused: Vec::new(),
+            sequence: Vec::new(),
             enums: Vec::new(),
             uses: Vec::new(),
             provider_conflicts: Vec::new(),
@@ -1509,6 +1586,11 @@ impl Model {
         &self.unused
     }
 
+    /// The orders of the board's `sequence` statements (issue #1267), in the order written.
+    pub fn sequence(&self) -> &[SequenceOrder] {
+        &self.sequence
+    }
+
     /// The statement that makes `inst` unused, when it is, or is inside, an interface the board
     /// states is not used: the pins and values of that interface need no source, its limits are
     /// not checked and its levels are not compared (ADR 0083).
@@ -1532,12 +1614,13 @@ impl Model {
         self.level_tests.iter().find(|t| t.level == level)
     }
 
-    /// The parts that state a DC element, with it, in the order the parts were made.
+    /// The DC elements of the parts, each with its part, in the order the parts were made (and
+    /// a part's in the order it states them).
     pub fn dc_elements(&self) -> impl Iterator<Item = (InstId, &DcElement)> {
         self.instances
             .iter()
             .enumerate()
-            .filter_map(|(i, inst)| inst.dc.as_ref().map(|d| (InstId(i), d)))
+            .flat_map(|(i, inst)| inst.dc.iter().map(move |d| (InstId(i), d)))
     }
 
     pub fn instance(&self, id: InstId) -> &Instance {
@@ -1584,6 +1667,8 @@ impl Model {
         m.mates.clear();
         m.ground_groups.clear();
         m.uses.retain(|u| inside(&u.inst));
+        m.sequence
+            .retain(|o| inside(&o.earlier.inst) && inside(&o.later.inst));
         m.equalities.retain(|(a, b)| owned(a) && owned(b));
         Arc::make_mut(&mut m.relations).retain(|r| {
             let mut fields = Vec::new();
@@ -2013,12 +2098,18 @@ impl Model {
     /// driver sinks at its `vol`, of which the board states the least. So is the `peak_current` of
     /// a `Rail`, the most that one load draws at an instant (an inrush): two loads on one rail
     /// each have their own, and each is checked against the rail's `max_peak_current`, which `~`
-    /// does share.
+    /// does share. So are a `Rail`'s `burst` and `duty`, which say how that load draws its peak
+    /// (issue #1279).
     pub fn is_pin_figure(&self, field: FieldId) -> bool {
         let f = self.field(field);
         let kind = match f.name.as_str() {
-            "peak_current" => {
-                return f.kind == FieldKind::Quantity(Dimension::CURRENT)
+            "peak_current" | "burst" | "duty" => {
+                let dimension = match f.name.as_str() {
+                    "peak_current" => Dimension::CURRENT,
+                    "burst" => Dimension::TIME,
+                    _ => Dimension::NONE,
+                };
+                return f.kind == FieldKind::Quantity(dimension)
                     && self.instance(f.owner).kind == InstKind::Interface
                     && self.instance(f.owner).type_name == "Rail";
             }

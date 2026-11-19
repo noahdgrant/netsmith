@@ -1,6 +1,7 @@
 //! The solver: choose real parts for a checked board and verify, in the worst case, that
 //! everything the design says still holds.
 
+mod burst;
 mod busclock;
 mod busfigures;
 mod catalog;
@@ -16,6 +17,7 @@ mod lock;
 mod ohm;
 mod place;
 mod preferred;
+mod sequence;
 mod solve;
 mod standard;
 mod table;

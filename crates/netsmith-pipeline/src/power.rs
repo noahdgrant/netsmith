@@ -4,7 +4,9 @@
 //! A node is a net that a rail draws from through `pos`, with the voltage the rails there agree
 //! on; the draws on it, each with its range and the part it belongs to; their sum, the demand
 //! (with the worst few of a group of loads that take turns, issue #806, and not all of them);
-//! and the capacity, the `max_current` of the part whose rail supplies the net, where it has one.
+//! and the capacity, the current rating of the part whose rail supplies the net, where it has
+//! one: its `max_current` (a linear regulator) or its `max_output_current` (a buck converter's
+//! IC), issue 1316.
 //! An edge joins the input rail's net of a part (or a module) to its output rail's net, labelled
 //! with the part, and a join in a system joins two ports' nets. A node has an issue when the
 //! demand's top is above the capacity, and says the numbers. The tree is read from the solved
@@ -33,7 +35,9 @@ pub fn api_location(l: crate::Location) -> Location {
 
 /// The power tree of one board's model, with its issues.
 pub fn board_tree(model: &Model, sources: &Sources) -> PowerTree {
-    build(model, sources, &[(model.root, None)])
+    let (mut tree, off) = build(model, sources, &[(model.root, None)]);
+    say_why_off(&mut tree, &off);
+    tree
 }
 
 /// The power tree of a system's model: each board a scope, and the joins of their ports as
@@ -44,7 +48,7 @@ pub fn system_tree(
     sources: &Sources,
     scopes: &[(InstId, Option<String>)],
 ) -> PowerTree {
-    let mut tree = build(model, sources, scopes);
+    let (mut tree, off) = build(model, sources, scopes);
     for &(a, b) in model.joins() {
         let (from, to) = (node_of(model, scopes, a), node_of(model, scopes, b));
         if let (Some(from), Some(to)) = (from, to) {
@@ -59,7 +63,25 @@ pub fn system_tree(
         }
     }
     tree.issues = issues_of(&tree);
+    say_why_off(&mut tree, &off);
     tree
+}
+
+/// A load switch whose enable cannot turn it on (issue 1269): the node of its output, and why.
+struct Off {
+    node: String,
+    why: String,
+}
+
+/// The note of a rail that nothing supplies says so when a load switch on it is off for good.
+fn say_why_off(tree: &mut PowerTree, off: &[Off]) {
+    for issue in &mut tree.issues {
+        if issue.text.starts_with("has no source")
+            && let Some(o) = off.iter().find(|o| o.node == issue.id)
+        {
+            issue.text = format!("has no source: {}", o.why);
+        }
+    }
 }
 
 /// The id of the node on the net a port's `pos` pin is on, if the net has a node.
@@ -119,7 +141,19 @@ fn sum(dim: Dimension, ranges: impl Iterator<Item = (f64, f64)>) -> Option<Quant
     Quantity::interval(dim, lo, hi).ok()
 }
 
-fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) -> PowerTree {
+fn build(
+    model: &Model,
+    sources: &Sources,
+    scopes: &[(InstId, Option<String>)],
+) -> (PowerTree, Vec<Off>) {
+    let mut off: Vec<Off> = Vec::new();
+    // The output rails of the load switches whose enable cannot turn them on: they supply
+    // nothing, whatever their current says.
+    let off_rails: std::collections::HashSet<InstId> = model
+        .dc_elements()
+        .filter(|(part, _)| matches!(model.load_switch_enable(*part), Some((_, Some(_)))))
+        .filter_map(|(_, dc)| dc.pins.get(1).copied())
+        .collect();
     let mut nodes: Vec<PowerNode> = Vec::new();
     let mut edges: Vec<Edge> = Vec::new();
     let mut stages: Vec<Stage> = Vec::new();
@@ -186,6 +220,7 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
                     at: Some(api_location(locate(sources, src, span))),
                 };
                 match &range {
+                    Some(q) if supplies(q) && off_rails.contains(&owner) => {}
                     Some(q) if supplies(q) => node.supplies.push(item),
                     _ => node.loads.push(item),
                 }
@@ -220,6 +255,25 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
                 || id == *scope
                 || !matches!(inst.kind, InstKind::Module | InstKind::Part)
             {
+                continue;
+            }
+            // A load switch supplies its output only when its enable can turn it on (issue
+            // 1269); one that cannot is no edge, and its output says why it has no source.
+            if let Some((enable, Some(why))) = model.load_switch_enable(id) {
+                let dc = inst.dc.first().expect("a load switch states `dc`");
+                if let Some((_, pos, _)) = model.rail_of(dc.pins[1])
+                    && let Some(net) = model.nets().iter().find(|n| n.pins.contains(&pos))
+                {
+                    off.push(Off {
+                        node: node_id(prefix, &net.name),
+                        why: format!(
+                            "the load switch `{}` is off, since its enable `{}` {}",
+                            model.path_below(id, *scope),
+                            model.path_below(enable, *scope),
+                            why.text()
+                        ),
+                    });
+                }
                 continue;
             }
             let rails: Vec<InstId> = inst
@@ -324,7 +378,7 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
     }
     classify(&mut tree, &grouped);
     tree.issues = issues_of(&tree);
-    tree
+    (tree, off)
 }
 
 /// What the solver settled for the efficiency of the converter `inst`: the first field called
@@ -353,7 +407,10 @@ fn stage_of(model: &Model, inst: InstId, label: &str) -> Stage {
     }
 }
 
-/// Record what `inst`, or a part inside it, can give: its `max_current`.
+/// Record what `inst`, or a part inside it, can give: its `max_current`, or, for a part that
+/// states its output rating under the other name (a switching regulator's IC), its
+/// `max_output_current` (issue 1316). The rating the part states is the one its own check of
+/// the rail uses, so the budget and that check agree.
 fn maybe_capacity(
     model: &Model,
     scope: InstId,
@@ -368,7 +425,11 @@ fn maybe_capacity(
                 .filter(|(i, _)| model.is_inside(*i, inst))
                 .map(|(i, _)| i),
         )
-        .find_map(|i| quantity(model, i, "max_current").map(|q| (i, q)));
+        .find_map(|i| {
+            quantity(model, i, "max_current")
+                .or_else(|| quantity(model, i, "max_output_current"))
+                .map(|q| (i, q))
+        });
     // A stage and the regulator in it are one supply, so it is counted once.
     if let Some((holder, q)) = holder
         && !capacity
@@ -805,5 +866,45 @@ mod tests {
             issues: Vec::new(),
         };
         assert_eq!(found(&tree), []);
+    }
+
+    /// The rail of `src`'s first board named `net`: its budget, capacity and what gives it.
+    fn rail_of(src: &str, net: &str) -> (Budget, Option<f64>, Option<String>) {
+        let c = netsmith_check::check("main.nsm", src, &netsmith_check::Loader::std());
+        assert!(c.is_ok(), "{}", c.render());
+        let s = netsmith_solve::solve(&c.boards[0], &netsmith_solve::Catalogs::jlcpcb());
+        let tree = board_tree(&s.model, &c.sources);
+        let node = tree.nodes.iter().find(|n| n.net == net).expect("the node");
+        (
+            node.budget,
+            node.capacity.as_ref().map(|c| c.hi),
+            node.capacity_from.clone(),
+        )
+    }
+
+    /// A regulator that rates its output with `.max_output_current`, as a buck converter's IC
+    /// does, gives the rail it feeds that limit (issue 1316): a load that can draw more is over
+    /// the budget, and one inside it is within.
+    #[test]
+    fn a_switching_regulators_output_rating_is_its_rails_limit() {
+        let src = |load: &str| {
+            format!(
+                "import std::sources::Rail\npart Stage {{\n    .vin: Rail\n    .vout: Rail\n    .max_output_current: Current\n    .max_output_current &= 1A\n    .vin.neg ~ .vout.neg\n    .vin.current == -.vout.current\n}}\nboard B {{\n    .input: Rail {{\n        .voltage &= 5V\n        .pos.net &= \"VIN\"\n    }}\n    .reg: Stage\n    .input ~ .reg.vin\n    .module: Rail {{ .current &= {load} }}\n    .reg.vout ~ .module\n    .module.pos.net &= \"V3\"\n}}\n"
+            )
+        };
+        let (budget, capacity, from) = rail_of(&src("1.8A..2A"), "V3");
+        assert_eq!((budget, capacity), (Budget::Over, Some(1.0)));
+        assert!(from.is_some_and(|f| f.contains("reg")));
+        let (budget, capacity, _) = rail_of(&src("0.2A..0.5A"), "V3");
+        assert_eq!((budget, capacity), (Budget::Within, Some(1.0)));
+    }
+
+    /// The standard `Buck` has the rating on its IC, and its output rail has the limit.
+    #[test]
+    fn a_buck_converters_ic_rating_is_the_limit_of_its_output_rail() {
+        let src = "import std::sources::Rail\nimport std::parts::regulator::{Buck, Tps54202}\nboard B {\n    .input: Rail {\n        .voltage &= 12V\n        .pos.net &= \"VIN\"\n    }\n    .stage: Buck<Tps54202> { .vout.voltage &= 3.3V +/- 3% }\n    .input ~ .stage.vin\n    .module: Rail { .current &= 0.5A..1A }\n    .stage.vout ~ .module\n    .module.pos.net &= \"V3\"\n}\n";
+        let (budget, capacity, from) = rail_of(src, "V3");
+        assert_eq!((budget, capacity), (Budget::Within, Some(2.0)));
+        assert!(from.is_some_and(|f| f.contains("stage")));
     }
 }
