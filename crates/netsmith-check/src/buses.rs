@@ -193,7 +193,7 @@ fn has_rail_pos(model: &Model, net: &Net) -> bool {
 }
 
 /// Whether a terminal is a pin of a connector: a part of several passive pins and no bridge.
-fn is_connector_pin(model: &Model, t: InstId) -> bool {
+pub(crate) fn is_connector_pin(model: &Model, t: InstId) -> bool {
     let Some(part) = model.owner_of(t) else {
         return false;
     };
@@ -234,7 +234,7 @@ enum Beyond {
 /// The pin of the other connector that a mate meets `pin` with: contact N of one connector is
 /// contact N of the other (ADR 0040). A connector that is not mated, or whose mate is not read,
 /// has none.
-fn mated_pin(model: &Model, pin: InstId) -> Option<InstId> {
+pub(crate) fn mated_pin(model: &Model, pin: InstId) -> Option<InstId> {
     model.mates().iter().find_map(|mate| {
         mate.contacts.iter().find_map(|c| match pin {
             p if p == c.a.pin => Some(c.b.pin),

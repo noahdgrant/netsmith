@@ -951,7 +951,9 @@ impl<'a> Run<'a> {
     /// low, which is refused. And the line needs a pull-up: a resistor from the net to a net
     /// that holds the positive pin of a rail, or a pin that can drive it high (`output`,
     /// `tri_state` or `bidirectional`, such as a GPIO behind a series resistor). Pins joined
-    /// inside their part are one pin.
+    /// inside their part are one pin. In a system the pull-up may be on any board the line
+    /// reaches through the mates (issue #1436), and a line that leaves through a connector no
+    /// mate accounts for is not judged.
     fn open_drains(&mut self, net: &Net, terminals: &[InstId]) {
         let model = self.model;
         let mut drains: Vec<InstId> = Vec::new();
@@ -1016,16 +1018,61 @@ impl<'a> Run<'a> {
                 ),
             );
         }
-        if !terminals.iter().any(|&t| self.pulls_up(net, t)) {
-            self.report(
-                at,
-                format!(
-                    "net `{}` has {drain_word} ({}) and no pull-up: nothing takes the line high when {lets} go of it; join a resistor from the net to a rail's `pos`, or to a pin that drives the line high",
-                    net.name,
-                    list_plain(&drain_names),
-                ),
-            );
+        if terminals.iter().any(|&t| self.pulls_up(net, t)) {
+            return;
         }
+        // In a system the line may go on through mated connectors, and a pull-up on any board
+        // it reaches takes it high (issue #1436).
+        let line = model
+            .nets()
+            .iter()
+            .position(|n| std::ptr::eq(n, net))
+            .map_or_else(Vec::new, |i| model.mated_nets(i));
+        let others: Vec<&Net> = line.iter().skip(1).map(|&i| &model.nets()[i]).collect();
+        if others
+            .iter()
+            .any(|n| n.terminals.iter().any(|&t| self.pulls_up(n, t)))
+        {
+            return;
+        }
+        // A connector on the line that no mate in this model accounts for leads somewhere this
+        // check cannot see, which may pull the line up: a card checked alone, or a connector a
+        // system leaves free. It is not judged, as an I2C line is not (ADR 0090).
+        let unseen = std::iter::once(net).chain(others.iter().copied()).any(|n| {
+            n.terminals.iter().any(|&t| {
+                crate::buses::is_connector_pin(model, t)
+                    && crate::buses::mated_pin(model, t).is_none()
+            })
+        });
+        if unseen {
+            return;
+        }
+        let message = if others.is_empty() {
+            format!(
+                "net `{}` has {drain_word} ({}) and no pull-up: nothing takes the line high when {lets} go of it; join a resistor from the net to a rail's `pos`, or to a pin that drives the line high",
+                net.name,
+                list_plain(&drain_names),
+            )
+        } else {
+            let boards: Vec<String> = others
+                .iter()
+                .map(|n| {
+                    let board = n
+                        .terminals
+                        .iter()
+                        .find_map(|&t| model.owner_of(t).and_then(|o| model.board_of(o)))
+                        .map_or_else(String::new, |b| format!(" of `{}`", model.path_of(b)));
+                    format!("`{}`{board}", n.name)
+                })
+                .collect();
+            format!(
+                "net `{}` has {drain_word} ({}) and no pull-up, on this board or on the boards its mated connectors lead to (the nets {}): nothing takes the line high when {lets} go of it; join a resistor from the line to a rail's `pos` on one of the boards, or to a pin that drives the line high",
+                net.name,
+                list_plain(&drain_names),
+                list_plain(&boards),
+            )
+        };
+        self.report(at, message);
     }
 
     /// A push-pull `output` pin on the net of a rail, its positive or its negative pin (#461, the
