@@ -530,9 +530,9 @@ pub(crate) mod testing {
 
     use crate::commands::{
         Board, Command, Dev, Import, Project, View, board3d, bom, build, case, catalog, check,
-        common, compare, copper, drc, dxf, editor, explain, fab, fill, fmt, gerber, init,
-        kicad_libs, layout, lint, lock, mcp, nets, order, panel, parity, part, pcb, pins, port,
-        power, project_show, render, route, routes, schematic, schematic_layout, show, swap,
+        common, compare, copper, drc, dxf, editor, explain, fab, fill, fmt, footprint, gerber,
+        init, kicad_libs, layout, lint, lock, mcp, nets, order, panel, parity, part, pcb, pins,
+        port, power, project_show, render, route, routes, schematic, schematic_layout, show, swap,
         system, view,
     };
 
@@ -583,6 +583,7 @@ pub(crate) mod testing {
         Catalog(catalog::Args),
         Dxf(dxf::ImportArgs),
         KicadLibs(kicad_libs::Args),
+        Footprint(footprint::Args),
         Part(part::Args),
         Port(port::Args),
         Case(case::Args),
@@ -637,6 +638,7 @@ pub(crate) mod testing {
                 Command::Import(c) => match c {
                     Import::Dxf(a) => Leaf::Dxf(a),
                     Import::KicadLibs(a) => Leaf::KicadLibs(a),
+                    Import::Footprint(a) => Leaf::Footprint(a),
                     Import::Part(a) => Leaf::Part(a),
                     Import::Port(a) => Leaf::Port(a),
                     Import::Case(a) => Leaf::Case(a),

@@ -2,7 +2,7 @@
 //! other, the nets paired by the mate's contacts, each part's levels from the supply of its own
 //! board, and a fault that names both ends.
 //!
-//! `Driver`, `Sharer`, `Receiver`, `Opener` and `Pad` are invented for these tests: parts with a supply
+//! `Driver`, `Receiver`, `Opener` and `Pad` are invented for these tests: parts with a supply
 //! and one `Logic` line whose levels are what a datasheet might say. None is a real part.
 
 use netsmith_check::{Loader, check};
@@ -25,20 +25,6 @@ part Driver {
         .vdd.pos   power  "VDD" "1"
         .vdd.neg   power  "GND" "2"
         .out.line  output "OUT" "3"
-    }
-}
-
-/// Like `Driver`, but its output is `tri_state`: it drives only while it is selected.
-part Sharer {
-    .vdd: Rail
-    .out: Logic
-    .out.reference ~ .vdd
-    .out.voh &= 0.7 * .vdd.voltage
-    .out.vol &= 0.1V
-    pins {
-        .vdd.pos   power     "VDD" "1"
-        .vdd.neg   power     "GND" "2"
-        .out.line  tri_state "OUT" "3"
     }
 }
 
@@ -274,14 +260,13 @@ board Carrier {
         .pos.net &= "3V3"
         .neg.net &= "GND"
     }
+    // The carrier has nothing of its own on the line: it only passes it from one card to the
+    // other (issue #1426).
     .slot_a: Socket1x4
     .slot_b: Socket1x4
-    .u0: Sharer
-    .u0.vdd ~ .vcc
     .vcc.neg ~ .slot_a.p1
     .vcc.neg ~ .slot_b.p1
-    .u0.out.line ~ .slot_a.p3
-    .u0.out.line ~ .slot_b.p3
+    .slot_a.p3 ~ .slot_b.p3
 }
 
 board Talker {
@@ -290,7 +275,7 @@ board Talker {
         .pos.net &= "3V3"
         .neg.net &= "GND"
     }
-    .u1: Sharer
+    .u1: Driver
     .u1.vdd ~ .vcc
     .j1: Header1x4
     .vcc.neg ~ .j1.p1

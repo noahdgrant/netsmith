@@ -13,7 +13,7 @@ The commands are grouped under nouns, each with its verbs (issue #1090): `netsmi
 - `schematic`: the schematic layout file (`<stem>.sch.toml`), how the schematic is arranged: `show` it, `set` an entry, `check` it against the board, `arrange` the sheets of a big board (issue #1093). It is `layout`'s counterpart for the drawing: a noun is the thing a file holds, so the PCB's solution is `layout` and the schematic's arrangement is `schematic`, and the picture of it is the verb `view schematic`.
 - `view`: look at a board: `3d` draws it to a PNG, `schematic` writes its schematic as a PDF, an SVG or a PNG, `pcb` draws its copper in 2D to a PNG or an SVG, `gerber` draws the files of its fab package, `editor` serves the editor, `editor-3d` drives the 3D view of a running editor.
 - `catalog`: the rows of the catalogs, checked against LCSC's record.
-- `import`: what comes into a project from outside: a DXF drawing (`dxf`), KiCad's library tables (`kicad-libs`), a part from a symbol (`part`), a port of a KiCad board (`port`), a case's STEP model (`case`).
+- `import`: what comes into a project from outside: a DXF drawing (`dxf`), KiCad's library tables (`kicad-libs`), a footprint from a KiCad board or footprint file (`footprint`), a part from a symbol (`part`), a port of a KiCad board (`port`), a case's STEP model (`case`).
 - `dev`: the tools for developing netsmith and checking ports: `route` routes a saved placed board with the router's tuning flags, `parity` compares a port with its original, `board3d` prints the 3D scene's report.
 
 The names follow four rules:
@@ -92,6 +92,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith import dxf` | `netsmith dxf import` | `--layer`, `--holes-layer`, `--units`, `--board`, `--write` |
 | `netsmith import kicad-libs libraries` | `netsmith kicad-libs import` | none |
 | `netsmith import kicad-libs models` | `netsmith kicad-libs models` | `--library` |
+| `netsmith import footprint` | new | `--ref`, `--name` |
 | `netsmith import part from-symbol` | `netsmith part from-symbol` | none |
 | `netsmith import port skeleton` | `netsmith port skeleton` | `--write` (was `--out`) |
 | `netsmith import port tables` | `netsmith port tables` | `--url`, `--reference`, `--check` |

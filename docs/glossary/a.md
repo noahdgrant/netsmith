@@ -12,7 +12,7 @@ _Avoid_: Etch trap, acid pocket
 A pin with no row in the pin table that the part joins to a pin that has one (`.vin.neg ~ .vout.neg`). It is that pin, so it needs no pad of its own and adds no pin to a net in the schematic.
 
 **Alternate**:
-`alternate .u: ModuleB` beside `.u: ModuleA` in a board or a module: another kind of part that the footprint of `.u` can take in its place (issue 1312). The board is drawn with `.u` as declared; the build checks, solves and designs it again with each alternate fitted, says which one fails, and refuses an alternate whose pads carry other nets. The bill of materials lists each alternate on the designator of `.u`, not fitted (DNP), and `fab-notes.txt` names it.
+`alternate .u: ModuleB` beside `.u: ModuleA` in a board or a module: another kind of part that the footprint of `.u` can take in its place (issue 1312). The board is drawn with `.u` as declared; the build checks, solves and designs it again with each alternate fitted, says which one fails, and refuses an alternate whose pads carry other nets. The bill of materials lists each alternate on the designator of `.u`, not fitted (DNP), `fab-notes.txt` names it, and `bom-alternates.csv` of the fab package lists it with the designator it replaces (`bom.csv` has the fitted part only).
 _Avoid_: Alternative (one of the rows `board swap` lists for a generic part), second source, substitute, variant (an order code of one part, `.variants`)
 
 **Anchor**:
