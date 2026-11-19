@@ -382,8 +382,51 @@ board Tracker {
 - Each `.needs &= F` leaves the codes that have `F`, so two statements need both features. A module that places the part may state a need of its own, and the board one from outside (`.tracker.u.needs &= GNSS`, ADR 0116: only `&=` reaches inside a module).
 - The design must leave one code. With no need stated and several codes, or with needs that several codes meet, the board names the code with `.mpn &=`, and the message lists the codes with their features. A part with one code needs neither.
 - A code the board names with `.mpn &=` must be a row of the table and have every feature the design needs: a code without one is refused, at the `.mpn`, with the need and the codes that have it.
-- The `.needs` member is a part's only when the part states `.variants`; a part that states the table may not declare a `.needs` of its own. A part has one table, and a code is in it once.
+- The `.needs` member is a part's only when the part states `.variants`, or a generic it provides declares it (below); a part that states the table may not declare a `.needs` of its own. A part has one table, and a code is in it once.
 - The code is the part's `.mpn`, so a part that also has a catalog keyed by `.mpn` (`catalog modem by .mpn { .mpn, .package }`, chapter 12) is held to the row of that code, as a hand pick holds it, and takes its supplier's number from the row. A part with no catalog has no supplier's number: the bill of materials shows the code, and the board house does not assemble it unless it is `Hand` or `Consigned` (Who assembles a part, above).
+
+A board that uses a generic (`.u: Radio`, chapter 14) reaches only the members the generic declares, so a generic whose providers are sold as order codes declares `.needs` as an optional member, `.needs: String optional`, and a provider with a `.variants` table fills it (issue #1402, owner decision). The board states the need through the use, and the solver picks a provider that has a code with it:
+
+```nsm evaluate picks
+/// A radio, whichever module it is.
+generic Radio {
+    pins {
+        .a passive
+    }
+    /// What the design needs of the module's order code.
+    .needs: String optional
+}
+
+/// Sold as one part, with no feature to need.
+part BasicRadio provides Radio {
+    pins {
+        .a passive "A" "1"
+    }
+}
+
+part Modem provides Radio {
+    .variants {
+        "MDM-100-G" GNSS LTE
+        "MDM-100" LTE
+    }
+    pins {
+        .a passive "A" "1"
+    }
+}
+
+board Tracker {
+    .u: Radio { .assembly &= AssemblyMode::Hand }
+    .u.needs &= GNSS
+}
+```
+
+```text
+u is a Radio: picked Modem; passed over BasicRadio (`u` is a `BasicRadio`, which states no `.variants`: it is one order code with no feature, and the design needs `GNSS` of it; name a part whose `.variants` table has the feature, or remove the need)
+```
+
+- A provider with no `.variants` table has `.needs` too, from the generic, and no feature: a need passes it over, as above, and so does a provider whose table has no code with every need. A board that states no need picks such a provider as any other.
+- A provider with a table takes the generic's `.needs` as its own. The generic declares it `.needs: String optional` and nothing else; a provider with a table refuses any other declaration of it.
+- The standard `LoadSwitch` (`std::parts::switch`) declares `.needs`, for an IC sold with and without a feature such as a quick output discharge.
 
 A code that lacks a feature the board needs is refused:
 
