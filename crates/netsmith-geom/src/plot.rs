@@ -753,6 +753,22 @@ mod tests {
     }
 
     #[test]
+    fn a_surface_pad_with_an_offset_is_flashed_at_its_copper_in_copper_mask_and_paste() {
+        // Issue 1322: the pad's place in the file is (9, 10); its copper is 0.5 mm to the
+        // right of it, on every layer the pad is on.
+        let src = BOARD.replace(
+            "(at -1 0) (size 0.8 0.9) (layers \"F.Cu\" \"F.Mask\" \"F.Paste\")",
+            "(at -1 0) (size 0.8 0.9) (drill (offset 0.5 0)) (layers \"F.Cu\" \"F.Mask\" \"F.Paste\")",
+        );
+        let p = plot(&Artwork::parse(&src).unwrap(), "B", &rules()).unwrap();
+        for layer in ["F_Cu", "F_Mask", "F_Paste"] {
+            let t = get(&p, layer);
+            assert!(t.contains("X9500000Y-10000000D03*"), "{layer}: {t}");
+            assert!(!t.contains("X9000000Y-10000000D03*"), "{layer}: {t}");
+        }
+    }
+
+    #[test]
     fn a_custom_pad_with_a_margin_that_shrinks_it_is_refused_with_its_name() {
         let src = BOARD.replace(
             "(pad \"1\" smd roundrect (at -1 0) (size 0.8 0.9) (layers \"F.Cu\" \"F.Mask\" \"F.Paste\") (roundrect_rratio 0.25) (net 1 \"GND\"))",

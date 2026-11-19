@@ -971,13 +971,14 @@ fn read_pad(pad: &Sexp) -> Result<Pad, String> {
         None => 0.0,
     };
     let size = required_point(pad, "size").map_err(|e| format!("pad {number}: {e}"))?;
-    let drill = match pad.find("drill") {
+    let (drill, offset) = match pad.find("drill") {
         Some(d) => read_drill(d).map_err(|e| format!("pad {number}: {e}"))?,
-        None => None,
+        None => (None, Pt::default()),
     };
-    // The file's `at` is the hole; the copper is there plus the drill's offset, turned with
-    // the pad, and `Pad::at` is the copper.
-    let at = at + drill.map_or(Pt::default(), |d| d.offset.rotate(angle));
+    // The file's `at` is the pad's anchor (its hole, if it has one); the copper is there plus
+    // the `(drill ... (offset x y))`, turned with the pad, and `Pad::at` is the copper. A pad
+    // with no hole has the offset too: KiCad writes `(drill (offset x y))` for it (issue 1322).
+    let at = at + offset.rotate(angle);
     let layers = pad
         .find("layers")
         .map(|l| {
@@ -1022,8 +1023,13 @@ fn read_pad(pad: &Sexp) -> Result<Pad, String> {
 }
 
 /// A pad's `(drill ...)`: `(drill d)`, `(drill oval w h)` (or `(drill w h)`), with an optional
-/// `(offset x y)`. `None` for a drill of no size, which KiCad writes for a pad with no hole.
-fn read_drill(d: &Sexp) -> Result<Option<Drill>, String> {
+/// `(offset x y)`: the hole (`None` for a drill of no size, which KiCad writes for a pad with
+/// no hole) and the offset, which a pad with no hole has as well.
+fn read_drill(d: &Sexp) -> Result<(Option<Drill>, Pt), String> {
+    let offset = match d.find("offset") {
+        Some(o) => point(o, 0).ok_or("the drill's (offset x y) is not two numbers")?,
+        None => Pt::default(),
+    };
     let sizes: Vec<f64> = d
         .args()
         .iter()
@@ -1031,22 +1037,21 @@ fn read_drill(d: &Sexp) -> Result<Option<Drill>, String> {
         .map(float)
         .collect::<Result<_, _>>()?;
     let (width, height) = match sizes[..] {
-        [] => return Ok(None),
+        [] => return Ok((None, offset)),
         [w] => (w, w),
         [w, h, ..] => (w, h),
     };
     if width <= 0.0 {
-        return Ok(None);
+        return Ok((None, offset));
     }
-    let offset = match d.find("offset") {
-        Some(o) => point(o, 0).ok_or("the drill's (offset x y) is not two numbers")?,
-        None => Pt::default(),
-    };
-    Ok(Some(Drill {
-        width,
-        height,
+    Ok((
+        Some(Drill {
+            width,
+            height,
+            offset,
+        }),
         offset,
-    }))
+    ))
 }
 
 /// The box that a custom pad's `(primitives ...)` span, with each stroke's half width added.
@@ -2269,6 +2274,27 @@ mod tests {
         let first = fp.source.find_all("pad").next().unwrap();
         assert_eq!(first.find("primitives").unwrap().args().len(), 2);
         assert_eq!(fp.pads[1].bounds().max, Pt::new(3.5, 0.5));
+    }
+
+    #[test]
+    fn a_surface_pad_with_an_offset_has_its_copper_off_its_anchor() {
+        // Issue 1322: KiCad writes `(drill (offset x y))` for a pad with no hole too, and the
+        // copper is the file's `at` plus the offset turned with the pad (90 degrees turns
+        // (0.5, 0) to (0, -0.5)).
+        let fp = Footprint::parse(
+            "L:X",
+            r#"(footprint "X"
+                (pad "1" smd rect (at 1 0) (size 1 1) (drill (offset 0.5 0)) (layers "F.Cu"))
+                (pad "2" smd rect (at 4 0 90) (size 2 1) (drill 0 (offset 0.5 0)) (layers "F.Cu")))"#,
+        )
+        .unwrap();
+        for (pad, at) in [(0, Pt::new(1.5, 0.0)), (1, Pt::new(4.0, -0.5))] {
+            let p = &fp.pads[pad];
+            assert_eq!(p.drill, None);
+            assert_eq!(p.hole_at(), None);
+            assert!(p.at.distance(at) < 1e-9, "{:?}", p.at);
+            assert!(p.bounds().centre().distance(at) < 1e-9, "{:?}", p.bounds());
+        }
     }
 
     #[test]
