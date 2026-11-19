@@ -96,6 +96,8 @@ fn a_nested_module_is_in_its_outer_modules_group_and_has_none_of_its_own() {
         pairs: &[],
         overflow: 0.0,
         escape_room: 0.0,
+        pin_distances: &[],
+        rf_nets: &[],
         cutouts: &[],
         open_outside: &[],
         pours: false,
@@ -128,6 +130,8 @@ fn a_module_costs_more_the_further_apart_its_parts_are() {
         pairs: &[],
         overflow: 0.0,
         escape_room: 0.0,
+        pin_distances: &[],
+        rf_nets: &[],
         cutouts: &[],
         open_outside: &[],
         pours: false,
@@ -185,6 +189,8 @@ fn parts_that_stay_are_never_moved_and_the_others_end_clear_of_them() {
         pairs: &[],
         overflow: 0.0,
         escape_room: 0.0,
+        pin_distances: &[],
+        rf_nets: &[],
         cutouts: &[],
         open_outside: &[],
         pours: false,
@@ -228,6 +234,8 @@ fn two_parts_that_hang_over_the_same_edge_may_overlap_beyond_it() {
             pairs: &[],
             overflow: 0.0,
             escape_room: 0.0,
+            pin_distances: &[],
+            rf_nets: &[],
             cutouts: &[],
             open_outside: &[],
             pours: false,
@@ -291,6 +299,8 @@ fn a_part_that_stays_off_the_grid_is_measured_where_the_check_measures_it() {
         pairs: &[],
         overflow: 0.0,
         escape_room: 0.0,
+        pin_distances: &[],
+        rf_nets: &[],
         cutouts: &[],
         open_outside: &[],
         pours: false,
@@ -366,6 +376,8 @@ fn run_beside_strip(
         pairs: &[],
         overflow: 0.0,
         escape_room: 0.0,
+        pin_distances: &[],
+        rf_nets: &[],
     };
     anneal(&mut board.parts, &problem, 1.0).feasible
 }
@@ -467,6 +479,8 @@ fn run_with_a_face_keepout(side: netsmith_pcb::Side, front: bool, back: bool) ->
         pairs: &[],
         overflow: 0.0,
         escape_room: 0.0,
+        pin_distances: &[],
+        rf_nets: &[],
     };
     anneal(&mut board.parts, &problem, 1.0).feasible
 }
@@ -509,6 +523,7 @@ fn carrier_with_a_zone(parts: bool, limit: Option<f64>) -> (Board, netsmith_pcb:
         copper: false,
         parts,
         max_height: limit,
+        on_carrier_face: false,
     });
     (board, zone)
 }
@@ -530,6 +545,8 @@ fn run_with_carried(board: &mut Board, carried: &[netsmith_pcb::CarriedZone]) ->
         pairs: &[],
         overflow: 0.0,
         escape_room: 0.0,
+        pin_distances: &[],
+        rf_nets: &[],
         cutouts: &[],
         open_outside: &[],
         pours: false,
@@ -619,6 +636,8 @@ fn a_keepout_a_part_carries_is_no_reason_to_refuse_the_part_itself() {
         pairs: &[],
         overflow: 0.0,
         escape_room: 0.0,
+        pin_distances: &[],
+        rf_nets: &[],
         cutouts: &[],
         open_outside: &[],
         pours: false,
@@ -684,6 +703,8 @@ fn run_with_module_fixed(board: &mut Board) -> bool {
         pairs: &[],
         overflow: 0.0,
         escape_room: 0.0,
+        pin_distances: &[],
+        rf_nets: &[],
         cutouts: &[],
         open_outside: &[],
         pours: false,
@@ -800,6 +821,8 @@ fn run_with_the_qfn_fixed(board: &mut Board, seed: u64) -> Outcome {
         pairs: &[],
         overflow: 0.0,
         escape_room: 0.0,
+        pin_distances: &[],
+        rf_nets: &[],
         cutouts: &[],
         open_outside: &[],
         pours: false,
@@ -832,6 +855,8 @@ fn a_part_in_the_escape_ring_of_a_fine_pitch_part_is_a_hard_cost_but_its_decoupl
         pairs: &[],
         overflow: 0.0,
         escape_room: 0.0,
+        pin_distances: &[],
+        rf_nets: &[],
         cutouts: &[],
         open_outside: &[],
         pours: false,
@@ -969,6 +994,8 @@ fn problem_weighing<'a>(
         outline: board.outline,
         overflow,
         escape_room: 0.0,
+        pin_distances: &[],
+        rf_nets: &[],
     }
 }
 
@@ -1205,6 +1232,8 @@ fn problem_with_escape<'a>(
 ) -> Problem<'a> {
     Problem {
         escape_room: weight,
+        pin_distances: &[],
+        rf_nets: &[],
         ..problem_weighing(board, fixed, rules, 0.0)
     }
 }
@@ -1447,6 +1476,8 @@ fn problem_beside<'a>(
         outline: region,
         overflow: 1.0,
         escape_room: 0.0,
+        pin_distances: &[],
+        rf_nets: &[],
     }
 }
 

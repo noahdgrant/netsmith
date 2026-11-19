@@ -250,6 +250,11 @@ fn visit<'a>(
                 path(p, inside);
             }
         }
+        Item::Within(w) => {
+            path(&w.subject, inside);
+            path(&w.pin, inside);
+        }
+        Item::Route(r) => path(&r.pin, inside),
         Item::Bridge(b) => {
             path(&b.from, inside);
             path(&b.to, inside);

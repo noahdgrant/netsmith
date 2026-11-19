@@ -421,6 +421,7 @@ pub fn mixed_board_on(
                 copper: false,
                 parts: false,
                 max_height: Some(MAX_HEIGHT),
+                on_carrier_face: false,
             }],
             heights: specs
                 .iter()

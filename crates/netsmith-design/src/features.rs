@@ -784,6 +784,7 @@ fn heads(model: &Model, copper_layers: u32, errors: &mut Vec<String>) -> Vec<Kee
             copper: true,
             parts: true,
             max_height: None,
+            on_carrier_face: false,
         });
     }
     found
@@ -1634,6 +1635,7 @@ pub(crate) fn features_of(
                         copper: flags[2],
                         parts: flags[3],
                         max_height,
+                        on_carrier_face: false,
                     });
                 }
             }
@@ -2121,6 +2123,7 @@ pub(crate) fn layout(
                     copper,
                     parts,
                     max_height: None,
+                    on_carrier_face: false,
                 });
                 continue;
             }
@@ -2168,5 +2171,149 @@ pub(crate) fn layout(
         .sort_by(|a, b| (&a.part, &a.name).cmp(&(&b.part, &b.name)));
     found.keepouts.sort_by(|a, b| a.name.cmp(&b.name));
     found.widths.sort_by(|a, b| a.0.cmp(&b.0));
+    found
+}
+
+/// Where the design states each of a list of features, in the same order.
+pub(crate) type Stated = Vec<(SourceId, Span)>;
+
+/// The `within` and `route` statements of the physical files (issue #1274), with where each
+/// is stated. A `route` of a pin on no net names no net, and two that say different things of
+/// one net are an error that names both pins.
+pub(crate) fn rf_statements(
+    model: &Model,
+    errors: &mut Vec<String>,
+) -> (
+    (Vec<netsmith_core::PinDistance>, Stated),
+    (Vec<netsmith_core::NetRoute>, Stated),
+) {
+    let mut distances = (Vec::new(), Vec::new());
+    for d in &model.pin_distances {
+        let pin =
+            (d.subject != d.subject_part).then(|| model.path_below(d.subject, d.subject_part));
+        distances.0.push(netsmith_core::PinDistance {
+            part: model.path_of(d.subject_part),
+            pin,
+            to_part: model.path_of(d.pin_part),
+            to_pin: model.path_below(d.pin, d.pin_part),
+            within: d.within,
+            source: String::new(),
+        });
+        distances.1.push((d.source, d.span));
+    }
+    let mut routes: (Vec<netsmith_core::NetRoute>, Stated) = (Vec::new(), Vec::new());
+    for r in &model.net_routes {
+        let pin = model.path_of(r.pin);
+        let word = if r.one_layer {
+            "one_layer"
+        } else {
+            "any_layer"
+        };
+        let Some(net) = model
+            .nets()
+            .iter()
+            .find(|n| n.pins.contains(&r.pin))
+            .map(|n| n.name.clone())
+        else {
+            errors.push(format!(
+                "`.{pin} route {word}` names the net by `{pin}`, which is on no net: join it with `~`, or name a pin that is on the net"
+            ));
+            continue;
+        };
+        if let Some(other) = routes
+            .0
+            .iter()
+            .find(|o| o.net == net && o.one_layer != r.one_layer)
+        {
+            errors.push(format!(
+                "`.{pin} route {word}` and `.{} route {}` say different things of the net `{net}`: keep one",
+                other.pin,
+                if other.one_layer { "one_layer" } else { "any_layer" }
+            ));
+            continue;
+        }
+        routes.0.push(netsmith_core::NetRoute {
+            net,
+            pin,
+            one_layer: r.one_layer,
+            source: String::new(),
+        });
+        routes.1.push((r.source, r.span));
+    }
+    (distances, routes)
+}
+
+/// The pins that state how a pour joins their pads (issue #1276), each with its pads (`pads`,
+/// the pads of each pin on a net): `.pour_connection`, `Solid` or `Thermal`, and the width of
+/// the spokes of a thermal relief, `.spoke_width`, the bottom of the range stated. A pin may not
+/// leave its pads unjoined (`None`: the router would have to join them itself, so a pin that
+/// must not touch the pour is a keepout's or a zone's), nor state `ThruHoleOnly`, which a pour
+/// states for pads of either kind and a pin's pads are of one; a width of spokes beside `Solid`,
+/// or not positive, or under the process's narrowest track `least_track`, is refused too.
+pub(crate) fn pad_pours(
+    model: &Model,
+    pads: &std::collections::HashMap<InstId, Vec<netsmith_core::PinRef>>,
+    least_track: f64,
+    errors: &mut Vec<String>,
+) -> Vec<netsmith_core::PadPour> {
+    let mut found = Vec::new();
+    for (&pin, pins) in pads {
+        let connection = match domain(model, pin, "pour_connection") {
+            Some(Domain::Text(variant)) => PadConnection::of_variant(&variant),
+            _ => None,
+        };
+        let spoke_width = range(model, pin, "spoke_width")
+            .map(|(lo, _)| lo)
+            .filter(|lo| lo.is_finite());
+        if connection.is_none() && spoke_width.is_none() {
+            continue;
+        }
+        let path = model.path_of(pin);
+        match connection {
+            Some(PadConnection::None) => {
+                errors.push(format!(
+                    "`{path}.pour_connection` is `PadConnection::None`, and a pin states only `Solid` or `Thermal` for its pads: a pour joins every pad of its net, so keep it off this one with a keepout that forbids copper, or join no pad of the pour (its `.pads`)"
+                ));
+                continue;
+            }
+            Some(PadConnection::ThruHoleOnly) => {
+                errors.push(format!(
+                    "`{path}.pour_connection` is `PadConnection::ThruHoleOnly`, and a pin states only `Solid` or `Thermal` for its pads: `ThruHoleOnly` chooses by the kind of a pad, and a pin's pads are of the kind they are"
+                ));
+                continue;
+            }
+            _ => {}
+        }
+        if let Some(w) = spoke_width {
+            if connection == Some(PadConnection::Solid) {
+                errors.push(format!(
+                    "`{path}.spoke_width` is {w} mm, but `{path}.pour_connection` is `PadConnection::Solid`, which has no spokes: state one of the two"
+                ));
+                continue;
+            }
+            if w <= 0.0 {
+                errors.push(format!(
+                    "`{path}.spoke_width` has a bottom of {w} mm, and the spoke width of a thermal relief must be positive"
+                ));
+                continue;
+            }
+            if w < least_track - 1e-9 {
+                errors.push(format!(
+                    "`{path}.spoke_width` has a bottom of {w} mm, under the process's narrowest track (`.min_track`) of {least_track} mm: raise the bottom of the range"
+                ));
+                continue;
+            }
+        }
+        let mut pins = pins.clone();
+        pins.sort_by(|a, b| (&a.refdes, &a.pin).cmp(&(&b.refdes, &b.pin)));
+        pins.dedup();
+        found.push(netsmith_core::PadPour {
+            path,
+            pins,
+            connection,
+            spoke_width,
+        });
+    }
+    found.sort_by(|a, b| a.path.cmp(&b.path));
     found
 }

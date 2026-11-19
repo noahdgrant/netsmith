@@ -637,7 +637,7 @@ function RouteList(props: { scene: PcbScene; onFocus: (box: PcbBox) => void }) {
             </span>
             {net.lock && <span class="tag lock" title="locked: the router adds no copper to the net">lock</span>}
             {!net.current && (
-              <span class="tag warn" title="the net's pads are not where the record was written: only its locked shapes are drawn (see the findings)">
+              <span class="tag warn" title="the net's pads are not where the record was written: its copper is kept and open at the moved pads (see the findings)">
                 stale
               </span>
             )}
@@ -654,7 +654,7 @@ function RouteList(props: { scene: PcbScene; onFocus: (box: PcbBox) => void }) {
                 {t.layer}, {fmt(t.width)} mm{t.mid ? ', arc' : ''}
               </span>
               {t.lock && <span class="tag lock" title="locked: kept when the net's pads move">lock</span>}
-              {!t.drawn && <span class="tag" title="not on the board: its record is stale">not drawn</span>}
+              {!t.drawn && <span class="tag" title="not on the board: the board has no such net">not drawn</span>}
             </div>
           ))}
           {net.vias.map((v, i) => (
@@ -670,7 +670,7 @@ function RouteList(props: { scene: PcbScene; onFocus: (box: PcbBox) => void }) {
                 {fmt(v.diameter)} mm, drill {fmt(v.drill)} mm
               </span>
               {v.lock && <span class="tag lock" title="locked: kept when the net's pads move">lock</span>}
-              {!v.drawn && <span class="tag" title="not on the board: its record is stale">not drawn</span>}
+              {!v.drawn && <span class="tag" title="not on the board: the board has no such net">not drawn</span>}
             </div>
           ))}
         </div>
@@ -698,13 +698,13 @@ function RouteInspector(props: { scene: PcbScene; pick: RoutePick; record: PcbRo
           { label: 'From', value: at(shape.from) },
           ...(shape.mid ? [{ label: 'Through', value: at(shape.mid) }] : []),
           { label: 'To', value: at(shape.to) },
-          { label: 'On the board', value: shape.drawn ? 'yes' : 'no (stale record)' },
+          { label: 'On the board', value: shape.drawn ? 'yes' : 'no (the board has no such net)' },
         ]
       : [
           { label: 'At', value: at(shape.at) },
           { label: 'Kind', value: viaKind(shape.layers) },
           { label: 'Size', value: `${fmt(shape.diameter)} mm, drill ${fmt(shape.drill)} mm` },
-          { label: 'On the board', value: shape.drawn ? 'yes' : 'no (stale record)' },
+          { label: 'On the board', value: shape.drawn ? 'yes' : 'no (the board has no such net)' },
         ];
   const locked = shape ? shape.lock : record.lock;
   return (

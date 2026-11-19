@@ -319,7 +319,7 @@ fn footprint(board: &Board, part: &Placed, nets: &NetNumbers) -> Sexp {
         let child_key = format!("{key}/{index}");
         let written = match child.head() {
             Some("property") => property(child, part, &board.rules, &child_key),
-            Some("pad") => pad(child, part, nets, &child_key),
+            Some("pad") => pad(board, child, part, nets, &child_key),
             Some(
                 "fp_line" | "fp_rect" | "fp_circle" | "fp_arc" | "fp_poly" | "fp_curve" | "fp_text"
                 | "fp_text_box" | "zone",
@@ -629,7 +629,7 @@ fn text_no_smaller(node: &Sexp, rules: &Rules) -> Sexp {
 /// A pad with its net, and its angle on the board (KiCad writes the pad's turn including
 /// the footprint's). On the back the pad's own turn is negated, as KiCad's flip does, and the
 /// footprint's is the file's ([`file_orientation`]).
-fn pad(child: &Sexp, part: &Placed, nets: &NetNumbers, key: &str) -> Sexp {
+fn pad(board: &Board, child: &Sexp, part: &Placed, nets: &NetNumbers, key: &str) -> Sexp {
     let number = child
         .args()
         .first()
@@ -665,8 +665,32 @@ fn pad(child: &Sexp, part: &Placed, nets: &NetNumbers, key: &str) -> Sexp {
             vec![Sexp::num(*n as f64), Sexp::string(*name)],
         ));
     }
+    if let Some(own) = board.pad_pour(&part.refdes, number) {
+        pad_pour(&mut items, own);
+    }
     items.push(uuid_for(key));
     Sexp::List(items)
+}
+
+/// Writes on a pad how a pour joins it, as its pin states it (issue #1276), in place of what
+/// the footprint's library says: KiCad's `zone_connect` (1 thermal, 2 solid) and its
+/// `thermal_bridge_width`, which KiCad's filler and netsmith's take over the zone's.
+fn pad_pour(items: &mut Vec<Sexp>, own: &netsmith_core::PadPour) {
+    let mut set = |key: &str, value: f64| {
+        let node = Sexp::node(key, vec![Sexp::num(value)]);
+        match items.iter_mut().find(|i| i.head() == Some(key)) {
+            Some(item) => *item = node,
+            None => items.push(node),
+        }
+    };
+    match own.connection {
+        Some(netsmith_core::PadConnection::Solid) => set("zone_connect", 2.0),
+        Some(netsmith_core::PadConnection::Thermal) => set("zone_connect", 1.0),
+        _ => {}
+    }
+    if let Some(width) = own.spoke_width {
+        set("thermal_bridge_width", width);
+    }
 }
 
 /// The text of the `.kicad_pro` that goes beside the board's `.kicad_pcb`, holding the

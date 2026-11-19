@@ -130,6 +130,7 @@ fn a_pair_walled_off_on_the_top_changes_layer_through_vias_side_by_side() {
         copper: false,
         parts: false,
         max_height: None,
+        on_carrier_face: false,
     });
     let (routing, pair) = route_and_measure(&mut board);
     agrees(&board, &routing, &pair);

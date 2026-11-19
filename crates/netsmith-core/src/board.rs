@@ -135,6 +135,12 @@ pub struct Keepout {
     /// (ADR 0045, "Height limits"). `None`: no height limit. A keepout that
     /// states a limit and none of `tracks`, `vias`, `copper` and `parts` forbids nothing else.
     pub max_height: Option<f64>,
+    /// Whether `layers` name the faces as they are when the part that carries it is on the
+    /// top, and turn over with the part: `top` is then the face the part is on, wherever the
+    /// placer puts it. The area another board of a system covers over a mated connector is one
+    /// (issue 1331); a keepout of the source names its faces as they are, and is not.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub on_carrier_face: bool,
 }
 
 /// How tall a part stands above the board, as the design states it (ADR 0045, "Height

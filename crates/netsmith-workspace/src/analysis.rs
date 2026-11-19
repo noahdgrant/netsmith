@@ -573,7 +573,7 @@ impl Workspace {
                 }),
             };
             match outcome {
-                Ok(outcome) => {
+                Ok(mut outcome) => {
                     // The schematic layout file beside the source file: read once, for all of
                     // its boards. A file that is not there is not wrong; one that does not read
                     // is a problem, and the drawing is the one there is without it.
@@ -593,6 +593,17 @@ impl Workspace {
                     snapshot
                         .pins
                         .insert(file.name.clone(), Arc::new(outcome.pins.clone()));
+                    // The areas other members of a system cover (issue 1331), as `fab` adds
+                    // them, so that the placing and the views keep to them too.
+                    if let Ok(libraries) = libraries.as_ref() {
+                        netsmith_fabricate::system_areas::add(
+                            &mut outcome.boards,
+                            &outcome.systems,
+                            &loader,
+                            Some(&beside),
+                            libraries,
+                        );
+                    }
                     let drawn = outcome.boards.len() as u32;
                     for (n, mut built) in outcome.boards.into_iter().enumerate() {
                         let label = built.label();
