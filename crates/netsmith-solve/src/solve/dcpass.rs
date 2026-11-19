@@ -1279,13 +1279,11 @@ impl Solver<'_> {
         // what its `dc` element reads. Every candidate's value is inside the hull, so what comes
         // out is an enclosure of every choice.
         for job in jobs {
-            let Some(dc) = self.model.instance(job.part).dc.clone() else {
-                continue;
-            };
-            if enclosed.contains_key(&job.part) {
+            let dc = self.model.instance(job.part).dc.clone();
+            if dc.is_empty() || enclosed.contains_key(&job.part) {
                 continue;
             }
-            for &field in &dc.values {
+            for &field in dc.iter().flat_map(|el| &el.values) {
                 if !matches!(self.domain(field), Domain::Unset) {
                     continue;
                 }
@@ -1377,7 +1375,13 @@ impl Solver<'_> {
     fn enclose_loads(&self, jobs: &[super::Job]) -> HashMap<InstId, dc::Range> {
         let mut out = HashMap::new();
         for job in jobs {
-            let Some(element) = &self.model.instance(job.part).dc else {
+            let Some(element) = self
+                .model
+                .instance(job.part)
+                .dc
+                .iter()
+                .find(|el| el.kind == netsmith_check::DcKind::Resistor)
+            else {
                 continue;
             };
             if element.kind != netsmith_check::DcKind::Resistor
@@ -1449,7 +1453,7 @@ impl Solver<'_> {
         let mut any = false;
         for job in jobs {
             let inst = self.model.instance(job.part);
-            if inst.dc.is_some() || inst.bridge.is_none() {
+            if !inst.dc.is_empty() || inst.bridge.is_none() {
                 continue;
             }
             let Some(current) = self.model.through_of(job.part) else {
@@ -1678,7 +1682,18 @@ impl Solver<'_> {
         which: Which,
     ) -> Option<(Quantity, DcEnds)> {
         let flip = |lo: f64, hi: f64, m: &Modelled| if m.flipped { (-hi, -lo) } else { (lo, hi) };
-        let r = run.report.range(which);
+        let mut r = run.report.range(which);
+        // The current of the other regulators of the part that draw through the same input
+        // (issue 1271): the sum of the ranges, which holds every operating point.
+        if let Which::Current(_) = which {
+            for &e in &m.with {
+                let o = run.report.range(Which::Current(e));
+                if o.is_empty() {
+                    return None;
+                }
+                r = dc::Range::new(r.lo + o.lo, r.hi + o.hi);
+            }
+        }
         if r.is_empty() || !r.lo.is_finite() || !r.hi.is_finite() {
             return None;
         }

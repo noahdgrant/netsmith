@@ -37,7 +37,7 @@ fn part(body: &str) -> String {
 fn element(c: &Checked, path: &str) -> Option<(DcKind, Vec<String>, Vec<String>)> {
     let model = &c.board("B").unwrap().model;
     let inst = model.inst_at(path)?;
-    let dc = model.instance(inst).dc.as_ref()?;
+    let dc = model.instance(inst).dc.first()?;
     Some((
         dc.kind,
         dc.pins.iter().map(|p| model.path_below(*p, inst)).collect(),
@@ -194,10 +194,10 @@ board B {
     assert!(c.is_ok(), "{}", c.render());
     let model = &c.board("B").unwrap().model;
     // A module has no element of its own: the parts in it do.
-    assert!(model.instance(model.inst_at("m").unwrap()).dc.is_none());
+    assert!(model.instance(model.inst_at("m").unwrap()).dc.is_empty());
     for path in ["m.f", "m.g"] {
         let inst = model.inst_at(path).unwrap();
-        let dc = model.instance(inst).dc.as_ref().unwrap();
+        let dc = model.instance(inst).dc.first().unwrap();
         assert_eq!(dc.kind, DcKind::Resistor, "{path}");
         // The element is on this instance: its pins and value belong to it.
         for pin in &dc.pins {
@@ -233,7 +233,12 @@ board B {
         m.starts_with("this part already has a `dc` statement (at std/parts/passive.nsm:"),
         "{m}"
     );
-    assert!(m.ends_with("a part is one element at DC"), "{m}");
+    assert!(
+        m.ends_with(
+            "a part is one element at DC, or a `dc source` or a regulator for each rail it gives"
+        ),
+        "{m}"
+    );
 }
 
 #[test]
@@ -563,6 +568,49 @@ fn a_part_that_gives_a_supply_names_its_rail() {
 }
 
 #[test]
+fn a_part_that_gives_two_rails_states_a_source_for_each() {
+    // Issue 1271: one `dc` for each rail the part gives, each seen by the later stages.
+    let c = run(&supply_part("dc source .vbatt\n    dc source .other"));
+    assert!(c.is_ok(), "{}", c.render());
+    let model = &c.board("B").unwrap().model;
+    let s = model.inst_at("s").unwrap();
+    let rails: Vec<String> = model
+        .instance(s)
+        .dc
+        .iter()
+        .map(|d| model.path_below(d.pins[0], s))
+        .collect();
+    assert_eq!(rails, names(&["vbatt", "other"]));
+    assert_eq!(model.dc_elements().count(), 2);
+}
+
+#[test]
+fn a_part_that_gives_one_rail_twice_is_refused() {
+    let m = only(&run(&supply_part("dc source .vbatt\n    dc source .vbatt")));
+    assert_eq!(
+        m,
+        "`dc source` gives the rail `.vbatt`, and this part's `dc source` (at test.nsm:6) gives it already; a part states one `dc` for each rail it gives"
+    );
+}
+
+#[test]
+fn a_regulator_and_a_source_of_one_part_are_two_rails() {
+    // A module that gives its input rail to the board and regulates a second rail from it.
+    let c = run(&supply_part(
+        "dc source .vbatt\n    dc linear_regulator .vbatt .other",
+    ));
+    assert!(c.is_ok(), "{}", c.render());
+    // A regulator whose output is the rail the source gives is refused.
+    let m = only(&run(&supply_part(
+        "dc source .vbatt\n    dc linear_regulator .other .vbatt",
+    )));
+    assert!(
+        m.starts_with("`dc linear_regulator` gives the rail `.vbatt`, and this part's `dc source`"),
+        "{m}"
+    );
+}
+
+#[test]
 fn the_connectors_that_give_a_supply_state_a_source() {
     for (import, name, rail) in [
         ("connector::Obd2M", "Obd2M", "vbatt"),
@@ -646,8 +694,10 @@ fn a_source_operand_must_be_a_rail_of_the_part() {
         m.contains("`dc source` takes 1 pins and then 0 values, as in `dc source .vbatt`; this has 2 operands"),
         "{m}"
     );
-    // One `dc` statement per part.
-    let m = only(&run(&supply_part("dc source .vbatt\n    dc source .other")));
+    // A source and an element that gives no rail.
+    let m = only(&run(&supply_part(
+        "dc source .vbatt\n    dc diode .vbatt.pos .other.pos .vref",
+    )));
     assert!(m.contains("this part already has a `dc` statement"), "{m}");
 }
 
@@ -683,7 +733,7 @@ fn a_second_dc_statement_names_the_first() {
     )));
     assert_eq!(
         m,
-        "this part already has a `dc` statement (at test.nsm:8); a part is one element at DC"
+        "this part already has a `dc` statement (at test.nsm:8); a part is one element at DC, or a `dc source` or a regulator for each rail it gives"
     );
 }
 

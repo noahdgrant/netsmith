@@ -1225,13 +1225,7 @@ impl Checker<'_> {
         };
         let inst = self.model.instance(owner);
         match inst.kind {
-            InstKind::Part => inst.dc.as_ref().is_some_and(|dc| match dc.kind {
-                DcKind::Source => dc.pins.first() == Some(&rail),
-                DcKind::LinearRegulator | DcKind::SwitchingRegulator => {
-                    dc.pins.get(1) == Some(&rail)
-                }
-                _ => false,
-            }),
+            InstKind::Part => inst.dc.iter().any(|dc| dc.output_rail() == Some(rail)),
             _ => false,
         }
     }
@@ -1453,8 +1447,8 @@ impl Checker<'_> {
                 let inst = self.model.instance(part);
                 let element = inst
                     .dc
-                    .as_ref()
-                    .filter(|el| inst.bridge.is_some_and(|(a, b)| el.pins == [a, b]));
+                    .iter()
+                    .find(|el| inst.bridge.is_some_and(|(a, b)| el.pins == [a, b]));
                 match element.map(|el| (el.kind, el.values[0])) {
                     Some((DcKind::Resistor, r)) => resistances.push(r),
                     Some((DcKind::Diode, vf)) => drops.push(vf),

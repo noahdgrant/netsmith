@@ -50,7 +50,7 @@ impl Model {
     /// For a part that states `dc load_switch`: its enable pin, and why the enable cannot turn
     /// it on, if it cannot (`None` when it can). `None` for any other instance.
     pub fn load_switch_enable(&self, part: InstId) -> Option<(InstId, Option<EnableOff>)> {
-        let dc = self.instance(part).dc.as_ref()?;
+        let dc = self.instance(part).dc.first()?;
         if dc.kind != DcKind::LoadSwitch || self.instance(part).kind != InstKind::Part {
             return None;
         }

@@ -76,6 +76,9 @@ pub(crate) struct Modelled {
     pub drop: Option<FieldId>,
     /// A diode: its current is never below zero in its own direction.
     pub diode: bool,
+    /// The other elements whose current is drawn through `current` too, and added to the
+    /// element's own: the other regulators of the part on the same input rail (issue 1271).
+    pub with: Vec<usize>,
 }
 
 /// A regulator of the model: the part, the net its output holds, and what it says of itself.
@@ -240,8 +243,9 @@ pub(crate) struct Index {
     /// For each net, the instances with a pin on it that an element is made from: a part's
     /// `dc` pins and its `bridge`, and a rail's `pos` and `neg`. In the order of their ids.
     by_net: Vec<Vec<InstId>>,
-    /// The parts that state a regulator, and those that state a source.
-    regulators: Vec<InstId>,
+    /// The regulators, each a part and the index of its element in the part's `dc` (a part may
+    /// state a regulator for each rail it gives, issue 1271), and the parts that state a source.
+    regulators: Vec<(InstId, usize)>,
     sources: Vec<InstId>,
     /// The rails that can be a source: a board's own, and a part's that it says it gives.
     supplies: Vec<InstId>,
@@ -277,26 +281,31 @@ impl Index {
         // others for those under the root, as `extract` does.
         let (mut regulators, mut sources) = (Vec::new(), Vec::new());
         let mut supplies: BTreeSet<InstId> = BTreeSet::new();
-        for (i, dc) in model.dc_elements() {
-            add(i, &dc.pins);
-            // A load switch is made from the pins of its rails, besides its enable.
-            if dc.kind == DcKind::LoadSwitch {
-                let pins: Vec<InstId> = dc.pins[..2]
-                    .iter()
-                    .filter_map(|&r| model.rail_of(r))
-                    .flat_map(|(_, pos, neg)| [pos, neg])
-                    .collect();
-                add(i, &pins);
-            }
-            match dc.kind {
-                DcKind::LinearRegulator | DcKind::SwitchingRegulator => regulators.push(i),
-                DcKind::Source => {
-                    sources.push(i);
-                    supplies.extend(dc.pins.first().copied());
+        for (i, inst) in model.instances() {
+            for (k, dc) in inst.dc.iter().enumerate() {
+                add(i, &dc.pins);
+                // A load switch is made from the pins of its rails, besides its enable.
+                if dc.kind == DcKind::LoadSwitch {
+                    let pins: Vec<InstId> = dc.pins[..2]
+                        .iter()
+                        .filter_map(|&r| model.rail_of(r))
+                        .flat_map(|(_, pos, neg)| [pos, neg])
+                        .collect();
+                    add(i, &pins);
                 }
-                _ => {}
+                match dc.kind {
+                    DcKind::LinearRegulator | DcKind::SwitchingRegulator => {
+                        regulators.push((i, k));
+                    }
+                    DcKind::Source => {
+                        sources.push(i);
+                        supplies.extend(dc.pins.first().copied());
+                    }
+                    _ => {}
+                }
             }
         }
+        sources.dedup();
         let (mut board_ports, mut rails) = (Vec::new(), Vec::new());
         for (i, inst) in model.instances() {
             if let Some((a, b)) = inst.bridge {
@@ -434,7 +443,7 @@ fn extract_in(
         match &pool {
             Some(pool) => Box::new(
                 pool.iter()
-                    .filter_map(|&i| model.instance(i).dc.as_ref().map(|d| (i, d))),
+                    .flat_map(|&i| model.instance(i).dc.iter().map(move |d| (i, d))),
             ),
             None => Box::new(model.dc_elements()),
         }
@@ -472,8 +481,9 @@ fn extract_in(
     let mut reg_rails: HashSet<InstId> = HashSet::new();
     let mut reg_pins: Vec<[InstId; 4]> = Vec::new();
     let mut out_nets: Vec<(usize, usize)> = Vec::new();
-    for &part in &ix.regulators {
-        let Some(dc) = &model.instance(part).dc else {
+    let mut reg_own_rails: Vec<[InstId; 2]> = Vec::new();
+    for &(part, k) in &ix.regulators {
+        let Some(dc) = model.instance(part).dc.get(k) else {
             continue;
         };
         let switching = match dc.kind {
@@ -547,8 +557,7 @@ fn extract_in(
             current,
             voltage: v_in,
         });
-        reg_rails.insert(dc.pins[0]);
-        reg_rails.insert(dc.pins[1]);
+        reg_own_rails.push([dc.pins[0], dc.pins[1]]);
         reg_pins.push([in_pos, in_neg, out_pos, out_neg]);
         out_nets.push((op, oneg));
     }
@@ -579,13 +588,13 @@ fn extract_in(
         k += 1;
         keep[k - 1]
     });
+    // The rails of the regulators that are modelled (a part's other regulator may not be).
+    for (rails, keep) in reg_own_rails.iter().zip(&keep) {
+        if *keep {
+            reg_rails.extend(rails);
+        }
+    }
     let reg_out_nets: BTreeSet<usize> = regs.iter().map(|r| r.out_net).collect();
-    let modelled_regs: HashSet<InstId> = regs.iter().map(|r| r.part).collect();
-    reg_rails.retain(|i| {
-        model
-            .owner_of(*i)
-            .is_some_and(|p| modelled_regs.contains(&p))
-    });
 
     // The sources and the nets they hold: the supply rails a board declares, and the rails a part
     // says it gives from outside (`dc source`: a connector's supply).
@@ -596,7 +605,7 @@ fn extract_in(
     let supply_rails: HashSet<InstId> = ix
         .sources
         .iter()
-        .filter_map(|&part| Some((part, model.instance(part).dc.as_ref()?)))
+        .flat_map(|&part| model.instance(part).dc.iter().map(move |dc| (part, dc)))
         .filter(|(part, dc)| {
             dc.kind == DcKind::Source && model.instance(*part).kind == InstKind::Part
         })
@@ -1602,13 +1611,33 @@ fn extract_in(
                 });
             }
             if let Some(part) = item.part {
+                // Two regulators of one part that take the same input rail (a part that states
+                // a regulator for each rail it gives, issue 1271) draw through one `.current`:
+                // the first writes the sum of both.
+                let shared = item.current.and_then(|f| {
+                    matches!(item.kind, Kind::Regulator { .. })
+                        .then(|| {
+                            parts
+                                .iter_mut()
+                                .find(|m: &&mut Modelled| m.current == Some(f))
+                        })
+                        .flatten()
+                });
+                let current = match shared {
+                    Some(first) => {
+                        first.with.push(island.elements.len());
+                        None
+                    }
+                    None => item.current,
+                };
                 parts.push(Modelled {
                     element: island.elements.len(),
                     part,
                     flipped: item.flipped,
-                    current: item.current,
+                    current,
                     drop: item.drop,
                     diode: matches!(item.kind, Kind::Diode { .. }),
+                    with: Vec::new(),
                 });
             }
             // A load of a group of loads (issue #806): a rail's current, or a part's that a
