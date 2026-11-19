@@ -160,10 +160,10 @@ board Offers {
 ```
 
 ```text
-error: `supply.neg.net` has 2 defaults, at main.nsm:8 and std/sources.nsm:115: a field has one default; keep one `?=`
-    --> std/sources.nsm:115:5
+error: `supply.neg.net` has 2 defaults, at main.nsm:8 and std/sources.nsm:128: a field has one default; keep one `?=`
+    --> std/sources.nsm:128:5
     |
-115 |     .neg.net ?= "GND"
+128 |     .neg.net ?= "GND"
     |     ^^^^^^^^^^^^^^^^^
 ```
 

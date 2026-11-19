@@ -109,6 +109,26 @@ fn surface_pads_of_different_nets_keep_the_pad_to_pad_space() {
 }
 
 #[test]
+fn a_pads_offset_moves_the_copper_the_pad_to_pad_space_is_kept_from() {
+    // Issue 1322: the pads' files places are 0.5 mm apart edge to edge (0.3 mm wide pads at
+    // 0 and 0.8); the second pad's `(drill (offset -0.36 0))` puts its copper 0.14 mm from
+    // the first, nearer than the process asks.
+    for (offset, count) in [("", 0), (" (drill (offset -0.36 0))", 1)] {
+        let mut b = Pcb::new(2);
+        let (a, c) = (b.net_ref(Some("A")), b.net_ref(Some("B")));
+        b.raw(&format!(
+            "(footprint \"Test:U1\" (layer \"F.Cu\") (at 10 10 0)
+            (property \"Reference\" \"U1\" (at 0 -3 0) (layer \"F.Fab\") (hide yes))
+            (attr smd)
+            (pad \"1\" smd rect (at 0 0) (size 0.3 1) (layers \"F.Cu\" \"F.Mask\" \"F.Paste\") {a})
+            (pad \"2\" smd rect (at 0.8 0) (size 0.3 1){offset} (layers \"F.Cu\" \"F.Mask\" \"F.Paste\") {c}))"
+        ));
+        let r = check(&mut b, &jlcpcb());
+        assert_eq!(r.count(DrcRule::PadToPad), count, "{offset}\n{r}");
+    }
+}
+
+#[test]
 fn a_track_keeps_its_space_from_another_nets_mask_opening() {
     // The board's mask margin is 0, so the opening is the pad: a 0.6 mm pad at (10, 10).
     for (gap, count) in [(0.1, 0), (0.08, 1)] {

@@ -68,7 +68,7 @@ The current taken from a net: by a rail through its `pos` pin on behalf of whate
 _Avoid_: Load current (as a field name), sink, source
 
 **Dropout**:
-The least headroom of a regulator's input over its output at its load, below which the output follows the input: a linear regulator's `.dropout` (its row's figure, or a curve file over `output_current` and temperature), a buck converter's `.dropout`, the inductor's current through the IC's `high_side_resistance` and the inductor's DC resistance. The least input a regulator needs is its output rail's minimum plus its dropout (issue #1259).
+The least headroom of a regulator's input over its output at its load, below which the output follows the input: a linear regulator's `.dropout` (its row's figure, or a curve file over `output_current` and temperature), a buck converter's `.dropout`, the inductor's current through the IC's `high_side_resistance` and the inductor's DC resistance. The least input a regulator needs is its output rail's minimum plus its dropout (issue #1259), or the rail's _Voltage floor_ plus its dropout where the board states one (issue #1301).
 _Avoid_: brown-out (an input below the IC's own minimum), dropout voltage (as a field name)
 
 **DXF import**:

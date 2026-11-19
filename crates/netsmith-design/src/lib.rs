@@ -817,6 +817,17 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
         Some(Domain::Quantity(q)) => (end(path, &q, false) * 1e12).round() / 1e9,
         _ => 0.0,
     };
+    // A length a process may leave unstated (it has no value, or the field is not declared).
+    let optional_mm = |full: &str| -> Option<f64> {
+        let f = model.field_at(full)?;
+        match &model.field(f).domain {
+            Domain::Quantity(q) => {
+                let path = full.trim_start_matches("process.");
+                Some((end(path, q, false) * 1e12).round() / 1e9)
+            }
+            _ => None,
+        }
+    };
     let text = |d: Option<Domain>| match d {
         Some(Domain::Text(t)) => t,
         _ => String::new(),
@@ -893,6 +904,9 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
             },
             None => None,
         },
+        // Unstated where the board house publishes no figure. A lower bound, so the bottom.
+        min_single_sided_assembly_size: optional_mm("process.min_single_sided_assembly_size"),
+        min_double_sided_assembly_size: optional_mm("process.min_double_sided_assembly_size"),
         track_width_tolerance: number("track_width_tolerance"),
         hole_plating: mm("hole_plating"),
         finish: text(find("finish")),

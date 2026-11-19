@@ -31,6 +31,8 @@ fn jlcpcb() -> DrcExtras {
             round_angle: 90.0,
             fine_pitch: 0.4,
             uneven_finish: None,
+            min_single_sided_assembly_size: None,
+            min_double_sided_assembly_size: None,
         }),
         ..DrcExtras::default()
     }
@@ -84,6 +86,7 @@ fn the_rules_are_netsmiths_and_a_limit_is_an_error_where_a_guideline_is_a_warnin
         DrcRule::FiducialSize,
         DrcRule::FiducialAngle,
         DrcRule::FinishFinePitch,
+        DrcRule::AssemblySize,
         DrcRule::TestPointPad,
         DrcRule::TestPointPitch,
         DrcRule::TestPointBody,
@@ -540,4 +543,69 @@ fn a_v_cut_line_is_not_the_board_edge_a_fiducial_keeps_away_from() {
     fiducial(&mut b, "FID1", (3.85, 15.0), 1.0, 0.5, false);
     let r = check(&mut b, &jlcpcb());
     assert_eq!(count(&r, DrcRule::FiducialEdge), 1, "{r}");
+}
+
+/// The marks of a board of 40 x 30 mm that has parts on the faces given, with the process's
+/// least single board for one face and for both.
+fn assembled(front: bool, back: bool, single: Option<f64>, double: Option<f64>) -> DrcExtras {
+    let mut extras = jlcpcb();
+    let marks = extras.marks.as_mut().unwrap();
+    marks.assembled_front = front;
+    marks.assembled_back = back;
+    marks.min_single_sided_assembly_size = single;
+    marks.min_double_sided_assembly_size = double;
+    extras
+}
+
+#[test]
+fn a_board_under_the_least_for_its_faces_needs_a_panel() {
+    // The board is 40 x 30 mm: it meets a least of 30 mm (the smaller side, exactly) and not
+    // one a little over it.
+    for (least, found) in [(25.0, 0), (30.0, 0), (30.01, 1), (35.0, 1), (70.0, 1)] {
+        let mut b = Pcb::new(2);
+        let r = check(&mut b, &assembled(true, true, None, Some(least)));
+        assert_eq!(count(&r, DrcRule::AssemblySize), found, "double {least}\n{r}");
+        for f in r.findings.iter().filter(|f| f.rule == DrcRule::AssemblySize) {
+            assert_eq!(f.severity, DrcSeverity::Warning);
+            assert!(
+                f.message.contains("40.0 x 30.0 mm")
+                    && f.message.contains("both faces")
+                    && f.message.contains("needs a panel"),
+                "{}",
+                f.message
+            );
+        }
+    }
+}
+
+#[test]
+fn a_board_with_parts_on_one_face_is_held_to_the_single_sided_least() {
+    // 40 x 30 mm is under 70 mm for both faces and over 10 mm for one: parts on one face are
+    // judged by the single sided figure alone, on the front and on the back.
+    for (front, back) in [(true, false), (false, true)] {
+        let mut b = Pcb::new(2);
+        let r = check(&mut b, &assembled(front, back, Some(10.0), Some(70.0)));
+        assert_eq!(count(&r, DrcRule::AssemblySize), 0, "{r}");
+        let r = check(&mut b, &assembled(front, back, Some(35.0), Some(70.0)));
+        assert_eq!(count(&r, DrcRule::AssemblySize), 1, "{r}");
+        let face = if front { "the front" } else { "the back" };
+        assert!(
+            r.findings.iter().any(|f| f.rule == DrcRule::AssemblySize && f.message.contains(face)),
+            "{r}"
+        );
+    }
+}
+
+#[test]
+fn the_size_is_not_judged_where_the_process_states_none_or_nothing_is_assembled() {
+    let mut b = Pcb::new(2);
+    // Unstated (a house that publishes no figure, the default of the fictional one).
+    for (front, back) in [(true, false), (false, true), (true, true)] {
+        let r = check(&mut b, &assembled(front, back, None, None));
+        assert_eq!(count(&r, DrcRule::AssemblySize), 0, "{r}");
+    }
+    // Nothing the board house assembles, and a board read with no process.
+    let r = check(&mut b, &assembled(false, false, Some(100.0), Some(100.0)));
+    assert_eq!(count(&r, DrcRule::AssemblySize), 0, "{r}");
+    assert_eq!(count(&check(&mut b, &DrcExtras::default()), DrcRule::AssemblySize), 0);
 }

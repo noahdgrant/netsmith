@@ -572,6 +572,8 @@
       "fine_pitch": 0.4,
       "via_in_pad": 0.55,
       "max_temperature_rise": null,
+      "min_single_sided_assembly_size": 10.0,
+      "min_double_sided_assembly_size": 70.0,
       "track_width_tolerance": 0.2,
       "hole_plating": 0.018,
       "finish": "HASL lead-free",
@@ -750,7 +752,7 @@
           "part": "reg.ic",
           "name": "feedback",
           "source": "SNVSA24, 11.1 Layout Guidelines, p.17",
-          "site": "std/parts/regulator.nsm:1130",
+          "site": "std/parts/regulator.nsm:1135",
           "statement": "near",
           "select": {
             "on": {
@@ -764,7 +766,7 @@
           "part": "reg.ic",
           "name": "inductor",
           "source": "SNVSA24, 11.1 Layout Guidelines, p.17",
-          "site": "std/parts/regulator.nsm:1134",
+          "site": "std/parts/regulator.nsm:1139",
           "statement": "near",
           "select": {
             "on": {
@@ -778,7 +780,7 @@
           "part": "reg.ic",
           "name": "input_cap",
           "source": "SNVSA24, 11.1 Layout Guidelines, p.17",
-          "site": "std/parts/regulator.nsm:1132",
+          "site": "std/parts/regulator.nsm:1137",
           "statement": "near",
           "select": {
             "bridging": {

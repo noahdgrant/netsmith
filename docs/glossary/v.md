@@ -23,6 +23,10 @@ _Avoid_: Via layer pair, drill pair (KiCad's names)
 One way the editor shows a board built from the source: the schematic, the power tree, the system, the bill of materials or the PCB. Each is computed from the checked and solved model, and none is edited: the source is.
 _Avoid_: Page
 
+**Voltage floor**:
+The least voltage a rail may fall to while the regulator behind it is in _Dropout_, below the least of its `.voltage`: `.voltage_floor` of `Rail`, stated by a board (`.load.voltage_floor &= 2.7V`, issue #1301). The rail's window, from the floor to the top of `.voltage`, is what the dropout check and the loads' supply ranges on the rail are judged over; `.voltage` itself stays the range the DC analysis holds the rail at.
+_Avoid_: Brown-out level, minimum voltage (that is `min(.voltage)`), undervoltage
+
 **Voltage margin**:
 The factor on the highest voltage of a rail that a capacitor's rating must have: `.voltage_margin` of `BuckStage` (ADR 0085), 1 unless the board states it (`.stage.voltage_margin &= 1.25`). It multiplies both the rail's steady `.voltage` and its `.peak`.
 _Avoid_: Derating factor, safety factor, headroom
