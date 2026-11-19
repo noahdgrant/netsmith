@@ -72,6 +72,19 @@ interface Rail {
     /// #1279). Not shared by `~`. Left unstated, the average is taken as stated.
     .duty: Number optional
     max(.current) >= max(.peak_current) * max(.duty)
+    /// The least voltage the rail may fall to while the regulator behind it is in dropout, below
+    /// the least of `.voltage` (issue #1301): an MCU that runs from 1.8 V on a 3.3 V regulator
+    /// fed from a falling cell lets the output follow the input down, and the board says how far
+    /// (`.v3.voltage_floor &= 2.7V`). `.voltage` stays the range the DC analysis holds the rail
+    /// at and the regulator's own checks read; the bounds that speak of the least voltage the
+    /// rail reaches are judged over its window, from the floor to the top of `.voltage`. The
+    /// dropout check (`.vin.voltage >= min(.vout.voltage) + .dropout`) then needs an input of
+    /// the floor plus the dropout, and every load's supply range (`.vcc.voltage >= 2.4V`) must
+    /// hold the whole window, or it is an error that names the floor. A value a relation works
+    /// out from `.voltage` (a logic level, a resistor's current) is not moved. Rails joined with
+    /// `~` share it. Left unstated, the window is `.voltage` and nothing changes (ADR 0074).
+    .voltage_floor: Voltage optional
+    .voltage_floor <= min(.voltage)
     /// The narrowest track the nets of this rail are routed with: a lower bound, written as
     /// a range (`.min_track &= 0.5mm..`). Both pins get it, since the return current is the
     /// same current. A net takes the widest of the rails on it, so `GND` is as wide as the
