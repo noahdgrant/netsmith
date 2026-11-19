@@ -203,6 +203,28 @@ fn a_level_through_a_series_resistor_on_the_far_board_is_judged_across_the_mate(
         "{:#?}",
         notes(&s)
     );
+    // The resistor on the carrier, between its driver and the socket (issue #1440): the mate
+    // check lets it through and the levels check judges the same high across the mate.
+    let carrier = "    .u1: Driver\n    .u1.vdd ~ .vcc\n    .r: Resistor { .resistance &= 100ohm +/- 1% }\n    .u1.out.line ~> .r ~> .slot.p3\n";
+    let card = "    .u2: Receiver\n    .u2.vdd ~ .vcc\n    .u2.in.line ~ .j1.p3\n";
+    let s = run(&kit("3.3V +/- 5%", carrier, "5V +/- 5%", card));
+    let m = messages(&s);
+    assert!(
+        m.iter().any(|m| m.contains("card.u2.in.vih") && m.contains("`carrier.u1.out.voh`")),
+        "the high through the carrier's resistor: {m:#?}\n{:#?}",
+        notes(&s)
+    );
+    let s = run(&kit("5V +/- 5%", carrier, "3.3V +/- 5%", card));
+    assert!(
+        !messages(&s).iter().any(|m| m.contains("card.u2.in")),
+        "{:#?}",
+        messages(&s)
+    );
+    assert!(
+        !notes(&s).iter().any(|n| n.contains("card.u2.in")),
+        "{:#?}",
+        notes(&s)
+    );
 }
 
 #[test]

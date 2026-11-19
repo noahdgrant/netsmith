@@ -66,7 +66,10 @@
 //! it from one card to another, issue #1426): every mate is read first, the signal contacts join
 //! the nets into lines ([`Lines`]), and an input is refused only when nothing on its whole line
 //! drives it. Two drivers that only a board between them joins are refused once, at the first
-//! mate on the line.
+//! mate on the line. A driver, or a rail, that a contact's net reaches through series parts on
+//! its board (parts with a `bridge`, a resistor in a `~>` chain) drives the contact, as a passive
+//! pin does on one board (issue #1440); the solver's levels check then judges the level across
+//! the mate.
 //!
 //! **A partial mate** (issue #792, the direction ADR 0040 recommends). `.contacts` of a
 //! connector's `.mating` (a `Number`, narrowed to a range `first..last` of its contact numbers)
@@ -114,7 +117,7 @@
 //! Pin ratings are sourced by series from public datasheets, starting with the one series the
 //! kit uses, and the rating check is "not evaluated" for a connector with no row.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use netsmith_lang::Span;
 use netsmith_lang::ast::{BinOp, CmpOp};
@@ -123,7 +126,7 @@ use netsmith_quantity::{Dimension, Quantity};
 use crate::checker::Checker;
 use crate::model::{
     Contact, ContactSide, Domain, FieldId, GroundGroup, GroundNet, InstId, InstKind, Mate,
-    MateDecl, Member, Model, PinKind, RExpr, Relation, Role,
+    MateDecl, Member, Model, Net, PinKind, RExpr, Relation, Role,
 };
 
 /// The kinds of mate (`.mating.kind`, issue #1320). Every kind joins contact N to contact N and
@@ -198,10 +201,21 @@ struct Side {
     bidirectional: Vec<InstId>,
     tri_state: Vec<InstId>,
     open_drain: Vec<InstId>,
+    /// The drivers the net reaches through series parts on its board (issue #1440): a pin
+    /// that drives, or a rail's `pos` or `neg` (a pull resistor), on a net that a part with a
+    /// `bridge` joins to this one, step by step. They drive the line for the rule of an input
+    /// that nothing drives, as a passive pin does on one board, but take no part in the rules
+    /// of two drivers, which the series part keeps apart.
+    through: Vec<InstId>,
 }
 
 impl Side {
     fn drives(&self) -> bool {
+        self.drives_here() || !self.through.is_empty()
+    }
+
+    /// Whether a pin on the contact's own net drives it.
+    fn drives_here(&self) -> bool {
         !self.outputs.is_empty()
             || !self.bidirectional.is_empty()
             || !self.tri_state.is_empty()
@@ -812,6 +826,7 @@ impl Checker<'_> {
             bidirectional: Vec::new(),
             tri_state: Vec::new(),
             open_drain: Vec::new(),
+            through: Vec::new(),
         };
         let Some(net) = self.model.net_of(pin).cloned() else {
             return side;
@@ -841,12 +856,78 @@ impl Checker<'_> {
             Role::Power
         } else if neg {
             Role::Ground
-        } else if side.drives() || !side.inputs.is_empty() {
+        } else if side.drives_here() || !side.inputs.is_empty() {
             Role::Signal
         } else {
             Role::Open
         };
+        if matches!(side.role, Role::Signal | Role::Open) && !side.drives_here() {
+            side.through = self.through_series(&net, part);
+        }
         side
+    }
+
+    /// The drivers a net reaches through series parts (parts with a `bridge`, such as a
+    /// resistor in a `~>` chain) on its own board, leaving out the pins of `connector`: the
+    /// pins that drive a net the bridges join to it, or a rail's `pos` or `neg` on one. A net
+    /// that has a driver or a rail is where the walk stops (issue #1440).
+    fn through_series(&self, start: &Net, connector: Option<InstId>) -> Vec<InstId> {
+        let model = &self.model;
+        let mut found = Vec::new();
+        let mut seen: HashSet<String> = HashSet::from([start.name.clone()]);
+        let mut queue = vec![start.clone()];
+        while let Some(net) = queue.pop() {
+            for &t in &net.terminals {
+                let Some(owner) = model.owner_of(t).filter(|&o| Some(o) != connector) else {
+                    continue;
+                };
+                let Some((a, b)) = model.instance(owner).bridge else {
+                    continue;
+                };
+                let other = if t == a {
+                    b
+                } else if t == b {
+                    a
+                } else {
+                    continue;
+                };
+                let Some(far) = model.net_of(other) else {
+                    continue;
+                };
+                if !seen.insert(far.name.clone()) {
+                    continue;
+                }
+                let mut stops = false;
+                for &p in &far.pins {
+                    if model.owner_of(p) == connector {
+                        continue;
+                    }
+                    let rail = model
+                        .instance(p)
+                        .parent
+                        .and_then(|i| model.rail_of(i))
+                        .is_some_and(|(_, pos, neg)| p == pos || p == neg);
+                    let drives = far.terminals.contains(&p)
+                        && matches!(
+                            model.pin_facts(p).map(|r| r.kind),
+                            Some(
+                                PinKind::Output
+                                    | PinKind::Bidirectional
+                                    | PinKind::TriState
+                                    | PinKind::OpenDrain
+                            )
+                        );
+                    if rail || drives {
+                        found.push(p);
+                        stops = true;
+                    }
+                }
+                if !stops {
+                    queue.push(far.clone());
+                }
+            }
+        }
+        found
     }
 
     /// Whether two sides can meet, and why not.
