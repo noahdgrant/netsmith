@@ -530,6 +530,21 @@ pub struct Tie {
 pub struct PartRules {
     pub peripherals: Vec<Peripheral>,
     pub shares: Vec<SharedRes>,
+    /// The `direction` statements of the part (issue #1306).
+    pub directions: Vec<Direction>,
+}
+
+/// `direction .a to .b when .dir high` in a part (issue #1306): while `control` is at the level,
+/// the pins of `from` only read and the pins of `to` only drive. `from` and `to` are the pins
+/// the statement names, an interface standing for all of its pins.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Direction {
+    pub from: Vec<InstId>,
+    pub to: Vec<InstId>,
+    pub control: InstId,
+    pub high: bool,
+    pub source: SourceId,
+    pub span: Span,
 }
 
 /// `peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }`: functions that belong

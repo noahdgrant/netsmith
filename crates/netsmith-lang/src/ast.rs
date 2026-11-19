@@ -411,6 +411,9 @@ pub enum Item {
     Catalog(Catalog),
     Pins(Pins),
     Tie(Tie),
+    /// `direction .a to .b when .dir high`: the way a part's bidirectional pins pass a signal
+    /// while a control pin is at a level (issue #1306); only a part may hold one.
+    Direction(Direction),
     /// `unused .processor.usb`: the board says that nothing on it uses an interface (ADR 0083).
     Unused(Unused),
     /// `sequence { .a.vout; then 6ms; .b.vout; after .e }`: the order in which rails come up and
@@ -811,6 +814,21 @@ impl PadRow {
 pub struct Tie {
     pub a: Path,
     pub b: Path,
+    pub span: Span,
+}
+
+/// `direction .a to .b when .dir high`: while the control pin `.dir` is at the level, the
+/// bidirectional pins of `.a` (a pin, or an interface and all its pins) only read and those of
+/// `.b` only drive (issue #1306). The levels check judges the direction a strap of the control
+/// pin fixes, and both where it cannot tell.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Direction {
+    pub from: Path,
+    pub to: Path,
+    pub control: Path,
+    /// `high` (true) or `low` (false), and the span of the word.
+    pub high: bool,
+    pub level_span: Span,
     pub span: Span,
 }
 

@@ -58,8 +58,8 @@ pub use loads::{LoadGroup, worst_of};
 pub use lower::closest;
 pub use model::{
     Balance, Bank, Bookmark, BusAssignment, BusRequest, Catalog, Chain, ChainPin, Checkpoint,
-    Contact, ContactSide, DcElement, DcKind, DefaultFrom, DefaultNote, Domain, Draw, EnumId,
-    EnumInfo, EventKind, Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet,
+    Contact, ContactSide, DcElement, DcKind, DefaultFrom, DefaultNote, Direction, Domain, Draw,
+    EnumId, EnumInfo, EventKind, Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet,
     GuidelineRule, InstId, InstKind, Instance, JoinedByName, LayoutGuideline, LevelTest, Mate,
     Member, Model, NearSelect, Net, NetRoute, OptionalMark, OutlinePolygon, PadContact, PartRules,
     Peripheral, PeripheralBus, PeripheralFunction, PinAssignment, PinDistance, PinKind, PinRequest,

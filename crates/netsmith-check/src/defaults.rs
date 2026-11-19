@@ -596,6 +596,7 @@ fn item_span(item: &Item) -> Span {
         Item::Catalog(c) => c.span,
         Item::Pins(p) => p.span,
         Item::Tie(t) => t.span,
+        Item::Direction(d) => d.span,
         Item::Unused(u) => u.span,
         Item::Sequence(q) => q.span,
         Item::Scenario(q) => q.span,

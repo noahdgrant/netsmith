@@ -545,6 +545,7 @@ impl Parser {
                     | Item::Catalog(_)
                     | Item::Pins(_)
                     | Item::Tie(_)
+                    | Item::Direction(_)
                     | Item::Unused(_)
                     | Item::Sequence(_)
                     | Item::Scenario(_)
@@ -590,6 +591,9 @@ impl Parser {
                 "catalog" if starts_name => return only_decls(self.catalog(start)?),
                 "tie" if starts_name => return only_decls(self.tie(start)?),
                 "unused" if starts_name => return only_decls(self.unused(start)?),
+                "direction" if matches!(self.peek_second(), Tok::LeadingDot) => {
+                    return only_decls(self.direction(start)?);
+                }
                 "sequence" if matches!(self.peek_second(), Tok::LBrace) => {
                     return only_decls(self.sequence(start)?);
                 }
@@ -1170,6 +1174,61 @@ impl Parser {
         Ok(Item::Dc(Dc {
             kind,
             operands,
+            span: self.span_from(start),
+        }))
+    }
+
+    /// `direction .a to .b when .dir high` (issue #1306).
+    fn direction(&mut self, start: usize) -> Res<Item> {
+        const SHAPE: &str = "`direction .a to .b when .dir high`";
+        self.bump();
+        let from = self.path()?;
+        let word = |p: &mut Self, w: &str, what: &str| -> Res<()> {
+            if matches!(&p.peek().tok, Tok::Ident(x) if x == w) {
+                p.bump();
+                Ok(())
+            } else {
+                let t = p.peek().clone();
+                Err(unexpected(&t, &format!("{what} in {SHAPE}")))
+            }
+        };
+        word(self, "to", "`to` and the pin the signal goes to")?;
+        if !self.at(&Tok::LeadingDot) {
+            let t = self.peek().clone();
+            return Err(unexpected(
+                &t,
+                &format!("the pin the signal goes to in {SHAPE}"),
+            ));
+        }
+        let to = self.path()?;
+        word(
+            self,
+            "when",
+            "`when` and the control pin that fixes the direction",
+        )?;
+        if !self.at(&Tok::LeadingDot) {
+            let t = self.peek().clone();
+            return Err(unexpected(&t, &format!("the control pin in {SHAPE}")));
+        }
+        let control = self.path()?;
+        let t = self.peek().clone();
+        let high = match &t.tok {
+            Tok::Ident(w) if w == "high" => true,
+            Tok::Ident(w) if w == "low" => false,
+            _ => {
+                return Err(unexpected(
+                    &t,
+                    &format!("`high` or `low`, the level of the control pin, in {SHAPE}"),
+                ));
+            }
+        };
+        self.bump();
+        Ok(Item::Direction(Direction {
+            from,
+            to,
+            control,
+            high,
+            level_span: t.span,
             span: self.span_from(start),
         }))
     }
