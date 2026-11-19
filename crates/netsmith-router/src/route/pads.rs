@@ -461,6 +461,9 @@ pub(super) fn diff_pair_partners(board: &Board) -> Vec<Option<usize>> {
 /// line is not ripped up for a line of a later class ([`Class::protected`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(super) enum Class {
+    /// A net of a stated impedance of one track, an RF net (issue #1274): routed first, and
+    /// kept on one layer with no via unless the physical file says `route any_layer`.
+    Rf,
     /// A pad that must reach its net's plane, or a pad deep in a fine-pitch grid of pads: the
     /// fewest ways out.
     Escape,
@@ -483,7 +486,10 @@ impl Class {
     /// escapes of a QFN and every power net left RP2350 unrouted, and a power line ripped up is
     /// routed again at its full width.
     pub(super) fn protected(self) -> bool {
-        matches!(self, Class::Decoupling | Class::Pair | Class::Clock)
+        matches!(
+            self,
+            Class::Rf | Class::Decoupling | Class::Pair | Class::Clock
+        )
     }
 }
 
@@ -535,11 +541,14 @@ pub(super) fn classes(board: &Board, lines: &[Ratline], depth: &[f64], pairs: bo
     };
     let decoupling = netsmith_pcb::decoupling_pairs(&board.parts, &board.nets);
     let decouples = |l: &Ratline| crate::decouple::decouples(board, &decoupling, l);
+    let rf = board.rf_nets();
     lines
         .iter()
         .zip(depth)
         .map(|(l, &d)| {
-            if l.to_plane || d > 0.0 {
+            if !l.to_plane && rf.contains(&l.net) {
+                Class::Rf
+            } else if l.to_plane || d > 0.0 {
                 Class::Escape
             } else if decouples(l) {
                 Class::Decoupling

@@ -966,6 +966,8 @@ fn the_placer_and_the_fab_check_measure_one_body_for_a_footprint_with_no_courtya
             ],
             sides: Vec::new(),
             relations: Vec::new(),
+            distances: Vec::new(),
+            one_layer: Vec::new(),
             severity: netsmith_geom::DrcSeverity::Error,
         };
         let art = netsmith_geom::Artwork::parse(&crate::export::kicad_pcb(&board)).unwrap();

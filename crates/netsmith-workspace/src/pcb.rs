@@ -1321,8 +1321,8 @@ pub fn scene(entry: &Entry, data: &BoardData, name: &str) -> PcbScene {
 }
 
 /// The routes file's records for the board, on the sheet, each shape marked as drawn or not as
-/// `netsmith_pcb::apply_routes` decides: every shape of a record whose pads are where it was
-/// written, only the locked ones of one whose pads moved, none of a net the board does not have.
+/// `netsmith_pcb::apply_routes` decides: every shape of a net the board has, whether or not its
+/// pads moved (issue #1328), none of a net the board does not have.
 fn route_nets(entry: &Entry) -> Vec<PcbRouteNet> {
     let board = &entry.placed;
     let Some(table) = entry.routes.boards.get(&board.name) else {
@@ -1353,7 +1353,7 @@ fn route_nets(entry: &Entry) -> Vec<PcbRouteNet> {
                         mid: t.mid.map(at),
                         to: at(t.to),
                         lock: t.lock,
-                        drawn: known && (current || t.lock),
+                        drawn: known,
                     })
                     .collect(),
                 vias: record
@@ -1365,7 +1365,7 @@ fn route_nets(entry: &Entry) -> Vec<PcbRouteNet> {
                         drill: v.drill,
                         layers: v.layers.clone(),
                         lock: v.lock,
-                        drawn: known && (current || v.lock),
+                        drawn: known,
                     })
                     .collect(),
             }
