@@ -264,6 +264,15 @@ fn visit<'a>(
             path(&t.b, inside);
         }
         Item::Unused(u) => path(&u.path, inside),
+        Item::Sequence(q) => {
+            for step in &q.steps {
+                match step {
+                    netsmith_lang::ast::SequenceStep::Event(p)
+                    | netsmith_lang::ast::SequenceStep::After { event: p, .. } => path(p, inside),
+                    netsmith_lang::ast::SequenceStep::Then { .. } => {}
+                }
+            }
+        }
         Item::Pins(pins) => {
             for row in &pins.rows {
                 path(&row.pin, inside);

@@ -34,6 +34,7 @@ mod pins;
 mod polygon;
 mod providers;
 mod row;
+mod sequence;
 mod shared;
 mod support;
 mod unused;
@@ -54,12 +55,13 @@ pub use lower::closest;
 pub use model::{
     Balance, Bank, Bookmark, BusAssignment, BusRequest, Catalog, Chain, ChainPin, Checkpoint,
     Contact, ContactSide, DcElement, DcKind, DefaultFrom, DefaultNote, Domain, Draw, EnumId,
-    EnumInfo, Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet, GuidelineRule, InstId,
-    InstKind, Instance, JoinedByName, LayoutGuideline, LevelTest, Mate, Member, Model, NearSelect,
-    Net, OptionalMark, OutlinePolygon, PartRules, Peripheral, PeripheralBus, PeripheralFunction,
-    PinAssignment, PinKind, PinRequest, PinRow, PinTable, Pinout, PolygonCorner, Provider, RExpr,
-    RangeEnd, Relation, Requirement, Role, RowLimit, SharedMember, SharedRes, Snapshot, Tie,
-    Unused, VoltageSteps, Written,
+    EnumInfo, EventKind, Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet,
+    GuidelineRule, InstId, InstKind, Instance, JoinedByName, LayoutGuideline, LevelTest, Mate,
+    Member, Model, NearSelect, Net, OptionalMark, OutlinePolygon, PartRules, Peripheral,
+    PeripheralBus, PeripheralFunction, PinAssignment, PinKind, PinRequest, PinRow, PinTable,
+    Pinout, PolygonCorner, Provider, RExpr, RangeEnd, Relation, Requirement, Role, RowLimit,
+    SequenceEvent, SequenceOrder, SharedMember, SharedRes, Snapshot, Tie, Unused, VoltageSteps,
+    Written,
 };
 pub use pinedit::edit_entry;
 pub use pinfile::{BusEntry, EntrySource, PinEntry, PinFile, PinFileError};

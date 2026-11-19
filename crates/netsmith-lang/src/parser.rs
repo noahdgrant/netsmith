@@ -541,6 +541,7 @@ impl Parser {
                     | Item::Pins(_)
                     | Item::Tie(_)
                     | Item::Unused(_)
+                    | Item::Sequence(_)
                     | Item::Peripheral(_)
                     | Item::Shared(_)
                     | Item::Lines(_)
@@ -579,6 +580,9 @@ impl Parser {
                 "catalog" if starts_name => return only_decls(self.catalog(start)?),
                 "tie" if starts_name => return only_decls(self.tie(start)?),
                 "unused" if starts_name => return only_decls(self.unused(start)?),
+                "sequence" if matches!(self.peek_second(), Tok::LBrace) => {
+                    return only_decls(self.sequence(start)?);
+                }
                 "peripheral" if matches!(self.peek_second(), Tok::Ident(_)) => {
                     return only_decls(self.peripheral(start)?);
                 }
@@ -1096,6 +1100,119 @@ impl Parser {
             path,
             span: self.span_from(start),
         }))
+    }
+
+    /// `sequence { .a.vout; then 6ms; .b.vout; after .e }` (issue #1267): events, `then` with an
+    /// optional delay between two of them, and `after` an event, one statement each.
+    fn sequence(&mut self, start: usize) -> Res<Item> {
+        const SHAPE: &str = "a `sequence` is events in order, with `then` between two of them: `sequence { .a.vout; then 6ms; .b.vout; after .e }`";
+        self.bump();
+        let open = self.bump();
+        let mut steps: Vec<SequenceStep> = Vec::new();
+        loop {
+            self.skip_separators();
+            let t = self.peek().clone();
+            match &t.tok {
+                Tok::RBrace => {
+                    self.bump();
+                    break;
+                }
+                Tok::Eof => {
+                    return Err(ParseError::new(
+                        open.span,
+                        "this `{` of a `sequence` is not closed",
+                    ));
+                }
+                Tok::Ident(w) if w == "then" => {
+                    self.bump();
+                    let delay = match &self.peek().tok {
+                        Tok::Number(n) => {
+                            let n = n.clone();
+                            Some((n, self.bump().span))
+                        }
+                        _ => None,
+                    };
+                    if !matches!(
+                        steps.last(),
+                        Some(SequenceStep::Event(_) | SequenceStep::After { .. })
+                    ) {
+                        return Err(ParseError::new(
+                            t.span,
+                            format!("`then` follows an event: {SHAPE}"),
+                        ));
+                    }
+                    steps.push(SequenceStep::Then {
+                        delay,
+                        span: self.span_from(t.span.start),
+                    });
+                }
+                Tok::Ident(w) if w == "after" && !matches!(self.peek_second(), Tok::Dot) => {
+                    self.bump();
+                    let event = self.path()?;
+                    if !matches!(
+                        steps.last(),
+                        Some(SequenceStep::Event(_) | SequenceStep::After { .. })
+                    ) {
+                        return Err(ParseError::new(
+                            t.span,
+                            format!(
+                                "`after` follows an event, which comes after the one it names: {SHAPE}"
+                            ),
+                        ));
+                    }
+                    steps.push(SequenceStep::After {
+                        event,
+                        span: self.span_from(t.span.start),
+                    });
+                }
+                Tok::LeadingDot | Tok::Ident(_) | Tok::QuotedIdent(_) => {
+                    let event = self.path()?;
+                    if matches!(
+                        steps.last(),
+                        Some(SequenceStep::Event(_) | SequenceStep::After { .. })
+                    ) {
+                        return Err(ParseError::new(
+                            event.span,
+                            format!("two events of a `sequence` are parted by `then`: {SHAPE}"),
+                        ));
+                    }
+                    steps.push(SequenceStep::Event(event));
+                }
+                _ => {
+                    return Err(unexpected(
+                        &t,
+                        "an event, `then` or `after` in a `sequence`",
+                    ));
+                }
+            }
+            if !self.at(&Tok::RBrace) {
+                self.end_statement(true)?;
+            }
+        }
+        let span = self.span_from(start);
+        let events = steps
+            .iter()
+            .filter(|s| matches!(s, SequenceStep::Event(_)))
+            .count();
+        if matches!(steps.last(), Some(SequenceStep::Then { .. })) {
+            return Err(ParseError::new(
+                steps.last().map_or(span, SequenceStep::span),
+                format!("`then` is followed by an event: {SHAPE}"),
+            ));
+        }
+        if events
+            + steps
+                .iter()
+                .filter(|s| matches!(s, SequenceStep::After { .. }))
+                .count()
+            < 2
+        {
+            return Err(ParseError::new(
+                span,
+                format!("a `sequence` orders two events or more: {SHAPE}"),
+            ));
+        }
+        Ok(Item::Sequence(Sequence { steps, span }))
     }
 
     fn tie(&mut self, start: usize) -> Res<Item> {
