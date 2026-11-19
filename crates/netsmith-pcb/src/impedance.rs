@@ -1066,7 +1066,7 @@ pub fn loss_per_mm(
             "`{layer}` is not a layer a track may be on in this build-up"
         ))
     })?;
-    if !(frequency > 0.0) {
+    if frequency.is_nan() || frequency <= 0.0 {
         return Err(OutOfRange(format!(
             "a loss is worked out at a frequency above 0, not {frequency} Hz"
         )));

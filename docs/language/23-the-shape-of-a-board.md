@@ -683,11 +683,7 @@ board Lossy {
     .block: Capacitor { .capacitance &= 100pF +/- 5% }
     .radio.p1 ~ .block.a
     .block.b ~ .connector.p1
-    .rf: TrackPath {
-        .impedance &= 50ohm
-        .frequency &= 2.4GHz
-        .budget_loss &= 0..0.5
-    }
+    .rf: TrackPath { .impedance &= 50ohm; .frequency &= 2.4GHz; .budget_loss &= 0..0.5 }
     .rf.first ~ .radio.p1
     .rf.last ~ .connector.p1
 }
