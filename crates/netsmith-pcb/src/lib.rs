@@ -61,6 +61,7 @@ mod part_fit;
 mod part_geometry;
 mod part_layout;
 mod picture;
+mod pin_distance;
 mod placement;
 mod polygon;
 mod protrusion;
@@ -165,6 +166,7 @@ pub use picture::{
     Layers as PictureLayers, Lit, MARGIN as PICTURE_MARGIN, Marker, Picture as PictureOptions,
     picture as picture_svg, whole as picture_whole,
 };
+pub use pin_distance::PinNear;
 pub use placement::{
     CarriedZone, DESCRIBED, DoesNotFit, ESCAPE_ROOM, Ended, FaceKeepout, Fixed, HeightZone, ORIGIN,
     OutsideAt, OverlapAt, Oversize, PartState, PlaceOptions, inside as fit_inside, is_mechanical,

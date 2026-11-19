@@ -58,6 +58,10 @@ _Avoid_: Back-feed path, reverse leakage (a blocking part's leakage is not model
 The `.reverse_peak` of a `Rail`: the highest voltage the rail reaches the wrong way round, a positive number, which a design states for its input (ADR 0091). The first part of a `~>` chain from the rail that has a `.supply_reverse_peak` (a `Diode`, a `Schottky` or a `Tvs`) is given it and checked against it: a reverse-polarity diode must block it, and a unidirectional TVS diode conducts it. A rail that states none checks nothing and lists nothing.
 _Avoid_: Negative peak, reverse transient
 
+**RF net**:
+A net with a stated impedance of one track, a `TrackImpedance` (issue #1274): the placer weighs its length above every other net's, so its parts are placed first and its line short, and the router routes it first, on one copper layer with no via, unless the physical file says `.pin route any_layer` of it. A net of a `PairImpedance` is a diff pair, and no RF net.
+_Avoid_: Antenna net, high-frequency net, marking a net RF (nothing is written: the impedance makes it one)
+
 **Rip-up round**:
 A round of the router's last stage of a try that leaves connections (issue #1088): for each connection left, the cheapest path that may cross other nets' copper names the nets it crosses, their copper the router laid is removed whole, the connection is routed through the room and those nets are routed again after it, and what does not fit is left for the next round. A try gets 6 rounds unless `--rip-rounds` or `rip_rounds` in `netsmith.toml` says otherwise (0 runs none), one net is ripped up at most 3 times, and the best state any round reaches is kept; a try the rounds finish is used only when no other try finishes the board without them. The routes file's copper is never ripped up.
 _Avoid_: Negotiation (the earlier stage, which stops when a round spreads the connections left), shove (moves copper aside without removing it)

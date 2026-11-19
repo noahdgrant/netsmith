@@ -179,7 +179,7 @@ impl LoopPair {
 }
 
 /// The centres on the board of the pads of `part` with these numbers.
-fn centres(part: &Placed, numbers: &[String]) -> Vec<Pt> {
+pub(crate) fn centres(part: &Placed, numbers: &[String]) -> Vec<Pt> {
     numbers
         .iter()
         .flat_map(|n| part.footprint.pads_numbered(n))
@@ -188,7 +188,7 @@ fn centres(part: &Placed, numbers: &[String]) -> Vec<Pt> {
 }
 
 /// The least distance between a point of `a` and a point of `b`.
-fn nearest(a: &[Pt], b: &[Pt]) -> Option<f64> {
+pub(crate) fn nearest(a: &[Pt], b: &[Pt]) -> Option<f64> {
     a.iter()
         .flat_map(|p| b.iter().map(move |q| p.distance(*q)))
         .reduce(f64::min)

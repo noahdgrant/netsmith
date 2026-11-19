@@ -558,6 +558,8 @@ impl Parser {
                     | Item::Defaults(_)
                     | Item::Layout(_)
                     | Item::Row(_)
+                    | Item::Within(_)
+                    | Item::Route(_)
                     | Item::Polygon(_)
                     | Item::PhysicalFile(_)
                     | Item::Anchor(_)
@@ -777,6 +779,45 @@ impl Parser {
                     op,
                     rhs,
                     at,
+                    span: self.span_from(start),
+                }))
+            }
+            // `.ant within 8mm of .radio.ant` and `.radio.ant route one_layer` (issue #1274):
+            // `within`, `of` and `route` are read as words only after a path, so they stay
+            // usable as names.
+            Tok::Ident(ref w) if w == "within" && matches!(lhs, Expr::Path(_)) => {
+                let subject = as_path(lhs, "a part before `within`")?;
+                self.bump();
+                let distance = self.expr()?;
+                let t = self.peek().clone();
+                if !matches!(&t.tok, Tok::Ident(w) if w == "of") {
+                    return Err(unexpected(&t, "`of` and the pin after the distance"));
+                }
+                self.bump();
+                let pin = self.path()?;
+                only_decls(Item::Within(Within {
+                    subject,
+                    distance,
+                    pin,
+                    span: self.span_from(start),
+                }))
+            }
+            Tok::Ident(ref w) if w == "route" && matches!(lhs, Expr::Path(_)) => {
+                let pin = as_path(lhs, "a pin before `route`")?;
+                self.bump();
+                let t = self.peek().clone();
+                let one_layer = match &t.tok {
+                    Tok::Ident(w) if w == "one_layer" => true,
+                    Tok::Ident(w) if w == "any_layer" => false,
+                    _ => {
+                        return Err(unexpected(&t, "`one_layer` or `any_layer` after `route`"));
+                    }
+                };
+                let word_span = self.bump().span;
+                only_decls(Item::Route(RouteLayers {
+                    pin,
+                    one_layer,
+                    word_span,
                     span: self.span_from(start),
                 }))
             }

@@ -178,6 +178,20 @@ impl Board {
         }
     }
 
+    /// The RF nets (issue #1274): the nets of a stated impedance of one track
+    /// ([`netsmith_core::rf_nets`]). The placer and the router take them first and keep them
+    /// short.
+    pub fn rf_nets(&self) -> Vec<String> {
+        netsmith_core::rf_nets(&self.impedance_targets)
+    }
+
+    /// The nets routed on one copper layer with no via (issue #1274): the RF nets, unless the
+    /// physical file says `route any_layer`, and the nets it says `route one_layer` of
+    /// ([`netsmith_core::one_layer_nets`]).
+    pub fn one_layer_nets(&self) -> Vec<String> {
+        netsmith_core::one_layer_nets(&self.impedance_targets, &self.net_routes)
+    }
+
     /// Whether a net keeps its tracks to the outer layers: its current is known and its width
     /// was sized for the outer copper only, because the board has no inner signal layer or its
     /// design was written before a width for one was sized (ADR 0133, issue #833).

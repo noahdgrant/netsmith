@@ -1220,6 +1220,12 @@ struct Router<'a> {
     /// width is sized for the outer copper (ADR 0036), which an inner layer's thinner copper
     /// and IPC-2221's halved constant would not carry at that width (issue #833).
     outer_only: Vec<bool>,
+    /// For each net, the one layer of the stack it is routed on with no via, if it is (issue
+    /// #1274): an RF net, or a net the physical file says `route one_layer` of
+    /// ([`Board::one_layer_nets`]), on the outer layer every pad of the net has copper on (the
+    /// front first). `None` for every other net, and for a one-layer net whose pads share no
+    /// outer layer, which is routed as any net and which the check then reports.
+    one_layer: Vec<Option<usize>>,
     /// Whether the router is in the first pass of a try, which searches in eight directions.
     fine: Cell<bool>,
     /// When to stop, if there is a limit.

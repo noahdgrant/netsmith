@@ -394,6 +394,12 @@ const W_COHESION: f64 = 0.3;
 const W_INTRUDER: f64 = 0.05;
 /// Each mm from a decoupling capacitor's pads to the power pins they belong with.
 const W_DECOUPLING: f64 = 6.0;
+/// How many times a net of two pads an RF net's length weighs (issue #1274): an RF net is placed
+/// first and short, so its parts are drawn together before any other net's. Ten times a plain
+/// net, above a decoupling capacitor's pull (six), and well under a wall's (200 a mm), so it
+/// never breaks a hard rule. Chosen, not tuned: a board with an RF line is not among the boards
+/// the other weights were tuned on (`tests` has the test that it shortens the line).
+const RF_WEIGHT: f64 = 10.0;
 /// Each mm a connector is from the nearest edge, a hole or fiducial from the nearest corner.
 const W_EDGE: f64 = 0.4;
 /// The half perimeter of the box round everything.
@@ -460,6 +466,12 @@ pub(crate) struct Problem<'a> {
     pub overflow: f64,
     /// The weight of the escape shortfall of busy parts ([`escape`]), 0 for none.
     pub escape_room: f64,
+    /// The parts the design requires within a distance of a pin (issue #1274): each is pulled
+    /// to the pin's pads as a decoupling capacitor is to its part's, and each mm past the
+    /// distance costs [`W_HARD`], as a wall does.
+    pub pin_distances: &'a [netsmith_pcb::PinNear],
+    /// The RF nets (issue #1274): their length weighs [`RF_WEIGHT`] times a net's of two pads.
+    pub rf_nets: &'a [String],
 }
 
 /// What a run ended with.
@@ -799,6 +811,9 @@ struct Dec {
     /// For an `away` guideline (issue #994): the least distance from the pins. The cost is
     /// then how much nearer than it the part is, and nothing beyond it.
     beyond: Option<f64>,
+    /// For a `within` requirement of the physical file (issue #1274): the most distance from
+    /// the pins. Each mm past it costs [`W_HARD`], on top of the pull.
+    within: Option<f64>,
 }
 
 /// The straight lines of a net's ratsnest.

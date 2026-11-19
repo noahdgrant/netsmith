@@ -447,6 +447,12 @@ pub enum Item {
     Layout(Layout),
     /// A `row .a1 .. .a12 along x pitch 2.54mm` statement; only a physical file may hold one.
     Row(Row),
+    /// `.ant within 8mm of .radio.ant`: a part within a distance of a pin (issue #1274); only a
+    /// physical file may hold one.
+    Within(Within),
+    /// `.radio.ant route one_layer`: how the net of a pin is routed (issue #1274); only a
+    /// physical file may hold one.
+    Route(RouteLayers),
     /// A `polygon (0mm, 0mm) (40mm, 0mm) ...` statement; only an `Outline` in a physical
     /// file may hold one (issue #57).
     Polygon(Polygon),
@@ -550,6 +556,45 @@ pub struct Row {
     /// The distance between a part and the next: a length, with or without a window.
     pub pitch: Expr,
     pub span: Span,
+}
+
+/// `.ant within 8mm of .radio.ant`: the nearest pad of the part `.ant` (its pads on the net of
+/// the pin, when it has any there) is at most the distance from the nearest pad of the pin
+/// `.radio.ant`, centre to centre (issue #1274, owner decision: a requirement of the physical
+/// file). The subject may be a pin of a part too.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Within {
+    /// The part (or pin) that must be near.
+    pub subject: Path,
+    /// The most the distance may be: one length.
+    pub distance: Expr,
+    /// The pin it must be near.
+    pub pin: Path,
+    pub span: Span,
+}
+
+/// `.radio.ant route one_layer`: the net of the pin is routed on one copper layer with no via;
+/// `route any_layer` lets a net with a stated impedance, which is routed on one layer by
+/// default, change layers (issue #1274).
+#[derive(Debug, Clone, PartialEq)]
+pub struct RouteLayers {
+    /// A pin on the net.
+    pub pin: Path,
+    /// `true` for `one_layer`, `false` for `any_layer`.
+    pub one_layer: bool,
+    pub word_span: Span,
+    pub span: Span,
+}
+
+impl RouteLayers {
+    /// The word after `route`.
+    pub fn word(&self) -> &'static str {
+        if self.one_layer {
+            "one_layer"
+        } else {
+            "any_layer"
+        }
+    }
 }
 
 /// `x` or `y` after `along`.
