@@ -774,3 +774,109 @@ fn a_subset_is_a_range_of_the_connectors_own_contacts() {
         }
     }
 }
+
+/// A carrier whose socket is two modules deep (`.deck.bay.sock`), and a card whose header the
+/// board declares; issue 1325.
+const NESTED: &str = "import std::parts::connector::{Header1x2, Socket1x4}
+import std::sources::Rail
+
+module Bay {
+    .power: Rail
+    .sock: Socket1x4
+    .power.neg ~ .sock.p2
+    .power.pos ~ .sock.p3
+}
+
+module Deck {
+    .power: Rail
+    .bay: Bay
+    .power ~ .bay.power
+}
+
+board Carrier {
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .current &= 0mA..100mA }
+    .deck: Deck
+    .supply ~ .deck.power
+}
+
+board Card {
+    .supply: Rail { .current &= -30mA..-5mA }
+    .j: Header1x2
+    .supply.neg ~ .j.p1
+    .supply.pos ~ .j.p2
+}
+
+system Kit {
+    .carrier: Carrier
+    .card: Card
+";
+
+fn nested(rest: &str) -> String {
+    format!("{NESTED}{rest}}}\n")
+}
+
+#[test]
+fn a_system_mates_a_connector_inside_a_module_by_its_path() {
+    let c = run(&nested(
+        "    .carrier.deck.bay.sock.mating ~ .card.j.mating\n    .carrier.deck.bay.sock.mating.contacts &= 2..3\n",
+    ));
+    assert!(c.is_ok(), "{}", c.render());
+    let m = &c.system("Kit").expect("the system").model;
+    let mate = &m.mates()[0];
+    assert_eq!(m.path_of(mate.a), "carrier.deck.bay.sock");
+    assert_eq!(m.path_of(mate.b), "card.j");
+    assert_eq!(mate.a_first, 2);
+    let roles: Vec<_> = mate.contacts.iter().map(|c| (c.a.role, c.b.role)).collect();
+    assert_eq!(
+        roles,
+        [(Role::Ground, Role::Ground), (Role::Power, Role::Power)]
+    );
+    // The mate joins the boards' rails behind the module's contacts, as it does for a
+    // connector the board declares.
+    let ports: Vec<_> = mate
+        .ports
+        .iter()
+        .map(|&(a, b)| (m.path_of(a), m.path_of(b)))
+        .collect();
+    assert_eq!(
+        ports,
+        [("carrier.supply".to_string(), "card.supply".to_string())]
+    );
+    assert_eq!(m.ground_groups().len(), 1);
+}
+
+#[test]
+fn a_mate_inside_a_module_is_checked_as_any_mate() {
+    // Without the subset, the sizes differ, and the message names the connector by its path.
+    refused(
+        &nested("    .carrier.deck.bay.sock.mating ~ .card.j.mating\n"),
+        &[
+            "`.carrier.deck.bay.sock` (Socket1x4) has 4 positions and `.card.j` (Header1x2) has 2",
+            "(`.carrier.deck.bay.sock.mating.contacts &= 1..2`)",
+        ],
+    );
+}
+
+#[test]
+fn a_system_reaches_inside_a_module_only_a_connectors_mating() {
+    refused(
+        &nested("    .carrier.deck.power ~ .card.supply\n"),
+        &[
+            "`power` is inside module `.carrier.deck`, a `Deck`",
+            "a system reaches inside a module only the `.mating` of a connector",
+        ],
+    );
+    refused(
+        &nested("    .carrier.deck.bay.power.voltage &= 3.3V +/- 1%\n"),
+        &["`power` is inside module `.carrier.deck.bay`, a `Bay`"],
+    );
+    refused(
+        &nested(
+            "    .carrier.deck.bay.sock.mating ~ .card.j.mating\n    .carrier.deck.bay.sock.mating.contacts &= 2..3\n    .carrier.deck.bay.sock.p1 ~ .card.supply\n",
+        ),
+        &[
+            "`p1` is inside `sock`, a `Socket1x4`",
+            "a system can reach only the `.mating` of a connector",
+        ],
+    );
+}

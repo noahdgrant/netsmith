@@ -90,6 +90,8 @@ const FIXTURES = {
   catalog_refresh: 'examples/led.nsm',
   // The LED example with a 249 ohm resistor no catalog row has (E96): the BOM's swap of an unresolved part.
   swap: 'scripts/editor-verify-js/fixtures/swap.nsm',
+  // Two capacitors that are not fitted until they are tuned (issue 1273): the BOM's DNP lines.
+  not_fitted: 'scripts/editor-verify-js/fixtures/not_fitted.nsm',
 };
 
 const [command, ...rest] = process.argv.slice(2);

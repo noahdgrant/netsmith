@@ -155,6 +155,14 @@ impl Board {
         self.impedance_targets = targets;
     }
 
+    /// Whether a net is on a `TrackPath` whose corners are mitered (issue #1275): the router
+    /// draws no arc at its bends.
+    pub fn mitered(&self, net: &str) -> bool {
+        self.track_paths.iter().any(|p| {
+            p.corner == netsmith_core::TrackCorner::Mitered && p.nets.iter().any(|n| n == net)
+        })
+    }
+
     /// The pair a net is one track of by a `PairImpedance` (issue #1025): its partner and the
     /// spacing the target states between the two tracks, edge to edge, in mm. The first target
     /// that names the net, as for its width.
@@ -604,7 +612,99 @@ impl Board {
                 c.share() * 100.0
             )
         }));
+        extras.extend(self.track_path_lines());
         extras
+    }
+
+    /// The length of the tracks of all the nets of a `TrackPath` together, in mm (issue #1275).
+    pub fn track_path_length(&self, path: &netsmith_core::TrackPath) -> f64 {
+        self.tracks
+            .iter()
+            .filter(|t| path.nets.contains(&t.net))
+            .map(Track::length)
+            .sum()
+    }
+
+    /// One line of `fab-notes.txt` for each `TrackPath` of the design (issue #1275): its chain,
+    /// its routed length against its budget, its loss budget (listed, not measured), its
+    /// corners and its fence.
+    pub fn track_path_lines(&self) -> Vec<String> {
+        self.track_paths
+            .iter()
+            .map(|p| {
+                let mut chain = p.nets[0].clone();
+                for (part, net) in p.parts.iter().zip(&p.nets[1..]) {
+                    chain.push_str(&format!(" -{part}- {net}"));
+                }
+                let length = self.track_path_length(p);
+                let budget = match p.budget_length {
+                    Some(b) if length > b + 1e-9 => format!(
+                        "{length:.2} mm of track, OVER its length budget of {b} mm: move the parts of the path nearer each other"
+                    ),
+                    Some(b) => format!("{length:.2} mm of track, within its length budget of {b} mm"),
+                    None => format!("{length:.2} mm of track"),
+                };
+                let loss = match p.budget_loss {
+                    Some(l) => format!(
+                        "; its loss budget of {l} dB is not measured (netsmith has no loss model of a track, issue 1405)"
+                    ),
+                    None => String::new(),
+                };
+                let corner = match p.corner {
+                    netsmith_core::TrackCorner::Rounded => "",
+                    netsmith_core::TrackCorner::Mitered => "; corners mitered, no arcs",
+                };
+                let fence = match p.fence {
+                    None => String::new(),
+                    Some(f) => {
+                        let layers: Vec<CopperLayer> = self
+                            .tracks
+                            .iter()
+                            .filter(|t| p.nets.contains(&t.net))
+                            .map(|t| t.layer)
+                            .collect();
+                        let grounds: Vec<String> = layers
+                            .iter()
+                            .filter_map(|&l| self.fence_ground(l))
+                            .collect::<std::collections::BTreeSet<_>>()
+                            .into_iter()
+                            .collect();
+                        if grounds.is_empty() && !layers.is_empty() {
+                            "; no fence: no pour on its layer and no inner plane of a rail's net to join ground vias to".to_string()
+                        } else {
+                            format!(
+                                "; a fence of ground vias every {f} mm along both sides{}",
+                                if grounds.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!(", of `{}`", grounds.join("`, `"))
+                                }
+                            )
+                        }
+                    }
+                };
+                format!(
+                    "track path: `{}` ({chain}), {} ohm: {budget}{loss}{corner}{fence}",
+                    p.path, p.ohms
+                )
+            })
+            .collect()
+    }
+
+    /// The ground a fence of a `TrackPath`'s tracks on `layer` is joined to (issue #1275): the
+    /// net of the pour on that layer, else the first rail net, by name, that has an inner plane.
+    pub fn fence_ground(&self, layer: CopperLayer) -> Option<String> {
+        if let Some(p) = self.pours.iter().find(|p| p.layer == layer) {
+            return Some(p.net.clone());
+        }
+        let mut planes: Vec<&str> = self
+            .planes
+            .iter()
+            .map(|p| p.net.as_str())
+            .filter(|n| self.rail_nets.iter().any(|r| r == n))
+            .collect();
+        planes.sort();
+        planes.first().map(|n| n.to_string())
     }
 }
 

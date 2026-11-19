@@ -998,6 +998,8 @@ impl<'a> Checker<'a> {
     }
 
     /// The variant a bare name stands for in the current file, if the file imports it.
+    /// `true` and `false` are the variants of the prelude's `Bool` in every file (issue #1273),
+    /// unless the file binds the name itself.
     pub(crate) fn imported_variant(&self, name: &str) -> Option<(usize, usize, String)> {
         match self.modules[self.cur_module].scope.get(name) {
             Some(Binding::Variant(m, i, v)) => Some((
@@ -1005,7 +1007,15 @@ impl<'a> Checker<'a> {
                 *i,
                 self.modules[*m].defs[*i].variants[*v].name.name.clone(),
             )),
-            _ => None,
+            Some(_) => None,
+            None if matches!(name, "true" | "false") => {
+                let prelude = *self.cache.get(PRELUDE_MODULE)?;
+                match self.modules[prelude].scope.get("Bool") {
+                    Some(Binding::Def(m, i)) => Some((*m, *i, name.to_string())),
+                    _ => None,
+                }
+            }
+            None => None,
         }
     }
 
@@ -1261,6 +1271,7 @@ impl<'a> Checker<'a> {
         self.join_peripheral_ports();
         self.finalize_nets();
         self.apply_unused();
+        self.leave_tuned_parts_unpicked();
         self.skip_unstated_optional();
         self.model.uses = std::mem::take(&mut self.uses);
         for (insts, d) in std::mem::take(&mut self.provider_conflicts) {
@@ -2388,20 +2399,45 @@ impl<'a> Checker<'a> {
             );
             return false;
         }
-        // A connector that a board declares directly shows a system its `.mating` and nothing
-        // else (ADR 0040).
-        if outside && internal && self.in_system() && inst.kind == InstKind::Board {
+        // A connector of a board shows a system its `.mating` and nothing else (ADR 0040). A
+        // system names a connector inside a module by its path through the modules, as a
+        // board-level path does (issue #1325): `.carrier.sock.j1.mating`. A module's other
+        // members, its ports among them, stay its own and its board's.
+        if outside
+            && internal
+            && self.in_system()
+            && matches!(inst.kind, InstKind::Board | InstKind::Module)
+        {
             if let Member::Inst(child) = member
-                && self.model.mating_of(child).is_some()
+                && (self.model.mating_of(child).is_some()
+                    || self.model.instance(child).kind == InstKind::Module)
             {
                 return true;
             }
             let ty = inst.type_name.clone();
+            let message = if inst.kind == InstKind::Board {
+                format!(
+                    "`{}` is inside board `{ty}`; a system can reach only the ports a board declares directly, such as its rails, and the `.mating` of a connector, by its path through the board's modules",
+                    name.name
+                )
+            } else {
+                format!(
+                    "`{}` is inside module `.{}`, a `{ty}`; a system reaches inside a module only the `.mating` of a connector, by its path through the modules",
+                    name.name,
+                    self.model.path_of(owner)
+                )
+            };
+            self.error(name.span, message);
+            return false;
+        }
+        if outside && self.in_system() && inst.kind == InstKind::Module {
+            let ty = inst.type_name.clone();
             self.error(
                 name.span,
                 format!(
-                    "`{}` is inside board `{ty}`; a system can reach only the ports a board declares directly, such as its rails, and the `.mating` of a connector",
-                    name.name
+                    "`{}` is inside module `.{}`, a `{ty}`; a system reaches inside a module only the `.mating` of a connector, by its path through the modules",
+                    name.name,
+                    self.model.path_of(owner)
                 ),
             );
             return false;
@@ -2409,11 +2445,7 @@ impl<'a> Checker<'a> {
         if self.in_system()
             && inst.kind == InstKind::Part
             && name.name != "mating"
-            && self
-                .model
-                .instance(owner)
-                .parent
-                .is_some_and(|b| self.model.instance(b).kind == InstKind::Board)
+            && self.model.board_of(owner).is_some()
         {
             let (ty, part) = (inst.type_name.clone(), inst.name.clone());
             self.error(

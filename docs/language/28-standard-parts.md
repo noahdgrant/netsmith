@@ -281,9 +281,9 @@ board Bright {
 
 ```text
 error: no `led` candidate satisfies `led`: the closest of the 3 that fit, KT-0603R RED LED 0603 C2286, fails because led.current must always be at most led.max_forward_current, but 30mA is not always below 25mA
-    --> std/parts/passive.nsm:275:5
+    --> std/parts/passive.nsm:301:5
     |
-275 |     .current <= .max_forward_current
+301 |     .current <= .max_forward_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1757,9 +1757,9 @@ board Budget {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.current must always be at most fuse.rated_current, but 100mA..1kA is not always below 3A (the currents on net `VFUSED`: -fuse.current (100mA..1kA) + load.current (100mA..1kA) add up to zero; net `VIN`: fuse.current (100mA..1kA) + input.current (-1kA..-100mA) add up to zero)
-    --> std/parts/passive.nsm:462:5
+    --> std/parts/passive.nsm:501:5
     |
-462 |     .current <= .rated_current
+501 |     .current <= .rated_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1777,9 +1777,9 @@ board Saturates {
 
 ```text
 error: no `inductor` candidate satisfies `l`: the closest of the 1 that fit, MHCD322512A-2R2M-A8S 2.2uH 3.6A inductor 1210 C285758, fails because l.current must always be at most l.saturation_current, but 500A is not always below 3.6A
-    --> std/parts/passive.nsm:321:5
+    --> std/parts/passive.nsm:347:5
     |
-321 |     .current <= .saturation_current
+347 |     .current <= .saturation_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -1829,9 +1829,9 @@ board Arcs {
 
 ```text
 error: no `fuse` candidate satisfies `fuse`: the closest of the 8 that fit, 1206HV-3A fuse 3A 125V 1206 C21261120, fails because fuse.supply_peak must always be at most fuse.rated_voltage, but 5kV is not always below 125V
-    --> std/parts/passive.nsm:463:5
+    --> std/parts/passive.nsm:502:5
     |
-463 |     .supply_peak <= .rated_voltage
+502 |     .supply_peak <= .rated_voltage
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -5000,6 +5000,129 @@ error: the SIM host `radio.sim` supplies classes B and C (`radio.sim.classes`) a
    |
 42 |     .sim.classes &= SimClasses::A
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### A radio's certification and its antenna
+
+A radio module is sold with a certification, a modular grant (an FCC ID, an ISED number, a RED certificate), that holds only under conditions its maker lists: the most gain an antenna may have in each band, the type of antenna it was tested with, often a reference design of the trace to the antenna, a least distance between the antenna and a person (exposure) and limits on radios beside it (co-location). A radio part states them as data, a `std::radio::Radio` (issue #1278): its RF pin `.rf` (optional: a module with its antenna on it has none), `.grant` (what names it), `.antenna_type` (an `AntennaType`) and the optional `.reference_design`, `.exposure_distance` and `.colocation`, with a `RadioBand` nested in it for each band of the grant, its `.band` (a range of frequency) and `.max_antenna_gain`. An antenna part states a `std::radio::Antenna`: its pin `.feed` and its `.type`, with an `AntennaBand` nested in it for each band it works in, its `.band` and its peak `.gain`. Gains are in dBi, written as a plain number (`2` is 2 dBi), because the language has no unit for decibels.
+
+After the solve the checker follows the RF path from the radio's `.rf`: its net, and on through each part with two pins (a DC block, a 0 ohm link, a series part of a match) to the net of its other pin, never into a rail's net, so a shunt part of a match to ground ends the path there. Each antenna whose `.feed` is on the path is held against each band of the radio: its gain at its most, in its bands that overlap the radio's, must be no more than the radio's `.max_antenna_gain` there. A gain over it is an error. An antenna that states no gain in a band of the radio, and a path that reaches no antenna (one that ends at a connector, for an antenna on a cable), are listed as not evaluated. The other conditions are not judged: `fab-notes.txt` lists each one, and the gain where no antenna part is on the path, as a line `verify: radio ...: a person must verify ...`.
+
+```nsm module=src::wifi
+import std::radio::{Antenna, AntennaBand, AntennaType, Radio, RadioBand}
+import std::sources::Rail
+
+/// A Wi-Fi module whose grant allows a chip antenna of up to 2 dBi in 2.4 GHz and 4 dBi in 5 GHz.
+/// Illustrative; not a real part.
+part WifiModule {
+    .designator &= "U"
+    .vdd: Rail
+    .radio: Radio {
+        .grant &= "FCC ID 2ABCD-EXAMPLE"
+        .antenna_type &= AntennaType::Chip
+        .exposure_distance &= 200mm
+        .low: RadioBand { .band &= 2.4GHz..2.4835GHz; .max_antenna_gain &= 2 }
+        .high: RadioBand { .band &= 5.15GHz..5.85GHz; .max_antenna_gain &= 4 }
+    }
+
+    pins {
+        .vdd.pos  power   "VDD" "1"
+        .vdd.neg  power   "GND" "2"
+        .radio.rf passive "RF"  "3"
+    }
+}
+
+/// A dual-band chip antenna. Illustrative.
+part ChipAntenna {
+    .designator &= "AE"
+    .antenna: Antenna {
+        .type &= AntennaType::Chip
+        .low: AntennaBand { .band &= 2.4GHz..2.5GHz; .gain &= 1.5 }
+        .high: AntennaBand { .band &= 5.1GHz..5.9GHz; .gain &= 3.5 }
+    }
+
+    pins {
+        .antenna.feed passive "FEED" "1"
+        .gnd          passive "GND"  "2"
+    }
+}
+
+/// A chip antenna with more gain in 2.4 GHz. Illustrative.
+part HighGainAntenna {
+    .designator &= "AE"
+    .antenna: Antenna {
+        .type &= AntennaType::Chip
+        .low: AntennaBand { .band &= 2.4GHz..2.5GHz; .gain &= 3.2 }
+        .high: AntennaBand { .band &= 5.1GHz..5.9GHz; .gain &= 3.5 }
+    }
+
+    pins {
+        .antenna.feed passive "FEED" "1"
+        .gnd          passive "GND"  "2"
+    }
+}
+
+/// A two-pin part in the RF path: a DC block or a 0 ohm link. Illustrative.
+part RfLink {
+    .designator &= "R"
+    pins {
+        .a passive "A" "1"
+        .b passive "B" "2"
+    }
+}
+```
+
+The board joins the module's RF pin through a link to the antenna, whose gain is within the grant in both bands:
+
+```nsm evaluate
+import std::sources::Rail
+
+import src::wifi::{ChipAntenna, RfLink, WifiModule}
+
+board Sensor {
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .u1: WifiModule
+    .r1: RfLink
+    .ae1: ChipAntenna
+    .supply ~ .u1.vdd
+    .u1.radio.rf ~ .r1.a
+    .r1.b ~ .ae1.antenna.feed
+    .ae1.gnd ~ .u1.vdd.neg
+}
+```
+
+`fab-notes.txt` of it says:
+
+```text
+verify: radio `u1.radio` (FCC ID 2ABCD-EXAMPLE): a person must verify that the antenna is of the type the grant was tested with, Chip (`ae1.antenna` is Chip)
+verify: radio `u1.radio` (FCC ID 2ABCD-EXAMPLE): a person must verify that the product keeps a person at least 200mm from the antenna (the grant's exposure condition)
+```
+
+An antenna with more gain than the grant allows in 2.4 GHz:
+
+```nsm fails
+import std::sources::Rail
+
+import src::wifi::{HighGainAntenna, RfLink, WifiModule}
+
+board TooMuchGain {
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .u1: WifiModule
+    .r1: RfLink
+    .ae1: HighGainAntenna
+    .supply ~ .u1.vdd
+    .u1.radio.rf ~ .r1.a
+    .r1.b ~ .ae1.antenna.feed
+    .ae1.gnd ~ .u1.vdd.neg
+}
+```
+
+```text
+error: the antenna `ae1.antenna` on the RF path of the radio `u1.radio` has a gain of 3.2 dBi in 2.4GHz to 2.4835GHz (`ae1.antenna.low.gain`), above the 2 dBi the radio's grant allows there (`u1.radio.low.max_antenna_gain`), through `r1`: use an antenna with no more gain, or a radio whose grant allows it
+   --> src/wifi.nsm:44:54
+   |
+44 |         .low: AntennaBand { .band &= 2.4GHz..2.5GHz; .gain &= 3.2 }
+   |                                                      ^^^^^^^^^^^^
 ```
 
 ### The rise time of an I2C bus

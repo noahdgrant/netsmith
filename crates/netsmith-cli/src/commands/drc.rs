@@ -79,6 +79,7 @@ pub fn run(args: Args) -> ExitCode {
                 routes: made.checked.routes.clone(),
                 pair_skews: made.checked.skewed.clone(),
                 group_spreads: made.checked.spread.clone(),
+                long_paths: made.checked.long_paths.clone(),
             });
             report
                 .findings
@@ -111,6 +112,10 @@ pub fn run(args: Args) -> ExitCode {
             }
             for group in &made.checked.spread {
                 println!("{}: note: {}", made.board, group.over_line());
+            }
+            // The track paths longer than their budget (issue #1275): notes too.
+            for path in &made.checked.long_paths {
+                println!("{}: note: {}", made.board, path.over_line());
             }
             let counts = made.checked.report.counts();
             let warnings = made.checked.report.warnings().count();

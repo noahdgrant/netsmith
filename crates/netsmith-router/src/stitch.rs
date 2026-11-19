@@ -15,6 +15,17 @@
 //! joins the pad to a via it covers: a pad inside a ring of tracks may stand on an island with
 //! none, and keeps its via. ADR 0020 (decided by the owner on 2026-11-02) made KiCad's
 //! unconnected-item check the gate of dropping it; the router's KiCad tests run that check.
+//!
+//! **A fence** (issue #1275): the ground vias of a `TrackPath` with a `.fence`, along both
+//! sides of each of its tracks at that distance from each other, measured from the track's
+//! start. Each goes as near the track as the rules let it: its centre is put half the track's
+//! width, the space between the two nets and half a via out from the track's centre line, then
+//! moved to the nearest point within a third of the distance that keeps every rule a
+//! stitching via keeps; a place with none, or with a via of the ground within half the distance
+//! already, is left without one. The ground is the net of the
+//! pour on the track's layer, else the first rail net with an inner plane; a path with neither
+//! gets no fence (`fab-notes.txt` says so, `Board::fence_ground`). The vias are placed after the
+//! stitching, before the teardrops and the arcs, which keep clear of them.
 
 use netsmith_pcb::{Board, CopperLayer, Pt, Rect, Via};
 
@@ -223,6 +234,84 @@ pub fn stitch(board: &mut Board) {
     }
 }
 
+/// Add the ground vias of every `TrackPath` with a fence (the module's header). Returns how many
+/// were placed.
+pub fn fence(board: &mut Board) -> usize {
+    let paths: Vec<(Vec<String>, f64)> = board
+        .track_paths
+        .iter()
+        .filter_map(|p| Some((p.nets.clone(), p.fence?)))
+        .collect();
+    let mut placed = 0;
+    for (nets, pitch) in paths {
+        let tracks: Vec<netsmith_pcb::Track> = board
+            .tracks
+            .iter()
+            .filter(|t| nets.contains(&t.net))
+            .cloned()
+            .collect();
+        for t in tracks {
+            let Some(ground) = board.fence_ground(t.layer) else {
+                continue;
+            };
+            if board.fixed.is_locked(&ground) {
+                continue;
+            }
+            let rules = board.rules.clone();
+            let out = t.width / 2.0
+                + board.clearance_between(&ground, &t.net)
+                + rules.via_diameter / 2.0
+                + MARGIN;
+            let search = ((pitch / 3.0) / STEP).floor().max(1.0) as i64;
+            let line = t.centre_line();
+            let mut found: Vec<Via> = Vec::new();
+            {
+                let free = Free::of(board, &ground);
+                let all: Vec<Via> = board.vias.clone();
+                for w in line.windows(2) {
+                    let (a, b) = (w[0], w[1]);
+                    let length = a.distance(b);
+                    if length < 1e-9 {
+                        continue;
+                    }
+                    let u = Pt::new((b.x - a.x) / length, (b.y - a.y) / length);
+                    let normal = Pt::new(-u.y, u.x);
+                    let mut along = 0.0;
+                    while along <= length + 1e-9 {
+                        let on = Pt::new(a.x + u.x * along, a.y + u.y * along);
+                        for side in [1.0, -1.0] {
+                            let p =
+                                Pt::new(on.x + normal.x * out * side, on.y + normal.y * out * side);
+                            // A via of the ground already near (the last track's, a
+                            // stitching via) stands for this one.
+                            let near = all
+                                .iter()
+                                .chain(&found)
+                                .any(|v| v.net == ground && v.at.distance(p) < pitch / 2.0);
+                            if near {
+                                continue;
+                            }
+                            if let Some(at) = nearest_free(&free, p, search, &all, &found) {
+                                found.push(Via {
+                                    net: ground.clone(),
+                                    at,
+                                    diameter: rules.via_diameter,
+                                    drill: rules.via_drill,
+                                    span: None,
+                                });
+                            }
+                        }
+                        along += pitch;
+                    }
+                }
+            }
+            placed += found.len();
+            board.vias.extend(found);
+        }
+    }
+    placed
+}
+
 /// The free point nearest `p` within `search` steps of the via grid, if any.
 fn nearest_free(free: &Free, p: Pt, search: i64, all: &[Via], found: &[Via]) -> Option<Pt> {
     let snap = |v: f64| (v / STEP).round() * STEP;
@@ -242,4 +331,96 @@ fn nearest_free(free: &Free, p: Pt, search: i64, all: &[Via], found: &[Via]) -> 
         }
     }
     best.map(|(_, q)| q)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use netsmith_pcb::{BoardPour, Track};
+
+    /// The LED board with its parts taken away and a ground pour on the front, with a straight
+    /// 8 mm track of `VCC` across its middle (the board is 15 mm by 7 mm) on a path fenced every `pitch` mm.
+    fn fenced(pitch: Option<f64>, pour: bool) -> Board {
+        let mut board = crate::board_from_design(
+            &crate::testlib::led_design(),
+            &netsmith_kicad::Mapping::standard(),
+            &crate::testlib::fixtures(),
+        )
+        .unwrap();
+        board.parts.clear();
+        board.vias.clear();
+        board.pours.clear();
+        board.planes.clear();
+        if pour {
+            board.pours.push(BoardPour {
+                layer: CopperLayer::Front,
+                net: "GND".into(),
+                stitch_pitch: None,
+                thermal_gap: None,
+                spoke_width: None,
+                clearance: None,
+                min_width: None,
+                pads: None,
+            });
+        }
+        let c = board.outline.centre();
+        board.tracks.push(Track::straight(
+            "VCC",
+            CopperLayer::Front,
+            Pt::new(c.x - 4.0, c.y),
+            Pt::new(c.x + 4.0, c.y),
+            0.3,
+        ));
+        board.track_paths.push(netsmith_core::TrackPath {
+            path: "rf".into(),
+            nets: vec!["VCC".into()],
+            parts: Vec::new(),
+            ohms: 50.0,
+            budget_length: None,
+            budget_loss: None,
+            corner: netsmith_core::TrackCorner::Rounded,
+            fence: pitch,
+        });
+        board
+    }
+
+    #[test]
+    fn a_fence_puts_ground_vias_on_both_sides_of_the_track_at_its_pitch() {
+        let mut board = fenced(Some(2.0), true);
+        let placed = fence(&mut board);
+        // 8 mm at 2 mm: 5 places, a via on each side of each.
+        assert_eq!(placed, 10, "{:?}", board.vias);
+        let t = board.tracks[0].clone();
+        let rules = board.rules.clone();
+        for v in &board.vias {
+            assert_eq!(v.net, "GND");
+            // Clear of the track by the rules' space, and no further than a third of the pitch
+            // past where it was aimed.
+            let edge = t.distance_to(v.at) - t.width / 2.0 - v.diameter / 2.0;
+            assert!(
+                edge >= board.clearance_between("GND", "VCC") - 1e-9,
+                "{edge}"
+            );
+            assert!(
+                edge <= rules.clearance + MARGIN + 2.0 / 3.0 + 1e-9,
+                "{edge}"
+            );
+        }
+        // Run again, the vias there stand for the fence: none more.
+        assert_eq!(fence(&mut board), 0);
+    }
+
+    #[test]
+    fn a_path_with_no_fence_or_no_ground_gets_no_vias() {
+        let mut board = fenced(None, true);
+        assert_eq!(fence(&mut board), 0);
+        let mut board = fenced(Some(2.0), false);
+        assert_eq!(fence(&mut board), 0);
+        assert!(board.vias.is_empty());
+        assert!(
+            board.track_path_lines()[0].contains("no fence: no pour on its layer"),
+            "{:?}",
+            board.track_path_lines()
+        );
+    }
 }

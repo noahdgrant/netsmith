@@ -116,7 +116,7 @@ fn text(bom: &Bom) -> String {
     }
     if !bom.not_fitted.is_empty() {
         out.push_str(
-            "\nNot fitted (DNP): the alternates, each on the footprint of the part it may take the place of:\n",
+            "\nNot fitted (DNP lines of bom.csv: the footprint is on the board, the value is chosen on the bench; and each alternate, on the footprint of the part it may take the place of, in no line of bom.csv):\n",
         );
         out.push_str(&lines(&bom.not_fitted));
     }

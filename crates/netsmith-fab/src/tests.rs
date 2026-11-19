@@ -115,6 +115,63 @@ fn a_consigned_part_is_in_the_bom_and_the_placement_with_no_part_number() {
 }
 
 #[test]
+fn a_part_not_fitted_that_the_design_lists_is_a_dnp_line_and_not_placed() {
+    let board = Board::parse(SAMPLE).unwrap();
+    // R2 is a position tuned on the bench (issue #1273): a `DNP` line with no LCSC number,
+    // whatever number its entry has, and no placement. D1, marked `dnp` by KiCad and not
+    // named by the design, leaves the bill as before.
+    let mut bom = sample_bom();
+    bom[1] = entry(&["R2"], "DNP (tune 1k..10k)", Some("C25804"));
+    let options = Options {
+        fit: [("R2".to_string(), Fit::NotFitted)].into(),
+        dnp: ["R2".to_string()].into(),
+        ..Options::default()
+    };
+    let p = plan(&board, &bom, &options).unwrap();
+    assert_eq!(p.bom[0].designators, ["R1"]);
+    assert_eq!(p.dnp.len(), 1);
+    assert_eq!(p.dnp[0].designators, ["R2"]);
+    assert_eq!(p.dnp[0].lcsc, None);
+    assert_eq!(p.not_fitted, ["D1"]);
+    let placed: Vec<_> = p.assembled.iter().map(|p| p.designator.as_str()).collect();
+    assert_eq!(placed, ["R1"]);
+    assert_eq!(
+        render_rows(&p),
+        "Comment,Designator,Footprint,LCSC Part #\n10k,R1,R_0603_1608Metric,C25804\nDNP (tune 1k..10k),R2,R_0603_1608Metric,\n"
+    );
+}
+
+#[test]
+fn the_notes_list_a_dnp_part_with_its_range_and_the_placement_leaves_it_out() {
+    let pcb = write_pcb("dnp", &all_top_board());
+    let mut bom = sample_bom();
+    bom[1] = entry(&["R2"], "DNP (tune 1k..10k)", None);
+    let options = Options {
+        fit: [("R2".to_string(), Fit::NotFitted)].into(),
+        dnp: ["R2".to_string()].into(),
+        ..Options::default()
+    };
+    let pkg = package(&pcb, &bom, &options).unwrap();
+    assert!(
+        pkg.notes.contains(
+            "DNP (a DNP line of bom.csv with no LCSC number, no placement; the footprint is on the board, and the value is chosen on the bench): R2 (tune 1k..10k); check on JLCPCB's order page that none of them is placed\n"
+        ),
+        "{}",
+        pkg.notes
+    );
+    assert!(
+        pkg.notes
+            .contains("not fitted (no BOM line, no placement): D1\n")
+    );
+    assert!(!pkg.cpl_csv.contains("R2"), "{}", pkg.cpl_csv);
+    assert!(
+        pkg.bom_csv.contains("DNP (tune 1k..10k),R2,"),
+        "{}",
+        pkg.bom_csv
+    );
+}
+
+#[test]
 fn a_consigned_part_does_not_share_a_row_with_a_part_from_stock() {
     let board = Board::parse(SAMPLE).unwrap();
     // R1 and R2 are one row but for who supplies them.

@@ -148,8 +148,15 @@ fn sources_parse() {
     let file = parse(SOURCES).unwrap();
     // `Rail`, the impedance a design states for tracks (issue #1007), a pair with none (issue
     // #1193), the rechargeable cell with its enum `Chemistry` (issue #1262), and the reverse
-    // behaviour of a part between two rails with its enum `ReversePath` (issue #1258).
-    assert_eq!(file.definitions.len(), 9);
+    // behaviour of a part between two rails with its enum `ReversePath` (issue #1258), and a
+    // line through parts in series with its enum `TrackCorner` (issue #1275).
+    assert_eq!(file.definitions.len(), 11);
+    assert_eq!(def(&file, "TrackCorner").kind, DefKind::Enum);
+    assert_eq!(
+        def(&file, "TrackPath").items.len(),
+        8,
+        "first, last, the impedance, the two budgets, the corner and its default, the fence"
+    );
     assert_eq!(def(&file, "Cell").kind, DefKind::Generic);
     assert_eq!(def(&file, "Chemistry").kind, DefKind::Enum);
     assert_eq!(def(&file, "ReversePath").kind, DefKind::Enum);

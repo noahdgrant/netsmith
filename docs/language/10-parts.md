@@ -192,6 +192,87 @@ error: `j` is inside `Block` and is not part of its interface: only narrowing (`
   |            ^
 ```
 
+### A part that is not fitted until it is tuned
+
+Some positions of a board are tuned on the bench: a shunt of an RF matching network has its footprint on the board, and its value is chosen with the board in hand (issue #1273). `Resistor`, `Capacitor` and `Inductor` say so with two members:
+
+- `.fitted`, a `Bool` that is `true` unless the design states `.fitted &= false`. `Bool` is in the prelude, and its values are written `true` and `false`, in every file, with no import and no `Bool::` (`Bool::false` is refused).
+- `.tune`, the range the value may be tuned in, of the value's own quantity: `.tune &= 1pF..10pF` on a capacitor, `.tune &= 1nH..10nH` on an inductor. It is optional: a part may be not fitted with no range.
+
+```nsm solve
+import std::parts::passive::{Capacitor, Resistor}
+import std::sources::Rail
+
+board Match {
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC" }
+    .feed: Resistor { .resistance &= 1kohm +/- 1% }
+    .load: Resistor { .resistance &= 1kohm +/- 1% }
+    .supply.pos ~> .feed ~> .load ~> .supply.neg
+    /// Chosen on the bench.
+    .shunt: Capacitor { .fitted &= false; .tune &= 1pF..10pF; .package &= "0402" }
+    .shunt.a ~ .feed.b
+    .shunt.b ~ .supply.neg
+    /// Starts at 100 nF, tuned from 10 nF to 1 uF.
+    .trim: Capacitor { .fitted &= false; .tune &= 10nF..1uF; .capacitance &= 100nF +/- 10% }
+    .trim.a ~ .feed.b
+    .trim.b ~ .supply.neg
+}
+```
+
+What a part that is not fitted is:
+
+- **Marked.** The schematic writes `DNP` before its value (`DNP 1pF..10pF`), and KiCad's schematic draws its symbol crossed out (`dnp`). The board has its footprint, marked `dnp` in the KiCad board.
+- **Assembled by nobody.** It is `AssemblyMode::None` whatever else says who assembles it, so it is on no placement file. Unlike a hole or a fiducial, `bom.csv` lists it: a line whose comment is `DNP`, the value it starts from if one is stated, and its range (`DNP (tune 1pF..10pF)`, `DNP 100n (tune 10nF..1uF)`), with the LCSC cell empty, so the board house buys nothing for it. `fab-notes.txt` lists the lines under `DNP`, and `board bom` and the editor's bill list them under _Not fitted_.
+- **Given no catalog row unless its value is stated.** A part that is not fitted and states no `.resistance`, `.capacitance` or `.inductance` is not picked: its value is the range of `.tune`, and every relation that reads it is judged over the whole range, as any range is. A part that states its value (`.trim` above) is picked as any part is, and the row is the value to start tuning from; `bom.csv` still lists it as `DNP`, with no number. "Stated" is what _A value that may stay open_ in chapter 7 says, on the value or on a member `~` joins to it.
+- **Checked for its range.** A stated value must lie in `.tune` (`Resistor`, `Capacitor` and `Inductor` state `.capacitance >= min(.tune)` and `.capacitance <= max(.tune)`, with their own value). A fitted part may state a range too: it is then picked inside it.
+
+A part that is not fitted, states no value and has no row has no package to take a footprint from, so it states one:
+
+```nsm fails
+import std::parts::passive::Capacitor
+
+board Shunt {
+    .shunt: Capacitor { .fitted &= false; .tune &= 1pF..10pF }
+}
+```
+
+```text
+error: `shunt` is not fitted and states no `.capacitance`, so no catalog row is picked for it and nothing gives its footprint: state its package (`.shunt.package &= "0402"`), or the value to start tuning from (`.shunt.capacitance &= ...`), which is then picked
+  --> main.nsm:4:25
+  |
+4 |     .shunt: Capacitor { .fitted &= false; .tune &= 1pF..10pF }
+  |                         ^^^^^^^^^^^^^^^^
+```
+
+A value outside the range is refused with both:
+
+```nsm fails
+import std::parts::passive::Capacitor
+
+board Shunt {
+    .shunt: Capacitor { .fitted &= false; .tune &= 10nF..1uF; .capacitance &= 4.7uF +/- 10% }
+}
+```
+
+```text
+error: no `capacitor` candidate satisfies `shunt`: the closest of the 1 that fit, 4.7uF 10% 16V X5R 0603 C19666, fails because shunt.capacitance must be at most max(shunt.tune), but 4.23uF..5.17uF is above 1uF: no value of the two ranges meets it, so change one of them
+    --> std/parts/passive.nsm:165:5
+    |
+165 |     .capacitance <= max(.tune)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: shunt.capacitance must be at most max(shunt.tune), but 4.23uF..5.17uF is above 1uF: no value of the two ranges meets it, so change one of them
+    --> std/parts/passive.nsm:165:5
+    |
+165 |     .capacitance <= max(.tune)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+Rules.
+
+- What is read is the value `.fitted` has once the checker is done, which a `&=` or a `?=` of `true` or `false` gives it. A module that ties its parts' `.fitted` to a value of its own (`.shunt.fitted &= .tuned`) has the parts picked as if they were fitted, and marked DNP all the same.
+- A not-fitted part counts in the solver and in the current balance, as a part marked `AssemblyMode::None` does.
+- The design stage's `Design` lists the parts in `features.not_fitted`, each with its designator and its range.
+
 ### Designators
 
 Every part has a text field `.designator` that it does not declare (declaring it again is an error), as it has `.assembly`. It holds the letters of the part's reference designator on the schematic, the bill of materials and the placement file, and the letters come from the part's kind (below). The number after them counts the parts that have the same letters, from 1, in the order of their paths (owner decision, 2026-11-13, issue #634; it replaces the order of declaration of 2026-11-09): each part's full path in the board (`power_in`, `status.led`, `buck.divider.rtop`), a module's parts with the board's own, compared segment by segment, with a number at the end of a segment compared as a number (`tp2` before `tp10`) and the index of a group's member too (`decoupling[2]` before `decoupling[10]`). So a board with the headers `.power_in` and `.enable_in` has `enable_in` as `J1` and `power_in` as `J2`, whichever it declares first, and a resistor `.buck.rtop` comes after a resistor `.audio.rbias` and before `.status.r`. The path decides it and nothing else: not the order of the statements, the order of the sheets, how the schematic is drawn, the placement, or anything KiCad does, so the netlist, the bill of materials and the board are the same with every layout and with the statements in any order. Adding, removing or renaming a part may renumber the parts that sort after it with the same letters (a layout file is keyed by path, so no placement moves). The placer and the router never read the numbers either: each net lists its pins in the order of their parts' paths, and the placer's corners take holes and fiducials in path order, so a part that is renumbered or given other letters leaves the placement and the copper as they were (owner decision, issue #1048). Each board is numbered on its own, from 1, the boards of a system too (the paths are the board's own, without the system's name for it); a panel's cells keep the board's numbers and add the cell (`R1_3`). How the numbering spans modules and the boards of a system was decided by the orchestrating agent while the owner was away (2026-11-13). A number at the end of a name (`.tp2`) is part of the path and counts only as the path sorts: `.tp2` is numbered before `.tp10`, but it is `TP1` if it is the first test point. The letters follow IEEE 315 and ASME Y14.44 usage: `K` a relay, `BZ` a buzzer, `BT` a battery, `T` a transformer, `U` an integrated circuit.

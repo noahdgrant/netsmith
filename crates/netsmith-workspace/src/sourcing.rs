@@ -30,14 +30,24 @@ pub fn bom(
     let libraries = data.libraries()?;
     let mut lines: Vec<BomLine> = Vec::new();
     let (sourcing, unresolved) = resolve_generics(&built.sourcing, catalogs);
-    // A part with `.assembly` `none` is on no bill of materials.
+    // A part with `.assembly` `none` is on no bill of materials, unless it is a part that is
+    // not fitted (issue #1273), which is a `DNP` line.
     for (part, source) in built
         .design
         .parts
         .iter()
         .zip(&sourcing)
-        .filter(|(_, s)| s.assembly != Assembly::None)
+        .filter(|(_, s)| s.assembly != Assembly::None || s.not_fitted.is_some())
     {
+        let value = match &source.not_fitted {
+            Some(dnp) => netsmith_fabricate::fab::dnp_comment(&source.value, dnp),
+            None => source.value.clone(),
+        };
+        // A part that is not fitted has no number to buy, and nothing to price.
+        let lcsc = match source.not_fitted {
+            Some(_) => None,
+            None => source.lcsc.clone(),
+        };
         let footprint = libraries
             .mapping
             .map_part(&part.path, &source.kind, source.package.as_deref())
@@ -65,9 +75,9 @@ pub fn bom(
             .filter(|generic| *generic != source.kind);
         let existing = lines.iter_mut().find(|l| {
             l.via == via
-                && l.value == source.value
+                && l.value == value
                 && l.footprint == footprint
-                && l.lcsc == source.lcsc
+                && l.lcsc == lcsc
                 && l.kind == source.kind
                 && l.hand_solder == (source.assembly == Assembly::Hand)
         });
@@ -80,11 +90,11 @@ pub fn bom(
                 lines.push(BomLine {
                     designators: vec![part.refdes.clone()],
                     quantity: 1,
-                    value: source.value.clone(),
+                    value,
                     kind: source.kind.clone(),
                     package: source.package.clone(),
                     footprint,
-                    lcsc: source.lcsc.clone(),
+                    lcsc,
                     mpn: source.mpn.clone(),
                     library: source.library.map(|l| l.to_string()),
                     unit_usd: None,
@@ -110,6 +120,16 @@ pub fn bom(
         price(line, catalogs, supply, today);
     }
     lines.sort_by_key(|l| designator_key(&l.designators[0]));
+    let dnp: std::collections::HashSet<&str> = built
+        .design
+        .features
+        .not_fitted
+        .iter()
+        .map(|n| n.refdes.as_str())
+        .collect();
+    let (not_fitted, lines): (Vec<_>, Vec<_>) = lines
+        .into_iter()
+        .partition(|l| l.designators.iter().any(|d| dnp.contains(d.as_str())));
     let (hand, lines): (Vec<_>, Vec<_>) = lines.into_iter().partition(|l| l.hand_solder);
     let total_usd = {
         let priced: Vec<f64> = lines.iter().filter_map(|l| l.line_usd).collect();
@@ -140,7 +160,14 @@ pub fn bom(
             if unpriced == 1 { "" } else { "s" }
         ));
     }
-    let not_fitted = not_fitted(data, catalogs, supply, today, &libraries.mapping);
+    let mut not_fitted = not_fitted;
+    not_fitted.extend(alternate_lines(
+        data,
+        catalogs,
+        supply,
+        today,
+        &libraries.mapping,
+    ));
     Ok(Bom {
         board: built.label(),
         lines,
@@ -155,7 +182,7 @@ pub fn bom(
 
 /// The lines of the parts that are not fitted (DNP): each alternate of the board (issue 1312), on
 /// the designator of the part it may take the place of, with what its sourcing says.
-fn not_fitted(
+fn alternate_lines(
     data: &BoardData,
     catalogs: &Catalogs,
     supply: &Supply,
