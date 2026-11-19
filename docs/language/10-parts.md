@@ -483,7 +483,7 @@ error: `u` is a `Modem`, which is sold as `MDM-100-G` (GNSS, LTE) and `MDM-100` 
 
 ### Alternates on one footprint
 
-One footprint can take two parts: two radio modules with the same pads, a regulator sold by two makers. The board declares the part it is drawn with, and beside it, with `alternate`, each other part the footprint may take (issue #1312, owner decision). The build checks, solves and designs the board again with each alternate fitted in the member's place, and says which one fails. The bill of materials lists each alternate on the member's designator, not fitted (DNP), and `fab-notes.txt` names it; `bom.csv` and the placement file have the member only.
+One footprint can take two parts: two radio modules with the same pads, a regulator sold by two makers. The board declares the part it is drawn with, and beside it, with `alternate`, each other part the footprint may take (issue #1312, owner decision). The build checks, solves and designs the board again with each alternate fitted in the member's place, and says which one fails. The bill of materials lists each alternate on the member's designator, not fitted (DNP), and `fab-notes.txt` names it; `bom.csv` and the placement file have the member only, because the board house's upload takes a designator once, and `fab` writes the alternates beside them in `bom-alternates.csv` (below).
 
 ```nsm
 import std::parts::connector::Header1x2
@@ -527,6 +527,8 @@ board Tracker {
 - The pick lock holds the member's row; the alternate's row is picked fresh each build and is not written to the lock.
 - A board that a system places is checked with the alternate fitted as the system uses it (issue #1414): the system is checked and solved again, its mates are seated again, and the power tree is read across its boards, so a supply that another board gives reaches the alternate.
 - The guideline findings (an unconstrained pick, an unstated value, an open circle, a bus role, a track width) are made for the board with the alternate fitted too. Each one the board as written does not have is a warning of the board, said under the alternate's statement as the re-check's errors are (below); with `--strict` or `guidelines = "error"` it stops the build. A finding the board as written has is said once.
+
+**The fab package** (issue 1415, owner decision). `bom.csv` and `cpl.csv` stay as the board house uploads them: one line for each designator, the part that is fitted. `board fab` writes `bom-alternates.csv` beside them for a person, with the columns `Designator,Part Number,LCSC Part #`: a row for each alternate, with the designator it replaces (`U1`), its manufacturer's part number (the name of its kind where its row states none) and its LCSC number (empty where it has none). A member with two alternates has two rows. A board with no alternate has no such file, and a later `fab` removes one an earlier package left. `fab-notes.txt` says on each alternate's line that it is `listed in bom-alternates.csv`. To fit an alternate, change the order's line for that designator by hand. A package made for review has no bill of materials and no such file. A panel (chapter 18) has the same file with the cell in the designator, one row for each alternate in each cell (`U1_3`), and the board's own file in `cell/<Board>/`.
 
 A finding that only the board with the alternate fitted has is said under the alternate's statement. Here nothing limits the capacitor's value:
 

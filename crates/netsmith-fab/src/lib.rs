@@ -7,6 +7,8 @@
 //! - `<board>-gerbers.zip`: Gerbers and Excellon drill files, in a top folder `gerber/`
 //! - `bom.csv`: parts JLCPCB assembles, one row per kind of part
 //! - `cpl.csv`: where each of those parts sits, with JLCPCB's rotation conventions
+//! - `bom-alternates.csv`, only when the board states an alternate ([`Options::alternates`]): each
+//!   alternate with the designator it replaces; JLCPCB's upload does not read it
 //! - `fab-notes.txt`: what a person still has to do or check
 //!
 //! [`viewer`] reads a package back, netsmith's or another tool's, and draws it or sums it up
@@ -100,7 +102,9 @@ use netsmith_geom::{
 };
 
 pub use board::{Board, BoardError as FabBoardError, BoardPart, Fit, Side};
-pub use bom::{BomEntry, BomError, from_board as bom_from_board, parse_csv as parse_bom_csv};
+pub use bom::{
+    AlternateEntry, BomEntry, BomError, from_board as bom_from_board, parse_csv as parse_bom_csv,
+};
 pub use cpl::CplError;
 pub use crosscheck::{
     Error as CrossCheckError, LayerResult as CrossCheckLayerResult, Limits as CrossCheckLimits,
@@ -138,6 +142,14 @@ pub use score::{
 };
 
 use std::path::{Path, PathBuf};
+
+/// The file that lists the alternates of a package (issue 1415).
+pub const ALTERNATES_FILE: &str = "bom-alternates.csv";
+
+/// The text of [`ALTERNATES_FILE`], or `None` where there is no alternate.
+pub(crate) fn alternates_csv(alternates: &[AlternateEntry]) -> Option<String> {
+    (!alternates.is_empty()).then(|| bom::render_alternates(alternates))
+}
 
 /// Choices that relax a check, which are off by default, and what the board was made to.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -210,6 +222,10 @@ pub struct Options {
     /// they are on no placement file. A part that is not fitted and is not named here (a hole,
     /// a fiducial, a footprint KiCad marks `dnp`) leaves the bill as before.
     pub dnp: std::collections::BTreeSet<String>,
+    /// The alternates of the board's parts (issue 1415): not fitted and in no line of `bom.csv`
+    /// or `cpl.csv`, which list a designator once; `bom-alternates.csv` lists each with the
+    /// designator it replaces. A panel lists each once for each cell.
+    pub alternates: Vec<AlternateEntry>,
 }
 
 #[derive(Debug)]
@@ -559,6 +575,8 @@ pub struct Package {
     pub gerber_files: Vec<String>,
     pub bom_csv: String,
     pub cpl_csv: String,
+    /// The text of `bom-alternates.csv`; `None` for a board with no alternate.
+    pub alternates_csv: Option<String>,
     pub notes: String,
     pub plan: Plan,
     pub drc: DrcOutcome,
@@ -608,6 +626,11 @@ impl Package {
         } else {
             vec![format!("{}-gerbers-REVIEW.zip", self.name)]
         };
+        // A list of alternates of an earlier package does not stay when this one has none.
+        let stale = stale.into_iter().chain(
+            (self.for_review() || self.alternates_csv.is_none())
+                .then(|| ALTERNATES_FILE.to_string()),
+        );
         for stale in stale {
             match std::fs::remove_file(dir.join(&stale)) {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
@@ -619,6 +642,9 @@ impl Package {
         if !self.for_review() {
             files.push(("bom.csv".to_string(), self.bom_csv.as_bytes()));
             files.push(("cpl.csv".to_string(), self.cpl_csv.as_bytes()));
+            if let Some(alternates) = &self.alternates_csv {
+                files.push((ALTERNATES_FILE.to_string(), alternates.as_bytes()));
+            }
         }
         files.push(("fab-notes.txt".to_string(), self.notes.as_bytes()));
         files
@@ -818,6 +844,7 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         gerber_files: files.into_iter().map(|f| f.name).collect(),
         bom_csv: bom::render(&plan.bom_rows()),
         cpl_csv: cpl::render(&placed.rows),
+        alternates_csv: alternates_csv(&options.alternates),
         gerber_zip,
         notes,
         plan,
