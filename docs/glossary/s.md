@@ -4,6 +4,10 @@
 A small part that the editor's schematic draws beside the pin of a main part (an IC, a connector) that it serves: a decoupling capacitor, a pull-up, a bootstrap capacitor, a divider. It is wired to that pin always, and its rail pins have a stub and a power symbol of their own (see _Power symbol_). The main part and its satellites are one block.
 _Avoid_: Passive (a satellite may be a transistor), helper
 
+**Scenario**:
+A board's statement of a state of its supplies, some taken away and a backup left, in which the solver follows the current that flows backwards through the parts between rails: `scenario backup { remove .usb; source .cell; sense .usb_det }` (issue #1258). A note lists which regulators each source reaches (forwards, or backwards through a body diode) and the loads it powers, and where each sense net settles; a load outside its supply range or a sense net between its reader's levels is an error. What a part does backwards is its `.reverse`.
+_Avoid_: Power mode, use case, fault case
+
 **Scene**:
 The one three-dimensional description of a board that the Rust side builds and writes as glTF binary (`.glb`): the board, the copper and the part bodies, each node with stable ids in its `extras` (part path, designator, net, finding code, _Height provenance_). The 3D view displays it, netsmith's own rasterizer draws PNG renders of it (ADR 0105), and it is written as a _STEP file_ for CAD (ADR 0107).
 _Avoid_: Model, mesh (a mesh is one piece of it), 3D export

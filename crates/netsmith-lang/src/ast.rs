@@ -417,6 +417,10 @@ pub enum Item {
     /// enable pins go high at power-up, with the least delay between two of them (issue #1267);
     /// only a board may hold one.
     Sequence(Sequence),
+    /// `scenario backup { remove .usb; source .cell; sense .usb_sense }`: a state of the board's
+    /// supplies, some taken away and a backup left, that the power graph is analysed in for the
+    /// current that flows backwards (issue #1258); only a board may hold one.
+    Scenario(Scenario),
     /// `peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }`; only a part may hold one
     /// (ADR 0071).
     Peripheral(Peripheral),
@@ -766,6 +770,48 @@ impl SequenceStep {
             Self::Then { span, .. } | Self::After { span, .. } => *span,
         }
     }
+}
+
+/// `scenario backup { remove .usb; source .cell; sense .usb_sense }`: a state of the board's
+/// supplies that the analysis of reverse current is made in (issue #1258). `remove` names a
+/// supply that is taken away, `source` a supply that stays and whose reach is listed, and
+/// `sense` a pin (or a rail, for its `pos` net) whose settling voltage is listed and judged.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Scenario {
+    pub name: Ident,
+    pub steps: Vec<ScenarioStep>,
+    pub span: Span,
+}
+
+/// What one statement of a [`Scenario`] says of the path it names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScenarioWord {
+    /// `remove .usb`: the supply is taken away.
+    Remove,
+    /// `source .cell`: the supply stays, and what it reaches is listed.
+    Source,
+    /// `sense .usb_sense`: the net's settling voltage is listed and judged.
+    Sense,
+}
+
+impl ScenarioWord {
+    pub const ALL: [ScenarioWord; 3] = [Self::Remove, Self::Source, Self::Sense];
+
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Remove => "remove",
+            Self::Source => "source",
+            Self::Sense => "sense",
+        }
+    }
+}
+
+/// One statement of a [`Scenario`], in the order written.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScenarioStep {
+    pub word: ScenarioWord,
+    pub path: Path,
+    pub span: Span,
 }
 
 /// `peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }`: the functions of a part

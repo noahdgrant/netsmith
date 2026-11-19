@@ -273,6 +273,11 @@ fn visit<'a>(
                 }
             }
         }
+        Item::Scenario(q) => {
+            for step in &q.steps {
+                path(&step.path, inside);
+            }
+        }
         Item::Pins(pins) => {
             for row in &pins.rows {
                 path(&row.pin, inside);
