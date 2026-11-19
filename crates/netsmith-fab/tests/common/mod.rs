@@ -154,7 +154,7 @@ impl Pcb {
         }
     }
 
-    fn net_ref(&mut self, name: Option<&'static str>) -> String {
+    pub fn net_ref(&mut self, name: Option<&'static str>) -> String {
         match name {
             Some(n) => format!("(net {} \"{n}\")", self.net(n)),
             None => String::new(),

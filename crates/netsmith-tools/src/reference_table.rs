@@ -1072,6 +1072,8 @@ fn pad(pad: &Sexp) -> Result<Pad, String> {
     if let Some(d) = pad.find("drill") {
         let oval = d.args().first().and_then(Sexp::text) == Some("oval");
         match (oval, &numbers(d)[..]) {
+            // `(drill (offset x y))`: a pad with no hole.
+            (false, []) => {}
             (false, [d]) => drill = Some(*d),
             (true, [w, h]) => drill_slot = Some((*w, *h)),
             _ => return Err(format!("pad {number}: this (drill ...) is not read")),

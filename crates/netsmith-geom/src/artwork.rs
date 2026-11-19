@@ -1321,7 +1321,10 @@ impl<'a> Reader<'a> {
                     .skip(1)
                     .filter(|a| a.head().is_none())
                     .collect();
-                let (w, l) = if args.first().and_then(|a| a.text()) == Some("oval") {
+                let (w, l) = if args.is_empty() {
+                    // `(drill (offset x y))`: a pad with no hole.
+                    (0.0, 0.0)
+                } else if args.first().and_then(|a| a.text()) == Some("oval") {
                     (
                         num(args.get(1).copied(), &format!("{where_}'s drill"))?,
                         num(args.get(2).copied(), &format!("{where_}'s drill"))?,
@@ -1341,8 +1344,11 @@ impl<'a> Reader<'a> {
                         .unwrap_or_default(),
                 })
             })
-            .transpose()?
-            .filter(|d| d.width > 0.0);
+            .transpose()?;
+        // The offset moves the copper of a pad with no hole as well: KiCad writes
+        // `(drill (offset x y))` for it (issue 1322).
+        let offset = drill.map_or(Pt::default(), |d| d.offset);
+        let drill = drill.filter(|d| d.width > 0.0);
         let layers = self.expand_layers(
             item.find("layers")
                 .map(|l| {
@@ -1386,7 +1392,7 @@ impl<'a> Reader<'a> {
             kind,
             shape,
             // The file's `at` is the hole; the copper is off it by the drill's offset.
-            at: frame.world(local) + drill.map_or(Pt::default(), |d| d.offset.rotate(angle)),
+            at: frame.world(local) + offset.rotate(angle),
             angle,
             size,
             // KiCad reads a rounded rectangle with no ratio as 0.25.
@@ -1642,6 +1648,26 @@ mod tests {
             "{:?}",
             h.slot_to
         );
+    }
+
+    #[test]
+    fn a_surface_pads_offset_puts_the_copper_off_the_files_place_and_no_hole_there() {
+        // Issue 1322: `(drill (offset x y))` with no size is a pad with no hole.
+        let a = Artwork::parse(
+            r#"(kicad_pcb (layers (0 "F.Cu" signal) (2 "B.Cu" signal))
+            (footprint "L:S" (layer "F.Cu") (at 10 0)
+              (property "Reference" "U1" (at 0 0 0) (layer "F.Fab"))
+              (pad "1" smd rect (at 1 0 30) (size 1 1) (drill (offset 0.5 0)) (layers "F.Cu" "F.Mask"))))"#,
+        )
+        .unwrap();
+        let p = &a.pads[0];
+        assert!(
+            p.at.dist(Pt::new(11.0, 0.0) + Pt::new(0.5, 0.0).rotate(30.0)) < 1e-9,
+            "{:?}",
+            p.at
+        );
+        assert!(p.drill.is_none() && p.hole_at().is_none());
+        assert!(crate::drill::holes(&a).is_empty());
     }
 
     #[test]

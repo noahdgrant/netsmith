@@ -762,6 +762,23 @@ mod tests {
     }
 
     #[test]
+    fn a_surface_pad_with_an_offset_is_drawn_at_its_copper() {
+        // Issue 1322: the file's place for the pad is (2, 1); its copper is 0.5 mm right of it.
+        let mut board = led();
+        board.parts[0].footprint = crate::footprint::Footprint::parse(
+            "L:X",
+            r#"(footprint "X"
+                (pad "1" smd rect (at 2 1) (size 1 1) (drill (offset 0.5 0)) (layers "F.Cu")))"#,
+        )
+        .unwrap();
+        let svg = render(&board);
+        assert!(
+            svg.contains(r#"<g transform="translate(2.5 1)" data-pad="1""#),
+            "{svg}"
+        );
+    }
+
+    #[test]
     fn draws_every_part_pad_and_ratsnest_line() {
         let svg = render(&led());
         for id in ["D1", "J1", "R1"] {
