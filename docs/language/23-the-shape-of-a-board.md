@@ -56,7 +56,7 @@ physical for Cased {
 ```
 
 - **`case { ... }`** is the section for what the case fixes: the outline, the cutouts, the mounting holes (`MountingHole`), the fiducials (`Fiducial`) and the labels (`Label`) of the board, and the case's own STEP file (`CaseModel`, see _A case model_). It holds the same statements as the rest of the unit, and lifts out unchanged into an `enclosure` that several boards share (_A shared enclosure_, below). These six belong in it; a keepout may be anywhere in the unit.
-- **A path crosses a module boundary here for any statement of physical intent.** `.sensor.j.place.left` names the header inside the `Sensor` module. The circuit source reaches into a module only to narrow a value (ADR 0116); the physical file can also state physical intent about the part. A statement may set or compare only a part's `.place`, a part's `.height` and `.height_growth`, a part's `.standoff`, a part's or the board's `.routing_margin`, and what the unit declares itself (the fields of its `.outline`, `.window`, `.rib`). Anything that changes what a part is, or a connection, is refused.
+- **A path crosses a module boundary here for any statement of physical intent.** `.sensor.j.place.left` names the header inside the `Sensor` module. The circuit source reaches into a module only to narrow a value (ADR 0116); the physical file can also state physical intent about the part. A statement may set or compare only a part's `.place`, a part's `.height` and `.height_growth`, a part's `.standoff`, a part's or the board's `.routing_margin`, a `soft margin` round a part, and what the unit declares itself (the fields of its `.outline`, `.window`, `.rib`). Anything that changes what a part is, or a connection, is refused.
 - **A relation between two parts** is the equation of _Where a part goes_: `.b.place.x - .a.place.x == 17.5mm +/- 0.05mm`. The placer holds it and `fab` measures it (_A relation between two parts_).
 - **A part near a pin** is `.antenna within 8mm of .radio.ant` (_A part near a pin_), and **a net on one layer** is `.radio.ant route one_layer` (_RF lines and a net on one layer_). The placer and the router hold them and `fab` measures them.
 - **`.place.side` on a module** is a requirement on every part of it, at any depth. A module with an exception states the faces of its parts one by one and none for itself; two lines that disagree are an error that names both. `.place.side` with no path, on the board itself, is the same requirement on every part of the board (_A board on one face_).
@@ -343,6 +343,78 @@ warning: B: `radio` (U3) has no room among the parts that stay where they are: n
 ```
 
 With `--strict` (or `guidelines = "error"` in netsmith.toml, for `board check`, `board build` and `fab`) it is an error, and `fab` stops at it before placing, instead of trying every seed for its whole budget first. The free space is that of the summary's faces (`largest_free` of `layout summary`): inside the outline and the edge wall, outside the cutouts, the keepouts that keep parts off the face and the room the parts that stay take on it (a part with a hole on both faces, as the placement check counts it). The part's courtyard box is tried at each right angle (and at 45 degrees, as the box round the turned courtyard, for a part whose `.place.turn_step` is 45) on each face it may go on (the one a requirement states, else both). The grid is 0.25 mm (coarser on a board more than 200 mm on a side), and a part needs a cell less than its size on each axis, so a part that fits is never said; one within a cell of the limit may be let through. Not measured, so not said: the other parts the placer places (each part is measured alone against the parts that stay), the parts' routing margins, the other face of a part with a hole, the requirements' regions and heights, a part that may hang over an edge, and a board whose outline is not stated. A part bigger than the whole outline is an error of its own, said before this.
+
+#### A soft margin round a part
+
+A hardware design note often says to keep some distance round a part free of other parts: 3 mm round a radio module for soldering and rework, room for an antenna. It is neither a courtyard nor a copper keepout, and it is no `.routing_margin`, which is as hard as an overlap. It is a soft requirement of the physical file (issue 1310, owner decision): `soft margin 3mm round .u1`. The distance is one fixed length of zero or more, the part is named from the board with a leading dot (a path may cross a module's boundary, as `.radio.u1` does), and a part states one margin. The statement belongs in a board's physical file; in the circuit source and in a module's own physical file it is an error that says so, and a name that is not a part (a module, a pin, a value) is refused.
+
+The placer keeps the courtyards of other parts out of the margin where it can: a courtyard inside it costs more for each mm than a plain gap and than a decoupling capacitor's pull to its pins, so the margin is kept wherever the board has the room, and a stronger pull may still win. It is no wall, so a board that cannot keep it is still placed. The margin is measured from the part's courtyard to the other part's courtyard (the larger of the spaces along x and along y, as `.routing_margin` is) on the part's face, and a part with a hole on both; the board's edge, keepouts and cutouts do not count, and only the part that states the margin asks for it.
+
+```nsm solve place
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Serviced {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .rail: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
+    .r1: Resistor { .resistance &= 15kohm +/- 1% }
+    .r2: Resistor { .resistance &= 15kohm +/- 1% }
+    .rail.pos ~> .r1 ~> .rail.neg
+    .rail.pos ~> .r2 ~> .rail.neg
+}
+```
+
+```nsm-physical
+import std::pcb::Outline
+
+physical for Serviced {
+    case {
+        .outline: Outline { .width &= 30mm; .height &= 20mm }
+    }
+
+    // Design note: keep 3 mm round R1 free of other parts, for the soldering iron.
+    soft margin 3mm round .r1
+}
+```
+
+Where the placed board has a part inside a margin, `fab` says it as a warning, after placing and before routing, and it is an error when the run is strict (`--strict`, or `guidelines = "error"` in netsmith.toml), which stops `fab` there:
+
+```text
+warning: Serviced: R2 is 1.20 mm from R1, courtyard to courtyard, and the soft margin round R1 asks for 3 mm (main.physical.nsm:9); move R2 away, or give the margin less
+```
+
+`layout check` says the same as a `soft_margin` finding among the parts the layout file places (a warning, an error with `--strict`), at the line of the entry of the part that is inside the margin. Not built: a margin round a module's box (name a part), a margin that differs by face, and a margin that excuses the module's own decoupling parts; state a smaller margin, or none, where a part must stand near.
+
+Misuse: a margin is round a part.
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+
+module Pair {
+    .j: Header1x2
+}
+
+board Misused {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .pair: Pair
+}
+```
+
+```nsm-physical
+physical for Misused {
+    soft margin 3mm round .pair
+}
+```
+
+```text
+error: `soft margin 3mm round .pair` names `.pair`, which is a module; a soft margin is kept round a part's courtyard, so name the part (`soft margin 3mm round .u1`)
+  --> main.physical.nsm:2:27
+  |
+2 |     soft margin 3mm round .pair
+  |                           ^^^^^
+```
 
 ### How the router orders the nets
 

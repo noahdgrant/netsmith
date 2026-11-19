@@ -378,6 +378,11 @@ const W_HARD: f64 = 200.0;
 const HARD_EPS: f64 = 1e-3;
 /// Courtyards nearer than their gap, for each mm.
 const W_GAP: f64 = 4.0;
+/// A courtyard inside another part's `soft margin` (issue 1310), for each mm: more than a plain
+/// gap ([`W_GAP`]) and more than the pull of a decoupling capacitor to its pins
+/// ([`W_DECOUPLING`]), so that the margin is kept where the board has the room, and a pull that
+/// is much stronger (a connection that a ratsnest of many nets makes) may still win.
+const W_SOFT_MARGIN: f64 = 12.0;
 /// Reference text over another part's courtyard, for each mm.
 const W_TEXT: f64 = 3.0;
 /// Silkscreen nearer the board edge than the process's silk space, for each mm: soft, since the
@@ -673,6 +678,10 @@ struct Model {
     /// courtyard is grown by it on every side against other parts' courtyards
     /// ([`Engine::spaced_rooms`]), as hard a rule as an overlap.
     margin: f64,
+    /// The distance other parts are asked to keep from its courtyard (`soft margin`, issue
+    /// 1310): a courtyard inside it costs [`W_SOFT_MARGIN`] for each mm, which a placement that
+    /// cannot do better pays; it is no wall, so the parts may still stand there.
+    soft: f64,
     /// Which layers the footprint draws its courtyard on, `(F.CrtYd, B.CrtYd)`.
     court_faces: (bool, bool),
     role: Role,

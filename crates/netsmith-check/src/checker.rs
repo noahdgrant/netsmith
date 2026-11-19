@@ -2175,6 +2175,7 @@ impl<'a> Checker<'a> {
                 Item::Polygon(p) => self.polygon(p),
                 Item::PhysicalFile(f) => self.physical_file_here(f),
                 Item::Anchor(a) => self.anchor_here(a),
+                Item::SoftMargin(m) => self.soft_margin(m),
                 Item::Connect(c) if self.phys.is_none() => self.connect(c),
                 Item::JoinMap(b) if self.phys.is_none() => self.join_map(b),
                 Item::Bridge(b) if self.phys.is_none() => self.bridge(b),

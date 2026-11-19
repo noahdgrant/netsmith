@@ -310,6 +310,13 @@ physical for Radio {
 }
 ";
 
+const SOFT: &str = "\
+physical for Trellis {
+    soft margin 3mm round .u1
+    soft margin 2mm + 1mm round .radio.module
+}
+";
+
 #[test]
 fn a_within_and_a_route_statement_name_a_part_a_pin_and_a_word() {
     let file = parse(RF).unwrap();
@@ -341,6 +348,29 @@ fn a_within_and_a_route_statement_name_a_part_a_pin_and_a_word() {
 }
 
 #[test]
+fn a_soft_margin_statement_names_a_distance_and_a_part() {
+    let file = parse(SOFT).unwrap();
+    let items = &file.physicals[0].items;
+    let Item::SoftMargin(m) = &items[0] else {
+        panic!("a soft margin statement")
+    };
+    assert!(matches!(m.margin, Expr::Number(..)));
+    assert_eq!(m.part.to_source(), ".u1");
+    let Item::SoftMargin(m) = &items[1] else {
+        panic!("a soft margin statement")
+    };
+    assert!(matches!(m.margin, Expr::Binary { .. }));
+    assert_eq!(m.part.to_source(), ".radio.module");
+}
+
+#[test]
+fn a_soft_margin_statement_prints_back_to_source() {
+    let printed = parse(SOFT).unwrap().to_source();
+    assert!(printed.contains("soft margin 3mm round .u1"), "{printed}");
+    assert_eq!(parse(&printed).unwrap().to_source(), printed);
+}
+
+#[test]
 fn a_within_and_a_route_statement_need_each_part_of_them() {
     let at = |body: &str| parse(&format!("physical for T {{\n    {body}\n}}\n")).unwrap_err();
     let e = at(".ant within 8mm .radio.ant");
@@ -357,5 +387,23 @@ fn a_within_and_a_route_statement_need_each_part_of_them() {
 fn within_of_and_route_are_still_ordinary_names() {
     let file =
         parse("board B {\n    .within: Length\n    .route: Length\n    .of &= 2mm\n}\n").unwrap();
+    assert_eq!(file.definitions.len(), 1);
+}
+
+#[test]
+fn a_soft_margin_statement_needs_each_part_of_it() {
+    let at = |body: &str| parse(&format!("physical for T {{\n    {body}\n}}\n")).unwrap_err();
+    let e = at("soft margin 3mm .u1");
+    assert!(e.message.contains("`round` and the part"), "{}", e.message);
+    let e = at("soft margin round .u1");
+    assert!(e.message.contains("`round` and the part"), "{}", e.message);
+    let e = at("soft margin 3mm round");
+    assert!(e.message.contains("name"), "{}", e.message);
+}
+
+#[test]
+fn soft_margin_and_round_are_still_ordinary_names() {
+    let file =
+        parse("board B {\n    .soft: Length\n    .margin: Length\n    .round: Length\n}\n").unwrap();
     assert_eq!(file.definitions.len(), 1);
 }

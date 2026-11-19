@@ -14,6 +14,8 @@ impl<'a> Engine<'a> {
                 let base = parts[i].rotation;
                 // Its room for routing (issue #1313) widens what it interacts with.
                 let margin = parts[i].routing_margin;
+                // A soft margin (issue 1310) widens the reach too: a part within it costs.
+                let soft = parts[i].soft_margin;
                 let want = p.wants.get(i).and_then(Option::as_ref);
                 // The right angles from the turn it began at, or the eight steps of 45 degrees
                 // for a part whose requirements allow them (issue #1046).
@@ -33,7 +35,7 @@ impl<'a> Engine<'a> {
                         base,
                         side,
                         rules,
-                        reach_pad + margin,
+                        reach_pad + margin + soft,
                     ));
                 } else {
                     for &a in &angles {
@@ -43,7 +45,7 @@ impl<'a> Engine<'a> {
                                 a,
                                 text,
                                 rules,
-                                reach_pad + margin,
+                                reach_pad + margin + soft,
                             ));
                         }
                     }
@@ -77,6 +79,7 @@ impl<'a> Engine<'a> {
                     height: parts[i].grown_height(),
                     hand_fitted: parts[i].hand_fitted,
                     margin,
+                    soft,
                     court_faces: parts[i].footprint.courtyard_faces,
                     role: if crate::place::is_connector(&parts[i]) {
                         Role::Connector

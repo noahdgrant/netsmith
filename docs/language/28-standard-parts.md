@@ -4401,7 +4401,7 @@ error: PulledLow: U1: there is no KiCad symbol for a `Zihost` yet
 
 ### Buses
 
-A bus interface names its lines, and its definition in `std::bus` says more: for each role of the bus, which way each line goes (the lines and roles are below). A part states the kind of each pin in its table (`output`, `input`, `bidirectional`, `tri_state`), and the rules of the previous sections judge the nets: two outputs on one net are refused, and so are an `input` with nothing on its net and a net of nothing but inputs. The buses are `std::bus::Uart`, `Spi`, `Qspi`, `I2c`, `Swd` and `Usb2`. The names are the device's own.
+A bus interface names its lines, and its definition in `std::bus` says more: for each role of the bus, which way each line goes (the lines and roles are below). A part states the kind of each pin in its table (`output`, `input`, `bidirectional`, `tri_state`), and the rules of the previous sections judge the nets: two outputs on one net are refused, and so are an `input` with nothing on its net and a net of nothing but inputs. The buses are `std::bus::Uart`, `Spi`, `Qspi`, `I2c`, `Swd`, `Usb2` and `Sim`. The names are the device's own.
 
 - A UART's `tx` and `rx` cross, and the language crosses them: `~` between two `Uart` interfaces joins one end's `tx` to the other's `rx` and its `rts` to the other's `cts`. A board that joins pin by pin writes the crossing (`.a.uart.tx ~ .b.uart.rx`), and a `tx` joined to a `tx` is refused. A device without flow control gives no pin to `rts` and `cts`, and the join leaves them out.
 - An SPI bus does not cross. The master's `mosi` is an output and the slave's is an input, and the two join with `~`.
@@ -4409,6 +4409,7 @@ A bus interface names its lines, and its definition in `std::bus` says more: for
 - An I2C bus needs a pull-up on each line, and the checker refuses a line without one. `std::bus::I2cPullups` is the pair, with the resistance as a value (`.pullups.resistance &= 4.7kohm +/- 5%`) and a supply rail. The module states the current it draws from that rail (each pull-up carries nothing while its line is released and at most the supply voltage over its resistance while it is held low, the two together on `supply.current`), so a board states no load for it; a current the board does state on `supply` is a budget the sum must fit in (ADR 0038).
 - A debug port `Swd` meets a programming connector pin by pin: the connector's pins are passive. Its `swo` (the trace output) is `optional`, the word a `pins` row and a member already use for "may be absent", here on a pin of an interface (issue 1272): a target with no trace pin, as a small Cortex-M0 part has none, gives `swo` no row, and `~` between its `Swd` and a probe's joins the data line, the clock and the reset and leaves the line out, so the probe's `swo` stays open. The roles and the levels of the lines that are joined are checked as for any target. `optional` on a pin is allowed only in an interface; elsewhere a pin that need not be connected says so in its `pins` row.
 - `Usb2` joins a host and a device with `~`: D+ to D+. `vbus` is a `Rail`. A receptacle between them is a pass-through, not an end (below).
+- `Sim` joins a terminal's SIM port (the host) and a UICC (the card) with `~`: the supply `vcc`, a `Rail` the host supplies, the reset `rst`, the clock `clk` and the data line `io`. Each side states the voltage classes it supports, and the checker holds them against each other and against the supply (below).
 
 Some invented parts for the examples. A UART has the same pins at both ends, so one part serves for both; SPI has a master and a slave.
 
@@ -4745,6 +4746,129 @@ error: net `net-a.i2c.sda` carries the sda line of an I2C bus (`a.i2c.sda`, `b.i
 ```
 
 In a `system`, a line that goes out through a connector is followed through the mates (ADR 0040) to the board behind it, contact N to contact N, and on through any connector there. The bus is judged as one: it needs a pull-up on the board that has it or on any board it reaches, and a pull-up on either side of a mate satisfies it. If none has one, the error names the connectors the line passed (`carrier.j`, `card.h`) and is reported once for the line. A line that reaches a connector the system does not mate, or a port of a board, goes somewhere this check cannot see and is not judged, as is a board checked alone behind its own connector (ADR 0090).
+
+### The voltage classes of a SIM bus
+
+A SIM bus (`std::bus::Sim`, ISO/IEC 7816-3 and ETSI TS 102 221) is supplied by its host at a voltage class: class A is 4.5 V to 5.5 V, class B 2.7 V to 3.3 V and class C 1.62 V to 1.98 V. A part states its role (`SimRole::Host` or `SimRole::Card`) and the classes its datasheet says it supports, `.sim.classes`, a `SimClasses`: one class (`SimClasses::C`) or a set of them (`SimClasses::BC`, `SimClasses::ABC`). Each side states its own, so `~` does not equate the classes; it equates the voltage of `vcc`, the supply of the bus. After the solve the checker holds the host's classes and the card's against each other, and the supply against the classes both support: the supply's range must lie within one of them (issue 1280). A side that states no classes, or a supply with no value, is listed as not evaluated. A holder for a removable card states `SimRole::Card` with the classes of the cards the board takes; its passive pins agree with the role.
+
+```nsm module=src::radio
+import std::bus::{Sim, SimClasses, SimRole}
+import std::sources::Rail
+
+/// A radio module with a SIM port that supplies class B or class C. Illustrative; not a real part.
+part Radio {
+    .vdd: Rail
+    .sim: Sim
+    .sim.role &= SimRole::Host
+    .sim.classes &= SimClasses::BC
+    .sim.vcc.neg ~ .vdd.neg
+
+    pins {
+        .vdd.pos     power         "VDD"      "1"
+        .vdd.neg     power         "GND"      "2"
+        .sim.vcc.pos power         "SIM_VDD"  "3"
+        .sim.rst     output        "SIM_RST"  "4"
+        .sim.clk     output        "SIM_CLK"  "5"
+        .sim.io      bidirectional "SIM_DATA" "6"
+    }
+}
+
+/// A SIM soldered to the board (an eUICC) that works at class C. Illustrative.
+part Esim {
+    .sim: Sim
+    .sim.role &= SimRole::Card
+    .sim.classes &= SimClasses::C
+    .sim.vcc.current &= 0mA..10mA
+
+    pins {
+        .sim.vcc.pos power         "VCC" "1"
+        .sim.vcc.neg power         "GND" "2"
+        .sim.rst     input         "RST" "3"
+        .sim.clk     input         "CLK" "4"
+        .sim.io      bidirectional "IO"  "5"
+    }
+}
+
+/// A SIM that works at class A alone. Illustrative.
+part OldSim {
+    .sim: Sim
+    .sim.role &= SimRole::Card
+    .sim.classes &= SimClasses::A
+    .sim.vcc.current &= 0mA..10mA
+
+    pins {
+        .sim.vcc.pos power         "VCC" "1"
+        .sim.vcc.neg power         "GND" "2"
+        .sim.rst     input         "RST" "3"
+        .sim.clk     input         "CLK" "4"
+        .sim.io      bidirectional "IO"  "5"
+    }
+}
+```
+
+The board states the supply the host runs the bus at, a voltage of class C, which both support:
+
+```nsm evaluate
+import std::sources::Rail
+
+import src::radio::{Esim, Radio}
+
+board Tracker {
+    .supply: Rail { .voltage &= 3.8V +/- 5%; .pos.net &= "VBAT" }
+    .radio: Radio { .sim.vcc.voltage &= 1.8V +/- 5% }
+    .esim: Esim
+    .supply ~ .radio.vdd
+    .radio.sim ~ .esim.sim
+}
+```
+
+A supply of class B is one the host can give, but the card does not work at it:
+
+```nsm fails
+import std::sources::Rail
+
+import src::radio::{Esim, Radio}
+
+board WrongClass {
+    .supply: Rail { .voltage &= 3.8V +/- 5%; .pos.net &= "VBAT" }
+    .radio: Radio { .sim.vcc.voltage &= 3V +/- 5% }
+    .esim: Esim
+    .supply ~ .radio.vdd
+    .radio.sim ~ .esim.sim
+}
+```
+
+```text
+error: the SIM supply `radio.sim.vcc` is 2.85V to 3.15V, within no class that the host `radio.sim` and the card `esim.sim` both support (class C, 1.62V to 1.98V); run the supply within one of them
+  --> main.nsm:7:21
+  |
+7 |     .radio: Radio { .sim.vcc.voltage &= 3V +/- 5% }
+  |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+A card that works at no class the host supplies:
+
+```nsm fails
+import std::sources::Rail
+
+import src::radio::{OldSim, Radio}
+
+board NoCommonClass {
+    .supply: Rail { .voltage &= 3.8V +/- 5%; .pos.net &= "VBAT" }
+    .radio: Radio { .sim.vcc.voltage &= 1.8V +/- 5% }
+    .card: OldSim
+    .supply ~ .radio.vdd
+    .radio.sim ~ .card.sim
+}
+```
+
+```text
+error: the SIM host `radio.sim` supplies classes B and C (`radio.sim.classes`) and the card `card.sim` works at class A (`card.sim.classes`): they share no class, so the host cannot power the card; use a card or a host that supports a class of the other
+   --> src/radio.nsm:42:5
+   |
+42 |     .sim.classes &= SimClasses::A
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
 
 ### The rise time of an I2C bus
 

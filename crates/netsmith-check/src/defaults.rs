@@ -613,5 +613,6 @@ fn item_span(item: &Item) -> Span {
         Item::Polygon(p) => p.span,
         Item::PhysicalFile(f) => f.span,
         Item::Anchor(a) => a.span,
+        Item::SoftMargin(m) => m.span,
     }
 }

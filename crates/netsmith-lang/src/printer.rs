@@ -585,6 +585,14 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
             Item::Route(r) => {
                 let _ = write!(out, "{} route {}", r.pin.to_source(), r.word());
             }
+            Item::SoftMargin(m) => {
+                let _ = write!(
+                    out,
+                    "soft margin {} round {}",
+                    m.margin.to_source(),
+                    m.part.to_source()
+                );
+            }
             Item::Row(r) => {
                 let _ = write!(
                     out,

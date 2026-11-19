@@ -176,11 +176,12 @@ struct Block {
     slots: Vec<(usize, Pt)>,
 }
 
-/// The size a part takes in the rows: its courtyard grown by its routing margin on each side
-/// (issue #1313), so that the rows the annealer starts from already keep the margins.
+/// The size a part takes in the rows: its courtyard grown by its routing margin (issue #1313)
+/// and its soft margin (issue 1310) on each side, so that the rows the annealer starts from
+/// already keep the margins.
 fn size_of(parts: &[Placed], index: usize) -> (f64, f64) {
     let c = parts[index].courtyard();
-    let m = 2.0 * parts[index].routing_margin;
+    let m = 2.0 * (parts[index].routing_margin + parts[index].soft_margin);
     (c.width() + m, c.height() + m)
 }
 
@@ -554,7 +555,7 @@ fn arrange(parts: &mut [Placed], order: &[usize], options: &PlaceOptions) -> Arr
             parts[i].at = Pt::default();
             let courtyard = parts[i].courtyard();
             // The slot holds the courtyard grown by its routing margin ([`size_of`]).
-            let margin = parts[i].routing_margin;
+            let margin = parts[i].routing_margin + parts[i].soft_margin;
             parts[i].at = Pt::new(
                 tidy(block_x + corner.x + margin - courtyard.min.x),
                 tidy(top + corner.y + margin - courtyard.min.y),

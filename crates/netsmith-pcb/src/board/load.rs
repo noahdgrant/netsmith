@@ -113,6 +113,8 @@ impl Board {
                     standoff: 0.0,
                     height_growth: 0.0,
                     routing_margin: 0.0,
+                    soft_margin: 0.0,
+                    soft_margin_source: String::new(),
                     protrusion: None,
                     hand_fitted: true,
                     symbol,
@@ -192,6 +194,18 @@ impl Board {
                     .iter()
                     .find(|m| m.path == part.path)
                     .map_or(0.0, |m| m.margin),
+                soft_margin: design
+                    .features
+                    .soft_margins
+                    .iter()
+                    .find(|m| m.path == part.path)
+                    .map_or(0.0, |m| m.margin),
+                soft_margin_source: design
+                    .features
+                    .soft_margins
+                    .iter()
+                    .find(|m| m.path == part.path)
+                    .map_or_else(String::new, |m| m.source.clone()),
                 protrusion: design
                     .features
                     .protrusions
