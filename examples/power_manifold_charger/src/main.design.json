@@ -5932,6 +5932,14 @@
           "height": 0.55
         },
         {
+          "path": "comp_cap",
+          "height": 0.7
+        },
+        {
+          "path": "comp_cap_series",
+          "height": 0.7
+        },
+        {
           "path": "comparator",
           "height": 1.1
         },
@@ -5956,8 +5964,24 @@
           "height": 0.95
         },
         {
+          "path": "en_pulldown",
+          "height": 0.4
+        },
+        {
+          "path": "fault_pullup",
+          "height": 0.4
+        },
+        {
+          "path": "flag_pullup",
+          "height": 0.4
+        },
+        {
           "path": "fuse",
           "height": 2.94
+        },
+        {
+          "path": "gate_47p",
+          "height": 0.7
         },
         {
           "path": "iana_100n",
@@ -5972,7 +5996,15 @@
           "height": 0.55
         },
         {
+          "path": "led",
+          "height": 0.65
+        },
+        {
           "path": "led_resistor",
+          "height": 0.4
+        },
+        {
+          "path": "mode_resistor",
           "height": 0.4
         },
         {
@@ -6000,6 +6032,14 @@
           "height": 0.4
         },
         {
+          "path": "ovp_ceil_bottom",
+          "height": 0.4
+        },
+        {
+          "path": "ovp_ref_pulldown",
+          "height": 0.4
+        },
+        {
           "path": "port_tvs",
           "height": 0.6
         },
@@ -6012,6 +6052,22 @@
           "height": 0.55
         },
         {
+          "path": "scl_pullup",
+          "height": 0.4
+        },
+        {
+          "path": "sda_pullup",
+          "height": 0.4
+        },
+        {
+          "path": "tcpp_en_pulldown",
+          "height": 0.4
+        },
+        {
+          "path": "tcpp_en_series",
+          "height": 0.4
+        },
+        {
           "path": "tp_gnd",
           "height": 0.0
         },
@@ -6022,6 +6078,14 @@
         {
           "path": "tp_tx",
           "height": 0.0
+        },
+        {
+          "path": "usb_scl_pullup",
+          "height": 0.4
+        },
+        {
+          "path": "usb_sda_pullup",
+          "height": 0.4
         },
         {
           "path": "v3v3_100n_a",
@@ -6060,6 +6124,10 @@
           "height": 0.4
         },
         {
+          "path": "vbus_divider_top",
+          "height": 0.4
+        },
+        {
           "path": "vbus_sense_10n",
           "height": 0.55
         },
@@ -6094,6 +6162,14 @@
         {
           "path": "vout_divider_bottom",
           "height": 0.4
+        },
+        {
+          "path": "vout_divider_top",
+          "height": 0.4
+        },
+        {
+          "path": "vout_sense_1n",
+          "height": 0.7
         }
       ],
       "protrusions": [],

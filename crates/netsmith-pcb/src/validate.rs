@@ -220,6 +220,99 @@ pub fn validate_pinout(
     problems
 }
 
+/// The least distance between the centres of two pads of different numbers in one row or one
+/// column of `footprint` (the same y, or the same x, to a micrometre), in mm: the footprint's
+/// pitch as a table states it ([`netsmith_kicad::FootprintTable`]). `None` when no two pads line up.
+pub fn footprint_pitch(footprint: &Footprint) -> Option<f64> {
+    const ALIGNED: f64 = 0.001;
+    let pads: Vec<_> = footprint
+        .pads
+        .iter()
+        .filter(|p| !p.number.is_empty())
+        .collect();
+    let mut least: Option<f64> = None;
+    for (i, a) in pads.iter().enumerate() {
+        for b in &pads[i + 1..] {
+            if a.number == b.number {
+                continue;
+            }
+            let (dx, dy) = ((a.at.x - b.at.x).abs(), (a.at.y - b.at.y).abs());
+            let d = if dy < ALIGNED {
+                dx
+            } else if dx < ALIGNED {
+                dy
+            } else {
+                continue;
+            };
+            if d > ALIGNED && least.is_none_or(|l| d < l) {
+                least = Some(d);
+            }
+        }
+    }
+    least
+}
+
+/// Round to a micrometre, for a message.
+fn um(v: f64) -> f64 {
+    (v * 1000.0).round() / 1000.0
+}
+
+/// Every disagreement between `footprint` and the `table` of the `kicad.toml` row that gave it
+/// (issue #1281): its count of pads by number, its pitch ([`footprint_pitch`]) and the size of the
+/// body it draws on `F.Fab`, across and along. Empty when it agrees, or when the row states no
+/// table. Each message names the part, the footprint, the row and both numbers.
+pub fn validate_table(subject: &Subject, mapped: &Mapped, footprint: &Footprint) -> Vec<String> {
+    let Some(table) = &mapped.table else {
+        return Vec::new();
+    };
+    let mut problems = Vec::new();
+    let name = &mapped.footprint;
+    let row = format!("the table `{}` of {}", table.text, mapped.origin);
+    if let Some(pads) = table.pads {
+        let counted = footprint
+            .pad_numbers()
+            .into_iter()
+            .filter(|n| !n.is_empty())
+            .count();
+        if counted != pads {
+            problems.push(format!(
+                "{subject}: the footprint `{name}` has {counted} pads, but {row} says {pads}; pads are counted by number, so an exposed pad drawn in pieces is one"
+            ));
+        }
+    }
+    if let Some(pitch) = table.pitch {
+        match footprint_pitch(footprint) {
+            None => problems.push(format!(
+                "{subject}: the footprint `{name}` has no two pads in one row or column, so it has no pitch, but {row} says {pitch}mm"
+            )),
+            Some(measured) if (measured - pitch).abs() > netsmith_kicad::PITCH_TOLERANCE => {
+                problems.push(format!(
+                    "{subject}: the footprint `{name}` has its pads {}mm apart, but {row} says a pitch of {pitch}mm; the pitch is the least distance between the centres of two pads in one row or column",
+                    um(measured)
+                ))
+            }
+            Some(_) => {}
+        }
+    }
+    if let Some((across, along)) = table.body {
+        if footprint.body_is_courtyard {
+            problems.push(format!(
+                "{subject}: the footprint `{name}` draws no body on its fabrication layer (`F.Fab`), so its outline cannot be measured against {row}; draw the body on `F.Fab`, or leave `body` out of the table"
+            ));
+        } else {
+            let (w, h) = (footprint.body.width(), footprint.body.height());
+            if !across.holds(w) || !along.holds(h) {
+                problems.push(format!(
+                    "{subject}: the footprint `{name}` draws a body {}x{}mm on `F.Fab` (across, then along), but {row} says {across}x{along}mm",
+                    um(w),
+                    um(h)
+                ));
+            }
+        }
+    }
+    problems
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -312,6 +405,7 @@ mod tests {
             footprint: "proj:Dfn".into(),
             origin: "kicad.toml line 3".into(),
             pin_names: BTreeMap::from([("SENSE".to_string(), "SNS".to_string())]),
+            table: None,
         }
     }
 
@@ -578,5 +672,120 @@ mod tests {
             package: None,
         };
         assert_eq!(s.to_string(), "R1 (Resistor)");
+    }
+}
+
+#[cfg(test)]
+mod table_tests {
+    use super::*;
+    use netsmith_kicad::FootprintTable;
+
+    /// An SOIC-8 as a vendor draws it: two columns of four pads at 1.27 mm, 5.4 mm apart, and a
+    /// body of 3.9 x 4.9 mm on `F.Fab`.
+    fn soic8(pitch: f64, fab: bool) -> Footprint {
+        let mut text = String::from("(footprint \"Soic8\" (attr smd) ");
+        for i in 0..4 {
+            let y = (i as f64 - 1.5) * pitch;
+            text += &format!(
+                "(pad \"{}\" smd rect (at -2.7 {y}) (size 1.5 0.6) (layers \"F.Cu\")) ",
+                i + 1
+            );
+            text += &format!(
+                "(pad \"{}\" smd rect (at 2.7 {}) (size 1.5 0.6) (layers \"F.Cu\")) ",
+                8 - i,
+                y
+            );
+        }
+        if fab {
+            text += "(fp_rect (start -1.95 -2.45) (end 1.95 2.45) (stroke (width 0.1) (type solid)) (fill none) (layer \"F.Fab\")) ";
+        }
+        text += ")";
+        Footprint::parse("Soic8", &text).unwrap()
+    }
+
+    fn check(table: &str, footprint: &Footprint) -> Vec<String> {
+        let mapped = Mapped {
+            lib_id: None,
+            footprint: "own:Soic8".into(),
+            origin: "kicad.toml line 5".into(),
+            pin_names: Default::default(),
+            table: Some(FootprintTable::parse(table).unwrap()),
+        };
+        let subject = Subject {
+            refdes: "U1",
+            kind: "Driver",
+            package: Some("SOIC-8"),
+        };
+        validate_table(&subject, &mapped, footprint)
+    }
+
+    #[test]
+    fn a_footprint_that_agrees_with_its_table_has_no_problems() {
+        let fp = soic8(1.27, true);
+        assert_eq!(footprint_pitch(&fp), Some(1.27));
+        assert_eq!(
+            check("pads=8, pitch=1.27mm, body=3.9x4.9mm", &fp),
+            Vec::<String>::new()
+        );
+        // A range is matched as it stands, one length within 0.05 mm.
+        assert_eq!(check("body=3.8-4.0x4.87mm", &fp), Vec::<String>::new());
+    }
+
+    #[test]
+    fn each_disagreement_names_the_part_the_row_and_both_numbers() {
+        let fp = soic8(1.27, true);
+        let problems = check("pads=9, pitch=1.25mm, body=3.9x5mm", &fp);
+        assert_eq!(problems.len(), 3, "{problems:#?}");
+        assert_eq!(
+            problems[0],
+            "U1 (Driver, package \"SOIC-8\"): the footprint `own:Soic8` has 8 pads, but the table \
+             `pads=9, pitch=1.25mm, body=3.9x5mm` of kicad.toml line 5 says 9; pads are counted by \
+             number, so an exposed pad drawn in pieces is one"
+        );
+        assert!(
+            problems[1].contains("has its pads 1.27mm apart")
+                && problems[1].contains("says a pitch of 1.25mm"),
+            "{}",
+            problems[1]
+        );
+        assert!(
+            problems[2].contains("draws a body 3.9x4.9mm on `F.Fab`")
+                && problems[2].contains("says 3.9x5mm"),
+            "{}",
+            problems[2]
+        );
+    }
+
+    #[test]
+    fn a_pitch_of_25_mil_is_not_one_of_065_mm() {
+        let fp = soic8(0.635, true);
+        assert_eq!(check("pitch=0.635mm", &fp), Vec::<String>::new());
+        assert_eq!(check("pitch=0.65mm", &fp).len(), 1);
+    }
+
+    #[test]
+    fn a_body_with_no_fabrication_drawing_cannot_be_measured() {
+        let problems = check("body=3.9x4.9mm", &soic8(1.27, false));
+        assert_eq!(problems.len(), 1);
+        assert!(problems[0].contains("draws no body on its fabrication layer"));
+        // The other columns are still measured.
+        assert_eq!(check("pads=8", &soic8(1.27, false)), Vec::<String>::new());
+    }
+
+    #[test]
+    fn pads_of_one_number_are_one_and_have_no_pitch_between_them() {
+        let fp = Footprint::parse(
+            "Dfn",
+            "(footprint \"Dfn\" (attr smd) \
+             (pad \"1\" smd rect (at -1 0) (size 0.3 0.3) (layers \"F.Cu\")) \
+             (pad \"2\" smd rect (at 1 0) (size 0.3 0.3) (layers \"F.Cu\")) \
+             (pad \"3\" smd rect (at 0 0) (size 0.3 0.3) (layers \"F.Cu\")) \
+             (pad \"3\" smd rect (at 0 0.4) (size 0.3 0.3) (layers \"F.Cu\")) \
+             (pad \"\" smd rect (at 0 0.2) (size 0.2 0.2) (layers \"F.Paste\")))",
+        )
+        .unwrap();
+        // Pad 3's two pieces are 0.4 mm apart, but they are one pad: the pitch is 1 mm.
+        assert_eq!(footprint_pitch(&fp), Some(1.0));
+        assert_eq!(check("pads=3, pitch=1mm", &fp), Vec::<String>::new());
     }
 }

@@ -724,12 +724,24 @@
           "height": 8.9
         },
         {
+          "path": "reg.divider.rbottom",
+          "height": 0.4
+        },
+        {
+          "path": "reg.divider.rtop",
+          "height": 0.55
+        },
+        {
           "path": "reg.ic.boost",
           "height": 0.55
         },
         {
           "path": "reg.ic.catch",
           "height": 1.0
+        },
+        {
+          "path": "reg.ic.shdn_pullup",
+          "height": 0.4
         },
         {
           "path": "reg.inductor",

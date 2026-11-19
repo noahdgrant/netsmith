@@ -309,6 +309,10 @@
         {
           "path": "status_indicator.current_limit",
           "height": 0.4
+        },
+        {
+          "path": "status_indicator.led",
+          "height": 0.9
         }
       ],
       "protrusions": [],
