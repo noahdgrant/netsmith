@@ -12,6 +12,8 @@ impl<'a> Engine<'a> {
         let mut models: Vec<Model> = (0..n)
             .map(|i| {
                 let base = parts[i].rotation;
+                // Its room for routing (issue #1313) widens what it interacts with.
+                let margin = parts[i].routing_margin;
                 let want = p.wants.get(i).and_then(Option::as_ref);
                 // The right angles from the turn it began at, or the eight steps of 45 degrees
                 // for a part whose requirements allow them (issue #1046).
@@ -26,11 +28,23 @@ impl<'a> Engine<'a> {
                 let mut shapes: Vec<Shape> = Vec::new();
                 if p.fixed[i] {
                     let side = parts[i].reference_side;
-                    shapes.push(shape_of(&mut parts[i], base, side, rules, reach_pad));
+                    shapes.push(shape_of(
+                        &mut parts[i],
+                        base,
+                        side,
+                        rules,
+                        reach_pad + margin,
+                    ));
                 } else {
                     for &a in &angles {
                         for text in ReferenceSide::ALL {
-                            shapes.push(shape_of(&mut parts[i], a, text, rules, reach_pad));
+                            shapes.push(shape_of(
+                                &mut parts[i],
+                                a,
+                                text,
+                                rules,
+                                reach_pad + margin,
+                            ));
                         }
                     }
                 }
@@ -62,6 +76,7 @@ impl<'a> Engine<'a> {
                     // Grown by its `.height_growth` (issue #1263): read only against limits.
                     height: parts[i].grown_height(),
                     hand_fitted: parts[i].hand_fitted,
+                    margin,
                     court_faces: parts[i].footprint.courtyard_faces,
                     role: if crate::place::is_connector(&parts[i]) {
                         Role::Connector

@@ -173,9 +173,13 @@ impl<'a> Engine<'a> {
                 }
             }
             let (ra, rb) = (self.rooms_on(i, face), self.rooms_on(j, face));
+            // A courtyard is grown by its routing margin (issue #1313); a part's pads are not.
+            let grow =
+                |r: Rect, pads: bool, m: f64| if pads || m <= 0.0 { r } else { r.expanded(m) };
+            let (ma, mb) = (self.models[i].margin, self.models[j].margin);
             for &(x, px) in &ra {
                 for &(y, py) in &rb {
-                    let pair = (x, y, px || py);
+                    let pair = (grow(x, px, ma), grow(y, py, mb), px || py);
                     if !pairs.contains(&pair) {
                         pairs.push(pair);
                     }
@@ -249,6 +253,17 @@ impl<'a> Engine<'a> {
     /// clipped to the outline if the design says it may hang over an edge (as
     /// `Board::check_placement` counts them, so that two parts that hang over the same edge
     /// may overlap beyond it).
+    /// [`Engine::rooms`] grown by the part's routing margin on every side (issue #1313): what
+    /// another part's courtyard, grown by its own, must not overlap.
+    pub(super) fn spaced_rooms(&self, i: usize) -> Vec<Rect> {
+        let margin = self.models[i].margin;
+        let rooms = self.rooms(i);
+        if margin <= 0.0 {
+            return rooms;
+        }
+        rooms.into_iter().map(|r| r.expanded(margin)).collect()
+    }
+
     pub(super) fn rooms(&self, i: usize) -> Vec<Rect> {
         let clip = self.models[i].may.any();
         self.courts(i)

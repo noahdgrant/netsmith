@@ -103,9 +103,24 @@ pub struct FitPlace {
     /// The requirements about the part it does not meet here.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub requirements: Vec<RequirementMiss>,
-    /// The sentences of `placement` and `requirements`, in that order.
+    /// The parts whose courtyards are nearer this one's than their routing margins ask
+    /// (`.routing_margin`, issue #1313).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub margins: Vec<MarginShort>,
+    /// The sentences of `placement`, `requirements` and `margins`, in that order.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub messages: Vec<String>,
+}
+
+/// A part nearer the fitted part than their routing margins ask for (issue #1313).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MarginShort {
+    pub part: PartRef,
+    /// From courtyard to courtyard, in mm (the larger of the spaces along x and along y).
+    pub gap: f64,
+    /// The sum of the two parts' routing margins, in mm.
+    pub need: f64,
+    pub text: String,
 }
 
 /// What [`Board::fit_part`] found.
@@ -332,10 +347,12 @@ impl Board {
             .into_iter()
             .map(|(_, m)| m)
             .collect();
+        let margins = self.margins_of(index);
         let messages = placement
             .iter()
             .map(|f| f.text.clone())
             .chain(requirements.iter().map(|m| m.text.clone()))
+            .chain(margins.iter().map(|m| m.text.clone()))
             .collect();
         let at = part.at - self.outline.min;
         FitPlace {
@@ -343,11 +360,44 @@ impl Board {
             side: part.side.word(),
             at: [round(at.x), round(at.y)],
             distance: round(distance(part, point)),
-            fits: placement.is_empty() && requirements.is_empty(),
+            fits: placement.is_empty() && requirements.is_empty() && margins.is_empty(),
             placement,
             requirements,
+            margins,
             messages,
         }
+    }
+
+    /// The parts nearer the part at `index` than their routing margins ask for, as
+    /// [`Placed::margin_short`] measures them: the placer's rule, which `fab`'s placement check
+    /// does not hold (issue #1313).
+    fn margins_of(&self, index: usize) -> Vec<MarginShort> {
+        let part = &self.parts[index];
+        self.parts
+            .iter()
+            .enumerate()
+            .filter(|&(j, _)| j != index)
+            .filter_map(|(_, other)| {
+                let (gap, need) = part.margin_short(other)?;
+                Some(MarginShort {
+                    part: PartRef {
+                        refdes: other.refdes.clone(),
+                        path: other.path.clone(),
+                    },
+                    gap: round(gap),
+                    need: round(need),
+                    text: format!(
+                        "{} is {} mm from {}, courtyard to courtyard, and their routing margins ask for {} mm ({} mm and {} mm, `.routing_margin`)",
+                        crate::board::member(&part.path, &part.refdes),
+                        num(gap),
+                        crate::board::member(&other.path, &other.refdes),
+                        num(need),
+                        num(part.routing_margin),
+                        num(other.routing_margin)
+                    ),
+                })
+            })
+            .collect()
     }
 
     /// The nearest place of the part at `index` turned `turn` on `side` where nothing is found,
@@ -414,7 +464,8 @@ impl Board {
             self.parts[index].at = o.min + at;
             let refdes = &self.parts[index].refdes;
             let faults = self.placement_problems_of(refdes).len()
-                + unmet(design, &self.parts, Some(&self.parts[index].path)).len();
+                + unmet(design, &self.parts, Some(&self.parts[index].path)).len()
+                + self.margins_of(index).len();
             if faults == 0 {
                 found = Some(at);
                 break;
@@ -443,6 +494,64 @@ mod tests {
     use super::*;
     use crate::board::tests::{led_board, led_design};
     use crate::geometry::Rect;
+
+    /// The LED board with a routing margin of `margin` mm round every part (issue #1313).
+    fn with_margins(margin: f64) -> Board {
+        let mut board = led_board();
+        for p in &mut board.parts {
+            p.routing_margin = margin;
+        }
+        board
+    }
+
+    #[test]
+    fn two_parts_nearer_than_their_routing_margins_are_short_and_say_by_how_much() {
+        let board = with_margins(0.75);
+        let d1 = board.parts.iter().find(|p| p.refdes == "D1").unwrap();
+        let r1 = board.parts.iter().find(|p| p.refdes == "R1").unwrap();
+        // 1.09 mm apart, courtyard to courtyard, and 1.5 mm asked for.
+        let (gap, need) = d1.margin_short(r1).unwrap();
+        assert!((gap - 1.09).abs() < 1e-6, "{gap}");
+        assert!((need - 1.5).abs() < 1e-9, "{need}");
+        assert_eq!(r1.margin_short(d1), d1.margin_short(r1));
+        // With no margin, or margins they keep, nothing is short.
+        assert_eq!(
+            led_board().parts[0].margin_short(&led_board().parts[2]),
+            None
+        );
+        let board = with_margins(0.5);
+        let d1 = board.parts.iter().find(|p| p.refdes == "D1").unwrap();
+        let r1 = board.parts.iter().find(|p| p.refdes == "R1").unwrap();
+        assert_eq!(d1.margin_short(r1), None);
+    }
+
+    #[test]
+    fn a_fit_keeps_the_routing_margins_and_says_which_part_is_too_near_where_it_is() {
+        let board = with_margins(0.75);
+        let design = led_design();
+        let fit = board
+            .fit_part(&design, "D1", &FitNear::Itself, 0.5, Some(Side::Front))
+            .unwrap();
+        assert!(!fit.now.fits, "{}", fit.text());
+        assert_eq!(fit.now.margins.len(), 1, "{:?}", fit.now.margins);
+        assert_eq!(fit.now.margins[0].part.refdes, "R1");
+        assert!(
+            fit.text()
+                .contains("D1 is 1.09 mm from R1, courtyard to courtyard, and their routing margins ask for 1.5 mm"),
+            "{}",
+            fit.text()
+        );
+        // The place it gives keeps 1.5 mm from every other part.
+        let first = fit.poses.iter().find(|p| p.fits).expect("a place");
+        let mut moved = board.clone();
+        let d1 = moved.parts.iter_mut().find(|p| p.refdes == "D1").unwrap();
+        d1.at = moved.outline.min + Pt::new(first.at[0], first.at[1]);
+        d1.rotation = first.turn;
+        let d1 = moved.parts.iter().find(|p| p.refdes == "D1").unwrap();
+        for other in moved.parts.iter().filter(|p| p.refdes != "D1") {
+            assert_eq!(d1.margin_short(other), None, "{}", other.refdes);
+        }
+    }
 
     #[test]
     fn a_part_that_fits_where_it_is_is_said_to_fit_there_first() {

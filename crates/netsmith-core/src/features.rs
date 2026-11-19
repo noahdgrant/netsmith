@@ -2,7 +2,8 @@
 
 use crate::{
     CaseModel, Cutout, Keepout, Label, Logo, Offset, Outline, PartHeight, PartHeightGrowth,
-    PartKind, PartSilk, PartStandoff, PinProtrusion, PinRef, Placement, Pour, StepModel,
+    PartKind, PartRoutingMargin, PartSilk, PartStandoff, PinProtrusion, PinRef, Placement, Pour,
+    StepModel,
 };
 
 /// The current a net carries, and the least track that carries it (issue #431).
@@ -161,6 +162,11 @@ pub struct Features {
     /// (`.height_growth`, issue #1263), by path. Left out of a design file when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub height_growths: Vec<PartHeightGrowth>,
+    /// The room for routing each part keeps round its courtyard (`.routing_margin`, issue
+    /// #1313), its own or the board's, by path; a part with none is not listed. Left out of a
+    /// design file when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub routing_margins: Vec<PartRoutingMargin>,
     /// How far the pins of through-hole parts protrude, as the design states it, by path
     /// (ADR 0045 section 15).
     pub protrusions: Vec<PinProtrusion>,

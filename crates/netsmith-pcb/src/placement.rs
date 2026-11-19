@@ -486,9 +486,10 @@ impl DoesNotFit {
         if let Some(e) = &self.ended {
             for o in &e.overlapping {
                 lines.push(format!(
-                    "the courtyards of {} and {} overlap by {:.2} mm2",
+                    "the courtyards of {} and {}{} overlap by {:.2} mm2",
                     name(&o.a),
                     name(&o.b),
+                    grown(o.margin),
                     o.area
                 ));
             }
@@ -599,6 +600,19 @@ fn write_ended(f: &mut std::fmt::Formatter<'_>, e: &Ended, wall: f64) -> std::fm
 /// How many offenders are described one by one; the rest are only named.
 pub const DESCRIBED: usize = 10;
 
+/// What a pair of courtyards that overlap says of the routing margins they were grown by
+/// (issue #1313): nothing when they have none.
+fn grown(margin: f64) -> String {
+    if margin > 0.0 {
+        format!(
+            " (grown by their routing margins, {} mm in all)",
+            crate::mm_text(margin)
+        )
+    } else {
+        String::new()
+    }
+}
+
 /// The pairs of courtyards that overlap and the parts that are outside, the first
 /// [`DESCRIBED`] of each (the worst first) with the area and the side of the outline they are
 /// at, and the rest by name, so the whole list is in the message.
@@ -611,9 +625,10 @@ fn write_offenders(f: &mut std::fmt::Formatter<'_>, e: &Ended) -> std::fmt::Resu
         for o in e.overlapping.iter().take(DESCRIBED) {
             write!(
                 f,
-                "\n    {} and {}: {} mm2 ({:.2} x {:.2} mm) at ({:.1}, {:.1}), {:.1} mm from the {} edge",
+                "\n    {} and {}{}: {} mm2 ({:.2} x {:.2} mm) at ({:.1}, {:.1}), {:.1} mm from the {} edge",
                 e.member(&o.a),
                 e.member(&o.b),
+                grown(o.margin),
                 short(o.area),
                 o.size.0,
                 o.size.1,
@@ -927,6 +942,9 @@ pub struct OverlapAt {
     /// side of the outline it is nearest, with the distance to it.
     pub at: (f64, f64),
     pub nearest: (&'static str, f64),
+    /// The sum of the two parts' routing margins (`.routing_margin`, issue #1313), in mm: the
+    /// courtyards were grown by them before they were measured. 0 when neither has one.
+    pub margin: f64,
 }
 
 /// A part that is outside the outline, inside its margin, or in a keepout when a run ended.

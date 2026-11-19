@@ -59,6 +59,7 @@ impl<'a> Engine<'a> {
                         size,
                         at: (centre.x - region.min.x, centre.y - region.min.y),
                         nearest: nearest_edge(region, centre),
+                        margin: a.margin + b.margin,
                     });
                 } else if self.pair_of_parts(i, j).hard > HARD_EPS {
                     ended.silk += 1;

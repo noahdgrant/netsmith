@@ -21,7 +21,7 @@
 //!   name its file is refused, and so is a module that names a file with no unit for it.
 //! - A module's file states only what does not depend on where the module is on the board:
 //!   a relation whose `.place` fields cancel along each axis (`.b.place.x - .a.place.x ==
-//!   17.5mm +/- 0.05mm`, a `row`), and a part's `.height`, `.height_growth`, `.standoff`, `.pin_protrusion`,
+//!   17.5mm +/- 0.05mm`, a `row`), and a part's `.height`, `.height_growth`, `.routing_margin`, `.standoff`, `.pin_protrusion`,
 //!   `.model` and `.silk`. A `.place` narrowed with `&=` or `?=` (a position, a turn or a
 //!   face in the board's frame) is refused: the board's file places the module. It declares
 //!   nothing (no `case { }`, no keepout: a region carried by a part, G2, is not built).

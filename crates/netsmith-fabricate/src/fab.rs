@@ -1312,6 +1312,11 @@ fn fab_board(
         for hang in board.hangs() {
             say(format!("{}: warning: {hang}", built.label()));
         }
+        // A pad other parts wall in where they are placed (issue #1313), said before a route is
+        // tried: the router would report it `walled in` after trying.
+        for walled in board.walled_pads() {
+            say(format!("{}: warning: {walled}", built.label()));
+        }
         // Two parts where an imported KiCad board has them may share courtyard area: that
         // board was made with its own footprints (`Board::imported`).
         for overlap in board.imported_overlaps() {

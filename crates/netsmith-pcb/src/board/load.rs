@@ -112,6 +112,7 @@ impl Board {
                     height: None,
                     standoff: 0.0,
                     height_growth: 0.0,
+                    routing_margin: 0.0,
                     protrusion: None,
                     hand_fitted: true,
                     symbol,
@@ -185,6 +186,12 @@ impl Board {
                     .iter()
                     .find(|g| g.path == part.path)
                     .map_or(0.0, |g| g.growth),
+                routing_margin: design
+                    .features
+                    .routing_margins
+                    .iter()
+                    .find(|m| m.path == part.path)
+                    .map_or(0.0, |m| m.margin),
                 protrusion: design
                     .features
                     .protrusions

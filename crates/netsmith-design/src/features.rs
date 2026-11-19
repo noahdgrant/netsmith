@@ -9,8 +9,8 @@ use netsmith_check::{Domain, GuidelineRule, InstId, InstKind, Member, Model, Sou
 use netsmith_core::{
     CaseModel, Cutout, Features, ImpedanceTarget, Keepout, Label, LengthGroup, Logo, LogoLayer,
     NetPair, Offset, OffsetEnd, Outline, PadConnection, PartHeight, PartHeightGrowth, PartKind,
-    PartSilk, PartStandoff, PinProtrusion, PlaceBound, PlaceField, Placement, Pour, SilkPrint,
-    StepModel,
+    PartRoutingMargin, PartSilk, PartStandoff, PinProtrusion, PlaceBound, PlaceField, Placement,
+    Pour, SilkPrint, StepModel,
 };
 use netsmith_lang::Span;
 use std::collections::{BTreeMap, BTreeSet};
@@ -589,6 +589,61 @@ fn height_growths(model: &Model, errors: &mut Vec<String>) -> Vec<PartHeightGrow
             continue;
         }
         found.push(PartHeightGrowth { path, growth });
+    }
+    found
+}
+
+/// One margin for routing (`.routing_margin`, issue #1313) of the part or board `inst`, in mm:
+/// `None` when it states none. A margin is one value, zero or more; a range or a negative one is
+/// an error, which names the path and the number.
+fn margin_of(model: &Model, inst: InstId, errors: &mut Vec<String>) -> Option<f64> {
+    let path = model.path_of(inst);
+    let path = if path.is_empty() {
+        "routing_margin".to_string()
+    } else {
+        format!("{path}.routing_margin")
+    };
+    match domain(model, inst, "routing_margin")? {
+        Domain::Quantity(q) if q.is_point() || (q.hi() - q.lo()).abs() < 1e-12 => {
+            let margin = mm(q.lo());
+            if margin < 0.0 {
+                errors.push(format!(
+                    "`{path}` is {margin} mm, and a margin for routing is zero or more: it is the room kept round a courtyard for tracks and vias"
+                ));
+                return None;
+            }
+            Some(margin)
+        }
+        Domain::Quantity(q) => {
+            let end = if q.lo().is_finite() { q.lo() } else { q.hi() };
+            errors.push(format!(
+                "`{path}` is {q}, a range, and a margin for routing is one value: say it with `&= {}mm`",
+                mm(end)
+            ));
+            None
+        }
+        _ => None,
+    }
+}
+
+/// The room for routing each part keeps round its courtyard (`.routing_margin`, issue #1313),
+/// by path: the part's own, or the board's for a part that states none. A part whose margin is
+/// 0 is not listed, so a board that states none has an empty list.
+fn routing_margins(model: &Model, errors: &mut Vec<String>) -> Vec<PartRoutingMargin> {
+    let board = margin_of(model, model.root, errors).unwrap_or(0.0);
+    let mut parts: Vec<(String, InstId)> = model
+        .instances()
+        .filter(|(_, i)| i.kind == InstKind::Part)
+        .map(|(id, _)| (model.path_of(id), id))
+        .collect();
+    parts.sort();
+    let mut found = Vec::new();
+    for (path, id) in parts {
+        netsmith_core::job::checkpoint();
+        let margin = margin_of(model, id, errors).unwrap_or(board);
+        if margin > 0.0 {
+            found.push(PartRoutingMargin { path, margin });
+        }
     }
     found
 }
@@ -1458,6 +1513,7 @@ pub(crate) fn features_of(
         heights: heights(model, errors),
         standoffs: standoffs(model, errors),
         height_growths: height_growths(model, errors),
+        routing_margins: routing_margins(model, errors),
         silks: silks(model, errors),
         ..Features::default()
     };
@@ -1840,6 +1896,14 @@ pub(crate) fn expand_banks(
             features
                 .height_growths
                 .push(PartHeightGrowth { path, ..g.clone() });
+        }
+    }
+    let old = std::mem::take(&mut features.routing_margins);
+    for m in old {
+        for path in members(&m.path, banks) {
+            features
+                .routing_margins
+                .push(PartRoutingMargin { path, ..m.clone() });
         }
     }
     let old = std::mem::take(&mut features.silks);

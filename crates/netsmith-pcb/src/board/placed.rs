@@ -126,6 +126,13 @@ pub struct Placed {
     /// ([`Placed::grown_height`]).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub height_growth: f64,
+    /// The room for routing kept round its courtyard, in mm, as the design states it
+    /// (`.routing_margin`, the part's own or the board's, issue #1313). Zero when the design
+    /// states none. The placer and `layout fit` grow the courtyard by it on every side against
+    /// other parts' courtyards ([`Placed::margin_short`]); the edge, keepouts and cutouts are
+    /// measured against the courtyard itself, and `fab`'s placement check does not read it.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub routing_margin: f64,
     /// How far its pins protrude out of the opposite face
     /// (`.pin_protrusion`, ADR 0045 section 15). `None` is unknown: the pads are an obstacle.
     pub protrusion: Option<crate::protrusion::Protrusion>,
@@ -214,6 +221,29 @@ impl Placed {
     /// Whether the footprint has a drilled hole, which takes room on both faces.
     pub fn has_hole(&self) -> bool {
         self.footprint.pads.iter().any(|p| p.drill.is_some())
+    }
+
+    /// How near this part's courtyard is to `other`'s, and the space their routing margins ask
+    /// for between them (`.routing_margin`, issue #1313): `Some((gap, need))`, in mm, when the
+    /// courtyards are nearer than the sum of the two margins. The gap is the larger of the
+    /// spaces along x and along y between the nearest two shapes of the courtyards, which a
+    /// courtyard grown by its margin on every side measures. `None` when they keep the space,
+    /// when neither has a margin, when they are on opposite faces and neither has a hole, and
+    /// when the courtyards overlap (the placement check says that).
+    pub fn margin_short(&self, other: &Placed) -> Option<(f64, f64)> {
+        let need = self.routing_margin + other.routing_margin;
+        if need <= 0.0 || (self.side != other.side && !self.has_hole() && !other.has_hole()) {
+            return None;
+        }
+        let mut gap = f64::INFINITY;
+        for a in self.courtyards() {
+            for b in other.courtyards() {
+                let dx = (a.min.x - b.max.x).max(b.min.x - a.max.x);
+                let dy = (a.min.y - b.max.y).max(b.min.y - a.max.y);
+                gap = gap.min(dx.max(dy));
+            }
+        }
+        (gap > -1e-6 && gap < need - 1e-6).then_some((gap.max(0.0), need))
     }
 
     /// What face `face` of the board the part takes room on, and whether that room is its
