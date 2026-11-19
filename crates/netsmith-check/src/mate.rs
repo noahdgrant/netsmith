@@ -62,6 +62,11 @@
 //! carries power or a signal with no contact that is ground on both boards is an error. A
 //! connector is in one mate, and the two connectors of a mate are on different boards.
 //! Voltage disagreement reads like the existing propagation message, with both connectors named.
+//! A signal line can go through several mates (a carrier with nothing of its own on a net passes
+//! it from one card to another, issue #1426): every mate is read first, the signal contacts join
+//! the nets into lines ([`Lines`]), and an input is refused only when nothing on its whole line
+//! drives it. Two drivers that only a board between them joins are refused once, at the first
+//! mate on the line.
 //!
 //! **A partial mate** (issue #792, the direction ADR 0040 recommends). `.contacts` of a
 //! connector's `.mating` (a `Number`, narrowed to a range `first..last` of its contact numbers)
@@ -181,6 +186,7 @@ impl MateKind {
 }
 
 /// What the board behind one contact has on its net: the role, and the pins that say it.
+#[derive(Clone)]
 struct Side {
     pin: InstId,
     role: Role,
@@ -207,6 +213,9 @@ impl Side {
         !self.outputs.is_empty() || !self.tri_state.is_empty()
     }
 }
+
+/// The window of a mate's contacts and the two sides of each, once they are read.
+type Read = (Window, Vec<(Side, Side)>);
 
 /// One pin path of a port with the contacts of the mate it is on, on both boards.
 type Carried = (String, Vec<usize>);
@@ -249,6 +258,88 @@ enum Meeting {
     Fine,
     /// The two cannot be joined: what is wrong, in words.
     Refused(String),
+}
+
+/// The lines that signal contacts make of the nets of the boards, through every mate of a system
+/// (issue #1426). A net is named by its root in the checker's union-find, which is one root for
+/// each net of each board; a contact that is power or ground on either side joins nothing. A
+/// carrier that only passes a line from one card to another has its net on two mates, so the
+/// card that drives the line and the card that reads it are on one line, though neither mate on
+/// its own has both.
+#[derive(Default)]
+struct Lines {
+    parent: HashMap<usize, usize>,
+    /// What each net has on it, read from the first contact on it: the pins of a net are the
+    /// same whichever contact reads them, but for the connector's own (which drive nothing).
+    nets: BTreeMap<usize, Side>,
+}
+
+impl Lines {
+    fn root(&self, mut x: usize) -> usize {
+        while let Some(&p) = self.parent.get(&x) {
+            if p == x {
+                break;
+            }
+            x = p;
+        }
+        x
+    }
+
+    /// Join the nets of each signal contact of one mate.
+    fn add(&mut self, sides: &[(Side, Side)]) {
+        for (a, b) in sides {
+            if matches!(a.role, Role::Power | Role::Ground)
+                || matches!(b.role, Role::Power | Role::Ground)
+            {
+                continue;
+            }
+            for s in [a, b] {
+                if let Some(r) = s.root {
+                    self.parent.entry(r).or_insert(r);
+                    self.nets.entry(r).or_insert_with(|| s.clone());
+                }
+            }
+            if let (Some(ra), Some(rb)) = (a.root, b.root) {
+                let (ra, rb) = (self.root(ra), self.root(rb));
+                if ra != rb {
+                    self.parent.insert(ra, rb);
+                }
+            }
+        }
+    }
+
+    /// The line a contact is on, as the root of its nets.
+    fn line_of(&self, a: &Side, b: &Side) -> Option<usize> {
+        a.root.or(b.root).map(|r| self.root(r))
+    }
+
+    /// The nets of one line, each once.
+    fn members(&self, line: usize) -> Vec<&Side> {
+        self.nets
+            .iter()
+            .filter(|&(&r, _)| self.root(r) == line)
+            .map(|(_, s)| s)
+            .collect()
+    }
+
+    /// When a contact has an input and nothing on the whole line drives it: how many nets the
+    /// line joins, so the message can say whether it reaches past the two boards of the mate.
+    fn undriven(&self, a: &Side, b: &Side) -> Option<usize> {
+        if a.inputs.is_empty() && b.inputs.is_empty() {
+            return None;
+        }
+        if matches!(a.role, Role::Power | Role::Ground)
+            || matches!(b.role, Role::Power | Role::Ground)
+        {
+            return None;
+        }
+        let Some(line) = self.line_of(a, b) else {
+            return (!a.drives() && !b.drives()).then_some(2);
+        };
+        let members = self.members(line);
+        let driven = a.drives() || b.drives() || members.iter().any(|s| s.drives());
+        (!driven).then_some(members.len().max(2))
+    }
 }
 
 impl Checker<'_> {
@@ -368,13 +459,27 @@ impl Checker<'_> {
     /// already makes.
     pub(crate) fn analyse_mates(&mut self) {
         let decls = self.model.mate_decls.clone();
+        // Every mate's contacts are read first, so that a line a board only passes from one mate
+        // to another (a carrier between two cards) is judged as one line (issue #1426).
+        let mut first = Vec::new();
+        for decl in &decls {
+            first.push(self.read_sides(decl));
+        }
+        let mut lines = Lines::default();
+        for (_, read) in &first {
+            if let Some((_, sides)) = read {
+                lines.add(sides);
+            }
+        }
         let mut mates = Vec::new();
         let mut read = Vec::new();
-        for decl in &decls {
-            let (mate, sides) = self.read_mate(decl);
+        let mut refused_lines = Vec::new();
+        for (decl, (mate, sides)) in decls.iter().zip(first) {
+            let (mate, sides) = self.finish_mate(decl, mate, sides, &lines, &mut refused_lines);
             mates.push(mate);
             read.push(sides);
         }
+        self.refuse_line_conflicts(&decls, &read, &lines, &refused_lines);
         // The current through a mate can be read only when every mate's ports are known: a port
         // joined to several is a hub, and what a mate carries is what the other side draws.
         let mut joins_of: HashMap<InstId, usize> = HashMap::new();
@@ -398,9 +503,9 @@ impl Checker<'_> {
         self.report(decl.source, decl.span, message);
     }
 
-    /// The mate with what is behind its contacts, and the two sides of each contact when the
-    /// mate is sound enough to check the current of.
-    fn read_mate(&mut self, decl: &MateDecl) -> (Mate, Option<Vec<(Side, Side)>>) {
+    /// The mate with the window of its contacts and the two sides of each, when the connectors
+    /// mate and every contact has its pin.
+    fn read_sides(&mut self, decl: &MateDecl) -> (Mate, Option<Read>) {
         let mut mate = Mate {
             a: decl.a,
             b: decl.b,
@@ -440,11 +545,38 @@ impl Checker<'_> {
             };
             sides.push((self.side(pa), self.side(pb)));
         }
+        (mate, Some((window, sides)))
+    }
 
+    /// Judge each contact of a mate read by [`Checker::read_sides`], on its own and on the line
+    /// it is part of through every mate, and derive what a sound mate joins. The two sides of
+    /// each contact come back when the mate is sound enough to check the current of.
+    fn finish_mate(
+        &mut self,
+        decl: &MateDecl,
+        mut mate: Mate,
+        read: Option<Read>,
+        lines: &Lines,
+        refused_lines: &mut Vec<usize>,
+    ) -> (Mate, Option<Vec<(Side, Side)>>) {
+        let Some((window, sides)) = read else {
+            return (mate, None);
+        };
         let mut clean = true;
         for (i, (a, b)) in sides.iter().enumerate() {
-            if let Meeting::Refused(why) = self.meet(a, b) {
+            let why = match self.meet(a, b) {
+                Meeting::Refused(why) => Some(why),
+                Meeting::Fine => lines.undriven(a, b).map(|nets| {
+                    if nets > 2 {
+                        "has an input and nothing that drives it on any board the line reaches through the mates".to_string()
+                    } else {
+                        "has an input and nothing that drives it on either board".to_string()
+                    }
+                }),
+            };
+            if let Some(why) = why {
                 clean = false;
+                refused_lines.extend(lines.line_of(a, b));
                 let message = self.contact_message(decl, window, i + 1, a, b, &why);
                 self.fail(decl, message);
             }
@@ -754,12 +886,82 @@ impl Checker<'_> {
                         "is a push-pull output on one board and an open_drain output on the other: the push-pull output drives the line high while the open_drain pin pulls it low",
                     );
                 }
-                let driven = a.drives() || b.drives();
-                let listens = !a.inputs.is_empty() || !b.inputs.is_empty();
-                if listens && !driven {
-                    return refuse("has an input and nothing that drives it on either board");
-                }
+                // An input with nothing that drives it is judged on the whole line, which may
+                // reach a driver through another mate: `Lines::undriven`.
                 Meeting::Fine
+            }
+        }
+    }
+
+    /// Two drivers that cannot share a line and that only a board between them joins: a card's
+    /// output against another card's output through the carrier (issue #1426). The drivers of
+    /// one net are a board's own net rule, and those of two nets that one contact joins are that
+    /// contact's (`meet`), so only a line of three nets or more is read here, and one whose
+    /// contacts were refused already is not read again. It is reported once, at the first mate
+    /// on the line.
+    fn refuse_line_conflicts(
+        &mut self,
+        decls: &[MateDecl],
+        read: &[Option<Vec<(Side, Side)>>],
+        lines: &Lines,
+        refused_lines: &[usize],
+    ) {
+        let mut seen: Vec<usize> = refused_lines.to_vec();
+        for (decl, sides) in decls.iter().zip(read) {
+            let Some(sides) = sides else { continue };
+            for (a, b) in sides {
+                let Some(line) = lines.line_of(a, b) else {
+                    continue;
+                };
+                if seen.contains(&line) {
+                    continue;
+                }
+                seen.push(line);
+                let members = lines.members(line);
+                if members.len() < 3 {
+                    continue;
+                }
+                let on = |f: fn(&Side) -> bool| members.iter().filter(|s| f(s)).count();
+                let outputs = on(|s| !s.outputs.is_empty());
+                // A driver of one kind on one net and of the other kind on another.
+                let mixed = |x: fn(&Side) -> bool, y: fn(&Side) -> bool| {
+                    members.iter().enumerate().any(|(i, s)| {
+                        x(s) && members.iter().enumerate().any(|(j, t)| i != j && y(t))
+                    })
+                };
+                let why = if outputs >= 2 {
+                    "is an output on two boards, and two outputs cannot share a net"
+                } else if mixed(|s| !s.outputs.is_empty(), |s| !s.tri_state.is_empty()) {
+                    "is an output on one board and a tri_state output on another: a line that several parts drive needs every driver to be tri_state"
+                } else if mixed(Side::pushes, |s| !s.open_drain.is_empty()) {
+                    "is a push-pull output on one board and an open_drain output on another: the push-pull output drives the line high while the open_drain pin pulls it low"
+                } else {
+                    continue;
+                };
+                let nets = members
+                    .iter()
+                    .map(|s| {
+                        let path = self.model.path_of(s.pin);
+                        let board = path.split('.').next().unwrap_or_default().to_string();
+                        format!("`{}` of `{board}`", s.net.as_deref().unwrap_or_default())
+                    })
+                    .collect::<Vec<_>>();
+                let drivers = members
+                    .iter()
+                    .flat_map(|s| {
+                        s.outputs
+                            .iter()
+                            .chain(&s.tri_state)
+                            .chain(&s.open_drain)
+                            .map(|&p| format!("`{}`", self.model.path_of(p)))
+                    })
+                    .collect::<Vec<_>>();
+                let message = format!(
+                    "the mates join the nets {} into one line, which {why}: {}",
+                    and_list(&nets),
+                    drivers.join(", ")
+                );
+                self.fail(decl, message);
             }
         }
     }
@@ -884,7 +1086,11 @@ impl Checker<'_> {
         }
         let turned_ok = (0..n).all(|i| {
             let (a, b) = (&sides[i].0, &sides[n - 1 - i].1);
-            matches!(self.meet(a, b), Meeting::Fine) && self.voltages_meet(a, b)
+            // Turned round, a contact is judged on its two sides alone: the lines through the
+            // other mates are those of the pinout as it is.
+            let undriven =
+                (!a.inputs.is_empty() || !b.inputs.is_empty()) && !a.drives() && !b.drives();
+            matches!(self.meet(a, b), Meeting::Fine) && !undriven && self.voltages_meet(a, b)
         });
         if !turned_ok {
             return None;
@@ -1362,5 +1568,14 @@ impl Checker<'_> {
                 .map(|n| (self.model.path_of(n.board), n.net.clone()))
         });
         self.model.ground_groups = out;
+    }
+}
+
+/// `a`, `a and b`, `a, b and c`.
+fn and_list(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
     }
 }

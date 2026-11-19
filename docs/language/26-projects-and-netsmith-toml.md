@@ -282,6 +282,29 @@ error: B: U1 (Driver, package "SOIC-8"): the footprint `own:Driver` has its pads
 
 A `[[member]]` row's footprint is checked against the member row's own `table`, never the (kind, package) row's. A column that is not one of the three, or a value that is not a count, a length or two sizes, is refused when the file is read, with the row and the line.
 
+**A footprint from a vendor's file.** `netsmith import footprint FILE` writes the land pattern of a vendor's reference board or of a distributor's KiCad export into a footprint library of the project, as a `.kicad_mod` file (issue #1424). FILE is a KiCad board (`.kicad_pcb`), whose part `--ref REF` names, a footprint file (`.kicad_mod`), or a `.pretty` folder that holds one. The footprint keeps what it draws (its pads, courtyard, silkscreen, fabrication layer and 3D model) and loses what the board adds: its place and angle on the board are taken off its pads and texts, a footprint on the bottom face is turned back to the top (_A footprint on the bottom face_, below), and the nets of the pads, the ids, the links to the schematic and the symbol's own fields are left out. The reference becomes `REF**` and the value the footprint's name. `--name LIB:NAME` gives the library and the footprint's name, `--name NAME` the name alone, in the one footprint library `kicad.toml` lists; with no `--name` the footprint keeps the name the file gives it. A library that `kicad.toml` does not list is the folder `libs/LIB.pretty`, and the command prints its `[[library]]` stanza. It also prints a draft row, whose `table` is to be filled from the datasheet's package drawing, never from the footprint itself, since the point of the table is to catch a footprint that does not match the datasheet:
+
+```text
+$ netsmith import footprint vendor/eval.kicad_pcb --ref U3 --name own:Driver
+wrote libs/own.pretty/Driver.kicad_mod (8 pads, turned from the bottom face to the top)
+the file names it `SOIC-8_3.9x4.9mm_P1.27mm`; it is `Driver` here
+
+add to kicad.toml:
+
+[[library]]
+name = "own"
+footprints = "libs/own.pretty"
+
+[[part]]
+kind = "TODO"
+package = "TODO"
+default = true
+footprint = "own:Driver"
+table = "pads=8, pitch=TODO, body=TODO"
+```
+
+A footprint file that is already there is not written over, and a footprint netsmith cannot read back is not written at all. Eagle, Altium and Gerber files are not read.
+
 **A footprint on the bottom face.** Draw every footprint as seen from the top, as KiCad's libraries do. A part on the bottom (`.place.side &= "bottom"`, or `side = "bottom"` in the layout file) is the footprint seen in a mirror: every x of the footprint's frame (pads, drawings, courtyard) negated, then turned by `.place.rotation`, with every layer on the other face (`F.Cu` becomes `B.Cu`, `F.CrtYd` becomes `B.CrtYd`). The board file `fab` writes stores it as KiCad's flip does, which mirrors in y: every y of the footprint's frame negated and the footprint turned by `.place.rotation` plus 180, which puts the pads, the drawings and KiCad's 3D model in the same place. A board file from KiCad stores a footprint on the back the same way, and so does a port's `placements.toml`, which is read from it: to draw a footprint from those figures, negate each y and each pad's own angle (its angle less the footprint's) in the footprint, and put each layer on the other face; the part's `.place.rotation` is the file's rotation less 180. A footprint drawn from them as they stand comes out flipped twice: its pads mirrored and on the wrong face.
 
 **A courtyard of several shapes.** The placer and the placement check keep other parts out of a part's courtyard. Each drawing on the footprint's `F.CrtYd` layer (or `B.CrtYd` where it draws no front one) is a shape, and drawings whose boxes overlap or touch are one shape (the four sides of a rectangle drawn as lines are one). A footprint that draws two courtyard rectangles, one for each strip of sockets of a plug-in module, has two shapes, and another part may stand in the space between them as long as its own courtyard touches neither, as KiCad's own check treats each `F.CrtYd` drawing apart. A shape is the box round its drawing: a courtyard drawn as an L is its box. A footprint that draws one shape, or none, is as it was: its courtyard is one box that takes in every hole that reaches past it and every pad that does with 0.15 mm round it (the pad's reach, `PAD_COURTYARD_MARGIN`; KiCad's courtyard clearance for chip parts smaller than 0603, KLC F5.3). With two shapes or more, a hole or a pad that lies outside every shape is a shape of its own (the pad's box with the same 0.15 mm, the hole's reach), so it is kept clear as copper where it is and does not widen the courtyard over the space between the shapes; a part cannot stand on it. The box round all the shapes is still what the outline, a requirement on the body (where no fabrication outline is drawn), the reference text and the editor's selection use: a part is inside the outline when that box is. The overlap with other parts, a keepout that forbids parts and a cutout are judged shape by shape, and the proofs before placing (_Where a part goes_) leave a part with several shapes to the check after placing. `netsmith dev board3d --format json` lists the shapes in `parts[].courtyards` and the editor's scene in each part's `courtyards`, beside the box.

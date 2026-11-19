@@ -216,7 +216,8 @@
 //! the mate's contact map, each part's levels from its own board's supply, and a fault at the
 //! mate that names both nets, their boards and the contacts (`Run::across_mates`). Not built: the
 //! DC analysis across a mate (it solves each board's nets alone, so an open-drain line's high is
-//! read from the pull-ups of every board it reaches), and the notes of the other passes (a pin
+//! read from the pull-ups of every board it reaches, also for a receiver on the driver's own
+//! board, issue #1436), and the notes of the other passes (a pin
 //! with no levels, a level through a series part) across a mate.
 //!
 //! Accepted as built by the owner, 2026-11-11. Not built: the rule for affine forms (a fraction of
@@ -1952,7 +1953,15 @@ impl Run<'_> {
         };
         let mut pins = Vec::new();
         let mut terminals = Vec::new();
-        for &i in &order {
+        // The pins of every net the line reaches, not only those on the way: a pull-up on a
+        // third board takes the line high as well (issue #1436).
+        let mut all = order.clone();
+        for i in model.mated_nets(from) {
+            if !all.contains(&i) {
+                all.push(i);
+            }
+        }
+        for &i in &all {
             pins.extend(nets[i].pins.iter().copied());
             terminals.extend(nets[i].terminals.iter().copied());
         }
@@ -2144,10 +2153,34 @@ impl Run<'_> {
     /// has the positive pin of a rail (one step, as `net_range` reads a pull). Empty when there
     /// is none, and also when the net has a resistor to its ground as well, which makes it a
     /// divider whose voltage is not the rail's. The reason a rail cannot be read otherwise.
+    ///
+    /// A net of the model that has none of its own takes the pull-ups of the other nets its line
+    /// reaches through the mates of a system (issue #1436): an open-drain driver on a card is
+    /// pulled up on the carrier. Each pull-up is to its own board's rail, so the high is that
+    /// board's supply, and its ground is the driver's only where mated ground contacts join them.
     fn pullups(&self, net: &Net, ground: InstId) -> Result<Vec<PullUp>, String> {
+        let found = self.pullups_on(&net.terminals, ground)?;
+        if !found.is_empty() {
+            return Ok(found);
+        }
+        let Some(index) = self.model.nets().iter().position(|n| std::ptr::eq(n, net)) else {
+            return Ok(found);
+        };
+        let others: Vec<InstId> = self
+            .model
+            .mated_nets(index)
+            .into_iter()
+            .skip(1)
+            .flat_map(|i| self.model.nets()[i].terminals.iter().copied())
+            .collect();
+        self.pullups_on(&others, ground)
+    }
+
+    /// The pull-ups of [`Run::pullups`] on the given terminals.
+    fn pullups_on(&self, terminals: &[InstId], ground: InstId) -> Result<Vec<PullUp>, String> {
         let model = self.model;
         let mut found: Vec<PullUp> = Vec::new();
-        for &t in &net.terminals {
+        for &t in terminals {
             let Some(far) = self.resistor_far_end(t) else {
                 continue;
             };
