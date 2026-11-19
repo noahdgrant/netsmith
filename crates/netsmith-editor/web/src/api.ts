@@ -1679,7 +1679,7 @@ zones: number,
 /**
  * Whether a zone of the plane's or the pour's own net replaces it: the design's copper on
  * the layer is then not drawn. Zones of other nets cut it and leave it drawn round them
- * (issue #1314).
+ * (issue 1314).
  */
 replacedByZones: boolean, };
 
