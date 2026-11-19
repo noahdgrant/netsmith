@@ -692,3 +692,71 @@ module PullDown {
     .line_top ?= .reference.voltage
     .resistor.current == .line_high * .line_top / .resistor.resistance
 }
+
+/// The role of a part on a SIM bus.
+enum SimRole {
+    /// The terminal: supplies `vcc`, drives the reset and the clock. A radio module's SIM port.
+    Host,
+    /// The card: a UICC, an eUICC soldered to the board, or the holder a removable card sits in.
+    Card,
+}
+
+/// The voltage classes a side of a SIM bus supports (ISO/IEC 7816-3, ETSI TS 102 221 clause 6.2),
+/// each a range of the supply `vcc`: class A is 4.5 V to 5.5 V, class B 2.7 V to 3.3 V and class
+/// C 1.62 V to 1.98 V. A side supports one class or several, so each variant is a set of them:
+/// `BC` is a part that works at class B and at class C.
+enum SimClasses {
+    A,
+    B,
+    C,
+    AB,
+    AC,
+    BC,
+    ABC,
+}
+
+/// A SIM bus (ISO/IEC 7816-3, ETSI TS 102 221), the link of a terminal and its UICC (issue 1280):
+/// the supply `vcc`, the reset `rst`, the clock `clk` and the data line `io`. The host drives the
+/// reset and the clock and both ends drive `io`, which is pulled up to `vcc` (the host's pull-up
+/// is inside it on most parts). Both ends call the lines the same, so the host and the card join
+/// with `~`. One host and one card on a bus. A card holder states `SimRole::Card`: its passive
+/// pins agree with the role, and its classes are those of the cards the board takes.
+///
+/// `vcc` is a `Rail`, as `Usb2.vbus` is: the host supplies it, so its `current` is negative at
+/// the host, and the card draws from it. `~` equates its voltage, the supply of the bus.
+///
+/// `classes` is the voltage classes the part supports (`SimClasses`), from its datasheet: the
+/// classes a host can supply, the classes a card can work at (`.sim.classes &= SimClasses::BC`).
+/// Each side states its own, so `~` does not equate it. After the solve the checker holds the
+/// classes of the host and the card of a bus against each other and against the supply: they
+/// must share a class, and `vcc.voltage` must lie within the range of one class that both
+/// support. A host that switches its supply between classes states the range of the class the
+/// board runs it at (the card's lowest that the host supplies: ETSI TS 102 221 activates the card
+/// at the lowest class first). A side that states no classes is listed as not evaluated. It is
+/// `optional` (ADR 0074).
+///
+/// `levels` are the logic levels of `rst`, `clk` and `io`, relative to the supply: a card states
+/// them against its `vcc` (`.sim.levels.reference ~ .sim.vcc`). `frequency` is the clock, as for
+/// `Spi`: the board states the clock it runs (1 MHz to 5 MHz in ETSI TS 102 221) and each part
+/// bounds it by its datasheet.
+interface Sim {
+    .role: SimRole
+    .vcc: Rail
+    .rst: Pin
+    .clk: Pin
+    .io: Pin
+    .classes: SimClasses optional
+    .levels: Levels
+    .frequency: Frequency
+
+    lines SimRole::Host limit 1 {
+        .rst output
+        .clk output
+        .io  bidirectional
+    }
+    lines SimRole::Card limit 1 {
+        .rst input
+        .clk input
+        .io  bidirectional
+    }
+}
