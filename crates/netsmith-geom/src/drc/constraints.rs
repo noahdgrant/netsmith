@@ -704,6 +704,7 @@ pub fn outcome_findings(outcomes: &[Outcome], severity: Severity) -> Vec<Finding
                     net: None,
                 })
                 .collect(),
+            carrying: None,
         })
         .collect()
 }

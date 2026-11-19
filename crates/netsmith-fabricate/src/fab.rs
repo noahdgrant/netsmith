@@ -3462,6 +3462,7 @@ pub const IMPEDANCE_RULE: &str = "impedance target";
 /// design rules check reads a branch (issues #1113 and #1333).
 fn drc_branches(
     net: &str,
+    path: &str,
     pins: &[netsmith_core::PinRef],
     current: f64,
 ) -> Vec<netsmith_geom::DrcBranch> {
@@ -3472,6 +3473,7 @@ fn drc_branches(
         .into_iter()
         .map(|part| netsmith_geom::DrcBranch {
             net: net.to_string(),
+            path: path.to_string(),
             part: part.to_string(),
             pads: pins
                 .iter()
@@ -3518,15 +3520,24 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
         branches: board
             .branch_currents
             .iter()
-            .flat_map(|b| drc_branches(&b.net, &b.pins, b.current))
+            .flat_map(|b| drc_branches(&b.net, &b.path, &b.pins, b.current))
             .collect(),
         // The pins whose current the model knows (issue #1333).
         pin_currents: board
             .pin_currents
             .iter()
-            .flat_map(|l| drc_branches(&l.net, &l.pins, l.current))
+            .flat_map(|l| drc_branches(&l.net, &l.path, &l.pins, l.current))
             .collect(),
         sizing: netsmith_design::guidelines::sizing_of(&board.process),
+        net_currents: board
+            .net_currents
+            .iter()
+            .map(|c| netsmith_geom::DrcNetCurrent {
+                net: c.net.clone(),
+                current: c.current,
+                source: c.source.clone(),
+            })
+            .collect(),
         // The layout file's waivers of findings of a part's own footprint (issue #1196).
         waivers: board.drc_waivers(),
         // The rules the `.kicad_dru` beside the board holds for KiCad too (issue #1185).

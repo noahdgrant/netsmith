@@ -152,6 +152,7 @@ fn with_current(board: &mut Board, inner: Option<f64>) {
         least_width: 0.3,
         inner_least_width: inner,
         vias: 1,
+        source: String::new(),
     });
 }
 

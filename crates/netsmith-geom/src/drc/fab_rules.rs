@@ -25,7 +25,7 @@
 use super::checks::{EPS, Out, pad_copper, ring_width, same_net};
 use super::model::{Kind, Model};
 use super::shape::{Shape, gap, near_pairs};
-use super::{Item, Rule};
+use super::{Carrying, Item, Rule};
 use crate::artwork::{Pad, PadKind};
 use crate::geom::Bounds;
 
@@ -183,25 +183,58 @@ fn via_current(out: &mut Out<'_>) {
             k += 1;
         }
         // A cluster that only feeds branches needs what they draw (issue #1113).
-        let feeds = |sizing: &crate::ipc2221::TrackSizing| {
-            let items: Vec<usize> = cluster.iter().map(|&v| m.via_item[v]).collect();
-            super::branches::current_through(m, net, &items)
-                .is_some_and(|i| sizing.vias(i) <= cluster.len())
+        let items: Vec<usize> = cluster.iter().map(|&v| m.via_item[v]).collect();
+        let through = m.extras.sizing.as_ref().and_then(|sizing| {
+            super::branches::current_through(m, net, &items).map(|t| (sizing, t))
+        });
+        let (current, from, needed) = match &through {
+            Some((sizing, t)) => (t.current, branch_source(t), sizing.vias(t.current)),
+            None => (
+                net_current(m, net).map_or(0.0, |c| c.current),
+                net_source(m, net),
+                needs,
+            ),
         };
-        if cluster.len() < needs && !m.extras.sizing.as_ref().is_some_and(feeds) {
-            let item = m.items[m.via_item[start]].item.clone();
-            out.push(
-                Rule::ViaCurrent,
-                format!(
-                    "{} stands with {} via(s) of its net side by side; its net's current needs {needs}",
-                    item.what,
-                    cluster.len()
-                ),
-                vias[start].at,
-                None,
-                vec![item],
-            );
+        if cluster.len() >= needed {
+            continue;
         }
+        let item = m.items[m.via_item[start]].item.clone();
+        let sizing = m.extras.sizing.as_ref();
+        let held = match (current > 0.0, sizing) {
+            (true, Some(s)) => format!(
+                "{}, and a via of the process (a {:.2} mm hole plated {:.0} \u{3bc}m) carries {} at a {} K rise (IPC-2221, the inner-layer constant), so {needed} side by side are needed",
+                carries(through.is_some(), net, current, &from),
+                s.via_drill,
+                s.via_plating * 1000.0,
+                amps(crate::ipc2221::via_current(
+                    s.via_drill,
+                    s.via_plating,
+                    s.rise
+                )),
+                s.rise
+            ),
+            _ => format!("its net's current needs {needed}"),
+        };
+        out.push_carrying(
+            Rule::ViaCurrent,
+            format!(
+                "{} stands with {} via(s) of its net side by side; {held}",
+                item.what,
+                cluster.len()
+            ),
+            vias[start].at,
+            None,
+            vec![item],
+            Some(Carrying {
+                current: (current > 0.0).then_some(current),
+                current_from: from,
+                vias: Some(cluster.len()),
+                needed_vias: Some(needed),
+                rise: sizing.map(|s| s.rise),
+                tolerance: sizing.map(|s| s.tolerance),
+                ..Carrying::default()
+            }),
+        );
     }
 }
 
@@ -236,23 +269,121 @@ fn track_current(out: &mut Out<'_>) {
             continue;
         }
         // A track that only feeds branches needs what they draw (issue #1113).
-        let feeds = |sizing: &crate::ipc2221::TrackSizing| {
-            super::branches::current_through(m, net, &[k])
-                .is_some_and(|i| t.width >= sizing.least_width_on(i, inner) - EPS / 100.0)
+        let through = x
+            .sizing
+            .as_ref()
+            .and_then(|sizing| super::branches::current_through(m, net, &[k]).map(|t| (sizing, t)));
+        let (current, from, needed) = match &through {
+            Some((sizing, t)) => (
+                Some(t.current),
+                branch_source(t),
+                sizing.least_width_on(t.current, inner),
+            ),
+            None => (
+                net_current(m, net).map(|c| c.current),
+                net_source(m, net),
+                least,
+            ),
         };
-        if x.sizing.as_ref().is_some_and(feeds) {
+        if t.width >= needed - EPS / 100.0 {
             continue;
         }
-        out.push(
+        let sizing = x.sizing.as_ref();
+        // The copper the width was sized for: the inner layers' where the track is on one and
+        // the board has inner signal copper.
+        let (copper, layer_word) = match sizing {
+            Some(s) => match s.inner_copper.filter(|_| inner) {
+                Some(c) => (Some(c), "inner"),
+                None => (Some(s.copper), "outer"),
+            },
+            None => (None, "outer"),
+        };
+        let basis = match (sizing, copper) {
+            (Some(s), Some(c)) => format!(
+                "IPC-2221, {:.0} \u{3bc}m {layer_word} copper, a {} K temperature rise, the fabricator's {:.0}% width tolerance",
+                c * 1000.0,
+                s.rise,
+                s.tolerance * 100.0
+            ),
+            _ => "IPC-2221 at the fabricator's width tolerance".to_string(),
+        };
+        let held = match current {
+            Some(i) => format!("{}, which needs", carries(through.is_some(), net, i, &from)),
+            None => "its net's current needs".to_string(),
+        };
+        out.push_carrying(
             Rule::TrackCurrent,
             format!(
-                "{} is {:.4} mm wide; its net's current needs {:.4} mm (IPC-2221 at the fabricator's width tolerance), and only within {:.2} mm of the pads of a part on the net may a track be narrower",
-                c.item.what, t.width, least, x.neck_reach
+                "{} is {:.4} mm wide; {held} {needed:.4} mm ({basis}), and only within {:.2} mm of the pads of a part on the net may a track be narrower: widen it to {needed:.2} mm or more, or lower the current",
+                c.item.what, t.width, x.neck_reach
             ),
             c.item.at,
             Some(&t.layer),
             vec![c.item.clone()],
+            Some(Carrying {
+                current,
+                current_from: from,
+                width: Some(t.width),
+                needed_width: Some(needed),
+                copper,
+                rise: sizing.map(|s| s.rise),
+                tolerance: sizing.map(|s| s.tolerance),
+                ..Carrying::default()
+            }),
         );
+    }
+}
+
+/// What the net carries (issue 1373): its worst-case current and where it comes from, where the
+/// design stage said.
+fn net_current<'a>(m: &Model<'a>, net: &str) -> Option<&'a super::NetCurrent> {
+    m.extras.net_currents.iter().find(|c| c.net == net)
+}
+
+/// Where the net's current comes from, in words; empty when it is not known.
+fn net_source(m: &Model<'_>, net: &str) -> String {
+    net_current(m, net)
+        .map(|c| c.source.clone())
+        .unwrap_or_default()
+}
+
+/// Where the current of copper that only feeds branches comes from: the pins that state it.
+fn branch_source(t: &super::branches::Through) -> String {
+    let pins: Vec<String> = t.pins.iter().map(|p| format!("`{p}`")).collect();
+    format!(
+        "the most the pins {} carry, by their `.current` or what the model finds through them",
+        pins.join(", ")
+    )
+}
+
+/// The start of the sentence that says what current the copper is held to: its net's, or, for
+/// copper that only feeds the branches of the net, theirs.
+fn carries(branch: bool, net: &str, current: f64, from: &str) -> String {
+    let because = if from.is_empty() {
+        String::new()
+    } else {
+        format!(" ({from})")
+    };
+    if branch {
+        format!(
+            "it only feeds branches of net `{net}` and carries at most {}{because}",
+            amps(current)
+        )
+    } else {
+        format!("its net `{net}` carries {}{because}", amps(current))
+    }
+}
+
+/// A current in a message: `500 mA`, `2.5 A`.
+fn amps(x: f64) -> String {
+    let text = |v: f64| {
+        let t = format!("{v:.3}");
+        t.trim_end_matches('0').trim_end_matches('.').to_string()
+    };
+    if x < 1.0 {
+        format!("{} mA", text(x * 1e3))
+    } else {
+        format!("{} A", text(x))
     }
 }
 
