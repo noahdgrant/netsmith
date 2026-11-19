@@ -65,7 +65,7 @@
 //! the files as they were.
 //!
 //! **What is never touched.** A net the routes file locks, a locked shape, an arc, the shapes of
-//! a record whose pads moved (they are not on the board), zones, and the kept copper of a net
+//! a record whose pads moved (kept on the board as they are, issue #1328), zones, and the kept copper of a net
 //! whose pads moved since it was routed (`fab --reuse-routes` routes it again).
 //!
 //! **The kept copper.** With `reuse_routes`, the router's copper kept in `.netsmith/routes/` is
@@ -590,9 +590,6 @@ impl<'a> Work<'a> {
                 rebuilt.insert(net.clone());
             }
             for t in &record.tracks {
-                if !(current || t.lock) {
-                    continue;
-                }
                 let n = copper.wires.len();
                 copper.wires.push(Wire {
                     owner: Owner::RoutesFile,
@@ -606,9 +603,6 @@ impl<'a> Work<'a> {
                 });
             }
             for v in &record.vias {
-                if !(current || v.lock) {
-                    continue;
-                }
                 copper.holes.push(Hole {
                     owner: Owner::RoutesFile,
                     via: v.on(board, net),

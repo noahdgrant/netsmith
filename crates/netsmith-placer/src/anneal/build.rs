@@ -164,6 +164,10 @@ impl<'a> Engine<'a> {
             if plane {
                 weight *= 0.15;
             }
+            // An RF net is placed first and short (issue #1274).
+            if p.rf_nets.contains(&net.name) {
+                weight = RF_WEIGHT;
+            }
             let id = nets.len();
             for &(i, _) in &pads {
                 if !nets_of[i].contains(&id) {
@@ -255,6 +259,7 @@ impl<'a> Engine<'a> {
                     cap: pair.cap,
                     nets: [side(&pair.nets[0]), side(&pair.nets[1])],
                     beyond: None,
+                    within: None,
                 }
             })
             .collect();
@@ -293,6 +298,7 @@ impl<'a> Engine<'a> {
                 cap: pair.other,
                 nets: [(other, to), (Vec::new(), Vec::new())],
                 beyond,
+                within: None,
             });
         }
         // The parts a `loop` finds: each pulled to both pins, as a decoupling capacitor is to
@@ -313,6 +319,27 @@ impl<'a> Engine<'a> {
                 cap: pair.other,
                 nets: [a, b],
                 beyond: None,
+                within: None,
+            });
+        }
+        // The parts a `within` requirement of the physical file holds near a pin (issue
+        // #1274): pulled as a decoupling capacitor is, and held within the distance as a wall.
+        for near in p.pin_distances {
+            let (Some(&part), Some(&to)) =
+                (index.get(near.part.as_str()), index.get(near.to.as_str()))
+            else {
+                continue;
+            };
+            let other = pads_of(part, &near.pads);
+            let to = pins_of(to, &near.to_pads);
+            if other.is_empty() || to.is_empty() {
+                continue;
+            }
+            decs.push(Dec {
+                cap: part,
+                nets: [(other, to), (Vec::new(), Vec::new())],
+                beyond: None,
+                within: Some(near.within),
             });
         }
         let mut decs_of: Vec<Vec<usize>> = vec![Vec::new(); n];

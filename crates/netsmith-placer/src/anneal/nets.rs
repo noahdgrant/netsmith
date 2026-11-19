@@ -139,6 +139,7 @@ impl<'a> Engine<'a> {
     pub(super) fn dec_cost(&self, d: usize) -> f64 {
         let dec = &self.decs[d];
         let mut total = 0.0;
+        let mut hard = 0.0;
         for (cap_pads, pins) in &dec.nets {
             let mut nearest = f64::MAX;
             for &c in cap_pads {
@@ -152,9 +153,12 @@ impl<'a> Engine<'a> {
                     Some(beyond) => (beyond - nearest).max(0.0),
                     None => nearest,
                 };
+                if let Some(within) = dec.within {
+                    hard += (nearest - within).max(0.0);
+                }
             }
         }
-        W_DECOUPLING * total
+        W_DECOUPLING * total + W_HARD * hard
     }
 
     /// The box round the centres of a module instance's parts.

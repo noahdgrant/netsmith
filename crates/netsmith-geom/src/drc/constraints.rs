@@ -121,6 +121,38 @@ pub struct Relation {
     pub hi: f64,
 }
 
+/// A part within a distance of a pin (issue #1274, `.ant within 8mm of .radio.ant` in the
+/// physical file): the nearest of the pads `pads` of `part` is at most `within` from the nearest
+/// of the pads `to_pads` of `to`, centre to centre.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PinDistanceRule {
+    /// The statement: `ant within 8 mm of radio.ant`.
+    pub id: String,
+    /// Where the design states it; empty if not known.
+    pub source: String,
+    /// The part that must be near, by designator, and the pads of it measured.
+    pub part: String,
+    pub pads: Vec<String>,
+    /// The part whose pin it must be near, by designator, and the pin's pads.
+    pub to: String,
+    pub to_pads: Vec<String>,
+    /// The most the distance may be, in mm.
+    pub within: f64,
+}
+
+/// A net routed on one copper layer with no via (issue #1274): a net the physical file says
+/// `route one_layer` of, or an RF net (a stated impedance of one track) that says no
+/// `route any_layer`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OneLayerRule {
+    /// What the design calls it: `radio.ant route one_layer`, or for an RF net by default
+    /// `rf_line route one_layer`, after the member that states the impedance.
+    pub id: String,
+    /// Where the design states it; empty if not known (an RF net's default).
+    pub source: String,
+    pub net: String,
+}
+
 /// Every requirement of a board, and how a violation counts.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Constraints {
@@ -128,6 +160,10 @@ pub struct Constraints {
     pub sides: Vec<SideRule>,
     /// Requirements on two parts together.
     pub relations: Vec<Relation>,
+    /// Parts within a distance of a pin (issue #1274).
+    pub distances: Vec<PinDistanceRule>,
+    /// Nets routed on one layer with no via (issue #1274).
+    pub one_layer: Vec<OneLayerRule>,
     /// What a violation is: an error stops `fab`, a warning is listed (`constraints = "warn"`).
     pub severity: Severity,
 }
@@ -341,6 +377,12 @@ impl Constraints {
         }
         for r in &self.relations {
             out.push(relation_of(art, r));
+        }
+        for d in &self.distances {
+            out.push(distance_of(art, d));
+        }
+        for l in &self.one_layer {
+            out.push(one_layer_of(art, l));
         }
         out
     }
@@ -629,6 +671,162 @@ fn relation_of(art: &Artwork, r: &Relation) -> Outcome {
             }
         ),
         measure: relation_measure(r),
+        face: None,
+    }
+}
+
+fn named(id: &str, source: &str) -> String {
+    if source.is_empty() {
+        id.to_string()
+    } else {
+        format!("{id} ({source})")
+    }
+}
+
+fn distance_of(art: &Artwork, d: &PinDistanceRule) -> Outcome {
+    let name = named(&d.id, &d.source);
+    let centres = |part: &str, pads: &[String]| -> Vec<Pt> {
+        art.pads
+            .iter()
+            .filter(|p| p.part == part && pads.contains(&p.number))
+            .map(|p| p.at)
+            .collect()
+    };
+    let (from, to) = (centres(&d.part, &d.pads), centres(&d.to, &d.to_pads));
+    let nearest = from
+        .iter()
+        .flat_map(|a| to.iter().map(move |b| (a.dist(*b), *a, *b)))
+        .min_by(|x, y| x.0.total_cmp(&y.0));
+    let parts = vec![d.part.clone(), d.to.clone()];
+    let Some((value, a, b)) = nearest else {
+        let missing: Vec<&str> = [(&d.part, &from), (&d.to, &to)]
+            .into_iter()
+            .filter(|(_, c)| c.is_empty())
+            .map(|(p, _)| p.as_str())
+            .collect();
+        return Outcome {
+            id: d.id.clone(),
+            source: d.source.clone(),
+            satisfied: false,
+            parts,
+            at: Pt::default(),
+            measured: None,
+            allowed: (0.0, d.within),
+            over: f64::INFINITY,
+            margin: 0.0,
+            body: String::new(),
+            message: format!(
+                "constraint {name} is violated: {} is not on the board",
+                missing.join(" and ")
+            ),
+            measure: "distance",
+            face: None,
+        };
+    };
+    let over = (value - d.within).max(0.0);
+    let satisfied = over <= super::checks::EPS;
+    let pads = |p: &[String]| {
+        if p.len() == 1 {
+            format!("pad {}", p[0])
+        } else {
+            format!("pads {}", p.join(", "))
+        }
+    };
+    Outcome {
+        id: d.id.clone(),
+        source: d.source.clone(),
+        satisfied,
+        parts,
+        at: Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0),
+        measured: Some(value),
+        allowed: (0.0, d.within),
+        over,
+        margin: if satisfied { d.within - value } else { 0.0 },
+        body: "pads".to_string(),
+        message: format!(
+            "constraint {name} is {}: the nearest of {} of {} is {} mm from {} of {}, centre to centre, and it allows {}{}",
+            if satisfied { "satisfied" } else { "violated" },
+            pads(&d.pads),
+            d.part,
+            n(value),
+            pads(&d.to_pads),
+            d.to,
+            range_text(f64::NEG_INFINITY, d.within, "mm"),
+            if satisfied {
+                String::new()
+            } else {
+                format!(" ({} mm over): move {} nearer {}", n(over), d.part, d.to)
+            }
+        ),
+        measure: "distance",
+        face: None,
+    }
+}
+
+fn one_layer_of(art: &Artwork, l: &OneLayerRule) -> Outcome {
+    let name = named(&l.id, &l.source);
+    let on = |net: &Option<String>| net.as_deref() == Some(l.net.as_str());
+    let mut layers: Vec<&str> = art
+        .tracks
+        .iter()
+        .filter(|t| on(&t.net))
+        .map(|t| t.layer.as_str())
+        .collect();
+    layers.sort_unstable();
+    layers.dedup();
+    let vias: Vec<Pt> = art
+        .vias
+        .iter()
+        .filter(|v| on(&v.net))
+        .map(|v| v.at)
+        .collect();
+    let satisfied = vias.is_empty() && layers.len() <= 1;
+    let at = vias.first().copied().unwrap_or_else(|| {
+        art.tracks
+            .iter()
+            .find(|t| on(&t.net))
+            .map_or(Pt::default(), |t| match &t.shape {
+                crate::artwork::TrackShape::Line(a, _) => *a,
+                crate::artwork::TrackShape::Arc(arc) => arc.start,
+            })
+    });
+    let copper = match layers.as_slice() {
+        [] => "no track".to_string(),
+        [one] => format!("its tracks on {one}"),
+        many => format!("tracks on {}", many.join(", ")),
+    };
+    let via_text = match vias.len() {
+        0 => "no via".to_string(),
+        1 => "1 via".to_string(),
+        k => format!("{k} vias"),
+    };
+    Outcome {
+        id: l.id.clone(),
+        source: l.source.clone(),
+        satisfied,
+        parts: Vec::new(),
+        at,
+        measured: Some(vias.len() as f64),
+        allowed: (0.0, 0.0),
+        over: if satisfied {
+            0.0
+        } else {
+            vias.len().max(1) as f64
+        },
+        margin: 0.0,
+        body: String::new(),
+        message: if satisfied {
+            format!(
+                "constraint {name} is satisfied: the net `{}` has {copper} and {via_text}",
+                l.net
+            )
+        } else {
+            format!(
+                "constraint {name} is violated: the net `{}` has {copper} and {via_text}, and it is routed on one layer with no via: route it again on one layer (`netsmith routes delete --net {}` drops hand-drawn copper), or say `route any_layer` of it in the physical file",
+                l.net, l.net
+            )
+        },
+        measure: "one_layer",
         face: None,
     }
 }

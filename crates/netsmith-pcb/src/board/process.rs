@@ -64,6 +64,16 @@ impl Board {
         })
     }
 
+    /// How a pour joins the pad `number` of the part `refdes`, as its pin states it (issue
+    /// #1276), if it does.
+    pub fn pad_pour(&self, refdes: &str, number: &str) -> Option<&netsmith_core::PadPour> {
+        self.pad_pours.iter().find(|p| {
+            p.pins
+                .iter()
+                .any(|pin| pin.refdes == refdes && pin.pin == number)
+        })
+    }
+
     /// The branch a line carries the current of (issue #1113): a line with one end at a pad of a
     /// branch and the other at a pad of no branch, or a pad's line to its plane. The ratsnest
     /// joins a branch's pad to the rest of its net by one such line
@@ -166,6 +176,20 @@ impl Board {
             (false, Some(least)) => least.max(self.rules.min_track_width),
             _ => self.least_width(net),
         }
+    }
+
+    /// The RF nets (issue #1274): the nets of a stated impedance of one track
+    /// ([`netsmith_core::rf_nets`]). The placer and the router take them first and keep them
+    /// short.
+    pub fn rf_nets(&self) -> Vec<String> {
+        netsmith_core::rf_nets(&self.impedance_targets)
+    }
+
+    /// The nets routed on one copper layer with no via (issue #1274): the RF nets, unless the
+    /// physical file says `route any_layer`, and the nets it says `route one_layer` of
+    /// ([`netsmith_core::one_layer_nets`]).
+    pub fn one_layer_nets(&self) -> Vec<String> {
+        netsmith_core::one_layer_nets(&self.impedance_targets, &self.net_routes)
     }
 
     /// Whether a net keeps its tracks to the outer layers: its current is known and its width

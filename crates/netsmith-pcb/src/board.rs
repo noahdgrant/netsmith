@@ -225,6 +225,10 @@ pub struct Board {
     /// shorter nets of each towards its longest ([`Board::length_groups`] has the routed ones).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub length_groups: Vec<netsmith_core::LengthGroup>,
+    /// How the physical file says nets are routed (issue #1274): with the RF nets of
+    /// `impedance_targets`, what [`Board::one_layer_nets`] routes on one layer with no via.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub net_routes: Vec<netsmith_core::NetRoute>,
     /// The width that gives each net of `impedance_targets` its impedance on each layer a track
     /// may be on (issue #1025), solved once from the build-up: what [`Board::track_width_on`]
     /// draws the net at.
@@ -242,6 +246,10 @@ pub struct Board {
     /// not read them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pin_currents: Vec<netsmith_core::PinCurrent>,
+    /// The pins that state how a pour joins their pads (issue #1276): the board file writes it
+    /// on each of their pads ([`Board::pad_pour`]), and the fill reads it there.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pad_pours: Vec<netsmith_core::PadPour>,
     /// The parts the person said may hang over the board edge, by reference designator
     /// (ADR 0045, "Built: overhang"). [`Board::check_placement`] does not report the
     /// courtyard of such a part past an edge it may hang over.

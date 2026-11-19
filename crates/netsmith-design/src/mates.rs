@@ -7,6 +7,10 @@
 //! with a seat that nothing states has no mated height, never a default and never one from a
 //! part's `.height` (a maximum, not a seat). The system scene reads these to place the boards
 //! against each other; nothing here needs geometry.
+//!
+//! A connector's body is its seat, one surface with one tolerance, unless it states
+//! `.mating.body_height` (issue 1324, decided by the owner): the system scene then keeps the
+//! stated body, at its most, out of the other board at the least mated height.
 
 use netsmith_check::{Domain, InstId, Member, Model, System};
 use netsmith_solve::Solution;
@@ -25,6 +29,10 @@ pub struct SystemMate {
     /// Each connector's seat, in mm: `(least, most)`. `None` when nothing states it.
     pub a_seat: Option<(f64, f64)>,
     pub b_seat: Option<(f64, f64)>,
+    /// Each connector's `.mating.body_height` in mm, `(least, most)`: `None` when nothing
+    /// states it, and the body is then the seat.
+    pub a_body: Option<(f64, f64)>,
+    pub b_body: Option<(f64, f64)>,
     /// The contacts the mate joins when a `.mating.contacts` subset says only some are:
     /// `(first of a, first of b, how many)`, pad `first_a + i` meeting pad `first_b + i`.
     /// `None` when it joins every contact, pad N to pad N.
@@ -90,6 +98,8 @@ pub fn system_mates(system: &System, solution: &Solution) -> Result<Vec<SystemMa
             b_board: board(mate.b),
             a_seat: seat(model, mate.a, &mut errors),
             b_seat: seat(model, mate.b, &mut errors),
+            a_body: length(model, mate.a, "body_height", &mut errors),
+            b_body: length(model, mate.b, "body_height", &mut errors),
             window: (mate.a_first != 1 || mate.b_first != 1 || !mates_every_contact(model, mate))
                 .then_some((mate.a_first, mate.b_first, mate.contacts.len())),
             keyed: keyed(model, mate.a) || keyed(model, mate.b),
@@ -133,8 +143,14 @@ fn keyed(model: &Model, part: InstId) -> bool {
 
 /// A connector's `.mating.seat` in mm, if something states it.
 fn seat(model: &Model, part: InstId, errors: &mut Vec<String>) -> Option<(f64, f64)> {
+    length(model, part, "seat", errors)
+}
+
+/// A length of a connector's `.mating` (`seat`, `body_height`) in mm, if something states it.
+/// One below the board's face is an error.
+fn length(model: &Model, part: InstId, name: &str, errors: &mut Vec<String>) -> Option<(f64, f64)> {
     let mating = model.mating_of(part)?;
-    let Member::Field(field) = model.member(mating, "seat")? else {
+    let Member::Field(field) = model.member(mating, name)? else {
         return None;
     };
     let Domain::Quantity(q) = &model.field(field).domain else {
@@ -145,8 +161,13 @@ fn seat(model: &Model, part: InstId, errors: &mut Vec<String>) -> Option<(f64, f
     }
     let (lo, hi) = (round(q.lo() * 1e3), round(q.hi() * 1e3));
     if lo < 0.0 {
+        let what = if name == "seat" {
+            "a connector's partner does not rest below its board's face"
+        } else {
+            "a connector's body does not reach below its board's face"
+        };
         errors.push(format!(
-            "`{}.mating.seat` is {q}, and a connector's partner does not rest below its board's face",
+            "`{}.mating.{name}` is {q}, and {what}",
             model.path_of(part)
         ));
         return None;
