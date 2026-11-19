@@ -3,7 +3,7 @@
 //! comparison and parity checks of a ported board (`compare`, `parity`, `reference_table`, the
 //! `port*` files), the import of a KiCad board's copper into a routes file (`routes_import`) and
 //! the comparison of two boards' copper (`copper`), the DXF command (`dxf`), the symbol gallery
-//! and the part draft. The commands themselves are `netsmith-cli`; the tests that start the
+//! the part draft, and a footprint rebuilt from Gerber files (`gerber_footprint`). The commands themselves are `netsmith-cli`; the tests that start the
 //! binary are there, and the tests of this code, with the board tests that use it, are here.
 
 pub mod case_import;
@@ -12,6 +12,7 @@ pub mod copper;
 pub mod dxf;
 pub mod findings;
 pub mod footprint_diff;
+pub mod gerber_footprint;
 pub mod init;
 pub mod parity;
 pub mod part_draft;

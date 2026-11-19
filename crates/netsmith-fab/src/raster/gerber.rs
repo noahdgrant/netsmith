@@ -64,6 +64,64 @@ struct Aperture {
     /// What a flash draws, around the aperture's origin, in millimetres.
     prims: Vec<Prim>,
     brush: Brush,
+    shape: ApertureShape,
+    /// The X2 attribute `%TA.AperFunction` in force when it was defined (`SMDPad,CuDef`).
+    function: Option<String>,
+}
+
+/// The shape of an aperture as the file defines it, in millimetres: what a flash of it is,
+/// for a reader that wants the pad and not its picture (`netsmith import footprint` from Gerber
+/// files, issue 1432).
+#[derive(Clone, Debug, PartialEq)]
+pub enum ApertureShape {
+    Circle {
+        diameter: f64,
+    },
+    Rect {
+        width: f64,
+        height: f64,
+    },
+    Obround {
+        width: f64,
+        height: f64,
+    },
+    /// A regular polygon: the diameter of its circumscribed circle, its vertices and its turn
+    /// in degrees.
+    Polygon {
+        diameter: f64,
+        sides: u32,
+        rotation: f64,
+    },
+    /// An aperture macro (`%AM`): its name and its parameters as written (file units: the
+    /// unit's millimetres are [`Flash::unit`]).
+    Macro {
+        name: String,
+        params: Vec<f64>,
+    },
+}
+
+/// One flash (`D03`) as the file gives it: where, with which aperture, under which attributes.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Flash {
+    /// The flash's point, in millimetres, in the file's frame (y up).
+    pub at: (f64, f64),
+    pub shape: ApertureShape,
+    /// The `%LR` turn in force, in degrees counter-clockwise, and whether `%LM` mirrored it.
+    pub rotation: f64,
+    pub mirrored: bool,
+    /// Dark (`%LPD`) or clear.
+    pub dark: bool,
+    /// Millimetres per file unit (for [`ApertureShape::Macro`]'s parameters).
+    pub unit: f64,
+    /// The points of what it draws, relative to [`Self::at`], with the turn and mirror applied:
+    /// a macro's shape, which its parameters alone do not say.
+    pub outline: Vec<(f64, f64)>,
+    /// The X2 `%TA.AperFunction` of its aperture (`SMDPad,CuDef`, `ComponentPad`, `ViaPad`).
+    pub function: Option<String>,
+    /// The X2 object attributes in force: `%TO.C` (the part's reference designator) and
+    /// `%TO.P` (reference designator and pin number).
+    pub component: Option<String>,
+    pub pin: Option<(String, String)>,
 }
 
 struct Region {
@@ -92,6 +150,8 @@ pub struct Facts {
     /// its arcs, a flash's point, a region's contour), without the apertures' sizes: the
     /// outline as drawn is this box, not its stroke's outer edge. `None` when nothing is drawn.
     pub centre: Option<((f64, f64), (f64, f64))>,
+    /// Every flash, in the order drawn ([`Flash`]).
+    pub flashed: Vec<Flash>,
 }
 
 impl Facts {
@@ -122,6 +182,10 @@ struct Parser<'a> {
     transform: Transform,
     region: Option<Region>,
     done: bool,
+    /// The X2 attributes in force: `%TA.AperFunction`, `%TO.C` and `%TO.P`.
+    aper_function: Option<String>,
+    component: Option<String>,
+    pin: Option<(String, String)>,
 }
 
 fn parse_f64(t: &str, line: usize) -> Result<f64, RasterError> {
@@ -182,6 +246,9 @@ impl<'a> Parser<'a> {
             transform: Transform::IDENTITY,
             region: None,
             done: false,
+            aper_function: None,
+            component: None,
+            pin: None,
         }
     }
 
@@ -261,7 +328,11 @@ impl<'a> Parser<'a> {
                 self.file_attribute(&first);
                 Ok(())
             }
-            "TA" | "TO" | "TD" | "LN" => Ok(()),
+            "TA" | "TO" | "TD" => {
+                self.attribute(&first);
+                Ok(())
+            }
+            "LN" => Ok(()),
             "FS" => self.set_format(&first, first_line),
             "MO" => match &first[2..] {
                 "MM" => {
@@ -350,6 +421,32 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Keeps the aperture and object attributes a flash records (`TA.AperFunction`, `TO.C`,
+    /// `TO.P`); `TD` deletes one, or all with no name.
+    fn attribute(&mut self, cmd: &str) {
+        let (code, rest) = cmd.split_at(2);
+        let (name, value) = rest.split_once(',').unwrap_or((rest, ""));
+        match (code, name) {
+            ("TA", ".AperFunction") => self.aper_function = Some(value.to_string()),
+            ("TO", ".C") => self.component = Some(value.to_string()),
+            ("TO", ".P") => {
+                let mut v = value.splitn(3, ',');
+                let reference = v.next().unwrap_or("").to_string();
+                let number = v.next().unwrap_or("").to_string();
+                self.pin = Some((reference, number));
+            }
+            ("TD", "") => {
+                self.aper_function = None;
+                self.component = None;
+                self.pin = None;
+            }
+            ("TD", ".AperFunction") => self.aper_function = None,
+            ("TD", ".C") => self.component = None,
+            ("TD", ".P") => self.pin = None,
+            _ => {}
+        }
+    }
+
     fn set_format(&mut self, cmd: &str, line: usize) -> Result<(), RasterError> {
         let bad = || RasterError::new(line, format!("unsupported format `%{cmd}`"));
         let b = cmd.as_bytes();
@@ -425,9 +522,16 @@ impl<'a> Parser<'a> {
                 Aperture {
                     prims,
                     brush: Brush::None,
+                    shape: ApertureShape::Macro {
+                        name: name.to_string(),
+                        params: values.clone(),
+                    },
+                    function: None,
                 }
             }
         };
+        let mut ap = ap;
+        ap.function = self.aper_function.clone();
         if self.apertures.insert(n, ap).is_none() {
             self.facts.apertures += 1;
         }
@@ -453,6 +557,24 @@ impl<'a> Parser<'a> {
             } else {
                 Ok(())
             }
+        };
+        let shape = match kind {
+            "C" => ApertureShape::Circle {
+                diameter: at(0).unwrap_or(0.0) * unit,
+            },
+            "R" => ApertureShape::Rect {
+                width: at(0).unwrap_or(0.0) * unit,
+                height: at(1).unwrap_or(0.0) * unit,
+            },
+            "O" => ApertureShape::Obround {
+                width: at(0).unwrap_or(0.0) * unit,
+                height: at(1).unwrap_or(0.0) * unit,
+            },
+            _ => ApertureShape::Polygon {
+                diameter: at(0).unwrap_or(0.0) * unit,
+                sides: at(1).unwrap_or(0.0) as u32,
+                rotation: at(2).unwrap_or(0.0),
+            },
         };
         let (outline, brush, hole_at): (Vec<Pt>, Brush, usize) = match kind {
             "C" => {
@@ -523,7 +645,12 @@ impl<'a> Parser<'a> {
                 on: false,
             });
         }
-        Ok(Aperture { prims, brush })
+        Ok(Aperture {
+            prims,
+            brush,
+            shape,
+            function: None,
+        })
     }
 
     // ---- data blocks ----
@@ -701,7 +828,26 @@ impl<'a> Parser<'a> {
                 rule: p.rule,
                 on: p.on,
             })
+            .collect::<Vec<Prim>>();
+        let outline = prims
+            .iter()
+            .filter(|p| p.on)
+            .flat_map(|p| p.polys.iter().flatten())
+            .map(|q| (q.0 - at.0, q.1 - at.1))
             .collect();
+        let record = Flash {
+            at,
+            shape: ap.shape.clone(),
+            rotation: t.rot,
+            mirrored: t.mirror_x || t.mirror_y,
+            dark: self.dark,
+            unit: self.unit.unwrap_or(1.0),
+            outline,
+            function: ap.function.clone(),
+            component: self.component.clone(),
+            pin: self.pin.clone(),
+        };
+        self.facts.flashed.push(record);
         self.facts.flashes += 1;
         self.facts.clear += usize::from(!self.dark);
         self.facts.saw(at);

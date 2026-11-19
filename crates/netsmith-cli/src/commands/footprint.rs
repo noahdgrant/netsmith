@@ -14,13 +14,13 @@ const LIBRARY_DIR: &str = "libs";
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "FILE is a KiCad board (`.kicad_pcb`), whose part `--ref` names, a footprint file (`.kicad_mod`), or a `.pretty` folder that holds one. The footprint is written as it is drawn, its pads, courtyard, silkscreen, fabrication layer and 3D model, without what the board adds: its place and angle on the board are taken off, a footprint on the bottom face is turned back to the top, and the nets, ids, links to the schematic and the symbol's own fields are left out. The reference becomes `REF**` and the value the footprint's name.\n\nThe project is the one that holds the current folder. `--name LIB:NAME` names the library and the footprint; `--name NAME` the footprint alone, in the one footprint library that `kicad.toml` lists. With no `--name` the footprint keeps the name the file gives it. A library that `kicad.toml` does not list is the folder `libs/LIB.pretty`, and the command prints the `[[library]]` stanza to add. It prints a draft `[[part]]` row too, whose `table` is to be filled from the datasheet's package drawing (a `TODO` does not parse, so the row does not build until it is). A footprint file that is already there is not written over: delete it first. A file that cannot be read, a part the board does not have, or no project is exit 2."
+    after_long_help = "FILE is a KiCad board (`.kicad_pcb`), whose part `--ref` names, a footprint file (`.kicad_mod`), or a `.pretty` folder that holds one. The footprint is written as it is drawn, its pads, courtyard, silkscreen, fabrication layer and 3D model, without what the board adds: its place and angle on the board are taken off, a footprint on the bottom face is turned back to the top, and the nets, ids, links to the schematic and the symbol's own fields are left out. The reference becomes `REF**` and the value the footprint's name.\n\nThe project is the one that holds the current folder. `--name LIB:NAME` names the library and the footprint; `--name NAME` the footprint alone, in the one footprint library that `kicad.toml` lists. With no `--name` the footprint keeps the name the file gives it. A library that `kicad.toml` does not list is the folder `libs/LIB.pretty`, and the command prints the `[[library]]` stanza to add. It prints a draft `[[part]]` row too, whose `table` is to be filled from the datasheet's package drawing (a `TODO` does not parse, so the row does not build until it is). A footprint file that is already there is not written over: delete it first. A file that cannot be read, a part the board does not have, or no project is exit 2.\n\nFILE can also be a folder or a zip of a reference board's Gerber, drill and placement files, the last resort when a vendor gives no KiCad file: the part `--ref` names is found in the placement file, and its pads are rebuilt from the flashes of its face's copper (each aperture's shape and size, at its place), with the drill file's holes, the mask and paste files' openings, and the numbers the copper's X2 attributes give. The placement's centre and angle are taken off, and a part on the bottom is mirrored to be seen from the top. With no `--name`, the placement file's package column names it. A Gerber file is a picture, not a footprint: the command prints what it rebuilt from the files and what it guessed (pad numbers with no X2 attributes, which flashes are the part's, the courtyard, the angle an assembler's file may have offset), to check against the datasheet."
 )]
 pub struct Args {
-    /// The board, footprint file or `.pretty` folder to take the footprint from.
+    /// The board, footprint file, `.pretty` folder, or Gerber folder or zip to take the footprint from.
     #[arg(value_name = "FILE")]
     pub file: PathBuf,
-    /// The reference designator of the part whose footprint a board file gives.
+    /// The reference designator of the part whose footprint a board or Gerber files give.
     #[arg(long = "ref", value_name = "REF")]
     pub reference: Option<String>,
     /// The library and the footprint's name, `LIB:NAME`, or the name alone.
@@ -41,24 +41,61 @@ pub fn run(args: Args) -> ExitCode {
     }
 }
 
+/// Where the footprint comes from.
+enum Input {
+    /// A KiCad board or footprint file, and whether it is a board.
+    Kicad(PathBuf, bool),
+    /// The files of a reference board's Gerber package (a folder or a zip), by name.
+    Gerber(Vec<(String, Vec<u8>)>),
+}
+
+/// A footprint taken out, before it is checked and written.
+struct Taken {
+    name: String,
+    source_name: Option<String>,
+    text: String,
+    from_bottom: bool,
+    /// From Gerber files: what was rebuilt and what was guessed.
+    gerber: Option<(Vec<String>, Vec<String>)>,
+}
+
 /// What the command did, for stdout.
 fn import(args: &Args) -> Result<String, String> {
-    let (file, board) = source_file(&args.file)?;
-    let source = match (board, args.reference.as_deref()) {
-        (true, Some(reference)) => FootprintSource::Board { reference },
-        (true, None) => {
-            return Err(format!(
-                "{}: a board holds many footprints: name the part with `--ref REF`",
-                file.display()
-            ));
+    let input = source(&args.file)?;
+    let shown = args.file.display().to_string();
+    let kicad = match &input {
+        Input::Kicad(file, board) => Some((file.clone(), *board)),
+        Input::Gerber(_) => {
+            if args.reference.is_none() {
+                return Err(format!(
+                    "{shown}: Gerber files hold a whole board: name the part with `--ref REF`"
+                ));
+            }
+            None
         }
-        (false, Some(_)) => {
-            return Err(format!(
-                "{}: `--ref` names a part of a board, and a footprint file has one footprint",
-                file.display()
-            ));
-        }
-        (false, None) => FootprintSource::File,
+    };
+    let file_shown = kicad
+        .as_ref()
+        .map_or(shown.clone(), |(f, _)| f.display().to_string());
+    let source = match kicad
+        .as_ref()
+        .map(|(_, board)| (*board, args.reference.as_deref()))
+    {
+        None => FootprintSource::File,
+        Some(pair) => match pair {
+            (true, Some(reference)) => FootprintSource::Board { reference },
+            (true, None) => {
+                return Err(format!(
+                    "{file_shown}: a board holds many footprints: name the part with `--ref REF`"
+                ));
+            }
+            (false, Some(_)) => {
+                return Err(format!(
+                    "{file_shown}: `--ref` names a part of a board, and a footprint file has one footprint"
+                ));
+            }
+            (false, None) => FootprintSource::File,
+        },
     };
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
     let project = netsmith_fabricate::project::Project::find(&cwd)?.ok_or_else(|| {
@@ -77,10 +114,33 @@ fn import(args: &Args) -> Result<String, String> {
         None => (None, None),
     };
     let target = library_folder(&mapping, &root, library.as_deref())?;
-    let shown = file.display().to_string();
-    let text = fs::read_to_string(&file).map_err(|e| format!("{shown}: {e}"))?;
-    let imported = netsmith_kicad::import_footprint(&text, source, name.as_deref())
-        .map_err(|e| format!("{shown}: {e}"))?;
+    let imported = match input {
+        Input::Kicad(file, _) => {
+            let shown = file.display().to_string();
+            let text = fs::read_to_string(&file).map_err(|e| format!("{shown}: {e}"))?;
+            let i = netsmith_kicad::import_footprint(&text, source, name.as_deref())
+                .map_err(|e| format!("{shown}: {e}"))?;
+            Taken {
+                name: i.name,
+                source_name: Some(i.source_name),
+                text: i.text,
+                from_bottom: i.from_bottom,
+                gerber: None,
+            }
+        }
+        Input::Gerber(files) => {
+            let reference = args.reference.as_deref().unwrap_or_default();
+            let i = netsmith_tools::gerber_footprint::import(files, reference, name.as_deref())
+                .map_err(|e| format!("{shown}: {e}"))?;
+            Taken {
+                name: i.name,
+                source_name: None,
+                text: i.text,
+                from_bottom: i.from_bottom,
+                gerber: Some((i.rebuilt, i.guessed)),
+            }
+        }
+    };
     if imported.name.contains(['/', '\\', ':']) || imported.name.starts_with('.') {
         return Err(format!(
             "`{}` is not a footprint name: a name is a file's name, with no `/`, `\\` or `:`; give another with `--name`",
@@ -101,7 +161,8 @@ fn import(args: &Args) -> Result<String, String> {
     fs::create_dir_all(&target.folder).map_err(|e| format!("{}: {e}", target.folder.display()))?;
     fs::write(&path, &imported.text).map_err(|e| format!("{}: {e}", path.display()))?;
 
-    let pads = read.pad_numbers().len();
+    // Counted as the table counts them: an unnumbered pad (a hole, a paste opening) is none.
+    let pads = read.pad_numbers().iter().filter(|n| !n.is_empty()).count();
     let mut out = format!(
         "wrote {} ({pads} pad{}",
         relative(&root, &path),
@@ -111,11 +172,23 @@ fn import(args: &Args) -> Result<String, String> {
         out.push_str(", turned from the bottom face to the top");
     }
     out.push_str(")\n");
-    if imported.name != imported.source_name {
+    if let Some(source_name) = &imported.source_name
+        && *source_name != imported.name
+    {
         out.push_str(&format!(
-            "the file names it `{}`; it is `{}` here\n",
-            imported.source_name, imported.name
+            "the file names it `{source_name}`; it is `{}` here\n",
+            imported.name
         ));
+    }
+    if let Some((rebuilt, guessed)) = &imported.gerber {
+        out.push_str("\nrebuilt from the Gerber files (a last resort: a Gerber file is a picture, not a footprint):\n");
+        for line in rebuilt {
+            out.push_str(&format!("  - {line}\n"));
+        }
+        out.push_str("\nguessed, to check against the datasheet:\n");
+        for line in guessed {
+            out.push_str(&format!("  - {line}\n"));
+        }
     }
     out.push_str("\nadd to kicad.toml:\n\n");
     if !target.listed {
@@ -125,14 +198,45 @@ fn import(args: &Args) -> Result<String, String> {
             relative(&root, &target.folder)
         ));
     }
+    // A footprint rebuilt from Gerber files draws no body on its fabrication layer, so its table
+    // has no `body` to measure.
+    let body = if imported.gerber.is_some() {
+        ""
+    } else {
+        ", body=TODO"
+    };
     out.push_str(&format!(
-        "[[part]]\nkind = \"TODO\"\npackage = \"TODO\"\ndefault = true\nfootprint = \"{}:{}\"\ntable = \"pads={pads}, pitch=TODO, body=TODO\"\n",
+        "[[part]]\nkind = \"TODO\"\npackage = \"TODO\"\ndefault = true\nfootprint = \"{}:{}\"\ntable = \"pads={pads}, pitch=TODO{body}\"\n",
         target.name, imported.name
     ));
     out.push_str(
         "\nfill `table` from the datasheet's package drawing, not from the footprint: `build` measures the footprint against it\n",
     );
     Ok(out)
+}
+
+/// What to read: a KiCad file (a `.pretty` folder gives its one footprint), or a Gerber package
+/// (a folder or a zip of Gerber, drill and placement files).
+fn source(given: &Path) -> Result<Input, String> {
+    let is_zip = given
+        .extension()
+        .is_some_and(|x| x.eq_ignore_ascii_case("zip"));
+    let has_mod = given.is_dir()
+        && fs::read_dir(given)
+            .map_err(|e| format!("{}: {e}", given.display()))?
+            .filter_map(|e| e.ok())
+            .any(|e| e.path().extension().is_some_and(|x| x == "kicad_mod"));
+    if is_zip || (given.is_dir() && !has_mod) {
+        let files = netsmith_tools::gerber_footprint::gather(given)?;
+        if netsmith_tools::gerber_footprint::has_gerber(&files) {
+            return Ok(Input::Gerber(files));
+        }
+        return Err(format!(
+            "{}: no .kicad_mod and no Gerber file in it",
+            given.display()
+        ));
+    }
+    source_file(given).map(|(file, board)| Input::Kicad(file, board))
 }
 
 /// The file to read and whether it is a board: a `.pretty` folder gives its one footprint.
@@ -165,7 +269,7 @@ fn source_file(given: &Path) -> Result<(PathBuf, bool), String> {
         Some("kicad_pcb") => Ok((given.to_path_buf(), true)),
         Some("kicad_mod") => Ok((given.to_path_buf(), false)),
         _ => Err(format!(
-            "{}: not a KiCad board (`.kicad_pcb`), footprint (`.kicad_mod`) or `.pretty` folder",
+            "{}: not a KiCad board (`.kicad_pcb`), footprint (`.kicad_mod`), `.pretty` folder, or a folder or zip of Gerber files",
             given.display()
         )),
     }
