@@ -568,6 +568,7 @@ fn run_fab(
                             routes: b.routes.clone(),
                             pair_skews: Vec::new(),
                             group_spreads: Vec::new(),
+                            long_paths: Vec::new(),
                         });
                         continue;
                     }

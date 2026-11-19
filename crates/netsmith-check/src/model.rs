@@ -1836,6 +1836,10 @@ impl Model {
     /// source (`AssemblyMode::Hand`), anything else as its domain prints.
     pub fn show_value(&self, field: FieldId, domain: &Domain) -> String {
         match (self.field(field).kind, domain) {
+            // `true` and `false` are written bare (issue #1273).
+            (FieldKind::Enum(e), Domain::Text(variant)) if self.enum_info(e).name == "Bool" => {
+                variant.clone()
+            }
             (FieldKind::Enum(e), Domain::Text(variant)) => {
                 format!("{}::{variant}", self.enum_info(e).name)
             }

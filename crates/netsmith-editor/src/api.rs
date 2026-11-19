@@ -1202,6 +1202,11 @@ pub struct Bom {
     pub lines: Vec<BomLine>,
     /// Soldered by hand.
     pub hand: Vec<BomLine>,
+    /// Not fitted (`.fitted &= false`, issue 1273): a footprint on the board whose value is
+    /// chosen on the bench, a `DNP` line of `bom.csv` with no number to buy. The value is the
+    /// line's comment there (`DNP (tune 1pF..10pF)`).
+    #[serde(default)]
+    pub not_fitted: Vec<BomLine>,
     /// The sum of the lines that have a price.
     pub total_usd: Option<f64>,
     /// Where the prices and stock come from, and how old they are.

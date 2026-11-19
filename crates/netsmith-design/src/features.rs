@@ -17,12 +17,12 @@ use netsmith_lang::Span;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// A length in mm, rounded to a nanometre of the millimetre so `0.1mm` is `0.1`.
-fn mm(metres: f64) -> f64 {
+pub(crate) fn mm(metres: f64) -> f64 {
     (metres * 1e12).round() / 1e9
 }
 
 /// What a field of an instance holds, if it has the field.
-fn domain(model: &Model, inst: InstId, name: &str) -> Option<Domain> {
+pub(crate) fn domain(model: &Model, inst: InstId, name: &str) -> Option<Domain> {
     match model.member(inst, name)? {
         Member::Field(f) => Some(model.field(f).domain.clone()),
         _ => None,
@@ -30,7 +30,12 @@ fn domain(model: &Model, inst: InstId, name: &str) -> Option<Domain> {
 }
 
 /// A length that must be one value: `None` if the design did not state it.
-fn exact(model: &Model, inst: InstId, name: &str, errors: &mut Vec<String>) -> Option<f64> {
+pub(crate) fn exact(
+    model: &Model,
+    inst: InstId,
+    name: &str,
+    errors: &mut Vec<String>,
+) -> Option<f64> {
     match domain(model, inst, name)? {
         Domain::Quantity(q) if q.is_point() || (q.hi() - q.lo()).abs() < 1e-12 => Some(mm(q.lo())),
         Domain::Quantity(q) => {
@@ -201,7 +206,12 @@ fn by_net_of_rails(model: &Model, field: &str) -> Vec<(String, f64)> {
 
 /// A quantity that must be one value, in its base unit (ohms for a resistance, metres for a
 /// length): `None` if the design did not state it.
-fn point(model: &Model, inst: InstId, name: &str, errors: &mut Vec<String>) -> Option<f64> {
+pub(crate) fn point(
+    model: &Model,
+    inst: InstId,
+    name: &str,
+    errors: &mut Vec<String>,
+) -> Option<f64> {
     match domain(model, inst, name)? {
         Domain::Quantity(q) if q.is_point() || (q.hi() - q.lo()).abs() < 1e-12 => Some(q.lo()),
         Domain::Quantity(q) => {
@@ -1588,11 +1598,16 @@ pub(crate) fn features_of(
     least: Least,
     errors: &mut Vec<String>,
 ) -> Features {
+    let rails = rail_nets(model);
+    let track_paths = crate::track_path::track_paths(model, &rails, errors);
+    let mut impedance_targets = impedance_targets(model, errors);
+    crate::track_path::path_targets(&track_paths, &mut impedance_targets, errors);
     let mut features = Features {
         net_widths: net_widths(model),
         net_clearances: net_clearances(model),
-        rail_nets: rail_nets(model),
-        impedance_targets: impedance_targets(model, errors),
+        rail_nets: rails,
+        impedance_targets,
+        track_paths,
         pairs: stated_pairs(model, errors),
         length_groups: length_groups(model, errors),
         pours: pours(model, nets, least, errors),

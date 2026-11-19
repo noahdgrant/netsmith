@@ -17,7 +17,7 @@ _Avoid_: Alias (an alias is a pin joined to a pin that has a row), handle (ADR 0
 
 **Assembly**:
 Who puts a part on the board: the field `.assembly` of every part, of the type `AssemblyMode`: `AssemblyMode::Fab` (the board house places it), `AssemblyMode::Hand` (soldered by hand), `AssemblyMode::None` (not fitted at all: a hole, a fiducial) or `AssemblyMode::Consigned` (the board house places it, and the owner ships the part to it). It decides the BOM, the placement file and the notes of `fab` (ADR 0024, provisional). A project may set a default for it in `netsmith.toml` (`assembly = "fab"`, ADR 0028; the manifest and the catalog files write the lower-case word). A board may narrow a part inside a module (`.a.j.assembly &= AssemblyMode::Hand`, ADR 0116); a module that offers one choice for all its parts declares a value of the type `AssemblyMode` (`.assembly_mode`) and ties its parts to it with `.j.assembly &= .assembly_mode`; the board's narrowing of that value is the design's own statement for those parts (ADR 0042, ADR 0054).
-_Avoid_: Population, fitting, DNP
+_Avoid_: Population, fitting, DNP (a passive that is not fitted until it is tuned is _Not fitted_)
 
 **Assumed window**:
 The range taken for the input of a regulator while the parts in series with it are picked, before the network can be solved: from the largest of what the part and the design need of it to the highest supply that reaches it. It is an assumption about a valid design, it is never kept (the picks are made again without it, from the one row each was given), and what the pass after the picks writes is the circuit's (ADR 0076, amendment 7).
