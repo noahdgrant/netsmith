@@ -6,6 +6,12 @@
 //! and last pin; each net between series parts takes the target; the budget is checked over the
 //! chain; a corner style and a ground-via fencing distance are fields."
 //!
+//! **Decided by the owner** (issue #1405): "Add a `.frequency: Frequency` field to `TrackPath`:
+//! the loss is the per-length loss of the build-up at that frequency (a loss tangent recorded
+//! per build-up, each with a recorded source) times the chain length, against `.budget_loss`."
+//! The design stage reads the frequency; the loss is worked out on the routed board
+//! (`netsmith_pcb::Board::track_path_loss`).
+//!
 //! **The chain** (the implementer's, within the owner's words). The nets of a path are found
 //! from the net of `.first` to the net of `.last` over the parts in series: a part with exactly
 //! two pins on nets, one on each of two nets. A rail's net (`Features::rail_nets`, a supply or a
@@ -132,6 +138,25 @@ pub(crate) fn track_paths(
         }
         let budget_length = top(model, id, &path, "budget_length", errors).map(mm);
         let budget_loss = top(model, id, &path, "budget_loss", errors);
+        let frequency = match domain(model, id, "frequency") {
+            Some(Domain::Quantity(q)) if q.is_point() || (q.hi() - q.lo()).abs() < 1e-12 => {
+                if q.lo() > 0.0 {
+                    Some(q.lo())
+                } else {
+                    errors.push(format!(
+                        "`{path}.frequency` is {q}: the loss is worked out at a frequency above 0, say it with `&= 2.4GHz`"
+                    ));
+                    None
+                }
+            }
+            Some(Domain::Quantity(q)) => {
+                errors.push(format!(
+                    "`{path}.frequency` is {q}, a range, and the loss is worked out at one frequency: say the highest the line carries, `&= 2.4GHz`"
+                ));
+                None
+            }
+            _ => None,
+        };
         let corner = match domain(model, id, "corner") {
             Some(Domain::Text(v)) => TrackCorner::of_variant(&v).unwrap_or_default(),
             _ => TrackCorner::Rounded,
@@ -179,6 +204,7 @@ pub(crate) fn track_paths(
             ohms,
             budget_length,
             budget_loss,
+            frequency,
             corner,
             fence,
         });

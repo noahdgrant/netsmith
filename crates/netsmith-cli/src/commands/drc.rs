@@ -113,9 +113,12 @@ pub fn run(args: Args) -> ExitCode {
             for group in &made.checked.spread {
                 println!("{}: note: {}", made.board, group.over_line());
             }
-            // The track paths longer than their budget (issue #1275): notes too.
+            // The track paths longer than their length budget (issue #1275) or losing more
+            // than their loss budget (issue #1405): notes too.
             for path in &made.checked.long_paths {
-                println!("{}: note: {}", made.board, path.over_line());
+                for line in path.over_lines() {
+                    println!("{}: note: {line}", made.board);
+                }
             }
             let counts = made.checked.report.counts();
             let warnings = made.checked.report.warnings().count();

@@ -236,7 +236,8 @@ enum TrackCorner {
 /// one layer, issue #1274), and `fab-notes.txt` gives its width on each layer. The budget is
 /// over the whole chain: the tracks of all its nets together are no longer than the top of
 /// `.budget_length`, and `netsmith board nets`, `board drc` and `fab-notes.txt` say each path's
-/// length against it.
+/// length against it. Given `.frequency` and a build-up with a loss tangent, they also say the
+/// loss of its tracks against `.budget_loss` (issue #1405).
 ///
 /// Why an interface joined with `~` to the first and the last pin: the owner's decision on
 /// issue #1275. A module carries the path out through its interface, as a `TrackImpedance`.
@@ -250,10 +251,16 @@ interface TrackPath {
     /// The most the tracks of the whole chain may be long together, as a range whose top is
     /// the limit (`.rf.budget_length &= 0mm..25mm`). Unset, the length is said and not judged.
     .budget_length: Length optional
-    /// The most the line may lose, in decibels (`.rf.budget_loss &= 0..0.5`). netsmith has no
-    /// model of a track's loss yet (it needs the frequency and the loss tangent of the build-up),
-    /// so `fab-notes.txt` lists the budget as not measured (issue #1405).
+    /// The most the tracks of the whole chain may lose, in decibels, as a range whose top is the
+    /// limit (`.rf.budget_loss &= 0..0.5`). The loss is worked out at `.frequency` from the
+    /// build-up's loss tangent (`.stackup.loss_tangent`) and judged as the length is; the
+    /// insertion loss of the parts in series is not counted. Unset, the loss is said and not
+    /// judged.
     .budget_loss: Number optional
+    /// The frequency the line carries (`.rf.frequency &= 2.4GHz`), as one value: the tracks'
+    /// loss is worked out at it, the copper's skin-effect loss and the dielectric's (issue
+    /// #1405). Unset, no loss is worked out.
+    .frequency: Frequency optional
     /// How the path's tracks turn at a bend.
     .corner: TrackCorner
     .corner ?= TrackCorner::Rounded

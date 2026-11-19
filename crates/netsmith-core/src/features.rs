@@ -188,10 +188,15 @@ pub struct TrackPath {
     /// `.budget_length`; none when the design states none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub budget_length: Option<f64>,
-    /// The most the line may lose, in dB: the top of `.budget_loss`; none when unstated. It is
-    /// listed, not measured (netsmith has no loss model of a track).
+    /// The most the line may lose, in dB: the top of `.budget_loss`; none when unstated. The
+    /// tracks' loss is worked out at [`TrackPath::frequency`] (issue #1405,
+    /// `netsmith_pcb::impedance::loss_per_mm`) and judged against it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub budget_loss: Option<f64>,
+    /// The frequency the line carries, in Hz, which its loss is worked out at: `.frequency`;
+    /// none when unstated, and then no loss is worked out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frequency: Option<f64>,
     /// How the tracks turn.
     #[serde(default, skip_serializing_if = "is_rounded")]
     pub corner: TrackCorner,

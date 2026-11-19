@@ -157,11 +157,12 @@ fn a_track_path_sums_its_nets_lengths_against_its_budget() {
         ohms: 50.0,
         budget_length: budget,
         budget_loss: None,
+        frequency: None,
         corner: netsmith_core::TrackCorner::Rounded,
         fence: None,
     };
     let art = Artwork::parse(&board().pcb()).unwrap();
-    let t = NetTable::of(&art, &[], &[]).with_paths(&[path(Some(20.0))]);
+    let t = NetTable::of(&art, &[], &[]).with_paths(&[path(Some(20.0))], &[]);
     let p = &t.paths[0];
     assert!(close(p.length, 25.0) && p.over, "{p:?}");
     assert_eq!(p.nets.len(), 3);
@@ -175,9 +176,53 @@ fn a_track_path_sums_its_nets_lengths_against_its_budget() {
         "{}",
         t.text()
     );
-    let t = NetTable::of(&art, &[], &[]).with_paths(&[path(Some(30.0))]);
+    let t = NetTable::of(&art, &[], &[]).with_paths(&[path(Some(30.0))], &[]);
     assert!(!t.paths[0].over && t.over_lines().is_empty());
     // No budget: the length is said and not judged.
-    let t = NetTable::of(&art, &[], &[]).with_paths(&[path(None)]);
+    let t = NetTable::of(&art, &[], &[]).with_paths(&[path(None)], &[]);
     assert!(!t.paths[0].over && t.text().contains("25.00 mm in all\n"));
+}
+
+#[test]
+fn a_track_paths_loss_is_judged_against_its_loss_budget() {
+    let path = netsmith_core::TrackPath {
+        path: "rf".into(),
+        nets: vec!["P".into(), "S".into()],
+        parts: vec!["c1".into()],
+        ohms: 50.0,
+        budget_length: None,
+        budget_loss: Some(0.5),
+        frequency: Some(2.4e9),
+        corner: netsmith_core::TrackCorner::Rounded,
+        fence: None,
+    };
+    let art = Artwork::parse(&board().pcb()).unwrap();
+    let paths = [path.clone()];
+    let t = NetTable::of(&art, &[], &[]).with_paths(&paths, &[Some(Ok(0.75))]);
+    let p = &t.paths[0];
+    assert!(p.loss_over && !p.over && p.loss == Some(0.75), "{p:?}");
+    assert_eq!(
+        t.over_lines(),
+        ["track path: rf: 0.750 dB of track loss at 2.4 GHz, over its loss budget of 0.5 dB; shorten the path or widen its tracks on a thicker dielectric"]
+    );
+    assert!(
+        t.text().contains("; 0.750 dB at 2.4 GHz (over the 0.5 dB budget)"),
+        "{}",
+        t.text()
+    );
+    let t = NetTable::of(&art, &[], &[]).with_paths(&paths, &[Some(Ok(0.25))]);
+    assert!(!t.paths[0].loss_over && t.over_lines().is_empty());
+    assert!(t.text().contains("(within the 0.5 dB budget)"), "{}", t.text());
+    // No figure: the reason is said, and nothing is judged.
+    let why = "build-up X records no loss tangent".to_string();
+    let t = NetTable::of(&art, &[], &[]).with_paths(&paths, &[Some(Err(why))]);
+    assert!(!t.paths[0].loss_over && t.over_lines().is_empty());
+    assert!(
+        t.text().contains("; no loss at 2.4 GHz: build-up X records no loss tangent"),
+        "{}",
+        t.text()
+    );
+    // No frequency: the budget asks for one.
+    let t = NetTable::of(&art, &[], &[]).with_paths(&paths, &[None]);
+    assert!(t.text().contains("its 0.5 dB loss budget needs a `.frequency`"), "{}", t.text());
 }

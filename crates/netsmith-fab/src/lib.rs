@@ -179,6 +179,10 @@ pub struct Options {
     /// The design's lines of one impedance through parts in series (issue #1275): [`check`]
     /// notes each path whose tracks are longer than its length budget.
     pub track_paths: Vec<netsmith_core::TrackPath>,
+    /// The loss of each of [`Options::track_paths`], in the same order, as the board works it
+    /// out (`netsmith_pcb::Board::track_path_loss`, issue #1405): [`check`] notes each path
+    /// whose loss is over its loss budget.
+    pub track_path_losses: Vec<Option<Result<f64, String>>>,
     /// Package even though some parts have no LCSC part number. Those parts are left out
     /// of the BOM and placement file and listed in the notes as unassembled.
     pub allow_missing_lcsc: bool,
@@ -663,8 +667,8 @@ pub struct Checked {
     /// The groups of [`Options::length_groups`] whose spread is over their tolerance (issue
     /// #1234): notes, not findings.
     pub spread: Vec<GroupRow>,
-    /// The paths of [`Options::track_paths`] longer than their length budget (issue #1275):
-    /// notes, not findings.
+    /// The paths of [`Options::track_paths`] longer than their length budget (issue #1275) or
+    /// losing more than their loss budget (issue #1405): notes, not findings.
     pub long_paths: Vec<PathRow>,
 }
 
@@ -675,8 +679,8 @@ pub fn check(src: &str, project: Option<&str>, options: &Options) -> Result<Chec
     let mut report = drc_check(src, project, &options.drc)?;
     let art = Artwork::parse(src)?;
     let routes = NetRoutes::of(&art);
-    let table =
-        NetTable::of(&art, &options.pairs, &options.length_groups).with_paths(&options.track_paths);
+    let table = NetTable::of(&art, &options.pairs, &options.length_groups)
+        .with_paths(&options.track_paths, &options.track_path_losses);
     let skewed = table.over().cloned().collect();
     let spread = table.groups_over().cloned().collect();
     let long_paths = table.paths_over().cloned().collect();

@@ -63,3 +63,7 @@ _Avoid_: Image, picture, artwork, bitmap (a raster file is not read)
 **Long net**:
 A net no zone pours whose routed track is more than twice its _Straight length_ and at least 2 mm over it (`netsmith_fab::NetRoutes`, issue #1194). `fab-notes.txt`, `board drc` and the _Route scorecard_ list each with its length, the straight length, the ratio and its vias (`routed long:`), beside the nets with the most vias (`most vias:`). A note and never a check: a net that must be short states its limit in a part's `layout` block (`route NAME .pin length LENGTH`), which `fab` checks.
 _Avoid_: Detour (the scorecard's ratio of all routed nets), meander (a length a diff pair adds on purpose), long track
+
+**Loss tangent**:
+The dissipation factor (Df) of a build-up's dielectric, `.stackup.loss_tangent` (issue #1405), which the _Track loss_ is worked out with. A process states it only from a source that gives it for that build-up's laminate; no build-up of the standard library does, and a board whose laminate's datasheet gives one states it.
+_Avoid_: Df (say loss tangent)

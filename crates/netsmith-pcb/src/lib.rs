@@ -127,14 +127,15 @@ pub use footprint::{
 };
 pub use generate::{
     HOLE_DRILL, generate as generated_footprint, generate_spec as generate_footprint_spec,
-    names as generated_footprint_names,
+    names as generated_footprint_names, own_files as own_footprint_files,
 };
 pub use geometry::{Pt, Rect, TURNED_STRIP, TURNED_STRIPS, is_right_angle};
 pub use impedance::{
-    Line as ImpedanceLine, OutOfRange, Pair as ImpedancePair, TEST_TOLERANCE, TargetLayer,
-    TargetWidth, TrackDielectric, coated_coupled_microstrip, coated_microstrip, coupled_microstrip,
-    coupled_stripline, impedance_at, impedance_notes, microstrip, stripline, target_layers,
-    target_notes, target_widths, width_for,
+    COPPER_CONDUCTIVITY, Line as ImpedanceLine, OutOfRange, Pair as ImpedancePair, TEST_TOLERANCE,
+    TargetLayer, TargetWidth, TrackDielectric, TrackLoss, coated_coupled_microstrip,
+    coated_microstrip, coupled_microstrip, coupled_stripline, hertz, impedance_at, impedance_notes,
+    loss_per_mm, microstrip, microstrip_loss, skin_depth, stripline, stripline_loss,
+    surface_resistance, target_layers, target_notes, target_widths, width_for,
 };
 pub use keep_apart::{ApartBroken, PartApart};
 pub use kelvin::{

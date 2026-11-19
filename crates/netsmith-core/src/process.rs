@@ -275,6 +275,13 @@ pub struct InnerLayers {
     /// nominal thickness (issue #1007).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outer_copper: Option<f64>,
+    /// The loss tangent (dissipation factor, Df) of the build-up's dielectric, every layer of
+    /// it, as `.stackup.loss_tangent` states it (issue #1405): the loss of a `TrackPath` is
+    /// worked out with it at the path's `.frequency`. `None` when nothing states one, which no
+    /// build-up of the standard library does (no source gives one per build-up), and then no
+    /// loss is worked out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loss_tangent: Option<f64>,
 }
 
 /// A solder mask over a microstrip, as a fabricator's impedance calculator takes it (issue

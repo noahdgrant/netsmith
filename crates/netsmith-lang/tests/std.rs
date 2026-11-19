@@ -154,8 +154,8 @@ fn sources_parse() {
     assert_eq!(def(&file, "TrackCorner").kind, DefKind::Enum);
     assert_eq!(
         def(&file, "TrackPath").items.len(),
-        8,
-        "first, last, the impedance, the two budgets, the corner and its default, the fence"
+        9,
+        "first, last, the impedance, the two budgets, the frequency (issue #1405), the corner and its default, the fence"
     );
     assert_eq!(def(&file, "Cell").kind, DefKind::Generic);
     assert_eq!(def(&file, "Chemistry").kind, DefKind::Enum);
