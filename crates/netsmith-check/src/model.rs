@@ -2013,12 +2013,18 @@ impl Model {
     /// driver sinks at its `vol`, of which the board states the least. So is the `peak_current` of
     /// a `Rail`, the most that one load draws at an instant (an inrush): two loads on one rail
     /// each have their own, and each is checked against the rail's `max_peak_current`, which `~`
-    /// does share.
+    /// does share. So are a `Rail`'s `burst` and `duty`, which say how that load draws its peak
+    /// (issue #1279).
     pub fn is_pin_figure(&self, field: FieldId) -> bool {
         let f = self.field(field);
         let kind = match f.name.as_str() {
-            "peak_current" => {
-                return f.kind == FieldKind::Quantity(Dimension::CURRENT)
+            "peak_current" | "burst" | "duty" => {
+                let dimension = match f.name.as_str() {
+                    "peak_current" => Dimension::CURRENT,
+                    "burst" => Dimension::TIME,
+                    _ => Dimension::NONE,
+                };
+                return f.kind == FieldKind::Quantity(dimension)
                     && self.instance(f.owner).kind == InstKind::Interface
                     && self.instance(f.owner).type_name == "Rail";
             }

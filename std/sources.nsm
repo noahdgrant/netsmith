@@ -52,6 +52,26 @@ interface Rail {
     /// `peak_current` must not be above it.
     .max_peak_current: Current optional
     .peak_current <= .max_peak_current
+    /// How long one burst of the load lasts: the time it draws its `peak_current` at a stretch,
+    /// a radio's transmit slot of a few milliseconds (issue #1279). A load that bursts states
+    /// `current` as its average, the burst included, and `peak_current` as the current during
+    /// the burst. The average is what the balance, a regulator's dissipation and every other
+    /// check of the steady state read; the peak is what the source must give. While the burst
+    /// lasts the other loads on the net keep drawing, so the check after the solve adds their
+    /// steady current to the peak and holds the sum against `max_peak_current`. What the source
+    /// cannot give comes from the capacitance across the rail: the capacitors between its `pos`
+    /// and `neg` give the rest for `burst`, and the rail may fall by that charge over their
+    /// effective capacitance down to the highest least voltage a part on the net states (a
+    /// `.voltage >= 3V` on its rail). Not shared by `~`: each load states its own. Left
+    /// unstated, the peak is an inrush, checked alone (issue #750), and nothing is listed as not
+    /// evaluated (ADR 0074).
+    .burst: Time optional
+    /// The fraction of the time the load spends in bursts: one 3 ms slot in every
+    /// 100 ms is `0.03`. The average cannot be less than the bursts' own share, so the most the
+    /// stated `current` reaches must be at least the most of `peak_current` times this (issue
+    /// #1279). Not shared by `~`. Left unstated, the average is taken as stated.
+    .duty: Number optional
+    max(.current) >= max(.peak_current) * max(.duty)
     /// The narrowest track the nets of this rail are routed with: a lower bound, written as
     /// a range (`.min_track &= 0.5mm..`). Both pins get it, since the return current is the
     /// same current. A net takes the widest of the rails on it, so `GND` is as wide as the
