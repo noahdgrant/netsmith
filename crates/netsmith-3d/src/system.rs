@@ -218,7 +218,8 @@ pub struct MateInput {
 }
 
 impl MateInput {
-    /// The connector's path in its member's board: `power.power_out` less `power.`.
+    /// The connector's path in its member's board: `power.power_out` less `power.`, and
+    /// `led.inlet.power_in`, a connector inside a module, less `led.`.
     fn part(path: &str, member: &Option<String>) -> String {
         member
             .as_deref()
@@ -1386,6 +1387,17 @@ mod tests {
                 y: y + size,
             },
         )
+    }
+
+    #[test]
+    fn a_connector_inside_a_module_is_found_by_its_path_in_its_board() {
+        // Issue 1325: a system names a connector inside a module by its path through it.
+        let member = Some("led".to_string());
+        assert_eq!(
+            MateInput::part("led.inlet.power_in", &member),
+            "inlet.power_in"
+        );
+        assert_eq!(MateInput::part("led.power_in", &member), "power_in");
     }
 
     #[test]

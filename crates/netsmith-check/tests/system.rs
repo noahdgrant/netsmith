@@ -138,7 +138,12 @@ fn a_board_seen_from_the_system_is_the_board_as_checked_alone() {
 fn only_the_ports_a_board_declares_directly_can_be_reached() {
     one_error(
         "system S {\n    .main: Power\n    .io: Io\n    .main.stage.power ~ .io.input\n}\n",
-        "`stage` is inside board `Power`; a system can reach only the ports a board declares directly",
+        "`power` is inside module `.main.stage`, a `Stage`; a system reaches inside a module only the `.mating` of a connector",
+    );
+    // A module itself is not a port of its board.
+    one_error(
+        "system S {\n    .main: Power\n    .io: Io\n    .main.stage ~ .io.input\n}\n",
+        "not the whole module or board",
     );
     one_error(
         "system S {\n    .main: Power\n    .io: Io\n    .main.r.a ~ .io.input\n}\n",
