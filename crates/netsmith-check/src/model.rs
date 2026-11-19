@@ -1351,6 +1351,11 @@ pub struct Model {
     /// is one too: a narrowing from outside the module (ADR 0116) may ask for another
     /// provider's package.
     pub provider_conflicts: Vec<crate::diag::Diagnostic>,
+    /// The contradictions of `provider_conflicts` by the path of each use with several
+    /// providers that they are inside (a fault about two uses is under both). A contradiction
+    /// inside one use is that use's own: the build passes over the providers that have one
+    /// without trying them with the other uses' providers (issue #1326).
+    pub provider_conflicts_by_use: std::collections::BTreeMap<String, Vec<crate::diag::Diagnostic>>,
     /// The `lines` of the bus interfaces in use, by the module and index of their definition
     /// (ADR 0064).
     pub(crate) bus_defs: std::collections::BTreeMap<(usize, usize), BusDef>,
@@ -1497,6 +1502,38 @@ impl std::fmt::Debug for ForwardCache {
 }
 
 impl Model {
+    /// The paths of the uses of a generic with more than one provider in scope that `inst`
+    /// is, or is inside, innermost first.
+    pub fn varied_uses_of(&self, inst: InstId) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut cur = Some(inst);
+        while let Some(at) = cur {
+            out.extend(
+                self.uses
+                    .iter()
+                    .filter(|u| u.inst == at && u.candidates.len() > 1)
+                    .map(|u| u.path.clone()),
+            );
+            cur = self.instance(at).parent;
+        }
+        out
+    }
+
+    /// Keep a contradiction inside a use with several providers (ADR 0113), under each use
+    /// that one of `insts` is inside.
+    pub(crate) fn add_provider_conflict(&mut self, insts: &[InstId], d: crate::diag::Diagnostic) {
+        let mut paths: Vec<String> = insts.iter().flat_map(|&i| self.varied_uses_of(i)).collect();
+        paths.sort();
+        paths.dedup();
+        for path in paths {
+            self.provider_conflicts_by_use
+                .entry(path)
+                .or_default()
+                .push(d.clone());
+        }
+        self.provider_conflicts.push(d);
+    }
+
     /// Whether `inst` is, or is inside, a use of a generic with more than one provider in
     /// scope (ADR 0113).
     pub fn in_varied_use(&self, inst: InstId) -> bool {
@@ -1774,6 +1811,7 @@ impl Model {
             enums: Vec::new(),
             uses: Vec::new(),
             provider_conflicts: Vec::new(),
+            provider_conflicts_by_use: std::collections::BTreeMap::new(),
             bus_defs: std::collections::BTreeMap::new(),
             sources: SourceTexts::default(),
             polygons: Vec::new(),

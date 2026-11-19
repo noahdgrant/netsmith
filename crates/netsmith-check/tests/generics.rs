@@ -1462,6 +1462,10 @@ board B {
     let model = &c.board("B").unwrap().model;
     assert_eq!(model.provider_conflicts.len(), 1, "{m:?}");
     assert_eq!(c.diagnostics.len(), 1, "{m:?}");
+    // Kept under the use it is inside, so the build passes over that provider for this use
+    // alone (issue #1326).
+    let uses: Vec<&String> = model.provider_conflicts_by_use.keys().collect();
+    assert_eq!(uses, ["process"], "{m:?}");
     // With the second provider, nothing contradicts.
     let mut assign = Assignment::new();
     assign.insert(

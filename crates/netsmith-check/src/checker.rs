@@ -183,8 +183,9 @@ pub(crate) struct Checker<'a> {
     pub(crate) assign: BTreeMap<String, String>,
     /// The uses of generics found in the elaboration in progress.
     pub(crate) uses: Vec<GenericUse>,
-    /// The contradictions found inside a use with several providers (ADR 0113).
-    pub(crate) provider_conflicts: Vec<Diagnostic>,
+    /// The contradictions found inside a use with several providers (ADR 0113), each with the
+    /// instances it is about.
+    pub(crate) provider_conflicts: Vec<(Vec<InstId>, Diagnostic)>,
     /// The members that a generic declared in an instance, by instance and name, with the
     /// generic's name: a provider may not declare one again (ADR 0068).
     pub(crate) generic_members: HashMap<(InstId, String), String>,
@@ -1257,7 +1258,9 @@ impl<'a> Checker<'a> {
         self.apply_unused();
         self.skip_unstated_optional();
         self.model.uses = std::mem::take(&mut self.uses);
-        self.model.provider_conflicts = std::mem::take(&mut self.provider_conflicts);
+        for (insts, d) in std::mem::take(&mut self.provider_conflicts) {
+            self.model.add_provider_conflict(&insts, d);
+        }
         self.model.sources = crate::model::SourceTexts(Some(self.source_snapshot()));
         std::mem::replace(&mut self.model, Model::new())
     }
