@@ -51,6 +51,7 @@ use serde::Deserialize;
 use toml::Spanned;
 
 use crate::footprint_spec::{self, FootprintSpec};
+use crate::footprint_table::FootprintTable;
 use crate::sexp::Sexp;
 
 /// The symbol that tells the electrical rules check a net is supplied from outside the
@@ -112,6 +113,9 @@ pub struct Mapped {
     /// Where KiCad's symbol names a pin differently from the datasheet: the datasheet's
     /// name and the symbol's.
     pub pin_names: BTreeMap<String, String>,
+    /// The datasheet's numbers the footprint must agree with: the `table` of the row that gave
+    /// the footprint (issue #1281, [`FootprintTable`]).
+    pub table: Option<FootprintTable>,
 }
 
 /// A project's own symbol and footprint libraries, listed in its `kicad.toml`.
@@ -138,6 +142,8 @@ pub struct Row {
     /// generated footprint ([`FootprintSpec::id`]).
     pub footprint: String,
     pub pin_names: BTreeMap<String, String>,
+    /// The datasheet's pad count, pitch and body that the footprint must have (`table = "..."`).
+    pub table: Option<FootprintTable>,
     /// The file the row is from, for messages.
     pub source: String,
     /// The line of the row's `footprint` in `source`, 1-based.
@@ -156,6 +162,8 @@ pub struct MemberRow {
     pub path: String,
     /// A `Library:Name` id, or the id of a generated footprint (`gen:...`).
     pub footprint: String,
+    /// The table this footprint must agree with; the (kind, package) row's does not apply to it.
+    pub table: Option<FootprintTable>,
     /// The file the row is from, for messages.
     pub source: String,
     /// The line of the row's `footprint` in `source`, 1-based.
@@ -185,6 +193,7 @@ struct File {
 struct RawMember {
     path: String,
     footprint: Spanned<String>,
+    table: Option<Spanned<String>>,
 }
 
 #[derive(Deserialize)]
@@ -198,6 +207,7 @@ struct RawPart {
     footprint: Spanned<String>,
     #[serde(default)]
     pin_names: BTreeMap<String, String>,
+    table: Option<Spanned<String>>,
 }
 
 #[derive(Deserialize)]
@@ -237,6 +247,23 @@ fn footprint_id(
             "{source}: {at}: footprint {footprint:?} is not `Library:Name` or `gen:Generator(key=value, ...)`"
         )))
     }
+}
+
+/// The `table` of a row, read; a table that cannot be read names the row and its line.
+fn table_of(
+    table: Option<Spanned<String>>,
+    text: &str,
+    source: &str,
+    at: &str,
+) -> Result<Option<FootprintTable>, MapError> {
+    let Some(table) = table else {
+        return Ok(None);
+    };
+    let line = text[..table.span().start].matches('\n').count() + 1;
+    let table = table.into_inner();
+    FootprintTable::parse(&table)
+        .map(Some)
+        .map_err(|why| MapError::Invalid(format!("{source}:{line}: {at}: table {table:?}: {why}")))
 }
 
 /// Expand `${NAME}` from the environment. Nothing else is expanded.
@@ -287,6 +314,7 @@ impl Mapping {
                 )));
             }
             let footprint = footprint_id(footprint, source, line, &at)?;
+            let table = table_of(p.table, text, source, &at)?;
             if p.symbol.is_none() && !p.pin_names.is_empty() {
                 return Err(invalid(format!(
                     "{at}: `pin_names` rename pins of a library symbol, and the row has no `symbol`: \
@@ -315,6 +343,7 @@ impl Mapping {
                 symbol: p.symbol,
                 footprint,
                 pin_names: p.pin_names,
+                table,
                 source: source.to_string(),
                 line,
             });
@@ -327,12 +356,14 @@ impl Mapping {
             let line = text[..m.footprint.span().start].matches('\n').count() + 1;
             let footprint = m.footprint.into_inner();
             let footprint = footprint_id(footprint, source, line, &at)?;
+            let table = table_of(m.table, text, source, &at)?;
             if mapping.members.iter().any(|r| r.path == m.path) {
                 return Err(invalid(format!("{at} is given a footprint twice")));
             }
             mapping.members.push(MemberRow {
                 path: m.path,
                 footprint,
+                table,
                 source: source.to_string(),
                 line,
             });
@@ -495,6 +526,7 @@ impl Mapping {
         let mut mapped = self.map(kind, package)?;
         if let Some(member) = self.members.iter().find(|m| m.path == path) {
             mapped.footprint = member.footprint.clone();
+            mapped.table = member.table.clone();
             mapped.origin = format!("{} line {}", member.source, member.line);
         }
         Ok(mapped)
@@ -521,6 +553,7 @@ impl Mapping {
                 footprint: spec.id(),
                 origin: format!("the `.diameter` of the {kind}"),
                 pin_names: row.pin_names.clone(),
+                table: None,
             });
         }
         let row =
@@ -540,6 +573,7 @@ impl Mapping {
             footprint: row.footprint.clone(),
             origin: format!("{} line {}", row.source, row.line),
             pin_names: row.pin_names.clone(),
+            table: row.table.clone(),
         })
     }
 }
@@ -1157,6 +1191,36 @@ SENSE = "SNS"
         .to_string();
         assert!(
             e.contains("kicad.toml:7:") && e.contains("missing the `)`"),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn a_row_and_a_member_may_state_the_table_their_footprint_must_agree_with() {
+        let text = "[[part]]\nkind = \"Chip\"\npackage = \"SOIC-8\"\ndefault = true\n\
+                    footprint = \"own:Soic8\"\ntable = \"pads=8, pitch=1.27mm, body=3.9x4.9mm\"\n\n\
+                    [[member]]\npath = \"u2\"\nfootprint = \"own:Soic8Wide\"\n";
+        let m =
+            Mapping::parse(text, "kicad.toml", Path::new(".")).unwrap_or_else(|e| panic!("{e}"));
+        let table = m.map("Chip", None).unwrap().table.unwrap();
+        assert_eq!(
+            (table.text.as_str(), table.pads, table.pitch),
+            ("pads=8, pitch=1.27mm, body=3.9x4.9mm", Some(8), Some(1.27))
+        );
+        // A member's footprint is not the row's, so the row's table does not apply to it.
+        assert_eq!(m.map_part("u2", "Chip", None).unwrap().table, None);
+        assert!(m.map_part("u1", "Chip", None).unwrap().table.is_some());
+        let e = Mapping::parse(
+            &text.replace("pads=8", "pins=8"),
+            "kicad.toml",
+            Path::new("."),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            e.starts_with(
+                "kicad.toml:6: part `Chip` in package `SOIC-8`: table \"pins=8, pitch=1.27mm, body=3.9x4.9mm\": `pins` is not a column of a table"
+            ),
             "{e}"
         );
     }
