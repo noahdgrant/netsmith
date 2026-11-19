@@ -1188,7 +1188,9 @@ fn fab_board(
         // `--for-review` waives are left to the check after placing, which lists them.
         if let Some(layout) = layout.as_ref() {
             // A board the entries cannot be measured on is the placer's to refuse.
-            if let Ok(faults) = crate::layout_edit::entry_faults(&built.design, layout, libraries) {
+            if let Ok((faults, conflicts)) =
+                crate::layout_edit::entry_check(&built.design, layout, libraries)
+            {
                 let faults: Vec<_> = faults
                     .into_iter()
                     .filter(|f| !(options.for_review && review_waives(f.kind)))
@@ -1196,6 +1198,7 @@ fn fab_board(
                 if !faults.is_empty() {
                     return Err(FabFailure {
                         text: faults.iter().map(|f| fail(f.text.clone())).collect(),
+                        conflicts: conflicts.into(),
                         placement: faults.into(),
                         ..FabFailure::default()
                     });

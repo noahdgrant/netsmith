@@ -476,6 +476,17 @@ pub fn entry_faults(
     layout: &(Layout, String),
     libraries: &netsmith_pipeline::Libraries,
 ) -> Result<Vec<PlacementFault>, String> {
+    entry_check(design, layout, libraries).map(|(faults, _)| faults)
+}
+
+/// [`entry_faults`] with the lines and locks of the physical file that cannot all hold on that
+/// board (two locks whose courtyards overlap), as data, which `fab` hands on as a refusal's
+/// `conflicts` as it does for a placed board.
+pub fn entry_check(
+    design: &Design,
+    layout: &(Layout, String),
+    libraries: &netsmith_pipeline::Libraries,
+) -> Result<(Vec<PlacementFault>, Vec<netsmith_pcb::Conflict>), String> {
     let options = netsmith_pcb::place_options(design, Some(&layout.0));
     let board = Board::laid_out_entries(
         design,
@@ -484,7 +495,16 @@ pub fn entry_faults(
         &options,
         Some(layout),
     )?;
-    Ok(board.placement_faults())
+    let faults = board.placement_faults();
+    let conflicts = if faults.is_empty() {
+        Vec::new()
+    } else {
+        board
+            .explain_requirements(design, &options)
+            .map(|r| r.proofs)
+            .unwrap_or_default()
+    };
+    Ok((faults, conflicts))
 }
 
 fn placement_faults(
