@@ -214,6 +214,22 @@ impl<'a> Params<'a> {
         self.length_pair(key, what, lo, hi).map(Some)
     }
 
+    /// One length in mm for both ways, or `AxB` in mm, across and then along; required.
+    pub(super) fn length_or_pair(
+        &self,
+        key: &str,
+        what: &str,
+        lo: f64,
+        hi: f64,
+    ) -> Result<(f64, f64), String> {
+        let text = self.raw(key).ok_or_else(|| self.missing(key, what))?;
+        if text.contains('x') {
+            self.length_pair(key, what, lo, hi)
+        } else {
+            Self::one_length(key, text, what, lo, hi).map(|v| (v, v))
+        }
+    }
+
     /// Whether the key is given.
     pub(super) fn has(&self, key: &str) -> bool {
         self.values.contains_key(key)
@@ -480,6 +496,18 @@ mod tests {
         agrees(
             "gen:BGA(layout=10x10, pitch=1mm, body=11x11mm, pad=0.4mm)",
             "Package_BGA:BGA-100_11.0x11.0mm_Layout10x10_P1.0mm_Ball0.5mm_Pad0.4mm_NSMD",
+        );
+    }
+
+    #[test]
+    fn an_lga_has_the_pads_of_the_row_with_the_same_numbers() {
+        agrees(
+            "gen:LGA(edge=3x4, pitch=0.5mm, pad=0.35x0.625mm, span=2.325x1.825mm, body=3x2.5mm)",
+            "Package_LGA:LGA-14_3x2.5mm_P0.5mm_LayoutBorder3x4y",
+        );
+        agrees(
+            "gen:LGA(edge=1x6, pitch=0.8mm, pad=0.6x0.95mm, span=2x4mm, body=3x5mm)",
+            "Package_LGA:LGA-14_3x5mm_P0.8mm_LayoutBorder1x6y",
         );
     }
 
