@@ -32,6 +32,10 @@ _Avoid_: Nullable, maybe, conditional check
 A named list of boards and quantities in `netsmith.toml` (`[order.devkit.boards]`, each key a board as its folder is named, `Board` or `System/member`, a system for all its members, or a panel), made by `netsmith project order devkit` into `fab/orders/devkit/`: the package of each board, an `order.txt` summary and a combined bill of materials for the quantities, priced at the quantity of the whole order when a supply provider is configured (ADR 0035). It chooses which separate packages are ordered together; a panel's quantity counts panels. A board's package a plain `fab` just made from the same inputs is copied, not made again (issue #841).
 _Avoid_: Batch, job, build set
 
+**Order code**:
+One number a part is sold as, a row of its `.variants` table with the **Features** that code has (issue #1311). A design states what it needs of the part (`.u.needs &= GNSS`), and the part's `.mpn` is then the one order code that has every need: the bill of materials names it, and a code the design names with `.mpn &=` that lacks a need is refused. A catalog keyed by `.mpn` may have a row for each code.
+_Avoid_: Variant (a variant is a value of an enum), SKU, build
+
 **Outline**:
 The board edge, the board's member `.outline` (`std::pcb::Outline`): a width, a height and a corner radius, or a **polygon**, the statement `polygon (x, y) (x, y) ...` in its block, an ordered run of corners where `round R` after a corner is a tangent fillet and `arc through (x, y)` makes the edge to the next corner an arc (issue #57). Without one the board is as big as its parts need. The origin of the board's frame is its top left corner (of the polygon's bounding box).
 _Avoid_: Board size, board shape

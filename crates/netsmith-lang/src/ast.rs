@@ -468,9 +468,30 @@ pub enum Item {
     Anchor(Anchor),
     /// A `soft margin 3mm round .u1` statement; only a physical file may hold one (issue 1310).
     SoftMargin(SoftMargin),
+    /// A `.variants { "MOD-G" GNSS  "MOD" }` table: the order codes of a part and the features
+    /// each has (issue 1311); only a part may hold one.
+    Variants(Variants),
     /// A `keep 10mm between BuckIc and Crystal` statement; only a board's physical file may hold
     /// one (issue 1277).
     KeepApart(KeepApart),
+}
+
+/// `.variants { "MOD-100-G" GNSS LTE  "MOD-100" LTE }`: the order codes a part is sold as, one
+/// row each, and the features the code has (issue 1311, owner decision). A board states what it
+/// needs (`.u.needs &= GNSS`), and the part's `.mpn` is the one code that has every need.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Variants {
+    pub rows: Vec<VariantRow>,
+    pub span: Span,
+}
+
+/// One row of a `.variants` table: an order code and its features, in the order written.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VariantRow {
+    pub code: String,
+    pub code_span: Span,
+    pub features: Vec<Ident>,
+    pub span: Span,
 }
 
 /// `keep 10mm between BuckIc and Crystal`: every part of the first kind and every part of the

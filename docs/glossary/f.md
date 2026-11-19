@@ -7,6 +7,10 @@ The files a board house needs: Gerbers and drill files, a bill of materials, and
 The `.limit_current` of a `Fuse` (its rating: the most it lets through) and the `.supply_fault_current` of a part behind it in a `~>` chain (a `Diode` or a `Schottky`), which the checker gives it as the `.limit_current` of the nearest part in front of it that has one (ADR 0091), so a diode is rated for what the fuse can pass before it opens, and not only for the load's draw (its `.current`).
 _Avoid_: Trip current, surge current
 
+**Feature**:
+A name that a part's `.variants` table writes after an order code, `"MDM-100-G" GNSS LTE`: something that code has and another code of the part may lack (issue #1311). It is the part's own, so a design names it bare, with no import, in `.u.needs &= GNSS`, which leaves the order codes that have it. Not a variant of an enum, and not a pin's function.
+_Avoid_: Option, capability, flag (a flag is how the schematic shows a net)
+
 **Feedback divider**:
 The two resistors that set the output of an adjustable regulator, `std::parts::regulator::FeedbackDivider`: the output is `vref * (1 + rtop / rbottom)` and the solver picks resistors that keep it inside the range the board asks for, with the tolerance of the reference and of both resistors.
 _Avoid_: Voltage divider (that is any divider; this one sets a regulator's output)
