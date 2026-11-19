@@ -48,6 +48,7 @@ mod footprint;
 mod generate;
 mod geometry;
 mod impedance;
+mod keep_apart;
 mod kelvin;
 mod laid_out;
 mod layout;
@@ -134,6 +135,7 @@ pub use impedance::{
     coupled_stripline, impedance_at, impedance_notes, microstrip, stripline, target_layers,
     target_notes, target_widths, width_for,
 };
+pub use keep_apart::{ApartBroken, PartApart};
 pub use kelvin::{
     KelvinSense, SenseCarve, SenseCopper, SensedPad, kelvin_findings, kelvin_senses, net_is_poured,
     sense_carves, sense_copper,

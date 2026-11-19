@@ -142,6 +142,11 @@ pub struct Placed {
     /// The line that states `soft_margin` (`widget.physical.nsm:14`), for a message.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub soft_margin_source: String,
+    /// The other parts it keeps a distance from, courtyard to courtyard, as the `keep`
+    /// statements of the physical file ask (issue 1277): a requirement the placer keeps as hard
+    /// as an overlap, and [`Board::kept_apart_broken`] says where it is not met.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub apart: Vec<crate::PartApart>,
     /// How far its pins protrude out of the opposite face
     /// (`.pin_protrusion`, ADR 0045 section 15). `None` is unknown: the pads are an obstacle.
     pub protrusion: Option<crate::protrusion::Protrusion>,

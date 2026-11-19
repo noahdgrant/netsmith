@@ -456,6 +456,34 @@ pub enum Item {
     Anchor(Anchor),
     /// A `soft margin 3mm round .u1` statement; only a physical file may hold one (issue 1310).
     SoftMargin(SoftMargin),
+    /// A `keep 10mm between BuckIc and Crystal` statement; only a board's physical file may hold
+    /// one (issue 1277).
+    KeepApart(KeepApart),
+}
+
+/// `keep 10mm between BuckIc and Crystal`: every part of the first kind and every part of the
+/// second keep at least this distance between their courtyards, a requirement on where parts go
+/// that the placer keeps and `fab` checks (issue 1277, owner decision: a distance between kinds
+/// of parts, the kinds those of the standard library and the project).
+#[derive(Debug, Clone, PartialEq)]
+pub struct KeepApart {
+    /// The least distance between the courtyards: one length.
+    pub distance: Expr,
+    /// The two kinds, a part or a generic in scope (`BuckIc`, `Crystal`); they may be the same.
+    pub kinds: [Ident; 2],
+    pub span: Span,
+}
+
+impl KeepApart {
+    /// The statement as it reads, for a message: `keep 10mm between BuckIc and Crystal`.
+    pub fn span_text(&self) -> String {
+        format!(
+            "keep {} between {} and {}",
+            self.distance.to_source(),
+            self.kinds[0].name,
+            self.kinds[1].name
+        )
+    }
 }
 
 /// `soft margin 3mm round .u1`: the placer keeps other parts at least this far from the part's

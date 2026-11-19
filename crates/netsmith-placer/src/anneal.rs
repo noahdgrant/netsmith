@@ -670,6 +670,10 @@ struct Model {
     /// 1310): a courtyard inside it costs [`W_SOFT_MARGIN`] for each mm, which a placement that
     /// cannot do better pays; it is no wall, so the parts may still stand there.
     soft: f64,
+    /// The parts it keeps a distance from, courtyard to courtyard, by index, with the distance
+    /// in mm (`keep 10mm between BuckIc and Crystal`, issue 1277): a requirement, so nearer
+    /// costs [`W_HARD`] for each mm, whatever faces the two are on.
+    apart: Vec<(usize, f64)>,
     /// Which layers the footprint draws its courtyard on, `(F.CrtYd, B.CrtYd)`.
     court_faces: (bool, bool),
     role: Role,

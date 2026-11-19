@@ -1377,6 +1377,28 @@ fn fab_board(
         for b in &broken {
             say(format!("{}: warning: {b}", built.label()));
         }
+        // Two parts nearer each other than a `keep` statement asks (issue 1277): a requirement
+        // on where parts go, which stops `fab` as one the check after routing finds does, unless
+        // constraints are only warnings for this run; `--for-review` lists it under FOR REVIEW.
+        let apart = board.kept_apart_broken();
+        if !apart.is_empty() && !catalogs.constraints_warn() && !options.for_review {
+            return Err(FabFailure {
+                text: apart.iter().map(|b| fail(b.to_string())).collect(),
+                requirements: apart.iter().map(netsmith_pcb::ApartBroken::miss).collect(),
+                ..FabFailure::default()
+            });
+        }
+        for b in apart {
+            say(format!("{}: warning: {b}", built.label()));
+            if options.for_review {
+                waived.push(Waived {
+                    rule: "constraint".to_string(),
+                    message: b.to_string(),
+                    placement: None,
+                    drc: None,
+                });
+            }
+        }
         // Two parts where an imported KiCad board has them may share courtyard area: that
         // board was made with its own footprints (`Board::imported`).
         for overlap in board.imported_overlaps() {

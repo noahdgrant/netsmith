@@ -309,6 +309,8 @@ fn visit<'a>(
                 path(p, inside);
             }
         }
+        // `keep 10mm between BuckIc and Crystal` names two kinds, not members (issue 1277).
+        Item::KeepApart(_) => {}
         // A line of a board's `defaults` names a kind and its field, not a member (issue #625).
         Item::Defaults(_) => {}
         // A part's `layout` block names the part's own pins.

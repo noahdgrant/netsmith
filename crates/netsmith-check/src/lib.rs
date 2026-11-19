@@ -15,6 +15,7 @@ mod diag;
 pub mod environment;
 mod faults;
 mod isolation;
+mod keep_apart;
 mod layout;
 mod lines;
 mod load_switch;
@@ -58,8 +59,8 @@ pub use model::{
     Balance, Bank, Bookmark, BusAssignment, BusRequest, Catalog, Chain, ChainPin, Checkpoint,
     Contact, ContactSide, DcElement, DcKind, DefaultFrom, DefaultNote, Domain, Draw, EnumId,
     EnumInfo, EventKind, Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet,
-    GuidelineRule, InstId, InstKind, Instance, JoinedByName, LayoutGuideline, LevelTest, Mate,
-    Member, Model, NearSelect, Net, OptionalMark, OutlinePolygon, PartRules, Peripheral,
+    GuidelineRule, InstId, InstKind, Instance, JoinedByName, KeepApart, LayoutGuideline, LevelTest,
+    Mate, Member, Model, NearSelect, Net, OptionalMark, OutlinePolygon, PartRules, Peripheral,
     PeripheralBus, PeripheralFunction, PinAssignment, PinKind, PinRequest, PinRow, PinTable,
     Pinout, PolygonCorner, Provider, RExpr, RangeEnd, Relation, Requirement, Role, RowLimit,
     Scenario, ScenarioPath, SequenceEvent, SequenceOrder, SharedMember, SharedRes, Snapshot,

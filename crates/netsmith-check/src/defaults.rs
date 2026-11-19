@@ -154,7 +154,10 @@ impl Checker<'_> {
             return None;
         }
         let (kind_id, field_id) = (&path.segments[0], &path.segments[1]);
-        let kind = self.default_kind(kind_id)?;
+        let kind = self.default_kind(
+            kind_id,
+            "a line of `defaults` names a part, a module or a generic",
+        )?;
         let physical = self.phys.is_some();
         let silk = matches!(field_id.name.as_str(), "silk" | "silk_text");
         if physical && field_id.name == "silk_text" {
@@ -313,7 +316,8 @@ impl Checker<'_> {
     }
 
     /// The part, module or generic a line names, reported when it is none.
-    fn default_kind(&mut self, name: &ast::Ident) -> Option<(usize, usize)> {
+    /// `what` says what the statement names, for the message when it is something else.
+    pub(crate) fn default_kind(&mut self, name: &ast::Ident, what: &str) -> Option<(usize, usize)> {
         let found = match self.modules[self.cur_module].scope.get(&name.name) {
             Some(Binding::Def(m, i)) => Some((*m, *i)),
             Some(Binding::Poison) => return None,
@@ -339,7 +343,7 @@ impl Checker<'_> {
             self.error(
                 name.span,
                 format!(
-                    "`{}` is {} {word}; a line of `defaults` names a part, a module or a generic",
+                    "`{}` is {} {word}; {what}",
                     name.name,
                     if word.starts_with(['a', 'e', 'i', 'o', 'u']) {
                         "an"
@@ -612,5 +616,6 @@ fn item_span(item: &Item) -> Span {
         Item::PhysicalFile(f) => f.span,
         Item::Anchor(a) => a.span,
         Item::SoftMargin(m) => m.span,
+        Item::KeepApart(k) => k.span,
     }
 }

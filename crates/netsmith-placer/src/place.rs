@@ -1414,6 +1414,12 @@ fn refine(
             .flat_map(|o| [o.lo, o.hi])
             .filter(|v| v.is_finite())
             .map(f64::abs)
+            // So may a distance two parts keep (`keep`, issue 1277).
+            .chain(
+                parts
+                    .iter()
+                    .flat_map(|p| p.apart.iter().map(|a| a.distance)),
+            )
             .fold(0.0, f64::max);
         if reach > 0.0 {
             region = region.expanded(reach);

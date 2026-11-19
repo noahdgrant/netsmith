@@ -1227,6 +1227,7 @@ impl<'a> Checker<'a> {
         self.model.root = root;
         self.apply_default_joins();
         self.apply_board_defaults();
+        self.resolve_keep_apart();
         self.resolve_defaults();
         match def.kind {
             DefKind::Board | DefKind::System => self.assign_pins(&name, true),
@@ -2174,6 +2175,7 @@ impl<'a> Checker<'a> {
                 Item::PhysicalFile(f) => self.physical_file_here(f),
                 Item::Anchor(a) => self.anchor_here(a),
                 Item::SoftMargin(m) => self.soft_margin(m),
+                Item::KeepApart(k) => self.keep_apart(k),
                 Item::Connect(c) if self.phys.is_none() => self.connect(c),
                 Item::JoinMap(b) if self.phys.is_none() => self.join_map(b),
                 Item::Bridge(b) if self.phys.is_none() => self.bridge(b),

@@ -1,9 +1,9 @@
 //! The current of each net and the optional features of a design.
 
 use crate::{
-    CaseModel, Cutout, Keepout, Label, Logo, Offset, Outline, PartHeight, PartHeightGrowth,
-    PartKind, PartRoutingMargin, PartSilk, PartSoftMargin, PartStandoff, PinProtrusion, PinRef,
-    Placement, Pour, StepModel,
+    CaseModel, Cutout, KeepApart, Keepout, Label, Logo, Offset, Outline, PartHeight,
+    PartHeightGrowth, PartKind, PartRoutingMargin, PartSilk, PartSoftMargin, PartStandoff,
+    PinProtrusion, PinRef, Placement, Pour, StepModel,
 };
 
 /// The current a net carries, and the least track that carries it (issue #431).
@@ -199,6 +199,11 @@ pub struct Features {
     /// empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub soft_margins: Vec<PartSoftMargin>,
+    /// The distances the board's physical file asks between kinds of parts
+    /// (`keep 10mm between BuckIc and Crystal`, issue 1277). Left out of a design file when
+    /// empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keep_apart: Vec<KeepApart>,
     /// How far the pins of through-hole parts protrude, as the design states it, by path
     /// (ADR 0045 section 15).
     pub protrusions: Vec<PinProtrusion>,

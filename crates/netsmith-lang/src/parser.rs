@@ -561,6 +561,7 @@ impl Parser {
                     | Item::PhysicalFile(_)
                     | Item::Anchor(_)
                     | Item::SoftMargin(_)
+                    | Item::KeepApart(_)
                     | Item::Constraint(_)
                     | Item::Connect(_)
                     | Item::JoinMap(_),
@@ -628,6 +629,14 @@ impl Parser {
                 }
                 "soft" if matches!(self.peek_second(), Tok::Ident(w) if w == "margin") => {
                     return only_decls(self.soft_margin(start)?);
+                }
+                "keep"
+                    if matches!(
+                        self.peek_second(),
+                        Tok::Number(_) | Tok::LParen | Tok::Minus
+                    ) =>
+                {
+                    return only_decls(self.keep_apart(start)?);
                 }
                 "polygon" if matches!(self.peek_second(), Tok::LParen) => {
                     return only_decls(self.polygon(start)?);
@@ -994,6 +1003,37 @@ impl Parser {
         Ok(Item::SoftMargin(SoftMargin {
             margin,
             part,
+            span: self.span_from(start),
+        }))
+    }
+
+    /// `keep 10mm between BuckIc and Crystal`.
+    fn keep_apart(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        let distance = self.additive()?;
+        let t = self.peek().clone();
+        if !matches!(&t.tok, Tok::Ident(w) if w == "between") {
+            return Err(unexpected(
+                &t,
+                "`between` and two kinds of parts after the distance (`keep 10mm between BuckIc and Crystal`)",
+            ));
+        }
+        self.bump();
+        let first =
+            self.ident("a kind of part after `between` (`keep 10mm between BuckIc and Crystal`)")?;
+        let t = self.peek().clone();
+        if !matches!(&t.tok, Tok::Ident(w) if w == "and") {
+            return Err(unexpected(
+                &t,
+                "`and` and the second kind of part (`keep 10mm between BuckIc and Crystal`)",
+            ));
+        }
+        self.bump();
+        let second =
+            self.ident("a kind of part after `and` (`keep 10mm between BuckIc and Crystal`)")?;
+        Ok(Item::KeepApart(KeepApart {
+            distance,
+            kinds: [first, second],
             span: self.span_from(start),
         }))
     }

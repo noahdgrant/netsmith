@@ -349,3 +349,55 @@ fn soft_margin_and_round_are_still_ordinary_names() {
         parse("board B {\n    .soft: Length\n    .margin: Length\n    .round: Length\n}\n").unwrap();
     assert_eq!(file.definitions.len(), 1);
 }
+
+const KEEP: &str = "\
+physical for Trellis {
+    keep 10mm between BuckIc and Crystal
+    keep (2mm + 3mm) between Radio and Radio
+}
+";
+
+#[test]
+fn a_keep_statement_names_a_distance_and_two_kinds() {
+    let file = parse(KEEP).unwrap();
+    let items = &file.physicals[0].items;
+    let Item::KeepApart(k) = &items[0] else {
+        panic!("a keep statement")
+    };
+    assert!(matches!(k.distance, Expr::Number(..)));
+    assert_eq!((k.kinds[0].name.as_str(), k.kinds[1].name.as_str()), ("BuckIc", "Crystal"));
+    assert_eq!(k.span_text(), "keep 10mm between BuckIc and Crystal");
+    let Item::KeepApart(k) = &items[1] else {
+        panic!("a keep statement")
+    };
+    assert_eq!((k.kinds[0].name.as_str(), k.kinds[1].name.as_str()), ("Radio", "Radio"));
+}
+
+#[test]
+fn a_keep_statement_prints_back_to_source() {
+    let printed = parse(KEEP).unwrap().to_source();
+    assert!(printed.contains("keep 10mm between BuckIc and Crystal"), "{printed}");
+    assert_eq!(parse(&printed).unwrap().to_source(), printed);
+}
+
+#[test]
+fn a_keep_statement_needs_each_part_of_it() {
+    let at = |body: &str| parse(&format!("physical for T {{\n    {body}\n}}\n")).unwrap_err();
+    let e = at("keep 10mm BuckIc and Crystal");
+    assert!(e.message.contains("`between` and two kinds"), "{}", e.message);
+    let e = at("keep 10mm between BuckIc Crystal");
+    assert!(e.message.contains("`and` and the second kind"), "{}", e.message);
+    let e = at("keep 10mm between BuckIc and");
+    assert!(e.message.contains("a kind of part after `and`"), "{}", e.message);
+    let e = at("keep 10mm between .u1 and Crystal");
+    assert!(e.message.contains("a kind of part after `between`"), "{}", e.message);
+}
+
+#[test]
+fn keep_between_and_are_still_ordinary_names() {
+    let file = parse(
+        "board B {\n    .keep: Length\n    .between: Length\n    .keep &= 3mm\n}\n",
+    )
+    .unwrap();
+    assert_eq!(file.definitions.len(), 1);
+}
