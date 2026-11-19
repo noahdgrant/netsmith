@@ -291,6 +291,28 @@ fn a_standard_height_is_counted_as_known_and_apart_and_named_in_the_notes() {
     );
 }
 
+/// A part with no height of its own on an SC-70 with five leads takes the JEDEC MO-203 maximum,
+/// 1.1 mm (issue #1332); on a chip footprint, whose standard prints none, it stays unknown.
+#[test]
+fn an_sc70_takes_its_standards_maximum_and_a_chip_takes_none() {
+    let b = built("    .r3.height &= 4mm\n");
+    let mut board = placed(&b);
+    for p in &mut board.parts {
+        p.library_id = "Package_TO_SOT_SMD:SOT-353_SC-70-5".into();
+    }
+    let r2 = board.part("R2").unwrap().standard_height().unwrap();
+    assert_eq!((r2.standard, r2.max), ("JEDEC MO-203", 1.1));
+    let lines = notes(&b.design, &b.catalog_heights, &board);
+    assert!(
+        lines.contains(&"note: height of R2 (`r2`) is 1.10 mm, the greatest its package standard allows (JEDEC MO-203, drawing TI DCK0005A), not a figure of the part: the design states none and its catalog row has none".to_string()),
+        "{lines:#?}"
+    );
+    for p in &mut board.parts {
+        p.library_id = "Resistor_SMD:R_0603_1608Metric".into();
+    }
+    assert_eq!(board.part("R2").unwrap().standard_height(), None);
+}
+
 #[test]
 fn the_board3d_report_and_the_glb_label_a_standard_height_and_count_it_apart() {
     let b = built("    .r3.height &= 4mm\n");

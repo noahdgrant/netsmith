@@ -28,24 +28,34 @@
 //! | datasheet | literature number, revision | SHA-256 of the PDF read | drawings (page) |
 //! |---|---|---|---|
 //! | `lm358` | SLOS068AB, October 2024 | `8277dff7b89138c63b3582d37f378065a1dea3cae5ed1e2926ddc2779eb7e3a2` | D0008A (63), PW0008A (51), DGK0008A (56) |
-//! | `tlv9062` | SBOS839N, July 2026 | `a77c6dbdedda34c1ecf26e4a5abd38a98903054b49fff9cd24d005897eabedaa` | D0014A (43), PW0014A (79), DGS0010A (50), DBV0006A (72) |
+//! | `tlv9062` (the same PDF as `tlv9061`) | SBOS839N, July 2026 | `a77c6dbdedda34c1ecf26e4a5abd38a98903054b49fff9cd24d005897eabedaa` | D0014A (43), PW0014A (79), DGS0010A (50), DBV0006A (72), DCK0005A (60) |
 //! | `sn74hc595` | SCLS041J, October 2021 | `5a6a5aeecc79a2d4bf4e15aae681e0f99cb13b54d6524be253a6844c898eeb0d` | DW0016A (28), PW0016A (34), DB0016A (24) |
 //! | `sn74hc245` | SCLS131F, August 2022 | `31514d936e53661d1c380603e5034b2958085359313986775b838d1f30fb8d3f` | DW0020A (32), PW0020A (22), DB0020A (25) |
 //! | `tl431` | SLVS543S, May 2024 | `ed2e90697de4e2c553195514adf1ee59cda42863716b6ef702b8304a5b921d22` | DBZ0003A (62) |
 //! | `tps7a02` | SBVS277C, September 2022 | `ed213c153f1db84762558fcac2ff9752e322151a1d44672cf554988b860cebc8` | DBV0005A (45) |
 //! | `lm1117` | SNOS412Q, January 2023 | `c117f5dd97fd15e62c0dee3adbf1af60480a128a10a0f9a9c28aafb8220ec3aa` | DCY0004A (44) |
 //! | `tms320f28027` | SPRS523P, February 2021 | `b73b8c499c36b0e2f0a216c86df6058129d7c596eb73b868fa45f83f11dbc16a` | PT0048A (144) |
+//! | `sn74lvc2g04` | SCES195N, August 2015 | `a70afa4e4d049ffaa382fe75d22c438fe2350de13923c54cdebe7e2b08df1b6e` | DCK0006A (28) |
 //!
 //! D0008A is drawn in inches and prints `.069 MAX [1.75]`; D0014A, in millimetres, prints
 //! `1.75 MAX` for the same registration, MS-012, and the table keeps the registration's 1.75 mm.
+//! The SC-70 drawings (issue #1332) are in millimetres: DCK0005A (five leads, 0.65 mm pitch) prints
+//! `1.1 MAX` and notes "Refernce JEDEC MO-203"; DCK0006A (six leads) prints `1.1` over `0.8` for
+//! the height, titles itself "SOT - 1.1 max height" and notes "Falls within JEDEC MO-203
+//! variation AB". The hand-soldering footprints of the same names have the same body, so they
+//! share the row. SOT-323 (three leads) has none: TI's drawing of that outline (DCK0003A)
+//! prints 1.1 MAX but cites no JEDEC registration, and no drawing that does was read.
 //!
-//! **Left out, so unknown:** chip resistors and capacitors (IEC 60115-8 and the EIA size codes
-//! fix length and width; the thickness is each maker's, 0.45 mm to 0.55 mm for a resistor and
-//! up to the length for a capacitor of high value, and the IEC tables are not free to read); QFN,
-//! DFN and SON (MO-220 and MO-229 come in several profiles, V, W, U and X, from 1.00 mm down,
-//! and the generated names do not say which); TQFP, VQFP, the other LQFPs, SC-70, SOT-89, DPAK,
-//! D2PAK, the SMD diodes and crystals, BGA, headers (no drawing of each was read). A row is added
-//! with its drawing, as these were.
+//! **Left out, so unknown** (issue #1332 looked at each of these again and kept them out):
+//! chip resistors and capacitors (IEC 60115-8 and the EIA size codes fix length and width; the
+//! thickness is each maker's, 0.45 mm to 0.55 mm for a resistor and up to the length for a
+//! capacitor of high value, and no standard prints a maximum for it: a chip's height is a
+//! catalog row's `height`, ADR 0094); QFN, DFN, SON and WSON (MO-220 and MO-229 come in several
+//! profiles, V, W, U and X, from 1.00 mm down, and the generated names do not say which; the
+//! names also differ by the exposed pad, so no one drawing is of a name); SOT-323 and SOT-343
+//! (SC-70-4) and SC-70-8 (no drawing that cites a registration was read); TQFP, VQFP, the other
+//! LQFPs, SOT-89, DPAK, D2PAK, the SMD diodes and crystals, BGA, headers (no drawing of each was
+//! read). A row is added with its drawing, as these were.
 
 /// A package standard's height for one footprint.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -180,6 +190,30 @@ pub(crate) const TABLE: &[(&str, StandardHeight)] = &[
         "TI DBV0006A",
     ),
     row(
+        "Package_TO_SOT_SMD:SOT-353_SC-70-5",
+        "JEDEC MO-203",
+        1.1,
+        "TI DCK0005A",
+    ),
+    row(
+        "Package_TO_SOT_SMD:SOT-353_SC-70-5_Handsoldering",
+        "JEDEC MO-203",
+        1.1,
+        "TI DCK0005A",
+    ),
+    row(
+        "Package_TO_SOT_SMD:SOT-363_SC-70-6",
+        "JEDEC MO-203",
+        1.1,
+        "TI DCK0006A",
+    ),
+    row(
+        "Package_TO_SOT_SMD:SOT-363_SC-70-6_Handsoldering",
+        "JEDEC MO-203",
+        1.1,
+        "TI DCK0006A",
+    ),
+    row(
         "Package_TO_SOT_SMD:SOT-223",
         "JEDEC TO-261",
         1.8,
@@ -235,12 +269,31 @@ mod tests {
         assert_eq!(of("Package_SO:SOIC-8_3.9x4.9mm"), None);
         assert_eq!(of("Resistor_SMD:R_0603_1608Metric"), None);
         assert_eq!(of("Capacitor_SMD:C_0402_1005Metric"), None);
+        assert_eq!(of("Package_TO_SOT_SMD:SOT-323_SC-70"), None);
+        assert_eq!(of("Package_TO_SOT_SMD:SOT-343_SC-70-4"), None);
         assert_eq!(of("Package_SO:SOIC-16_3.9x9.9mm_P1.27mm"), None);
         assert!(
             crate::generate::names()
                 .iter()
                 .filter(|n| n.starts_with("Package_DFN_QFN:"))
                 .all(|n| of(n).is_none())
+        );
+    }
+
+    #[test]
+    fn an_sc70_with_five_or_six_leads_has_the_mo_203_maximum() {
+        for name in [
+            "SOT-353_SC-70-5",
+            "SOT-353_SC-70-5_Handsoldering",
+            "SOT-363_SC-70-6",
+            "SOT-363_SC-70-6_Handsoldering",
+        ] {
+            let h = of(&format!("Package_TO_SOT_SMD:{name}")).unwrap();
+            assert_eq!((h.standard, h.max), ("JEDEC MO-203", 1.1), "{name}");
+        }
+        assert_eq!(
+            of("Package_TO_SOT_SMD:SOT-363_SC-70-6").unwrap().cited(),
+            "JEDEC MO-203, drawing TI DCK0006A"
         );
     }
 
