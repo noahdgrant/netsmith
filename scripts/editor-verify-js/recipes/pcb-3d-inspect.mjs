@@ -4,8 +4,8 @@
 // the parts of unknown height up in the picture only, under a "preview" label, and the coverage
 // chip does not move; a finding picked in the problems dock flies the camera to it and lights its
 // limit. The fixture has parts of several kinds under and beside a 3 mm lid: one too tall, one
-// with little to spare, two of unknown height, and outside it a regulator whose height is its
-// package standard's (ADR 0106).
+// with little to spare, a resistor whose height is its catalog row's, one of unknown height, and
+// outside it a regulator whose height is its package standard's (ADR 0106).
 import { whenIdle } from '../settle.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -56,7 +56,7 @@ export async function run(tools) {
   const regulator = partOf(s, 'regulator');
   expect(chipBefore.includes('(1 from the package standard)'), `the chip counts it apart: ${chipBefore}`);
   const legend = await page.getByTestId('height-legend').innerText();
-  expect(/Package standard\s*1/.test(legend) && /Unknown\s*2/.test(legend), `the legend: ${legend.replace(/\n/g, ' | ')}`);
+  expect(/Catalog\s*3/.test(legend) && /Package standard\s*1/.test(legend) && /Unknown\s*1/.test(legend), `the legend: ${legend.replace(/\n/g, ' | ')}`);
   const regAt = await placeOf(page, regulator.path);
   const ledColour = await ask(page, 'colourAt', (await placeOf(page, led.path)).x, (await placeOf(page, led.path)).y);
   const regColour = await ask(page, 'colourAt', regAt.x, regAt.y);
@@ -117,7 +117,7 @@ export async function run(tools) {
   await page.waitForSelector('[data-testid=kind-legend]');
   const kinds = await page.getByTestId('kind-legend').innerText();
   expect(/Connector\s*1/.test(kinds) && /Capacitor\s*2/.test(kinds) && /IC\s*1/.test(kinds) && /Diode\s*1/.test(kinds), `the legend counts the kinds: ${kinds.replace(/\n/g, ' | ')}`);
-  expect(/Unknown height\s*2/.test(kinds), 'the parts of unknown height stay hatched, and are counted apart');
+  expect(/Unknown height\s*1/.test(kinds), 'the part of unknown height stays hatched, and is counted apart');
   await whenIdle(page);
   const capKind = await ask(page, 'colourAt', capAt.x, capAt.y);
   expect(capKind !== near, `the capacitor takes its kind's colour (${near} to ${capKind})`);
@@ -127,7 +127,7 @@ export async function run(tools) {
   await page.keyboard.press('c');
   await page.waitForSelector('[data-testid=margin-legend]');
   const margin = await page.getByTestId('margin-legend').innerText();
-  expect(/Over\s*1/.test(margin) && /Under 1 mm\s*1/.test(margin) && /1 mm\+\s*1/.test(margin) && /No limit over it\s*2/.test(margin), `the bands: ${margin.replace(/\n/g, ' | ')}`);
+  expect(/Over\s*1/.test(margin) && /Under 1 mm\s*1/.test(margin) && /1 mm\+\s*2/.test(margin) && /No limit over it\s*2/.test(margin), `the bands: ${margin.replace(/\n/g, ' | ')}`);
   const note = await page.getByTestId('margin-note').innerText();
   expect(note.includes('1 mm to spare') && note.includes('not a check'), `the legend says what green means: ${note}`);
   await whenIdle(page);
@@ -139,7 +139,7 @@ export async function run(tools) {
   await page.keyboard.press('c');
   await page.waitForSelector('[data-testid=height-legend]');
 
-  step('the height preview: off at the start; on, the parts of unknown height stand up under a "preview" label, and the coverage does not move');
+  step('the height preview: off at the start; on, the part of unknown height stands up under a "preview" label, and the coverage does not move');
   expect((await page.getByTestId('height-preview').getAttribute('aria-checked')) === 'false', 'off by default');
   expect((await ask(page, 'previewCount')) === 0, 'nothing stood up');
   await page.getByTestId('preview-mm').fill('2.5');
@@ -147,12 +147,12 @@ export async function run(tools) {
   await page.getByTestId('height-preview').click();
   await page.waitForSelector('[data-testid=preview-label]');
   const label = await page.getByTestId('preview-label').innerText();
-  expect(/PREVIEW/i.test(label) && label.includes('2 parts of unknown height drawn 2.5 mm tall') && label.includes('not a height'), `the label: ${label.replace(/\n/g, ' ')}`);
-  await page.waitForFunction((sel) => document.querySelector(sel).view3d.previewCount() === 2, HOST);
-  expect(true, 'the two parts of unknown height are stood up');
+  expect(/PREVIEW/i.test(label) && label.includes('1 part of unknown height drawn 2.5 mm tall') && label.includes('not a height'), `the label: ${label.replace(/\n/g, ' ')}`);
+  await page.waitForFunction((sel) => document.querySelector(sel).view3d.previewCount() === 1, HOST);
+  expect(true, 'the part of unknown height is stood up');
   expect((await page.getByTestId('height-coverage').innerText()) === chipBefore, `the coverage chip is the same: ${chipBefore}`);
   const parts3d = await ask(page, 'parts');
-  expect(parts3d.filter((p) => p.heightMm === null).length === 2, 'the parts of unknown height still have no height');
+  expect(parts3d.filter((p) => p.heightMm === null).length === 1, 'the part of unknown height still has no height');
   await whenIdle(page);
   await shot('preview');
   await page.keyboard.press('h');
