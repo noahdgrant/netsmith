@@ -210,6 +210,20 @@ impl Expr {
             Self::Tolerance { center, tol, .. } => {
                 format!("{} +/- {}", center.to_source(), tol.to_source())
             }
+            Self::SupplySteps {
+                rows, interpolated, ..
+            } => {
+                let rows = rows
+                    .iter()
+                    .map(|r| format!("{} at {}", r.value.to_source(), r.at.to_source()))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if *interpolated {
+                    format!("{rows} interpolated")
+                } else {
+                    rows
+                }
+            }
             Self::Steps { steps, .. } => steps
                 .iter()
                 .map(|s| format!("{} to {}", s.value.to_source(), s.to.to_source()))

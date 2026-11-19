@@ -66,6 +66,7 @@ mod polygon;
 mod protrusion;
 mod quality;
 mod ratsnest;
+mod room;
 mod routes;
 mod rules;
 mod shape;
@@ -175,6 +176,7 @@ pub use quality::{
     segments_cross, termination_pairs,
 };
 pub use ratsnest::{Node as RatNode, Ratline, Ratsnest, nodes_of as ratsnest_nodes_of};
+pub use room::{FreeRoom, NoRoom, RoomCheck, parts_without_room};
 pub use routes::{
     BoardRoutes, NetRoutes, RouteTrack, RouteVia, RouteZone, Routes, RoutesError, RoutesNote,
     VERSION as ROUTES_VERSION, apply_routes, kicad_layer as routes_kicad_layer,

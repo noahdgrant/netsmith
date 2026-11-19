@@ -216,6 +216,10 @@ fn places_in(e: &Expr, out: &mut Vec<(String, String)>) {
             places_in(&s.value, out);
             places_in(&s.to, out);
         }),
+        Expr::SupplySteps { rows, .. } => rows.iter().for_each(|r| {
+            places_in(&r.value, out);
+            places_in(&r.at, out);
+        }),
         Expr::Number(..) | Expr::Str(..) | Expr::Variant { .. } => {}
     }
 }

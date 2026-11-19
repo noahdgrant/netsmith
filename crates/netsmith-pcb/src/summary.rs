@@ -670,7 +670,7 @@ fn courts(p: &Placed) -> Vec<Rect> {
 }
 
 /// The room every part takes on a face.
-fn rooms(board: &Board, side: Side) -> Vec<Rect> {
+pub(crate) fn rooms(board: &Board, side: Side) -> Vec<Rect> {
     board
         .parts
         .iter()
@@ -680,9 +680,9 @@ fn rooms(board: &Board, side: Side) -> Vec<Rect> {
 }
 
 /// A grid of cells over the outline's box, each free or not.
-struct Grid {
+pub(crate) struct Grid {
     origin: Pt,
-    cell: f64,
+    pub(crate) cell: f64,
     columns: usize,
     rows: usize,
     free: Vec<bool>,
@@ -690,7 +690,7 @@ struct Grid {
 
 impl Grid {
     /// The cells of `outline` that are at least `wall` inside `edge`, all free.
-    fn inside(board: &Board, wall: f64) -> Grid {
+    pub(crate) fn inside(board: &Board, wall: f64) -> Grid {
         let outline = board.outline;
         let longest = outline.width().max(outline.height()).max(CELL);
         let cell = CELL.max(longest / MOST_CELLS as f64);
@@ -718,7 +718,7 @@ impl Grid {
     }
 
     /// Mark every cell that `r` covers, even in part, as taken.
-    fn take(&mut self, r: &Rect) {
+    pub(crate) fn take(&mut self, r: &Rect) {
         let lo = |v: f64, o: f64| ((v - o) / self.cell + 1e-9).floor().max(0.0) as usize;
         let hi = |v: f64, o: f64| ((v - o) / self.cell - 1e-9).ceil().max(0.0) as usize;
         let (c0, c1) = (
@@ -736,13 +736,42 @@ impl Grid {
         }
     }
 
+    /// Whether some rectangle of `columns` by `rows` free cells is on the grid, by a sum of the
+    /// taken cells over every rectangle from the top left corner.
+    pub(crate) fn holds(&self, columns: usize, rows: usize) -> bool {
+        let (w, h) = (self.columns, self.rows);
+        if columns == 0 || rows == 0 {
+            return true;
+        }
+        if columns > w || rows > h {
+            return false;
+        }
+        // `taken[(r) * (w + 1) + c]`: the taken cells above row r and left of column c.
+        let mut taken = vec![0u32; (w + 1) * (h + 1)];
+        for r in 0..h {
+            for c in 0..w {
+                let here = u32::from(!self.free[r * w + c]);
+                taken[(r + 1) * (w + 1) + c + 1] =
+                    here + taken[r * (w + 1) + c + 1] + taken[(r + 1) * (w + 1) + c]
+                        - taken[r * (w + 1) + c];
+            }
+        }
+        (0..=h - rows).any(|r| {
+            (0..=w - columns).any(|c| {
+                let (r1, c1) = (r + rows, c + columns);
+                taken[r1 * (w + 1) + c1] + taken[r * (w + 1) + c]
+                    == taken[r * (w + 1) + c1] + taken[r1 * (w + 1) + c]
+            })
+        })
+    }
+
     fn area(&self) -> f64 {
         self.free.iter().filter(|f| **f).count() as f64 * self.cell * self.cell
     }
 
     /// The largest rectangle of free cells, as (column, row, columns, rows), the first of the
     /// largest from the top left on a tie; `None` when no cell is free.
-    fn largest(&self) -> Option<(usize, usize, usize, usize)> {
+    pub(crate) fn largest(&self) -> Option<(usize, usize, usize, usize)> {
         let mut heights = vec![0usize; self.columns];
         let mut best: Option<(usize, (usize, usize, usize, usize))> = None;
         for row in 0..self.rows {
@@ -776,7 +805,7 @@ impl Grid {
         best.map(|(_, r)| r)
     }
 
-    fn rect(&self, (c, r, w, h): (usize, usize, usize, usize)) -> Rect {
+    pub(crate) fn rect(&self, (c, r, w, h): (usize, usize, usize, usize)) -> Rect {
         let min = Pt::new(
             self.origin.x + c as f64 * self.cell,
             self.origin.y + r as f64 * self.cell,

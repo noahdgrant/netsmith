@@ -336,6 +336,33 @@ pub struct VoltageSteps {
     pub span: Span,
 }
 
+/// An input level stated in rows by the supply (`.vih &= 0.65 * .vcc.voltage at 1.1V..1.95V,
+/// 2.0V at 3.0V..3.6V`, issues #1305 and #1307). The statement does not narrow the level: the
+/// solver reads the rows at the voltage of the level's reference rail, once the rails are solved,
+/// and writes the level from the rows that supply reaches (`netsmith_solve`'s `levels::supply`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SupplySteps {
+    /// The `vih` or `vil` of a `Logic` or a `Levels`.
+    pub field: FieldId,
+    /// The rows, by rising supply, none overlapping another (two may share an end).
+    pub rows: Vec<SupplyRow>,
+    /// `interpolated` after the last row: between two rows the level is linear in the supply,
+    /// from the value of the one at its highest supply to the value of the next at its lowest.
+    pub interpolated: bool,
+    pub source: SourceId,
+    /// The whole statement.
+    pub span: Span,
+}
+
+/// One row of [`SupplySteps`]: the level, which may name the supply's voltage, and the supply
+/// it holds at, in volts (one voltage when `lo == hi`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SupplyRow {
+    pub value: RExpr,
+    pub lo: f64,
+    pub hi: f64,
+}
+
 /// One part or module that can stand where a generic is used (ADR 0068).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Provider {
@@ -1291,6 +1318,8 @@ pub struct Model {
     pub(crate) level_tests: Vec<LevelTest>,
     /// The `.max_voltage` members stated in steps over temperature (issue #1257).
     pub(crate) voltage_steps: Vec<VoltageSteps>,
+    /// The input levels stated in rows by the supply (issues #1305 and #1307).
+    pub(crate) supply_steps: Vec<SupplySteps>,
     /// The interfaces the board states are not used (ADR 0083), in path order.
     pub(crate) unused: Vec<Unused>,
     /// The orders of the board's `sequence` statements (issue #1267), in the order written.
@@ -1552,6 +1581,7 @@ impl Model {
             optional_pins: Default::default(),
             level_tests: Vec::new(),
             voltage_steps: Vec::new(),
+            supply_steps: Vec::new(),
             unused: Vec::new(),
             sequence: Vec::new(),
             scenarios: Vec::new(),
@@ -1645,6 +1675,16 @@ impl Model {
         self.voltage_steps
             .iter()
             .find(|s| self.field(s.field).owner == part)
+    }
+
+    /// The input levels stated in rows by the supply (issues #1305 and #1307).
+    pub fn supply_steps(&self) -> &[SupplySteps] {
+        &self.supply_steps
+    }
+
+    /// The rows by the supply a level is stated in, if it is (issues #1305 and #1307).
+    pub fn supply_steps_of(&self, level: FieldId) -> Option<&SupplySteps> {
+        self.supply_steps.iter().find(|s| s.field == level)
     }
 
     /// The test current a level was stated at, if it was (ADR 0076).

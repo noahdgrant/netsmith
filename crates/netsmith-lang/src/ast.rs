@@ -1084,6 +1084,24 @@ pub enum Expr {
         steps: Vec<Step>,
         span: Span,
     },
+    /// `0.65 * .vcc.voltage at 1.1V..1.95V, 2.0V at 3.0V..3.6V`: a logic level that a datasheet
+    /// gives in rows by the supply, each value for the supply after its `at` (a range or one
+    /// voltage), and `interpolated` after the last row when the part says the level is linear
+    /// in the supply between two rows (issues #1305 and #1307). The parser reads it after `&=`
+    /// when a comma or `interpolated` follows the first row; one row alone is the statement's
+    /// `at` ([`Constraint::at`]). Where it may stand is the checker's to say.
+    SupplySteps {
+        rows: Vec<SupplyRow>,
+        interpolated: bool,
+        span: Span,
+    },
+}
+
+/// One row of an [`Expr::SupplySteps`]: `value at supply`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SupplyRow {
+    pub value: Expr,
+    pub at: Expr,
 }
 
 /// One step of an [`Expr::Steps`]: `value to temperature`.
@@ -1104,6 +1122,7 @@ impl Expr {
             | Self::Variant { span: s, .. }
             | Self::Call { span: s, .. }
             | Self::Steps { span: s, .. }
+            | Self::SupplySteps { span: s, .. }
             | Self::Range { span: s, .. }
             | Self::Tolerance { span: s, .. } => *s,
             Self::Path(p) => p.span,

@@ -150,6 +150,10 @@ _Avoid_: Chain voltage, input peak
 A source of price and stock for a part number, behind one trait: given an LCSC or manufacturer's number it answers with quotes, each saying its channel (JLCPCB assembly stock or LCSC retail stock), stock, price breaks and when it was read. Asked when the bill of materials or `fab` is made, cached with a timestamp, and when it has no answer price and stock are **unknown**, never guessed and never 0. Configured in the `[supply]` table of `netsmith.toml`; credentials never go there (ADR 0047).
 _Avoid_: Supplier feed, price list (a file provider reads one)
 
+**Supply row**:
+One row of an input level stated by the supply, as a datasheet prints its thresholds: `.vih &= 0.65 * .vcc.voltage at 1.1V..1.95V, 2.0V at 3.0V..3.6V` is two rows, each the level and, after `at`, the supply it holds at (issue #1305). The supply is the level's reference rail; the solver writes the level from the rows its range reaches, judged against the worse where it reaches two, and gives it no value at a supply no row holds at, unless the part says the level is `interpolated` between rows (issue #1307). Only `vih` and `vil` take rows.
+_Avoid_: Supply table entry, threshold band, voltage bin
+
 **Support section**:
 The `support { ... }` section of a part: the parts and connections its datasheet's application circuit puts around it (a bootstrap capacitor, the resistor on `RT`), which come with the part wherever it is placed, at the path below it (`reg.ic.boost`, ADR 0115). It is how a part that provides a generic carries what not every provider needs.
 _Avoid_: Application module, companion parts, external components, satellite parts
