@@ -311,6 +311,8 @@ error: no `ldo` candidate satisfies `regulator`: the closest of the 1 that fit, 
 
 A group in a module holds for each instance of the module. A load is in one group, and a group lists each load once, at least two of them, and a limit fewer than its loads (one that allows every load at once says nothing). The members are not worked out from the rest of the net: a load that is on or off is not what the others leave. The group says which loads run together and nothing about when: a load's peak (below) is checked alone, as before.
 
+The power view and `netsmith board power` weigh the demand of a rail against what its regulator can give, the rating the part states for its output: `.max_current` of a `LinearRegulator`, `.max_output_current` of a `Buck`'s IC (issue #1316). A buck converter that feeds a rail has the IC's rating as the rail's capacity, so loads that can draw more than it are a power issue (an error) and `board power` no longer says `no limit stated for the supply`; no new member is needed. A source that is no regulator with such a rating (a connector, a rail the board states) still has no limit there.
+
 ### A peak current
 
 The DC analysis has no time in it, and a capacitor is open at DC, so a store charged through a resistor draws nothing in the balance. When it is empty, though, it takes the whole rail across the resistor for an instant, and that is the largest current the source in front of it sees. A rail states that current with `.peak_current`, the most its load draws at an instant, as a positive number (issue #750). It is checked and never drawn: the balance of the net, the power of a part, a shunt's window and every other check of the steady state read `.current` and never this one.
