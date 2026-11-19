@@ -778,6 +778,13 @@ impl Checker<'_> {
         self.narrowing = c.op == CmpOp::Narrow;
         let target = self.resolve_path(p);
         self.narrowing = false;
+        // `.u.needs &= GNSS`: a feature the design needs of the part's order code (issue 1311).
+        if let Res::Field(f) = target
+            && self.is_needs(f)
+        {
+            self.need_statement(f, c);
+            return Some(f);
+        }
         if let Expr::Steps { steps, span } = &c.rhs {
             return self.steps_statement(target, p, c, steps, *span);
         }
@@ -1842,12 +1849,16 @@ impl Checker<'_> {
                 );
                 // Inside a use with several providers, another provider may not state what
                 // this one does: the build tries them before it stops (ADR 0113).
-                if self.in_varied_use(self.model.field(field).owner) {
-                    self.provider_conflicts.push(crate::diag::Diagnostic {
-                        source,
-                        span,
-                        message: message.clone(),
-                    });
+                let owner = self.model.field(field).owner;
+                if self.in_varied_use(owner) {
+                    self.provider_conflicts.push((
+                        vec![owner],
+                        crate::diag::Diagnostic {
+                            source,
+                            span,
+                            message: message.clone(),
+                        },
+                    ));
                 }
                 self.report(source, span, message);
             }

@@ -46,6 +46,7 @@ pub fn scene(system: &SolvedSystem, members: &[(&Built, &Board)]) -> SystemScene
             unknown: m.unknown(),
             window: m.window,
             keyed: m.keyed,
+            soldered: m.soldered,
         })
         .collect();
     SystemScene::of(&system.name, inputs, mates)

@@ -18,6 +18,16 @@
 //! solved (ADR 0113); any other mistake of the check stops the build first, as before. A use the
 //! pick lock holds to a provider is made with it and never varied.
 //!
+//! A contradiction inside one use is that use's own (`Model::provider_conflicts_by_use`), so
+//! before any trial each provider of each use is checked alone, the other uses at their first,
+//! and the providers that contradict what is stated inside the use are passed over for it
+//! whatever the others take (`Search::refuse_at_check`, a check each and no solve). A use left
+//! with one provider is held to it; a use left with none is the failure, at the board that holds
+//! it. So each board of a system has its own process (issue #1326): four boards that state
+//! `FourLayer` at four thicknesses are settled board by board, where a search over the product of
+//! their providers gave up at the bound, and a thickness no build-up has is reported at its own
+//! board, not at the first board of the system.
+//!
 //! The search. `outcome_with` checks once with the default assignment (the first provider of
 //! every use), solves, and if the solution has no diagnostics that is the result, at the cost of
 //! one solve, as before. Only a failure with a use that has more than one provider starts the
@@ -196,6 +206,13 @@ struct Search<'a> {
     /// while a use is varied alone is kept here, so that the search in order, which may reach
     /// the same assignment, does not solve it again (nor count it twice against the bound).
     passes: HashMap<Choices, Pass>,
+    /// The providers of each use that contradict what the design states inside the use (a
+    /// board's `.process.stackup.thickness &= 1.2mm` against a 1.6 mm build-up), by the use's
+    /// path and the provider's index, with the first contradiction: never tried in a trial
+    /// (`refuse_at_check`, issue #1326).
+    refused: HashMap<String, BTreeMap<usize, String>>,
+    /// The provider a use starts at when its first is refused and several are left.
+    starts: BTreeMap<String, String>,
 }
 
 enum Leaf {
@@ -322,9 +339,133 @@ pub(crate) fn unjudged(solution: &Solution) -> Vec<Diagnostic> {
 }
 
 impl Search<'_> {
+    /// The providers of `u` that a trial may take, with their indices: those not refused at
+    /// the check.
+    fn open_candidates<'u>(
+        &self,
+        u: &'u GenericUse,
+    ) -> impl Iterator<Item = (usize, &'u netsmith_check::Provider)> + use<'u, '_> {
+        let refused = self.refused.get(&u.path);
+        u.candidates
+            .iter()
+            .enumerate()
+            .filter(move |(i, _)| refused.is_none_or(|r| !r.contains_key(i)))
+    }
+
+    /// Check each provider of each use that has several, alone (the other uses at their first
+    /// provider), and refuse for that use the providers that contradict what is stated inside
+    /// it: a contradiction inside one use is the use's own (`Model::provider_conflicts_by_use`).
+    /// A use left with one provider is held to it. `Ok(true)` when a use is held to a provider
+    /// other than its first; `Err` with one problem for each use that no provider is left for,
+    /// each at the board that holds the use.
+    fn refuse_at_check(&mut self, checked: &Checked) -> Result<bool, Vec<Problem>> {
+        let Some(model) = self.model(checked) else {
+            return Ok(false);
+        };
+        let uses: Vec<GenericUse> = model
+            .uses
+            .iter()
+            .filter(|u| u.candidates.len() > 1 && !self.held.contains_key(&u.path))
+            .cloned()
+            .collect();
+        let first_conflicts = |m: &Model, path: &str| -> Option<String> {
+            m.provider_conflicts_by_use
+                .get(path)
+                .and_then(|ds| ds.first())
+                .map(|d| d.message.clone())
+        };
+        let mut moved = false;
+        let mut none_left = Vec::new();
+        for u in &uses {
+            let mut refused = BTreeMap::new();
+            for (i, candidate) in u.candidates.iter().enumerate() {
+                let why = if i == u.chosen {
+                    first_conflicts(model, &u.path)
+                } else {
+                    let mut assign = BTreeMap::new();
+                    assign.insert(u.path.clone(), candidate.id.clone());
+                    let trial = self.elaborate(&assign);
+                    self.model(&trial).and_then(|m| first_conflicts(m, &u.path))
+                };
+                if let Some(why) = why {
+                    refused.insert(i, why);
+                }
+            }
+            if refused.len() == u.candidates.len() {
+                none_left.push((u.clone(), refused));
+                continue;
+            }
+            let left: Vec<usize> = (0..u.candidates.len())
+                .filter(|i| !refused.contains_key(i))
+                .collect();
+            if let [only] = left[..] {
+                self.held
+                    .insert(u.path.clone(), u.candidates[only].id.clone());
+            } else if left[0] != 0 {
+                // The use starts at its first provider that is not refused.
+                self.starts
+                    .insert(u.path.clone(), u.candidates[left[0]].id.clone());
+            }
+            moved |= left[0] != 0;
+            if !refused.is_empty() {
+                self.refused.insert(u.path.clone(), refused);
+            }
+        }
+        if none_left.is_empty() {
+            return Ok(moved);
+        }
+        let sources = &checked.sources;
+        Err(none_left
+            .iter()
+            .map(|(u, refused)| {
+                let at = model.instance(u.inst).at();
+                let place = crate::locate(sources, at.0, at.1);
+                let entries: Vec<(String, Option<String>)> = u
+                    .candidates
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| (c.name.clone(), refused.get(&i).cloned()))
+                    .collect();
+                let diagnostic = Diagnostic {
+                    source: at.0,
+                    span: at.1,
+                    message: provider_failure_text(
+                        &u.generic,
+                        &u.path,
+                        &format!("{}:{}", place.file, place.line),
+                        &entries,
+                        0,
+                    ),
+                };
+                let mut problem = Problem::of(Stage::Solve, &diagnostic, sources);
+                problem.board = Some(self.board_of(checked, model, &diagnostic));
+                problem
+            })
+            .collect())
+    }
+
+    /// The board a message is about: the root itself, or for a system the board whose
+    /// definition holds it, as `outcome_observed` names it.
+    fn board_of(&self, checked: &Checked, model: &Model, d: &Diagnostic) -> String {
+        match self.kind {
+            Root::Board => self.root.to_string(),
+            Root::System => checked
+                .system(self.root)
+                .and_then(|system| {
+                    system
+                        .boards
+                        .iter()
+                        .find(|m| crate::inside_definition(model, m.inst, d.source, d.span))
+                        .map(|m| format!("{}/{}", system.name, m.name))
+                })
+                .unwrap_or_else(|| self.root.to_string()),
+        }
+    }
+
     fn elaborate(&self, assign: &BTreeMap<String, String>) -> Checked {
         let mut assignment = Assignment::new();
         let mut all = self.held.clone();
+        all.extend(self.starts.iter().map(|(k, v)| (k.clone(), v.clone())));
         all.extend(assign.iter().map(|(k, v)| (k.clone(), v.clone())));
         assignment.insert(self.root.to_string(), all);
         check_one(
@@ -362,7 +503,9 @@ impl Search<'_> {
                 m.uses
                     .iter()
                     // A use the pick lock holds is not varied (ADR 0113).
-                    .filter(|u| u.candidates.len() > 1 && !self.held.contains_key(&u.path))
+                    .filter(|u| {
+                        self.open_candidates(u).count() > 1 && !self.held.contains_key(&u.path)
+                    })
                     .cloned()
                     .collect()
             })
@@ -433,8 +576,12 @@ impl Search<'_> {
                 Leaf::Fail(_) => None,
             };
         };
-        for candidate in &open.candidates {
-            assign.insert(open.path.clone(), candidate.id.clone());
+        let candidates: Vec<String> = self
+            .open_candidates(&open)
+            .map(|(_, c)| c.id.clone())
+            .collect();
+        for candidate in candidates {
+            assign.insert(open.path.clone(), candidate);
             let found = self.visit(assign);
             assign.remove(&open.path);
             if found.is_some() {
@@ -472,26 +619,74 @@ pub(crate) fn search(
         widened: false,
         weak: BTreeMap::new(),
         passes: HashMap::new(),
+        refused: HashMap::new(),
+        starts: BTreeMap::new(),
     };
-    let uses = s.multi(checked);
-    if uses.is_empty() {
+    if s.multi(checked).is_empty() {
         return Outcome::Unchanged;
     }
-    // The default's failure is the first record: every use at its first provider.
-    let default_choices: Choices = uses.iter().map(|u| (u.path.clone(), 0)).collect();
-    // The first solve may have passed without being able to judge a bound on a use.
-    let (first_passed, first_diagnostics) = match first {
-        First::Solved(first) if first.diagnostics.is_empty() => (true, unjudged(first)),
-        First::Solved(first) => (false, first.diagnostics.clone()),
-        First::Conflicts(conflicts) => (false, conflicts.to_vec()),
+    // The providers that contradict what is stated inside their use are passed over for it
+    // alone, whatever the other uses take: in a system each board's process is its own
+    // (issue #1326), and four boards of four thicknesses are four checks each, not a search
+    // over their product. A use that no provider is left for is the failure, at its board.
+    let moved = match s.refuse_at_check(checked) {
+        Ok(moved) => moved,
+        Err(problems) => return Outcome::Failed(problems),
     };
-    s.records.push(Record {
-        choices: default_choices.clone(),
-        diagnostics: first_diagnostics.clone(),
-        solved: matches!(first, First::Solved(_)),
-    });
-    s.seen.insert(default_choices, 0);
-    s.trials = 1;
+    let uses = s.multi(checked);
+    let (first_passed, first_diagnostics) = if moved {
+        // A use is held to a provider other than its first: the first solve is not the
+        // design's default any more, so the default is tried again as a trial of its own.
+        s.trials = 1;
+        match s.leaf(&BTreeMap::new()) {
+            Some(Leaf::Pass(choices)) => {
+                let (checked_found, solution) = *s.passes.remove(&choices).expect("kept");
+                let passed_over = passed_over(&s, &checked_found);
+                return Outcome::Found(Box::new(Found {
+                    checked: checked_found,
+                    solution,
+                    passed_over,
+                }));
+            }
+            Some(Leaf::Fail(at)) => (false, s.records[at].diagnostics.clone()),
+            None => unreachable!("the first trial is within the bound"),
+        }
+    } else {
+        // The default's failure is the first record: every use at its first provider.
+        let default_choices: Choices = uses.iter().map(|u| (u.path.clone(), 0)).collect();
+        // The first solve may have passed without being able to judge a bound on a use.
+        let (first_passed, first_diagnostics) = match first {
+            First::Solved(first) if first.diagnostics.is_empty() => (true, unjudged(first)),
+            First::Solved(first) => (false, first.diagnostics.clone()),
+            First::Conflicts(conflicts) => (false, conflicts.to_vec()),
+        };
+        s.records.push(Record {
+            choices: default_choices.clone(),
+            diagnostics: first_diagnostics.clone(),
+            solved: matches!(first, First::Solved(_)),
+        });
+        s.seen.insert(default_choices, 0);
+        s.trials = 1;
+        (first_passed, first_diagnostics)
+    };
+    if uses.is_empty() {
+        // Every use is held: the trial above is the answer.
+        if let Some((_, weak)) = s.weak.pop_first() {
+            let (checked_found, solution) = *weak;
+            let passed_over = passed_over(&s, &checked_found);
+            return Outcome::Found(Box::new(Found {
+                checked: checked_found,
+                solution,
+                passed_over,
+            }));
+        }
+        let model = s.model(checked).expect("the root was elaborated");
+        return Outcome::Failed(crate::diagnostic_problems(
+            &first_diagnostics,
+            &checked.sources,
+            &|d| s.board_of(checked, model, d),
+        ));
+    }
     let shown =
         |ds: &[Diagnostic]| -> Vec<String> { ds.iter().map(|d| d.message.clone()).collect() };
 
@@ -500,9 +695,14 @@ pub(crate) fn search(
     // unrelated mistake is not solved once per combination of providers.
     for u in &uses {
         let mut changed = false;
-        for candidate in u.candidates.iter().skip(1) {
+        let others: Vec<String> = s
+            .open_candidates(u)
+            .skip(1)
+            .map(|(_, c)| c.id.clone())
+            .collect();
+        for candidate in others {
             let mut assign = BTreeMap::new();
-            assign.insert(u.path.clone(), candidate.id.clone());
+            assign.insert(u.path.clone(), candidate);
             match s.leaf(&assign) {
                 Some(Leaf::Pass(_)) => changed = true,
                 Some(Leaf::Fail(at)) => {
@@ -572,6 +772,10 @@ fn passed_over(s: &Search<'_>, picked: &Checked) -> BTreeMap<String, Vec<(String
     for u in model.uses.iter().filter(|u| u.candidates.len() > 1) {
         let mut tried = Vec::new();
         for (index, candidate) in u.candidates.iter().enumerate().take(u.chosen) {
+            if let Some(why) = s.refused.get(&u.path).and_then(|r| r.get(&index)) {
+                tried.push((candidate.name.clone(), why.clone()));
+                continue;
+            }
             let best = s
                 .records
                 .iter()
@@ -668,23 +872,7 @@ fn failure(
         span: at.1,
         message,
     };
-    // The board a message is about: the root itself, or for a system the board whose
-    // definition holds it, as `outcome_observed` names it.
-    let board_of = |d: &Diagnostic| -> String {
-        match s.kind {
-            Root::Board => s.root.to_string(),
-            Root::System => checked
-                .system(s.root)
-                .and_then(|system| {
-                    system
-                        .boards
-                        .iter()
-                        .find(|m| crate::inside_definition(model, m.inst, d.source, d.span))
-                        .map(|m| format!("{}/{}", system.name, m.name))
-                })
-                .unwrap_or_else(|| s.root.to_string()),
-        }
-    };
+    let board_of = |d: &Diagnostic| -> String { s.board_of(checked, model, d) };
     let mut problems = if s.gave_up {
         crate::diagnostic_problems(first, sources, &board_of)
     } else {

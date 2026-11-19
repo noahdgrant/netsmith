@@ -192,7 +192,7 @@ fn library(symbols: &[String]) -> String {
     )
 }
 
-/// The stock-like `Device` library: `R`, `C` and `LED`.
+/// The stock-like `Device` library: `R`, `C`, `LED`, `C_Polarized` and `Battery_Cell`.
 pub fn device() -> String {
     let vertical = |kind: &str| {
         [
@@ -225,7 +225,27 @@ pub fn device() -> String {
             pin("passive", "", (3.81, 0.0, 180.0), 2.54, "A", "2"),
         ],
     );
-    library(&[r, c, led])
+    let cp = symbol(
+        "C_Polarized",
+        [(0.635, 2.54, 0.0), (0.635, -2.54, 0.0)],
+        "C_Polarized",
+        &rectangle((-2.286, 1.016), (2.286, 0.508)),
+        &[
+            pin("passive", "", (0.0, 3.81, 270.0), 2.794, "~", "1"),
+            pin("passive", "", (0.0, -3.81, 90.0), 2.794, "~", "2"),
+        ],
+    );
+    let cell = symbol(
+        "Battery_Cell",
+        [(2.54, 2.54, 0.0), (2.54, 0.0, 0.0)],
+        "Battery_Cell",
+        &rectangle((-2.286, 1.778), (2.286, 1.524)),
+        &[
+            pin("passive", "", (0.0, 5.08, 270.0), 2.54, "+", "1"),
+            pin("passive", "", (0.0, -2.54, 90.0), 2.54, "-", "2"),
+        ],
+    );
+    library(&[r, c, led, cp, cell])
 }
 
 /// A single-row connector symbol of `n` pins, as KiCad draws them.
@@ -572,6 +592,36 @@ fn header(name: &str, n: usize) -> String {
     footprint(name, "header", "through_hole", &graphics, pads, -2.5)
 }
 
+/// Two through-hole pads on a line, `pitch` apart, in a courtyard from `min` to `max`: a
+/// radial capacitor (`CP_Radial_...`) or a two-pin wire-to-board header (issue 1366).
+fn two_leads(
+    name: &str,
+    pitch: f64,
+    pad: (f64, f64),
+    drill: f64,
+    min: (f64, f64),
+    max: (f64, f64),
+) -> String {
+    let graphics = rect_of("F.CrtYd", 0.05, min, max);
+    let pads: String = [(1, "roundrect", 0.0), (2, "oval", pitch)]
+        .iter()
+        .map(|(number, shape, x)| {
+            format!(
+                "(pad \"{number}\" thru_hole {shape} (at {x} 0) (size {} {}) (drill {drill}) (layers \"*.Cu\" \"*.Mask\")) ",
+                pad.0, pad.1
+            )
+        })
+        .collect();
+    footprint(
+        name,
+        "two leads",
+        "through_hole",
+        &graphics,
+        &pads,
+        min.1 - 1.0,
+    )
+}
+
 fn sot23() -> String {
     let graphics =
         box_of("F.CrtYd", 0.05, (1.92, 1.7)) + &line("F.SilkS", 0.12, (-0.9, -1.56), (0.9, -1.56));
@@ -652,6 +702,30 @@ fn footprints() -> Vec<(&'static str, String, String)> {
             all.push((library, name.clone(), header(&name, n)));
         }
     }
+    all.push((
+        "Capacitor_THT",
+        "CP_Radial_D16.0mm_P7.50mm".to_string(),
+        two_leads(
+            "CP_Radial_D16.0mm_P7.50mm",
+            7.5,
+            (2.4, 2.4),
+            1.2,
+            (-4.5, -8.25),
+            (12.0, 8.25),
+        ),
+    ));
+    all.push((
+        "Connector_JST",
+        "JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal".to_string(),
+        two_leads(
+            "JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal",
+            2.0,
+            (1.2, 1.75),
+            0.75,
+            (-2.45, -1.85),
+            (4.45, 6.75),
+        ),
+    ));
     all.push(("Package_TO_SOT_SMD", "SOT-23".to_string(), sot23()));
     all.push((
         "Package_TO_SOT_SMD",

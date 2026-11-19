@@ -172,3 +172,34 @@ interface CaseModel {
     /// solid, with `view 3d --case solid` and the editor's `Shift+C`) in it.
     .color: Color optional
 }
+
+/// The area under a part's body that the board keeps low (issue #1335): a module that stands on
+/// sockets or spacers covers more of the board than its footprint, whose outline holds only
+/// what is soldered (two socket rows), and its maker allows only parts lower than a figure under
+/// it (a "0.5 mm under-height" rule). A part states it once as its member `.underside_keepout`
+/// (the name says what it is; another name, or one on a module or a board, is an error), in its
+/// own frame (the footprint's, as on the top face), turned and moved with the part:
+///
+/// - a rectangle: `.x` and `.y`, the corner nearest the footprint's origin, `.width` and
+///   `.height`; or a polygon of straight edges, `polygon (-20mm, -12mm) (20mm, -12mm) (20mm,
+///   12mm) (-20mm, 12mm)`, in its block, for a body that is not a rectangle;
+/// - `.max_height`, the tallest a part may stand under it, from the face of the board the part
+///   is on.
+///
+/// It limits the height of every other part on that face whose body is in the area, as a
+/// keepout's `.max_height` does, on whichever face the placer puts the part; a part on the other
+/// face is not under the body. When the part is a connector of a system's mate, it limits the
+/// parts of the other board too: the area is carried over the other connector, where the mate
+/// puts it, and the parts on that board's facing face stand at most `.max_height` from it. The
+/// placer keeps a part too tall for it out of the box round it, and `layout check` and `fab`
+/// name the part that stands in it and the part whose keepout it is. It forbids nothing else.
+interface UndersideKeepout {
+    /// The corner nearest the footprint's origin, and the size: a rectangle. Leave the four out
+    /// for a `polygon`.
+    .x: Length
+    .y: Length
+    .width: Length
+    .height: Length
+    /// The tallest a part may stand under the body, from the board's face.
+    .max_height: Length
+}

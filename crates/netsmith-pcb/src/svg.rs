@@ -936,6 +936,7 @@ mod tests {
             parts: false,
             max_height: Some(3.0),
             on_carrier_face: false,
+            polygon: None,
         });
         let view = render_view(&board);
         assert!(
@@ -974,6 +975,7 @@ mod tests {
             parts: false,
             max_height: None,
             on_carrier_face: false,
+            polygon: None,
         });
         board.cutouts.push(crate::board::BoardCutout {
             name: "slot".into(),

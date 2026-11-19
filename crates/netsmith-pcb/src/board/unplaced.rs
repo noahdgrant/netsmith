@@ -97,6 +97,7 @@ impl Unplaced {
                     parts: k.parts,
                     max_height: k.max_height,
                     on_carrier_face: k.on_carrier_face,
+                    polygon: k.polygon.clone(),
                 })
                 .collect(),
             parts,

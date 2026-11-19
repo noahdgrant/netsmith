@@ -546,6 +546,7 @@ mod tests {
                 })
                 .collect(),
             carrying: None,
+            source: None,
         }
     }
 

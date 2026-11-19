@@ -549,7 +549,54 @@ fn points_of(node: &Sexp, what: &str) -> Result<Vec<Pt>, ArtworkError> {
     let Some(pts) = node.find("pts") else {
         return Err(ArtworkError::Malformed(format!("{what} has no (pts")));
     };
-    pts.find_all("xy").map(|xy| point(xy, what)).collect()
+    outline_in_order(pts, what)
+}
+
+/// The points of a `(pts ...)` list in the order the file has them, where an
+/// `(arc (start ..) (mid ..) (end ..))` among the `(xy ..)` is read as points no further than
+/// [`crate::geom::ARC_ERROR`] from it, from its start to its end (a zone's outline can hold
+/// arcs, issue #1299). An arc whose three points lie on a line is its two ends. An arc starting
+/// where the point before it ended does not repeat that point.
+fn outline_in_order(pts: &Sexp, what: &str) -> Result<Vec<Pt>, ArtworkError> {
+    let mut out: Vec<Pt> = Vec::new();
+    for item in pts.args() {
+        match item.head() {
+            Some("xy") => out.push(point(item, what)?),
+            Some("arc") => {
+                let at = |name: &str| {
+                    child_point(item, name, what)?.ok_or_else(|| {
+                        ArtworkError::Malformed(format!("an arc of {what} has no ({name}"))
+                    })
+                };
+                let (s, m, e) = (at("start")?, at("mid")?, at("end")?);
+                // A circle is drawn as one arc whose start is its end and whose `mid` is
+                // opposite: the circle on that diameter (a full turn, as `Arc::sweep` has it).
+                let arc = if s.dist(e) < 1e-9 && s.dist(m) > 1e-9 {
+                    Some(Arc {
+                        start: s,
+                        end: s,
+                        centre: Pt::new((s.x + m.x) / 2.0, (s.y + m.y) / 2.0),
+                        radius: s.dist(m) / 2.0,
+                        ccw: true,
+                    })
+                } else {
+                    Arc::through(s, m, e)
+                };
+                let flat = arc.map_or_else(|| vec![s, e], |arc| arc.points());
+                let skip = usize::from(out.last().is_some_and(|p| p.dist(s) < 1e-6));
+                out.extend(flat.into_iter().skip(skip));
+            }
+            _ => {}
+        }
+    }
+    Ok(out)
+}
+
+/// The points of a KiCad `(pts ...)` list that may hold arcs, as [`Artwork`] reads a zone's
+/// outline: `None` when a point or an arc of it has no numbers. Public for the footprint
+/// reader of the board model, which reads a library's keepout the same way (issue #1299).
+pub fn outline_points(pts: &Sexp) -> Option<Vec<Pt>> {
+    outline_in_order(pts, "an outline").ok()
 }
 
 /// How a text is written: what the `(effects ...)` of a text or text box say.
@@ -2000,6 +2047,44 @@ mod tests {
             err.contains("zone gnd on F.Cu is filled in `hatch` mode"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn a_zone_outline_with_arcs_is_read_as_points_within_arc_error_of_them() {
+        // Issue #1299: a circle drawn as one arc (its start is its end, its `mid` opposite),
+        // and an arc between two points, each no further than `ARC_ERROR` from the drawn one.
+        let outline = |pts: &str| -> Vec<Pt> {
+            let zone = format!(
+                "(zone (net 1) (net_name \"GND\") (layer \"F.Cu\") (fill yes) (polygon (pts {pts})))\n\t(via (at 5 6)"
+            );
+            let src = BOARD.replace("(via (at 5 6)", &zone);
+            let art = Artwork::parse(&src).unwrap();
+            art.zones.last().unwrap().outlines[0].clone()
+        };
+        let circle = outline("(arc (start 12 5) (mid 8 5) (end 12 5))");
+        let (centre, radius) = (Pt::new(10.0, 5.0), 2.0);
+        assert!(circle.len() >= 16, "{} points", circle.len());
+        for p in &circle {
+            assert!((p.dist(centre) - radius).abs() < 1e-9, "{p:?}");
+        }
+        // The chords between neighbours stay within the error of the circle.
+        for (a, b) in circle.iter().zip(circle.iter().cycle().skip(1)) {
+            let mid = Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
+            assert!(radius - mid.dist(centre) <= crate::geom::ARC_ERROR + 1e-9);
+        }
+        // A half round between two points on a line, joined to the points before and after it:
+        // the arc's start is not repeated.
+        let slot = outline("(xy 0 0) (xy 4 0) (arc (start 4 0) (mid 5 1) (end 4 2)) (xy 0 2)");
+        assert_eq!(slot.first(), Some(&Pt::new(0.0, 0.0)));
+        assert_eq!(slot.last(), Some(&Pt::new(0.0, 2.0)));
+        assert_eq!(slot.iter().filter(|p| **p == Pt::new(4.0, 0.0)).count(), 1);
+        assert!(slot.len() > 8, "{} points", slot.len());
+        for p in &slot[2..slot.len() - 1] {
+            assert!((p.dist(Pt::new(4.0, 1.0)) - 1.0).abs() < 1e-9, "{p:?}");
+        }
+        // Three points on a line are the two ends.
+        let flat = outline("(xy 0 0) (arc (start 1 0) (mid 2 0) (end 3 0)) (xy 3 3)");
+        assert_eq!(flat.len(), 4);
     }
 
     #[test]
