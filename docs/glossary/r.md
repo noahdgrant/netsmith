@@ -1,5 +1,9 @@
 # Glossary: R
 
+**Radio grant**:
+A radio's certification (a modular grant: an FCC ID, an ISED number, a RED certificate) and the conditions it holds under, which a radio part states as a `std::radio::Radio` (issue #1278): the most antenna gain in each band (`RadioBand`), the type of antenna it was tested with, and the optional reference design, exposure distance and co-location limits. The gain is checked against the antenna on the RF path; the rest is listed in `fab-notes.txt` for a person to verify.
+_Avoid_: Certificate (the document, not its conditions), approval, FCC data
+
 **Rail**:
 The strip round a panel's grid, 5 mm to 8 mm, that the panel is held by; it carries the tooling holes and fiducials and is cut off along its own V-cut line.
 _Avoid_: Frame, border, tooling edge
@@ -61,6 +65,10 @@ _Avoid_: Negative peak, reverse transient
 **RF net**:
 A net with a stated impedance of one track, a `TrackImpedance` (issue #1274): the placer weighs its length above every other net's, so its parts are placed first and its line short, and the router routes it first, on one copper layer with no via, unless the physical file says `.pin route any_layer` of it. A net of a `PairImpedance` is a diff pair, and no RF net.
 _Avoid_: Antenna net, high-frequency net, marking a net RF (nothing is written: the impedance makes it one)
+
+**RF path**:
+The nets from a radio's `.rf` pin to its antenna (issue #1278): the pin's net, and on through each part with two pins (a DC block, a 0 ohm link) to the net of its other pin, never into a rail's net. The check of a radio grant holds each antenna whose `.feed` is on it against the grant.
+_Avoid_: Antenna line, RF chain, feed line
 
 **Rip-up round**:
 A round of the router's last stage of a try that leaves connections (issue #1088): for each connection left, the cheapest path that may cross other nets' copper names the nets it crosses, their copper the router laid is removed whole, the connection is routed through the room and those nets are routed again after it, and what does not fit is left for the next round. A try gets 6 rounds unless `--rip-rounds` or `rip_rounds` in `netsmith.toml` says otherwise (0 runs none), one net is ripped up at most 3 times, and the best state any round reaches is kept; a try the rounds finish is used only when no other try finishes the board without them. The routes file's copper is never ripped up.

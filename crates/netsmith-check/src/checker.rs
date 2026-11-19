@@ -181,6 +181,10 @@ pub(crate) struct Checker<'a> {
     /// The providers chosen for the uses of the definition being elaborated: a use's path to
     /// a provider's id (ADR 0068).
     pub(crate) assign: BTreeMap<String, String>,
+    /// The alternates fitted in the definition being elaborated (issue 1312): the path of a
+    /// member to which of its `alternate` statements stands in its place. Empty for the
+    /// check of the source as written.
+    pub(crate) fitted: BTreeMap<String, usize>,
     /// The uses of generics found in the elaboration in progress.
     pub(crate) uses: Vec<GenericUse>,
     /// The contradictions found inside a use with several providers (ADR 0113), each with the
@@ -329,6 +333,7 @@ impl<'a> Checker<'a> {
             enum_ids: HashMap::new(),
             bus_def_failed: HashSet::new(),
             assign: BTreeMap::new(),
+            fitted: BTreeMap::new(),
             uses: Vec::new(),
             provider_conflicts: Vec::new(),
             generic_members: HashMap::new(),
@@ -1499,6 +1504,8 @@ impl<'a> Checker<'a> {
         // The limits the generics put on pins that a provider's row leaves unlimited are the
         // row's own (ADR 0126): the provider's table is read with them written in.
         let provider_items = self.with_inherited_limits(def, &generics, kind);
+        // A member whose alternate is fitted is declared as the alternate (issue 1312).
+        let provider_items = self.fit_alternates(id, provider_items);
         for (g, gref) in &generics {
             let items = self.generic_items(g, def, kind);
             let before = self.model.instance(id).children.len();
@@ -2232,6 +2239,7 @@ impl<'a> Checker<'a> {
                 // Read in the first pass (`declare_variants`).
                 Item::Variants(_) => {}
                 Item::KeepApart(k) => self.keep_apart(k),
+                Item::Alternate(a) => self.alternate(a, items),
                 Item::Connect(c) if self.phys.is_none() => self.connect(c),
                 Item::JoinMap(b) if self.phys.is_none() => self.join_map(b),
                 Item::Bridge(b) if self.phys.is_none() => self.bridge(b),

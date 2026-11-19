@@ -88,3 +88,55 @@ fn a_burst_with_no_bulk_capacitance_fails_and_says_what_holding_it_takes() {
     );
     assert!(text.contains("holding the burst takes 74.07uF"), "{text}");
 }
+
+/// The same radio behind the buck on a port that gives at most 500 mA (issue #1340): the buck
+/// draws the burst, scaled, from its input, and the capacitance across the input holds what the
+/// port cannot give. The board is the guide's (chapter 19, _A load that bursts_).
+const PORT: &str = r#"
+import std::parts::passive::CapacitorBank
+import std::parts::regulator::{Buck, Lmr16006y}
+import std::sources::Rail
+
+board Radio {
+    .usb: Rail { .voltage &= 5V +/- 5%; .peak &= 5.5V; .pos.net &= "VBUS"; .max_peak_current &= 500mA }
+    .reg: Buck<Lmr16006y> { .vout.pos.net &= "V3V3"; .vout.voltage &= 3.3V +/- 5% }
+    .usb ~ .reg.vin
+    .mcu: Rail { .current &= 5mA..150mA }
+    .reg.vout ~ .mcu
+    .radio: Rail { .current &= 10mA..40mA; .peak_current &= 500mA; .burst &= 200us; .voltage >= 3V }
+    .reg.vout ~ .radio
+    .bulk: CapacitorBank
+    .bulk.total_effective_capacitance >= 80uF
+    .reg.vout.pos ~> .bulk ~> .reg.vout.neg
+    .input_bulk: CapacitorBank
+    .input_bulk.total_effective_capacitance >= 40uF
+    .usb.pos ~> .input_bulk ~> .usb.neg
+}
+"#;
+
+#[test]
+fn a_burst_held_by_the_input_capacitance_builds() {
+    let root = TempDir::new("burst-load-port");
+    let run = build(&root, PORT);
+    let text = printed(&run);
+    assert!(run.status.success(), "{text}");
+    assert!(!text.contains("during a burst"), "{text}");
+}
+
+#[test]
+fn a_burst_the_port_cannot_give_fails_and_says_what_the_input_needs() {
+    let root = TempDir::new("burst-load-port-bare");
+    let source = PORT
+        .replace("    .input_bulk: CapacitorBank\n", "")
+        .replace("    .input_bulk.total_effective_capacitance >= 40uF\n", "")
+        .replace("    .usb.pos ~> .input_bulk ~> .usb.neg\n", "");
+    assert!(!source.contains("input_bulk"), "{source}");
+    let run = build(&root, &source);
+    let text = printed(&run);
+    assert_eq!(run.status.code(), Some(1), "{text}");
+    assert!(
+        text.contains("during a burst of `radio` (for 200us) `reg.ic`, which feeds it"),
+        "{text}"
+    );
+    assert!(text.contains("of effective capacitance across the input"), "{text}");
+}

@@ -1763,7 +1763,7 @@ impl Checker<'_> {
 
     /// Whether `inst` is, or lies inside, a use of a generic that has more than one provider
     /// in scope (ADR 0113).
-    fn in_varied_use(&self, inst: InstId) -> bool {
+    pub(crate) fn in_varied_use(&self, inst: InstId) -> bool {
         let mut cur = Some(inst);
         while let Some(at) = cur {
             if self

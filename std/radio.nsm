@@ -1,0 +1,102 @@
+//! Radios and their antennas (issue #1278): what a radio's certification allows, stated by the
+//! radio part as data, and what an antenna part is, so that the check after the solve can hold
+//! the antenna the board connects against the radio's grant.
+//!
+//! A radio module is sold with a certification, a modular grant (an FCC ID, an ISED number, a
+//! RED certificate), that holds only under conditions its maker lists: the most gain an antenna
+//! may have in each band, the type of antenna it was tested with, often a reference design of
+//! the trace to the antenna, a least distance between the antenna and a person (exposure), and
+//! limits on other radios beside it (co-location). A radio part states them as a `Radio`, with
+//! a `RadioBand` for each band nested in it; an antenna part states an `Antenna`, with its type
+//! and an `AntennaBand` for each band it works in:
+//!
+//! ```text
+//! .radio: Radio {
+//!     .grant &= "FCC ID 2ABCD-EXAMPLE"
+//!     .antenna_type &= AntennaType::Chip
+//!     .wifi: RadioBand { .band &= 2.4GHz..2.4835GHz; .max_antenna_gain &= 2 }
+//! }
+//! .antenna: Antenna {
+//!     .type &= AntennaType::Chip
+//!     .wifi: AntennaBand { .band &= 2.4GHz..2.5GHz; .gain &= 1.5 }
+//! }
+//! ```
+//!
+//! The check follows the RF path from the radio's `.rf` pin: its net, and on through each part
+//! with two pins (a DC block, a 0 ohm link, a series inductor of a match) to the net of its
+//! other pin, never through a net that is a rail's (a shunt part of a match to ground ends
+//! there). Each antenna whose `.feed` is on the path is held against each band of the radio: its
+//! gain in the bands of its own that overlap the radio's, at its most, must be no more than the
+//! radio's `.max_antenna_gain` there. A gain over it is an error of the build; an antenna that
+//! states no gain in a band of the radio, and a path that ends at a connector with no antenna on
+//! it (an antenna on a cable), are listed as not evaluated. The other conditions (the type of
+//! antenna, the reference design, the exposure, the co-location) are not judged: `fab-notes.txt`
+//! lists each of them as one a person must verify.
+//!
+//! Gains are in dBi, written as a plain number (`2` is 2 dBi), because the language has no unit
+//! for a ratio in decibels.
+
+/// The type of an antenna, as a grant names the type it was tested with.
+enum AntennaType {
+    /// A trace of copper on the board (an inverted F, a meander).
+    PcbTrace,
+    /// A ceramic chip antenna soldered to the board.
+    Chip,
+    /// A dipole, often an external antenna on a cable.
+    Dipole,
+    /// A monopole or a whip.
+    Monopole,
+    /// A planar inverted F antenna that is a part of its own (a stamped metal one).
+    Pifa,
+    /// A patch antenna.
+    Patch,
+}
+
+/// What a radio's certification allows (issue #1278): the grant and the conditions it holds
+/// under, stated by the radio part. A part states one `RadioBand` for each band of the grant,
+/// nested in it (`.radio: Radio { .wifi: RadioBand { ... } }`).
+interface Radio {
+    /// The radio's RF pin, the start of the path to its antenna. A module with its antenna on
+    /// it has none: its grant's gain is the module's own, and nothing on the board is judged.
+    .rf: Pin optional
+    /// What names the grant (`"FCC ID 2ABCD-EXAMPLE"`), for the notes.
+    .grant: String
+    /// The type of antenna the grant was tested with. Listed in the notes for a person to
+    /// verify against the antenna the board connects.
+    .antenna_type: AntennaType
+    /// The reference design of the trace to the antenna that the grant requires, as its maker's
+    /// document names it. Unset means the grant requires none.
+    .reference_design: String optional
+    /// The least distance between the antenna and a person that the grant's exposure
+    /// assessment assumes (20 cm for many mobile grants). Unset means the grant states none.
+    .exposure_distance: Length optional
+    /// The limits on other radios transmitting beside this one, as the grant states them.
+    /// Unset means the grant states none.
+    .colocation: String optional
+}
+
+/// One band of a radio's grant (issue #1278), nested in its `Radio`.
+interface RadioBand {
+    /// The band, a range of frequency (`2.4GHz..2.4835GHz`).
+    .band: Frequency
+    /// The most gain an antenna may have in the band, in dBi, as a plain number (`2` is 2 dBi).
+    .max_antenna_gain: Number
+}
+
+/// What an antenna part is (issue #1278): its feed pin and its type. A part states one
+/// `AntennaBand` for each band it works in, nested in it (`.antenna: Antenna { .wifi:
+/// AntennaBand { ... } }`). Its other pins (a ground of a PIFA) are the part's own.
+interface Antenna {
+    /// The pin the radio's signal enters by.
+    .feed: Pin
+    .type: AntennaType
+}
+
+/// One band an antenna works in (issue #1278), nested in its `Antenna`.
+interface AntennaBand {
+    /// The band, a range of frequency (`2.4GHz..2.5GHz`).
+    .band: Frequency
+    /// The peak gain in the band, in dBi, as a plain number (`1.5` is 1.5 dBi). A range is
+    /// judged at its most.
+    .gain: Number
+}

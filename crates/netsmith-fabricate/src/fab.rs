@@ -1921,6 +1921,8 @@ fn fab_board(
         );
         // What the check of the environment did and did not do, for a board that has one.
         extras.extend(environment.notes);
+        // The conditions of each radio's grant that a person must verify (issue #1278).
+        extras.extend(netsmith_solve::radio::verify_lines(&built.trace.model));
         // The notes lead with what is wrong, so that nobody orders an incomplete board.
         if let Some(incomplete) = &incomplete {
             extras.insert(0, format!("ERROR: INCOMPLETE: {}", incomplete.headline()));
@@ -1949,6 +1951,8 @@ fn fab_board(
         } else {
             Vec::new()
         };
+        // The alternates (issue 1312): not fitted, so in no line of bom.csv or cpl.csv.
+        extras.extend(alternate_notes(&built.alternates));
         let package_options = Options {
             // The check finds the unrouted connections as unconnected pads; the package is made
             // anyway, for the person to look at, and the run still fails.
@@ -3300,6 +3304,25 @@ fn panel_rules(r: &netsmith_core::PanelRules) -> netsmith_fab::PanelBuildRules {
         fiducial: r.fiducial,
         fiducial_offset: r.fiducial_offset,
     }
+}
+
+/// The lines of `fab-notes.txt` for the alternates of a board (issue 1312): each is not fitted
+/// (DNP), on the footprint of the part it may take the place of, and passed the board's checks.
+fn alternate_notes(alternates: &[netsmith_pipeline::alternates::FittedAlternate]) -> Vec<String> {
+    alternates
+        .iter()
+        .map(|a| {
+            let number = match (&a.sourcing.mpn, &a.sourcing.lcsc) {
+                (Some(mpn), Some(lcsc)) => format!(" ({mpn}, {lcsc})"),
+                (Some(n), None) | (None, Some(n)) => format!(" ({n})"),
+                (None, None) => String::new(),
+            };
+            format!(
+                "alternate (not fitted, DNP; not in bom.csv): {} may take `{}`{number} in the place of `{}` ({}:{}); the board's checks pass with it fitted",
+                a.refdes, a.kind, a.primary, a.at.file, a.at.line
+            )
+        })
+        .collect()
 }
 
 /// What the design says about how each part is fitted, for the packager, which would

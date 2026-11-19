@@ -382,8 +382,51 @@ board Tracker {
 - Each `.needs &= F` leaves the codes that have `F`, so two statements need both features. A module that places the part may state a need of its own, and the board one from outside (`.tracker.u.needs &= GNSS`, ADR 0116: only `&=` reaches inside a module).
 - The design must leave one code. With no need stated and several codes, or with needs that several codes meet, the board names the code with `.mpn &=`, and the message lists the codes with their features. A part with one code needs neither.
 - A code the board names with `.mpn &=` must be a row of the table and have every feature the design needs: a code without one is refused, at the `.mpn`, with the need and the codes that have it.
-- The `.needs` member is a part's only when the part states `.variants`; a part that states the table may not declare a `.needs` of its own. A part has one table, and a code is in it once.
+- The `.needs` member is a part's only when the part states `.variants`, or a generic it provides declares it (below); a part that states the table may not declare a `.needs` of its own. A part has one table, and a code is in it once.
 - The code is the part's `.mpn`, so a part that also has a catalog keyed by `.mpn` (`catalog modem by .mpn { .mpn, .package }`, chapter 12) is held to the row of that code, as a hand pick holds it, and takes its supplier's number from the row. A part with no catalog has no supplier's number: the bill of materials shows the code, and the board house does not assemble it unless it is `Hand` or `Consigned` (Who assembles a part, above).
+
+A board that uses a generic (`.u: Radio`, chapter 14) reaches only the members the generic declares, so a generic whose providers are sold as order codes declares `.needs` as an optional member, `.needs: String optional`, and a provider with a `.variants` table fills it (issue #1402, owner decision). The board states the need through the use, and the solver picks a provider that has a code with it:
+
+```nsm evaluate picks
+/// A radio, whichever module it is.
+generic Radio {
+    pins {
+        .a passive
+    }
+    /// What the design needs of the module's order code.
+    .needs: String optional
+}
+
+/// Sold as one part, with no feature to need.
+part BasicRadio provides Radio {
+    pins {
+        .a passive "A" "1"
+    }
+}
+
+part Modem provides Radio {
+    .variants {
+        "MDM-100-G" GNSS LTE
+        "MDM-100" LTE
+    }
+    pins {
+        .a passive "A" "1"
+    }
+}
+
+board Tracker {
+    .u: Radio { .assembly &= AssemblyMode::Hand }
+    .u.needs &= GNSS
+}
+```
+
+```text
+u is a Radio: picked Modem; passed over BasicRadio (`u` is a `BasicRadio`, which states no `.variants`: it is one order code with no feature, and the design needs `GNSS` of it; name a part whose `.variants` table has the feature, or remove the need)
+```
+
+- A provider with no `.variants` table has `.needs` too, from the generic, and no feature: a need passes it over, as above, and so does a provider whose table has no code with every need. A board that states no need picks such a provider as any other.
+- A provider with a table takes the generic's `.needs` as its own. The generic declares it `.needs: String optional` and nothing else; a provider with a table refuses any other declaration of it.
+- The standard `LoadSwitch` (`std::parts::switch`) declares `.needs`, for an IC sold with and without a feature such as a quick output discharge.
 
 A code that lacks a feature the board needs is refused:
 
@@ -436,6 +479,128 @@ error: `u` is a `Modem`, which is sold as `MDM-100-G` (GNSS, LTE) and `MDM-100` 
    |
 12 |     .u: Modem
    |     ^^^^^^^^^
+```
+
+### Alternates on one footprint
+
+One footprint can take two parts: two radio modules with the same pads, a regulator sold by two makers. The board declares the part it is drawn with, and beside it, with `alternate`, each other part the footprint may take (issue #1312, owner decision). The build checks, solves and designs the board again with each alternate fitted in the member's place, and says which one fails. The bill of materials lists each alternate on the member's designator, not fitted (DNP), and `fab-notes.txt` names it; `bom.csv` and the placement file have the member only.
+
+```nsm
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+part ModuleA {
+    .vcc: Rail
+    .vcc.voltage <= 3.6V
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+    }
+}
+
+/// Another maker's module on the same pads, for 1.8 V to 5.5 V.
+part ModuleB {
+    .vcc: Rail
+    .vcc.voltage <= 5.5V
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+    }
+}
+
+board Tracker {
+    .input: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .j: Header1x2
+    .input.pos ~ .j.p1
+    .input.neg ~ .j.p2
+    .u: ModuleA { .assembly &= AssemblyMode::Hand }
+    /// Fitted when the first is out of stock.
+    alternate .u: ModuleB { .assembly &= AssemblyMode::Hand }
+    .input ~ .u.vcc
+}
+```
+
+- `alternate` is followed by a declaration of the member as it would be written with the alternate in its place, and its body narrows the alternate as that declaration's would (`.assembly`, `.lcsc`, `.needs`). The member is one part declared in the same body: not a module, a group or a list. The alternate is another kind of part; a different row of the same kind is a hand pick (`.u.lcsc &= "C1234"`, chapter 12).
+- A board or a module states one, never a part or a physical file. A module's alternate is checked in each place the module is used, and a member may have several, each checked alone.
+- With the alternate fitted, the rest of the source is read as written: the connections and narrowings that name `.u` and its pins reach the alternate, so a pin it lacks is refused where it is used, and a supply range or a level it does not meet is refused as it would be for the member.
+- The footprint is the member's: when both parts state a package it must be the same, and each pad of the alternate must be joined to the same pins of the other parts as the member's pad of that number. A pad on no net is on none for both.
+- The pick lock holds the member's row; the alternate's row is picked fresh each build and is not written to the lock.
+
+An alternate that fails one of the board's checks is named with the check's own message:
+
+```nsm fails
+import std::sources::Rail
+
+part ModuleA {
+    .vcc: Rail
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+    }
+}
+
+part ModuleLow {
+    .vcc: Rail
+    .vcc.voltage <= 2V
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+    }
+}
+
+board Tracker {
+    .input: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .u: ModuleA { .assembly &= AssemblyMode::Hand }
+    alternate .u: ModuleLow { .assembly &= AssemblyMode::Hand }
+    .input ~ .u.vcc
+}
+```
+
+```text
+error: with `alternate .u: ModuleLow` (main.nsm:23) fitted in the place of `u`: u.vcc.voltage must always be at most 2V, but 3.135V..3.465V is not always below 2V
+   --> main.nsm:13:5
+   |
+13 |     .vcc.voltage <= 2V
+   |     ^^^^^^^^^^^^^^^^^^
+```
+
+An alternate whose pads carry other nets is refused:
+
+```nsm fails
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+part ModuleA {
+    .vcc: Rail
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+    }
+}
+
+/// The same pins on the other pads.
+part ModuleTurned {
+    .vcc: Rail
+    pins {
+        .vcc.pos power "VCC" "2"
+        .vcc.neg power "GND" "1"
+    }
+}
+
+board Tracker {
+    .input: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .j: Header1x2
+    .input.pos ~ .j.p1
+    .input.neg ~ .j.p2
+    .u: ModuleA { .assembly &= AssemblyMode::Hand }
+    alternate .u: ModuleTurned { .assembly &= AssemblyMode::Hand }
+    .input ~ .u.vcc
+}
+```
+
+```text
+error: with `alternate .u: ModuleTurned` (main.nsm:27) fitted in the place of `u`: pad 1 of `u` is joined to `j.1` with `ModuleA` fitted and to `j.2` with `ModuleTurned`: an alternate's pads carry the nets of the footprint it is fitted on
+error: with `alternate .u: ModuleTurned` (main.nsm:27) fitted in the place of `u`: pad 2 of `u` is joined to `j.2` with `ModuleA` fitted and to `j.1` with `ModuleTurned`: an alternate's pads carry the nets of the footprint it is fitted on
 ```
 
 ### What the datasheet says about layout
