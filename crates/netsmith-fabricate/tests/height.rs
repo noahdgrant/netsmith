@@ -13,12 +13,28 @@ use netsmith_pcb::{Board, PlacementProblem, Pt, Side, place_options};
 use netsmith_solve::Catalogs;
 use netsmith_testkit::TempDir;
 
+/// The shipped catalogs and an invented resistor row of 31.7 kohm (a value the shipped catalog
+/// has no row of) whose `height` cell is empty: a part picked as it has no height, which is what
+/// these tests are about. Every chip row of the shipped catalogs has a height (issue #1421).
+fn catalogs() -> Catalogs {
+    let mut c = Catalogs::jlcpcb();
+    c.add_file("resistor", "catalogs/resistor.csv", NO_HEIGHT_ROW)
+        .unwrap();
+    c
+}
+
+/// The invented row (an invented part number too), with no `height`.
+const NO_HEIGHT_ROW: &str = "\
+lcsc,mpn,resistance,max_power,package,height,library,source
+C900317,ACME-R317,31.7kohm +/- 1%,62.5mW,0402,,Basic,https://example.invalid/acme.pdf
+";
+
 /// The board: a rail and `parts` resistors between its nets.
 fn source(parts: usize) -> String {
     let mut body = String::new();
     for n in 1..=parts {
         body += &format!(
-            "    .r{n}: Resistor {{ .resistance &= 15kohm +/- 1% }}\n    .rail.pos ~> .r{n} ~> .rail.neg\n"
+            "    .r{n}: Resistor {{ .resistance &= 31.7kohm +/- 1% }}\n    .rail.pos ~> .r{n} ~> .rail.neg\n"
         );
     }
     format!(
@@ -82,7 +98,7 @@ fn place(parts: usize, extra: &str, sides: &[(&str, Side)]) -> Board {
         "widget.nsm",
         &source(parts),
         &loader(extra),
-        &Catalogs::jlcpcb(),
+        &catalogs(),
         &libraries,
     )
     .unwrap_or_else(|e| panic!("{e}"));
@@ -123,7 +139,7 @@ fn a_part_states_its_height_and_a_keepout_its_limit() {
         "widget.nsm",
         &source(5),
         &loader(&format!("{HEIGHTS}{LID}")),
-        &Catalogs::jlcpcb(),
+        &catalogs(),
         &libraries,
     )
     .unwrap_or_else(|e| panic!("{e}"));
@@ -321,7 +337,7 @@ fn refused(extra: &str) -> String {
         "widget.nsm",
         &source(2),
         &loader(extra),
-        &Catalogs::jlcpcb(),
+        &catalogs(),
         &Libraries::sample(),
     )
     .map(|_| ())
@@ -385,7 +401,7 @@ fn fab_with(
         &source(5),
         &loader(extra),
         &dir.join("fab"),
-        &Catalogs::jlcpcb(),
+        &catalogs(),
         &Libraries::sample(),
         None,
         &FabOptions {
@@ -537,7 +553,7 @@ fn a_part_states_its_standoff_and_the_body_stands_from_it_up_to_its_height() {
         "widget.nsm",
         &source(3),
         &loader(STANDOFF),
-        &Catalogs::jlcpcb(),
+        &catalogs(),
         &libraries,
     )
     .unwrap_or_else(|e| panic!("{e}"));

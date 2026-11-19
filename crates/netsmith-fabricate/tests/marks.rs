@@ -5,6 +5,22 @@ use netsmith_pcb::{Board, place_options};
 use netsmith_pipeline::{Libraries, build_with};
 use netsmith_solve::Catalogs;
 
+/// The shipped catalogs and an invented resistor row of 31.7 kohm (a value the shipped catalog
+/// has no row of) whose `height` cell is empty: a part picked as it has no height, which is what
+/// these tests are about. Every chip row of the shipped catalogs has a height (issue #1421).
+fn catalogs() -> Catalogs {
+    let mut c = Catalogs::jlcpcb();
+    c.add_file("resistor", "catalogs/resistor.csv", NO_HEIGHT_ROW)
+        .unwrap();
+    c
+}
+
+/// The invented row (an invented part number too), with no `height`.
+const NO_HEIGHT_ROW: &str = "\
+lcsc,mpn,resistance,max_power,package,height,library,source
+C900317,ACME-R317,31.7kohm +/- 1%,62.5mW,0402,,Basic,https://example.invalid/acme.pdf
+";
+
 /// A rail with a divider on it, a test point on each of the supply, the ground and the divider's
 /// middle, and three resistors: `r1` 8 mm tall, `r2` 6.4 mm tall (not above it) and `r3` with no
 /// height stated.
@@ -25,7 +41,7 @@ board Widget {
     }
     .r1: Resistor { .resistance &= 10kohm +/- 1% }
     .r2: Resistor { .resistance &= 10kohm +/- 1% }
-    .r3: Resistor { .resistance &= 10kohm +/- 1% }
+    .r3: Resistor { .resistance &= 31.7kohm +/- 1% }
     .r1.height &= 8mm
     .r2.height &= 6.4mm
     .tp_vcc: TestPoint
@@ -51,7 +67,7 @@ fn board() -> Board {
         "widget.nsm",
         SOURCE,
         &netsmith_check::Loader::std(),
-        &Catalogs::jlcpcb(),
+        &catalogs(),
         &libraries,
     )
     .unwrap_or_else(|e| panic!("{e}"))
