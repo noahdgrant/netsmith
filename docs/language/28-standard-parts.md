@@ -2562,13 +2562,13 @@ A pair is judged only when both ends have levels. When one end states them and t
 
 - A pin that can drive the net and is not the `.line` of a `Logic` or a pin of an interface or a part with `levels` (an `output`, `tri_state`, `bidirectional` or `open_drain` pin of a part that writes it plainly and has no `levels`), on a net with a receiver that states `vih` or `vil`: `not evaluated: the logic levels from `m.stat` to `b.in` on net `...`: `m.stat` can drive it and is not the `line` of a `Logic` or a pin of an interface or a part with `levels`, so its levels are not known`. A plain `open_drain` pin does not set its high: as for an `open_drain` line, the high is what the DC analysis or the pull-up gives the line, measured from the receiver's ground and judged against its `vih` (see "An open-drain line" below), and only its low is a note.
 - A pin that reads the net and has no levels (a plain `input` or `bidirectional` pin), on a net with a driver that states `voh`, `vol` or a swing: `... `q.en` reads it and is not the `line` of a `Logic` or a pin of an interface or a part with `levels`, so the levels it needs are not known`. The gate of a `NMosfet` is such a pin: its own relations judge the voltage across it where the board states them.
-- A receiver that states levels on a net that nothing on it drives, joined by a part with a `bridge` to a net that something drives: a series resistor, the top of a divider, a diode, or the channel of a MOSFET that translates a level. When the driver on the far net is a `Logic` line that the DC analysis models (its `voh` and `vol` state the current they are measured at, `at 100uA`, or it states `.roh` and `.rol`), the analysis solves the network once with the driver held high and once held low, and the receiver is judged by the voltage that gives its net: the lowest high against its `vih`, the highest low against its `vil`, over every corner of the ranges and every state of the other parts. An open-drain driver does not drive high, so its high is the net's voltage with every driver of the two nets letting go (what the pull-up gives it). A driver the analysis does not model (one with no test current, or a swing), behind a resistor into a net that nothing else is on (its other pins are `input`s that state no leakage), is judged as a pair on the far net: no current flows through the resistor, so the receiver sees the driver's own levels, and the message names the far net. Any other driver (a plain pin, a driver the analysis does not model into a net with a pull-up or a pull-down), a network the analysis does not solve, or a receiver on another ground is a note that names the part and the net the level comes from. A resistor to a rail or to ground only pulls the net there and is not named, and a net that has a driver of its own is judged on its own lines.
+- A receiver that states levels on a net that nothing on it drives, joined by a part with a `bridge` to a net that something drives: a series resistor, the top of a divider, a diode, or the channel of a MOSFET that translates a level. When the driver on the far net is a `Logic` line that the DC analysis models (its `voh` and `vol` state the current they are measured at, `at 100uA`, or it states `.roh` and `.rol`), the analysis solves the network once with the driver held high and once held low, and the receiver is judged by the voltage that gives its net: the lowest high against its `vih`, the highest low against its `vil`, over every corner of the ranges and every state of the other parts. An open-drain driver does not drive high, so its high is the net's voltage with every driver of the two nets letting go (what the pull-up gives it). A driver the analysis does not model (one with no test current, or a swing), behind a resistor into a net that nothing else is on (its other pins are `input`s that state no leakage), is judged as a pair on the far net: no current flows through the resistor, so the receiver sees the driver's own levels, and the message names the far net. A driver the analysis does not model behind a two-resistor divider (a series resistor into a net whose only other resistor goes to a rail or to ground) is judged at the divider's levels (see "A level through a two-resistor divider" below). Any other driver (a plain pin, an open-drain driver the analysis does not model, a driver the analysis does not model into any other network of resistors), a network the analysis does not solve, or a receiver on another ground is a note that names the part and the net the level comes from. A resistor to a rail or to ground only pulls the net there and is not named, and a net that has a driver of its own is judged on its own lines.
 - A receiver that states levels on a net whose own drivers can all let go of it (`tri_state`, `bidirectional` or `open_drain` pins), joined by a part with a `bridge` to a net with a driver that states levels: when the drivers on its own net let go, the far driver's level comes through the part. The low that one side of a MOSFET translator between two buses pulls the other side to is such a level. Each side's own lines are judged on that side. What crosses is judged as above, with every driver of the receiver's own net held letting go of it, where the DC analysis models the far driver: `net `...`: with `b.io` driving low and every driver of net `...` letting go of it, the DC analysis holds the line at ... through `q` from net `...` but `a.io.vil` allows ...`. For any other far driver it is named: `not evaluated: the logic levels that cross `r` from net `...` into net `...`: every driver of net `...` can let go of it, and then the level that `a.out` drives reaches `b.in` through `r`, which the levels check does not follow`. A net with an `output` on it is held by that output and is not named.
 - A MOSFET between the two nets. The DC analysis takes a MOSFET as a switch, on or off by its gate, and a translator has a state that only the MOSFET's body diode rules out: the far side pulls the drain low, and the MOSFET stays off with the source still at its pull-up. A MOSFET whose `.body_diode_voltage` is stated (the datasheet's drain-source diode forward voltage, VSD, at its test current; a member of `NMosfet` and `PMosfet` that the design states, `.q.body_diode_voltage &= 1.4V`) has its body diode in the network these levels are judged in, and the low is judged with it. One that does not is solved again with its channel held on: a level that fails with the channel on is refused, and one that holds only with it on is a note that names the body diode: `not evaluated: the low level into `a.io` on net `...` through `q` from net `...` with `b.io` driving low and every driver of net `...` letting go of it: with `q` on, the DC analysis holds the line at ..., which `a.io.vil` reads as a low, but in some states it finds `q` off and the line at ...; whether `q` turns on there rests on its body diode, which the analysis models only when `q.body_diode_voltage` states its forward voltage`.
 
 A pair of which neither end states a level is not looked at, as before. A level translator that is a part with a `Logic` line or a bus on each side (`LevelTranslator`, or a part of a project's own, as in "Logic levels of a bus") is judged on each side's net.
 
-The driver below feeds the receiver through a 100 ohm resistor and also drives the enable pin of a part that states no levels. Its levels state no test current, so the DC analysis does not model it, but nothing else is on the receiver's net: the receiver is judged against the driver's own levels, and holds. The enable pin is named among the notes of the build: `not evaluated: the logic levels from `a.out` to `q.en` on net `net-a.out.line`: `q.en` reads it and is not the `line` of a `Logic` or a pin of an interface or a part with `levels`, so the levels it needs are not known`. With a pull-down on the receiver's net as well, the resistor would carry a current that the driver's levels do not say the drop of, and the level through it would be a note: `not evaluated: the logic levels into `b.in` on net `net-b.in.line`: nothing on the net drives it, and its level comes through `r` from net `net-a.out.line`, which the levels check does not follow`. The parts are invented.
+The driver below feeds the receiver through a 100 ohm resistor and also drives the enable pin of a part that states no levels. Its levels state no test current, so the DC analysis does not model it, but nothing else is on the receiver's net: the receiver is judged against the driver's own levels, and holds. The enable pin is named among the notes of the build: `not evaluated: the logic levels from `a.out` to `q.en` on net `net-a.out.line`: `q.en` reads it and is not the `line` of a `Logic` or a pin of an interface or a part with `levels`, so the levels it needs are not known`. With a pull-down and a pull-up on the receiver's net as well, the level through the resistor would be a note: `not evaluated: the logic levels into `b.in` on net `net-b.in.line`: nothing on the net drives it, and its level comes through `r` from net `net-a.out.line`, which the levels check does not follow`. The parts are invented.
 
 ```nsm evaluate
 import std::logic::Logic
@@ -2748,6 +2748,70 @@ error: net `net-a.io.line`: with `b.io` driving low and every driver of net `net
    --> main.nsm:43:5
    |
 43 |     .a: BusPin
+   |     ^^^^^^^^^^
+```
+
+#### A level through a two-resistor divider
+
+A divider is a common level shifter: a host's 3.3 V output through a series resistor into a 1.8 V input, with a resistor from the input to ground (#1270). When the driver is a `Logic` line that the DC analysis does not model (its levels state no test current, and it does not state both `.roh` and `.rol`), the levels check still follows the divider. It does so when the receiver's net has nothing that drives it and holds exactly two resistors: the series resistor from the driver's net, and one resistor to a rail or to ground on the receiver's ground; every other pin on it is an `input` that states no leakage. The driver is taken as a source at its own levels, behind its `.roh` (for the high) or `.rol` (for the low) when it states one. The receiver's net is then at `e + (v - e) * rb / (ra + rb)`, where `v` is the driver's level, `ra` the series resistance, `rb` the resistance to the rail or ground and `e` the rail's voltage (0 V for ground). Its lowest value with the driver high, over the tolerances of both resistors and the range of the rail, must be at least the receiver's `vih`, and its highest value with the driver low at most its `vil`. The receiver's absolute maximum is held against the divided swing of the driver's net (the top of the driver's reference rail, or its stated swing), in the worst case of the same ranges.
+
+Any other network stays a note that names the series part and the net the level comes from: a third resistor on the net, an open-drain driver, a series part that is not a resistor, a resistor whose resistance has no value, or a rail on another ground.
+
+Below, a 3.3 V host drives a 1.8 V input through 10 kohm, with 6.8 kohm to ground. The lowest high is 1.214 V, which a pin that reads a high from 70 % of 1.8 V does not read as a high. With 10 kohm to ground the lowest high is 1.502 V and the highest 1.75 V, which the pin reads as a high and survives. The parts are invented.
+
+```nsm fails
+import std::logic::Logic
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+/// Invented: drives a high to its supply less 0.1 V and a low to 0.1 V.
+part Host {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.voh &= .vdd.voltage - 0.1V
+    .out.vol &= 0.1V
+    pins {
+        .vdd.pos  power  "VDD" "1"
+        .vdd.neg  power  "GND" "2"
+        .out.line output "OUT" "3"
+    }
+}
+
+/// Invented: reads a high from 70 % of its supply and a low up to 30 %, and survives 2.1 V.
+part Sensor {
+    .vdd: Rail
+    .in: Logic
+    .in.reference ~ .vdd
+    .in.vih &= 0.7 * .vdd.voltage
+    .in.vil &= 0.3 * .vdd.voltage
+    pins {
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+        .in.line input "IN"  "3" abs_max 2.1V
+    }
+}
+
+board Shifted {
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .core: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8" }
+    .core.neg ~ .supply.neg
+    .a: Host
+    .b: Sensor
+    .supply ~ .a.vdd
+    .core ~ .b.vdd
+    .top: Resistor { .resistance &= 10kohm +/- 1% }
+    .bottom: Resistor { .resistance &= 6.8kohm +/- 1% }
+    .a.out.line ~> .top ~> .b.in.line
+    .b.in.line ~> .bottom ~> .supply.neg
+}
+```
+
+```text
+error: net `net-b.in.line`: with `a.out` driving high, the divider of `top` from net `net-a.out.line` and `bottom` to ground `GND` holds the line at 1.213V..1.379V but `b.in.vih` needs 1.197V..1.323V: a high of 1.214V is not always read as a high, which takes 1.323V
+   --> main.nsm:38:5
+   |
+38 |     .b: Sensor
    |     ^^^^^^^^^^
 ```
 
