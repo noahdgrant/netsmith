@@ -81,6 +81,49 @@ impl Board {
         Ok(board)
     }
 
+    /// [`Board::as_laid_out`] for the parts that have a place: the board of the parts `layout`
+    /// places (or a requirement of the physical file pins), each where it says, on the outline
+    /// the design states, and the parts that have no place (no entry and no requirement that
+    /// pins them) as `(designator, path)`, left off the board instead of refusing it (issue
+    /// 1308). Nothing is placed. Refused, with the reason, as [`Board::as_laid_out`] is for an
+    /// outline whose size is not stated exactly, a design that does not make a board and an
+    /// entry that is wrong.
+    pub fn as_laid_out_partial(
+        design: &Design,
+        mapping: &Mapping,
+        library: &FootprintLibrary,
+        options: &PlaceOptions,
+        layout: Option<&(Layout, String)>,
+    ) -> Result<(Board, Vec<(String, String)>), String> {
+        let (rect, exact, ranged) = outline_box(design);
+        if !exact || ranged {
+            return Err(format!(
+                "`{}` does not state its outline's size exactly (a width or a height that is open or a range is known only by placing the board)",
+                design.name
+            ));
+        }
+        let mut u =
+            Board::unplaced(design, mapping, library, options).map_err(|e| e.to_string())?;
+        let lacking = put_decided(&mut u, design, layout);
+        u.parts.retain(|p| !lacking.contains(&p.path));
+        let corner_radius = design
+            .features
+            .outline
+            .as_ref()
+            .map_or(0.0, |o| o.corner_radius);
+        let mut board = u.into_board(design, rect, corner_radius);
+        if let Some((layout, file)) = layout {
+            apply_layout(&mut board, layout, file).map_err(|e| e.to_string())?;
+        }
+        let without = design
+            .parts
+            .iter()
+            .filter(|p| lacking.contains(&p.path))
+            .map(|p| (p.refdes.clone(), p.path.clone()))
+            .collect();
+        Ok((board, without))
+    }
+
     /// The board of what `layout` decides: each part it places (or a requirement of the physical
     /// file pins) where it says, and the parts the placer places left out, on the outline the
     /// design states. Nothing is placed, and a part with no place is no refusal: it is not on
@@ -242,6 +285,41 @@ mod tests {
         );
         let e = made(&design, None).unwrap_err();
         assert!(e.contains("`d1`, `j1`, `r1`"), "{e}");
+    }
+
+    #[test]
+    fn the_partial_board_has_the_parts_with_a_place_and_lists_the_others() {
+        let design = design();
+        let layout = layout("version = 1\n[LedExample.parts.d1]\nat = [6.0, 8.0]\n");
+        let options = place_options(&design, Some(&layout.0));
+        let (board, without) = Board::as_laid_out_partial(
+            &design,
+            &Mapping::standard(),
+            &fixtures(),
+            &options,
+            Some(&layout),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        let on: Vec<&str> = board.parts.iter().map(|p| p.path.as_str()).collect();
+        assert_eq!(on, ["d1"]);
+        let paths: Vec<&str> = without.iter().map(|(_, p)| p.as_str()).collect();
+        assert_eq!(paths, ["j1", "r1"]);
+        assert!(without.iter().all(|(refdes, _)| !refdes.is_empty()));
+        // The outline is still refused when it is open.
+        let mut open = self::design();
+        open.features.outline = None;
+        let e = Board::as_laid_out_partial(
+            &open,
+            &Mapping::standard(),
+            &fixtures(),
+            &options,
+            Some(&layout),
+        )
+        .unwrap_err();
+        assert!(
+            e.contains("does not state its outline's size exactly"),
+            "{e}"
+        );
     }
 
     #[test]
