@@ -133,6 +133,12 @@ pub struct PartFit {
     pub step: f64,
     /// Where the part is now, and what is found there.
     pub now: FitPlace,
+    /// The faults of the placement check among the other parts, where they are (two parts whose
+    /// courtyards overlap, a part past the edge): not the fitted part's, whose result is `now`
+    /// and `poses` whatever they are, so that a board with a fault among its other parts still
+    /// answers where this part fits (issue 1330). Empty when there are none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub others: Vec<PlacementFault>,
     /// For each turn and face tried: the nearest place that fits, or the closest try. The poses
     /// with a place come first, nearest first, then those without.
     pub poses: Vec<FitPlace>,
@@ -142,6 +148,20 @@ impl PartFit {
     /// Whether some pose has a place.
     pub fn fits(&self) -> bool {
         self.poses.iter().any(|p| p.fits)
+    }
+
+    /// One note for each fault among the other parts ([`PartFit::others`]), for stderr: the
+    /// part's own answer stands, and the faults are the layout's to fix (issue 1330).
+    pub fn notes(&self) -> Vec<String> {
+        self.others
+            .iter()
+            .map(|f| {
+                format!(
+                    "note: not about {}, and its result stands: {}",
+                    self.part.refdes, f.text
+                )
+            })
+            .collect()
     }
 
     /// A few lines for a person; each place that fits with the `netsmith layout set` that
@@ -276,6 +296,16 @@ impl Board {
         let point = origin + Pt::new(target.x, target.y);
         let mut board = self.clone();
         let now = board.measure(design, index, point);
+        // What is wrong among the other parts is a note, not a reason to refuse (issue 1330).
+        let others: Vec<PlacementFault> = self
+            .check_placement()
+            .iter()
+            .filter(|p| {
+                let parts = p.parts();
+                !parts.is_empty() && !parts.contains(&part.refdes.as_str())
+            })
+            .map(|p| self.fault_of(p))
+            .collect();
 
         // The faces and turns the requirements leave.
         let (reqs, side_req) = requirements(design, &part.path);
@@ -321,6 +351,7 @@ impl Board {
             near: target,
             step,
             now,
+            others,
             poses,
         })
     }
@@ -551,6 +582,41 @@ mod tests {
         for other in moved.parts.iter().filter(|p| p.refdes != "D1") {
             assert_eq!(d1.margin_short(other), None, "{}", other.refdes);
         }
+    }
+
+    #[test]
+    fn an_overlap_among_the_other_parts_is_a_note_and_the_fitted_parts_result_stands() {
+        let mut board = led_board();
+        let design = led_design();
+        let (a, b, c) = (
+            board.parts[0].refdes.clone(),
+            board.parts[1].refdes.clone(),
+            board.parts[2].refdes.clone(),
+        );
+        // `b` and `c` on the same spot: they overlap, and `a` is not in it.
+        board.parts[2].at = board.parts[1].at;
+        board.parts[2].side = board.parts[1].side;
+        let fit = board
+            .fit_part(&design, &a, &FitNear::Itself, 0.5, Some(Side::Front))
+            .unwrap();
+        assert!(fit.now.fits && fit.fits(), "{}", fit.text());
+        // The overlap, and the holes of the through-hole part too near the other's copper.
+        assert_eq!(fit.others[0].kind, "overlap", "{:?}", fit.others);
+        for fault in &fit.others {
+            let mut named: Vec<&str> = fault.parts.iter().map(|p| p.part.refdes.as_str()).collect();
+            named.sort();
+            let mut pair = [b.as_str(), c.as_str()];
+            pair.sort();
+            assert_eq!(named, pair, "{fault:?}");
+        }
+        assert_eq!(fit.notes().len(), fit.others.len());
+        assert!(fit.notes()[0].starts_with(&format!("note: not about {a}, and its result stands")));
+        // Asked about `b`, the overlap is its own finding, and there is nothing among the others.
+        let fit = board
+            .fit_part(&design, &b, &FitNear::Itself, 0.5, Some(Side::Front))
+            .unwrap();
+        assert!(!fit.now.fits, "{}", fit.text());
+        assert!(fit.others.is_empty() && fit.notes().is_empty());
     }
 
     #[test]

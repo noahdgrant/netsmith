@@ -386,3 +386,68 @@ fn fab_stops_on_the_faults_among_the_parts_the_file_places_before_it_places_anyt
     assert_eq!(code, 0, "{said}");
     assert!(said.contains("placing"), "{said}");
 }
+
+/// A board with every part placed, where `r2` is set over `r3` (two parts that are not the part
+/// asked about overlap): `layout fit r1 --as-laid-out` answers for `r1` all the same (issue 1330).
+fn captured_with_r2_over_r3(tag: &str) -> TempDir {
+    let dir = project(tag, "version = 1\n");
+    let capture = netsmith(&dir, &["layout", "capture"]);
+    assert!(
+        capture.status.success(),
+        "{}",
+        String::from_utf8_lossy(&capture.stderr)
+    );
+    let doc = json(&dir, &["layout", "parts", "r3", "--as-laid-out", "--format", "json"]);
+    let at = &doc["parts"][0]["frame"]["at"];
+    let at = format!("{},{}", at[0].as_f64().unwrap(), at[1].as_f64().unwrap());
+    let set = netsmith(&dir, &["layout", "set", "r2", "--at", &at, "--lock"]);
+    assert!(set.status.success(), "{}", String::from_utf8_lossy(&set.stderr));
+    dir
+}
+
+#[test]
+fn layout_fit_as_laid_out_notes_an_overlap_among_the_other_parts_and_answers_for_the_part() {
+    let dir = captured_with_r2_over_r3("one-fit-others-overlap");
+    let (ok, placement) = check(&dir);
+    assert!(!ok && placement.len() == 1, "{placement:?}");
+    assert_eq!(refdes(&placement[0]["fault"]), ["R2", "R3"], "{placement:?}");
+    let run = netsmith(&dir, &["layout", "fit", "r1", "--as-laid-out", "--format", "json"]);
+    let said = String::from_utf8_lossy(&run.stderr).into_owned();
+    let doc: Value = serde_json::from_slice(&run.stdout)
+        .unwrap_or_else(|e| panic!("{e}: {}{said}", String::from_utf8_lossy(&run.stdout)));
+    // The part's own result stands: r1 where it is overlaps nothing, and places are offered.
+    assert_eq!(doc["now"]["fits"], true, "{doc}");
+    assert!(
+        doc["poses"].as_array().unwrap().iter().any(|p| p["fits"] == true),
+        "{doc}"
+    );
+    // The overlap of the others is a note, in the document and on stderr, with the pair named.
+    let others = doc["others"].as_array().unwrap();
+    assert_eq!(others.len(), 1, "{doc}");
+    assert_eq!(refdes(&others[0]), ["R2", "R3"], "{doc}");
+    assert!(
+        said.contains("note: not about R1, and its result stands: the courtyards of `r2` (R2) and `r3` (R3) overlap"),
+        "{said}"
+    );
+    assert_eq!(run.status.code(), Some(0), "{said}");
+    // Text: the same note on stderr, the part's answer alone on stdout.
+    let run = netsmith(&dir, &["layout", "fit", "r1", "--as-laid-out"]);
+    let text = String::from_utf8_lossy(&run.stdout).into_owned();
+    assert!(text.contains("now ") && text.contains(": fits"), "{text}");
+    assert!(!text.contains("overlap"), "{text}");
+    assert!(String::from_utf8_lossy(&run.stderr).contains("note: not about R1"));
+}
+
+#[test]
+fn layout_fit_as_laid_out_of_a_part_in_an_overlap_judges_it_against_the_others() {
+    // `r2` over `r3`: asked about `r2`, the overlap with `r3` is its own finding, as always.
+    let dir = captured_with_r2_over_r3("one-fit-own-overlap");
+    let doc = json(&dir, &["layout", "fit", "r2", "--as-laid-out", "--format", "json"]);
+    assert_eq!(doc["now"]["fits"], false, "{doc}");
+    assert_eq!(doc["now"]["placement"][0]["kind"], "overlap", "{doc}");
+    assert!(doc.get("others").is_none(), "{doc}");
+    assert!(
+        doc["poses"].as_array().unwrap().iter().any(|p| p["fits"] == true),
+        "{doc}"
+    );
+}
