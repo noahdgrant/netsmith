@@ -111,7 +111,7 @@ fn flat(text: &str) -> String {
 
 #[test]
 fn a_librarys_package_is_drawn_with_y_down() {
-    let f = import_eagle_footprint(LIBRARY, EagleSource::Library, Some("Sensor")).unwrap();
+    let f = import_eagle_footprint(LIBRARY, EagleSource::Library { package: None }, Some("Sensor")).unwrap();
     assert_eq!(f.source_name, "SOT-3-SENSOR");
     assert_eq!(f.name, "Sensor");
     let parsed = Sexp::parse(&f.text).unwrap();
@@ -145,7 +145,7 @@ fn a_librarys_package_is_drawn_with_y_down() {
 
 #[test]
 fn each_through_hole_pad_shape_has_a_kicad_one() {
-    let f = import_eagle_footprint(THROUGH_HOLE, EagleSource::Library, None).unwrap();
+    let f = import_eagle_footprint(THROUGH_HOLE, EagleSource::Library { package: None }, None).unwrap();
     assert_eq!(f.name, "PINS");
     let text = flat(&f.text);
     for want in [
@@ -192,15 +192,34 @@ fn what_the_file_lacks_is_said() {
         "</packages>",
         "<package name=\"OTHER\"><smd name=\"1\" x=\"0\" y=\"0\" dx=\"1\" dy=\"1\" layer=\"1\"/></package></packages>",
     );
-    let err = import_eagle_footprint(&two, EagleSource::Library, None).unwrap_err();
-    assert!(
-        err.starts_with("the library has 2 packages (SOT-3-SENSOR, OTHER)"),
-        "{err}"
+    let err = import_eagle_footprint(&two, EagleSource::Library { package: None }, None).unwrap_err();
+    assert_eq!(
+        err,
+        "the library has 2 packages (SOT-3-SENSOR, OTHER): name the one to import with `--footprint NAME`"
     );
-    let err = import_eagle_footprint(BOARD, EagleSource::Library, None).unwrap_err();
+    let named = |package| EagleSource::Library {
+        package: Some(package),
+    };
+    let other = import_eagle_footprint(&two, named("OTHER"), None).unwrap();
+    assert_eq!(other.source_name, "OTHER");
+    assert_eq!(other.name, "OTHER");
+    let first = import_eagle_footprint(&two, named("SOT-3-SENSOR"), None).unwrap();
+    assert_eq!(first.source_name, "SOT-3-SENSOR");
+    let err = import_eagle_footprint(&two, named("NOPE"), None).unwrap_err();
+    assert_eq!(
+        err,
+        "the library has no package `NOPE`; its packages are SOT-3-SENSOR, OTHER"
+    );
+    // A library of one package is asked by name too.
+    let err = import_eagle_footprint(LIBRARY, named("OTHER"), None).unwrap_err();
+    assert_eq!(
+        err,
+        "the library has no package `OTHER`; its packages are SOT-3-SENSOR"
+    );
+    let err = import_eagle_footprint(BOARD, EagleSource::Library { package: None }, None).unwrap_err();
     assert!(err.starts_with("not an Eagle library"), "{err}");
-    let err = import_eagle_footprint("(kicad_pcb)", EagleSource::Library, None).unwrap_err();
+    let err = import_eagle_footprint("(kicad_pcb)", EagleSource::Library { package: None }, None).unwrap_err();
     assert!(err.starts_with("not an XML file"), "{err}");
-    let err = import_eagle_footprint("<svg/>", EagleSource::Library, None).unwrap_err();
+    let err = import_eagle_footprint("<svg/>", EagleSource::Library { package: None }, None).unwrap_err();
     assert_eq!(err, "not an Eagle file: it starts with `<svg>`, not `<eagle>`");
 }
