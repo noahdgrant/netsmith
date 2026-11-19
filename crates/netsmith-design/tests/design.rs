@@ -2467,3 +2467,17 @@ fn a_mate_is_keyed_when_either_connector_says_what_keys_it() {
     assert!(!keyed(".bottom.j.mating.keyed &= \"none\""));
     assert!(keyed(".bottom.j.mating.keyed &= \"polarised\""));
 }
+
+#[test]
+fn a_body_height_is_read_apart_from_the_seat_and_refused_below_the_board() {
+    let mates = mates_of(&own_connectors(".seat &= 3mm +/- 0.2mm\n        .body_height &= 3.5mm")).unwrap();
+    assert_eq!(mates[0].a_seat, Some((2.8, 3.2)));
+    assert_eq!(mates[0].a_body, Some((3.5, 3.5)));
+    // Unset, the body is the seat.
+    assert_eq!(mates[0].b_body, None);
+    let errors = mates_of(&own_connectors(".body_height &= -1mm")).unwrap_err();
+    assert_eq!(
+        errors,
+        ["`top.j.mating.body_height` is -1mm, and a connector's body does not reach below its board's face"],
+    );
+}

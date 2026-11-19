@@ -25,7 +25,7 @@ The room round a mounting hole for the head of the screw (or its washer), stated
 _Avoid_: Screw clearance, head keepout (a keepout is what the board's file states; the head is the hole's)
 
 **Seat**:
-How far above the face of its board a connector's partner rests when the two are mated, `.mating.seat` (ADR 0110): a header's plastic top, a socket's body top. It is a fact of one part, true whatever it mates with, a range with the maker's tolerance, and comes from the `header` catalog's `mating.seat` column with the drawing in the row's `source` (2.50 +/- 0.20 mm for the std 2.54 mm headers, 8.50 +/- 0.15 mm for the sockets). Unset means unknown, never a default, and never the part's height, which is its tallest point. A soldered joint (`soldered_pin`, `castellated`, `land_grid`, issue #1320) is face to face, and its seat is 0 mm.
+How far above the face of its board a connector's partner rests when the two are mated, `.mating.seat` (ADR 0110): a header's plastic top, a socket's body top. It is a fact of one part, true whatever it mates with, a range with the maker's tolerance, and comes from the `header` catalog's `mating.seat` column with the drawing in the row's `source` (2.50 +/- 0.20 mm for the std 2.54 mm headers, 8.50 +/- 0.15 mm for the sockets). Unset means unknown, never a default, and never the part's height, which is its tallest point. The connector's body is its seat, one surface with one tolerance, unless the connector states `.mating.body_height` (issue #1324). A soldered joint (`soldered_pin`, `castellated`, `land_grid`, issue #1320) is face to face, and its seat is 0 mm.
 _Avoid_: Stack height (that is the _Mated height_), seating plane, insertion depth
 
 **Seed**:

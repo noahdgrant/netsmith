@@ -27,7 +27,8 @@ When the design is several boards (a carrier with sockets, plug-in cards with ma
 1. Give each board its connector and wire it to its own ports and parts by pin (`.supply.pos ~ .j1.p2`). A header goes with a socket; both need the same positions, rows and pitch. Ask the user which contact is which: do not guess a pinout.
 2. Every mate that carries power or a signal needs at least one ground contact, and enough of them: a contact is rated from its catalog row (3 A for the standard single-row 2.54 mm parts), and the supply and the ground each need `current / rating` contacts. A connector the library has no rating for is not checked, and `netsmith board build` lists the check as not evaluated: tell the user.
 3. A pinout that is the same turned end for end gets a `mating guideline` warning: key the connector (`.mating.keyed &= "polarised"` on a part that is) or change the pinout, and tell the user which.
-4. Read the System view in `netsmith view editor`: each mate with its contacts coloured by role, and the ground groups (which boards share a ground).
+4. A connector of a project's own states `.mating.seat` from its drawing (where its partner rests, with the drawing's tolerance); its body is that seat, one surface with one tolerance. State `.mating.body_height` too only when the drawing puts the top of the body apart from where the partner rests: the system scene then keeps the body at its most out of the other board (a `system_collision` that names the field). Never state either without the drawing.
+5. Read the System view in `netsmith view editor`: each mate with its contacts coloured by role, and the ground groups (which boards share a ground).
 
 ## Rules
 
