@@ -119,7 +119,7 @@
 //! that none of the names above is. [`generate_spec`] makes it with the same code as the table row
 //! with the same numbers (`params.rs` reads the parameters and checks them, and its tests compare the
 //! pads with [`generate`] for several ids of each generator): `QFN`, `DFN`, `QFP`, `SO`, `SOT23`,
-//! `PinHeader`, `PinSocket`, `BGA`, `MountingHole` and `PlatedHole` ([`GENERATORS`]). The footprint is in the library `gen` under a
+//! `PinHeader`, `PinSocket`, `BGA`, `LGA` (a ring of pads round the edge and a grid inside it, issue 1423), `MountingHole` and `PlatedHole` ([`GENERATORS`]). The footprint is in the library `gen` under a
 //! name made of the generator and its parameters, which [`generate`] reads back. Not exposed: the
 //! chips, diodes, crystals, the recorded pads (SOT-223, SC-70, DPAK, SOT-89), the test points and
 //! the fiducial. A hole of any drill is `gen:MountingHole(drill=2.375mm)` (`gen:PlatedHole(...)`
@@ -168,7 +168,7 @@
 //! exposed pads, a different paste count, `_ThermalVias` names), TSSOP-44 (square corners), the exposed-pad (`-1EP`,
 //! `HTSSOP`, `ThermalVias`) rows, `TO-263-2_TabPin1` and `TO-252-2_TabPin1`, MSOP-12/16,
 //! VSSOP-8/10, SOIC-10, SOIC-20W and SOIC-28W (other IPC fits one by one), X2SON (TI drawings one
-//! each), LGA, PQFP/MQFP, the BGAs with balls left out, with two pitches or two pad sizes and the
+//! each), the LGAs other than six `LayoutBorder` rows (`lga.rs` says which and why), PQFP/MQFP, the BGAs with balls left out, with two pitches or two pad sizes and the
 //! four whose courtyard is another number, crystals named for a maker's part and through-hole
 //! crystals, and connectors other than pin headers and the two-pin JST PH, mounting holes and fiducials (the std rows that
 //! name those still read KiCad's library: `Button_Switch_SMD`, `MountingHole`, `Fiducial`).
@@ -205,6 +205,7 @@ pub(crate) mod header;
 mod inductor;
 pub(crate) mod ipc;
 mod jst;
+mod lga;
 mod mechanical;
 pub use mechanical::DRILL as HOLE_DRILL;
 mod outline;
@@ -239,7 +240,7 @@ fn leads_of(pads: &[draw::PadSpec], body: (f64, f64)) -> Vec<Lead> {
 }
 
 /// The generators a project can ask for by name and parameters (`gen:QFN(...)`, ADR 0104).
-pub(crate) const GENERATORS: [&str; 10] = [
+pub(crate) const GENERATORS: [&str; 11] = [
     "QFN",
     "DFN",
     "QFP",
@@ -248,6 +249,7 @@ pub(crate) const GENERATORS: [&str; 10] = [
     "PinHeader",
     "PinSocket",
     "BGA",
+    "LGA",
     "MountingHole",
     "PlatedHole",
 ];
@@ -296,6 +298,19 @@ pub fn generate_spec(spec: &FootprintSpec) -> Result<Footprint, String> {
             let p = param_names(&["layout", "pitch", "body", "pad"])?;
             bga::from_params(&p, library, name)
         }
+        "LGA" => {
+            let p = param_names(&[
+                "edge",
+                "pitch",
+                "pad",
+                "span",
+                "body",
+                "grid",
+                "grid_pitch",
+                "grid_pad",
+            ])?;
+            lga::from_params(&p, library, name)
+        }
         "MountingHole" | "PlatedHole" => {
             let p = param_names(&["drill"])?;
             mechanical::from_params(&p, &spec.generator, library, name)
@@ -327,6 +342,7 @@ pub fn generate(id: &str) -> Option<Footprint> {
         .or_else(|| crystal::generate(library, name))
         .or_else(|| inductor::generate(library, name))
         .or_else(|| bga::generate(library, name))
+        .or_else(|| lga::generate(library, name))
         .or_else(|| mechanical::generate(library, name))
         .or_else(|| radial::generate(library, name))
         .or_else(|| jst::generate(library, name))
@@ -347,6 +363,7 @@ pub fn names() -> &'static [String] {
         all.extend(crystal::names());
         all.extend(inductor::names());
         all.extend(bga::names());
+        all.extend(lga::names());
         all.extend(mechanical::names());
         all.extend(radial::names());
         all.extend(jst::names());

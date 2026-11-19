@@ -282,7 +282,7 @@ error: B: U1 (Driver, package "SOIC-8"): the footprint `own:Driver` has its pads
 
 A `[[member]]` row's footprint is checked against the member row's own `table`, never the (kind, package) row's. A column that is not one of the three, or a value that is not a count, a length or two sizes, is refused when the file is read, with the row and the line.
 
-**A footprint from a vendor's file.** `netsmith import footprint FILE` writes the land pattern of a vendor's reference board or of a distributor's KiCad export into a footprint library of the project, as a `.kicad_mod` file (issue #1424). FILE is a KiCad board (`.kicad_pcb`), whose part `--ref REF` names, a footprint file (`.kicad_mod`), or a `.pretty` folder that holds one. The footprint keeps what it draws (its pads, courtyard, silkscreen, fabrication layer and 3D model) and loses what the board adds: its place and angle on the board are taken off its pads and texts, a footprint on the bottom face is turned back to the top (_A footprint on the bottom face_, below), and the nets of the pads, the ids, the links to the schematic and the symbol's own fields are left out. The reference becomes `REF**` and the value the footprint's name. `--name LIB:NAME` gives the library and the footprint's name, `--name NAME` the name alone, in the one footprint library `kicad.toml` lists; with no `--name` the footprint keeps the name the file gives it. A library that `kicad.toml` does not list is the folder `libs/LIB.pretty`, and the command prints its `[[library]]` stanza. It also prints a draft row, whose `table` is to be filled from the datasheet's package drawing, never from the footprint itself, since the point of the table is to catch a footprint that does not match the datasheet:
+**A footprint from a vendor's file.** `netsmith import footprint FILE` writes the land pattern of a vendor's reference board or of a distributor's KiCad export into a footprint library of the project, as a `.kicad_mod` file (issue #1424). FILE is a KiCad board (`.kicad_pcb`), whose part `--ref REF` names, a footprint file (`.kicad_mod`), a `.pretty` folder that holds one, an Eagle board (`.brd`), whose part `--ref REF` names, or an Eagle library (`.lbr`) of one package. The footprint keeps what it draws (its pads, courtyard, silkscreen, fabrication layer and 3D model) and loses what the board adds: its place and angle on the board are taken off its pads and texts, a footprint on the bottom face is turned back to the top (_A footprint on the bottom face_, below), and the nets of the pads, the ids, the links to the schematic and the symbol's own fields are left out. The reference becomes `REF**` and the value the footprint's name. `--name LIB:NAME` gives the library and the footprint's name, `--name NAME` the name alone, in the one footprint library `kicad.toml` lists; with no `--name` the footprint keeps the name the file gives it. A library that `kicad.toml` does not list is the folder `libs/LIB.pretty`, and the command prints its `[[library]]` stanza. It also prints a draft row, whose `table` is to be filled from the datasheet's package drawing, never from the footprint itself, since the point of the table is to catch a footprint that does not match the datasheet:
 
 ```text
 $ netsmith import footprint vendor/eval.kicad_pcb --ref U3 --name own:Driver
@@ -303,7 +303,18 @@ footprint = "own:Driver"
 table = "pads=8, pitch=TODO, body=TODO"
 ```
 
-A footprint file that is already there is not written over, and a footprint netsmith cannot read back is not written at all. Eagle, Altium and Gerber files are not read.
+A footprint file that is already there is not written over, and a footprint netsmith cannot read back is not written at all. Altium and Gerber files are not read.
+
+An Eagle file (issue #1430) gives a package as its library draws it: a board keeps each part's package that way whatever its place, angle or face, so nothing is turned back. Eagle's y grows up and KiCad's down, so every y is negated. Its `smd` pads are surface pads (`rect`, or `roundrect` with a `roundness`), its `pad`s through-hole pads (`square` is `rect`, `round` is `circle`, `long` and `offset` are `oval`, `octagon` is written `circle`), a pad with no `diameter` gets Eagle's default ring, and a `hole` is a hole with no copper. The drawings on tPlace become the silkscreen, on tDocu the fabrication layer (whose box `table`'s `body` measures), on tStop and tCream the mask and paste; Eagle has no courtyard layer, so a layer the file names with `courtyard` or `crtyd` in it is the courtyard (a footprint with none gets the box round its pads, as any footprint does). `>NAME` and `>VALUE` become the reference and the value. A drawing on another layer (a keepout, a user layer) is left out, and the command says how many and on which layer, as it does for an octagonal pad and a polygon with curved edges:
+
+```text
+$ netsmith import footprint vendor/sensor.lbr --name own:Sensor
+wrote libs/own.pretty/Sensor.kicad_mod (3 pads)
+the file names it `SOT-3-SENSOR`; it is `Sensor` here
+note: left out 1 drawing on Eagle's layer tKeepout, which a KiCad footprint has no layer for
+```
+
+A library of several packages is refused with their names: export the package to a library of its own in Eagle, or take it from a board that uses it with `--ref`.
 
 **A footprint on the bottom face.** Draw every footprint as seen from the top, as KiCad's libraries do. A part on the bottom (`.place.side &= "bottom"`, or `side = "bottom"` in the layout file) is the footprint seen in a mirror: every x of the footprint's frame (pads, drawings, courtyard) negated, then turned by `.place.rotation`, with every layer on the other face (`F.Cu` becomes `B.Cu`, `F.CrtYd` becomes `B.CrtYd`). The board file `fab` writes stores it as KiCad's flip does, which mirrors in y: every y of the footprint's frame negated and the footprint turned by `.place.rotation` plus 180, which puts the pads, the drawings and KiCad's 3D model in the same place. A board file from KiCad stores a footprint on the back the same way, and so does a port's `placements.toml`, which is read from it: to draw a footprint from those figures, negate each y and each pad's own angle (its angle less the footprint's) in the footprint, and put each layer on the other face; the part's `.place.rotation` is the file's rotation less 180. A footprint drawn from them as they stand comes out flipped twice: its pads mirrored and on the wrong face.
 
@@ -319,7 +330,7 @@ default = true
 footprint = "gen:SOT23(pins=3)"
 ```
 
-The generators are `QFN`, `DFN`, `QFP`, `SO` (SOIC, SSOP, TSSOP and MSOP), `SOT23`, `PinHeader`, `PinSocket`, `BGA`, and `MountingHole` and `PlatedHole` (one parameter, `drill=2.375mm`, which a `.diameter` on the part asks for without a row). A parameter is a column of the generator's table of packages, so the pads of `gen:` are those of the table row with the same numbers: `gen:SOT23(pins=5)` has the pads of `Package_TO_SOT_SMD:SOT-23-5`. A length carries its unit (`pitch=0.5mm`), a size is one length or the least and the greatest (`lead_width=0.2-0.3mm`), a pair is `7x7mm` (across, then along) and a count pair `3x3`. The datasheet's dimensions have no default, so a QFN is:
+The generators are `QFN`, `DFN`, `QFP`, `SO` (SOIC, SSOP, TSSOP and MSOP), `SOT23`, `PinHeader`, `PinSocket`, `BGA`, `LGA`, and `MountingHole` and `PlatedHole` (one parameter, `drill=2.375mm`, which a `.diameter` on the part asks for without a row). A parameter is a column of the generator's table of packages, so the pads of `gen:` are those of the table row with the same numbers: `gen:SOT23(pins=5)` has the pads of `Package_TO_SOT_SMD:SOT-23-5`. A length carries its unit (`pitch=0.5mm`), a size is one length or the least and the greatest (`lead_width=0.2-0.3mm`), a pair is `7x7mm` (across, then along) and a count pair `3x3`. The datasheet's dimensions have no default, so a QFN is:
 
 ```toml
 [[part]]
@@ -338,6 +349,20 @@ footprint = "gen:QFN(pins=48, pitch=0.5mm, body=7x7mm, ep=5.2x5.2mm, lead_width=
 | `SOT23` | `pins` (3, 5 or 6); `span`, `lead_length`, `lead_width` and `body` are optional, and are the MO-178 outline's when left out |
 | `PinHeader`, `PinSocket` | `rows` (1 or 2), `pins` (in a row, 1 to 40), `pitch` (`2.54mm` or `2mm`) |
 | `BGA` | `layout` (balls across and down: `11x11`, a full grid), `pitch`, `body`, `pad` (the diameter of a ball's pad) |
+| `LGA` | `edge` (the pads on each top and bottom edge, then on each left and right edge: `3x4`; `0x4` for two rows, left and right), `pitch` (of the ring), `pad` (a ring pad's width along its edge, then its length towards the middle: `0.35x0.625mm`), `body`, `span` (optional: the distance between the centres of the left and right columns, then of the top and bottom rows; by default the pads' outer ends are on the body's edge), `grid` (optional: the pads inside the ring, across and down, `3x3`), `grid_pitch` (with `grid`: one length, or across and down, `1x1.2mm`) and `grid_pad` (with `grid`: a grid pad across and along) |
+
+An `LGA` is a land grid array whose pads are a ring round the body, with a grid inside it or none (issue #1423). The pads are the land pattern of the package drawing as it stands (no fillet is added: an LGA has no leads), each a rectangle with rounded corners. The ring is numbered as a QFN's leads are, from the top of the left edge counterclockwise; the grid follows, row by row from the top left. A sensor of 3 by 3 mm with five pads on each side, three on the top and bottom, and a grid of four pads in the middle, checked against its drawing's table:
+
+```toml
+[[part]]
+kind = "Sensor"
+package = "LGA-20"
+default = true
+footprint = "gen:LGA(edge=3x5, pitch=0.5mm, pad=0.35x0.55mm, span=2.45x2.45mm, body=3x3mm, grid=2x2, grid_pitch=0.8mm, grid_pad=0.4x0.4mm)"
+table = "pads=20, pitch=0.5mm, body=3x3mm"
+```
+
+The same numbers with no `grid` are KiCad's `Package_LGA:LGA-16_3x3mm_P0.5mm_LayoutBorder3x5y`, which netsmith also makes by that name, with five more of KiCad's `LayoutBorder` LGAs. A grid that reaches past the inner edges of the ring is refused, as are ring pads as wide as the pitch and corner pads that meet.
 
 The footprint is named from the generator and the parameters in alphabetical order, `gen:SOT23_pins3`, so one set of numbers is one footprint however the row spells it. A generator refuses what is not a land pattern. The message names the part, its package, the file and the line:
 

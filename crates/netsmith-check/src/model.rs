@@ -2392,6 +2392,44 @@ impl Model {
         &self.mates
     }
 
+    /// The nets that one signal line is on across the mates of a system, from the net at index
+    /// `start`, that net first and the others in the order they are reached: a mated contact
+    /// joins the nets of its two sides, through as many mates as reach them (a carrier passes a
+    /// line from one card to another, issue #1426). A contact that is power or ground on either
+    /// side joins nothing, as in the mate check. A net no mated contact is on is a line alone.
+    pub fn mated_nets(&self, start: usize) -> Vec<usize> {
+        let net_of = |pin: InstId| self.nets.iter().position(|n| n.pins.contains(&pin));
+        let line = |r: Role| matches!(r, Role::Signal | Role::Open);
+        let mut hops: Vec<(usize, usize)> = Vec::new();
+        for mate in &self.mates {
+            for c in &mate.contacts {
+                if !line(c.a.role) || !line(c.b.role) {
+                    continue;
+                }
+                if let (Some(x), Some(y)) = (net_of(c.a.pin), net_of(c.b.pin)) {
+                    hops.push((x, y));
+                }
+            }
+        }
+        let mut seen = vec![start];
+        let mut at = 0;
+        while at < seen.len() {
+            let n = seen[at];
+            at += 1;
+            for &(x, y) in &hops {
+                for to in [(x == n).then_some(y), (y == n).then_some(x)]
+                    .into_iter()
+                    .flatten()
+                {
+                    if !seen.contains(&to) {
+                        seen.push(to);
+                    }
+                }
+            }
+        }
+        seen
+    }
+
     /// The grounds the mates join.
     pub fn ground_groups(&self) -> &[GroundGroup] {
         &self.ground_groups
