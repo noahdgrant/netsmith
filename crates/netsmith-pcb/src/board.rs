@@ -225,6 +225,11 @@ pub struct Board {
     /// shorter nets of each towards its longest ([`Board::length_groups`] has the routed ones).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub length_groups: Vec<netsmith_core::LengthGroup>,
+    /// The lines of one impedance through parts in series (issue #1275): their nets are in
+    /// `impedance_targets` too; the router reads a path's corner and its fence, and the net
+    /// table its budget.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub track_paths: Vec<netsmith_core::TrackPath>,
     /// How the physical file says nets are routed (issue #1274): with the RF nets of
     /// `impedance_targets`, what [`Board::one_layer_nets`] routes on one layer with no via.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

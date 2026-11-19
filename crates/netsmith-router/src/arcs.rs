@@ -14,7 +14,8 @@
 //! cut right angle (0.05 to 0.3 mm, `CHAMFERS` in `route.rs`) takes two small arcs. Only a bend
 //! where exactly two straight tracks of one width end is rounded, outside the net's pads and vias,
 //! and where no other track of the net joins the corner it takes away, so an arc never breaks a
-//! join.
+//! join. A net of a `TrackPath` whose `.corner` is `TrackCorner::Mitered` (issue #1275) keeps
+//! its 45 degree corners.
 //!
 //! An arc moves copper towards the inside of its bend (by about 0.08 of the radius at its
 //! middle) and away from the outside, which is why it is checked; it is checked as chords no
@@ -168,7 +169,9 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
         // locks gets no copper.
         let fixed_copper =
             a < board.fixed.tracks || b < board.fixed.tracks || board.fixed.is_locked(&ta.net);
+        // A `TrackPath` whose corners are mitered keeps them (issue #1275).
         if fixed_copper
+            || board.mitered(&ta.net)
             || ta.mid.is_some()
             || tb.mid.is_some()
             || (ta.width - tb.width).abs() > 1e-9
@@ -530,5 +533,26 @@ mod tests {
                 .iter()
                 .all(|p| (p.distance(arc.centre) - 1.0).abs() < 1e-9)
         );
+    }
+
+    #[test]
+    fn a_bend_of_a_mitered_track_path_keeps_its_corner() {
+        let mut board = open_board();
+        let points = bend_at(&board);
+        bent(&mut board, "VCC", points, 0.2);
+        board.track_paths.push(netsmith_core::TrackPath {
+            path: "rf".into(),
+            nets: vec!["VCC".into()],
+            parts: Vec::new(),
+            ohms: 50.0,
+            budget_length: None,
+            budget_loss: None,
+            corner: netsmith_core::TrackCorner::Mitered,
+            fence: None,
+        });
+        assert_eq!(round_bends(&mut board, ARC_WIDTHS), 0);
+        // Rounded, the default, takes its arc as any net's bend does.
+        board.track_paths[0].corner = netsmith_core::TrackCorner::Rounded;
+        assert_eq!(round_bends(&mut board, ARC_WIDTHS), 1);
     }
 }

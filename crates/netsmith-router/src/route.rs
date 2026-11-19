@@ -1761,6 +1761,8 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     if options.stitch {
         crate::stitch::stitch(board);
     }
+    // Ground vias along the tracks of a `TrackPath` with a fence (issue #1275).
+    crate::stitch::fence(board);
     // A pad that a pour of its net joins to those vias gives up its own (issue #834).
     crate::pour_pads::drop_vias(board, &drops);
     // Teardrops round the copper the search settled (issue #431, S11).

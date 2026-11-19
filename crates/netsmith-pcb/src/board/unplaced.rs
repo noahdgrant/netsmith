@@ -115,6 +115,7 @@ impl Unplaced {
             impedance_targets: design.features.impedance_targets.clone(),
             pairs: design.features.pairs.clone(),
             length_groups: design.features.length_groups.clone(),
+            track_paths: design.features.track_paths.clone(),
             net_routes: design.features.net_routes.clone(),
             net_currents: design.features.net_currents.clone(),
             branch_currents: design.features.branch_currents.clone(),
