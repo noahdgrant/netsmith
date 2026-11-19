@@ -238,3 +238,134 @@ board B {
     let checked = check("main.nsm", src, &Loader::std());
     assert!(!checked.is_ok(), "{}", checked.render());
 }
+
+// ---- through a use of a generic that declares `.needs` (issue 1402) ----------------------
+
+/// A generic that wants order codes declares `.needs: String optional`; `Modem` fills it with
+/// its table, and `Basic`, first in the order of candidates, has no table.
+const RADIO: &str = r#"
+generic Radio {
+    pins { .a passive }
+    .needs: String optional
+}
+
+part Basic provides Radio {
+    pins { .a passive "A" "1" }
+}
+
+part Modem provides Radio {
+    .variants {
+        "MDM-100-G" GNSS LTE
+        "MDM-100" LTE
+    }
+    pins { .a passive "A" "1" }
+}
+"#;
+
+fn use_board(body: &str, provider: Option<&str>) -> netsmith_check::Checked {
+    let src = format!("{RADIO}\nboard B {{\n{body}\n}}\n");
+    let mut assignment = netsmith_check::Assignment::new();
+    if let Some(p) = provider {
+        assignment.insert(
+            "B".to_string(),
+            [("u".to_string(), p.to_string())].into_iter().collect(),
+        );
+    }
+    netsmith_check::check_with("main.nsm", &src, &Loader::std(), &assignment)
+}
+
+#[test]
+fn a_need_through_a_use_narrows_the_providers_code() {
+    let checked = use_board(".u: Radio\n.u.needs &= GNSS", Some("main::Modem"));
+    assert!(checked.is_ok(), "{}", checked.render());
+    let b = checked.standalone_boards().next().unwrap();
+    assert_eq!(
+        b.model.domain_at("u.mpn"),
+        Some(&Domain::Text("MDM-100-G".into()))
+    );
+    let checked = use_board(".u: Radio { .needs &= LTE\n.mpn &= \"MDM-100\" }", Some("main::Modem"));
+    assert!(checked.is_ok(), "{}", checked.render());
+}
+
+#[test]
+fn a_need_a_provider_without_a_table_cannot_meet_is_a_provider_conflict() {
+    let checked = use_board(".u: Radio\n.u.needs &= GNSS", None);
+    let out = checked.render();
+    assert!(
+        out.contains("`u` is a `Basic`, which states no `.variants`: it is one order code with no feature, and the design needs `GNSS` of it"),
+        "{out}"
+    );
+    // Kept apart, so the build tries `Modem` before it stops on it (ADR 0113).
+    let b = checked.standalone_boards().next().unwrap();
+    assert_eq!(b.model.provider_conflicts.len(), 1, "{out}");
+    assert_eq!(checked.diagnostics.len(), 1, "{out}");
+}
+
+#[test]
+fn a_providers_code_without_the_need_is_a_provider_conflict() {
+    let checked = use_board(".u: Radio\n.u.needs &= WIFI", Some("main::Modem"));
+    let out = checked.render();
+    assert!(out.contains("`WIFI` is not a feature of `Modem` (`u`)"), "{out}");
+    // Every refusal is the provider's: another may have the feature.
+    let b = checked.standalone_boards().next().unwrap();
+    assert_eq!(b.model.provider_conflicts.len(), checked.diagnostics.len(), "{out}");
+    let checked = use_board(".u: Radio", Some("main::Modem"));
+    let out = checked.render();
+    assert!(out.contains("`u` is a `Modem`, which is sold as"), "{out}");
+    let b = checked.standalone_boards().next().unwrap();
+    assert_eq!(b.model.provider_conflicts.len(), 1, "{out}");
+}
+
+#[test]
+fn a_use_of_a_generic_without_needs_does_not_reach_it() {
+    let src = r#"
+generic Plain {
+    pins { .a passive }
+}
+
+part Modem provides Plain {
+    .variants {
+        "MDM-100-G" GNSS
+    }
+    pins { .a passive "A" "1" }
+}
+
+board B {
+    .u: Plain
+    .u.needs &= GNSS
+}
+"#;
+    let checked = check("main.nsm", src, &Loader::std());
+    assert!(
+        checked
+            .render()
+            .contains("`needs` is not declared by `Plain`"),
+        "{}",
+        checked.render()
+    );
+}
+
+#[test]
+fn a_generic_declares_needs_as_optional_text() {
+    let src = r#"
+generic Radio {
+    pins { .a passive }
+    .needs: String
+}
+
+part Modem provides Radio {
+    .variants {
+        "MDM-100-G" GNSS
+    }
+    pins { .a passive "A" "1" }
+}
+"#;
+    let checked = check("main.nsm", src, &Loader::std());
+    assert!(
+        checked
+            .render()
+            .contains("declare it `.needs: String optional` in `Radio`"),
+        "{}",
+        checked.render()
+    );
+}
