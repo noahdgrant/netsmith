@@ -374,9 +374,9 @@ board TooTight {
 
 ```text
 error: no combination of candidates satisfies `divider.rbottom` and `divider.rtop` together: the closest, divider.rbottom = 20kΩ 1% 0402 C25765 and divider.rtop = 56kΩ 1% 0603 C23206, fails because `divider.vout` must stay within 3.762V..3.838V, but (divider.vref * (1 + (divider.rtop.resistance / divider.rbottom.resistance))) works out to 3.707V..3.896V
-    --> std/parts/regulator.nsm:156:5
+    --> std/parts/regulator.nsm:159:5
     |
-156 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
+159 |     .vout == .vref * (1 + .rtop.resistance / .rbottom.resistance)
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -500,9 +500,9 @@ board TooMuchMargin {
 
 ```text
 error: no `capacitor` candidate satisfies `reg.input_cap`: the closest of the 36 that fit, 1 x 2.2uF 10% 100V X7R 1210 C55151, fails because reg.input_cap.max_voltage must always be at least (reg.vin.voltage * reg.voltage_margin), but 100V is not always above 95V..105V (`reg.input_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 25)
-    --> std/parts/regulator.nsm:649:5
+    --> std/parts/regulator.nsm:655:5
     |
-649 |     .input_cap.max_voltage >= .vin.voltage * .voltage_margin
+655 |     .input_cap.max_voltage >= .vin.voltage * .voltage_margin
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -539,14 +539,14 @@ board Overload {
 
 ```text
 error: -reg.ic.sw.current must always be at most reg.ic.max_output_current, but 15.11uA..3.001A is not always below 2A, and whichever parts are picked, its range reaches 3A or higher (the currents on net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3.001A..-15.11uA) + reg.inductor.current (15.11uA..3.001A) add up to zero; net `1V8` in `reg`: reg.divider.supply.current (14.62uA..16.37uA) + -reg.inductor.current (15.11uA..3.001A) + -reg.vout.current (-3A..0A) add up to zero; net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..0A) add up to zero; net `1V8` in `reg.divider`: -reg.divider.supply.current (14.62uA..16.37uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled)
-    --> std/parts/regulator.nsm:248:5
+    --> std/parts/regulator.nsm:251:5
     |
-248 |     -.sw.current <= .max_output_current
+251 |     -.sw.current <= .max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 error: -reg.vout.current must always be at most reg.ic.max_output_current, but 0A..3A is not always below 2A, and whichever parts are picked, its range reaches 3A or higher (the currents on net `1V8`: output.current (0A..3A) + reg.vout.current (-3A..0A) add up to zero; net `1V8` in `reg`: reg.divider.supply.current (14.62uA..16.37uA) + -reg.inductor.current (15.11uA..3.001A) + -reg.vout.current (-3A..0A) add up to zero; net `net-reg.ic.sw.pos` in `reg`: reg.ic.sw.current (-3.001A..-15.11uA) + reg.inductor.current (15.11uA..3.001A) add up to zero; net `1V8` in `reg.divider`: -reg.divider.supply.current (14.62uA..16.37uA) add up to zero, but the balance is incomplete: `reg.divider.rtop.a` is not modelled)
-    --> std/parts/regulator.nsm:646:5
+    --> std/parts/regulator.nsm:652:5
     |
-646 |     -.vout.current <= .ic.max_output_current
+652 |     -.vout.current <= .ic.max_output_current
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -603,9 +603,9 @@ board HighInput {
 
 ```text
 error: reg.on_time must always be at least reg.ic.min_on_time, but 122ns..490.8ns is not always above 150ns
-    --> std/parts/regulator.nsm:664:5
+    --> std/parts/regulator.nsm:670:5
     |
-664 |     .on_time >= .ic.min_on_time
+670 |     .on_time >= .ic.min_on_time
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -654,9 +654,9 @@ board TooQuiet {
 
 ```text
 error: no `capacitor` candidate satisfies `reg.output_cap`: the closest of the 36 that fit, 1 x 10uF 20% 10V X5R 0402 C315248, fails because reg.output_cap.total_effective_capacitance must always be at least reg.ic.min_output_capacitance, but 4.908uF..7.686uF is not always above 10uF (`reg.output_cap.effective_capacitance` is unknown for some candidates, so they were not used: no derating data for 25)
-    --> std/parts/regulator.nsm:679:5
+    --> std/parts/regulator.nsm:685:5
     |
-679 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
+685 |     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -934,9 +934,9 @@ board Converter {
 
 ```text
 error: the `lt8641` catalog is empty (no file of it has a row), so nothing can be picked for `reg.ic`: add rows to `catalogs/lt8641.csv` in the project (docs/language/12, "Catalog files")
-    --> std/parts/regulator.nsm:544:5
+    --> std/parts/regulator.nsm:550:5
     |
-544 |     .ic: Ic
+550 |     .ic: Ic
     |     ^^^^^^^
 ```
 
@@ -1027,6 +1027,8 @@ A footprint is added only from a package drawing that was read: each pad's size 
 A load switch passes its input rail to its output rail while its enable turns it on (issue 1269). `std::parts::switch::LoadSwitch` is the IC, a generic with the rails `in` and `out` on one ground, the pin `enable` (an input, high for on), `.on_resistance`, `.max_current` and `.quiescent_current` (default none). A concrete IC is a part that provides it and writes its pin table and its datasheet's numbers. It is a converter between the two rails, as a regulator is: the output supplies what its loads draw, the input draws that and the quiescent current, and the output's voltage is the input's less the drop, `.on_resistance` times the load. So the current budget sees the output's loads on the input's rail, the power tree has the switch as an edge from the one rail to the other, with its `.max_current` as what the output can give, and the DC analysis puts the on resistance between the two rails (`dc load_switch`, "What a part is at DC").
 
 The output is supplied when the enable can turn the switch on, and the switch is then taken as on, the worst case for what the input supplies: a host's pin that drives the enable (`output`, `tri_state` or `bidirectional`), the enable joined to a rail's `pos` (the input's own, for a switch that is always on), or a passive part on its net (a pull-up, a series resistor, a connector). An enable on a ground, on a net with nothing else, stated `unused`, or with only inputs and open-drain outputs on its net cannot: the DC analysis leaves the switch open, and the power tree says why its output has no source (`3V3_A has no source: the load switch `sw` is off, since its enable `sw.enable` is held low: ...`). An enable that a pull-up inside the IC holds high when it floats is taken as off, since the pin table does not say so: tie it to the input. The switch's own heat, its turn-on time and inrush current, and an enable that is active low are not modelled.
+
+What the IC does with current from its output back to its input is its `.reverse`, a body diode unless it states `ReversePath::Blocking`, which a board's `scenario` reads (issue #1258, _Reverse current and backup sources_ below). `PmosLoadSwitch` has none: a `scenario` does not follow a MOSFET.
 
 `std::parts::switch::PmosLoadSwitch` is the same use of a P-channel MOSFET, which the solver picks from `p_mosfet`: its source on `.in`, its drain on `.out`, its gate `.enable`, low for on. The MOSFET is a `~>` chain from the input to the output, so the input draws what the output's loads draw, and its `.on_resistance` and `.max_current` are the MOSFET's. It assumes that the gate is pulled to the input's ground to turn it on and that the channel blocks the input's voltage while it is off; the board puts the pull-up that holds the gate at the input. The DC analysis models the MOSFET as a switch when what sets its gate is known ("DC analysis").
 
@@ -1566,6 +1568,159 @@ error: the `sequence` says `io.vout` comes at least 2ms after `core.vout`, but i
    |
 25 |         .core.vout
    |         ^^^^^^^^^^
+```
+
+### Reverse current and backup sources
+
+When a board's input is taken away and a backup stays (a cell behind a diode on the 3.3 V rail, a supercapacitor), current flows backwards through the parts between rails: through the body diode of a linear regulator's pass transistor, a buck's high-side switch or a load switch's MOSFET. A board says which state of its supplies to look at with a `scenario` (issue #1258): `remove` names a supply that is taken away, `source` a supply that stays, and `sense` a pin (or a rail, for its `pos` net) whose settling voltage is wanted:
+
+```nsm-fragment
+scenario backup {
+    remove .usb
+    source .cell
+    sense .mon.det.line
+}
+```
+
+The statements may be parted by `;` on one line, and `netsmith project fmt` writes them one to a line. A scenario has a name, at least one `remove` and at least one `source`; `remove` and `source` name rails, which must be supplies (a board's own rail, or a part's `dc source`, that no regulator drives), `sense` a pin or a rail. A path that is a part or a value is refused with what the word names, and so is a rail that is both removed and a source. Only a board states a scenario, and a board may state several, each with its own name.
+
+What a part does backwards is data, its `.reverse` (`std::sources::Reverse`), which `LinearRegulator`, `BuckIc` and `LoadSwitch` have:
+
+- `.reverse.path`: `ReversePath::BodyDiode` (the default: the input is fed the output less the diode's drop) or `ReversePath::Blocking` (a part with reverse-current protection: nothing reaches the input). A load switch that is on passes the output back through its on resistance unless it blocks.
+- `.reverse.forward_voltage`: the body diode's drop, offered at `0.4V..1.2V`. The range is wide on purpose, so that a part that states nothing is judged both at the highest and at the lowest voltage its input may be fed at; a part narrows it from its datasheet.
+- `.reverse.max_current`: optional, the most current the part passes backwards before it limits it. When the loads on the input draw more, the input cannot be held up from behind and its voltage runs from 0 V.
+
+A part writes `import std::sources::ReversePath` to state `Blocking`.
+
+After the solve, the solver follows the board's power graph in the scenario. A node is a net with the nets an inductor, a ferrite bead or a fuse joins to it, and it is either off or at a range of voltage. Every supply that is not removed holds its node at its rail's `.voltage`; then each part between two nodes gives the far one a range, and a node takes the highest it is given (the source with the highest voltage wins, as at a diode-OR):
+
+- A linear regulator gives its output `min(set point, vin - dropout)`, and a switching regulator `min(set point, vin)`, as a buck at its full duty does. An undervoltage lockout is not modelled: a regulator whose input falls follows it down, the worst case for its loads.
+- A load switch that its enable can turn on gives its output its input; the drop across it is left out.
+- Backwards, each of these reads its `.reverse`, as above.
+- A diode gives its cathode its anode less its forward voltage, and nothing backwards.
+
+A resistor joins no two nodes, and a MOSFET switch is not followed. What a node's loads draw, for `.reverse.max_current`, is the solved `.current` of the rails on it in the board's own state.
+
+A note says, for each `source`, which regulators it reaches (backwards through a body diode or an on resistance, or forwards from an input it powers, and which ones block it), which loads it powers (the rails of parts, and a board's own rails behind a regulator), and at what voltage; and where each `sense` net settles. A sense net on a node that is on has the node's range; one that is off settles through the resistors on it, solved over every corner of their tolerances and of the ranges of the nodes they reach. A sense net that no resistor joins to a node that is on, or to ground, floats and is listed as not judged.
+
+Two states are errors:
+
+- A load on a node that is on and outside the bounds its part puts on the rail by numbers alone (`.vdd.voltage >= 2.4V`, `.vdd.voltage <= 3.6V`): the part is powered but not inside its supply range. A load that is off is not judged, and a part that bounds nothing is listed with its voltage.
+- A sense net that a pin with levels on it reads as neither low nor high: above its `vil` and below its `vih`. A level worked out from its supply (`.vih &= 0.7 * .vdd.voltage`) is worked out again at the supply's voltage in the scenario. A sense net that is not at 0 V on the pin of a part whose supply is off is an error too: the pin powers the part through its inputs.
+
+Below, a cell behind a Schottky backs up the 3.3 V rail of a regulator fed from USB, and a monitor senses the USB input through a divider. With USB removed the regulator's body diode (the standard `.reverse`, which the part does not state) feeds the input from behind, a diode below the 3.3 V rail, and the divider puts the monitor's input between its levels:
+
+```nsm fails
+import std::logic::Logic
+import std::parts::diode::Schottky
+import std::parts::passive::Resistor
+import std::parts::regulator::LinearRegulator
+import std::sources::{Rail, ReversePath}
+
+/// Invented: runs from 2.4 V to 3.6 V and reads a high from 70 % of its supply. Illustrative;
+/// not a real part.
+part Monitor {
+    .designator &= "U"
+    .vdd: Rail
+    .vdd.voltage >= 2.4V
+    .vdd.voltage <= 3.6V
+    .vdd.current &= 1mA..5mA
+    .det: Logic
+    .det.reference ~ .vdd
+    .det.reference.current &= 0A
+    .det.vih &= 0.7 * .vdd.voltage
+    .det.vil &= 0.3 * .vdd.voltage
+    pins {
+        .vdd.pos  power "VDD" "1"
+        .vdd.neg  power "GND" "2"
+        .det.line input "DET" "3"
+    }
+}
+
+board BackFed {
+    .usb: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VBUS" }
+    .cell: Rail { .voltage &= 3V..3.3V; .pos.net &= "VBAT" }
+    .cell.neg ~ .usb.neg
+    .ldo: LinearRegulator { .vout.voltage &= 3.3V +/- 5% }
+    .usb ~ .ldo.vin
+    .ldo.vout.pos.net &= "3V3"
+    .d: Schottky
+    .cell.pos ~> .d ~> .ldo.vout.pos
+    .mon: Monitor
+    .mon.vdd ~ .ldo.vout
+    .top: Resistor { .resistance &= 100kohm +/- 1% }
+    .bottom: Resistor { .resistance &= 100kohm +/- 1% }
+    .usb.pos ~> .top ~> .mon.det.line
+    .mon.det.line ~> .bottom ~> .usb.neg
+
+    scenario backup {
+        remove .usb
+        source .cell
+        sense .mon.det.line
+    }
+}
+```
+
+```text
+error: in the scenario `backup`, `.mon.det.line` settles at 594mV..1.162V, which the pin reads as neither low (at most 720mV) nor high (at least 1.89V)
+   --> main.nsm:46:15
+   |
+46 |         sense .mon.det.line
+   |               ^^^^^^^^^^^^^
+```
+
+With the regulator stated as blocking (a part with reverse-current protection), the input stays off, the divider holds the monitor's input at 0 V, and the note lists what the cell reaches:
+
+```nsm evaluate
+import std::logic::Logic
+import std::parts::diode::Schottky
+import std::parts::passive::Resistor
+import std::parts::regulator::LinearRegulator
+import std::sources::{Rail, ReversePath}
+
+/// Invented: runs from 2.4 V to 3.6 V and reads a high from 70 % of its supply. Illustrative;
+/// not a real part.
+part Monitor {
+    .designator &= "U"
+    .vdd: Rail
+    .vdd.voltage >= 2.4V
+    .vdd.voltage <= 3.6V
+    .vdd.current &= 1mA..5mA
+    .det: Logic
+    .det.reference ~ .vdd
+    .det.reference.current &= 0A
+    .det.vih &= 0.7 * .vdd.voltage
+    .det.vil &= 0.3 * .vdd.voltage
+    pins {
+        .vdd.pos  power "VDD" "1"
+        .vdd.neg  power "GND" "2"
+        .det.line input "DET" "3"
+    }
+}
+
+board Blocked {
+    .usb: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VBUS" }
+    .cell: Rail { .voltage &= 3V..3.3V; .pos.net &= "VBAT" }
+    .cell.neg ~ .usb.neg
+    .ldo: LinearRegulator { .vout.voltage &= 3.3V +/- 5% }
+    .usb ~ .ldo.vin
+    .ldo.vout.pos.net &= "3V3"
+    .ldo.reverse.path &= ReversePath::Blocking
+    .d: Schottky
+    .cell.pos ~> .d ~> .ldo.vout.pos
+    .mon: Monitor
+    .mon.vdd ~ .ldo.vout
+    .top: Resistor { .resistance &= 100kohm +/- 1% }
+    .bottom: Resistor { .resistance &= 100kohm +/- 1% }
+    .usb.pos ~> .top ~> .mon.det.line
+    .mon.det.line ~> .bottom ~> .usb.neg
+
+    scenario backup {
+        remove .usb
+        source .cell
+        sense .mon.det.line
+    }
+}
 ```
 
 ### Current through a part

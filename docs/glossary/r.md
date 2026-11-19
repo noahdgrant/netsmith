@@ -50,6 +50,10 @@ _Avoid_: Constraint between parts, pitch rule, offset constraint (an `Offset` is
 A port's board drawn by `fab` from the routes file and the layout file that `netsmith routes import` writes from the original's KiCad board, with any other file it needs (a physical file that lets a part hang over an edge), kept in `reference/agent/` of the example and not in `src/` (issue #599). Its copper and its zones are the original's, which `crates/netsmith-cli/tests/reproduce.rs` checks shape by shape and zone by zone; each part is drawn with the original's footprint and stands as the original's does, which the test checks part by part (`netsmith_tools::footprint_diff`), and what differs is named in the example's README. The example's own build, with no routes file, is the **automatic board**: the placer's and the router's, compared with the reproduction and the original as they improve.
 _Avoid_: agent board, golden board, copy (alone)
 
+**Reverse path**:
+How a part between two rails passes current from its output back to its input, its `.reverse.path` (`std::sources::Reverse`, issue #1258): `BodyDiode` (the input is fed the output less `.reverse.forward_voltage`; a load switch that is on passes it through its on resistance) or `Blocking`. The default is a body diode. A board's _Scenario_ reads it.
+_Avoid_: Back-feed path, reverse leakage (a blocking part's leakage is not modelled)
+
 **Reverse peak**:
 The `.reverse_peak` of a `Rail`: the highest voltage the rail reaches the wrong way round, a positive number, which a design states for its input (ADR 0091). The first part of a `~>` chain from the rail that has a `.supply_reverse_peak` (a `Diode`, a `Schottky` or a `Tvs`) is given it and checked against it: a reverse-polarity diode must block it, and a unidirectional TVS diode conducts it. A rail that states none checks nothing and lists nothing.
 _Avoid_: Negative peak, reverse transient
