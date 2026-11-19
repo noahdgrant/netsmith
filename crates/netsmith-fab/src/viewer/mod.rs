@@ -52,7 +52,7 @@ mod summary;
 use std::io::Read as _;
 use std::path::Path;
 
-pub use crate::raster::Facts;
+pub use crate::raster::{ApertureShape, Facts, Flash};
 pub use draw::{
     COPPER_COLOURS, Drawing, HOLE_COLOURS, LAYER_WORDS, PNG_LONGEST, PNG_PER_MM, Show, ViewError,
     draw, draw_stack, png,
@@ -209,7 +209,7 @@ fn walk(dir: &Path, prefix: &str, out: &mut Vec<(String, Vec<u8>)>) -> std::io::
 }
 
 /// The files of a zip, by name, its folders and macOS's `__MACOSX` copies left out.
-fn unzip(bytes: &[u8]) -> Result<Vec<(String, Vec<u8>)>, String> {
+pub fn unzip(bytes: &[u8]) -> Result<Vec<(String, Vec<u8>)>, String> {
     let mut archive =
         zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
     let mut out = Vec::new();

@@ -2,7 +2,8 @@
 //! distributor's KiCad export, written as a `.kicad_mod` into a footprint library of the project,
 //! for a row of `kicad.toml` to name and to check against the datasheet's `table` (#1281). An
 //! Eagle library or board (issue #1430) gives its package the same way, and so does an Altium
-//! library (`.PcbLib`) or board (`.PcbDoc`, issue #1431).
+//! library (`.PcbLib`) or board (`.PcbDoc`, issue #1431). A reference board's Gerber files (issue
+//! 1432) give a land pattern rebuilt from them (`netsmith_tools::gerber_footprint`).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -16,13 +17,14 @@ const LIBRARY_DIR: &str = "libs";
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "FILE is a KiCad board (`.kicad_pcb`), whose part `--ref` names, a footprint file (`.kicad_mod`), a `.pretty` folder, an Eagle board (`.brd`), whose part `--ref` names, an Eagle library (`.lbr`), an Altium board (`.PcbDoc`), whose part `--ref` names, or an Altium library (`.PcbLib`), saved as binary. A folder or a library of several footprints needs `--footprint NAME` for the one to take (a `.kicad_mod` file's name without its extension, an Eagle package's or an Altium footprint's name); the refusal lists the names. The footprint is written as it is drawn, its pads, courtyard, silkscreen, fabrication layer and 3D model, without what the board adds: its place and angle on the board are taken off, a footprint on the bottom face is turned back to the top, and the nets, ids, links to the schematic and the symbol's own fields are left out. The reference becomes `REF**` and the value the footprint's name. An Eagle package's pads, holes, silkscreen (tPlace), fabrication layer (tDocu), mask, paste and a courtyard layer of its own are written, every y negated (Eagle's y grows up); what it draws on another layer is left out and the command says so. From an Altium file the pads, and the tracks, arcs, fills and regions of the overlay, paste, mask and copper layers are taken, with mechanical layer 15 as the courtyard and 13 as the fabrication drawing (the convention of Altium's IPC footprint wizard); the texts, the 3D bodies and the other layers are left out, and the command says how many were.\n\nThe project is the one that holds the current folder. `--name LIB:NAME` names the library and the footprint; `--name NAME` the footprint alone, in the one footprint library that `kicad.toml` lists. With no `--name` the footprint keeps the name the file gives it. A library that `kicad.toml` does not list is the folder `libs/LIB.pretty`, and the command prints the `[[library]]` stanza to add. It prints a draft `[[part]]` row too, whose `table` is to be filled from the datasheet's package drawing (a `TODO` does not parse, so the row does not build until it is). A footprint file that is already there is not written over: delete it first. A file that cannot be read, a part the board does not have, or no project is exit 2."
+    after_long_help = "FILE is a KiCad board (`.kicad_pcb`), whose part `--ref` names, a footprint file (`.kicad_mod`), a `.pretty` folder, an Eagle board (`.brd`), whose part `--ref` names, an Eagle library (`.lbr`), an Altium board (`.PcbDoc`), whose part `--ref` names, or an Altium library (`.PcbLib`), saved as binary. A folder or a library of several footprints needs `--footprint NAME` for the one to take (a `.kicad_mod` file's name without its extension, an Eagle package's or an Altium footprint's name); the refusal lists the names. The footprint is written as it is drawn, its pads, courtyard, silkscreen, fabrication layer and 3D model, without what the board adds: its place and angle on the board are taken off, a footprint on the bottom face is turned back to the top, and the nets, ids, links to the schematic and the symbol's own fields are left out. The reference becomes `REF**` and the value the footprint's name. An Eagle package's pads, holes, silkscreen (tPlace), fabrication layer (tDocu), mask, paste and a courtyard layer of its own are written, every y negated (Eagle's y grows up); what it draws on another layer is left out and the command says so. From an Altium file the pads, and the tracks, arcs, fills and regions of the overlay, paste, mask and copper layers are taken, with mechanical layer 15 as the courtyard and 13 as the fabrication drawing (the convention of Altium's IPC footprint wizard); the texts, the 3D bodies and the other layers are left out, and the command says how many were.\n\nThe project is the one that holds the current folder. `--name LIB:NAME` names the library and the footprint; `--name NAME` the footprint alone, in the one footprint library that `kicad.toml` lists. With no `--name` the footprint keeps the name the file gives it. A library that `kicad.toml` does not list is the folder `libs/LIB.pretty`, and the command prints the `[[library]]` stanza to add. It prints a draft `[[part]]` row too, whose `table` is to be filled from the datasheet's package drawing (a `TODO` does not parse, so the row does not build until it is). A footprint file that is already there is not written over: delete it first. A file that cannot be read, a part the board does not have, or no project is exit 2.\n\nFILE can also be a folder or a zip of a reference board's Gerber, drill and placement files, the last resort when a vendor gives no KiCad, Eagle or Altium file: the part `--ref` names is found in the placement file, and its pads are rebuilt from the flashes of its face's copper (each aperture's shape and size, at its place), with the drill file's holes, the mask and paste files' openings, and the numbers the copper's X2 attributes give. The placement's centre and angle are taken off, and a part on the bottom is mirrored to be seen from the top. With no `--name`, the placement file's package column names it. A Gerber file is a picture, not a footprint: the command prints what it rebuilt from the files and what it guessed (pad numbers with no X2 attributes, which flashes are the part's, the courtyard, the angle an assembler's file may have offset), to check against the datasheet."
 )]
 pub struct Args {
-    /// The board, footprint file, `.pretty` folder, Eagle or Altium file to take the footprint from.
+    /// The board, footprint file, `.pretty` folder, Eagle or Altium file, or Gerber folder or zip
+    /// to take the footprint from.
     #[arg(value_name = "FILE")]
     pub file: PathBuf,
-    /// The reference designator of the part whose footprint a board file gives.
+    /// The reference designator of the part whose footprint a board or Gerber files give.
     #[arg(long = "ref", value_name = "REF")]
     pub reference: Option<String>,
     /// The footprint to take from a `.pretty` folder or the package from an Eagle library of several.
@@ -49,10 +51,22 @@ pub fn run(args: Args) -> ExitCode {
 /// What the command did, for stdout.
 fn import(args: &Args) -> Result<String, String> {
     let footprint = args.footprint.as_deref();
-    let (file, kind) = source_file(&args.file, footprint)?;
+    let gerber = gerber_files(&args.file)?;
+    let (file, kind) = match gerber {
+        Some(_) => {
+            if args.reference.is_none() {
+                return Err(format!(
+                    "{}: Gerber files hold a whole board: name the part with `--ref REF`",
+                    args.file.display()
+                ));
+            }
+            (args.file.clone(), Kind::Gerber)
+        }
+        None => source_file(&args.file, footprint)?,
+    };
     let board = matches!(
         kind,
-        Kind::KicadBoard | Kind::EagleBoard | Kind::AltiumBoard
+        Kind::KicadBoard | Kind::EagleBoard | Kind::AltiumBoard | Kind::Gerber
     );
     let reference = match (board, args.reference.as_deref()) {
         (true, Some(reference)) => Some(reference),
@@ -105,6 +119,26 @@ fn import(args: &Args) -> Result<String, String> {
     };
     let target = library_folder(&mapping, &root, library.as_deref())?;
     let shown = file.display().to_string();
+    if let Some(files) = gerber {
+        let reference = reference.unwrap_or_default();
+        let i = netsmith_tools::gerber_footprint::import(files, reference, name.as_deref())
+            .map_err(|e| format!("{shown}: {e}"))?;
+        let imported = netsmith_kicad::ImportedFootprint {
+            source_name: i.name.clone(),
+            name: i.name,
+            from_bottom: i.from_bottom,
+            board_angle: 0.0,
+            text: i.text,
+            notes: Vec::new(),
+        };
+        return write_footprint(
+            &root,
+            &target,
+            &shown,
+            imported,
+            Some((i.rebuilt, i.guessed)),
+        );
+    }
     if matches!(kind, Kind::AltiumBoard | Kind::AltiumLibrary) {
         let bytes = fs::read(&file).map_err(|e| format!("{shown}: {e}"))?;
         let source = reference.map_or(FootprintSource::File, |reference| FootprintSource::Board {
@@ -113,7 +147,7 @@ fn import(args: &Args) -> Result<String, String> {
         let imported =
             netsmith_kicad::import_altium_footprint(&bytes, source, footprint, name.as_deref())
                 .map_err(|e| format!("{shown}: {e}"))?;
-        return write_footprint(&root, &target, &shown, imported);
+        return write_footprint(&root, &target, &shown, imported, None);
     }
     let text = fs::read_to_string(&file).map_err(|e| format!("{shown}: {e}"))?;
     let imported = match (kind, reference) {
@@ -134,7 +168,7 @@ fn import(args: &Args) -> Result<String, String> {
         }
     }
     .map_err(|e| format!("{shown}: {e}"))?;
-    write_footprint(&root, &target, &shown, imported)
+    write_footprint(&root, &target, &shown, imported, None)
 }
 
 /// Writes the footprint taken out into the library, and says what to add to `kicad.toml`.
@@ -143,6 +177,8 @@ fn write_footprint(
     target: &Library,
     shown: &str,
     imported: netsmith_kicad::ImportedFootprint,
+    // From Gerber files: what was rebuilt and what was guessed.
+    report: Option<(Vec<String>, Vec<String>)>,
 ) -> Result<String, String> {
     if imported.name.contains(['/', '\\', ':']) || imported.name.starts_with('.') {
         return Err(format!(
@@ -164,7 +200,8 @@ fn write_footprint(
     fs::create_dir_all(&target.folder).map_err(|e| format!("{}: {e}", target.folder.display()))?;
     fs::write(&path, &imported.text).map_err(|e| format!("{}: {e}", path.display()))?;
 
-    let pads = read.pad_numbers().len();
+    // Counted as the table counts them: an unnumbered pad (a hole, a paste opening) is none.
+    let pads = read.pad_numbers().iter().filter(|n| !n.is_empty()).count();
     let mut out = format!(
         "wrote {} ({pads} pad{}",
         relative(root, &path),
@@ -183,6 +220,16 @@ fn write_footprint(
     for note in &imported.notes {
         out.push_str(&format!("note: {note}\n"));
     }
+    if let Some((rebuilt, guessed)) = &report {
+        out.push_str("\nrebuilt from the Gerber files (a last resort: a Gerber file is a picture, not a footprint):\n");
+        for line in rebuilt {
+            out.push_str(&format!("  - {line}\n"));
+        }
+        out.push_str("\nguessed, to check against the datasheet:\n");
+        for line in guessed {
+            out.push_str(&format!("  - {line}\n"));
+        }
+    }
     out.push_str("\nadd to kicad.toml:\n\n");
     if !target.listed {
         out.push_str(&format!(
@@ -191,8 +238,11 @@ fn write_footprint(
             relative(root, &target.folder)
         ));
     }
+    // A footprint rebuilt from Gerber files draws no body on its fabrication layer, so its table
+    // has no `body` to measure.
+    let body = if report.is_some() { "" } else { ", body=TODO" };
     out.push_str(&format!(
-        "[[part]]\nkind = \"TODO\"\npackage = \"TODO\"\ndefault = true\nfootprint = \"{}:{}\"\ntable = \"pads={pads}, pitch=TODO, body=TODO\"\n",
+        "[[part]]\nkind = \"TODO\"\npackage = \"TODO\"\ndefault = true\nfootprint = \"{}:{}\"\ntable = \"pads={pads}, pitch=TODO{body}\"\n",
         target.name, imported.name
     ));
     out.push_str(
@@ -210,6 +260,35 @@ enum Kind {
     EagleLibrary,
     AltiumBoard,
     AltiumLibrary,
+    /// A folder or a zip of a reference board's Gerber, drill and placement files.
+    Gerber,
+}
+
+/// The files of a package, by name, with their bytes.
+type Files = Vec<(String, Vec<u8>)>;
+
+/// The files of a Gerber package: a zip, or a folder with no `.kicad_mod` that holds a Gerber
+/// file (in it or in a zip in it); `None` for anything else.
+fn gerber_files(given: &Path) -> Result<Option<Files>, String> {
+    let is_zip = given
+        .extension()
+        .is_some_and(|x| x.eq_ignore_ascii_case("zip"));
+    let has_mod = given.is_dir()
+        && fs::read_dir(given)
+            .map_err(|e| format!("{}: {e}", given.display()))?
+            .filter_map(|e| e.ok())
+            .any(|e| e.path().extension().is_some_and(|x| x == "kicad_mod"));
+    if !is_zip && !(given.is_dir() && !has_mod) {
+        return Ok(None);
+    }
+    let files = netsmith_tools::gerber_footprint::gather(given)?;
+    if netsmith_tools::gerber_footprint::has_gerber(&files) {
+        Ok(Some(files))
+    } else if is_zip {
+        Err(format!("{}: no Gerber file in it", given.display()))
+    } else {
+        Ok(None)
+    }
 }
 
 /// The file to read and what it is: a `.pretty` folder gives its one footprint, or the one
@@ -263,7 +342,7 @@ fn source_file(given: &Path, footprint: Option<&str>) -> Result<(PathBuf, Kind),
         Some("brd") => Ok((given.to_path_buf(), Kind::EagleBoard)),
         Some("lbr") => Ok((given.to_path_buf(), Kind::EagleLibrary)),
         _ => Err(format!(
-            "{}: not a KiCad board (`.kicad_pcb`), footprint (`.kicad_mod`) or `.pretty` folder, nor an Eagle board (`.brd`) or library (`.lbr`), nor an Altium board (`.PcbDoc`) or library (`.PcbLib`)",
+            "{}: not a KiCad board (`.kicad_pcb`), footprint (`.kicad_mod`) or `.pretty` folder, nor an Eagle board (`.brd`) or library (`.lbr`), nor an Altium board (`.PcbDoc`) or library (`.PcbLib`), nor a folder or zip of Gerber files",
             given.display()
         )),
     }
