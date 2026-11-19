@@ -1,6 +1,7 @@
 //! `netsmith import footprint` (issue #1424): a land pattern from a vendor's reference board or a
 //! distributor's KiCad export, written as a `.kicad_mod` into a footprint library of the project,
-//! for a row of `kicad.toml` to name and to check against the datasheet's `table` (#1281).
+//! for a row of `kicad.toml` to name and to check against the datasheet's `table` (#1281). An
+//! Altium library (`.PcbLib`) or board (`.PcbDoc`) is read too (issue #1431).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -14,10 +15,10 @@ const LIBRARY_DIR: &str = "libs";
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "FILE is a KiCad board (`.kicad_pcb`), whose part `--ref` names, a footprint file (`.kicad_mod`), or a `.pretty` folder that holds one. The footprint is written as it is drawn, its pads, courtyard, silkscreen, fabrication layer and 3D model, without what the board adds: its place and angle on the board are taken off, a footprint on the bottom face is turned back to the top, and the nets, ids, links to the schematic and the symbol's own fields are left out. The reference becomes `REF**` and the value the footprint's name.\n\nThe project is the one that holds the current folder. `--name LIB:NAME` names the library and the footprint; `--name NAME` the footprint alone, in the one footprint library that `kicad.toml` lists. With no `--name` the footprint keeps the name the file gives it. A library that `kicad.toml` does not list is the folder `libs/LIB.pretty`, and the command prints the `[[library]]` stanza to add. It prints a draft `[[part]]` row too, whose `table` is to be filled from the datasheet's package drawing (a `TODO` does not parse, so the row does not build until it is). A footprint file that is already there is not written over: delete it first. A file that cannot be read, a part the board does not have, or no project is exit 2."
+    after_long_help = "FILE is a KiCad board (`.kicad_pcb`), whose part `--ref` names, a footprint file (`.kicad_mod`), or a `.pretty` folder that holds one; or an Altium board (`.PcbDoc`), whose part `--ref` names, or library (`.PcbLib`) that holds one footprint, saved as binary. The footprint is written as it is drawn, its pads, courtyard, silkscreen, fabrication layer and 3D model, without what the board adds: its place and angle on the board are taken off, a footprint on the bottom face is turned back to the top, and the nets, ids, links to the schematic and the symbol's own fields are left out. The reference becomes `REF**` and the value the footprint's name. From an Altium file the pads, and the tracks, arcs, fills and regions of the overlay, paste, mask and copper layers are taken, with mechanical layer 15 as the courtyard and 13 as the fabrication drawing (the convention of Altium's IPC footprint wizard); the texts, the 3D bodies and the other layers are left out, and the command says how many were.\n\nThe project is the one that holds the current folder. `--name LIB:NAME` names the library and the footprint; `--name NAME` the footprint alone, in the one footprint library that `kicad.toml` lists. With no `--name` the footprint keeps the name the file gives it. A library that `kicad.toml` does not list is the folder `libs/LIB.pretty`, and the command prints the `[[library]]` stanza to add. It prints a draft `[[part]]` row too, whose `table` is to be filled from the datasheet's package drawing (a `TODO` does not parse, so the row does not build until it is). A footprint file that is already there is not written over: delete it first. A file that cannot be read, a part the board does not have, or no project is exit 2."
 )]
 pub struct Args {
-    /// The board, footprint file or `.pretty` folder to take the footprint from.
+    /// The board, footprint file, `.pretty` folder or Altium file to take the footprint from.
     #[arg(value_name = "FILE")]
     pub file: PathBuf,
     /// The reference designator of the part whose footprint a board file gives.
@@ -43,7 +44,8 @@ pub fn run(args: Args) -> ExitCode {
 
 /// What the command did, for stdout.
 fn import(args: &Args) -> Result<String, String> {
-    let (file, board) = source_file(&args.file)?;
+    let (file, input) = source_file(&args.file)?;
+    let board = matches!(input, Input::KicadBoard | Input::AltiumBoard);
     let source = match (board, args.reference.as_deref()) {
         (true, Some(reference)) => FootprintSource::Board { reference },
         (true, None) => {
@@ -54,7 +56,7 @@ fn import(args: &Args) -> Result<String, String> {
         }
         (false, Some(_)) => {
             return Err(format!(
-                "{}: `--ref` names a part of a board, and a footprint file has one footprint",
+                "{}: `--ref` names a part of a board, and a footprint file or library has one footprint",
                 file.display()
             ));
         }
@@ -78,9 +80,14 @@ fn import(args: &Args) -> Result<String, String> {
     };
     let target = library_folder(&mapping, &root, library.as_deref())?;
     let shown = file.display().to_string();
-    let text = fs::read_to_string(&file).map_err(|e| format!("{shown}: {e}"))?;
-    let imported = netsmith_kicad::import_footprint(&text, source, name.as_deref())
-        .map_err(|e| format!("{shown}: {e}"))?;
+    let imported = if matches!(input, Input::AltiumBoard | Input::AltiumLibrary) {
+        let bytes = fs::read(&file).map_err(|e| format!("{shown}: {e}"))?;
+        netsmith_kicad::import_altium_footprint(&bytes, source, name.as_deref())
+    } else {
+        let text = fs::read_to_string(&file).map_err(|e| format!("{shown}: {e}"))?;
+        netsmith_kicad::import_footprint(&text, source, name.as_deref())
+    }
+    .map_err(|e| format!("{shown}: {e}"))?;
     if imported.name.contains(['/', '\\', ':']) || imported.name.starts_with('.') {
         return Err(format!(
             "`{}` is not a footprint name: a name is a file's name, with no `/`, `\\` or `:`; give another with `--name`",
@@ -111,6 +118,9 @@ fn import(args: &Args) -> Result<String, String> {
         out.push_str(", turned from the bottom face to the top");
     }
     out.push_str(")\n");
+    for note in &imported.notes {
+        out.push_str(&format!("note: {note}\n"));
+    }
     if imported.name != imported.source_name {
         out.push_str(&format!(
             "the file names it `{}`; it is `{}` here\n",
@@ -135,8 +145,17 @@ fn import(args: &Args) -> Result<String, String> {
     Ok(out)
 }
 
-/// The file to read and whether it is a board: a `.pretty` folder gives its one footprint.
-fn source_file(given: &Path) -> Result<(PathBuf, bool), String> {
+/// What kind of file a footprint is taken from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Input {
+    KicadBoard,
+    KicadFootprint,
+    AltiumBoard,
+    AltiumLibrary,
+}
+
+/// The file to read and its kind: a `.pretty` folder gives its one footprint.
+fn source_file(given: &Path) -> Result<(PathBuf, Input), String> {
     if given.is_dir() {
         let mut mods: Vec<PathBuf> = fs::read_dir(given)
             .map_err(|e| format!("{}: {e}", given.display()))?
@@ -145,7 +164,7 @@ fn source_file(given: &Path) -> Result<(PathBuf, bool), String> {
             .collect();
         mods.sort();
         return match mods.as_slice() {
-            [one] => Ok((one.clone(), false)),
+            [one] => Ok((one.clone(), Input::KicadFootprint)),
             [] => Err(format!(
                 "{}: the folder has no .kicad_mod file",
                 given.display()
@@ -161,14 +180,23 @@ fn source_file(given: &Path) -> Result<(PathBuf, bool), String> {
             )),
         };
     }
-    match given.extension().and_then(|x| x.to_str()) {
-        Some("kicad_pcb") => Ok((given.to_path_buf(), true)),
-        Some("kicad_mod") => Ok((given.to_path_buf(), false)),
-        _ => Err(format!(
-            "{}: not a KiCad board (`.kicad_pcb`), footprint (`.kicad_mod`) or `.pretty` folder",
-            given.display()
-        )),
-    }
+    let extension = given
+        .extension()
+        .and_then(|x| x.to_str())
+        .map(str::to_ascii_lowercase);
+    let input = match extension.as_deref() {
+        Some("kicad_pcb") => Input::KicadBoard,
+        Some("kicad_mod") => Input::KicadFootprint,
+        Some("pcbdoc") => Input::AltiumBoard,
+        Some("pcblib") => Input::AltiumLibrary,
+        _ => {
+            return Err(format!(
+                "{}: not a KiCad board (`.kicad_pcb`), footprint (`.kicad_mod`) or `.pretty` folder, or an Altium board (`.PcbDoc`) or library (`.PcbLib`)",
+                given.display()
+            ));
+        }
+    };
+    Ok((given.to_path_buf(), input))
 }
 
 /// The library a footprint goes into.

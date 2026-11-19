@@ -6,6 +6,7 @@
 
 #![cfg_attr(not(test), warn(unreachable_pub))]
 
+mod altium;
 mod footprint_import;
 mod footprint_spec;
 mod footprint_table;
@@ -22,6 +23,9 @@ mod sexp;
 mod stdlib;
 mod symbols;
 
+#[cfg(feature = "test-support")]
+pub use altium::fixture as altium_fixture;
+pub use altium::{import_altium_footprint, is_compound_file};
 pub use footprint_import::{FootprintSource, ImportedFootprint, import_footprint};
 pub use footprint_spec::{FootprintSpec, LIBRARY as GENERATED_FOOTPRINT_LIBRARY};
 pub use footprint_table::{BODY_TOLERANCE, FootprintTable, PITCH_TOLERANCE, TableSize};

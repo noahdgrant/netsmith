@@ -246,7 +246,7 @@ fn what_cannot_be_imported_says_why() {
         ),
         (
             &["src/main.nsm"],
-            "error: src/main.nsm: not a KiCad board (`.kicad_pcb`), footprint (`.kicad_mod`) or `.pretty` folder\n",
+            "error: src/main.nsm: not a KiCad board (`.kicad_pcb`), footprint (`.kicad_mod`) or `.pretty` folder, or an Altium board (`.PcbDoc`) or library (`.PcbLib`)\n",
         ),
     ];
     for (args, want) in cases {
@@ -270,5 +270,157 @@ fn what_cannot_be_imported_says_why() {
         text(&run.stderr).contains("no netsmith.toml here or in a folder above"),
         "{}",
         text(&run.stderr)
+    );
+}
+
+/// The sensor of the vendor board above as an Altium library holds it (mm, y up): three pads, an
+/// assembly outline on mechanical 13, the courtyard as a region on mechanical 15, and the
+/// designator's text. `place` puts a point of the library on a board; `component` names the part.
+fn altium_sensor(
+    component: u16,
+    place: &dyn Fn((f64, f64)) -> (f64, f64),
+    angle: f64,
+    bottom: bool,
+) -> Vec<Vec<u8>> {
+    use netsmith_kicad::altium_fixture::{self as fx, Pad, Shape, layer};
+    let mut out = Vec::new();
+    for (name, at) in [("1", (-1.5, 0.95)), ("2", (-1.5, -0.95)), ("3", (1.5, 0.0))] {
+        let mut pad = Pad::smd(name, place(at), (1.2, 0.7), Shape::Rect);
+        pad.component = component;
+        pad.angle = angle;
+        if bottom {
+            pad.layer = layer::BOTTOM;
+        }
+        out.push(pad.record());
+    }
+    let body = [(-0.65, -1.45), (0.65, -1.45), (0.65, 1.45), (-0.65, 1.45)];
+    for i in 0..4 {
+        out.push(fx::track(
+            layer::mechanical(13),
+            component,
+            place(body[i]),
+            place(body[(i + 1) % 4]),
+            0.1,
+        ));
+    }
+    out.push(fx::region(
+        layer::mechanical(15),
+        component,
+        &[(-2.5, -1.6), (2.5, -1.6), (2.5, 1.6), (-2.5, 1.6)].map(place),
+    ));
+    out.push(fx::text(
+        if bottom { 34 } else { layer::TOP_OVERLAY },
+        component,
+        ".Designator",
+    ));
+    out
+}
+
+#[test]
+fn an_altium_library_footprint_becomes_a_footprint_a_board_builds_with() {
+    use netsmith_kicad::altium_fixture::{NO_COMPONENT, pcblib};
+    let dir = TempDir::new("import-footprint-altium-lib");
+    let dir = dir.path();
+    project(dir, "");
+    let file = pcblib(&[("SOT-23-3_Sensor", altium_sensor(NO_COMPONENT, &|p| p, 0.0, false))]);
+    fs::write(dir.join("vendor/sensor.PcbLib"), file).unwrap();
+    let run = netsmith(
+        dir,
+        &["import", "footprint", "vendor/sensor.PcbLib", "--name", "own:Sensor"],
+    );
+    let out = text(&run.stdout);
+    assert!(run.status.success(), "{}{out}", text(&run.stderr));
+    assert!(
+        out.starts_with(
+            "wrote libs/own.pretty/Sensor.kicad_mod (3 pads)\nnote: 1 text(s) left out: the reference is `REF**` and the value the footprint's name\n"
+        ),
+        "{out}"
+    );
+    let written = fs::read_to_string(dir.join("libs/own.pretty/Sensor.kicad_mod")).unwrap();
+    for line in [
+        "(pad \"1\" smd rect\n\t\t(at -1.5 -0.95)",
+        "(pad \"3\" smd rect\n\t\t(at 1.5 0)",
+        "(layer \"F.CrtYd\")",
+        "(layer \"F.Fab\")",
+    ] {
+        assert!(written.contains(line), "{line}:\n{written}");
+    }
+
+    // The printed rows, filled from the datasheet, build the board with no KiCad installed.
+    let start = out.find("[[library]]").unwrap();
+    let end = out.find("\nfill `table`").unwrap();
+    let rows = out[start..end]
+        .replace("kind = \"TODO\"", "kind = \"Sensor\"")
+        .replace("package = \"TODO\"", "package = \"SOT-23\"")
+        .replace("pitch=TODO, body=TODO", "pitch=1.9mm, body=1.3x2.9mm");
+    fs::write(dir.join("kicad.toml"), &rows).unwrap();
+    let build = netsmith(dir, &["board", "build", "--out", "out"]);
+    assert!(build.status.success(), "{rows}\n{}", text(&build.stderr));
+}
+
+#[test]
+fn an_altium_boards_part_on_the_bottom_comes_back_drawn_from_the_top() {
+    use netsmith_kicad::altium_fixture::{Component, pcbdoc};
+    let dir = TempDir::new("import-footprint-altium-board");
+    let dir = dir.path();
+    project(dir, "");
+    // The part on the bottom face at (20, 30) mm, turned by 90 degrees: mirrored (x negated),
+    // turned, moved.
+    let place = |(x, y): (f64, f64)| (20.0 - y, 30.0 - x);
+    let records = altium_sensor(0, &place, 90.0, true);
+    let pick = |kind: u8| -> Vec<Vec<u8>> {
+        records.iter().filter(|r| r[0] == kind).cloned().collect()
+    };
+    let board = pcbdoc(
+        &[Component {
+            designator: "U3",
+            pattern: "SOT-23-3_Sensor",
+            at: (20.0, 30.0),
+            angle: 90.0,
+            bottom: true,
+        }],
+        &[
+            ("Pads6", pick(2)),
+            ("Tracks6", pick(4)),
+            ("Regions6", pick(11)),
+            ("Texts6", pick(5)),
+        ],
+    );
+    fs::write(dir.join("vendor/eval.PcbDoc"), board).unwrap();
+    let run = netsmith(
+        dir,
+        &[
+            "import",
+            "footprint",
+            "vendor/eval.PcbDoc",
+            "--ref",
+            "U3",
+            "--name",
+            "own:Sensor",
+        ],
+    );
+    let out = text(&run.stdout);
+    assert!(run.status.success(), "{}{out}", text(&run.stderr));
+    assert!(
+        out.starts_with(
+            "wrote libs/own.pretty/Sensor.kicad_mod (3 pads, turned from the bottom face to the top)\n"
+        ),
+        "{out}"
+    );
+    let written = fs::read_to_string(dir.join("libs/own.pretty/Sensor.kicad_mod")).unwrap();
+    for line in [
+        "(pad \"1\" smd rect\n\t\t(at -1.5 -0.95)",
+        "(pad \"2\" smd rect\n\t\t(at -1.5 0.95)",
+        "(layers \"F.Cu\" \"F.Paste\" \"F.Mask\")",
+    ] {
+        assert!(written.contains(line), "{line}:\n{written}");
+    }
+    assert!(!written.contains("B.Cu"), "{written}");
+
+    // A board needs `--ref`; a library has one footprint.
+    let no_ref = netsmith(dir, &["import", "footprint", "vendor/eval.PcbDoc"]);
+    assert_eq!(
+        text(&no_ref.stderr),
+        "error: vendor/eval.PcbDoc: a board holds many footprints: name the part with `--ref REF`\n"
     );
 }

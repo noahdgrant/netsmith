@@ -48,6 +48,9 @@ pub struct ImportedFootprint {
     pub board_angle: f64,
     /// The `.kicad_mod` text.
     pub text: String,
+    /// What the import left out or changed, one line each (an Altium file's texts, a layer it
+    /// does not take); none for a KiCad file, which is taken whole.
+    pub notes: Vec<String>,
 }
 
 /// The fields of a footprint that a board adds and a library footprint does not have.
@@ -170,6 +173,7 @@ pub fn import_footprint(
         from_bottom,
         board_angle,
         text: out.to_kicad_string(),
+        notes: Vec::new(),
     })
 }
 
@@ -225,7 +229,7 @@ fn reference_of(footprint: &Sexp) -> Option<&str> {
 }
 
 /// `R10` after `R9`: the letters, then the number.
-fn natural(reference: &str) -> (String, u64, String) {
+pub(crate) fn natural(reference: &str) -> (String, u64, String) {
     let letters: String = reference
         .chars()
         .take_while(|c| !c.is_ascii_digit())
