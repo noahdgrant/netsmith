@@ -62,7 +62,8 @@
 //! fiducials 3.85 mm from the left and right edges, on the front, and on the back if a part is
 //! assembled there. The perforations, rails, fiducials and tooling holes are generated, never
 //! drawn by the user. `bom.csv` multiplies each part by the cells and `cpl.csv` transforms the
-//! positions.
+//! positions. A board with alternates (issue 1415) has `bom-alternates.csv`, each alternate once
+//! for each cell with the cell in the designator.
 //!
 //! **The checks** are in [`check`], each message with the numbers and the page: rail width, panel
 //! size (and the assembled size), lines per side, line spacing, thickness, the board's edge
@@ -1092,6 +1093,9 @@ pub struct PanelPackage {
     pub gerber_files: Vec<String>,
     pub bom_csv: String,
     pub cpl_csv: String,
+    /// The text of `bom-alternates.csv`, each alternate once for each cell with the cell in the
+    /// designator; `None` for a board with no alternate.
+    pub alternates_csv: Option<String>,
     pub notes: String,
     /// The parts of the whole panel, with a designator for each cell.
     pub plan: Plan,
@@ -1122,6 +1126,20 @@ impl PanelPackage {
         ];
         if let Some(pro) = &self.pro {
             files.push((format!("{}.kicad_pro", self.name), pro.as_bytes()));
+        }
+        match &self.alternates_csv {
+            Some(alternates) => {
+                files.push((crate::ALTERNATES_FILE.to_string(), alternates.as_bytes()));
+            }
+            None => match std::fs::remove_file(dir.join(crate::ALTERNATES_FILE)) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                    return Err(Error::Io(format!(
+                        "cannot remove {}: {e}",
+                        crate::ALTERNATES_FILE
+                    )));
+                }
+                _ => {}
+            },
         }
         files
             .into_iter()
@@ -1223,9 +1241,19 @@ pub fn build(spec: &Spec, cell: &CellInput, options: &Options) -> Result<PanelPa
     let dnp = (1..=cells)
         .flat_map(|k| options.dnp.iter().map(move |d| suffixed(d, k)))
         .collect();
+    // Each alternate on each cell, with the cell in the designator.
+    let alternates: Vec<bom::AlternateEntry> = (1..=cells)
+        .flat_map(|k| {
+            options.alternates.iter().map(move |a| bom::AlternateEntry {
+                designator: suffixed(&a.designator, k),
+                ..a.clone()
+            })
+        })
+        .collect();
     let panel_options = Options {
         fit,
         dnp,
+        alternates: alternates.clone(),
         ..options.clone()
     };
     let plan = crate::plan(&board, &entries, &panel_options)?;
@@ -1244,6 +1272,12 @@ pub fn build(spec: &Spec, cell: &CellInput, options: &Options) -> Result<PanelPa
     unverified.dedup();
 
     let mut extras = panel_notes(spec, &g, cell, &findings);
+    if !alternates.is_empty() {
+        extras.push(format!(
+            "bom-alternates.csv lists each alternate once for each cell, with the cell in the designator (U1_3, as bom.csv names the parts); the board's own bom-alternates.csv is in cell/{}/",
+            cell.facts.board
+        ));
+    }
     extras.extend(options.extras.iter().cloned());
     extras.extend(crate::fill_notes(&art, &plotted.notes));
     let notes = crate::notes(
@@ -1265,6 +1299,7 @@ pub fn build(spec: &Spec, cell: &CellInput, options: &Options) -> Result<PanelPa
         gerber_files: files.into_iter().map(|f| f.name).collect(),
         bom_csv: bom::render(&plan.bom_rows()),
         cpl_csv: cpl::render(&placed.rows),
+        alternates_csv: crate::alternates_csv(&alternates),
         gerber_zip,
         notes,
         svg: svg(spec, &g, &cell.facts.board),

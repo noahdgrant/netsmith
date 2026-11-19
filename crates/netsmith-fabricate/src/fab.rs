@@ -1951,8 +1951,9 @@ fn fab_board(
         } else {
             Vec::new()
         };
-        // The alternates (issue 1312): not fitted, so in no line of bom.csv or cpl.csv.
-        extras.extend(alternate_notes(&built.alternates));
+        // The alternates (issue 1312): not fitted, so in no line of bom.csv or cpl.csv; issue 1415
+        // lists each in bom-alternates.csv.
+        extras.extend(alternate_notes(&built.alternates, for_review));
         let package_options = Options {
             // The check finds the unrouted connections as unconnected pads; the package is made
             // anyway, for the person to look at, and the run still fails.
@@ -1971,6 +1972,7 @@ fn fab_board(
                 .filter(|s| s.not_fitted.is_some())
                 .map(|s| s.refdes.clone())
                 .collect(),
+            alternates: alternate_entries(&built.alternates),
             revision: options.revision.clone(),
             // The design's requirements on where parts go (ADR 0045): an error that stops
             // the package, or a warning with `constraints = "warn"`.
@@ -3308,7 +3310,10 @@ fn panel_rules(r: &netsmith_core::PanelRules) -> netsmith_fab::PanelBuildRules {
 
 /// The lines of `fab-notes.txt` for the alternates of a board (issue 1312): each is not fitted
 /// (DNP), on the footprint of the part it may take the place of, and passed the board's checks.
-fn alternate_notes(alternates: &[netsmith_pipeline::alternates::FittedAlternate]) -> Vec<String> {
+fn alternate_notes(
+    alternates: &[netsmith_pipeline::alternates::FittedAlternate],
+    for_review: bool,
+) -> Vec<String> {
     alternates
         .iter()
         .map(|a| {
@@ -3317,10 +3322,31 @@ fn alternate_notes(alternates: &[netsmith_pipeline::alternates::FittedAlternate]
                 (Some(n), None) | (None, Some(n)) => format!(" ({n})"),
                 (None, None) => String::new(),
             };
+            // A package made for review has no bill of materials, so no list of alternates.
+            let listed = if for_review {
+                ""
+            } else {
+                ", listed in bom-alternates.csv"
+            };
             format!(
-                "alternate (not fitted, DNP; not in bom.csv): {} may take `{}`{number} in the place of `{}` ({}:{}); the board's checks pass with it fitted",
+                "alternate (not fitted, DNP; not in bom.csv{listed}): {} may take `{}`{number} in the place of `{}` ({}:{}); the board's checks pass with it fitted",
                 a.refdes, a.kind, a.primary, a.at.file, a.at.line
             )
+        })
+        .collect()
+}
+
+/// The rows of `bom-alternates.csv` (issue 1415): each alternate with the designator it replaces,
+/// its manufacturer's number (its kind's name where its row has none) and its LCSC number.
+fn alternate_entries(
+    alternates: &[netsmith_pipeline::alternates::FittedAlternate],
+) -> Vec<netsmith_fab::AlternateEntry> {
+    alternates
+        .iter()
+        .map(|a| netsmith_fab::AlternateEntry {
+            designator: a.refdes.clone(),
+            part_number: a.sourcing.mpn.clone().unwrap_or_else(|| a.kind.clone()),
+            lcsc: a.sourcing.lcsc.clone(),
         })
         .collect()
 }
