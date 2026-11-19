@@ -1351,9 +1351,18 @@ part Tps54202 provides BuckIc {
 /// `.float_voltage`, `.charge_temperature` and `.max_charge_current` (see `Cell`) and names both
 /// sides' numbers. A charger joined to no cell is not judged.
 ///
-/// Not modelled: the current the charger draws and gives (a board or a part states its rails'
-/// currents), its heat, its preconditioning and termination, and the time a charge takes
-/// (issue #1264, which reads the rails' `.charge_time_limit`).
+/// Two more checks after the solve read the charge current (issue #1264). When the connection
+/// on `.out` states `.charge_time_limit`, the storage on its net (a cell's `.capacity`, and the
+/// capacitance across the rail with its `.leakage_current`) is charged at the least of
+/// `.charge_current` and the time held against the limit. When the source in front of `.vin`
+/// states `.max_peak_current` (a regulator states it for its output), what the charger takes
+/// (the most of `.vin.current` when the part states it, and of `.charge_current` otherwise)
+/// and the other loads on the net must be within it. A part may state `.charge_current` as a limit
+/// (`.charge_current &= 500mA +/- 10%`) when its current is not set by a pin.
+///
+/// Not modelled: the charger's own current and a switching charger's input (a part states
+/// `.vin.current` for them), its heat, its preconditioning and termination,
+/// and the constant-voltage tail of a charge.
 #[kind(ic)]
 generic Charger {
     .designator &= "U"

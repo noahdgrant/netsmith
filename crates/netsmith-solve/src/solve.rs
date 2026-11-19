@@ -1106,6 +1106,11 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
     for d in charge_faults {
         s.report(d.source, d.span, d.message);
     }
+    // A charger's charge time and what it takes from its supply (issue #1264).
+    let (charging_faults, charging_notes) = crate::charging::check(&s.model);
+    for d in charging_faults {
+        s.report(d.source, d.span, d.message);
+    }
     // The board's power-up order (issue #1267).
     let (sequence_faults, sequence_notes) = crate::sequence::check(&s.model);
     for d in sequence_faults {
@@ -1129,6 +1134,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
     not_evaluated.extend(corner_notes);
     not_evaluated.extend(burst_notes);
     not_evaluated.extend(charge_notes);
+    not_evaluated.extend(charging_notes);
     not_evaluated.extend(sequence_notes);
     // A bus on which one part states its role and another does not (ADR 0064).
     for (at, message) in netsmith_check::unstated_roles(&s.model) {

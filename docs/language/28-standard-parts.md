@@ -1097,7 +1097,7 @@ board Switched {
 
 `std::parts::regulator::Charger` is a charger IC, a generic with the rails `.vin`, where its power comes from, and `.out`, which charges the cell, on one ground. A concrete IC is a part that provides it and states, from its datasheet, `.float_voltage` (its regulation voltage, as a range), `.charge_current` (the fast charge current, as its programming pin sets it: the datasheet's equation over the resistor on the pin, so it carries the resistor's tolerance) and, for an IC with a thermistor input, `.thermistor_window`, the cell temperatures it charges between (optional, ADR 0074). When the charger's `.out` is joined with `~` to a cell's `.terminals` (directly, or through a module's rail), the check after the solve holds the two against each other: the charger's float voltage must lie within the cell's, both ends; its thermistor window within the cell's charge window, both ends; and the most of its charge current at most the cell's `.max_charge_current`. A value of either side that has none is listed as not evaluated. A charger that states no thermistor window is not judged on it, and a charger joined to no cell is not judged at all.
 
-The rail between them carries `.charge_time_limit`, the longest a charge may take: it is a field of the connection, so the charger's `.out` and the cell's `.terminals` share it, and either side may state it (`.bat.terminals.charge_time_limit &= ..10.8ks`, three hours). The time a charge takes is checked against it by issue #1264; until then nothing reads it.
+The rail between them carries `.charge_time_limit`, the longest a charge may take: it is a field of the connection, so the charger's `.out` and the cell's `.terminals` share it, and either side may state it (`.bat.terminals.charge_time_limit &= ..10.8ks`, three hours). The time a charge takes is checked against it (see _The time a charge takes_ below).
 
 Here an invented cell and an invented charger, whose 2.2 kohm programming resistor sets 1000 V / 2.2 kohm, 455 mA, within the cell's 500 mA:
 
@@ -1188,7 +1188,179 @@ error: `charger` charges the cell `bat` at up to 1.01A (`charger.charge_current`
    |     ^^^^^^^^^^^^^^
 ```
 
-Not modelled: the cell's voltage over its state of charge, its self-discharge and ageing, the current the charger draws and its heat, and the time a charge takes (issue #1264).
+Not modelled: the cell's voltage over its state of charge, its self-discharge and ageing, the current the charger draws and its heat.
+
+### The time a charge takes, and what the charger takes from its supply
+
+Two more checks after the solve read a charger's `.charge_current` (issue #1264). The charge current is what the part states: the equation of its programming pin over the resistor there, with the resistor's tolerance, or a limit, for an IC whose current is fixed or set by a pin with no resistor (`.charge_current &= 200mA +/- 10%`). The charger is taken as a constant-current source, at the least of that range, up to its float voltage.
+
+**The charge time.** When the connection on the charger's `.out` states `.charge_time_limit` (on the charger's `.out` or on what it is joined to with `~`, such as the cell's `.terminals`), the storage on that net is charged in the worst case and the time held against the most of the limit:
+
+- a cell joined to it, by its `.capacity`, charged from empty;
+- each part with a `bias` across the rail's two nets (a supercapacitor, a capacitor, a bank), by the most of its effective capacitance, charged from the least of the rail's window (its `.voltage_floor`, or the least of `.voltage`) to the top of `.voltage`, or to the least of the charger's `.float_voltage` when that is lower: the voltage the charger is sure to reach;
+- less the most of the storage's `.leakage_current`, taken from the charge current for the whole charge (a ceramic capacitor has none).
+
+So the time is the charge over the current: `(capacity + C * (end - start)) / (min(charge_current) - leakage)`. A charge current at or below the leakage never finishes the charge, and that is an error too. A limit on a net with no cell and no capacitor is listed as not evaluated, and so is a charge whose values have none; a connection that states no limit is not checked.
+
+**The supply's budget.** While the charger charges, the source in front of it gives the charge current and the other loads on the net at once. When `.vin` has a `.max_peak_current` (a regulator states it for its output, and `~` shares it; a rail from outside the board states it, `.usb.max_peak_current &= 500mA`), what the charger takes and the most the other loads draw must be within it. The charger takes the most of its `.vin.current` when the part states it (a switching charger takes less than it gives) and the most of its `.charge_current` otherwise, as a linear charger does. The other loads are counted as for a load that bursts (chapter 19): each load of the net at its most, and the loads beyond a module's port; a load whose current has no value counts nothing here. A source that states no `.max_peak_current` is not checked.
+
+A charger part states what it takes from `.vin` (`.vin.current`), as its datasheet gives it: a linear charger takes its charge current and its own supply current, and a switching charger less than it gives. Then the balance of the net carries it, and a regulator in front is judged with it by its own bounds, as any load is; this check adds the message that names the charge. A part that states none is taken at its charge current here, and the regulator's bounds on its current are not evaluated.
+
+Here a 12 V input, a 5 V buck that gives at most 600 mA, an MCU that draws up to 150 mA, and an invented charger that charges an invented 0.5 F supercapacitor, which leaks up to 6 uA, from 0 V to 4.75 V, its least float voltage. The 2.7 kohm resistor sets 366.7 mA to 374.1 mA: the charge takes 0.6 F times 4.75 V over 366.7 mA less 6 uA, 7.773 s, within the 10 s limit, and the buck gives up to 375.1 mA and 150 mA, within its 600 mA:
+
+```csv file=catalogs/supercap.csv set=backup
+mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,height_growth,library,source
+ZZS-0F5,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,Reflow,Radial_D16.0mm_P7.50mm,1mm,Extended,invented for the guide
+```
+
+```nsm evaluate catalogs=backup
+import std::parts::passive::{Resistor, Supercap}
+import std::parts::regulator::{Buck, Charger, Lmr16006y}
+import std::sources::Rail
+
+/// Invented: a charger IC whose fast charge current is 1000 V over the resistor on `PROG`.
+part Zchg provides Charger {
+    .package: Package
+    .package &= "SOT-23-5"
+    pins "SOT-23-5" {
+        .nc      no_connect "NC"   "1"
+        .out.pos power      "VBAT" "3"
+        .vin.neg power      "VSS"  "2"
+        .vin.pos power      "VDD"  "4"
+        .prog    input      "PROG" "5"
+    }
+    /// The resistor from `PROG` to `VSS`.
+    .rprog: Resistance
+    .charge_current == 1000V / .rprog
+    // A linear charger takes the charge current from its input, and its own 1 mA.
+    .vin.current == .charge_current + 1mA
+    .float_voltage &= 4.75V..4.85V
+}
+
+board Backup {
+    .input: Rail { .voltage &= 9V..16V; .peak &= 24V; .pos.net &= "VIN" }
+    .reg: Buck<Lmr16006y> { .vout.pos.net &= "V5"; .vout.voltage &= 5V +/- 5% }
+    .input ~ .reg.vin
+    .reg.vout ~ .mcu
+    .reg.vout ~ .charger.vin
+    .charger.prog ~> .rprog ~> .reg.vout.neg
+    .mcu: Rail { .current &= 5mA..150mA }
+    .charger: Zchg
+    .rprog: Resistor { .resistance &= 2.7kohm +/- 1% }
+    .charger.rprog == .rprog.resistance
+    .charger.out.voltage &= 0V..4.8V
+    .charger.out.pos.net &= "VCAP"
+    .charger.out.charge_time_limit &= ..10s
+    .hold: Supercap
+    .charger.out.pos ~> .hold ~> .charger.out.neg
+}
+```
+
+A 10 kohm resistor sets as little as 99.01 mA, so the charge takes up to 28.79 s:
+
+```nsm fails catalogs=backup
+import std::parts::passive::{Resistor, Supercap}
+import std::parts::regulator::{Buck, Charger, Lmr16006y}
+import std::sources::Rail
+
+/// Invented: a charger IC whose fast charge current is 1000 V over the resistor on `PROG`.
+part Zchg provides Charger {
+    .package: Package
+    .package &= "SOT-23-5"
+    pins "SOT-23-5" {
+        .nc      no_connect "NC"   "1"
+        .out.pos power      "VBAT" "3"
+        .vin.neg power      "VSS"  "2"
+        .vin.pos power      "VDD"  "4"
+        .prog    input      "PROG" "5"
+    }
+    /// The resistor from `PROG` to `VSS`.
+    .rprog: Resistance
+    .charge_current == 1000V / .rprog
+    // A linear charger takes the charge current from its input, and its own 1 mA.
+    .vin.current == .charge_current + 1mA
+    .float_voltage &= 4.75V..4.85V
+}
+
+board Backup {
+    .input: Rail { .voltage &= 9V..16V; .peak &= 24V; .pos.net &= "VIN" }
+    .reg: Buck<Lmr16006y> { .vout.pos.net &= "V5"; .vout.voltage &= 5V +/- 5% }
+    .input ~ .reg.vin
+    .reg.vout ~ .mcu
+    .reg.vout ~ .charger.vin
+    .charger.prog ~> .rprog ~> .reg.vout.neg
+    .mcu: Rail { .current &= 5mA..150mA }
+    .charger: Zchg
+    .rprog: Resistor { .resistance &= 10kohm +/- 1% }
+    .charger.rprog == .rprog.resistance
+    .charger.out.voltage &= 0V..4.8V
+    .charger.out.pos.net &= "VCAP"
+    .charger.out.charge_time_limit &= ..10s
+    .hold: Supercap
+    .charger.out.pos ~> .hold ~> .charger.out.neg
+}
+```
+
+```text
+error: `charger` takes up to 28.79s to charge 600mF across the rail (`hold`) from 0V to 4.75V: 2.85C at as little as 99.01mA (`charger.charge_current`, 99.01mA to 101mA) less the 6uA the storage leaks, longer than the 10s of `charger.out.charge_time_limit`; a charge in that time needs at least 285mA of charge current, or less storage
+   --> main.nsm:37:5
+   |
+37 |     .charger.out.charge_time_limit &= ..10s
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+The same charger at 2.2 kohm from a USB port that gives at most 500 mA takes up to 460.1 mA, and with the MCU's 150 mA the port would give 610.1 mA:
+
+```nsm fails catalogs=backup
+import std::parts::passive::{Resistor, Supercap}
+import std::parts::regulator::Charger
+import std::sources::Rail
+
+/// Invented: a charger IC whose fast charge current is 1000 V over the resistor on `PROG`.
+part Zchg provides Charger {
+    .package: Package
+    .package &= "SOT-23-5"
+    pins "SOT-23-5" {
+        .nc      no_connect "NC"   "1"
+        .out.pos power      "VBAT" "3"
+        .vin.neg power      "VSS"  "2"
+        .vin.pos power      "VDD"  "4"
+        .prog    input      "PROG" "5"
+    }
+    /// The resistor from `PROG` to `VSS`.
+    .rprog: Resistance
+    .charge_current == 1000V / .rprog
+    // A linear charger takes the charge current from its input, and its own 1 mA.
+    .vin.current == .charge_current + 1mA
+    .float_voltage &= 4.75V..4.85V
+}
+
+board Backup {
+    .usb: Rail { .voltage &= 5V +/- 5%; .pos.net &= "V5"; .max_peak_current &= 500mA }
+    .usb ~ .mcu
+    .usb ~ .charger.vin
+    .charger.prog ~> .rprog ~> .usb.neg
+    .mcu: Rail { .current &= 5mA..150mA }
+    .charger: Zchg
+    .rprog: Resistor { .resistance &= 2.2kohm +/- 1% }
+    .charger.rprog == .rprog.resistance
+    .charger.out.voltage &= 0V..4.8V
+    .charger.out.pos.net &= "VCAP"
+    .charger.out.charge_time_limit &= ..10s
+    .hold: Supercap
+    .charger.out.pos ~> .hold ~> .charger.out.neg
+}
+```
+
+```text
+error: while `charger` charges it takes up to 460.1mA from `charger.vin` (`charger.vin.current`, 451mA to 460.1mA) and the other loads on the net draw up to 150mA, so the source gives up to 610.1mA, above the 500mA it can give (`charger.vin.max_peak_current`); lower the charge current, or supply the charger from a source that gives more
+   --> main.nsm:30:5
+   |
+30 |     .charger: Zchg
+   |     ^^^^^^^^^^^^^^
+```
+
+Not modelled: the constant-voltage tail of a charge, which makes a real charge of a cell longer than its capacity over the current; the charger's preconditioning and thermal regulation; and a load on the charged rail during the charge.
 
 ### Dropout
 
