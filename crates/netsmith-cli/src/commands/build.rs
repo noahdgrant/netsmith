@@ -21,10 +21,12 @@ pub struct Args {
     /// The folder to write into.
     #[arg(long, value_name = "DIR")]
     pub out: Option<PathBuf>,
-    /// Make a guideline finding an error for this run.
+    /// Make a guideline finding, and a part with no room among the locked parts, an error for
+    /// this run.
     ///
     /// Like `guidelines = "error"` in netsmith.toml (ADR 0036); without it a finding against a
-    /// guideline is a warning.
+    /// guideline, and a part the placer places that no free rectangle among the locked parts
+    /// holds (issue #1283), is a warning.
     #[arg(long)]
     pub strict: bool,
     /// Stop, before anything is written, when the pick lock or the pin file would change.
@@ -359,6 +361,7 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
                 layout.as_ref(),
                 &libraries,
                 catalogs.constraints_warn(),
+                catalogs.strict_guidelines(),
             );
             for warning in &found.place_warnings() {
                 let warning_text = &warning.message;
