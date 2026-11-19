@@ -13,6 +13,22 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+### A net with a `TrackImpedance` is routed on one layer with no via (issue #1274)
+
+A net of a `TrackImpedance` is now an RF net: the router routes it first, on the outer layer all its pads are on, with no via. A board whose RF line could only cross other copper through a via now leaves it unrouted, and `fab` stops with `N connections could not be routed`; copper of the routes file that gives such a net a via is a finding of the rule `constraint`:
+
+```text
+error [constraint] constraint rf_line route one_layer (an RF net: its impedance is stated; `route any_layer` lets it change layers) is violated: the net `RF` has tracks on B.Cu, F.Cu and 1 via, ...
+```
+
+Old: nothing written, and the line changed layers where the router chose. New: give the line room on one layer, or let it change layers with a line in the board's physical file that names a pin on the net:
+
+```nsm-fragment
+.rf.p1 route any_layer
+```
+
+There is no ADR: the owner decided it on the issue.
+
 ## 0.6.0: changes since 0.5.0
 
 ### A provider, a use or a part does not declare a member the language or std now declares (issue #1371)

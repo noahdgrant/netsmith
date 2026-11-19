@@ -2174,6 +2174,75 @@ pub(crate) fn layout(
     found
 }
 
+/// Where the design states each of a list of features, in the same order.
+pub(crate) type Stated = Vec<(SourceId, Span)>;
+
+/// The `within` and `route` statements of the physical files (issue #1274), with where each
+/// is stated. A `route` of a pin on no net names no net, and two that say different things of
+/// one net are an error that names both pins.
+pub(crate) fn rf_statements(
+    model: &Model,
+    errors: &mut Vec<String>,
+) -> (
+    (Vec<netsmith_core::PinDistance>, Stated),
+    (Vec<netsmith_core::NetRoute>, Stated),
+) {
+    let mut distances = (Vec::new(), Vec::new());
+    for d in &model.pin_distances {
+        let pin =
+            (d.subject != d.subject_part).then(|| model.path_below(d.subject, d.subject_part));
+        distances.0.push(netsmith_core::PinDistance {
+            part: model.path_of(d.subject_part),
+            pin,
+            to_part: model.path_of(d.pin_part),
+            to_pin: model.path_below(d.pin, d.pin_part),
+            within: d.within,
+            source: String::new(),
+        });
+        distances.1.push((d.source, d.span));
+    }
+    let mut routes: (Vec<netsmith_core::NetRoute>, Stated) = (Vec::new(), Vec::new());
+    for r in &model.net_routes {
+        let pin = model.path_of(r.pin);
+        let word = if r.one_layer {
+            "one_layer"
+        } else {
+            "any_layer"
+        };
+        let Some(net) = model
+            .nets()
+            .iter()
+            .find(|n| n.pins.contains(&r.pin))
+            .map(|n| n.name.clone())
+        else {
+            errors.push(format!(
+                "`.{pin} route {word}` names the net by `{pin}`, which is on no net: join it with `~`, or name a pin that is on the net"
+            ));
+            continue;
+        };
+        if let Some(other) = routes
+            .0
+            .iter()
+            .find(|o| o.net == net && o.one_layer != r.one_layer)
+        {
+            errors.push(format!(
+                "`.{pin} route {word}` and `.{} route {}` say different things of the net `{net}`: keep one",
+                other.pin,
+                if other.one_layer { "one_layer" } else { "any_layer" }
+            ));
+            continue;
+        }
+        routes.0.push(netsmith_core::NetRoute {
+            net,
+            pin,
+            one_layer: r.one_layer,
+            source: String::new(),
+        });
+        routes.1.push((r.source, r.span));
+    }
+    (distances, routes)
+}
+
 /// The pins that state how a pour joins their pads (issue #1276), each with its pads (`pads`,
 /// the pads of each pin on a net): `.pour_connection`, `Solid` or `Thermal`, and the width of
 /// the spokes of a thermal relief, `.spoke_width`, the bottom of the range stated. A pin may not

@@ -840,6 +840,8 @@ mod tests {
             }],
             sides: Vec::new(),
             relations: Vec::new(),
+            distances: Vec::new(),
+            one_layer: Vec::new(),
             severity,
         };
         let found = constraint_findings(&board, &constraints(DrcSeverity::Error));
@@ -902,6 +904,8 @@ mod tests {
                 lo: 500.0,
                 hi: 501.0,
             }],
+            distances: Vec::new(),
+            one_layer: Vec::new(),
             severity: DrcSeverity::Error,
         };
         let found = constraint_findings(&board, &constraints);

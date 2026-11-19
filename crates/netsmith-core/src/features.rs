@@ -148,6 +148,62 @@ pub struct LengthGroup {
     pub tolerance: f64,
 }
 
+/// `.ant within 8mm of .radio.ant` in a physical file (issue #1274): a part within a distance
+/// of a pin of another part. Measured pad centre to pad centre, from the nearest pad of the
+/// part on the net of the pin (any of its pads when none is on it; only the pads of `pin` when
+/// the statement names a pin of the part) to the nearest pad of the pin `to`, as a datasheet's
+/// `near ... within` is measured ([`LayoutRule::Near`]). The placer holds it as a hard rule,
+/// and the check measures it on the board (the rule `constraint`).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PinDistance {
+    /// The path of the part that must be near: `ant`.
+    pub part: String,
+    /// The pin of `part` the statement names, as the part's pin table names it (`sig`); none
+    /// when the statement names the part.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pin: Option<String>,
+    /// The path of the part whose pin it is near: `radio`.
+    pub to_part: String,
+    /// That pin, as its part's pin table names it: `ant`.
+    pub to_pin: String,
+    /// The most the distance may be, in mm.
+    pub within: f64,
+    /// Where the design states it: `widget.physical.nsm:14`. Empty until the caller that knows
+    /// the source files fills it.
+    pub source: String,
+}
+
+impl PinDistance {
+    /// The statement as the physical file writes it: `ant within 8 mm of radio.ant`.
+    pub fn id(&self) -> String {
+        let subject = match &self.pin {
+            Some(pin) => format!("{}.{pin}", self.part),
+            None => self.part.clone(),
+        };
+        format!(
+            "{subject} within {} mm of {}.{}",
+            (self.within * 1e4).round() / 1e4,
+            self.to_part,
+            self.to_pin
+        )
+    }
+}
+
+/// `.radio.ant route one_layer` (or `any_layer`) in a physical file (issue #1274): how one net
+/// is routed. A net with a stated impedance of one track (a `TrackImpedance`) is routed on one
+/// layer whatever is written, unless a `route any_layer` says otherwise ([`Features::one_layer_nets`]).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NetRoute {
+    /// The net.
+    pub net: String,
+    /// The pin the statement names the net by: `radio.ant`.
+    pub pin: String,
+    /// On one copper layer with no via, or on any.
+    pub one_layer: bool,
+    /// Where the design states it: `widget.physical.nsm:14`, filled as [`PinDistance::source`].
+    pub source: String,
+}
+
 /// What a design says about the board beyond its parts and nets (ADR 0020). Everything is
 /// optional; a design that says none of it is laid out as before.
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
@@ -254,6 +310,14 @@ pub struct Features {
     pub constraints: Vec<Placement>,
     /// Relations between the places of two parts (ADR 0045, section 3).
     pub offsets: Vec<Offset>,
+    /// The parts the physical file holds within a distance of a pin (issue #1274), in the order
+    /// written. Left out of a design file when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pin_distances: Vec<PinDistance>,
+    /// How the physical file says nets are routed (issue #1274), in the order written. Left out
+    /// of a design file when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub net_routes: Vec<NetRoute>,
     /// The layout guidelines that the parts' datasheets state (`layout` blocks, ADR 0030, issues
     /// #829 and #994), one for each part of the board whose definition states one, and whose
     /// package is the one a `layout "PACKAGE"` block names. A `keepout` statement is not here:
@@ -265,6 +329,53 @@ pub struct Features {
     /// `file:line` the `source` fields name (`widget.physical.nsm:14`), so that a message can
     /// quote the line. Filled by the caller that knows the source files; empty otherwise.
     pub line_texts: std::collections::BTreeMap<String, String>,
+}
+
+impl Features {
+    /// The RF nets of the design ([`rf_nets`]).
+    pub fn rf_nets(&self) -> Vec<String> {
+        rf_nets(&self.impedance_targets)
+    }
+
+    /// The nets routed on one copper layer with no via ([`one_layer_nets`]).
+    pub fn one_layer_nets(&self) -> Vec<String> {
+        one_layer_nets(&self.impedance_targets, &self.net_routes)
+    }
+}
+
+/// The RF nets (issue #1274): the nets of a stated impedance of one track (a
+/// `TrackImpedance`), sorted, each once. The placer and the router take them first and keep
+/// them short. A pair's impedance (a `PairImpedance`) is a diff pair, routed as one, and a net
+/// of one is no RF net even with a `TrackImpedance` too (the pair sizes it, issue #1025).
+pub fn rf_nets(targets: &[ImpedanceTarget]) -> Vec<String> {
+    let paired = |net: &String| {
+        targets
+            .iter()
+            .any(|t| t.nets.len() == 2 && t.nets.contains(net))
+    };
+    let mut nets: Vec<String> = targets
+        .iter()
+        .filter(|t| t.nets.len() == 1 && !paired(&t.nets[0]))
+        .map(|t| t.nets[0].clone())
+        .collect();
+    nets.sort();
+    nets.dedup();
+    nets
+}
+
+/// The nets routed on one copper layer with no via (issue #1274), sorted, each once: those a
+/// `route one_layer` names, and the RF nets ([`rf_nets`]) unless a `route any_layer` names
+/// them.
+pub fn one_layer_nets(targets: &[ImpedanceTarget], routes: &[NetRoute]) -> Vec<String> {
+    let any = |net: &str| routes.iter().any(|r| r.net == net && !r.one_layer);
+    let mut nets: Vec<String> = rf_nets(targets)
+        .into_iter()
+        .filter(|n| !any(n))
+        .chain(routes.iter().filter(|r| r.one_layer).map(|r| r.net.clone()))
+        .collect();
+    nets.sort();
+    nets.dedup();
+    nets
 }
 
 /// A guideline of a part's `layout` block (ADR 0030, issues #829 and #994), for one part of the
