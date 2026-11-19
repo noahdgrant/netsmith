@@ -49,11 +49,13 @@ pub fn is_compound_file(bytes: &[u8]) -> bool {
     bytes.starts_with(&cfb::SIGNATURE)
 }
 
-/// The footprint of an Altium file (`source` says whether it is a library, which must hold one
-/// footprint, or a board, whose part is named), named `name` or the file's own name.
+/// The footprint of an Altium file (`source` says whether it is a library, whose footprint
+/// `footprint` names, or its one footprint when `None` (a library of several is refused with their
+/// names, issue 1438), or a board, whose part is named), named `name` or the file's own name.
 pub fn import_altium_footprint(
     bytes: &[u8],
     source: FootprintSource,
+    footprint: Option<&str>,
     name: Option<&str>,
 ) -> Result<ImportedFootprint, String> {
     if !is_compound_file(bytes) {
@@ -67,7 +69,7 @@ pub fn import_altium_footprint(
     let file = cfb::Compound::parse(bytes)?;
     let (source_name, primitives, place) = match source {
         FootprintSource::File => {
-            let (name, primitives) = library_footprint(&file)?;
+            let (name, primitives) = library_footprint(&file, footprint)?;
             (name, primitives, None)
         }
         FootprintSource::Board { reference } => {
@@ -94,8 +96,12 @@ pub fn import_altium_footprint(
 /// Storages of a library that are not footprints.
 const LIBRARY_STORAGES: &[&str] = &["Library", "FileVersionInfo"];
 
-/// The one footprint of a library: its name and primitives.
-fn library_footprint(file: &cfb::Compound<'_>) -> Result<(String, Vec<Primitive>), String> {
+/// The footprint of a library `asked` names, or its one footprint when none is asked: its name
+/// and primitives.
+fn library_footprint(
+    file: &cfb::Compound<'_>,
+    asked: Option<&str>,
+) -> Result<(String, Vec<Primitive>), String> {
     let mut found = Vec::new();
     for (storage, _, kind) in file.children(0) {
         if kind != cfb::Kind::Storage
@@ -121,23 +127,29 @@ fn library_footprint(file: &cfb::Compound<'_>) -> Result<(String, Vec<Primitive>
         c.finish();
         read.push((name, c));
     }
-    match read.as_mut_slice() {
-        [] => Err("the library holds no footprint".into()),
-        [(name, c)] => {
-            let primitives =
-                records::primitives(c, false).map_err(|e| format!("footprint `{name}`: {e}"))?;
-            Ok((name.clone(), primitives))
-        }
-        many => {
-            let mut names: Vec<&str> = many.iter().map(|(n, _)| n.as_str()).collect();
-            names.sort_unstable();
-            Err(format!(
-                "the library holds {} footprints ({}): copy the one to import into a library of its own",
-                names.len(),
+    let mut names: Vec<String> = read.iter().map(|(n, _)| n.clone()).collect();
+    names.sort_unstable();
+    let picked = match (asked, read.as_mut_slice()) {
+        (_, []) => return Err("the library holds no footprint".into()),
+        (Some(asked), all) => all.iter_mut().find(|(n, _)| n == asked).ok_or_else(|| {
+            format!(
+                "the library has no footprint `{asked}`; its footprints are {}",
                 names.join(", ")
-            ))
+            )
+        })?,
+        (None, [one]) => one,
+        (None, many) => {
+            return Err(format!(
+                "the library holds {} footprints ({}): name the one to import with `--footprint NAME`",
+                many.len(),
+                names.join(", ")
+            ));
         }
-    }
+    };
+    let (name, c) = picked;
+    let primitives =
+        records::primitives(c, false).map_err(|e| format!("footprint `{name}`: {e}"))?;
+    Ok((name.clone(), primitives))
 }
 
 /// The streams of a board that hold primitives, and whether a stream's regions are shape-based.

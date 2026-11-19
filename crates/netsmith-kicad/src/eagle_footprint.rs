@@ -44,8 +44,9 @@ use crate::sexp::Sexp;
 /// Where the package comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EagleSource<'a> {
-    /// A `.lbr` library: its one package.
-    Library,
+    /// A `.lbr` library: the package `package` names, or its one package when `None` (a library
+    /// of several is refused with their names, issue 1438).
+    Library { package: Option<&'a str> },
     /// A `.brd` board: the package of the element with this name (its reference designator).
     Board { reference: &'a str },
 }
@@ -74,11 +75,11 @@ pub fn import_eagle_footprint(
     let drawing = child(root, "drawing").ok_or("the Eagle file has no <drawing>")?;
     let layers = Layers::of(drawing);
     let (package, board_angle, from_bottom) = match source {
-        EagleSource::Library => {
+        EagleSource::Library { package } => {
             let library = child(drawing, "library").ok_or(
                 "not an Eagle library: it has no <library> (a board, `.brd`, takes `--ref REF`)",
             )?;
-            (library_package(library)?, 0.0, false)
+            (library_package(library, package)?, 0.0, false)
         }
         EagleSource::Board { reference } => {
             let board = child(drawing, "board").ok_or("not an Eagle board: it has no <board>")?;
@@ -132,19 +133,35 @@ fn packages<'a, 'i>(library: Node<'a, 'i>) -> Vec<Node<'a, 'i>> {
         .unwrap_or_default()
 }
 
-/// The one package of a library.
-fn library_package<'a, 'i>(library: Node<'a, 'i>) -> Result<Node<'a, 'i>, String> {
+/// The package of a library `asked` names, or its one package when none is asked.
+fn library_package<'a, 'i>(
+    library: Node<'a, 'i>,
+    asked: Option<&str>,
+) -> Result<Node<'a, 'i>, String> {
     let all = packages(library);
-    match all.as_slice() {
-        [one] => Ok(*one),
-        [] => Err("the library has no packages".into()),
-        many => Err(format!(
-            "the library has {} packages ({}), and the command takes a library of one: export the package to a library of its own in Eagle, or take it from a board with `--ref`",
+    let names = || {
+        all.iter()
+            .filter_map(|p| p.attribute("name"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    match (asked, all.as_slice()) {
+        (_, []) => Err("the library has no packages".into()),
+        (Some(asked), _) => all
+            .iter()
+            .find(|p| p.attribute("name") == Some(asked))
+            .copied()
+            .ok_or_else(|| {
+                format!(
+                    "the library has no package `{asked}`; its packages are {}",
+                    names()
+                )
+            }),
+        (None, [one]) => Ok(*one),
+        (None, many) => Err(format!(
+            "the library has {} packages ({}): name the one to import with `--footprint NAME`",
             many.len(),
-            many.iter()
-                .filter_map(|p| p.attribute("name"))
-                .collect::<Vec<_>>()
-                .join(", ")
+            names()
         )),
     }
 }
