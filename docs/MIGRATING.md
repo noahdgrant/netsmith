@@ -13,6 +13,8 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+## 0.6.0: changes since 0.5.0
+
 ### A provider, a use or a part does not declare a member the language or std now declares (issue #1371)
 
 The same break as 0.5.0's below, for the members added since. Delete the declaration and keep the narrowing:
