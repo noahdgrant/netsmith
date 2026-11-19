@@ -837,3 +837,25 @@ system Kit {
 ```text
 error: Kit: `card.j1.mating.seat` is -1mm, and a connector's partner does not rest below its board's face
 ```
+
+#### The area another board covers
+
+A mate holds two boards rigidly to each other, so a board knows where the board mated on it lies before either is placed: over its own connector, the mated height above its face. Nothing about it is stated by hand (issue #1331). For each mate, each of its two boards gets a keepout-by-height that its connector carries:
+
+- its area is the box round the other board's outline, put where the system scene puts that board: contact N on contact N, the other board turned over when its connector is on its top face;
+- its limit, `.max_height`, is the mate's least mated height, the distance between the two boards' faces: a part taller than that stands in the other board;
+- it is on the face the connector is on, wherever the placer puts the connector, forbids nothing else, and is named `System/member over connector` (`Kit/lamp over power_out`).
+
+The board's placer keeps the parts too tall for it out from under the other board, and `layout check`, `fab` and the editor say a part that stands in it in the words of any height limit (_Height limits_ in [The shape of a board](23-the-shape-of-a-board.md)); the connector that carries it is not measured against it. `dev board3d --board System/member --format json` lists it among the board's `height_limits`, with the connector as its `carrier`:
+
+```text
+`tall` (R1) stands 12.00 mm tall on the top face, and the keepout `Kit/lamp over power_out` allows 10.65 mm there (1.35 mm too tall), where its body is, around (14.0, 10.0) mm from the board's top left corner
+```
+
+The area is known before placing only when the other board's connector has a place before its board is placed, a locked entry of its layout file or requirements of its physical file that pin it, and the other board's outline has a size (the largest its range allows). Otherwise there is no keepout, and `fab` says why with a note that names the connector to lock:
+
+```text
+Kit/power: note: the area `lamp` covers over `power_out` is not known before placing, so the placer of `power` does not keep the parts taller than the mated height (10.65 mm) out from under it: `lamp.power_in` has no place until `lamp` is placed; lock it in the layout file of `lamp` ...
+```
+
+The system scene checks the boards after placing in any case (`system_collision`), and it alone measures what stands on the other board's facing face and the pins through it: the keepout is the other board's face, not what hangs below it, and its box may be larger than an outline that is not a rectangle. A mate with no mated height gives no keepout.

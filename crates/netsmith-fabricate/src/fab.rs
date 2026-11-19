@@ -712,6 +712,18 @@ pub fn fab_detailed(
             }
         }
     }
+    // The area each member of a system lies under or over another member, from the mates: a
+    // keepout-by-height carried by its connector, which its placer and placement check keep to
+    // (issue 1331, `crate::system_areas`).
+    for (label, note) in crate::system_areas::add(
+        &mut built_boards,
+        &systems,
+        loader,
+        options.layout.as_deref(),
+        libraries,
+    ) {
+        say(format!("{label}: note: {note}"));
+    }
     // Two requests that are one signal in the C header of the pin map are an error, said now
     // with every other check of the source and before any board is placed or written.
     let mut collisions = String::new();

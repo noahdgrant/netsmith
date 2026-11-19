@@ -96,6 +96,7 @@ impl Unplaced {
                     copper: k.copper,
                     parts: k.parts,
                     max_height: k.max_height,
+                    on_carrier_face: k.on_carrier_face,
                 })
                 .collect(),
             parts,
