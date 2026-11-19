@@ -7,8 +7,8 @@
 
 use netsmith_check::{Domain, GuidelineRule, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
-    CaseModel, Cutout, Features, ImpedanceTarget, Keepout, Label, LengthGroup, Logo, LogoLayer,
-    NetPair, Offset, OffsetEnd, Outline, PadConnection, PadContactOffset, PartHeight,
+    CaseModel, Cutout, Features, ImpedanceTarget, KeepApart, Keepout, Label, LengthGroup, Logo,
+    LogoLayer, NetPair, Offset, OffsetEnd, Outline, PadConnection, PadContactOffset, PartHeight,
     PartHeightGrowth, PartKind, PartRoutingMargin, PartSilk, PartSoftMargin, PartStandoff,
     PinProtrusion, PlaceBound, PlaceField, Placement, Pour, SilkPrint, StepModel,
 };
@@ -704,6 +704,32 @@ pub(crate) fn soft_margins(model: &Model) -> (Vec<PartSoftMargin>, Vec<(SourceId
         }
     }
     (margins, sites)
+}
+
+/// The `keep` statements of the board's physical file (issue 1277), with the paths of the parts
+/// of each kind, and where each is written, in the same order. A distance of 0 asks for nothing.
+pub(crate) fn keep_apart(model: &Model) -> (Vec<KeepApart>, Vec<(SourceId, Span)>) {
+    let mut rules = Vec::new();
+    let mut sites = Vec::new();
+    for k in model.keep_aparts() {
+        if k.distance <= 0.0 {
+            continue;
+        }
+        let paths = |parts: &[InstId]| {
+            let mut paths: Vec<String> = parts.iter().map(|&p| model.path_of(p)).collect();
+            paths.sort();
+            paths
+        };
+        rules.push(KeepApart {
+            rule: k.text.clone(),
+            kinds: k.kinds.clone(),
+            distance: k.distance,
+            parts: [paths(&k.parts[0]), paths(&k.parts[1])],
+            source: String::new(),
+        });
+        sites.push((k.source, k.span));
+    }
+    (rules, sites)
 }
 
 /// The standoffs the design states for its parts (`.standoff`, issue #775), by path: how high
@@ -1987,6 +2013,12 @@ pub(crate) fn expand_banks(
                 .soft_margins
                 .push(PartSoftMargin { path, ..m.clone() });
             soft_margin_sites.push(site);
+        }
+    }
+    // A bank of a kind is each of its capacitors (issue 1277).
+    for rule in &mut features.keep_apart {
+        for side in &mut rule.parts {
+            *side = side.iter().flat_map(|p| members(p, banks)).collect();
         }
     }
     let old = std::mem::take(&mut features.silks);
