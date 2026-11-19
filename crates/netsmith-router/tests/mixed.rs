@@ -422,6 +422,7 @@ pub fn mixed_board_on(
                 parts: false,
                 max_height: Some(MAX_HEIGHT),
                 on_carrier_face: false,
+                polygon: None,
             }],
             heights: specs
                 .iter()

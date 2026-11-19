@@ -105,7 +105,7 @@ const LISTED: usize = 6;
 
 impl Checker<'_> {
     /// The part a `peripheral` or `shared` statement is in, if it may be there.
-    fn rules_part(&mut self, span: Span, what: &str, noun: &str) -> Option<InstId> {
+    pub(crate) fn rules_part(&mut self, span: Span, what: &str, noun: &str) -> Option<InstId> {
         if self.in_kind(ast::DefKind::Generic) {
             self.error(
                 span,

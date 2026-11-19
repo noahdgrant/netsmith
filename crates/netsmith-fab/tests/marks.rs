@@ -33,6 +33,7 @@ fn jlcpcb() -> DrcExtras {
             uneven_finish: None,
             min_single_sided_assembly_size: None,
             min_double_sided_assembly_size: None,
+            assembly_size_source: None,
         }),
         ..DrcExtras::default()
     }
@@ -576,6 +577,36 @@ fn a_board_under_the_least_for_its_faces_needs_a_panel() {
             );
         }
     }
+}
+
+/// Issue 1393: the finding quotes where the figure comes from and spells a panel out, and
+/// carries the source as a field of its own; with no source recorded it has neither.
+#[test]
+fn the_size_finding_quotes_its_source_and_names_the_panel() {
+    let source = "https://example.test/assembly, Standard service, read 2026-11-19";
+    let mut stated = assembled(true, true, None, Some(70.0));
+    stated.marks.as_mut().unwrap().assembly_size_source = Some(source.to_string());
+    let mut b = Pcb::new(2);
+    let r = check(&mut b, &stated);
+    let found: Vec<_> = r.findings.iter().filter(|f| f.rule == DrcRule::AssemblySize).collect();
+    assert_eq!(found.len(), 1, "{r}");
+    let f = found[0];
+    assert_eq!(f.source.as_deref(), Some(source), "{r}");
+    assert!(f.message.contains(&format!("(source: {source})")), "{}", f.message);
+    assert!(
+        f.message.contains("panel P { .cell: Board; .fab: VCutPanel { .columns &= 3; .rows &= 2 } }")
+            && f.message.contains("chapter 18")
+            && f.message.contains("BOM and CPL"),
+        "{}",
+        f.message
+    );
+
+    let none = assembled(true, true, None, Some(70.0));
+    let r = check(&mut b, &none);
+    let f = r.findings.iter().find(|f| f.rule == DrcRule::AssemblySize).expect("a finding");
+    assert_eq!(f.source, None);
+    assert!(!f.message.contains("source:"), "{}", f.message);
+    assert!(f.message.contains("VCutPanel"), "{}", f.message);
 }
 
 #[test]

@@ -171,6 +171,10 @@ interface EightLayer {
     /// one (`.process.min_double_sided_assembly_size &= 70mm..`).
     .min_single_sided_assembly_size: Length
     .min_double_sided_assembly_size: Length
+    /// Where those figures come from, which the `assembly_size` finding quotes (issue 1393).
+    /// Unstated with them; a board that states a figure states its source too
+    /// (`.process.assembly_size_source &= "..."`).
+    .assembly_size_source: String
     /// How much narrower than drawn a finished track may be, as a fraction.
     .track_width_tolerance: Number
     .track_width_tolerance &= 0.2
@@ -383,6 +387,10 @@ interface TenLayer {
     /// one (`.process.min_double_sided_assembly_size &= 70mm..`).
     .min_single_sided_assembly_size: Length
     .min_double_sided_assembly_size: Length
+    /// Where those figures come from, which the `assembly_size` finding quotes (issue 1393).
+    /// Unstated with them; a board that states a figure states its source too
+    /// (`.process.assembly_size_source &= "..."`).
+    .assembly_size_source: String
     /// How much narrower than drawn a finished track may be, as a fraction.
     .track_width_tolerance: Number
     .track_width_tolerance &= 0.2

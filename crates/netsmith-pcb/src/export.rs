@@ -522,8 +522,28 @@ fn flipped(node: &Sexp, parent: Option<&str>) -> Sexp {
 /// leaves it (flipped on the back), so a point is turned by the orientation written in the
 /// footprint's `at` and moved to its position, as `Placed::to_board` does for a point of the
 /// library's frame.
+///
+/// A zone's outline can hold arcs, `(arc (start ..) (mid ..) (end ..))` (a keepout round a
+/// mounting hole is often one circle drawn as an arc, issue #1299): the three points of an
+/// arc are moved as an `xy` is, which keeps the arc a circle (a turn and a move do), and the
+/// board file's reader flattens it to points within `ARC_ERROR` of it, as it does a drawn arc.
 fn zone_in_board(zone: &Sexp, at: Pt, orientation: f64) -> Sexp {
     match zone {
+        Sexp::List(items) if zone.head() == Some("arc") => Sexp::List(
+            items
+                .iter()
+                .map(|i| match i {
+                    Sexp::List(p) if matches!(i.head(), Some("start" | "mid" | "end")) => {
+                        let moved = zone_in_board(&Sexp::List(retag(p, "xy")), at, orientation);
+                        match moved {
+                            Sexp::List(m) => Sexp::List(retag(&m, i.head().unwrap_or_default())),
+                            other => other,
+                        }
+                    }
+                    other => other.clone(),
+                })
+                .collect(),
+        ),
         Sexp::List(items) if zone.head() == Some("xy") && items.len() == 3 => {
             let num = |i: usize| items[i].text().and_then(|t| t.parse::<f64>().ok());
             match (num(1), num(2)) {
@@ -542,6 +562,15 @@ fn zone_in_board(zone: &Sexp, at: Pt, orientation: f64) -> Sexp {
         ),
         other => other.clone(),
     }
+}
+
+/// The list with its head replaced.
+fn retag(items: &[Sexp], head: &str) -> Vec<Sexp> {
+    let mut out = items.to_vec();
+    if let Some(first) = out.first_mut() {
+        *first = Sexp::atom(head);
+    }
+    out
 }
 
 /// `(fp_text user "UART" ...)` in the place of the written reference `property`, for a part
@@ -2180,15 +2209,20 @@ mod tests {
     /// The LED board with a keepout zone in its first part's footprint, as a library has it
     /// (footprint coordinates), the part at (10, 20) turned by `rotation` on `side`.
     fn keep_zone_board(rotation: f64, side: crate::board::Side) -> Board {
+        let points: String = LIBRARY_KEEPOUT
+            .iter()
+            .map(|(x, y)| format!("(xy {x} {y})"))
+            .collect();
+        keep_zone_board_with(rotation, side, &points)
+    }
+
+    /// [`keep_zone_board`] with the zone's outline `points` (the inside of its `(pts ...)`).
+    fn keep_zone_board_with(rotation: f64, side: crate::board::Side, points: &str) -> Board {
         let mut board = led();
         let part = &mut board.parts[0];
         part.at = Pt::new(10.0, 20.0);
         part.rotation = rotation;
         part.side = side;
-        let points: String = LIBRARY_KEEPOUT
-            .iter()
-            .map(|(x, y)| format!("(xy {x} {y})"))
-            .collect();
         let zone = format!(
             r#"(zone (net 0) (net_name "") (layers "F.Cu") (hatch full 0.508)
                 (connect_pads (clearance 0)) (min_thickness 0.254)
@@ -2316,6 +2350,74 @@ mod tests {
                     assert!(
                         (got.x - want.x).abs() < 1e-3 && (got.y - want.y).abs() < 1e-3,
                         "{rotation} degrees on {side:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_footprints_keepout_drawn_as_a_circle_of_one_arc_is_written_round_the_footprint_and_read() {
+        // Issue #1299: a library draws the keepout round a mounting hole as one arc whose
+        // start is its end: the circle of centre (1, -0.5) and radius 1.5 in the footprint's
+        // frame. Its three points are moved as an `xy` is, on either face and at any angle,
+        // and the board file's reader and the footprint's own read it as that circle.
+        const CENTRE: (f64, f64) = (1.0, -0.5);
+        const RADIUS: f64 = 1.5;
+        let arc = "(arc (start 2.5 -0.5) (mid -0.5 -0.5) (end 2.5 -0.5))";
+        for side in [crate::board::Side::Front, crate::board::Side::Back] {
+            for rotation in [0.0, 30.0, 90.0, 215.0] {
+                let who = format!("{rotation} degrees on {side:?}");
+                let board = keep_zone_board_with(rotation, side, arc);
+                let part = &board.parts[0];
+                let centre = part.to_board(Pt::new(CENTRE.0, CENTRE.1));
+                // The written arc: each of its points where the frame puts it.
+                let pcb = parsed(&board);
+                let zone = footprint_of(&pcb, &part.refdes)
+                    .find("zone")
+                    .expect("the footprint's zone is written")
+                    .clone();
+                let written = zone
+                    .find("polygon")
+                    .and_then(|p| p.find("pts"))
+                    .and_then(|p| p.find("arc"))
+                    .unwrap_or_else(|| panic!("{who}: the arc is written"));
+                for (name, library) in [
+                    ("start", (2.5, -0.5)),
+                    ("mid", (-0.5, -0.5)),
+                    ("end", (2.5, -0.5)),
+                ] {
+                    let want = part.to_board(Pt::new(library.0, library.1));
+                    let node = written.find(name).unwrap();
+                    let n = |i: usize| node.items()[i].text().unwrap().parse::<f64>().unwrap();
+                    assert!(
+                        (n(1) - want.x).abs() < 1e-3 && (n(2) - want.y).abs() < 1e-3,
+                        "{who}: {name} is ({}, {}), not {want:?}",
+                        n(1),
+                        n(2)
+                    );
+                }
+                // The board file's reader: a circle round the footprint's centre.
+                let art_centre = netsmith_geom::Pt::new(centre.x, centre.y);
+                let art = netsmith_geom::Artwork::parse(&kicad_pcb(&board)).unwrap();
+                let read = art
+                    .zones
+                    .iter()
+                    .find(|z| z.keepout.is_some() && z.owner == part.refdes)
+                    .unwrap_or_else(|| panic!("{who}: the keepout is read"));
+                assert_eq!(read.outlines.len(), 1, "{who}");
+                assert!(read.outlines[0].len() >= 16, "{who}");
+                for p in &read.outlines[0] {
+                    assert!((p.dist(art_centre) - RADIUS).abs() < 1e-3, "{who}: {p:?}");
+                }
+                // The footprint's keepout, in the library's frame (the board turns it).
+                let keepouts = part.footprint.keepouts();
+                assert_eq!(keepouts.len(), 1, "{who}");
+                assert!(keepouts[0].polygon.len() >= 16, "{who}");
+                for p in &keepouts[0].polygon {
+                    assert!(
+                        (p.distance(Pt::new(CENTRE.0, CENTRE.1)) - RADIUS).abs() < 1e-9,
+                        "{who}: {p:?}"
                     );
                 }
             }

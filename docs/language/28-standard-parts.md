@@ -1,6 +1,6 @@
 ## Standard parts
 
-The library has the parts a two-sided four-layer board is made of, and the interfaces they talk over (ADR 0023). They state what a datasheet says. Each rating is a field that the part leaves open and a relation that is always true of it: a design narrows the field with `&=`, as it narrows a resistance, and the solver checks the relation in the worst case. A rating the design never states is listed as not evaluated, and is no error. Most of them have a small catalog of real parts (ADR 0025): a design that states no rating gets the first row that works, and a rating it does state must be a range that contains the row's (`.zener_voltage &= 4.7V..5.5V` takes a row that reads `4.8V..5.4V`). The guide's examples state what the board needs and let the catalog supply the rest. `build` stops at the export of any of them that has no KiCad symbol yet (see Parts), so the examples here are checked and solved and not built (the guide marks them `evaluate`).
+The library has the parts a two-sided four-layer board is made of, and the interfaces they talk over (ADR 0023). They state what a datasheet says. Each rating is a field that the part leaves open and a relation that is always true of it: a design narrows the field with `&=`, as it narrows a resistance, and the solver checks the relation in the worst case. A rating the design never states is listed as not evaluated, and is no error. Most of them have a small catalog of real parts (ADR 0025): a design that states no rating gets the first row that works, and a rating it does state must be a range that contains the row's (`.zener_voltage &= 4.7V..5.5V` takes a row that reads `4.8V..5.4V`). The guide's examples state what the board needs and let the catalog supply the rest. `build` stops at the export of any of them that has no KiCad symbol yet (see Parts), so most examples here are checked and solved and not built (the guide marks them `evaluate`), and those of parts that are drawn (a cell, a supercapacitor) are built (`solve`).
 
 ### Voltage across a part
 
@@ -1018,7 +1018,7 @@ The IC draws current from its input for itself with nothing loaded, and the inpu
 
 The datasheet's other parts (the feedback phase-lead capacitor, an enable divider for an undervoltage lockout above the IC's own) are not in its `support` section. The package has no footprint or symbol in KiCad's libraries, so `std/kicad.toml` maps `Lt8641` in the package `UDC20(18)` to netsmith's own footprint, `netsmith:UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA` (the _Standard libraries of footprints_ paragraph below says what that is), and names no symbol, so the symbol is drawn from the pin table: a board built around it exports with no KiCad install and no `kicad.toml`. The footprint's pads are the datasheet's recommended solder pad pitch and dimensions (p.24); a project that wants another land pattern maps the part and package to its own, as for any other part (`std/kicad.toml` and a project's `kicad.toml` may not both map one pair, so the project uses its own package name in its row).
 
-**Standard libraries of footprints** (ADR 0087). A package that KiCad's libraries lack and the generators of ADR 0043 do not make is drawn in `std/libs/`: footprints as `.kicad_mod` files in `std/libs/netsmith.pretty/` and symbols in `std/libs/netsmith.kicad_sym`, in KiCad's own formats, compiled into the binary. They are the library `netsmith`, named in a row of `std/kicad.toml` like any other (`footprint = "netsmith:UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA"`), found before any KiCad install is read, and the same on every machine. A project cannot list a library called `netsmith` (`kicad.toml: library `netsmith` is the name of the standard library's own footprints and symbols ...`). When a board uses one of them, `build`, `fab` and the editor write the library into the board's output folder (`netsmith.pretty/`, `netsmith.kicad_sym`) and list it in the `fp-lib-table` and `sym-lib-table` beside the `.kicad_pro`, as they list a project's own libraries, so KiCad opens the board with the footprint in its library table. Every footprint of the folder is named by a row of `std/kicad.toml`, and a test checks each against the pin table of its part (every pad of the table is a pad of the footprint and a pin of the symbol, and the other way round). A symbol of that library is one netsmith drew: a row of `std/kicad.toml` (or of a project's `kicad.toml`) that has no `symbol` names none, and a part with a pin table is then drawn as a plain box, one box for the part with its pins on the sides (inputs left, outputs right, ground below, and the supply above, except a supply that takes power in a part that also gives power, which is on the left), each pin with its datasheet name, its pad number and the electrical type of its kind. A pin table says `power` and not whether the pin takes power from its net or gives it, because that is the sign of the current of the rail on the pin, which the board's loads decide: the design stage reads it from the solved model (a pin that is the `pos` of a rail whose current is negative, from below 0 A to at most 0 A, gives power; one whose current is drawn, from at least 0 A to above 0 A, takes it; and a pin that the part joins to such a pin has its direction). A pin that gives power, such as the switch node of a converter, is a power output on the right of the box, and the others, including a power pin whose direction is not known (a rail whose current has no value or may take either sign), are power inputs, so that a net with no output gets a power flag: a power input of a part that also has a pin that gives power (the input of a regulator or a converter) is on the left of the box, where the schematic layout reads a converter's input, and any other is above it. The symbol is named for the part and its package (`netsmith:Lt8641_UDC20_18`), with `_out` and the first pad of each pin that gives power when there is one (`netsmith:Lt8641_UDC20_18_out8`), so that two parts of one kind that differ in direction are two symbols, and written into the board's `netsmith.kicad_sym` with the rest of the library. A row that does name a `symbol` is drawn with it, except where netsmith draws that id itself: the ids of the standard rows of the resistor, capacitor, inductor, ferrite bead, fuse, crystal, LED, the four diodes, the switch and the two FETs (`Device:R`, `Device:C`, `Device:L`, `Device:FerriteBead`, `Device:Fuse`, `Device:Crystal`, `Device:LED`, `Device:D`, `Device:D_Schottky`, `Device:D_Zener`, `Device:D_TVS`, `Switch:SW_SPST`, `Transistor_FET:Q_NMOS_GSD` and `Transistor_FET:Q_PMOS_GSD`) are answered from the binary with a symbol of netsmith's own (`netsmith:R`, `netsmith:D_Schottky`, ...) before any KiCad library is read, on every machine, so a board of those parts needs no KiCad symbol library. The glyph is the conventional drawing of the part (a rectangle for a resistor, two plates for a capacitor, a triangle and a bar for a diode), and the pins, their numbers, names and types, the places of the reference and the value, and the extent of the body are those of KiCad's symbol of the id, so the layout of the schematic is the same. The same holds for the generic connectors (`Connector_Generic:Conn_01x02` to `Conn_02x10_Odd_Even`, the `Connector:Conn_01x02_Socket` family), the two USB-C receptacles (`Connector:USB_C_Receptacle_PowerOnly_6P` and `USB_C_Receptacle_USB2.0_16P`), `Connector:Conn_Coaxial`, `Connector:TestPoint`, `Mechanical:MountingHole`, `MountingHole_Pad` and `Fiducial`, and for `power:PWR_FLAG`, the one-pin power symbol that the exporter places on a net that takes power and has nothing on the board to drive it: it is answered with `netsmith:PWR_FLAG`, a power symbol with the same `power_out` pin and the value `PWR_FLAG`, which KiCad's electrical rules check takes as it takes its own, and it is written into the board's `netsmith.kicad_sym` when the board has such a net. The pins of these symbols (the headers' odd pins left and even pins right, the USB-C receptacle's power on the right and its ground below), the places of the fields and the extent of the body are those of KiCad's symbol, for the layout; the drawing is netsmith's. The linear regulator is drawn from its pin table like an IC, so no row of the standard mapping reads a symbol from KiCad's libraries any more (ADR 0097, steps 1 and 2); every footprint of the standard rows is generated or one of these files (step 3), so no standard row needs KiCad's footprint library. A project that lists a library named `Device`, `Switch` or `Transistor_FET` in its `kicad.toml` is read from that library, as before.
+**Standard libraries of footprints** (ADR 0087). A package that KiCad's libraries lack and the generators of ADR 0043 do not make is drawn in `std/libs/`: footprints as `.kicad_mod` files in `std/libs/netsmith.pretty/` and symbols in `std/libs/netsmith.kicad_sym`, in KiCad's own formats, compiled into the binary. They are the library `netsmith`, named in a row of `std/kicad.toml` like any other (`footprint = "netsmith:UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA"`), found before any KiCad install is read, and the same on every machine. A project cannot list a library called `netsmith` (`kicad.toml: library `netsmith` is the name of the standard library's own footprints and symbols ...`). When a board uses one of them, `build`, `fab` and the editor write the library into the board's output folder (`netsmith.pretty/`, `netsmith.kicad_sym`) and list it in the `fp-lib-table` and `sym-lib-table` beside the `.kicad_pro`, as they list a project's own libraries, so KiCad opens the board with the footprint in its library table. Every footprint of the folder is named by a row of `std/kicad.toml`, and a test checks each against the pin table of its part (every pad of the table is a pad of the footprint and a pin of the symbol, and the other way round). A symbol of that library is one netsmith drew: a row of `std/kicad.toml` (or of a project's `kicad.toml`) that has no `symbol` names none, and a part with a pin table is then drawn as a plain box, one box for the part with its pins on the sides (inputs left, outputs right, ground below, and the supply above, except a supply that takes power in a part that also gives power, which is on the left), each pin with its datasheet name, its pad number and the electrical type of its kind. A pin table says `power` and not whether the pin takes power from its net or gives it, because that is the sign of the current of the rail on the pin, which the board's loads decide: the design stage reads it from the solved model (a pin that is the `pos` of a rail whose current is negative, from below 0 A to at most 0 A, gives power; one whose current is drawn, from at least 0 A to above 0 A, takes it; and a pin that the part joins to such a pin has its direction). A pin that gives power, such as the switch node of a converter, is a power output on the right of the box, and the others, including a power pin whose direction is not known (a rail whose current has no value or may take either sign), are power inputs, so that a net with no output gets a power flag: a power input of a part that also has a pin that gives power (the input of a regulator or a converter) is on the left of the box, where the schematic layout reads a converter's input, and any other is above it. The symbol is named for the part and its package (`netsmith:Lt8641_UDC20_18`), with `_out` and the first pad of each pin that gives power when there is one (`netsmith:Lt8641_UDC20_18_out8`), so that two parts of one kind that differ in direction are two symbols, and written into the board's `netsmith.kicad_sym` with the rest of the library. A row that does name a `symbol` is drawn with it, except where netsmith draws that id itself: the ids of the standard rows of the resistor, capacitor, supercapacitor, cell, inductor, ferrite bead, fuse, crystal, LED, the four diodes, the switch and the two FETs (`Device:R`, `Device:C`, `Device:C_Polarized`, `Device:Battery_Cell`, `Device:L`, `Device:FerriteBead`, `Device:Fuse`, `Device:Crystal`, `Device:LED`, `Device:D`, `Device:D_Schottky`, `Device:D_Zener`, `Device:D_TVS`, `Switch:SW_SPST`, `Transistor_FET:Q_NMOS_GSD` and `Transistor_FET:Q_PMOS_GSD`) are answered from the binary with a symbol of netsmith's own (`netsmith:R`, `netsmith:D_Schottky`, ...) before any KiCad library is read, on every machine, so a board of those parts needs no KiCad symbol library. The glyph is the conventional drawing of the part (a rectangle for a resistor, two plates for a capacitor, a triangle and a bar for a diode), and the pins, their numbers, names and types, the places of the reference and the value, and the extent of the body are those of KiCad's symbol of the id, so the layout of the schematic is the same. The same holds for the generic connectors (`Connector_Generic:Conn_01x02` to `Conn_02x10_Odd_Even`, the `Connector:Conn_01x02_Socket` family), the two USB-C receptacles (`Connector:USB_C_Receptacle_PowerOnly_6P` and `USB_C_Receptacle_USB2.0_16P`), `Connector:Conn_Coaxial`, `Connector:TestPoint`, `Mechanical:MountingHole`, `MountingHole_Pad` and `Fiducial`, and for `power:PWR_FLAG`, the one-pin power symbol that the exporter places on a net that takes power and has nothing on the board to drive it: it is answered with `netsmith:PWR_FLAG`, a power symbol with the same `power_out` pin and the value `PWR_FLAG`, which KiCad's electrical rules check takes as it takes its own, and it is written into the board's `netsmith.kicad_sym` when the board has such a net. The pins of these symbols (the headers' odd pins left and even pins right, the USB-C receptacle's power on the right and its ground below), the places of the fields and the extent of the body are those of KiCad's symbol, for the layout; the drawing is netsmith's. The linear regulator is drawn from its pin table like an IC, so no row of the standard mapping reads a symbol from KiCad's libraries any more (ADR 0097, steps 1 and 2); every footprint of the standard rows is generated or one of these files (step 3), so no standard row needs KiCad's footprint library. A project that lists a library named `Device`, `Switch` or `Transistor_FET` in its `kicad.toml` is read from that library, as before.
 
 A footprint is added only from a package drawing that was read: each pad's size and place is a dimension of the manufacturer's land pattern, `std/libs/README.md` says which were read from the drawing and which were assumed, and a package with a dimension that cannot be read is not added.
 
@@ -1095,7 +1095,7 @@ board Switched {
 
 ### A rechargeable cell and its charger
 
-`std::sources::Cell` is one rechargeable cell (issue #1262). Its terminals are the rail `.terminals`, which the cell gives: the DC analysis takes it as a source (`dc source`), held over the range the board states for `.terminals.voltage`. Its values are the datasheet's, from a row of the catalog `cell`: `.chemistry` (a `Chemistry`: `LiIon`, `LiPolymer`, `LiFePO4` or `NiMH`), `.capacity` (a charge, in coulombs: 1 mAh is 3.6 C, so 1000 mAh is `3.6kC`), `.internal_resistance` (the datasheet's largest), `.charge_temperature` and `.discharge_temperature` (the ranges it may be charged and discharged in), `.float_voltage` (the voltage it is charged to and held at, as the datasheet's range) and `.max_charge_current`. Its pins are `+` and `-` in the package the row names. The standard catalog `cell` has no row: no cell has a recorded source yet, so a project brings its own rows, and a cell has no KiCad symbol yet, so a board with one is solved and checked but not exported (issue #1366).
+`std::sources::Cell` is one rechargeable cell (issue #1262). Its terminals are the rail `.terminals`, which the cell gives: the DC analysis takes it as a source (`dc source`), held over the range the board states for `.terminals.voltage`. Its values are the datasheet's, from a row of the catalog `cell`: `.chemistry` (a `Chemistry`: `LiIon`, `LiPolymer`, `LiFePO4` or `NiMH`), `.capacity` (a charge, in coulombs: 1 mAh is 3.6 C, so 1000 mAh is `3.6kC`), `.internal_resistance` (the datasheet's largest), `.charge_temperature` and `.discharge_temperature` (the ranges it may be charged and discharged in), `.float_voltage` (the voltage it is charged to and held at, as the datasheet's range) and `.max_charge_current`. Its pins are `+` and `-` in the package the row names. The standard catalog `cell` has no row: no cell has a recorded source yet, so a project brings its own rows. A cell is drawn with netsmith's own `Device:Battery_Cell` (pins `+` and `-`), and `std/kicad.toml` maps the packages a cell's row may name: so far the JST PH side-entry lead of a pouch cell, `JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal`, whose footprint netsmith generates (issue #1366). A row in another package needs a row of the project's `kicad.toml`.
 
 `std::parts::regulator::Charger` is a charger IC, a generic with the rails `.vin`, where its power comes from, and `.out`, which charges the cell, on one ground. A concrete IC is a part that provides it and states, from its datasheet, `.float_voltage` (its regulation voltage, as a range), `.charge_current` (the fast charge current, as its programming pin sets it: the datasheet's equation over the resistor on the pin, so it carries the resistor's tolerance) and, for an IC with a thermistor input, `.thermistor_window`, the cell temperatures it charges between (optional, ADR 0074). When the charger's `.out` is joined with `~` to a cell's `.terminals` (directly, or through a module's rail), the check after the solve holds the two against each other: the charger's float voltage must lie within the cell's, both ends; its thermistor window within the cell's charge window, both ends; and the most of its charge current at most the cell's `.max_charge_current`. A value of either side that has none is listed as not evaluated. A charger that states no thermistor window is not judged on it, and a charger joined to no cell is not judged at all.
 
@@ -1188,6 +1188,21 @@ error: `charger` charges the cell `bat` at up to 1.01A (`charger.charge_current`
    |
 24 |     .charger: Zchg
    |     ^^^^^^^^^^^^^^
+```
+
+A board with the invented cell and a load builds and exports, with no KiCad install:
+
+```nsm solve catalogs=cells
+import std::parts::passive::Resistor
+import std::sources::Cell
+
+board Pouch {
+    .bat: Cell
+    .bat.terminals.voltage &= 3V..4.2V
+    .bat.terminals.pos.net &= "VBAT"
+    .load: Resistor { .resistance &= 10kohm +/- 1% }
+    .bat.terminals.pos ~> .load ~> .bat.terminals.neg
+}
 ```
 
 Not modelled: the cell's voltage over its state of charge, its self-discharge and ageing, the current the charger draws and its heat.
@@ -1875,7 +1890,18 @@ error: d.supply_fault_current must always be at most d.max_forward_current, but 
 error: `hold` may be soldered by hand only (its catalog row ZZS-0F5 states `soldering` Hand), and its assembly is `AssemblyMode::Fab`: the board house solders the parts it places in a reflow oven, which the part's datasheet forbids; state `.hold.assembly &= AssemblyMode::Hand`, or choose a part that allows reflow
 ```
 
-The standard catalog `supercap` has no row: no part has a recorded source yet, so a project brings its own rows in a file of the catalog `supercap`.
+The standard catalog `supercap` has no row: no part has a recorded source yet, so a project brings its own rows in a file of the catalog `supercap`. A supercapacitor is drawn with netsmith's own `Device:C_Polarized` (pin 1 the positive lead), and its two-lead packages, `Radial_D5.0mm_P2.00mm` to `Radial_D16.0mm_P7.50mm`, are KiCad's `CP_Radial` footprints, which netsmith generates (issue #1366). The tapped package, `Radial_D16.0mm_P7.50mm_Tap`, has no footprint yet: where its middle lead is waits for the drawing of a real part (issue #1399), so a board that joins `.mid` is solved and checked but not exported. Here the invented 0.5 F part across a 5 V rail, built and exported:
+
+```nsm solve catalogs=backup
+import std::parts::passive::Supercap
+import std::sources::Rail
+
+board Backup {
+    .rail: Rail { .voltage &= 5V +/- 5%; .pos.net &= "V5" }
+    .hold: Supercap
+    .rail.pos ~> .hold ~> .rail.neg
+}
+```
 
 ### Transistors
 
@@ -3497,6 +3523,112 @@ error: net `1V8`: rail `core` holds the line at 1.71V..1.89V but `u.levels.vih` 
    |
 22 |     .u: Radio
    |     ^^^^^^^^^
+```
+
+#### A pin whose direction a strapped control pin fixes
+
+A bidirectional pin is judged both ways: as a driver of every receiver on its net, and as a receiver of every driver. A translator whose direction pin the board straps passes a signal one way only, so the way back was judged for nothing. A part that states `direction .a to .b when .dir high` (chapter 11, "A direction a control pin fixes") has its pins judged as the strap of `.dir` fixes them (#1306): the pins of `.a` as inputs and those of `.b` as outputs while `.dir` is on a net that holds the `pos` of a rail, and the direction stated for `low` while it is on a ground, as for a strapped input above. A control pin that something drives or pulls, a strap at a level for which the part states no direction, and a control pin left open leave the pins `bidirectional`, judged both ways, as before.
+
+Below, the A side of an invented translator drives a weak high, half its supply, which the host's pin does not read as a high. Strapped high, `DIR` sends the signal from A to B, so A only reads and nothing is refused; strap it to ground and the A side drives the host, and the board is refused with the numbers of both.
+
+```nsm module=src::zdir
+import std::logic::Logic
+import std::sources::Rail
+
+/// Invented: a one-bit translator whose A side drives half its supply.
+part Zdir {
+    .vcca: Rail
+    .vccb: Rail
+    .vccb.neg ~ .vcca.neg
+    .a: Logic
+    .a.reference ~ .vcca
+    .a.voh &= 0.5 * .vcca.voltage
+    .a.vol &= 0.1V
+    .a.vih &= 0.7 * .vcca.voltage
+    .a.vil &= 0.3 * .vcca.voltage
+    .b: Logic
+    .b.reference ~ .vccb
+    .b.voh &= .vccb.voltage - 0.1V
+    .b.vol &= 0.1V
+    .b.vih &= 0.7 * .vccb.voltage
+    .b.vil &= 0.3 * .vccb.voltage
+    direction .a to .b when .dir high
+    direction .b to .a when .dir low
+    pins {
+        .vcca.pos power         "VCCA" "1"
+        .vccb.pos power         "VCCB" "2"
+        .vcca.neg power         "GND"  "3"
+        .a.line   bidirectional "A"    "4"
+        .b.line   bidirectional "B"    "5"
+        .dir      input         "DIR"  "6"
+    }
+}
+
+/// Invented: a host's general-purpose pin.
+part Zgpio {
+    .vdd: Rail
+    .io: Logic
+    .io.reference ~ .vdd
+    .io.voh &= .vdd.voltage - 0.1V
+    .io.vol &= 0.1V
+    .io.vih &= 0.7 * .vdd.voltage
+    .io.vil &= 0.3 * .vdd.voltage
+    pins {
+        .vdd.pos power         "VDD" "1"
+        .vdd.neg power         "GND" "2"
+        .io.line bidirectional "IO"  "3"
+    }
+}
+```
+
+```nsm evaluate
+import std::sources::Rail
+
+import src::zdir::{Zdir, Zgpio}
+
+board OneWay {
+    .s18: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8" }
+    .s3: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .host: Zgpio
+    .x: Zdir
+    .far: Zgpio
+    .s18 ~ .host.vdd
+    .s18 ~ .x.vcca
+    .s3 ~ .x.vccb
+    .s3 ~ .far.vdd
+    .host.io.line ~ .x.a.line
+    .x.b.line ~ .far.io.line
+    .x.dir ~ .s18.pos
+}
+```
+
+```nsm fails
+import std::sources::Rail
+
+import src::zdir::{Zdir, Zgpio}
+
+board OtherWay {
+    .s18: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8" }
+    .s3: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .host: Zgpio
+    .x: Zdir
+    .far: Zgpio
+    .s18 ~ .host.vdd
+    .s18 ~ .x.vcca
+    .s3 ~ .x.vccb
+    .s3 ~ .far.vdd
+    .host.io.line ~ .x.a.line
+    .x.b.line ~ .far.io.line
+    .x.dir ~ .s18.neg
+}
+```
+
+```text
+error: net `net-host.io.line`: `x.a.voh` is 0.5 x `x.vcca.voltage` but `host.io.vih` needs 0.7 x `host.vdd.voltage`, the same supply voltage: a high of 0.5 x the supply is not always read as a high, which takes 0.7 x the supply
+  --> main.nsm:9:5
+  |
+9 |     .x: Zdir
+  |     ^^^^^^^^
 ```
 
 #### Levels that are fractions of one supply

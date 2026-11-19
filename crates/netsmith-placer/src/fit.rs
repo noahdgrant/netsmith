@@ -196,11 +196,15 @@ pub(crate) fn fit(
     let locked = originals
         .iter()
         .any(|p| placement.fixed.contains_key(&p.refdes));
+    // A distance between kinds of parts (`keep`, issue 1277) is one too: the rows do not
+    // know it.
+    let apart = originals.iter().any(|p| !p.apart.is_empty());
     if w.is_ok()
         && h.is_ok()
         && placement.wants.is_empty()
         && placement.offsets.is_empty()
         && !locked
+        && !apart
     {
         // The arrangement the parts make fits the size: it stands, in the middle of the
         // outline, and moves only where a hole or a keepout is in its way.
@@ -232,7 +236,10 @@ pub(crate) fn fit(
             && inside
             && ((keepouts.is_empty()
                 && placement.height_zones.is_empty()
-                && placement.face_keepouts.is_empty())
+                && placement.face_keepouts.is_empty()
+                // A zone a part carries (a body's standoff, its underside keepout, issue
+                // #1335) is in the way as a keepout is: the rows do not know it.
+                && placement.carried.is_empty())
                 || {
                     // The mechanical parts are in the corners, and stay: with them in the run, their
                     // reference text and silkscreen are kept clear of too.

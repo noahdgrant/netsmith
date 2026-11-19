@@ -211,6 +211,11 @@ pub struct BoardKeepout {
     /// (issue 1331); a keepout of the design names its faces as they are, and is not.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub on_carrier_face: bool,
+    /// The corners of its area, in the frame of `at`, when it is a polygon and not the
+    /// rectangle of `at` and `size` (which are then the box round it): a part's
+    /// `.underside_keepout` (issue #1335).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub polygon: Option<Vec<(f64, f64)>>,
 }
 
 /// A keepout where it is on the sheet.
@@ -226,9 +231,24 @@ pub struct KeepoutArea {
     pub copper: bool,
     pub parts: bool,
     pub max_height: Option<f64>,
+    /// Its corners on the sheet when it is a polygon (issue #1335); `rect` is then the box round
+    /// it.
+    pub shape: Option<Vec<Pt>>,
 }
 
 impl KeepoutArea {
+    /// Whether a box is in its area: in `rect`, and, for a polygon, in the polygon (it overlaps
+    /// it with some area, as two boxes overlap).
+    pub fn covers(&self, r: &Rect) -> bool {
+        if !r.overlaps(&self.rect) {
+            return false;
+        }
+        match &self.shape {
+            None => true,
+            Some(corners) => polygon_overlaps(corners, r),
+        }
+    }
+
     /// Whether it forbids any of tracks, vias, copper and parts: a keepout that only limits
     /// height does not, and is no rule area for KiCad.
     pub fn forbids_anything(&self) -> bool {
@@ -414,5 +434,95 @@ impl Via {
             }
             _ => true,
         }
+    }
+}
+
+/// Whether a polygon and a box overlap with some area: a corner of either is strictly inside the
+/// other, or an edge of the polygon crosses the inside of the box.
+fn polygon_overlaps(corners: &[Pt], r: &Rect) -> bool {
+    const E: f64 = 1e-9;
+    let inside_box =
+        |p: &Pt| p.x > r.min.x + E && p.x < r.max.x - E && p.y > r.min.y + E && p.y < r.max.y - E;
+    if corners.iter().any(inside_box) {
+        return true;
+    }
+    let inside_polygon = |p: Pt| {
+        let mut odd = false;
+        for (i, a) in corners.iter().enumerate() {
+            let b = corners[(i + 1) % corners.len()];
+            if (a.y > p.y) != (b.y > p.y) && p.x < a.x + (p.y - a.y) * (b.x - a.x) / (b.y - a.y) {
+                odd = !odd;
+            }
+        }
+        odd
+    };
+    // The box's centre, and points just inside its corners.
+    let centre = Pt::new((r.min.x + r.max.x) / 2.0, (r.min.y + r.max.y) / 2.0);
+    let inset = [
+        Pt::new(r.min.x + E * 10.0, r.min.y + E * 10.0),
+        Pt::new(r.max.x - E * 10.0, r.min.y + E * 10.0),
+        Pt::new(r.max.x - E * 10.0, r.max.y - E * 10.0),
+        Pt::new(r.min.x + E * 10.0, r.max.y - E * 10.0),
+    ];
+    if inside_polygon(centre) || inset.into_iter().any(inside_polygon) {
+        return true;
+    }
+    // An edge of the polygon through the inside of the box: clip it to the box.
+    corners.iter().enumerate().any(|(i, a)| {
+        let b = corners[(i + 1) % corners.len()];
+        let (mut t0, mut t1) = (0.0_f64, 1.0_f64);
+        let (dx, dy) = (b.x - a.x, b.y - a.y);
+        for (p, q) in [
+            (-dx, a.x - (r.min.x + E)),
+            (dx, (r.max.x - E) - a.x),
+            (-dy, a.y - (r.min.y + E)),
+            (dy, (r.max.y - E) - a.y),
+        ] {
+            if p == 0.0 {
+                if q < 0.0 {
+                    return false;
+                }
+            } else {
+                let t = q / p;
+                if p < 0.0 {
+                    t0 = t0.max(t);
+                } else {
+                    t1 = t1.min(t);
+                }
+            }
+        }
+        t0 < t1
+    })
+}
+
+#[cfg(test)]
+mod polygon_tests {
+    use super::*;
+
+    fn tri() -> Vec<Pt> {
+        // A right triangle with its long edge from (10, 0) to (0, 10).
+        vec![Pt::new(0.0, 0.0), Pt::new(10.0, 0.0), Pt::new(0.0, 10.0)]
+    }
+
+    #[test]
+    fn a_box_inside_the_triangle_overlaps_it_and_one_past_its_long_edge_does_not() {
+        let inside = Rect::new(Pt::new(1.0, 1.0), Pt::new(3.0, 3.0));
+        let past = Rect::new(Pt::new(7.0, 7.0), Pt::new(9.0, 9.0));
+        assert!(polygon_overlaps(&tri(), &inside));
+        assert!(!polygon_overlaps(&tri(), &past));
+    }
+
+    #[test]
+    fn a_box_round_the_triangle_or_across_an_edge_overlaps_it() {
+        let round = Rect::new(Pt::new(-1.0, -1.0), Pt::new(11.0, 11.0));
+        let across = Rect::new(Pt::new(4.0, 4.0), Pt::new(6.0, 6.0));
+        assert!(polygon_overlaps(&tri(), &round));
+        assert!(polygon_overlaps(&tri(), &across));
+    }
+
+    #[test]
+    fn a_box_that_only_touches_an_edge_does_not_overlap() {
+        let below = Rect::new(Pt::new(2.0, -3.0), Pt::new(4.0, 0.0));
+        assert!(!polygon_overlaps(&tri(), &below));
     }
 }

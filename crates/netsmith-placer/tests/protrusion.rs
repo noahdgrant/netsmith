@@ -141,6 +141,7 @@ fn design(case: &Case) -> Design {
                     parts: false,
                     max_height: Some(limit),
                     on_carrier_face: false,
+                    polygon: None,
                 })
                 .into_iter()
                 .collect(),

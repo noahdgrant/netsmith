@@ -1,5 +1,9 @@
 # Glossary: K
 
+**Keep apart**:
+A distance a board's physical file asks between two kinds of parts (`keep 10mm between BuckIc and Crystal`, issue 1277): a project's rule of thumb where a datasheet gives no number. The kinds are parts or generics of the standard library or the project, and each part of the one kind stands at least the distance from each part of the other, courtyard to courtyard, whatever faces they are on. A requirement on where parts go: the placer keeps it as hard as an overlap, and `fab` and `layout check` stop where it is not met.
+_Avoid_: Spacing rule, isolation distance (a creepage or clearance is the process's)
+
 **Keepout**:
 An area of a board, or of a part in its own frame, where tracks, vias, copper pours or parts are not allowed (`std::pcb::Keepout`), on the layers it names. It is a KiCad rule area in the board file.
 _Avoid_: Exclusion zone, restricted area

@@ -10,13 +10,20 @@
 //! - its area is the box round the other member's outline, in the connector's frame (the
 //!   footprint's, as on the top face), found as the system scene finds the other member's place
 //!   (`netsmith_3d::SystemScene`): contact N on contact N, the turn and the offset the
-//!   least-squares fit of the pad centres, the other board turned over when its connector is on
+//!   least-squares fit of the pads' contacts (their centres unless the part's `pads` block states
+//!   `.contact_offset`, issue #1321), the other board turned over when its connector is on
 //!   its top face;
 //! - its height limit is the mate's least mated height, the distance between the two boards'
 //!   faces: a part of this board taller than that stands in the other board;
 //! - it is on the face the connector is on, wherever the placer puts the connector
 //!   ([`netsmith_core::Keepout::on_carrier_face`]), and it forbids nothing else;
 //! - it is named `System/member over connector`: `Kit/card over slot`.
+//!
+//! A connector of a mate that states an `.underside_keepout` (issue #1335) gives the other
+//! board one more: its area, turned and moved as the mate puts the two connectors together (the
+//! pads alone say how, so no place is needed), carried by the other board's connector on its
+//! face, with the stated `.max_height` from that board's face. It is named
+//! `System/member.connector.underside_keepout`, and the finding names that part.
 //!
 //! The placer keeps the parts too tall for it out from under the other board, and `layout
 //! check` and `fab`'s placement check say a part that stands in it, as for any keepout with a
@@ -39,8 +46,8 @@ use netsmith_pipeline::{Built, Libraries, SolvedSystem};
 /// The area the other board of a mate covers over `host`'s connector, in that connector's
 /// footprint frame, or why it is not known.
 ///
-/// `host` is the connector's pads in its own frame; `partner` the other connector's pad centres
-/// on its board where its place puts it, `partner_side` the face of its board it is on and
+/// `host` is the connector's pads' contacts in its own frame; `partner` the other connector's
+/// contacts on its board where its place puts it, `partner_side` the face of its board it is on and
 /// `outline` the corners of its board's box, in the same frame as `partner`. `pairs` gives
 /// the pad numbers that meet, `(host's, partner's)`.
 pub fn covered_area(
@@ -50,10 +57,34 @@ pub fn covered_area(
     outline: [Pt; 4],
     pairs: &[(String, String)],
 ) -> Result<(Pt, Pt), String> {
+    let moved = fit(host, partner, partner_side, pairs)?;
+    let corners = outline.map(moved);
+    let lo = corners
+        .iter()
+        .fold(Pt::new(f64::INFINITY, f64::INFINITY), |a, p| {
+            Pt::new(a.x.min(p.x), a.y.min(p.y))
+        });
+    let hi = corners
+        .iter()
+        .fold(Pt::new(f64::NEG_INFINITY, f64::NEG_INFINITY), |a, p| {
+            Pt::new(a.x.max(p.x), a.y.max(p.y))
+        });
+    Ok((clean(lo), clean(hi)))
+}
+
+/// Where a point of the other connector's frame (`partner`, its pads, as [`covered_area`] takes
+/// them) is in `host`'s connector frame: the mirror when the other board faces back, then the
+/// turn and the offset the least-squares fit of the pads that meet gives.
+fn fit(
+    host: &[(String, Pt)],
+    partner: &[(String, Pt)],
+    partner_side: Side,
+    pairs: &[(String, String)],
+) -> Result<impl Fn(Pt) -> Pt, String> {
     // The other board faces back at this one: turned over when its connector is on its top
     // face, as the system scene turns it.
     let flip = partner_side == Side::Front;
-    let mirror = |p: Pt| if flip { Pt::new(-p.x, p.y) } else { p };
+    let mirror = move |p: Pt| if flip { Pt::new(-p.x, p.y) } else { p };
     let first = |pads: &[(String, Pt)], n: &str| pads.iter().find(|(m, _)| m == n).map(|p| p.1);
     let matched: Vec<(Pt, Pt)> = pairs
         .iter()
@@ -86,23 +117,56 @@ pub fn covered_area(
     }
     let angle = cross.atan2(dot);
     let (s, c) = angle.sin_cos();
-    let moved = |p: Pt| {
+    Ok(move |p: Pt| {
         let p = mirror(p);
         let (x, y) = (p.x - cm.x, p.y - cm.y);
         Pt::new(ct.x + c * x - s * y, ct.y + s * x + c * y)
+    })
+}
+
+/// An area carried over a connector: its corner nearest the origin, its size and its corners.
+pub type Carried = ((f64, f64), (f64, f64), Vec<(f64, f64)>);
+
+/// A connector's pads, by number, in its own footprint's frame.
+type Pads = Vec<(String, Pt)>;
+
+/// The other connector's `.underside_keepout` (issue #1335) carried over `host`'s connector:
+/// `keepout` is in the other connector's own frame (`partner`, its pads there, as on the top
+/// face), and the result in the host connector's frame, a polygon when the keepout is one or
+/// when the turn is not a right angle. Its corner nearest the origin, its size and its corners.
+pub fn carried_underside(
+    host: &[(String, Pt)],
+    partner: &[(String, Pt)],
+    keepout: &Keepout,
+    pairs: &[(String, String)],
+) -> Result<Carried, String> {
+    // In its own frame the other connector is as on the top face, so its board faces back.
+    let moved = fit(host, partner, Side::Front, pairs)?;
+    let (x, y) = keepout.at.unwrap_or((0.0, 0.0));
+    let (w, h) = keepout.size;
+    let corners: Vec<(f64, f64)> = match &keepout.polygon {
+        Some(points) => points.clone(),
+        None => vec![(x, y), (x + w, y), (x + w, y + h), (x, y + h)],
     };
-    let corners = outline.map(moved);
-    let lo = corners
+    let points: Vec<Pt> = corners
+        .into_iter()
+        .map(|(x, y)| clean(moved(Pt::new(x, y))))
+        .collect();
+    let lo = points
         .iter()
         .fold(Pt::new(f64::INFINITY, f64::INFINITY), |a, p| {
             Pt::new(a.x.min(p.x), a.y.min(p.y))
         });
-    let hi = corners
+    let hi = points
         .iter()
         .fold(Pt::new(f64::NEG_INFINITY, f64::NEG_INFINITY), |a, p| {
             Pt::new(a.x.max(p.x), a.y.max(p.y))
         });
-    Ok((clean(lo), clean(hi)))
+    Ok((
+        (lo.x, lo.y),
+        (clean_len(hi.x - lo.x), clean_len(hi.y - lo.y)),
+        points.iter().map(|p| (p.x, p.y)).collect(),
+    ))
 }
 
 /// A point to a nanometre, with no negative zero.
@@ -191,6 +255,48 @@ pub fn add(
                 let host_part = part_path(host_path, &host.name);
                 let partner_part = part_path(partner_path, &partner.name);
                 let label = boards[host.index].label();
+                // The other connector's underside keepout (issue #1335) limits the parts of
+                // this board under it, carried over this board's connector.
+                let underside = format!("{partner_part}.{}", netsmith_core::UNDERSIDE_KEEPOUT);
+                let stated = boards[partner.index]
+                    .design
+                    .features
+                    .keepouts
+                    .iter()
+                    .find(|k| k.name == underside && k.part.as_deref() == Some(&partner_part))
+                    .cloned();
+                if let Some(stated) = stated
+                    && let Some((host_pads, partner_pads)) =
+                        local_pads(host, &host_part, partner, &partner_part)
+                {
+                    let pairs = pairs_of(&host_pads, window);
+                    match carried_underside(&host_pads, &partner_pads, &stated, &pairs) {
+                        Ok((at, size, corners)) => found.push((
+                            host.index,
+                            Keepout {
+                                name: format!("{}/{}.{underside}", system.name, partner.name),
+                                part: Some(host_part.clone()),
+                                at: Some(at),
+                                size,
+                                layers: vec!["top".to_string()],
+                                tracks: false,
+                                vias: false,
+                                copper: false,
+                                parts: false,
+                                max_height: stated.max_height,
+                                on_carrier_face: true,
+                                polygon: Some(corners),
+                            },
+                        )),
+                        Err(why) => notes.push((
+                            label.clone(),
+                            format!(
+                                "the underside keepout of `{}.{partner_part}` is not carried over `{host_part}`, so `{}` does not keep its parts under it low: {why}",
+                                partner.name, host.name
+                            ),
+                        )),
+                    }
+                }
                 match area_of(
                     host,
                     &host_part,
@@ -213,6 +319,7 @@ pub fn add(
                             parts: false,
                             max_height: Some(height),
                             on_carrier_face: true,
+                            polygon: None,
                         },
                     )),
                     Ok(None) => {}
@@ -292,7 +399,7 @@ fn area_of(
             .footprint
             .pads
             .iter()
-            .map(|pad| (pad.number.clone(), pad.at))
+            .map(|pad| (pad.number.clone(), placed.contact(pad)))
             .collect()
     };
     let host_pads = local(h);
@@ -300,7 +407,23 @@ fn area_of(
         .into_iter()
         .map(|(n, q)| (n, at.to_board(q)))
         .collect();
-    let pairs: Vec<(String, String)> = host_pads
+    let pairs = pairs_of(&host_pads, window);
+    let corners = [
+        outline.min,
+        Pt::new(outline.max.x, outline.min.y),
+        outline.max,
+        Pt::new(outline.min.x, outline.max.y),
+    ];
+    covered_area(&host_pads, &partner_pads, fixed.side, corners, &pairs).map(Some)
+}
+
+/// The pad numbers that meet, `(host's, partner's)`: the same number, or the numbers the
+/// mate's window pairs.
+fn pairs_of(
+    host_pads: &[(String, Pt)],
+    window: Option<(usize, usize, usize)>,
+) -> Vec<(String, String)> {
+    host_pads
         .iter()
         .filter(|(n, _)| !n.is_empty())
         .filter_map(|(n, _)| match window {
@@ -310,14 +433,28 @@ fn area_of(
                 (i < count).then(|| (n.clone(), (fp + i).to_string()))
             }
         })
-        .collect();
-    let corners = [
-        outline.min,
-        Pt::new(outline.max.x, outline.min.y),
-        outline.max,
-        Pt::new(outline.min.x, outline.max.y),
-    ];
-    covered_area(&host_pads, &partner_pads, fixed.side, corners, &pairs).map(Some)
+        .collect()
+}
+
+/// The pads of the two connectors of a mate, each in its own footprint's frame; `None` when
+/// one is not on its board.
+fn local_pads(
+    host: &Member,
+    host_part: &str,
+    partner: &Member,
+    partner_part: &str,
+) -> Option<(Pads, Pads)> {
+    let pads = |m: &Member, path: &str| {
+        let p = m.unplaced.parts.iter().find(|x| x.path == path)?;
+        Some(
+            p.footprint
+                .pads
+                .iter()
+                .map(|pad| (pad.number.clone(), pad.at))
+                .collect(),
+        )
+    };
+    Some((pads(host, host_part)?, pads(partner, partner_part)?))
 }
 
 #[cfg(test)]
@@ -396,6 +533,33 @@ mod tests {
         // The board is 10 wide and 20 tall over the host once turned.
         assert!(((hi.x - lo.x) - 10.0).abs() < 1e-9, "{lo:?} {hi:?}");
         assert!(((hi.y - lo.y) - 20.0).abs() < 1e-9, "{lo:?} {hi:?}");
+    }
+
+    #[test]
+    fn an_underside_keepout_of_the_other_connector_lies_mirrored_over_the_host() {
+        // Both connectors' pads at their origins, 2.54 mm apart down y; the other connector's
+        // keepout runs 4 mm to its right in its own frame, so 4 mm to the host's left once the
+        // board faces back (issue #1335).
+        let host = pads(&[(0.0, 0.0), (0.0, 2.54)]);
+        let partner = pads(&[(0.0, 0.0), (0.0, 2.54)]);
+        let keepout = Keepout {
+            name: "j1.underside_keepout".into(),
+            part: Some("j1".into()),
+            at: Some((1.0, -1.0)),
+            size: (4.0, 2.0),
+            layers: vec!["top".into()],
+            tracks: false,
+            vias: false,
+            copper: false,
+            parts: false,
+            max_height: Some(0.5),
+            on_carrier_face: true,
+            polygon: None,
+        };
+        let (at, size, corners) =
+            carried_underside(&host, &partner, &keepout, &one_for_one(2)).unwrap();
+        assert_eq!((at, size), ((-5.0, -1.0), (4.0, 2.0)));
+        assert_eq!(corners[0], (-1.0, -1.0));
     }
 
     #[test]

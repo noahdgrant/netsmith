@@ -758,6 +758,7 @@ fn panel_extras(board: &DrcExtras, spec: &Spec, g: &Geometry, back: bool) -> Drc
         // The panel is the size the board house wants; its cells' size is asked of the board.
         marks.min_single_sided_assembly_size = None;
         marks.min_double_sided_assembly_size = None;
+        marks.assembly_size_source = None;
     }
     extras
 }

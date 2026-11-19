@@ -58,34 +58,6 @@ const DC_ESR: &str = "temperature,dc_esr
 85degC,90mohm
 ";
 
-/// What KiCad calls the supercapacitor: the standard mapping has no row for a `Supercap` yet
-/// (issue #1366), so the project gives one, drawn with netsmith's own capacitor symbol, on a
-/// footprint of its own library, so that the build needs no KiCad install.
-const KICAD: &str = r#"[[library]]
-name = "hold"
-footprints = "libs/hold.pretty"
-
-[[part]]
-kind = "Supercap"
-package = "Radial_D16.0mm_P7.50mm"
-symbol = "Device:C"
-footprint = "hold:Radial_D16"
-
-[part.pin_names]
-"+" = "1"
-"-" = "2"
-"#;
-
-/// Two through-hole pads 7.5 mm apart, in a body 16 mm across.
-const FOOTPRINT: &str = "(footprint \"Radial_D16\" (version 20241229) (generator \"netsmith-test\") (layer \"F.Cu\") \
-(property \"Reference\" \"REF**\" (at 0 -9.5 0) (layer \"F.SilkS\") (effects (font (size 1 1) (thickness 0.15)))) \
-(property \"Value\" \"Radial_D16\" (at 0 9.5 0) (layer \"F.Fab\") (effects (font (size 1 1) (thickness 0.15)))) \
-(attr through_hole) \
-(pad \"1\" thru_hole rect (at -3.75 0) (size 2.4 2.4) (drill 1.2) (layers \"*.Cu\" \"*.Mask\")) \
-(pad \"2\" thru_hole circle (at 3.75 0) (size 2.4 2.4) (drill 1.2) (layers \"*.Cu\" \"*.Mask\")) \
-(fp_circle (center 0 0) (end 8.25 0) (stroke (width 0.05) (type solid)) (fill none) (layer \"F.CrtYd\")))
-";
-
 /// `netsmith board build` on a project of one source, and what it printed.
 fn build(root: &Path, source: &str) -> std::process::Output {
     fs::create_dir_all(root.join("src")).unwrap();
@@ -96,9 +68,6 @@ fn build(root: &Path, source: &str) -> std::process::Output {
     )
     .unwrap();
     fs::write(root.join("src/main.nsm"), source).unwrap();
-    fs::write(root.join("kicad.toml"), KICAD).unwrap();
-    fs::create_dir_all(root.join("libs/hold.pretty")).unwrap();
-    fs::write(root.join("libs/hold.pretty/Radial_D16.kicad_mod"), FOOTPRINT).unwrap();
     fs::write(root.join("catalogs/supercap.csv"), SUPERCAP).unwrap();
     fs::write(root.join("catalogs/curves/supercap/ZZS-1F5.csv"), DC_ESR).unwrap();
     Command::new(env!("CARGO_BIN_EXE_netsmith"))

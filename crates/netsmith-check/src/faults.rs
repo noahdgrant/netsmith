@@ -53,7 +53,9 @@ pub fn pin_faults(model: &Model) -> Vec<Diagnostic> {
 
 /// [`pin_faults`], and those of them that are inside a use with several providers, which
 /// another provider may not have (`Model::provider_conflicts`, ADR 0113).
-pub(crate) fn pin_faults_and_conflicts(model: &Model) -> (Vec<Diagnostic>, Vec<Diagnostic>) {
+pub(crate) fn pin_faults_and_conflicts(
+    model: &Model,
+) -> (Vec<Diagnostic>, Vec<(Vec<InstId>, Diagnostic)>) {
     let deferred = unknown_package(model);
     let bus = crate::busnets::check(model);
     let mut run = Run::new(model, &deferred, Pass::Board, bus.nets);
@@ -100,8 +102,9 @@ struct Run<'a> {
     /// The nets a bus rule has reported (ADR 0064): the rules of a net skip them.
     bus_nets: std::collections::HashSet<String>,
     out: Vec<Diagnostic>,
-    /// The faults among `out` that another provider of a use may not have (ADR 0113).
-    conflicts: Vec<Diagnostic>,
+    /// The faults among `out` that another provider of a use may not have (ADR 0113), each
+    /// with the instances it is about.
+    conflicts: Vec<(Vec<InstId>, Diagnostic)>,
 }
 
 /// Items that are already written for a message, joined.
@@ -296,17 +299,21 @@ impl<'a> Run<'a> {
                 };
                 // Another provider of the use may have a table for it (ADR 0113).
                 if model.in_varied_use(part) {
-                    self.conflicts.push(Diagnostic {
-                        source: at.0,
-                        span: at.1,
-                        message: message.clone(),
-                    });
+                    self.conflicts.push((
+                        vec![part],
+                        Diagnostic {
+                            source: at.0,
+                            span: at.1,
+                            message: message.clone(),
+                        },
+                    ));
                 }
                 self.report(at, message);
             }
             Pinout::Table(table) => {
                 self.pins(part, table);
                 self.ties(part, table);
+                self.directions(part, table);
                 self.functions_used_twice(part, table);
             }
         }
@@ -712,6 +719,42 @@ impl<'a> Run<'a> {
         }
     }
 
+    /// The kinds a `direction` needs (issue #1306): its control pin is an `input`, and every pin
+    /// on its two sides is `bidirectional` (a pin of any other kind has one direction already).
+    /// A pin the package does not have is skipped, as for a tie.
+    fn directions(&mut self, part: InstId, table: &PinTable) {
+        let model = self.model;
+        for d in &model.instance(part).rules.directions {
+            let kind = |p: InstId| table.row(p).map(|r| r.kind);
+            if let Some(k) = kind(d.control)
+                && k != PinKind::Input
+            {
+                self.report(
+                    (d.source, d.span),
+                    format!(
+                        "`{}` fixes the direction of a `direction`, so it is an input, but it is {}",
+                        model.path_of(d.control),
+                        article(k)
+                    ),
+                );
+            }
+            for &pin in d.from.iter().chain(&d.to) {
+                if let Some(k) = kind(pin)
+                    && k != PinKind::Bidirectional
+                {
+                    self.report(
+                        (d.source, d.span),
+                        format!(
+                            "`{}` is {}, which has one direction already; a `direction` names bidirectional pins",
+                            model.path_of(pin),
+                            article(k)
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
     /// Two power sources on one net (#848): the `pos` of the rail that a `dc source` gives, or
     /// of the output rail of a `dc linear_regulator` or `dc switching_regulator`, of two parts
     /// (or two rails of one part) on one net. Each holds the net at its own voltage, so they
@@ -768,11 +811,14 @@ impl<'a> Run<'a> {
             );
             let at = model.instance(sources[1].1).at();
             if sources.iter().any(|(_, p, _)| model.in_varied_use(*p)) {
-                self.conflicts.push(Diagnostic {
-                    source: at.0,
-                    span: at.1,
-                    message: message.clone(),
-                });
+                self.conflicts.push((
+                    sources.iter().map(|(_, p, _)| *p).collect(),
+                    Diagnostic {
+                        source: at.0,
+                        span: at.1,
+                        message: message.clone(),
+                    },
+                ));
             }
             self.report(at, message);
         }

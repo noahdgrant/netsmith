@@ -25,6 +25,15 @@ Delete the declaration. `.fitted` is a `Bool` (`.fitted &= false` marks a positi
 
 There is no ADR: the owner decided it on the issue.
 
+### A provider does not declare `.assembly_size_source` (issue 1393)
+
+`std::mfg::jlcpcb::TwoLayer`, `FourLayer`, `SixLayer`, `HdiFourLayer`, `HdiSixLayer`, `HdiEightLayer` and `std::mfg::acme::EightLayer`, `TenLayer` declare `.assembly_size_source`, the page, service and day of their assembly size figures, which the `assembly_size` finding quotes. A provider of yours that declared a member of that name (it is unlikely) deletes the declaration and keeps the narrowing (ADR 0134):
+
+```text
+error: `assembly_size_source` is declared by `TwoLayer`, which this interface provides; do not declare it again: narrow it with `.assembly_size_source &= ...`, or state it with a relation
+```
+
+
 ### A net with a `TrackImpedance` is routed on one layer with no via (issue #1274)
 
 A net of a `TrackImpedance` is now an RF net: the router routes it first, on the outer layer all its pads are on, with no via. A board whose RF line could only cross other copper through a via now leaves it unrouted, and `fab` stops with `N connections could not be routed`; copper of the routes file that gives such a net a via is a finding of the rule `constraint`:

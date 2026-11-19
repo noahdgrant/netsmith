@@ -907,6 +907,15 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
         // Unstated where the board house publishes no figure. A lower bound, so the bottom.
         min_single_sided_assembly_size: optional_mm("process.min_single_sided_assembly_size"),
         min_double_sided_assembly_size: optional_mm("process.min_double_sided_assembly_size"),
+        // Unstated where the board house publishes no figure; the page, service and day of
+        // the two figures above (issue 1393).
+        assembly_size_source: match model.field_at("process.assembly_size_source") {
+            Some(f) => match &model.field(f).domain {
+                Domain::Text(t) if !t.is_empty() => Some(t.clone()),
+                _ => None,
+            },
+            None => None,
+        },
         track_width_tolerance: number("track_width_tolerance"),
         hole_plating: mm("hole_plating"),
         finish: text(find("finish")),
@@ -1209,6 +1218,8 @@ pub struct Designed {
     pub net_route_sites: Vec<(netsmith_check::SourceId, netsmith_lang::Span)>,
     /// Where the design states each of `design.features.soft_margins`, in the same order.
     pub soft_margin_sites: Vec<(netsmith_check::SourceId, netsmith_lang::Span)>,
+    /// Where the design states each of `design.features.keep_apart`, in the same order.
+    pub keep_apart_sites: Vec<(netsmith_check::SourceId, netsmith_lang::Span)>,
     /// Where the design states each of `design.features.protrusions`, in the same order.
     pub protrusion_sites: Vec<Vec<(netsmith_check::SourceId, netsmith_lang::Span)>>,
     /// Where the design states the file of each of `design.features.models`, in the same order.
@@ -1417,6 +1428,14 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
         // and listed as the `Capacitor` it is.
         let kind = &kinds[id];
         let pick = solution.picks.iter().find(|p| p.part == *id);
+        // The order code of a part that states `.variants` (issue 1311), which the checker
+        // narrowed its `.mpn` to: the number and the value of a part that picks from no catalog,
+        // so that the bill of materials names the code.
+        let order_code = model
+            .variants
+            .contains_key(id)
+            .then(|| text_of(model, *id, "mpn"))
+            .flatten();
         // A label's value is the text it prints.
         let value = match (inst.marks.declared_kind, text_of(model, *id, "text")) {
             (Some(PartKind::Label), Some(text)) => text,
@@ -1426,6 +1445,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
             }
             _ => pick
                 .map(|p| p.label.clone())
+                .or_else(|| order_code.clone())
                 .unwrap_or_else(|| default_value(inst, kind)),
         };
         let package =
@@ -1496,7 +1516,9 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
                 value: value.clone(),
                 package: package.clone(),
                 lcsc: pick.and_then(|p| p.lcsc.clone()),
-                mpn: pick.and_then(|p| p.mpn.clone()),
+                mpn: pick
+                    .and_then(|p| p.mpn.clone())
+                    .or_else(|| order_code.clone()),
                 library: pick.and_then(|p| p.library),
                 assembly,
                 assembly_stated,
@@ -1639,6 +1661,8 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     features.net_routes = net_routes;
     let (soft_margins, mut soft_margin_sites) = features::soft_margins(model);
     features.soft_margins = soft_margins;
+    let (keep_apart, keep_apart_sites) = features::keep_apart(model);
+    features.keep_apart = keep_apart;
     let (protrusions, mut protrusion_sites) = features::protrusions(model, &mut errors);
     features.protrusions = protrusions;
     let (models, mut model_sites) = features::models(model, &mut errors);
@@ -1765,6 +1789,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
             pin_distance_sites,
             net_route_sites,
             soft_margin_sites,
+            keep_apart_sites,
             protrusion_sites,
             model_sites,
             case_model_sites,

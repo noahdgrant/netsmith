@@ -262,7 +262,7 @@ fn join(items: &[Ident], sep: &str) -> String {
         .join(sep)
 }
 
-fn quote(s: &str) -> String {
+pub(crate) fn quote(s: &str) -> String {
     let mut out = String::from("\"");
     for c in s.chars() {
         match c {
@@ -414,6 +414,16 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
             Item::Tie(t) => {
                 let _ = write!(out, "tie {} ~ {}", t.a.to_source(), t.b.to_source());
             }
+            Item::Direction(d) => {
+                let _ = write!(
+                    out,
+                    "direction {} to {} when {} {}",
+                    d.from.to_source(),
+                    d.to.to_source(),
+                    d.control.to_source(),
+                    if d.high { "high" } else { "low" }
+                );
+            }
             Item::Unused(u) => {
                 let _ = write!(out, "unused {}", u.path.to_source());
             }
@@ -526,6 +536,24 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     out.push('}');
                 }
             }
+            Item::Pads(p) => {
+                out.push_str("pads ");
+                for (package, _) in &p.packages {
+                    let _ = write!(out, "{} ", quote(package));
+                }
+                if p.rows.is_empty() {
+                    out.push_str("{}");
+                } else {
+                    out.push_str("{\n");
+                    for row in &p.rows {
+                        out.push_str(&"    ".repeat(depth + 2));
+                        out.push_str(&row.to_source());
+                        out.push('\n');
+                    }
+                    out.push_str(&"    ".repeat(depth + 1));
+                    out.push('}');
+                }
+            }
             Item::Case(c) => {
                 out.push_str("case ");
                 write_block(out, &[], &c.items, depth + 1);
@@ -573,6 +601,20 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     a.target.to_source()
                 );
             }
+            Item::Variants(v) => {
+                out.push_str(".variants {\n");
+                for row in &v.rows {
+                    out.push_str(&"    ".repeat(depth + 2));
+                    out.push_str(&quote(&row.code));
+                    for feature in &row.features {
+                        out.push(' ');
+                        out.push_str(&feature.to_source());
+                    }
+                    out.push('\n');
+                }
+                out.push_str(&"    ".repeat(depth + 1));
+                out.push('}');
+            }
             Item::Within(w) => {
                 let _ = write!(
                     out,
@@ -591,6 +633,15 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     "soft margin {} round {}",
                     m.margin.to_source(),
                     m.part.to_source()
+                );
+            }
+            Item::KeepApart(k) => {
+                let _ = write!(
+                    out,
+                    "keep {} between {} and {}",
+                    k.distance.to_source(),
+                    k.kinds[0].name,
+                    k.kinds[1].name
                 );
             }
             Item::Row(r) => {

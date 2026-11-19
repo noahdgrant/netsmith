@@ -94,8 +94,15 @@ impl Board {
                 let at = k.at?;
                 let local = Rect::new(at, Pt::new(at.x + k.size.0, at.y + k.size.1));
                 let mut layers = k.layers.clone();
-                let rect = match &k.part {
-                    None => local.translated(self.outline.min),
+                let corners = k
+                    .polygon
+                    .as_ref()
+                    .map(|c| c.iter().map(|&(x, y)| Pt::new(x, y)).collect::<Vec<_>>());
+                let (rect, shape) = match &k.part {
+                    None => (
+                        local.translated(self.outline.min),
+                        corners.map(|c| c.into_iter().map(|p| p + self.outline.min).collect()),
+                    ),
                     Some(path) => {
                         let part = self.parts.iter().find(|p| &p.path == path)?;
                         // One whose faces turn over with its carrier (issue 1331) is on the
@@ -103,7 +110,10 @@ impl Board {
                         if k.on_carrier_face && part.side == Side::Back {
                             layers = turned_over(&layers);
                         }
-                        Rect::around(local.corners().map(|c| part.to_board(c)))?
+                        (
+                            Rect::around(local.corners().map(|c| part.to_board(c)))?,
+                            corners.map(|c| c.into_iter().map(|p| part.to_board(p)).collect()),
+                        )
                     }
                 };
                 Some(KeepoutArea {
@@ -116,6 +126,7 @@ impl Board {
                     copper: k.copper,
                     parts: k.parts,
                     max_height: k.max_height,
+                    shape,
                 })
             })
             .collect()
@@ -177,6 +188,7 @@ impl Board {
                     copper: k.copper,
                     parts: k.footprints,
                     max_height: None,
+                    shape: None,
                 });
             }
         }
@@ -219,6 +231,7 @@ impl Board {
                     copper: false,
                     parts: false,
                     max_height: zone.limit,
+                    shape: None,
                 })
             })
             .collect()

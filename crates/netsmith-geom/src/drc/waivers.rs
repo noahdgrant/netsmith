@@ -188,6 +188,7 @@ pub(super) fn apply(report: &mut Report, waivers: &[Waiver]) {
                 net: None,
             }],
             carrying: None,
+            source: None,
         });
     }
     kept.sort_by_key(|f| std::cmp::Reverse(f.severity));
@@ -217,6 +218,7 @@ mod tests {
             layer: Some("F.Cu".into()),
             items,
             carrying: None,
+            source: None,
         }
     }
 

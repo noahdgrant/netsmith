@@ -530,6 +530,21 @@ pub struct Tie {
 pub struct PartRules {
     pub peripherals: Vec<Peripheral>,
     pub shares: Vec<SharedRes>,
+    /// The `direction` statements of the part (issue #1306).
+    pub directions: Vec<Direction>,
+}
+
+/// `direction .a to .b when .dir high` in a part (issue #1306): while `control` is at the level,
+/// the pins of `from` only read and the pins of `to` only drive. `from` and `to` are the pins
+/// the statement names, an interface standing for all of its pins.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Direction {
+    pub from: Vec<InstId>,
+    pub to: Vec<InstId>,
+    pub control: InstId,
+    pub high: bool,
+    pub source: SourceId,
+    pub span: Span,
 }
 
 /// `peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }`: functions that belong
@@ -1336,6 +1351,11 @@ pub struct Model {
     /// is one too: a narrowing from outside the module (ADR 0116) may ask for another
     /// provider's package.
     pub provider_conflicts: Vec<crate::diag::Diagnostic>,
+    /// The contradictions of `provider_conflicts` by the path of each use with several
+    /// providers that they are inside (a fault about two uses is under both). A contradiction
+    /// inside one use is that use's own: the build passes over the providers that have one
+    /// without trying them with the other uses' providers (issue #1326).
+    pub provider_conflicts_by_use: std::collections::BTreeMap<String, Vec<crate::diag::Diagnostic>>,
     /// The `lines` of the bus interfaces in use, by the module and index of their definition
     /// (ADR 0064).
     pub(crate) bus_defs: std::collections::BTreeMap<(usize, usize), BusDef>,
@@ -1344,6 +1364,12 @@ pub struct Model {
     pub(crate) polygons: Vec<OutlinePolygon>,
     /// The `soft margin` statements of a physical file (issue 1310), in the order they were read.
     pub(crate) soft_margins: Vec<SoftMargin>,
+    /// The order codes of each part that states `.variants`, and what the design needs of it
+    /// (issue 1311).
+    pub variants: std::collections::BTreeMap<InstId, PartVariants>,
+    /// The `keep` statements of a board's physical file (issue 1277), in the order they were
+    /// read, with the parts of each kind once the board has been read.
+    pub(crate) keep_aparts: Vec<KeepApart>,
     /// The lines of the boards' `defaults` blocks that gave their value to no field (issue
     /// #625), in the order they were read.
     pub default_notes: Vec<DefaultNote>,
@@ -1354,6 +1380,9 @@ pub struct Model {
     /// The guidelines of the parts' `layout` blocks (ADR 0030, issues #829 and #994), one for each
     /// instance of a part that states one, in the order they were read.
     pub layout: Vec<LayoutGuideline>,
+    /// The contacts that the parts' `pads` blocks state away from their pads' centres (issue
+    /// #1321), one for each instance of a part and pad, in the order they were read.
+    pub pad_contacts: Vec<PadContact>,
     /// The `within` statements of the physical files (issue #1274), in the order they were read.
     pub pin_distances: Vec<PinDistance>,
     /// The `route` statements of the physical files (issue #1274), in the order they were read.
@@ -1371,6 +1400,72 @@ pub struct Model {
     /// The equations that pass a pin's function on (`pinout.rs`), found once for a list of
     /// relations.
     pub(crate) forwards: ForwardCache,
+}
+
+/// The order codes a part is sold as, from its `.variants` table, and the features the design
+/// needs of it, from `.needs &= FEATURE` (issue 1311). The checker narrows the part's `.mpn` to
+/// the one code that has every need, so the solver and the bill of materials read the code as
+/// they read a hand pick.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PartVariants {
+    /// The rows of the table, in the order written.
+    pub codes: Vec<OrderCode>,
+    /// The features needed, each with the statement that needs it, in the order read.
+    pub needs: Vec<Need>,
+    /// Where the table is written.
+    pub at: (SourceId, Span),
+}
+
+/// One row of a part's `.variants` table: an order code and its features.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OrderCode {
+    pub code: String,
+    pub features: Vec<String>,
+}
+
+/// One `.needs &= FEATURE` statement.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Need {
+    pub feature: String,
+    pub at: (SourceId, Span),
+}
+
+impl PartVariants {
+    /// The row of `code`, if the table has it.
+    pub fn code(&self, code: &str) -> Option<&OrderCode> {
+        self.codes.iter().find(|c| c.code == code)
+    }
+
+    /// Every feature the table names, in the order first written.
+    pub fn features(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for c in &self.codes {
+            for f in &c.features {
+                if !out.contains(f) {
+                    out.push(f.clone());
+                }
+            }
+        }
+        out
+    }
+
+    /// The features needed, without repeats, in the order first needed.
+    pub fn needed(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for n in &self.needs {
+            if !out.contains(&n.feature) {
+                out.push(n.feature.clone());
+            }
+        }
+        out
+    }
+}
+
+impl OrderCode {
+    /// Whether the code has every feature of `needed`.
+    pub fn has_all(&self, needed: &[String]) -> bool {
+        needed.iter().all(|n| self.features.contains(n))
+    }
 }
 
 /// The equations `.a.function == .b.function` between two pins' functions, by the field on
@@ -1407,6 +1502,38 @@ impl std::fmt::Debug for ForwardCache {
 }
 
 impl Model {
+    /// The paths of the uses of a generic with more than one provider in scope that `inst`
+    /// is, or is inside, innermost first.
+    pub fn varied_uses_of(&self, inst: InstId) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut cur = Some(inst);
+        while let Some(at) = cur {
+            out.extend(
+                self.uses
+                    .iter()
+                    .filter(|u| u.inst == at && u.candidates.len() > 1)
+                    .map(|u| u.path.clone()),
+            );
+            cur = self.instance(at).parent;
+        }
+        out
+    }
+
+    /// Keep a contradiction inside a use with several providers (ADR 0113), under each use
+    /// that one of `insts` is inside.
+    pub(crate) fn add_provider_conflict(&mut self, insts: &[InstId], d: crate::diag::Diagnostic) {
+        let mut paths: Vec<String> = insts.iter().flat_map(|&i| self.varied_uses_of(i)).collect();
+        paths.sort();
+        paths.dedup();
+        for path in paths {
+            self.provider_conflicts_by_use
+                .entry(path)
+                .or_default()
+                .push(d.clone());
+        }
+        self.provider_conflicts.push(d);
+    }
+
     /// Whether `inst` is, or is inside, a use of a generic with more than one provider in
     /// scope (ADR 0113).
     pub fn in_varied_use(&self, inst: InstId) -> bool {
@@ -1455,6 +1582,23 @@ impl Model {
         *held = Some(Arc::clone(&made));
         made
     }
+}
+
+/// Where a pad's contact is, as a row of a part's `pads` block states it (issue #1321), for one
+/// instance of the part: the point a mating contact meets, `offset` from the centre of the
+/// pad's copper, in the footprint's own frame, in mm. A pad no row names has its contact at its
+/// centre.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PadContact {
+    /// The part instance whose definition states it.
+    pub part: InstId,
+    /// The package of a `pads "SMD" { }` block: the row applies only to an instance in that
+    /// package. None for every package.
+    pub package: Option<String>,
+    /// The pad's number (`"1"`).
+    pub pad: String,
+    /// `(x, y)` in mm, in the footprint's frame (y down, as the footprint's pads are).
+    pub offset: (f64, f64),
 }
 
 /// A guideline of a part's `layout` block (ADR 0030, issues #829 and #994), for one instance
@@ -1571,7 +1715,7 @@ pub enum NearSelect {
 /// A `polygon` statement of an `Outline` (issue #57): its corners in mm, in the order written.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OutlinePolygon {
-    /// The `Outline` it is in.
+    /// The `Outline` it is in, or the `UndersideKeepout` (issue #1335).
     pub outline: InstId,
     pub corners: Vec<PolygonCorner>,
     pub source: SourceId,
@@ -1585,6 +1729,26 @@ pub struct SoftMargin {
     pub part: InstId,
     /// In mm, from the part's courtyard.
     pub margin: f64,
+    pub source: SourceId,
+    pub span: Span,
+}
+
+/// A `keep 10mm between BuckIc and Crystal` statement (issue 1277): every part of one kind keeps
+/// the distance from every part of the other, courtyard to courtyard.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KeepApart {
+    /// The statement as written, for a message.
+    pub text: String,
+    /// The two kinds as written.
+    pub kinds: [String; 2],
+    /// The definitions of the two kinds.
+    pub(crate) defs: [(usize, usize); 2],
+    /// In mm, the least distance between the courtyards.
+    pub distance: f64,
+    /// The parts of the board of each kind, at any depth. A part of both kinds is in both.
+    pub parts: [Vec<InstId>; 2],
+    /// The board whose physical file states it.
+    pub board: InstId,
     pub source: SourceId,
     pub span: Span,
 }
@@ -1604,6 +1768,12 @@ impl Model {
     /// The `soft margin` statements of the physical files, in the order they were read.
     pub fn soft_margins(&self) -> &[SoftMargin] {
         &self.soft_margins
+    }
+
+    /// The `keep` statements of the boards' physical files (issue 1277), in the order they
+    /// were read.
+    pub fn keep_aparts(&self) -> &[KeepApart] {
+        &self.keep_aparts
     }
 
     pub fn polygon_of(&self, outline: InstId) -> Option<&OutlinePolygon> {
@@ -1641,13 +1811,17 @@ impl Model {
             enums: Vec::new(),
             uses: Vec::new(),
             provider_conflicts: Vec::new(),
+            provider_conflicts_by_use: std::collections::BTreeMap::new(),
             bus_defs: std::collections::BTreeMap::new(),
             sources: SourceTexts::default(),
             polygons: Vec::new(),
             soft_margins: Vec::new(),
+            variants: std::collections::BTreeMap::new(),
+            keep_aparts: Vec::new(),
             default_notes: Vec::new(),
             support_sections: Vec::new(),
             layout: Vec::new(),
+            pad_contacts: Vec::new(),
             pin_distances: Vec::new(),
             net_routes: Vec::new(),
             load_groups: Vec::new(),
