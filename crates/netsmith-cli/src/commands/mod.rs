@@ -19,6 +19,7 @@ mod explain;
 mod fab;
 mod fill;
 mod fmt;
+mod footprint;
 mod gerber;
 mod init;
 mod kicad_libs;
@@ -183,6 +184,8 @@ pub enum Import {
     /// Print the stanzas of KiCad library tables for kicad.toml and netsmith.toml.
     #[command(name = "kicad-libs")]
     KicadLibs(kicad_libs::Args),
+    /// Write a footprint from a KiCad board (a part's, by its reference) or footprint file into a library of the project.
+    Footprint(footprint::Args),
     /// Draft a part file from a KiCad symbol's pins.
     Part(part::Args),
     /// Start a port of a KiCad board (its first source and its parts file), or derive its tables.
@@ -247,6 +250,7 @@ pub fn run(command: Command) -> ExitCode {
         Command::Import(command) => match command {
             Import::Dxf(args) => dxf::run(args),
             Import::KicadLibs(args) => kicad_libs::run(args),
+            Import::Footprint(args) => footprint::run(args),
             Import::Part(args) => part::run(args),
             Import::Port(args) => port::run(args),
             Import::Case(args) => case::run(args),
@@ -293,6 +297,7 @@ mod tests {
             &["import", "case", "place", "--help"],
             &["import", "case", "model", "--help"],
             &["import", "kicad-libs", "--help"],
+            &["import", "footprint", "--help"],
             &["view", "3d", "--help"],
             &["dev", "--help"],
         ] {
