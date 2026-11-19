@@ -46,10 +46,10 @@ pub use artwork::{
     Zone as ArtworkZone,
 };
 pub use drc::constraints::{
-    BARE_COURTYARD_MARGIN, Constraint, Constraints, Measure as ConstraintMeasure,
-    Outcome as ConstraintOutcome, PAD_COURTYARD_MARGIN, Relation as ConstraintRelation,
-    RelationEnd as ConstraintRelationEnd, SideRule, body_of as constraint_body_of,
-    outcome_findings as constraint_outcome_findings,
+    BARE_COURTYARD_MARGIN, Constraint, Constraints, Measure as ConstraintMeasure, OneLayerRule,
+    Outcome as ConstraintOutcome, PAD_COURTYARD_MARGIN, PinDistanceRule,
+    Relation as ConstraintRelation, RelationEnd as ConstraintRelationEnd, SideRule,
+    body_of as constraint_body_of, outcome_findings as constraint_outcome_findings,
 };
 pub use drc::shape::{Gap as ShapeGap, JOIN as COPPER_JOIN, Shape as DrcShape, gap as shape_gap};
 pub use drc::{

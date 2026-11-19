@@ -1448,6 +1448,8 @@ fn refine(
         pairs: context.pairs,
         overflow: options.track_overflow,
         escape_room: options.escape_room,
+        pin_distances: &options.pin_distances,
+        rf_nets: &options.rf_nets,
     };
     if options.fit.is_some() {
         netsmith_core::job::spend_try();
@@ -1572,6 +1574,8 @@ pub(crate) fn anneal_within(
         pairs: context.pairs,
         overflow: options.track_overflow,
         escape_room: options.escape_room,
+        pin_distances: &options.pin_distances,
+        rf_nets: &options.rf_nets,
     };
     let outcome = anneal::anneal(parts, &problem, 1.0);
     if !outcome.feasible {
@@ -1732,6 +1736,8 @@ pub fn place_subset(
         pairs: &pairs,
         overflow: 0.0,
         escape_room: 0.0,
+        pin_distances: &[],
+        rf_nets: &[],
     };
     // The parts are kept in the region by a keepout round it.
     let mut walls = keepouts.clone();
@@ -3317,6 +3323,117 @@ mod tests {
         // Without the guideline the placer puts it 3.3 mm away.
         assert!(d < 2.5, "the resistor is {d:.2} mm from the pin");
         assert_eq!(board.check_placement(), vec![]);
+    }
+
+    /// A board of `parts` and `nets` with the features `features`, placed.
+    fn board_with_features(
+        parts: Vec<Part>,
+        nets: Vec<Net>,
+        features: netsmith_core::Features,
+    ) -> (Design, Board) {
+        let design = Design {
+            modules: Vec::new(),
+            name: "T".into(),
+            process: Some(crate::testlib::test_process()),
+            features,
+            interfaces: Vec::new(),
+            notes: Vec::new(),
+            parts,
+            nets,
+        };
+        let board = crate::board_from_design_placed(
+            &design,
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+            &PlaceOptions::default(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        (design, board)
+    }
+
+    #[test]
+    fn a_part_the_physical_file_holds_within_a_distance_of_a_pin_is_placed_there() {
+        // Issue #1274: an antenna resistor on the regulator's input pin, with its other pad on
+        // the far end of a chain of thirty resistors, which pulls it away.
+        let mut parts = vec![
+            regulator("U1", "ldo.u"),
+            at_path(part("RA", "Resistor", Some("0603")), "ant"),
+        ];
+        let (rest, mut nets) = chain("R", "other", 30);
+        parts.extend(rest);
+        nets.push(wire("IN", &[("U1", "3"), ("RA", "1")]));
+        nets.push(wire("FAR", &[("RA", "2"), ("R30", "2")]));
+        nets.push(wire("GND", &[("U1", "1"), ("R1", "1")]));
+        let within = |mm: f64| netsmith_core::Features {
+            pin_distances: vec![netsmith_core::PinDistance {
+                part: "ant".into(),
+                pin: None,
+                to_part: "ldo.u".into(),
+                to_pin: "vin".into(),
+                within: mm,
+                source: "t.physical.nsm:2".into(),
+            }],
+            ..Default::default()
+        };
+        let (design, board) = board_with_features(parts.clone(), nets.clone(), within(2.0));
+        let [near] = netsmith_pcb::PinNear::of_design(&design)
+            .try_into()
+            .unwrap();
+        assert_eq!(near.pads, ["1"]);
+        assert_eq!(near.to_pads, ["3"]);
+        let d = near.distance(&board.parts).unwrap();
+        assert!(d <= 2.0 + 1e-6, "the resistor is {d:.2} mm from the pin");
+        assert_eq!(board.check_placement(), vec![]);
+        // Without the requirement, as measured.
+        let (_, free) = board_with_features(parts, nets, Default::default());
+        println!(
+            "{d:.2} mm with the requirement, {:.2} mm without",
+            near.distance(&free.parts).unwrap()
+        );
+    }
+
+    #[test]
+    fn an_rf_net_is_placed_shorter_than_the_same_net_with_no_impedance() {
+        // Issue #1274: two resistors on one net, each also on the far end of a chain of its
+        // own, which pull them apart. As an RF net (a stated impedance of one track) the line
+        // between them weighs more than every other net's, so it comes out shorter.
+        let mut parts = vec![
+            at_path(part("RA", "Resistor", Some("0603")), "ant.a"),
+            at_path(part("RB", "Resistor", Some("0603")), "ant.b"),
+        ];
+        let (left, mut nets) = chain("L", "left", 12);
+        let (right, more) = chain("Q", "right", 12);
+        parts.extend(left);
+        parts.extend(right);
+        nets.extend(more);
+        nets.push(wire("RF", &[("RA", "1"), ("RB", "1")]));
+        nets.push(wire("PA", &[("RA", "2"), ("L12", "2")]));
+        nets.push(wire("PB", &[("RB", "2"), ("Q12", "2")]));
+        let rf = netsmith_core::Features {
+            impedance_targets: vec![netsmith_core::ImpedanceTarget {
+                path: "rf_line".into(),
+                nets: vec!["RF".into()],
+                ohms: 50.0,
+                spacing: None,
+                skew: None,
+            }],
+            ..Default::default()
+        };
+        let length = |board: &Board| {
+            let at = |r: &str| {
+                let p = board.parts.iter().find(|p| p.refdes == r).unwrap();
+                let pad = p.footprint.pads_numbered("1").next().unwrap();
+                p.pad_centre(pad)
+            };
+            at("RA").distance(at("RB"))
+        };
+        let (_, plain) = board_with_features(parts.clone(), nets.clone(), Default::default());
+        let (design, with_rf) = board_with_features(parts, nets, rf);
+        assert_eq!(design.features.rf_nets(), ["RF"]);
+        let (a, b) = (length(&plain), length(&with_rf));
+        println!("the line is {a:.2} mm as a plain net, {b:.2} mm as an RF net");
+        assert!(b < a, "{b:.2} mm as an RF net, {a:.2} mm as a plain one");
+        assert_eq!(with_rf.check_placement(), vec![]);
     }
 
     #[test]

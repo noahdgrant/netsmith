@@ -62,6 +62,7 @@ mod part_fit;
 mod part_geometry;
 mod part_layout;
 mod picture;
+mod pin_distance;
 mod placement;
 mod polygon;
 mod protrusion;
@@ -167,6 +168,7 @@ pub use picture::{
     Layers as PictureLayers, Lit, MARGIN as PICTURE_MARGIN, Marker, Picture as PictureOptions,
     picture as picture_svg, whole as picture_whole,
 };
+pub use pin_distance::PinNear;
 pub use placement::{
     CarriedZone, DESCRIBED, DoesNotFit, ESCAPE_ROOM, Ended, FaceKeepout, Fixed, HeightZone, ORIGIN,
     OutsideAt, OverlapAt, Oversize, PartState, PlaceOptions, inside as fit_inside, is_mechanical,
@@ -178,11 +180,14 @@ pub use quality::{
     DecouplingDistance, DecouplingPair, PairNet, Quality, crossings, decoupling_pairs,
     segments_cross, termination_pairs,
 };
-pub use ratsnest::{Node as RatNode, Ratline, Ratsnest, nodes_of as ratsnest_nodes_of};
+pub use ratsnest::{
+    Node as RatNode, OpenCopper, OpenEnd, Ratline, Ratsnest, nodes_of as ratsnest_nodes_of,
+    open_ends,
+};
 pub use room::{FreeRoom, NoRoom, RoomCheck, parts_without_room};
 pub use routes::{
-    BoardRoutes, NetRoutes, RouteTrack, RouteVia, RouteZone, Routes, RoutesError, RoutesNote,
-    VERSION as ROUTES_VERSION, apply_routes, kicad_layer as routes_kicad_layer,
+    BoardRoutes, NetRoutes, OpenShape, RouteTrack, RouteVia, RouteZone, Routes, RoutesError,
+    RoutesNote, VERSION as ROUTES_VERSION, apply_routes, kicad_layer as routes_kicad_layer,
     layer_word as routes_layer_word, pad_hash, record_of, routes_path,
 };
 pub use rules::{HDI_SIX_BUILD_UP, NetClass, Rules};

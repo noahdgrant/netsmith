@@ -838,6 +838,56 @@ system Kit {
 error: Kit: `card.j1.mating.seat` is -1mm, and a connector's partner does not rest below its board's face
 ```
 
+#### The body and the seat
+
+A connector's body is its seat unless it says otherwise (issue #1324): the top of a header's plastic and the top of a socket's body are the surfaces the partner rests on, one surface with one tolerance. So the system scene measures a mated connector's body against the other board of its mate up to its seat, not up to its `.height`: the body moves with the seat across the whole tolerance, and the other board, which rests on the partner at the two seats added, never meets it, whatever the tolerance. The part's `.height`, its tallest point (the contacts that go into the partner), is still its body against every other part and board of the system.
+
+Where the partner rests on something lower than the top of the body, the connector states its body apart, `.mating.body_height`, and the tolerance of the seat no longer moves it. The system scene then keeps the body out of the other board for the whole tolerance: the body at its most against the boards at the least mated height. Here the socket's least seat, 8.35 mm, keeps the 1.80 mm body well clear of the carrier:
+
+```nsm
+import std::parts::connector::{Connector, Mating, Socket1x2}
+
+/// A 2-pin header of a project's own whose partner rests on a ledge 1.50 +/- 0.10 mm above the
+/// board, below the top of its body, 1.80 mm.
+part LedgeHeader provides Connector {
+    pins {
+        .p1 passive "P1" "1"
+        .p2 passive "P2" "2"
+    }
+    .mating: Mating {
+        .kind &= "pin_header"
+        .gender &= "header"
+        .pitch &= 2.54mm
+        .rows &= 1
+        .positions &= 2
+        .seat &= 1.5mm +/- 0.1mm
+        .body_height &= 1.8mm
+    }
+}
+
+board Card {
+    .j1: LedgeHeader
+}
+
+board Carrier {
+    .slot: Socket1x2
+}
+
+system Kit {
+    .carrier: Carrier
+    .card: Card
+    .carrier.slot.mating ~ .card.j1.mating
+}
+```
+
+A body that reaches into the other board at its most is a `system_collision` whose message ends with the field and both numbers:
+
+```text
+the body of J1 (`card/j1`) and the board `carrier` fill the same space: ...; `card.j1.mating.body_height` reaches 1.800 mm at its most, and the boards' faces are 1.700 mm apart at the least mated height
+```
+
+A body below the face of its board is refused as a seat is (`` `card.j1.mating.body_height` is -1mm, and a connector's body does not reach below its board's face ``).
+
 #### The area another board covers
 
 A mate holds two boards rigidly to each other, so a board knows where the board mated on it lies before either is placed: over its own connector, the mated height above its face. Nothing about it is stated by hand (issue #1331). For each mate, each of its two boards gets a keepout-by-height that its connector carries:

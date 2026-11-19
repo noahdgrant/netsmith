@@ -1200,6 +1200,10 @@ pub struct Designed {
     pub constraint_sites: Sites,
     /// Where the design states each of `design.features.offsets`, in the same order.
     pub offset_sites: Vec<(netsmith_check::SourceId, netsmith_lang::Span)>,
+    /// Where the design states each of `design.features.pin_distances`, in the same order.
+    pub pin_distance_sites: Vec<(netsmith_check::SourceId, netsmith_lang::Span)>,
+    /// Where the design states each of `design.features.net_routes`, in the same order.
+    pub net_route_sites: Vec<(netsmith_check::SourceId, netsmith_lang::Span)>,
     /// Where the design states each of `design.features.soft_margins`, in the same order.
     pub soft_margin_sites: Vec<(netsmith_check::SourceId, netsmith_lang::Span)>,
     /// Where the design states each of `design.features.keep_apart`, in the same order.
@@ -1509,7 +1513,8 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     let mut nets = Vec::new();
     // Pins with no pad, gathered per part so each part is reported once.
     let mut padless: BTreeMap<InstId, Vec<String>> = BTreeMap::new();
-    // The pads of each part's pin, for the pins that state the current of their branch.
+    // The pads of each part's pin, for the pins that state the current of their branch or
+    // how a pour joins them.
     let mut pads_of: HashMap<InstId, Vec<PinRef>> = HashMap::new();
     for net in model.nets() {
         netsmith_core::job::checkpoint();
@@ -1595,6 +1600,10 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     features.constraints = constraints;
     let (offsets, offset_sites) = features::offsets(model, &mut errors);
     features.offsets = offsets;
+    let ((pin_distances, pin_distance_sites), (net_routes, net_route_sites)) =
+        features::rf_statements(model, &mut errors);
+    features.pin_distances = pin_distances;
+    features.net_routes = net_routes;
     let (soft_margins, mut soft_margin_sites) = features::soft_margins(model);
     features.soft_margins = soft_margins;
     let (keep_apart, keep_apart_sites) = features::keep_apart(model);
@@ -1646,6 +1655,8 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     features.net_widths.sort_by(|a, b| a.0.cmp(&b.0));
     features.net_currents = plan.currents;
     features.net_currents.sort_by(|a, b| a.net.cmp(&b.net));
+    // The pins that state how a pour joins their pads (issue #1276).
+    features.pad_pours = features::pad_pours(model, &pads_of, least_track, &mut errors);
     // The branches whose pins state their current (issue #1113), never narrower than a `route`
     // statement of a part's `layout` block asks of their net.
     for b in plan.branches {
@@ -1720,6 +1731,8 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
             },
             constraint_sites,
             offset_sites,
+            pin_distance_sites,
+            net_route_sites,
             soft_margin_sites,
             keep_apart_sites,
             protrusion_sites,
