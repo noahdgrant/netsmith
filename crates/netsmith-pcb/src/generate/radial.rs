@@ -134,11 +134,7 @@ pub(super) fn generate(library: &str, name: &str) -> Option<Footprint> {
 /// The drawing of `can` in `library`: two leads, or three with the balance tap midway when
 /// `tapped`; and how far below the origin the value goes (the reference as far above).
 fn drawing(library: &str, can: &Can, tapped: bool) -> (Drawing, f64) {
-    let name = if tapped {
-        tapped_name(can)
-    } else {
-        can.name()
-    };
+    let name = if tapped { tapped_name(can) } else { can.name() };
     let mut d = Drawing::new(library, &name, Mount::ThroughHole);
     if tapped {
         // No 3D model: KiCad has none of this name.
@@ -246,14 +242,17 @@ mod tests {
         let fp = Footprint::parse(&format!("netsmith:{name}"), &text).unwrap();
         assert_eq!(fp.pad_numbers(), ["1", "2", "3"]);
         let xs: Vec<f64> = fp.pads.iter().map(|p| p.at.x).collect();
-        assert!(near(xs[0], 0.0) && near(xs[1], 3.75) && near(xs[2], 7.5), "{xs:?}");
+        assert!(
+            near(xs[0], 0.0) && near(xs[1], 3.75) && near(xs[2], 7.5),
+            "{xs:?}"
+        );
         for pad in &fp.pads {
             assert!(near(pad.at.y, 0.0));
             assert!(near(pad.drill.unwrap().width, 1.2));
             assert!(near(pad.width, 2.4));
         }
         // The tap's pad keeps 1.35 mm of board between it and each outer pad.
-        assert!(3.75 - 2.4 > 1.3);
+        assert!(near(xs[1] - xs[0] - fp.pads[0].width, 1.35));
         // The courtyard is the two-lead can's.
         let two = generate(LIBRARY, "CP_Radial_D16.0mm_P7.50mm").unwrap();
         assert!(near(fp.courtyard.min.x, two.courtyard.min.x));

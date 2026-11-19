@@ -238,11 +238,15 @@ board Thick {
 ```
 
 ```text
-error: contradiction on `process.stackup.thickness`: it is already 400um..2mm, which does not overlap 3mm
-  --> main.nsm:4:26
+error: no TwoLayer provider satisfies `process` at main.nsm:4: none of the 2 in scope works
+  JlcTwoLayer1oz (the closest):
+    contradiction on `process.stackup.thickness`: it is already 400um..2mm, which does not overlap 3mm
+  JlcTwoLayer2oz:
+    contradiction on `process.stackup.thickness`: it is already 400um..2mm, which does not overlap 3mm
+  --> main.nsm:4:5
   |
 4 |     .process: TwoLayer { .stackup.thickness &= 3mm }
-  |                          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |     ^^^^^^^^^^^^^^^^^^
 ```
 
 ```nsm fails

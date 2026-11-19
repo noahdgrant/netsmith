@@ -965,7 +965,14 @@ fn passive_specs() -> Vec<Spec> {
             },
             pins: vec![
                 pin(PinType::Passive, (0.0, 7.62, 270.0), 4.064, "+", "1", false),
-                pin(PinType::Passive, (5.08, 0.0, 180.0), 5.08, "MID", "2", false),
+                pin(
+                    PinType::Passive,
+                    (5.08, 0.0, 180.0),
+                    5.08,
+                    "MID",
+                    "2",
+                    false,
+                ),
                 pin(PinType::Passive, (0.0, -7.62, 90.0), 4.064, "-", "3", false),
             ],
             fields_left: true,

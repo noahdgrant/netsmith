@@ -18,7 +18,7 @@
 //! (`kicad.toml`).
 
 use super::draw::{Draw, Drawing, Kind, PadSpec, Shape};
-use crate::footprint::{Footprint, Mount};
+use crate::footprint::Mount;
 use crate::geometry::Pt;
 
 const NAME: &str = "BatteryCell_Coin_D20.0mm_Tabs_P15.00mm";
@@ -76,7 +76,7 @@ fn drawing() -> (Drawing, f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::footprint::PadKind;
+    use crate::footprint::{Footprint, PadKind};
 
     fn near(a: f64, b: f64) -> bool {
         (a - b).abs() < 1e-9
