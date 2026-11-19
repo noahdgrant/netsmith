@@ -337,9 +337,14 @@ impl Board {
                 .planes
                 .iter()
                 .map(|pl| {
-                    let text = if self.zoned(&pl.layer) {
+                    let text = if self.replaced(&pl.layer, &pl.net) {
                         format!(
                             "{} has the routes file's zones instead of a plane on {}",
+                            pl.layer, pl.net
+                        )
+                    } else if self.zoned(&pl.layer) {
+                        format!(
+                            "{} is a plane on {}, cut by the routes file's zones",
                             pl.layer, pl.net
                         )
                     } else {
@@ -360,9 +365,14 @@ impl Board {
                 .map(|(_, text)| text)
                 .chain(self.pours.iter().map(|po| {
                     let layer = po.layer.name();
-                    if self.zoned(layer) {
+                    if self.replaced(layer, &po.net) {
                         format!(
                             "{layer} has the routes file's zones instead of a pour on {}",
+                            po.net
+                        )
+                    } else if self.zoned(layer) {
+                        format!(
+                            "{layer} is a pour on {}, cut by the routes file's zones",
                             po.net
                         )
                     } else {

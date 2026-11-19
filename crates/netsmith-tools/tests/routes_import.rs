@@ -119,3 +119,44 @@ fn a_zone_that_differs_from_the_processs_is_imported_as_a_hand_zone() {
     assert_eq!(zone.layers, ["top"]);
     assert_eq!(zone.clearance, 0.3);
 }
+
+#[test]
+fn a_hand_zone_over_the_processs_pour_comes_back_with_its_own_priority() {
+    // Issue #1314: `fab` writes the routes file's zones one priority above a pour drawn under
+    // them; the import of that board takes it off again, so the routes file is as it was.
+    let mut board = poured_board(0.3);
+    let other = board
+        .planes
+        .iter()
+        .map(|p| p.net.clone())
+        .find(|n| n != "GND")
+        .expect("the fixture has a plane of a net other than GND");
+    let p = |x: f64, y: f64| board.outline.min + Pt::new(x, y);
+    let zone = |priority: u32| netsmith_pcb::BoardZone {
+        net: other.clone(),
+        layers: vec!["F.Cu".into()],
+        outline: vec![p(1.0, 1.0), p(4.0, 1.0), p(4.0, 3.0), p(1.0, 3.0)],
+        holes: Vec::new(),
+        priority,
+        clearance: 0.3,
+        min_width: 0.25,
+        pads: netsmith_pcb::ZonePads::Thermal,
+        thermal_gap: 0.5,
+        spoke_width: 0.5,
+        islands: netsmith_pcb::ZoneIslands::Remove,
+        island_min_area: None,
+    };
+    for priority in [0, 2] {
+        board.zones = vec![zone(priority)];
+        assert_eq!(board.zone_lift(), 1);
+        let pcb = kicad_pcb(&board);
+        assert!(pcb.contains(&format!("(priority {})", priority + 1)), "{pcb}");
+        let import = netsmith_tools::routes_import::import(&board, &pcb, None, false)
+            .unwrap_or_else(|e| panic!("{e}"));
+        // The GND pour on top is the process's, left out; the hand zone is taken.
+        assert_eq!(import.process_zones, board.planes.len() + board.pours.len());
+        let zones = &import.nets[&other].zones;
+        assert_eq!(zones.len(), 1, "{:?}", import.skipped);
+        assert_eq!(zones[0].priority, priority);
+    }
+}

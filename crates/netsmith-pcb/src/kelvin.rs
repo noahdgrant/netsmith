@@ -260,7 +260,7 @@ pub fn sense_carves(board: &Board) -> Vec<SenseCarve> {
 }
 
 /// The layers a net is poured on (its outer pours and inner planes on layers with no zone of a
-/// routes file, and the layers of its zones), each with the space the pour keeps from copper of
+/// routes file of the net, and the layers of its zones), each with the space the pour keeps from copper of
 /// other nets there, never less than the net's own clearance.
 fn poured_layers(board: &Board, net: &str) -> Vec<(CopperLayer, f64)> {
     let mut out: Vec<(CopperLayer, f64)> = Vec::new();
@@ -269,13 +269,13 @@ fn poured_layers(board: &Board, net: &str) -> Vec<(CopperLayer, f64)> {
         None => out.push((layer, space)),
     };
     for p in &board.pours {
-        if p.net == net && !board.zoned(p.layer.name()) {
+        if p.net == net && !board.replaced(p.layer.name(), net) {
             add(p.layer, p.clearance.unwrap_or(board.rules.plane_clearance));
         }
     }
     for p in &board.planes {
         if p.net == net
-            && !board.zoned(&p.layer)
+            && !board.replaced(&p.layer, net)
             && let Some(layer) = CopperLayer::of_name(&p.layer)
         {
             add(layer, board.rules.plane_clearance);

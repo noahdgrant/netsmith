@@ -1134,6 +1134,142 @@ board LowInput {
 }
 ```
 
+### The power-up order of a board
+
+A board states the order in which its rails come up and its enable pins go high with a `sequence` (issue #1267), as a datasheet gives it ("apply VDD_IO at least 2 ms after VDD_CORE"): events one to a statement, parted by `then`, which takes the least delay between the event before it and the one after it, or none for "at or after". `after .e` below an event says that event also comes at or after `.e`, which is not in the order with the others:
+
+```nsm-fragment
+sequence {
+    .core.vout
+    then 2ms
+    .io.vout
+    after .radio.en
+}
+```
+
+The statements may be parted by `;` on one line (`sequence { .core.vout; then 2ms; .io.vout }`), and `netsmith project fmt` writes them one to a line. An event is a rail, which comes up (reaches its voltage), or a pin, which goes high. A part, a module or a value is refused, with what to write (`.core` is a module: write `.core.vout`), and so are a delay that is not a time and one of nothing (write `then` alone). Only a board states a sequence: a part or a module states the delays of its own, and the board says what order it needs.
+
+The solver gives each event a window of time from power-on, from the earliest it can happen to the latest, and an order holds when the earliest of the later event is at least the delay after the latest of the earlier one. The windows come from what the board is:
+
+- A net that holds the `pos` of a rail and that no regulator drives is a supply, up at power-on.
+- A regulator (a part with a `dc linear_regulator` or `dc switching_regulator` element) drives the `pos` net of its output rail, and the nets an inductor, a ferrite bead or a fuse joins to it (a `Buck`'s output). It starts when its input is up and its enable pin, the member `.en` when it has one, is high; then it waits `.enable_delay` and rises for `.soft_start_time`. `LinearRegulator` and `BuckIc` have both: `.enable_delay` defaults to none (`?= 0s`) on both, `.soft_start_time` to none on `LinearRegulator` and is optional on `BuckIc` (above). A part states them from its datasheet as ranges, and the window takes the least of each for its earliest time and the most for its latest. A soft-start that has no value adds nothing to the earliest time and leaves the latest one not known. An enable pin that nothing on the board joins follows the input, as an IC with an internal pull-up does.
+- A load switch (`dc load_switch`, _Load switches_ above) drives its output as a regulator does, from its input and its enable. Its turn-on time is not modelled, so it adds nothing to the earliest time and an order that needs its latest time is not evaluated.
+- A pin on a supply or a regulator's output goes high as the rail rises: from the start of the rise to the time the rail is up.
+- A pin pulled up from a rail by one resistor, with a resistor to ground or none, and capacitors to ground, crosses the threshold `Vth` of its part (`.enable_threshold`, an optional member of both generics, rising, as the datasheet gives it) after `R * C * ln(V / (V - Vth))`, with `R` and `V` the Thevenin resistance and voltage of the resistors. The earliest time takes the least `R` and `C`, the most `V` and the least `Vth`, counted from the start of the rail's rise; the latest the other ends, counted from the time the rail is up. A part that states no threshold leaves the latest time not known.
+
+An order that is not kept is an error that names the two events, when each happens and why, and the margin. One that cannot be judged is listed as not evaluated with the reason: a window whose latest time is not known where it is needed, an enable that an output pin drives (a GPIO, whose time is the firmware's), a pin pulled up from two nets, a rail that a MOSFET switches, or the latest time of a load switch's output (neither turn-on time is modelled).
+
+This IC, invented for this guide, is `Zbk4` with its enable left to the board:
+
+```nsm module=src::zbk6
+import std::parts::regulator::BuckIc
+
+/// A 2 A buck converter for 4.5 V to 6 V with an enable pin. Illustrative; not a real part.
+part Zbk6 provides BuckIc {
+    .vref &= 0.8V +/- 1.5%
+    .fsw &= 1.2MHz +/- 15%
+    .min_input_voltage &= 4.5V
+    .max_input_voltage &= 6V
+    .max_output_current &= 2A
+    .efficiency &= 0.85..0.95
+    .min_inductance &= 1.5uH
+    .min_inductor_saturation &= 3A
+    .max_inductor_dcr &= 0.1ohm
+    .min_input_capacitance &= 2uF
+    .min_output_capacitance &= 10uF
+    .soft_start_time &= 2ms..4ms
+    .enable_delay &= 0.2ms..0.5ms
+    .enable_threshold &= 1.1V..1.3V
+    .vin.current == -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)
+    dc switching_regulator .vin .sw .efficiency
+
+    pins {
+        //  pin          kind    name   pads
+        .vin.pos power "VIN" "1" "2"
+        .vin.neg power "GND" "3" "9"
+        .sw.pos  power "SW"  "4" "5"
+        .fb      input "FB"  "6"
+        .en      input "EN"  "7"
+    }
+}
+```
+
+The core rail is up by 4 ms at the latest. The I/O rail's enable is held by 100 kohm and 1 uF from the input, a time constant of 89 ms at the least, so it goes high about 21 ms after power-on at the earliest and its rail is up long after the 2 ms the board asks:
+
+```nsm evaluate
+import std::parts::passive::{Capacitor, Resistor}
+import std::parts::regulator::Buck
+import std::sources::Rail
+
+import src::zbk4::Zbk4
+import src::zbk6::Zbk6
+
+board Ordered {
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .core: Buck<Zbk4> { .vout.voltage &= 1.8V +/- 3% }
+    .io: Buck<Zbk6> { .vout.voltage &= 3.3V +/- 5% }
+    .core_load: Rail { .pos.net &= "1V8"; .current &= 0mA..500mA }
+    .io_load: Rail { .pos.net &= "3V3"; .current &= 0mA..500mA }
+    .input ~ .core.vin
+    .input ~ .io.vin
+    .core.vout ~ .core_load
+    .io.vout ~ .io_load
+
+    .delay: Resistor { .resistance &= 100kohm +/- 1% }
+    .hold: Capacitor { .capacitance &= 1uF +/- 10% }
+    .input.pos ~> .delay ~> .io.ic.en
+    .io.ic.en ~> .hold ~> .input.neg
+
+    sequence {
+        .core.vout
+        then 2ms
+        .io.vout
+    }
+}
+```
+
+With 100 nF the enable goes high from about 2.1 ms, so the I/O rail may be up 4.3 ms after power-on, only 0.3 ms after the core rail is up at the latest:
+
+```nsm fails
+import std::parts::passive::{Capacitor, Resistor}
+import std::parts::regulator::Buck
+import std::sources::Rail
+
+import src::zbk4::Zbk4
+import src::zbk6::Zbk6
+
+board TooSoon {
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN" }
+    .core: Buck<Zbk4> { .vout.voltage &= 1.8V +/- 3% }
+    .io: Buck<Zbk6> { .vout.voltage &= 3.3V +/- 5% }
+    .core_load: Rail { .pos.net &= "1V8"; .current &= 0mA..500mA }
+    .io_load: Rail { .pos.net &= "3V3"; .current &= 0mA..500mA }
+    .input ~ .core.vin
+    .input ~ .io.vin
+    .core.vout ~ .core_load
+    .io.vout ~ .io_load
+
+    .delay: Resistor { .resistance &= 100kohm +/- 1% }
+    .hold: Capacitor { .capacitance &= 100nF +/- 10% }
+    .input.pos ~> .delay ~> .io.ic.en
+    .io.ic.en ~> .hold ~> .input.neg
+
+    sequence {
+        .core.vout
+        then 2ms
+        .io.vout
+    }
+}
+```
+
+```text
+error: the `sequence` says `io.vout` comes at least 2ms after `core.vout`, but it may come only 294.9us after it: `core.vout` is up by 4ms at the latest (`core.ic` starts when its input is up and `core.ic.en` is high, then waits 0s and rises for 2ms to 4ms) and `io.vout` is up from 4.295ms at the earliest (`io.ic` starts when its input is up and `io.ic.en` is high, then waits 200us to 500us and rises for 2ms to 4ms); the margin is -1.705ms, 1.705ms short
+   --> main.nsm:25:9
+   |
+25 |         .core.vout
+   |         ^^^^^^^^^^
+```
+
 ### Current through a part
 
 A `Fuse`, `Inductor`, `FerriteBead`, `Switch`, `Diode`, `Schottky`, `NMosfet` and `PMosfet` have a `bridge` and a `.current`, the current through it, and state that it is at most the part's rating: `.rated_current`, `.saturation_current`, `.max_forward_current` or `.max_drain_current`. In a `~>` chain from a rail the current is the draw of what is behind the chain (ADR 0014), so a fuse is checked against the budget of its load with no line of its own. An inductor outside a chain gets its current from the design: state the largest current through it, the peak and not the average.
@@ -1279,6 +1415,14 @@ error: d.supply_fault_current must always be at most d.max_forward_current, but 
 ```
 
 `Crystal` has `.frequency` (state it with its tolerance, `16MHz +/- 20ppm`) and `.load_capacitance`, and no relation: the two load capacitors are the design's. Pins `.a` and `.b` are the two terminals in every package; the four-pad 3225 package (3.2 x 2.5 mm) also has `.case`, its two case pads (2 and 4, which the makers' drawings call GND), which a board may join to ground or leave open like any passive pin, and a board that joins `.case` of a crystal in a two-pad package is refused because the pin is not there. A provider of `Crystal` gives `.case` a row. `FerriteBead` has `.impedance` at `.impedance_frequency`.
+
+`Supercap` is a supercapacitor of one cell, or of two cells in series in one case (issue #1261). Its pins are `.p` and `.n`, and `.mid`, the node between two cells that a balancing circuit holds at half the voltage, which only the three-lead package brings out: a board that joins `.mid` is given a row in that package, as a crystal's `.case` is the four-pad package's. Every value is the whole part's: `.capacitance` (rated at the rated voltage, so with no curve over the bias, and `.effective_capacitance` is the same value, which a burst of a load and a corner read), `.esr` at AC and `.dc_esr` at DC, `.leakage_current`, and `.max_voltage`, which a row writes in steps over temperature where the datasheet derates it (`5.5V to 65degC, 4.2V to 85degC`). `.cell_voltage` is worked out, `.bias / .cells`. `.bias` is the voltage at `.p` relative to `.n`, given by the rail it is across the way round it is wired, so one wired backwards fails `.bias >= 0V`. A row states `height_growth`, how much the case swells over its life, which the height check adds, and `soldering`, a `Soldering`: the board house solders what it places in a reflow oven, so a part that allows `Hand` only must be `.assembly &= AssemblyMode::Hand`, and one that allows `None` must not be fitted by solder:
+
+```text
+error: `hold` may be soldered by hand only (its catalog row ZZS-0F5 states `soldering` Hand), and its assembly is `AssemblyMode::Fab`: the board house solders the parts it places in a reflow oven, which the part's datasheet forbids; state `.hold.assembly &= AssemblyMode::Hand`, or choose a part that allows reflow
+```
+
+The standard catalog `supercap` has no row: no part has a recorded source yet, so a project brings its own rows in a file of the catalog `supercap`.
 
 ### Transistors
 

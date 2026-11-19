@@ -51,8 +51,9 @@
 //! nets' copper, `min_width` (KiCad's `min_thickness`), `pads` (KiCad's `connect_pads`: `solid`,
 //! `thermal`, the default, `none` or `thru_hole_only`), `thermal_gap` and `spoke_width` of a
 //! thermal relief, and `islands` (`remove`, the default, `keep`, or `remove_below` with
-//! `island_min_area` in mm²). A layer that has a zone of the file takes its zones from the file
-//! alone: the design's pour or plane on it is not drawn ([`Board::zoned`]); the other layers
+//! `island_min_area` in mm²). A zone of the net of the design's pour or plane on its layer
+//! restates it, which is not drawn ([`Board::replaced`]); a zone of another net is above it and
+//! the pour is drawn round it (issue #1314, [`Board::zone_lift`]); the other layers
 //! keep theirs. The board file holds each zone as KiCad's, unfilled, so that KiCad's fill
 //! makes the copper KiCad's own board has; netsmith's own fill, for the Gerbers, the check and
 //! the ratsnest, is `netsmith_geom::fill`'s, which trims it to `min_width` and removes its

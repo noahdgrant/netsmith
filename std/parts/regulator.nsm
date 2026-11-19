@@ -43,6 +43,24 @@ generic LinearRegulator {
     .quiescent_current: Current
     .quiescent_current ?= 0A
 
+    /// The time from its enable pin going high (its input coming up, for a regulator with no
+    /// enable pin `.en`) to the start of its output's rise, as the datasheet gives it: a range
+    /// from the least to the most, with the page in the part's doc comment. A board's
+    /// `sequence` reads it (issue #1267). A part that states nothing has the default, none:
+    /// the output starts to rise at once.
+    .enable_delay: Time
+    .enable_delay ?= 0s
+    /// How long the output takes to rise to its regulation point once it starts, as the
+    /// datasheet gives it, read by a board's `sequence` (issue #1267). A part that states
+    /// nothing has the default, none.
+    .soft_start_time: Time
+    .soft_start_time ?= 0s
+    /// The voltage at which its enable pin `.en` turns it on, rising, as the datasheet gives it
+    /// (`0.9V..1.2V`). A board's `sequence` reads it when an RC delays the enable (issue #1267);
+    /// optional (ADR 0074): while a part states none, the latest time of such an enable is
+    /// not known.
+    .enable_threshold: Voltage optional
+
     // What the input draws is what the output supplies and the quiescent current.
     .vin.current == -.vout.current + .quiescent_current
 
@@ -271,6 +289,16 @@ generic BuckIc {
     /// board bounds (`.reg.soft_start_time <= 5ms`); while nothing bounds it the check is
     /// not made, and a bound on an IC that states no time is listed as not evaluated.
     .soft_start_time: Time optional
+    /// The time from its enable pin going high (its input coming up, for an IC with no enable
+    /// pin `.en`) to the start of the output's rise, as the datasheet gives it: a range from the
+    /// least to the most, with the page in the part's doc comment. A board's `sequence` reads it
+    /// with `.soft_start_time` (issue #1267). An IC that states nothing has the default, none.
+    .enable_delay: Time
+    .enable_delay ?= 0s
+    /// The voltage at which its enable pin `.en` turns it on, rising, as the datasheet gives it.
+    /// A board's `sequence` reads it when an RC delays the enable (issue #1267); optional
+    /// (ADR 0074): while an IC states none, the latest time of such an enable is not known.
+    .enable_threshold: Voltage optional
     /// The capacitance the datasheet asks for on the input and the output, as effective
     /// capacitance in use (ADR 0013).
     .min_input_capacitance: Capacitance

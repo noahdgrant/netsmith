@@ -251,3 +251,52 @@ fn a_zone_of_the_routes_file_is_filled_where_it_is_and_with_its_holes() {
     // The hole is a ring of its own, the other way round.
     assert!(rs.iter().any(|r| shoelace(r) < 0.0), "the zone's hole is a hole of the fill");
 }
+
+#[test]
+fn a_zone_of_another_net_in_a_pour_is_drawn_with_the_pour_round_it() {
+    // Issue #1314: a 3V3 zone on the bottom of the four-layer example, whose process pours the
+    // bottom with GND. The view draws both: the zone, and the pour round it.
+    let (root, editor) = pours_project("zone-in-pour");
+    let area_of = |pours: &PcbPours, net: &str| {
+        layer(pours, "B.Cu")
+            .nets
+            .iter()
+            .find(|n| n.net.as_deref() == Some(net))
+            .map(|n| filled(&n.d))
+    };
+    let before = area_of(&editor.pcb_pours("OutlineAndPours").unwrap(), "GND").unwrap();
+    fs::write(
+        root.join("src/main.routes.toml"),
+        r#"version = 1
+
+[OutlineAndPours.nets.3V3]
+pads = "x"
+
+[[OutlineAndPours.nets.3V3.zones]]
+layers = ["bottom"]
+priority = 0
+clearance = 0.3
+min_width = 0.25
+pads = "thermal"
+thermal_gap = 0.5
+spoke_width = 0.5
+islands = "remove"
+outline = [[25.0, 29.0], [30.0, 29.0], [30.0, 32.5], [25.0, 32.5]]
+lock = true
+"#,
+    )
+    .unwrap();
+    editor.pcb_scene("OutlineAndPours").unwrap();
+    let pours = editor.pcb_pours("OutlineAndPours").unwrap();
+    assert_eq!(pours.error, None);
+    let gnd = area_of(&pours, "GND").expect("the GND pour is drawn on the bottom");
+    let zone = area_of(&pours, "3V3").expect("the 3V3 zone is drawn on the bottom");
+    assert!(zone > 10.0 && zone < 17.5, "the zone: {zone} mm²");
+    // The pour gives up the zone and its clearance round it, and keeps the rest of the bottom.
+    let lost = before - gnd;
+    assert!(lost > 12.0 && lost < 30.0, "{before} mm² before, {gnd} mm² with the zone");
+    // The summary says the pour is cut, not replaced.
+    let copper = editor.pcb_copper("OutlineAndPours").unwrap();
+    let bottom = copper.layers.iter().find(|l| l.layer == "bottom").unwrap();
+    assert_eq!((bottom.zones, bottom.replaced_by_zones), (1, false));
+}

@@ -1117,6 +1117,38 @@ pub struct Unused {
     pub span: Span,
 }
 
+/// What happens at an event of a `sequence` (issue #1267).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EventKind {
+    /// A rail comes up: its `pos` net reaches its voltage.
+    Rail,
+    /// A pin goes high: its net crosses the threshold of the pin's part.
+    Pin,
+}
+
+/// One event of a `sequence`: a rail or a pin, by its path, and where it is written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SequenceEvent {
+    pub inst: InstId,
+    pub kind: EventKind,
+    /// The path as the board writes it (`.radio.en`).
+    pub written: String,
+    pub span: Span,
+}
+
+/// One order of a `sequence` statement: `later` comes at least `delay` (seconds) after
+/// `earlier` (issue #1267). `then 6ms` between two events makes one; `after .e` makes one with
+/// no delay, `.e` before the event above it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SequenceOrder {
+    pub earlier: SequenceEvent,
+    pub later: SequenceEvent,
+    pub delay: f64,
+    pub source: SourceId,
+    /// From the earlier event to the later one, or the `after` statement.
+    pub span: Span,
+}
+
 /// A request for a pin by capability (`.status: .u.GPIO`, ADR 0101): the pin of the board it
 /// declares, the part it asks and what it needs the pin to offer. Which pin it gets is decided
 /// after the elaboration, in `assign.rs`.
@@ -1232,6 +1264,8 @@ pub struct Model {
     pub(crate) voltage_steps: Vec<VoltageSteps>,
     /// The interfaces the board states are not used (ADR 0083), in path order.
     pub(crate) unused: Vec<Unused>,
+    /// The orders of the board's `sequence` statements (issue #1267), in the order written.
+    pub(crate) sequence: Vec<SequenceOrder>,
     /// The enums that fields of this model have the type of.
     pub(crate) enums: Vec<EnumInfo>,
     /// The members declared with the type of a generic, in the order they were made.
@@ -1487,6 +1521,7 @@ impl Model {
             level_tests: Vec::new(),
             voltage_steps: Vec::new(),
             unused: Vec::new(),
+            sequence: Vec::new(),
             enums: Vec::new(),
             uses: Vec::new(),
             provider_conflicts: Vec::new(),
@@ -1549,6 +1584,11 @@ impl Model {
     /// The interfaces the board states are not used (`unused .processor.usb`, ADR 0083).
     pub fn unused(&self) -> &[Unused] {
         &self.unused
+    }
+
+    /// The orders of the board's `sequence` statements (issue #1267), in the order written.
+    pub fn sequence(&self) -> &[SequenceOrder] {
+        &self.sequence
     }
 
     /// The statement that makes `inst` unused, when it is, or is inside, an interface the board
@@ -1627,6 +1667,8 @@ impl Model {
         m.mates.clear();
         m.ground_groups.clear();
         m.uses.retain(|u| inside(&u.inst));
+        m.sequence
+            .retain(|o| inside(&o.earlier.inst) && inside(&o.later.inst));
         m.equalities.retain(|(a, b)| owned(a) && owned(b));
         Arc::make_mut(&mut m.relations).retain(|r| {
             let mut fields = Vec::new();

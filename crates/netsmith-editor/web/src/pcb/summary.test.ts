@@ -81,6 +81,7 @@ describe('the copper areas', () => {
     expect(copperLayerLine(layer({ kind: 'plane', net: 'GND' }))).toBe('plane on GND');
     expect(copperLayerLine(layer({ kind: 'pour', net: 'GND', pour }))).toMatch(/^pour on GND: stitch pitch 7 mm/);
     expect(copperLayerLine(layer({ kind: 'signal', zones: 2 }))).toBe('signal (2 hand zones)');
+    expect(copperLayerLine(layer({ kind: 'pour', net: 'GND', zones: 1 }))).toBe('pour on GND (cut by 1 hand zone of other nets, drawn round them)');
     expect(copperLayerLine(layer({ kind: 'plane', net: 'GND', zones: 1, replacedByZones: true }))).toBe('plane on GND (not drawn: 1 zone of the routes file replaces it)');
   });
   it('write a zone of the routes file on one line', () => {
