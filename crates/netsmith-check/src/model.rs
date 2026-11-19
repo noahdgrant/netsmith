@@ -157,10 +157,18 @@ pub enum DcKind {
     /// net at zero, as a board's own supply rail is (ADR 0076, amendment 5). The operand is a
     /// rail, not a pin.
     Source,
+    /// `dc load_switch .in .out .enable .on_resistance [.quiescent_current]`: a switch between
+    /// two rails (issue 1269). When its enable can turn it on (see
+    /// [`Model::load_switch_can_turn_on`]) it is its on resistance between the input's and the
+    /// output's positive nets, so the output's voltage is the input's less the drop and the
+    /// input passes on the output's load; and the input draws the quiescent current when the
+    /// statement names one. When the enable cannot, it is open and its output has no source.
+    /// The first two operands are rails, the third the enable pin.
+    LoadSwitch,
 }
 
 impl DcKind {
-    pub const ALL: [DcKind; 7] = [
+    pub const ALL: [DcKind; 8] = [
         Self::Resistor,
         Self::Diode,
         Self::Nmos,
@@ -168,6 +176,7 @@ impl DcKind {
         Self::LinearRegulator,
         Self::SwitchingRegulator,
         Self::Source,
+        Self::LoadSwitch,
     ];
 
     /// The word after `dc`.
@@ -180,16 +189,23 @@ impl DcKind {
             Self::LinearRegulator => "linear_regulator",
             Self::SwitchingRegulator => "switching_regulator",
             Self::Source => "source",
+            Self::LoadSwitch => "load_switch",
         }
     }
 
-    /// Whether the first operands are rails (interfaces with a `pos`, a `neg` and a `voltage`)
-    /// and not pins.
-    pub fn takes_rails(self) -> bool {
-        matches!(
-            self,
-            Self::LinearRegulator | Self::SwitchingRegulator | Self::Source
-        )
+    /// How many of the first operands are rails (interfaces with a `pos`, a `neg` and a
+    /// `voltage`) and not pins: the rest of the pins are pins.
+    pub fn rail_operands(self) -> usize {
+        match self {
+            Self::LinearRegulator | Self::SwitchingRegulator | Self::LoadSwitch => 2,
+            Self::Source => 1,
+            _ => 0,
+        }
+    }
+
+    /// Whether the pin operand at `index` is a rail and not a pin.
+    pub fn takes_rail(self, index: usize) -> bool {
+        index < self.rail_operands()
     }
 
     pub fn from_word(word: &str) -> Option<Self> {
@@ -204,6 +220,7 @@ impl DcKind {
             Self::Nmos | Self::Pmos => &["gate", "drain", "source"],
             Self::LinearRegulator | Self::SwitchingRegulator => &["input rail", "output rail"],
             Self::Source => &["supply rail"],
+            Self::LoadSwitch => &["input rail", "output rail", "enable"],
         }
     }
 
@@ -212,7 +229,7 @@ impl DcKind {
     /// element without it, as before.
     pub fn optional_value_roles(self) -> &'static [(&'static str, Dimension)] {
         match self {
-            Self::LinearRegulator | Self::SwitchingRegulator => {
+            Self::LinearRegulator | Self::SwitchingRegulator | Self::LoadSwitch => {
                 &[("quiescent current", Dimension::CURRENT)]
             }
             _ => &[],
@@ -230,6 +247,7 @@ impl DcKind {
             ],
             Self::LinearRegulator | Self::Source => &[],
             Self::SwitchingRegulator => &[("efficiency", Dimension::NONE)],
+            Self::LoadSwitch => &[("on resistance", Dimension::RESISTANCE)],
         }
     }
 
@@ -243,6 +261,7 @@ impl DcKind {
             Self::LinearRegulator => "dc linear_regulator .vin .vout",
             Self::SwitchingRegulator => "dc switching_regulator .vin .sw .efficiency",
             Self::Source => "dc source .vbatt",
+            Self::LoadSwitch => "dc load_switch .in .out .enable .on_resistance",
         }
     }
 }

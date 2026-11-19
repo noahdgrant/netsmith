@@ -64,7 +64,7 @@ fn the_standard_parts_state_their_dc_element() {
         &'static [&'static str],
         &'static [&'static str],
     );
-    let cases: [Case; 10] = [
+    let cases: [Case; 11] = [
         (
             "passive::Resistor",
             "Resistor",
@@ -134,6 +134,13 @@ fn the_standard_parts_state_their_dc_element() {
             DcKind::LinearRegulator,
             &["vin", "vout"],
             &["quiescent_current"],
+        ),
+        (
+            "switch::LoadSwitch",
+            "LoadSwitch",
+            DcKind::LoadSwitch,
+            &["in", "out", "enable"],
+            &["on_resistance", "quiescent_current"],
         ),
     ];
     for (import, name, kind, pins, values) in cases {
@@ -273,7 +280,7 @@ fn an_unknown_element_lists_the_known_ones() {
     let m = only(&run(&part("dc coil .a .b .resistance")));
     assert_eq!(
         m,
-        "`dc` does not know the element `coil`; the elements are resistor, diode, nmos, pmos, linear_regulator, switching_regulator and source"
+        "`dc` does not know the element `coil`; the elements are resistor, diode, nmos, pmos, linear_regulator, switching_regulator, source and load_switch"
     );
 }
 
@@ -494,6 +501,47 @@ fn a_regulator_operand_must_be_a_rail_of_the_part_and_the_efficiency_a_number() 
     assert!(
         m.contains("takes the efficiency here, a number, and `.vref` is a voltage"),
         "{m}"
+    );
+}
+
+/// A part with two rails, an enable pin and an on resistance, whose body is `body`.
+fn switch(body: &str) -> String {
+    format!(
+        "import std::sources::Rail\npart S {{\n    .in: Rail\n    .out: Rail\n    pins {{\n        .enable input \"ON\" \"1\" optional\n    }}\n    .ron: Resistance\n    .iq: Current\n    {body}\n}}\nboard B {{\n    .s: S\n}}\n"
+    )
+}
+
+/// A load switch names its two rails, then its enable pin, then its on resistance and, when it
+/// has one, its quiescent current (issue 1269).
+#[test]
+fn a_load_switch_names_two_rails_its_enable_and_its_on_resistance() {
+    let c = run(&switch("dc load_switch .in .out .enable .ron .iq"));
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(
+        element(&c, "s"),
+        Some((
+            DcKind::LoadSwitch,
+            names(&["in", "out", "enable"]),
+            names(&["ron", "iq"])
+        ))
+    );
+    let c = run(&switch("dc load_switch .in .out .enable .ron"));
+    assert!(c.is_ok(), "{}", c.render());
+    // The enable is a pin, and the first two operands rails.
+    let m = only(&run(&switch("dc load_switch .in .out .out .ron")));
+    assert_eq!(
+        m,
+        "`dc load_switch` takes the enable here, a pin, and `.out` is not one; the statement is `dc load_switch .in .out .enable .on_resistance`"
+    );
+    let m = only(&run(&switch("dc load_switch .in .enable .enable .ron")));
+    assert!(
+        m.contains("takes the output rail here, a rail, and `.enable` is not one"),
+        "{m}"
+    );
+    let m = only(&run(&switch("dc load_switch .in .out .enable .iq")));
+    assert_eq!(
+        m,
+        "`dc load_switch` takes the on resistance here, a resistance, and `.iq` is a current"
     );
 }
 
