@@ -258,7 +258,7 @@ fn build(
             // A load switch supplies its output only when its enable can turn it on (issue
             // 1269); one that cannot is no edge, and its output says why it has no source.
             if let Some((enable, Some(why))) = model.load_switch_enable(id) {
-                let dc = inst.dc.as_ref().expect("a load switch states `dc`");
+                let dc = inst.dc.first().expect("a load switch states `dc`");
                 if let Some((_, pos, _)) = model.rail_of(dc.pins[1])
                     && let Some(net) = model.nets().iter().find(|n| n.pins.contains(&pos))
                 {

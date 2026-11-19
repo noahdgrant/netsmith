@@ -87,9 +87,11 @@ pub struct Instance {
     pub children: Vec<(String, Member)>,
     /// Terminals a `~>` chain enters and leaves a part by.
     pub bridge: Option<(InstId, InstId)>,
-    /// For a part: the element it is in a DC analysis, from its `dc` statement or its
-    /// generic's (ADR 0076, amendment 1). None for a part that states none.
-    pub dc: Option<DcElement>,
+    /// For a part: the elements it is in a DC analysis, from its `dc` statements or its
+    /// generic's (ADR 0076, amendment 1), in the order they were read. Empty for a part that
+    /// states none. A part is one element, or one element that gives an output rail (a
+    /// `dc source` or a regulator) for each rail it gives (issue 1271).
+    pub dc: Vec<DcElement>,
     pub catalog: Option<Catalog>,
     /// For a part: its `pins` tables, in source order (ADR 0016).
     pub tables: Vec<PinTable>,
@@ -193,6 +195,15 @@ impl DcKind {
         }
     }
 
+    /// Whether the element gives a rail (a `dc source`, or a regulator's output): a part may
+    /// state one of these for each rail it gives (issue 1271).
+    pub fn gives_rail(self) -> bool {
+        matches!(
+            self,
+            Self::LinearRegulator | Self::SwitchingRegulator | Self::Source
+        )
+    }
+
     /// How many of the first operands are rails (interfaces with a `pos`, a `neg` and a
     /// `voltage`) and not pins: the rest of the pins are pins.
     pub fn rail_operands(self) -> usize {
@@ -280,6 +291,18 @@ pub struct DcElement {
     pub values: Vec<FieldId>,
     pub source: SourceId,
     pub span: Span,
+}
+
+impl DcElement {
+    /// The rail the element gives: a `dc source`'s rail, a regulator's output rail. None for an
+    /// element that gives no rail.
+    pub fn output_rail(&self) -> Option<InstId> {
+        match self.kind {
+            DcKind::Source => self.pins.first().copied(),
+            DcKind::LinearRegulator | DcKind::SwitchingRegulator => self.pins.get(1).copied(),
+            _ => None,
+        }
+    }
 }
 
 /// An output level that a part states with the current it is measured at, as its datasheet
@@ -1551,12 +1574,13 @@ impl Model {
         self.level_tests.iter().find(|t| t.level == level)
     }
 
-    /// The parts that state a DC element, with it, in the order the parts were made.
+    /// The DC elements of the parts, each with its part, in the order the parts were made (and
+    /// a part's in the order it states them).
     pub fn dc_elements(&self) -> impl Iterator<Item = (InstId, &DcElement)> {
         self.instances
             .iter()
             .enumerate()
-            .filter_map(|(i, inst)| inst.dc.as_ref().map(|d| (InstId(i), d)))
+            .flat_map(|(i, inst)| inst.dc.iter().map(move |d| (InstId(i), d)))
     }
 
     pub fn instance(&self, id: InstId) -> &Instance {

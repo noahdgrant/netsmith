@@ -1356,7 +1356,7 @@ error: no `p_mosfet` candidate satisfies `q`: the closest of the 4 that fit, ZP-
 
 ### What a part is at DC
 
-A part says what it is to a DC analysis with a `dc` statement, once, in the part or in the generic that it provides (ADR 0076, amendment 1). The statement names the element, then its pins, then its values, in the order the element fixes:
+A part says what it is to a DC analysis with a `dc` statement, once, in the part or in the generic that it provides (ADR 0076, amendment 1). A part that gives several rails states one for each rail it gives (see "A part that gives several rails" below). The statement names the element, then its pins, then its values, in the order the element fixes:
 
 ```nsm-fragment
 dc resistor .a .b .resistance
@@ -1378,7 +1378,7 @@ dc load_switch .in .out .enable .on_resistance .quiescent_current
 
 The standard `Resistor`, `Fuse`, `FerriteBead`, `NtcThermistor` (over the range of its maker's resistance-temperature table), `Inductor` (its winding: `dc resistor .a .b .dc_resistance`, ADR 0076, amendment 6), `Diode`, `Schottky`, `Led` (a diode that drops its `.forward_voltage`, ADR 0113), `NMosfet`, `PMosfet`, `LinearRegulator`, `LoadSwitch`, `Lt8641`, and the two connectors that give a supply, `Obd2M` (`.vbatt`) and `UsbCPower` (`.vbus`), state theirs (any other buck converter's IC is a part of the design's own, and states `dc switching_regulator` itself, as the one in "Switching regulators" does; the statement is a power balance that assumes no topology, so a buck-boost or boost IC states it the same way on its own input and output rails), so a provider of one of them has it on its own pins and fields without writing it. A part with a `bridge` and no `dc` statement is a boundary: a DC analysis cannot see through it. An inductor is its winding at DC, so the node past a buck stage's inductor is the switch node less what the load makes the winding drop, and the output side of the stage is an island of its own. `Switch`, `Zener` and `Tvs` are boundaries for now. A module has no `dc` statement of its own: its network is the elements of the parts inside it.
 
-The rules. A `dc` statement is in a part (or a generic that has pins); the element is one of `resistor`, `diode`, `nmos`, `pmos`, `linear_regulator`, `switching_regulator`, `source` and `load_switch`; the pins are pins of the part (the rails of a regulator, a source or a load switch are rails of the part) and are different; each value is a field of the part with the quantity of its place; a part has one `dc` statement; and when the part has a `bridge`, the element runs between the two pins the `bridge` joins (the drain and the source for a MOSFET). The order of the statements does not matter.
+The rules. A `dc` statement is in a part (or a generic that has pins); the element is one of `resistor`, `diode`, `nmos`, `pmos`, `linear_regulator`, `switching_regulator`, `source` and `load_switch`; the pins are pins of the part (the rails of a regulator, a source or a load switch are rails of the part) and are different; each value is a field of the part with the quantity of its place; a part has one `dc` statement, or one `dc source`, `dc linear_regulator` or `dc switching_regulator` for each rail it gives, each a different rail (issue 1271); and when the part has a `bridge`, the element runs between the two pins the `bridge` joins (the drain and the source for a MOSFET). The order of the statements does not matter.
 
 The resistor, the diode, the regulators and the MOSFET are solved by the DC analysis (next section).
 
@@ -1548,7 +1548,7 @@ error: `dc resistor` runs between .a and .c, and this part's `bridge` joins .a a
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-A part is one element, so a second statement is refused, with the place of the first (a provider that repeats the statement of its generic gets the same message):
+A part is one element, so a second statement is refused, with the place of the first (a provider that repeats the statement of its generic gets the same message), unless each statement gives a rail (below):
 
 ```nsm fails
 part Shunt {
@@ -1568,11 +1568,61 @@ board B {
 ```
 
 ```text
-error: this part already has a `dc` statement (at main.nsm:8); a part is one element at DC
+error: this part already has a `dc` statement (at main.nsm:8); a part is one element at DC, or a `dc source` or a regulator for each rail it gives
   --> main.nsm:9:5
   |
 9 |     dc diode .a .b .forward_voltage
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+#### A part that gives several rails
+
+A part with two output rails, a radio module that gives the board an I/O reference and a SIM supply, or a regulator IC with two outputs, states a `dc` for each rail it gives (issue 1271): a `dc source` for a rail it gives from outside the board, a `dc linear_regulator` or `dc switching_regulator` for a rail it makes from another. Each rail has its own `.voltage` and its own `.current`, so each holds its net in the DC analysis, a `.current` that the part or the board states is a budget of that rail alone (see "Supplies" below), and the checks that look for a source on a net (two power sources on one net, a pull to a rail nothing sources) see every one. Two regulators of one part that take the same input rail draw through it what both outputs ask: the DC analysis writes the sum to the input's `.current`.
+
+```nsm
+import std::sources::Rail
+
+/// Invented: a module that gives the board two rails, each with its own limit.
+part Radio {
+    .vio: Rail
+    .vsim: Rail
+    .vio.neg ~ .vsim.neg
+    .vio.voltage &= 1.8V
+    .vio.current &= -50mA..0A
+    .vsim.voltage &= 3V
+    .vsim.current &= -20mA..0A
+    dc source .vio
+    dc source .vsim
+}
+
+board B {
+    .radio: Radio
+}
+```
+
+An element that gives no rail (a resistor, a diode, a MOSFET) is still the part's only one, and two statements that give the same rail are refused:
+
+```nsm fails
+import std::sources::Rail
+
+part Radio {
+    .vio: Rail
+    .vsim: Rail
+    dc source .vio
+    dc linear_regulator .vsim .vio
+}
+
+board B {
+    .radio: Radio
+}
+```
+
+```text
+error: `dc linear_regulator` gives the rail `.vio`, and this part's `dc source` (at main.nsm:6) gives it already; a part states one `dc` for each rail it gives
+  --> main.nsm:7:5
+  |
+7 |     dc linear_regulator .vsim .vio
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A module has no element of its own (nor has a board): its network is the elements of the parts inside it.
