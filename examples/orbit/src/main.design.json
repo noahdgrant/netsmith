@@ -3588,6 +3588,14 @@
       "keepouts": [],
       "heights": [
         {
+          "path": "boot_pulldown",
+          "height": 0.55
+        },
+        {
+          "path": "buck_boost.divider.rbottom",
+          "height": 0.55
+        },
+        {
           "path": "buck_boost.inductor",
           "height": 1.2
         },
@@ -3598,6 +3606,18 @@
         {
           "path": "buck_boost.output_cap",
           "height": 1.0
+        },
+        {
+          "path": "buck_boost.pg_pullup.resistor",
+          "height": 0.55
+        },
+        {
+          "path": "charger.rprog",
+          "height": 0.55
+        },
+        {
+          "path": "charger.status_resistor",
+          "height": 0.55
         },
         {
           "path": "charger.vbatt_cap",
@@ -3632,12 +3652,48 @@
           "height": 0.0
         },
         {
+          "path": "i2c_pullups.scl_pullup",
+          "height": 0.55
+        },
+        {
+          "path": "i2c_pullups.sda_pullup",
+          "height": 0.55
+        },
+        {
+          "path": "led1_resistor",
+          "height": 0.55
+        },
+        {
+          "path": "led2_resistor",
+          "height": 0.55
+        },
+        {
           "path": "oscillator.crystal",
           "height": 1.35
         },
         {
+          "path": "oscillator.load_in",
+          "height": 1.0
+        },
+        {
+          "path": "oscillator.load_out",
+          "height": 1.0
+        },
+        {
+          "path": "reset_cap",
+          "height": 1.0
+        },
+        {
+          "path": "usb_uart.vbus_100n",
+          "height": 1.0
+        },
+        {
           "path": "usb_uart.vbus_1u",
           "height": 0.9
+        },
+        {
+          "path": "usb_uart.vdd_100n",
+          "height": 1.0
         },
         {
           "path": "usb_uart.vdd_bulk",
@@ -3646,6 +3702,34 @@
         {
           "path": "user_node_cap",
           "height": 0.9
+        },
+        {
+          "path": "user_pin_cap",
+          "height": 1.0
+        },
+        {
+          "path": "user_pulldown.resistor",
+          "height": 0.55
+        },
+        {
+          "path": "user_series",
+          "height": 0.55
+        },
+        {
+          "path": "v3v3_100n[0]",
+          "height": 1.0
+        },
+        {
+          "path": "v3v3_100n[1]",
+          "height": 1.0
+        },
+        {
+          "path": "v3v3_100n[2]",
+          "height": 1.0
+        },
+        {
+          "path": "v3v3_100n[3]",
+          "height": 1.0
         },
         {
           "path": "v3v3_bulk",

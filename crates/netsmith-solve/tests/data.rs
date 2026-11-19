@@ -313,7 +313,7 @@ fn every_esr_cell_is_one_resistance_and_its_source_names_the_page_and_the_point(
 }
 
 /// How many rows of the standard catalogs have a `height` (ADR 0094). Update it with the rows.
-const ROWS_WITH_HEIGHT: usize = 138;
+const ROWS_WITH_HEIGHT: usize = 388;
 
 #[test]
 fn every_height_is_one_length_that_a_document_says_and_its_source_names_where() {
@@ -366,6 +366,22 @@ fn every_height_is_one_length_that_a_document_says_and_its_source_names_where() 
         }
     }
     assert_eq!(with, ROWS_WITH_HEIGHT);
+}
+
+/// Every row of the chip catalogs has a `height` (issue 1394): no standard prints a chip's
+/// thickness (issue 1332), so a chip under a height limit is checked only by its row's cell, one
+/// maximum per maker series read from the maker's datasheet (data/jlcpcb/README.md, _Heights_).
+#[test]
+fn every_row_of_the_chip_catalogs_has_a_height() {
+    for name in ["resistor", "capacitor", "inductor", "ferrite_bead", "led"] {
+        for row in records(&format!("jlcpcb/catalog/{name}.csv")) {
+            assert!(
+                row.get("height").is_some_and(|c| !c.is_empty()),
+                "{name} {}: no `height`",
+                row["lcsc"]
+            );
+        }
+    }
 }
 
 /// How many rows of the standard catalogs state `temp_min` and `temp_max` (ADR 0099): the fifteen

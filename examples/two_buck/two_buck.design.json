@@ -3116,7 +3116,15 @@
           "height": 0.55
         },
         {
+          "path": "buck_3v3.light",
+          "height": 0.7
+        },
+        {
           "path": "buck_3v3.light_resistor",
+          "height": 0.4
+        },
+        {
+          "path": "buck_3v3.pg_pullup.resistor",
           "height": 0.4
         },
         {
@@ -3124,8 +3132,24 @@
           "height": 0.0
         },
         {
+          "path": "buck_3v3.stage.divider.rbottom",
+          "height": 0.4
+        },
+        {
+          "path": "buck_3v3.stage.divider.rtop",
+          "height": 0.55
+        },
+        {
           "path": "buck_3v3.stage.ic.boost",
           "height": 0.55
+        },
+        {
+          "path": "buck_3v3.stage.ic.enable_bottom",
+          "height": 0.4
+        },
+        {
+          "path": "buck_3v3.stage.ic.enable_top",
+          "height": 0.4
         },
         {
           "path": "buck_3v3.stage.inductor",
@@ -3156,7 +3180,15 @@
           "height": 0.55
         },
         {
+          "path": "buck_5v.light",
+          "height": 0.7
+        },
+        {
           "path": "buck_5v.light_resistor",
+          "height": 0.4
+        },
+        {
+          "path": "buck_5v.pg_pullup.resistor",
           "height": 0.4
         },
         {
@@ -3168,8 +3200,20 @@
           "height": 0.4
         },
         {
+          "path": "buck_5v.stage.divider.rtop",
+          "height": 0.55
+        },
+        {
           "path": "buck_5v.stage.ic.boost",
           "height": 0.55
+        },
+        {
+          "path": "buck_5v.stage.ic.enable_bottom",
+          "height": 0.4
+        },
+        {
+          "path": "buck_5v.stage.ic.enable_top",
+          "height": 0.4
         },
         {
           "path": "buck_5v.stage.inductor",
@@ -3204,12 +3248,24 @@
           "height": 0.9
         },
         {
+          "path": "input_light",
+          "height": 0.7
+        },
+        {
+          "path": "input_light_resistor",
+          "height": 0.4
+        },
+        {
           "path": "ldo_bulk",
           "height": 0.65
         },
         {
           "path": "ldo_in",
           "height": 0.6
+        },
+        {
+          "path": "ldo_light",
+          "height": 0.7
         },
         {
           "path": "ldo_light_resistor",
