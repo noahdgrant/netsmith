@@ -112,8 +112,8 @@ pub use export::{
     FilledPcb, PATH_PROPERTY, kicad_dru, kicad_pcb, kicad_pcb_filled, kicad_pro, process_zones,
 };
 pub use fill_report::{
-    ClearedPad, FillArea, FillIsland, FillPad, FillReport, FillSource, JoinCounts, JoinKind,
-    StarvedPad,
+    ClearedPad, FillArea, FillIsland, FillPad, FillPolygon, FillReport, FillSource, JoinCounts,
+    JoinKind, StarvedPad,
 };
 pub use fit_report::{FitReport, PartRef, Size};
 pub use footprint::{
