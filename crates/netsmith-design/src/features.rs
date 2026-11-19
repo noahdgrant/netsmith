@@ -11,6 +11,7 @@ use netsmith_core::{
     LogoLayer, NetPair, Offset, OffsetEnd, Outline, PadConnection, PadContactOffset, PartHeight,
     PartHeightGrowth, PartKind, PartRoutingMargin, PartSilk, PartSoftMargin, PartStandoff,
     PinProtrusion, PlaceBound, PlaceField, Placement, Pour, SilkPrint, StepModel,
+    UNDERSIDE_KEEPOUT,
 };
 use netsmith_lang::Span;
 use std::collections::{BTreeMap, BTreeSet};
@@ -844,6 +845,7 @@ fn heads(model: &Model, copper_layers: u32, errors: &mut Vec<String>) -> Vec<Kee
             parts: true,
             max_height: None,
             on_carrier_face: false,
+            polygon: None,
         });
     }
     found
@@ -1696,7 +1698,13 @@ pub(crate) fn features_of(
                         parts: flags[3],
                         max_height,
                         on_carrier_face: false,
+                        polygon: None,
                     });
+                }
+            }
+            "UndersideKeepout" => {
+                if let Some(k) = underside_keepout(model, id, &path, errors) {
+                    features.keepouts.push(k);
                 }
             }
             _ => {}
@@ -1704,6 +1712,100 @@ pub(crate) fn features_of(
     }
     features.keepouts.extend(heads(model, layers, errors));
     features
+}
+
+/// A part's `.underside_keepout` (issue #1335): the area under its body, in its own frame, and
+/// the tallest a part may stand there, as a keepout the part carries that limits only height, on
+/// the face the part is on wherever the placer puts it. It is a rectangle (`.x`, `.y`,
+/// `.width`, `.height`) or a `polygon` of straight edges, never both; `.max_height` is one
+/// length above zero. It is a part's member named `underside_keepout`, and anything else is an
+/// error that says so.
+fn underside_keepout(
+    model: &Model,
+    id: InstId,
+    path: &str,
+    errors: &mut Vec<String>,
+) -> Option<Keepout> {
+    let parent = model.instance(id).parent;
+    let part = parent.filter(|p| model.instance(*p).kind == InstKind::Part);
+    let Some(part) = part.filter(|_| model.instance(id).name == UNDERSIDE_KEEPOUT) else {
+        errors.push(format!(
+            "`{path}` is an `UndersideKeepout`, and it is the area under a part's body: declare it in the part as its member `.{UNDERSIDE_KEEPOUT}` (issue #1335)"
+        ));
+        return None;
+    };
+    let Some(limit) = exact(model, id, "max_height", errors) else {
+        errors.push(format!(
+            "`{path}` states no `.max_height`: say how tall a part may stand under the body, for example `.max_height &= 0.5mm`"
+        ));
+        return None;
+    };
+    if limit <= 0.0 {
+        errors.push(format!(
+            "`{path}.max_height` is {limit} mm, and a part cannot stand under a limit of nothing: give the figure the part's maker allows under its body"
+        ));
+        return None;
+    }
+    let stated: Vec<&str> = ["x", "y", "width", "height"]
+        .into_iter()
+        .filter(|n| matches!(domain(model, id, n), Some(Domain::Quantity(_))))
+        .collect();
+    let (at, size, polygon) = match model.polygon_of(id) {
+        Some(polygon) => {
+            if !stated.is_empty() {
+                let list: Vec<String> = stated.iter().map(|n| format!("`.{n}`")).collect();
+                errors.push(format!(
+                    "`{path}` has a `polygon` and states {}: the polygon is the area, so leave them out",
+                    list.join(", ")
+                ));
+                return None;
+            }
+            let points: Vec<(f64, f64)> = polygon.corners.iter().map(|c| c.at).collect();
+            let (lo, hi) = points.iter().fold(
+                (
+                    (f64::INFINITY, f64::INFINITY),
+                    (f64::NEG_INFINITY, f64::NEG_INFINITY),
+                ),
+                |(lo, hi), p| {
+                    (
+                        (lo.0.min(p.0), lo.1.min(p.1)),
+                        (hi.0.max(p.0), hi.1.max(p.1)),
+                    )
+                },
+            );
+            if hi.0 - lo.0 <= 0.0 || hi.1 - lo.1 <= 0.0 {
+                errors.push(format!(
+                    "`{path}`'s `polygon` has its corners on one line, and an area has a width and a height"
+                ));
+                return None;
+            }
+            (lo, (hi.0 - lo.0, hi.1 - lo.1), Some(points))
+        }
+        None => {
+            let size = size_of(model, id, errors)?;
+            let Some(at) = position_of(model, id, errors) else {
+                errors.push(format!(
+                    "`{path}` has no `.x` and `.y`: say where the body's area is in the part's own frame, or give it as a `polygon`"
+                ));
+                return None;
+            };
+            (at, size, None)
+        }
+    };
+    Some(Keepout {
+        name: path.to_string(),
+        part: Some(model.path_of(part)),
+        at: Some(at),
+        size,
+        layers: vec!["top".to_string()],
+        tracks: false,
+        vias: false,
+        copper: false,
+        parts: false,
+        max_height: Some(limit),
+        on_carrier_face: true,
+        polygon,
+    })
 }
 
 /// Where each requirement of a [`Placement`] is stated: the placement's index in
@@ -2198,6 +2300,7 @@ pub(crate) fn layout(
                     parts,
                     max_height: None,
                     on_carrier_face: false,
+                    polygon: None,
                 });
                 continue;
             }

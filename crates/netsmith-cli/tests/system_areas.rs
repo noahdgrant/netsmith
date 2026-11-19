@@ -246,3 +246,62 @@ fn fab_says_why_no_area_is_derived_when_the_other_connector_has_no_place() {
         "{text}"
     );
 }
+
+#[test]
+fn a_connectors_underside_keepout_limits_the_parts_of_the_board_it_is_mated_with() {
+    // The lamp's socket states the area under its body (issue #1335): 10 by 6 mm, 2 mm low.
+    // Neither socket has a place before placing: the pads alone line the two up.
+    let dir = project("system-areas-underside", false);
+    let lamp = LAMP
+        .replace(
+            "import std::sources::Rail",
+            "import std::sources::Rail\nimport std::pcb::UndersideKeepout",
+        )
+        .replace(
+            ".power_in: Socket1x2\n",
+            ".power_in: Socket1x2 {\n        .underside_keepout: UndersideKeepout { .x &= 1mm; .y &= -2mm; .width &= 10mm; .height &= 6mm; .max_height &= 2mm }\n    }\n",
+        );
+    fs::write(dir.join("src/lamp.nsm"), lamp).unwrap();
+    let header_only = power_layout(true)
+        .split("\n\n[PowerBoard.parts.tall]")
+        .next()
+        .unwrap()
+        .to_string();
+    fs::write(dir.join("src/power.pcb.toml"), header_only).unwrap();
+    let run = netsmith(
+        &dir,
+        &[
+            "dev", "board3d", "src/kit.nsm", "--board", "Kit", "--format", "json",
+        ],
+    );
+    assert!(run.status.success(), "{}", said(&run));
+    let scene = json(&run);
+    let limits = scene["members"][0]["report"]["height_limits"]
+        .as_array()
+        .unwrap();
+    let under = limits
+        .iter()
+        .find(|l| l["name"] == "Kit/lamp.power_in.underside_keepout")
+        .unwrap_or_else(|| panic!("{limits:#?}"));
+    assert_eq!(under["carrier"], "power_out");
+    assert_eq!(under["max_height"], 2.0);
+    assert_eq!(under["faces"], serde_json::json!(["top"]));
+    let size = |i: usize| under["max"][i].as_f64().unwrap() - under["min"][i].as_f64().unwrap();
+    // Mirrored and turned onto the header, the area keeps its size, one way or the other.
+    let (w, h) = (size(0), size(1));
+    assert!(
+        ((w - 10.0).abs() < 1e-6 && (h - 6.0).abs() < 1e-6)
+            || ((w - 6.0).abs() < 1e-6 && (h - 10.0).abs() < 1e-6),
+        "{under:#}"
+    );
+    // The lamp board keeps its own keepout on its socket's face too.
+    let lamp_limits = scene["members"][1]["report"]["height_limits"]
+        .as_array()
+        .unwrap();
+    assert!(
+        lamp_limits
+            .iter()
+            .any(|l| l["name"] == "power_in.underside_keepout" && l["carrier"] == "power_in"),
+        "{lamp_limits:#?}"
+    );
+}

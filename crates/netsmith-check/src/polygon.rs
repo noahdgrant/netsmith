@@ -63,17 +63,36 @@ impl Checker<'_> {
     pub(crate) fn polygon(&mut self, p: &Polygon) {
         let cur = self.current();
         let inst = self.model.instance(cur);
-        if self.phys.is_none() || inst.type_name != "Outline" {
+        // An underside keepout (issue #1335) is the other shape a polygon gives: the area under
+        // a part's body, in the part's definition or a use's block, with straight edges.
+        let underside = inst.type_name == "UndersideKeepout";
+        if !underside && (self.phys.is_none() || inst.type_name != "Outline") {
             self.error(
                 p.span,
-                "a `polygon` is the board edge, and it belongs in the board's `.outline: Outline { ... }` in the `case` section of its physical file (issue #57)",
+                "a `polygon` is the board edge, and it belongs in the board's `.outline: Outline { ... }` in the `case` section of its physical file (issue #57), or the area under a part's body, in its `.underside_keepout: UndersideKeepout { ... }` (issue #1335)",
             );
             return;
         }
         if self.model.polygon_of(cur).is_some() {
             self.error(
                 p.span,
-                "the outline already has a `polygon`, and a board has one edge",
+                if underside {
+                    "the underside keepout already has a `polygon`, and a body has one area"
+                } else {
+                    "the outline already has a `polygon`, and a board has one edge"
+                },
+            );
+            return;
+        }
+        if underside
+            && let Some(c) = p
+                .corners
+                .iter()
+                .find(|c| c.round.is_some() || c.through.is_some())
+        {
+            self.error(
+                c.span,
+                "an underside keepout's `polygon` has straight edges: leave out `round` and `arc through`, and give the corners of the body's outline (issue #1335)",
             );
             return;
         }

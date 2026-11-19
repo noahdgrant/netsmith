@@ -102,7 +102,7 @@ fn a_polygon_outside_the_outline_or_in_the_circuit_source_is_refused() {
     let c = physical(
         "        .slot: Cutout {\n            polygon (0mm, 0mm) (4mm, 0mm) (4mm, 4mm)\n        }",
     );
-    let refusal = "a `polygon` is the board edge, and it belongs in the board's `.outline: Outline { ... }` in the `case` section of its physical file (issue #57)";
+    let refusal = "a `polygon` is the board edge, and it belongs in the board's `.outline: Outline { ... }` in the `case` section of its physical file (issue #57), or the area under a part's body, in its `.underside_keepout: UndersideKeepout { ... }` (issue #1335)";
     assert!(
         messages(&c).iter().any(|m| m == refusal),
         "{:?}",

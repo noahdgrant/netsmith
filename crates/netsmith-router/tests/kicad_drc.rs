@@ -671,6 +671,7 @@ fn crossing_with_keepout(at: Pt, size: (f64, f64), what: &str) -> (Board, Rect) 
         parts: false,
         max_height: None,
         on_carrier_face: false,
+        polygon: None,
     });
     let area = b.keepout_areas()[0].rect;
     assert!(route(&mut b).is_empty(), "still routable around it");

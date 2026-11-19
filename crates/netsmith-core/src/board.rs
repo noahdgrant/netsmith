@@ -141,7 +141,18 @@ pub struct Keepout {
     /// (issue 1331); a keepout of the source names its faces as they are, and is not.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub on_carrier_face: bool,
+    /// The corners of its area, in the same frame as `at`, when it is not the rectangle `at`
+    /// and `size` give (those are then the box round it): a part's `.underside_keepout` stated
+    /// as a `polygon` (issue #1335). The height check measures against the polygon; the placer
+    /// keeps to the box.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub polygon: Option<Vec<(f64, f64)>>,
 }
+
+/// The name of a part's member that is the area under its body (issue #1335): a keepout whose
+/// name ends with `.underside_keepout` is one, and a message calls it the underside keepout of
+/// the part.
+pub const UNDERSIDE_KEEPOUT: &str = "underside_keepout";
 
 /// How tall a part stands above the board, as the design states it (ADR 0045, "Height
 /// limits"). A part the design does not state a height for is not here: its
