@@ -15,9 +15,14 @@ export const fixture = 'two_boards';
 const BOARD = 'TwoBoards/led';
 const DRAWING = '[data-testid=gerber-drawing]';
 
-/** The panel's answer for a view, as the server gives it. */
+/** The panel's answer for a view, as the server gives it; `{}` when there is no package (a 404, whose body is text). */
 const answer = (page, layer) =>
-  page.evaluate(async ([b, l]) => (await fetch(`/api/gerber?board=${encodeURIComponent(b)}&layer=${l}`)).json(), [BOARD, layer]);
+  page.evaluate(async ([b, l]) => {
+    const res = await fetch(`/api/gerber?board=${encodeURIComponent(b)}&layer=${l}`);
+    if (res.status === 404) return {};
+    if (!res.ok) throw new Error(`/api/gerber answered ${res.status}: ${await res.text()}`);
+    return res.json();
+  }, [BOARD, layer]);
 
 export async function run({ page, shot, step, expect, section, project, binary, allowConsole }) {
   await page.selectOption('.boardpick select', BOARD);
