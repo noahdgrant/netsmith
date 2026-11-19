@@ -128,6 +128,10 @@
 //! (`levels .io`), which would allow two groups on two supplies in one part (today one of them is
 //! an interface with `levels`, or `Logic` lines), and a block that lists the pins of a group.
 //!
+//! An input level stated in rows by the supply (#1305, #1307) is written from its rows before
+//! this check runs (`crate::supply_levels`), and read here as any level; a level its rows give
+//! no value is the note that it has none, with the reason (`Run::unread_why`).
+//!
 //! A control input strapped to a rail or to ground is at a known level (#1304). A board ties a
 //! mode pin of a transceiver straight to its supply or to ground, and the pin was judged as a net
 //! that nothing drives: every passive on the ground whose far end something drives (a pull-down
@@ -268,6 +272,7 @@ pub(crate) fn reader(model: &Model) -> Run<'_> {
     Run {
         model,
         reads: None,
+        unread: None,
         faults: Vec::new(),
         notes: Vec::new(),
         seen: BTreeSet::new(),
@@ -301,9 +306,16 @@ pub(crate) fn series_drivers(model: &Model) -> BTreeMap<(InstId, usize), BTreeSe
 }
 
 /// The faults found and the checks that could not be made.
-pub(crate) fn check(model: &Model, reads: &NetReads) -> (Vec<Diagnostic>, Vec<NotEvaluated>) {
+/// `unread` says, for each level stated in rows by the supply that its rows give no value, why
+/// (issue #1305, `crate::supply_levels`), for the note that it has none.
+pub(crate) fn check(
+    model: &Model,
+    reads: &NetReads,
+    unread: &HashMap<FieldId, String>,
+) -> (Vec<Diagnostic>, Vec<NotEvaluated>) {
     let mut run = reader(model);
     run.reads = Some(reads);
+    run.unread = Some(unread);
     for index in 0..model.nets().len() {
         netsmith_core::job::checkpoint();
         run.levels(index);
@@ -324,6 +336,8 @@ pub(crate) struct Run<'a> {
     model: &'a Model,
     /// What the DC analysis solved, when the check has it.
     reads: Option<&'a NetReads>,
+    /// Why the rows by the supply of a level give it no value (issue #1305).
+    unread: Option<&'a HashMap<FieldId, String>>,
     faults: Vec<Diagnostic>,
     notes: Vec<NotEvaluated>,
     seen: BTreeSet<String>,
@@ -428,6 +442,18 @@ impl Run<'_> {
             model.path_of(logic),
             model.path_of_field(field)
         )
+    }
+
+    /// Why a level stated in rows by the supply has no value, as the end of a note (`: ...`),
+    /// or nothing (issue #1305).
+    fn unread_why(&self, logic: InstId, name: &str) -> String {
+        match self.model.member(logic, name) {
+            Some(Member::Field(f)) => self
+                .unread
+                .and_then(|u| u.get(&f))
+                .map_or_else(String::new, |why| format!(": {why}")),
+            _ => String::new(),
+        }
     }
 
     /// Whether a `Logic` states any of its four levels.
@@ -626,9 +652,10 @@ impl Run<'_> {
                             vec![r.logic],
                             Cause::PartModel,
                             format!(
-                                "not evaluated: the high level into `{rl}` on net `{}`: rail `{path}` holds it at {}, and `{rl}.vih` has no value",
+                                "not evaluated: the high level into `{rl}` on net `{}`: rail `{path}` holds it at {}, and `{rl}.vih` has no value{}",
                                 net.name,
-                                range_text((q.lo(), q.hi()))
+                                range_text((q.lo(), q.hi())),
+                                self.unread_why(r.logic, "vih"),
                             ),
                         );
                         continue;
@@ -644,8 +671,9 @@ impl Run<'_> {
                             vec![r.logic],
                             Cause::PartModel,
                             format!(
-                                "not evaluated: the low level into `{rl}` on net `{}`: it is a ground, and `{rl}.vil` has no value",
-                                net.name
+                                "not evaluated: the low level into `{rl}` on net `{}`: it is a ground, and `{rl}.vil` has no value{}",
+                                net.name,
+                                self.unread_why(r.logic, "vil"),
                             ),
                         );
                         continue;
@@ -1700,6 +1728,12 @@ impl Run<'_> {
             .filter(|(_, _, none)| *none)
             .map(|(path, name, _)| format!("`{path}.{name}`"))
             .collect();
+        let why: String = [d.logic, r.logic]
+            .into_iter()
+            .zip(need.iter())
+            .filter(|(_, (_, _, none))| *none)
+            .map(|(logic, (_, name, _))| self.unread_why(logic, name))
+            .collect();
         let model = self.model;
         let lacking_logics: Vec<InstId> = [d.logic, r.logic]
             .into_iter()
@@ -1712,7 +1746,7 @@ impl Run<'_> {
             lacking_logics,
             Cause::PartModel,
             format!(
-                "not evaluated: the {which} level from `{}` to `{}` on net `{}`: {} {} no value",
+                "not evaluated: the {which} level from `{}` to `{}` on net `{}`: {} {} no value{why}",
                 model.path_of(d.logic),
                 model.path_of(r.logic),
                 net.name,

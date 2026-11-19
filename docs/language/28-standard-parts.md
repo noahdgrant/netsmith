@@ -2534,7 +2534,7 @@ error: `supply.current` is stated -500mA..0A, so the supply `supply` gives at mo
 
 ### Logic levels and absolute maximums
 
-A digital line is a `Logic` (`std::logic::Logic`): a pin `.line` and the rail `.reference` whose `neg` is its ground. It also has four voltages, `.vih`, `.vil`, `.voh` and `.vol`, as a datasheet gives them (ADR 0046). A part states those it has, with fixed volts or with an equation on its rail: `.in.vih &= 2V`, `.in.vih &= 0.7 * .vdd.voltage`, `.out.voh &= .vdd.voltage - 0.1V`. Every pin also has `.abs_min` and `.abs_max`, the voltages it survives relative to its ground. A part writes them at the end of the pin's row, `abs_min -0.5V abs_max 3.6V` (ADR 0126), and nowhere else: a statement such as `.in.line.abs_max &= 3.6V` is an error that names the row. A `Logic` line or a bus pin is measured from its interface's ground; any other pin names its ground in the row, or takes the part's ("Several packages, and the absolute limits in the row").
+A digital line is a `Logic` (`std::logic::Logic`): a pin `.line` and the rail `.reference` whose `neg` is its ground. It also has four voltages, `.vih`, `.vil`, `.voh` and `.vol`, as a datasheet gives them (ADR 0046). A part states those it has, with fixed volts or with an equation on its rail: `.in.vih &= 2V`, `.in.vih &= 0.7 * .vdd.voltage`, `.out.voh &= .vdd.voltage - 0.1V`. An input level that the datasheet gives in rows by the supply is stated in those rows (see "Levels in rows by the supply" below). Every pin also has `.abs_min` and `.abs_max`, the voltages it survives relative to its ground. A part writes them at the end of the pin's row, `abs_min -0.5V abs_max 3.6V` (ADR 0126), and nowhere else: a statement such as `.in.line.abs_max &= 3.6V` is an error that names the row. A `Logic` line or a bus pin is measured from its interface's ground; any other pin names its ground in the row, or takes the part's ("Several packages, and the absolute limits in the row").
 
 After the rails are solved, the solver checks two things. A fault is an error; a check that cannot be made is a note `not evaluated: ...`, never a pass.
 
@@ -3493,7 +3493,7 @@ board B {
 ```
 
 ```text
-error: `at <current>` states the load of an output level; `.out.vih` is a level that a datasheet states without a load: only an output level, `voh` or `vol`, is measured at a current
+error: an input level is not measured at a load: `at` after `vih` or `vil` takes the supply the level holds at, such as `at 3.0V..3.6V`
   --> main.nsm:8:23
   |
 8 |     .out.vih &= 2V at 2mA
@@ -3564,6 +3564,162 @@ error: `.out.voh` is already stated at 2mA (at main.nsm:8): a level is one value
 9 |     .out.voh >= 2V at 8mA
   |                       ^^^
 ```
+
+#### Levels in rows by the supply
+
+A datasheet often gives an input's thresholds in rows by its supply: `VIH` is 0.65 x VCCI from 1.1 V to 1.95 V and a fixed 2.0 V from 3.0 V to 3.6 V, and `VIL` 0.35 x VCCI and 0.8 V in the same rows. A part states its `vih` or `vil` as the table is printed (issue #1305): each row is the level, `at`, and the supply it holds at, a range or one voltage, with the rows written from the lowest supply and separated by commas. The level may name the supply's voltage, as a level stated without rows does. The supply is the level's reference rail, the `.reference` of its `Logic` or `Levels`.
+
+```nsm evaluate
+import std::logic::Logic
+import std::sources::Rail
+
+/// Invented: an input whose thresholds are a fraction of its supply from 1.1 V to 1.95 V and
+/// fixed from 3.0 V to 3.6 V.
+part Receiver {
+    .vcc: Rail
+    .a: Logic
+    .a.reference ~ .vcc
+    .a.reference.current &= 0A
+    .a.vih &= 0.65 * .vcc.voltage at 1.1V..1.95V, 2.0V at 3.0V..3.6V
+    .a.vil &= 0.35 * .vcc.voltage at 1.1V..1.95V, 0.8V at 3.0V..3.6V
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+        .a.line  input "A"   "3"
+    }
+}
+
+/// Invented: drives within 0.1 V of its supply.
+part Host {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.reference.current &= 0A
+    .out.voh &= .vdd.voltage - 0.1V
+    .out.vol &= 0.1V
+    pins {
+        .vdd.pos  power  "VDD" "1"
+        .vdd.neg  power  "GND" "2"
+        .out.line output "OUT" "3"
+    }
+}
+
+board Low {
+    .core: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8"; .neg.net &= "GND" }
+    .host: Host
+    .rx: Receiver
+    .core ~ .host.vdd
+    .core ~ .rx.vcc
+    .host.out.line ~ .rx.a.line
+}
+```
+
+The rows are read once the rails are solved. Each row that the rail's range reaches gives the level over the part of the range it holds at, with the supply's voltage in the row held to that part: on 1.71 V..1.89 V, `rx.a.vih` is 0.65 of it, 1.112 V..1.229 V, and the host's high of at least 1.61 V is read as a high. A rail whose range spans two rows is judged against the worse of them: the level is the range of every row it reaches, and the check holds a high against its highest `vih` and a low against its lowest `vil`. The same receiver on 3.3 V takes the fixed row, and the host on 1.8 V does not reach it:
+
+```nsm fails
+import std::logic::Logic
+import std::sources::Rail
+
+/// Invented: an input whose thresholds are a fraction of its supply from 1.1 V to 1.95 V and
+/// fixed from 3.0 V to 3.6 V.
+part Receiver {
+    .vcc: Rail
+    .a: Logic
+    .a.reference ~ .vcc
+    .a.reference.current &= 0A
+    .a.vih &= 0.65 * .vcc.voltage at 1.1V..1.95V, 2.0V at 3.0V..3.6V
+    .a.vil &= 0.35 * .vcc.voltage at 1.1V..1.95V, 0.8V at 3.0V..3.6V
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+        .a.line  input "A"   "3"
+    }
+}
+
+/// Invented: drives within 0.1 V of its supply.
+part Host {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.reference.current &= 0A
+    .out.voh &= .vdd.voltage - 0.1V
+    .out.vol &= 0.1V
+    pins {
+        .vdd.pos  power  "VDD" "1"
+        .vdd.neg  power  "GND" "2"
+        .out.line output "OUT" "3"
+    }
+}
+
+board Translated {
+    .core: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8"; .neg.net &= "GND" }
+    .io: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3"; .neg.net &= "GND" }
+    .host: Host
+    .rx: Receiver
+    .core ~ .host.vdd
+    .io ~ .rx.vcc
+    .host.out.line ~ .rx.a.line
+}
+```
+
+```text
+error: net `net-host.out.line`: `host.out.voh` is 1.61V..1.79V but `rx.a.vih` needs 2V: a high of 1.61V is not always read as a high, which takes 2V
+   --> main.nsm:38:5
+   |
+38 |     .host: Host
+   |     ^^^^^^^^^^^
+```
+
+Between two rows the datasheet guarantees nothing. A supply that the rail's range reaches and no row holds at, between two rows, below the first or above the last, gives the level no value, and the levels check says it is not evaluated and why: on 2.5 V the receiver above has the note ``not evaluated: the high level from `host.out` to `rx.a` on net `net-host.out.line`: `rx.a.vih` has no value: `rx.a.vih` is stated in rows by the supply, and no row gives it at 2.5V of the 2.5V of `rx.a.reference.voltage` (...)``.
+
+Some datasheets say the level is linear in the supply between two rows, such as a Schmitt input whose guaranteed thresholds are given at 1.65 V and at 2.3 V (issue #1307). The part says so with `interpolated` after the last row, and between two rows the level is then on the line from the value of the one at its highest supply to the value of the next at its lowest. On 1.71 V..1.89 V the input below needs 1.037 V..1.148 V:
+
+```nsm evaluate
+import std::logic::Logic
+import std::sources::Rail
+
+/// Invented: a Schmitt input whose guaranteed high threshold is given at 1.65 V and at 2.3 V,
+/// and which its datasheet says is linear in the supply between them.
+part Schmitt {
+    .vcc: Rail
+    .a: Logic
+    .a.reference ~ .vcc
+    .a.reference.current &= 0A
+    .a.vih &= 1.0V at 1.65V, 1.4V at 2.3V interpolated
+    .a.vil &= 0.4V
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+        .a.line  input "A"   "3"
+    }
+}
+
+/// Invented: drives within 0.1 V of its supply.
+part Host {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.reference.current &= 0A
+    .out.voh &= .vdd.voltage - 0.1V
+    .out.vol &= 0.1V
+    pins {
+        .vdd.pos  power  "VDD" "1"
+        .vdd.neg  power  "GND" "2"
+        .out.line output "OUT" "3"
+    }
+}
+
+board Shaped {
+    .core: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8"; .neg.net &= "GND" }
+    .host: Host
+    .in: Schmitt
+    .core ~ .host.vdd
+    .core ~ .in.vcc
+    .host.out.line ~ .in.a.line
+}
+```
+
+Only an input level, the `vih` or `vil` of a `Logic` or of `Levels`, takes rows, and only with `&=`; a row's supply is the number the datasheet prints, above zero, and the rows rise and do not overlap (two may share an end, where both hold). A level has one table, and `interpolated` needs two rows. One row alone (`.a.vih &= 2.0V at 3.0V..3.6V`) is a table too: the receiver is judged on that supply and is not evaluated on any other. An output level is not stated in rows: its `at` is the current it was measured at (above). A level that another statement also narrows takes the overlap of the two, and a fault at the rows when there is none.
 
 ### A level translator
 
