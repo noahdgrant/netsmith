@@ -452,7 +452,7 @@ impl<'a> Timing<'a> {
                 self.net_of.get(&other).copied()
             };
             if standard.iter().any(|s| s == "Resistor")
-                && let Some(dc) = &model.instance(part).dc
+                && let Some(dc) = model.instance(part).dc.first()
                 && dc.pins.len() == 2
             {
                 match far(dc.pins[0], dc.pins[1]) {
