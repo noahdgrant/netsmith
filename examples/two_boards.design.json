@@ -308,17 +308,17 @@
         },
         {
           "net": "GND",
-          "current": 0.1,
-          "least_width": 0.015677619109034917,
+          "current": 0.066818181836,
+          "least_width": 0.008989913103250993,
           "vias": 1,
-          "source": "the sum of the currents on it with every load on at once: rail `stage.regulator.vin` 50 mA + rail `output` 50 mA"
+          "source": "the sum of the currents on it with every load on at once: rail `output` 50 mA + rail `stage.regulator.vin` 16.8 mA"
         },
         {
           "net": "VIN",
-          "current": 0.05,
-          "least_width": 0.006026516109918563,
+          "current": 0.016818181835999996,
+          "least_width": 0.0013408775969896572,
           "vias": 1,
-          "source": "rail `stage.regulator.vin`: 0 mA to 50 mA"
+          "source": "rail `stage.regulator.vin`: 7.28 mA to 16.8 mA"
         }
       ],
       "outline": null,
@@ -733,10 +733,34 @@
         },
         {
           "net": "net-led.anode",
-          "current": 0.01681818181818182,
-          "least_width": 0.0013408775950302018,
+          "current": 0.016818181835999996,
+          "least_width": 0.0013408775969896572,
           "vias": 1,
-          "source": "part `led`: 7.28 mA to 16.8 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 16.8 mA"
+        }
+      ],
+      "pin_currents": [
+        {
+          "net": "net-led.anode",
+          "path": "led.anode",
+          "pins": [
+            {
+              "refdes": "D1",
+              "pin": "2"
+            }
+          ],
+          "current": 0.01681818181818182
+        },
+        {
+          "net": "net-led.anode",
+          "path": "r1.b",
+          "pins": [
+            {
+              "refdes": "R1",
+              "pin": "2"
+            }
+          ],
+          "current": 0.01681818181818182
         }
       ],
       "outline": null,

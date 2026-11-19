@@ -214,11 +214,19 @@
 //! Levels cross the mates of a system (issue #1323, the owner's decision): a driver on a net of
 //! one board against a receiver on a net of another that mated contacts join, the nets paired by
 //! the mate's contact map, each part's levels from its own board's supply, and a fault at the
-//! mate that names both nets, their boards and the contacts (`Run::across_mates`). Not built: the
-//! DC analysis across a mate (it solves each board's nets alone, so an open-drain line's high is
-//! read from the pull-ups of every board it reaches, also for a receiver on the driver's own
-//! board, issue #1436), and the notes of the other passes (a pin
-//! with no levels, a level through a series part) across a mate.
+//! mate that names both nets, their boards and the contacts (`Run::across_mates`).
+//!
+//! The circuit of a line crosses the mates too (issue #1427): the nets that mated contacts join
+//! are read as one node (`crate::mated`), by the DC analysis and by this check's passes that look
+//! at one net at a time. An open-drain line's high across a mate is the analysis's, which solves
+//! both boards at once, where it modelled the line, and the pull-ups' otherwise; a pin with no
+//! levels on one board against a line with levels on the other is named; a level through a
+//! series part or a divider is followed from a driver on the other board; a strap through a
+//! mate holds a pin; a receiver on the driver's own board takes the high from the circuit of
+//! every board the line reaches (issue #1436). A contact is a wire, which draws nothing. A pair
+//! of lines on two boards is still judged by `across_mates`, which names the nets from the
+//! driver's board and reports the fault at the mate; the other passes name a joined node by the
+//! nets of all its boards, in the order of the boards in the system.
 //!
 //! Accepted as built by the owner, 2026-11-11. Not built: the rule for affine forms (a fraction of
 //! the supply with an offset, `.vdd.voltage - 0.4V`), which a corner comparison decides exactly,
@@ -234,6 +242,8 @@ use netsmith_check::{
 use netsmith_core::Cause;
 use netsmith_lang::ast::{BinOp, CmpOp};
 use netsmith_quantity::{Dimension, Quantity};
+
+use crate::mated::Joined;
 
 /// A check the solver could not make, and the part it is about.
 #[derive(Debug, Clone, PartialEq)]
@@ -291,8 +301,14 @@ pub(crate) type HeldOn = (InstId, Option<(f64, f64)>, Option<(f64, f64)>);
 /// The readers of the logic interfaces and resistors of a model, for the passes that need
 /// them and make no check of their own.
 pub(crate) fn reader(model: &Model) -> Run<'_> {
+    joined_reader(model, None)
+}
+
+/// A reader that reads the nets mates join as one (issue #1427, [`Joined`]).
+pub(crate) fn joined_reader<'a>(model: &'a Model, joined: Option<&'a Joined>) -> Run<'a> {
     Run {
         model,
+        joined,
         reads: None,
         unread: None,
         across: None,
@@ -308,14 +324,17 @@ pub(crate) fn reader(model: &Model) -> Run<'_> {
 /// a net on which a receiver states `vih` or `vil` and that nothing drives, or whose own drivers
 /// can all let go of it. The DC analysis solves their islands once with each held high and once
 /// held low, and the receiver's net let go of, for the levels check to judge the receiver by.
+/// The nets are the ones the mates join (issue #1427), as the DC analysis reads them, so a level
+/// through a series part on one board into a receiver on another is solved too.
 pub(crate) fn series_drivers(model: &Model) -> BTreeMap<(InstId, usize), BTreeSet<InstId>> {
-    let run = reader(model);
+    let joined = Joined::of(model);
+    let run = joined_reader(model, joined.as_ref());
     let mut out: BTreeMap<(InstId, usize), BTreeSet<InstId>> = BTreeMap::new();
-    for index in 0..model.nets().len() {
-        let lines = run.lines_on(&model.nets()[index]);
+    for index in 0..run.nets().len() {
+        let lines = run.lines_on(&run.nets()[index]);
         let sources = run.series_sources(index, &lines);
         for (part, far) in sources.into_iter().chain(run.crossings(index, &lines)) {
-            for &t in &model.nets()[far].terminals {
+            for &t in &run.nets()[far].terminals {
                 if model.unused_by(t).is_none()
                     && model.owner_of(t) != Some(part)
                     && run.kind_of(t).is_some_and(is_driver)
@@ -336,10 +355,14 @@ pub(crate) fn check(
     reads: &NetReads,
     unread: &HashMap<FieldId, String>,
 ) -> (Vec<Diagnostic>, Vec<NotEvaluated>) {
-    let mut run = reader(model);
+    let mut joined = Joined::of(model);
+    if let Some(j) = &mut joined {
+        j.describe(model);
+    }
+    let mut run = joined_reader(model, joined.as_ref());
     run.reads = Some(reads);
     run.unread = Some(unread);
-    for index in 0..model.nets().len() {
+    for index in 0..run.nets().len() {
         netsmith_core::job::checkpoint();
         run.levels(index);
     }
@@ -358,6 +381,9 @@ struct Line {
 
 pub(crate) struct Run<'a> {
     model: &'a Model,
+    /// The nets that mated contacts join, read as one (issue #1427): `None` on a board, and in
+    /// a system whose mates join nothing, and for the readers that look at one board's nets.
+    joined: Option<&'a Joined>,
     /// What the DC analysis solved, when the check has it.
     reads: Option<&'a NetReads>,
     /// Why the rows by the supply of a level give it no value (issue #1305).
@@ -394,7 +420,7 @@ fn is_receiver(kind: PinKind) -> bool {
     matches!(kind, PinKind::Input | PinKind::Bidirectional)
 }
 
-impl Run<'_> {
+impl<'a> Run<'a> {
     fn note(&mut self, at: InstId, involves: Vec<InstId>, cause: Cause, message: String) {
         if self.seen.insert(message.clone()) {
             self.notes.push(NotEvaluated {
@@ -525,8 +551,25 @@ impl Run<'_> {
         }
     }
 
+    /// The net a pin is on, as this check reads the nets: the place of the group of nets the
+    /// mates join, where they join its net (issue #1427).
     pub(crate) fn net_index(&self, pin: InstId) -> Option<usize> {
+        self.nets().iter().position(|n| n.pins.contains(&pin))
+    }
+
+    /// The nets, joined at the mates where a mate joins any (issue #1427).
+    fn nets(&self) -> &'a [Net] {
+        crate::mated::nets(self.model, self.joined)
+    }
+
+    /// The net of the model a pin is on, on its own board.
+    fn own_net(&self, pin: InstId) -> Option<usize> {
         self.model.nets().iter().position(|n| n.pins.contains(&pin))
+    }
+
+    /// Whether a pin is a contact a mate joins to another board: a wire (issue #1427).
+    fn mated_contact(&self, pin: InstId) -> bool {
+        self.joined.is_some_and(|j| j.contacts.contains(&pin))
     }
 
     /// Whether two ground pins are the same ground: on one net, or on nets that mated ground
@@ -538,6 +581,9 @@ impl Run<'_> {
         if x == y {
             return true;
         }
+        let (Some(x), Some(y)) = (self.own_net(a), self.own_net(b)) else {
+            return false;
+        };
         let key = |index: usize, pin: InstId| {
             (
                 self.model
@@ -556,7 +602,7 @@ impl Run<'_> {
     }
 
     fn name_of_net(&self, pin: InstId) -> String {
-        self.net_index(pin).map_or_else(
+        self.own_net(pin).map_or_else(
             || "(no net)".to_string(),
             |i| self.model.nets()[i].name.clone(),
         )
@@ -590,11 +636,16 @@ impl Run<'_> {
 
     fn levels(&mut self, index: usize) {
         let model = self.model;
-        let net = &model.nets()[index];
+        let net = &self.nets()[index];
         let lines = self.lines_on(net);
         for d in lines.iter().filter(|l| is_driver(l.kind)) {
             for r in lines.iter().filter(|l| is_receiver(l.kind)) {
                 if d.pin == r.pin || model.joined_inside(d.pin).contains(&r.pin) {
+                    continue;
+                }
+                // A pair on two boards is judged across the mate, where the fault names both
+                // nets and is at the mate (`across_mates`).
+                if self.joined.is_some() && self.own_net(d.pin) != self.own_net(r.pin) {
                     continue;
                 }
                 if !self.states_levels(d.logic) && !self.states_levels(r.logic) {
@@ -616,7 +667,7 @@ impl Run<'_> {
         let model = self.model;
         let mut rail: Option<(String, InstId, FieldId, InstId)> = None;
         let mut ground: Option<InstId> = None;
-        for &pin in &model.nets()[index].pins {
+        for &pin in &self.nets()[index].pins {
             let Some(parent) = model.instance(pin).parent else {
                 continue;
             };
@@ -651,7 +702,7 @@ impl Run<'_> {
     /// whatever the parts on it join it to (`series_sources`, `crossings`).
     fn strapped(&mut self, index: usize, lines: &[Line]) {
         let model = self.model;
-        let net = &model.nets()[index];
+        let net = &self.nets()[index];
         let Some(holder) = self.holder(index) else {
             return;
         };
@@ -674,8 +725,8 @@ impl Run<'_> {
                     vec![r.logic],
                     Cause::Unjudged,
                     format!(
-                        "not evaluated: the logic levels into `{rl}` on net `{}`: {what} holds it, and its ground `{}` is on net `{}`, not `{}`",
-                        net.name,
+                        "not evaluated: the logic levels into `{rl}` on {}: {what} holds it, and its ground `{}` is on net `{}`, not `{}`",
+                        self.place(net),
                         model.path_of(neg),
                         self.name_of_net(neg),
                         self.name_of_net(rg)
@@ -691,8 +742,8 @@ impl Run<'_> {
                             vec![r.logic],
                             Cause::Unjudged,
                             format!(
-                                "not evaluated: the high level into `{rl}` on net `{}`: rail `{path}` holds it and has no voltage",
-                                net.name
+                                "not evaluated: the high level into `{rl}` on {}: rail `{path}` holds it and has no voltage",
+                                self.place(net)
                             ),
                         );
                         continue;
@@ -703,8 +754,8 @@ impl Run<'_> {
                             vec![r.logic],
                             Cause::PartModel,
                             format!(
-                                "not evaluated: the high level into `{rl}` on net `{}`: rail `{path}` holds it at {}, and `{rl}.vih` has no value{}",
-                                net.name,
+                                "not evaluated: the high level into `{rl}` on {}: rail `{path}` holds it at {}, and `{rl}.vih` has no value{}",
+                                self.place(net),
                                 range_text((q.lo(), q.hi())),
                                 self.unread_why(r.logic, "vih"),
                             ),
@@ -722,8 +773,8 @@ impl Run<'_> {
                             vec![r.logic],
                             Cause::PartModel,
                             format!(
-                                "not evaluated: the low level into `{rl}` on net `{}`: it is a ground, and `{rl}.vil` has no value{}",
-                                net.name,
+                                "not evaluated: the low level into `{rl}` on {}: it is a ground, and `{rl}.vil` has no value{}",
+                                self.place(net),
                                 self.unread_why(r.logic, "vil"),
                             ),
                         );
@@ -770,7 +821,7 @@ impl Run<'_> {
     /// low is not.
     fn plain_pins(&mut self, index: usize, lines: &[Line]) {
         let model = self.model;
-        let net = &model.nets()[index];
+        let net = &self.nets()[index];
         let plain = self.plain_on(net);
         let unknown =
             "is not the `line` of a `Logic` or a pin of an interface or a part with `levels`";
@@ -791,8 +842,8 @@ impl Run<'_> {
                             vec![part],
                             Cause::PartModel,
                             format!(
-                                "not evaluated: the low level from `{p}` to `{rl}` on net `{}`: `{p}` {unknown}, so its `vol` is not known",
-                                net.name
+                                "not evaluated: the low level from `{p}` to `{rl}` on {}: `{p}` {unknown}, so its `vol` is not known",
+                                self.place(net)
                             ),
                         );
                         continue;
@@ -802,8 +853,8 @@ impl Run<'_> {
                         vec![part],
                         Cause::PartModel,
                         format!(
-                            "not evaluated: the logic levels from `{p}` to `{rl}` on net `{}`: `{p}` can drive it and {unknown}, so its levels are not known",
-                            net.name
+                            "not evaluated: the logic levels from `{p}` to `{rl}` on {}: `{p}` can drive it and {unknown}, so its levels are not known",
+                            self.place(net)
                         ),
                     );
                 }
@@ -818,9 +869,9 @@ impl Run<'_> {
                         vec![part],
                         Cause::PartModel,
                         format!(
-                            "not evaluated: the logic levels from `{}` to `{p}` on net `{}`: `{p}` reads it and {unknown}, so the levels it needs are not known",
+                            "not evaluated: the logic levels from `{}` to `{p}` on {}: `{p}` reads it and {unknown}, so the levels it needs are not known",
                             model.path_of(d.logic),
-                            net.name
+                            self.place(net)
                         ),
                     );
                 }
@@ -833,7 +884,7 @@ impl Run<'_> {
     /// `vih`. A high that cannot be read is a note.
     fn plain_open_drain_high(&mut self, index: usize, p: &str, part: InstId, r: &Line) {
         let model = self.model;
-        let net = &model.nets()[index];
+        let net = &self.nets()[index];
         let (Some(vih), Some(rg)) = (self.value(r.logic, "vih"), self.ground_pin(r.logic)) else {
             return;
         };
@@ -861,9 +912,9 @@ impl Run<'_> {
             vec![part],
             Cause::Unjudged,
             format!(
-                "not evaluated: the high level from `{p}` to `{}` on net `{}`: `{p}` is an `open_drain` pin and the pull-up that would set its high cannot be read: {why_not}",
+                "not evaluated: the high level from `{p}` to `{}` on {}: `{p}` is an `open_drain` pin and the pull-up that would set its high cannot be read: {why_not}",
                 model.path_of(r.logic),
-                net.name
+                self.place(net)
             ),
         );
     }
@@ -881,8 +932,7 @@ impl Run<'_> {
     /// it and a receiver on it states `vih` or `vil`, each part with a `bridge` from the net to
     /// another net that something drives, with that net.
     fn series_sources(&self, index: usize, lines: &[Line]) -> Vec<(InstId, usize)> {
-        let model = self.model;
-        let net = &model.nets()[index];
+        let net = &self.nets()[index];
         if self.drives(net)
             || self.holder(index).is_some()
             || !lines
@@ -896,7 +946,7 @@ impl Run<'_> {
             let Some((part, far)) = self.far_end(t, index) else {
                 continue;
             };
-            if self.drives(&model.nets()[far]) && !out.contains(&(part, far)) {
+            if self.drives(&self.nets()[far]) && !out.contains(&(part, far)) {
                 out.push((part, far));
             }
         }
@@ -931,13 +981,13 @@ impl Run<'_> {
     /// side.
     fn through_series(&mut self, index: usize, lines: &[Line]) {
         let model = self.model;
-        let net = &model.nets()[index];
+        let net = &self.nets()[index];
         let receivers: Vec<&Line> = lines
             .iter()
             .filter(|l| is_receiver(l.kind) && self.states_input_levels(l.logic))
             .collect();
         for (part, far) in self.series_sources(index, lines) {
-            let from = &model.nets()[far];
+            let from = &self.nets()[far];
             let far_lines = self.lines_on(from);
             let drivers: Vec<InstId> = from
                 .terminals
@@ -973,11 +1023,11 @@ impl Run<'_> {
                         Vec::new(),
                         Cause::Unjudged,
                         format!(
-                            "not evaluated: the logic levels into `{}` on net `{}`: nothing on the net drives it, and its level comes through `{}` from net `{}`, which the levels check does not follow",
+                            "not evaluated: the logic levels into `{}` on {}: nothing on the net drives it, and its level comes through `{}` from {}, which the levels check does not follow",
                             model.path_of(r.logic),
-                            net.name,
+                            self.place(net),
                             model.path_of(part),
-                            from.name
+                            self.place(from)
                         ),
                     );
                 }
@@ -992,14 +1042,14 @@ impl Run<'_> {
     /// net is at the voltage of the other end.
     fn unloaded_through(&self, index: usize, part: InstId) -> bool {
         let model = self.model;
-        let net = &model.nets()[index];
+        let net = &self.nets()[index];
         let resistor = net
             .terminals
             .iter()
             .any(|&t| model.owner_of(t) == Some(part) && self.resistor_far_end(t).is_some());
         resistor
             && net.terminals.iter().all(|&t| {
-                if model.owner_of(t) == Some(part) {
+                if model.owner_of(t) == Some(part) || self.mated_contact(t) {
                     return true;
                 }
                 self.kind_of(t) == Some(PinKind::Input)
@@ -1011,7 +1061,11 @@ impl Run<'_> {
 
     /// Whether a pin draws nothing from its net: an `input` that states no leakage, or a
     /// leakage of nothing (#1045, #1270).
+    /// A contact a mate joins to another board is a wire, and draws nothing (#1427).
     fn draws_nothing(&self, pin: InstId) -> bool {
+        if self.mated_contact(pin) {
+            return true;
+        }
         self.kind_of(pin) == Some(PinKind::Input)
             && self
                 .logic_of(pin)
@@ -1024,7 +1078,7 @@ impl Run<'_> {
     /// other network, a resistance with no value, and a rail with no voltage.
     fn divider(&self, index: usize, series: InstId, ground: InstId) -> Option<Divider> {
         let model = self.model;
-        let net = &model.nets()[index];
+        let net = &self.nets()[index];
         if self.drives(net) || self.holder(index).is_some() {
             return None;
         }
@@ -1049,7 +1103,19 @@ impl Run<'_> {
         let end = match self.holder(far)? {
             Holder::Ground { neg } if self.same_ground(neg, ground) => Rail {
                 range: (0.0, 0.0),
-                name: format!("ground `{}`", model.nets()[far].name),
+                // The ground's net on the shunt's own board, where a mate joins grounds (#1427).
+                name: format!(
+                    "ground `{}`",
+                    self.model
+                        .nets()
+                        .iter()
+                        .find(|n| {
+                            n.terminals.iter().any(|&t| {
+                                model.owner_of(t) == Some(shunt) && self.net_index(t) == Some(far)
+                            })
+                        })
+                        .map_or(&self.nets()[far].name, |n| &n.name)
+                ),
             },
             Holder::Rail { path, voltage, neg } if self.same_ground(neg, ground) => {
                 if self.net_index(ground) == Some(far) {
@@ -1081,16 +1147,15 @@ impl Run<'_> {
     /// The divider of a net with no driver of its own, behind the one resistor whose far net
     /// something drives, for its absolute maximum (#1270): the divider and the net it is fed from.
     fn divider_of(&self, index: usize, ground: InstId) -> Option<(Divider, usize)> {
-        let model = self.model;
         let mut fed: Option<(InstId, usize)> = None;
-        for &t in &model.nets()[index].terminals {
+        for &t in &self.nets()[index].terminals {
             if self.resistor_far_end(t).is_none() {
                 continue;
             }
             let Some((part, far)) = self.far_end(t, index) else {
                 continue;
             };
-            if self.drives(&model.nets()[far]) && self.holder(far).is_none() {
+            if self.drives(&self.nets()[far]) && self.holder(far).is_none() {
                 if fed.is_some_and(|f| f != (part, far)) {
                     return None;
                 }
@@ -1134,9 +1199,9 @@ impl Run<'_> {
         };
         let (roh, rol) = (source("roh"), source("rol"));
         let words = format!(
-            "the divider of `{}` from net `{}` and `{}` to {}",
+            "the divider of `{}` from {} and `{}` to {}",
             model.path_of(div.series),
-            from.name,
+            self.place(from),
             model.path_of(div.shunt),
             div.end.name
         );
@@ -1208,10 +1273,14 @@ impl Run<'_> {
         let (dl, rl) = (model.path_of(d.logic), model.path_of(r.logic));
         let across = Across {
             part,
-            through: format!("through `{}` from net `{}`", model.path_of(part), from.name),
+            through: format!(
+                "through `{}` from {}",
+                model.path_of(part),
+                self.place(from)
+            ),
         };
         let near = if let_go {
-            format!(" and every driver of net `{}` letting go of it", net.name)
+            format!(" and every driver of {} letting go of it", self.place(net))
         } else {
             String::new()
         };
@@ -1223,7 +1292,7 @@ impl Run<'_> {
                     let nets = if let_go {
                         format!("nets `{}` and `{}`", from.name, net.name)
                     } else {
-                        format!("net `{}`", from.name)
+                        self.place(from)
                     };
                     format!(
                         "with every driver of {nets} letting go ({} leaves the high to its circuit)",
@@ -1292,9 +1361,9 @@ impl Run<'_> {
                     vec![across.part],
                     Cause::Unjudged,
                     format!(
-                        "not evaluated: the {level} level into `{}` on net `{}` {through} {state}: with `{p}` on, the DC analysis holds the line at {}, which `{}` reads as a {level}, but in some states it finds `{p}` off and the line at {}; whether `{p}` turns on there rests on its body diode, which the analysis models only when `{p}.body_diode_voltage` states its forward voltage",
+                        "not evaluated: the {level} level into `{}` on {} {through} {state}: with `{p}` on, the DC analysis holds the line at {}, which `{}` reads as a {level}, but in some states it finds `{p}` off and the line at {}; whether `{p}` turns on there rests on its body diode, which the analysis models only when `{p}.body_diode_voltage` states its forward voltage",
                         model.path_of(r.logic),
-                        net.name,
+                        self.place(net),
                         range_text(on),
                         model.path_of_field(fi),
                         range_text(full),
@@ -1311,7 +1380,7 @@ impl Run<'_> {
     /// `vil`, each part with a `bridge` from the net to another net, with that net.
     fn crossings(&self, index: usize, lines: &[Line]) -> Vec<(InstId, usize)> {
         let model = self.model;
-        let net = &model.nets()[index];
+        let net = &self.nets()[index];
         let own: Vec<PinKind> = net
             .terminals
             .iter()
@@ -1349,13 +1418,13 @@ impl Run<'_> {
     /// `output` on it is held by that output, and is not looked at.
     fn across_series(&mut self, index: usize, lines: &[Line]) {
         let model = self.model;
-        let net = &model.nets()[index];
+        let net = &self.nets()[index];
         let receivers: Vec<&Line> = lines
             .iter()
             .filter(|l| is_receiver(l.kind) && self.states_input_levels(l.logic))
             .collect();
         for (part, far) in self.crossings(index, lines) {
-            let from = &model.nets()[far];
+            let from = &self.nets()[far];
             let far_lines = self.lines_on(from);
             let mut drivers: Vec<InstId> = Vec::new();
             let mut readers: Vec<InstId> = Vec::new();
@@ -1390,11 +1459,11 @@ impl Run<'_> {
                 Vec::new(),
                 Cause::Unjudged,
                 format!(
-                    "not evaluated: the logic levels that cross `{}` from net `{}` into net `{}`: every driver of net `{}` can let go of it, and then the level that {} drive{} reaches {} through `{}`, which the levels check does not follow",
+                    "not evaluated: the logic levels that cross `{}` from {} into {}: every driver of {} can let go of it, and then the level that {} drive{} reaches {} through `{}`, which the levels check does not follow",
                     model.path_of(part),
-                    from.name,
-                    net.name,
-                    net.name,
+                    self.place(from),
+                    self.place(net),
+                    self.place(net),
                     names(&drivers),
                     if drivers.len() == 1 { "s" } else { "" },
                     names(&readers),
@@ -1416,7 +1485,7 @@ impl Run<'_> {
                 vec![d.logic, r.logic],
                 Cause::Unjudged,
                 format!(
-                    "not evaluated: the logic levels of `{dl}` against `{rl}` on {}: their grounds differ (`{}` is on {}, `{}` on {})",
+                    "not evaluated: the logic levels of `{dl}` against `{rl}` on {}: their grounds differ (`{}` is on net `{}`, `{}` on net `{}`)",
                     self.place(net),
                     model.path_of(dg),
                     self.name_of_net(dg),
@@ -1435,11 +1504,9 @@ impl Run<'_> {
         {
             // The DC analysis solved the line's circuit: its voltage with every open-drain
             // driver let go is the high, whatever sits between the rail and the line.
+            // Across a mate too: the analysis solves the nets the mates join as one (#1427).
             if let Some(&(ground, lo, hi)) = self
-                .across
-                .is_none()
-                .then(|| self.net_index(d.pin))
-                .flatten()
+                .net_index(d.pin)
                 .and_then(|n| self.reads.and_then(|r| r.high.get(&n)))
                 && self.net_index(dg) == Some(ground)
             {
@@ -1802,7 +1869,10 @@ impl Run<'_> {
     /// Where a level is judged, for a message: `net `X``, or, across a mate, the nets of the
     /// two boards and the contacts between them, which the synthetic net's name holds.
     fn place(&self, net: &Net) -> String {
-        if self.across.is_some() {
+        let mated = self
+            .joined
+            .is_some_and(|j| j.groups.iter().any(|&g| j.nets[g].name == net.name));
+        if self.across.is_some() || mated {
             net.name.clone()
         } else {
             format!("net `{}`", net.name)
@@ -1833,7 +1903,7 @@ impl Run<'_> {
                 if !line(c.a.role) || !line(c.b.role) {
                     continue;
                 }
-                if let (Some(x), Some(y)) = (self.net_index(c.a.pin), self.net_index(c.b.pin)) {
+                if let (Some(x), Some(y)) = (self.own_net(c.a.pin), self.own_net(c.b.pin)) {
                     hops.push((x, y, c.a.pin, c.b.pin, m));
                 }
             }
@@ -1913,25 +1983,8 @@ impl Run<'_> {
     ) -> Net {
         let model = self.model;
         let nets = model.nets();
-        let board = |index: usize| {
-            nets[index]
-                .terminals
-                .iter()
-                .find_map(|&t| model.owner_of(t).and_then(|o| model.board_of(o)))
-                .map_or_else(String::new, |b| format!(" of `{}`", model.path_of(b)))
-        };
-        let pin = |p: InstId| {
-            let connector = model
-                .owner_of(p)
-                .map_or_else(String::new, |o| model.path_of(o));
-            let name = model.path_of(p);
-            let number = name
-                .rsplit('.')
-                .next()
-                .unwrap_or("")
-                .trim_start_matches('p');
-            format!("`{connector}` pin {number}")
-        };
+        let board = |index: usize| crate::mated::board_of_net(model, &nets[index]);
+        let pin = |p: InstId| crate::mated::contact(model, p);
         let mut order = vec![from];
         let mut contacts = Vec::new();
         let mut at = from;
@@ -2037,7 +2090,7 @@ impl Run<'_> {
             let Some(index) = self.net_index(pin) else {
                 continue;
             };
-            if !model.nets()[index].terminals.contains(&pin) {
+            if !self.nets()[index].terminals.contains(&pin) {
                 continue;
             }
             let Some(owner) = model.owner_of(pin) else {
@@ -2045,7 +2098,7 @@ impl Run<'_> {
             };
             // A pin that nothing outside its own part is joined to (an optional pin left to
             // float) has no voltage to judge, and a note that nothing sets it says nothing.
-            if model.nets()[index]
+            if self.nets()[index]
                 .pins
                 .iter()
                 .all(|&p| model.is_inside(p, owner))
@@ -2089,8 +2142,8 @@ impl Run<'_> {
                         vec![owner],
                         Cause::Unjudged,
                         format!(
-                            "not evaluated: the absolute maximum of `{path}` against net `{}`: {why}",
-                            model.nets()[index].name
+                            "not evaluated: the absolute maximum of `{path}` against {}: {why}",
+                            self.place(&self.nets()[index])
                         ),
                     );
                     continue;
@@ -2103,8 +2156,8 @@ impl Run<'_> {
                 self.fault(
                     owner,
                     format!(
-                        "net `{}` reaches {} above its ground `{gnd}` ({}) but `{}` is {limit}: it must not exceed {}",
-                        model.nets()[index].name,
+                        "{} reaches {} above its ground `{gnd}` ({}) but `{}` is {limit}: it must not exceed {}",
+                        self.place(&self.nets()[index]),
                         volts(swing.hi),
                         swing.hi_from,
                         model.path_of_field(f),
@@ -2118,8 +2171,8 @@ impl Run<'_> {
                 self.fault(
                     owner,
                     format!(
-                        "net `{}` reaches {} relative to its ground `{gnd}` ({}) but `{}` is {limit}: it must not go below {}",
-                        model.nets()[index].name,
+                        "{} reaches {} relative to its ground `{gnd}` ({}) but `{}` is {limit}: it must not go below {}",
+                        self.place(&self.nets()[index]),
                         volts(swing.lo),
                         swing.lo_from,
                         model.path_of_field(f),
@@ -2194,7 +2247,7 @@ impl Run<'_> {
                 continue;
             };
             let resistor = model.path_of(part);
-            for &pin in &model.nets()[far_net].pins {
+            for &pin in &self.nets()[far_net].pins {
                 let Some(parent) = model.instance(pin).parent else {
                     continue;
                 };
@@ -2239,7 +2292,7 @@ impl Run<'_> {
             swing.add(0.0, 0.0, "a resistor to ground");
             return Ok(());
         }
-        for &pin in &model.nets()[far].pins {
+        for &pin in &self.nets()[far].pins {
             let Some(parent) = model.instance(pin).parent else {
                 continue;
             };
@@ -2300,9 +2353,9 @@ impl Run<'_> {
             lo,
             hi,
             &format!(
-                "the divider of `{}` from net `{}` and `{}` to {}",
+                "the divider of `{}` from {} and `{}` to {}",
                 model.path_of(div.series),
-                model.nets()[far].name,
+                self.place(&self.nets()[far]),
                 model.path_of(div.shunt),
                 div.end.name
             ),
@@ -2314,7 +2367,7 @@ impl Run<'_> {
     /// reason it cannot be known otherwise.
     fn net_range(&self, index: usize, ground: InstId) -> Result<Swing, String> {
         let model = self.model;
-        let net = &model.nets()[index];
+        let net = &self.nets()[index];
         let mut swing = Swing::none();
         let mut seen_rails: Vec<InstId> = Vec::new();
 
