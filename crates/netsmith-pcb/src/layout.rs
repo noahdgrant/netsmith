@@ -971,6 +971,7 @@ fn drawn_keepout(
         parts,
         max_height: None,
         on_carrier_face: false,
+        polygon: None,
     })
 }
 
@@ -1291,6 +1292,7 @@ at = [5.0, 4.0]
         let keepout =
             |name: &str, part: Option<&str>, parts: bool, max_height| netsmith_core::Keepout {
                 on_carrier_face: false,
+                polygon: None,
                 name: name.into(),
                 part: part.map(Into::into),
                 at: Some((2.0, -5.0)),

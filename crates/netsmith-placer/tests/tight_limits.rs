@@ -258,6 +258,7 @@ pub fn zone(
         copper: false,
         parts: max_height.is_none(),
         on_carrier_face: false,
+        polygon: None,
         max_height,
     }
 }

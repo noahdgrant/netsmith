@@ -249,13 +249,25 @@ fn growth_added(growth: f64) -> String {
     }
 }
 
-/// What a message calls the thing that limits a height: a keepout by its name, or the standoff
-/// of a body (`standoff of J1`, [`Placed::STANDOFF_ZONE`](super::Placed::STANDOFF_ZONE)).
+/// What a message calls the thing that limits a height: a keepout by its name, the standoff
+/// of a body (`standoff of J1`, [`Placed::STANDOFF_ZONE`](super::Placed::STANDOFF_ZONE)), or the
+/// area under a part's body (`m1.underside_keepout`, issue #1335), by the part it is under.
 pub(super) fn limit_word(name: &str) -> String {
-    match name.strip_prefix(Placed::STANDOFF_ZONE) {
-        Some(holder) => format!("the standoff of {holder}"),
+    if let Some(holder) = name.strip_prefix(Placed::STANDOFF_ZONE) {
+        return format!("the standoff of {holder}");
+    }
+    match underside_of(name) {
+        Some(part) => format!("the underside keepout of `{part}`"),
         None => format!("the keepout `{name}`"),
     }
+}
+
+/// The part whose `.underside_keepout` a keepout is, by its name (`m1.underside_keepout`, or
+/// `Kit/card.j1.underside_keepout` carried over the connector it is mated with, issue #1335).
+pub(super) fn underside_of(name: &str) -> Option<&str> {
+    name.strip_suffix(netsmith_core::UNDERSIDE_KEEPOUT)?
+        .strip_suffix('.')
+        .filter(|p| !p.is_empty())
 }
 
 /// What a message calls the keepout a part is in: by its name, or, for the room a mounting

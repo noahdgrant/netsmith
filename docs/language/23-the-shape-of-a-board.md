@@ -1605,6 +1605,84 @@ board Flat {
 error: Flat: `r.standoff` is 6 mm and `r.height` is 2 mm: the body stands from its standoff up to its height, so the height is the top of the body, above the standoff
 ```
 
+### An underside keepout
+
+A module that stands on sockets or spacers covers more of the board than its footprint: the footprint's outline holds only what is soldered (two socket rows), and the maker allows only parts lower than a figure under the module's body (a "0.5 mm under-height" rule). A part states that area as its member `.underside_keepout`, of `std::pcb::UndersideKeepout` (issue #1335), in its own frame (the footprint's, as on the top face), declared where the part is defined or in a use's block:
+
+- a rectangle, `.x` and `.y` (the corner nearest the footprint's origin), `.width` and `.height`; or a `polygon` of straight edges in its block, `polygon (-10mm, -5mm) (10mm, -5mm) (10mm, 5mm) (-10mm, 5mm)`, for a body that is not a rectangle (no `round` or `arc through`, and not with the four fields);
+- `.max_height`, the tallest a part may stand under the body, from the face of the board, one length above zero.
+
+It is a keepout the part carries that limits only height: every other part on the face the part is on whose body is in the area, at its height grown by its `.height_growth`, may stand at most `.max_height`, wherever the placer puts the part and whichever face (it turns over with a part on the bottom). A part on the other face is not under the body, and the part itself is not measured. A part too tall is `too tall`, and the finding names it and the part whose keepout it is; a part of no known height under it is unchecked, as under a lid. The placer keeps a part too tall for it out of the box round it (the box of a polygon); the check measures the polygon. Where the part is a connector of a system's mate, the other board's parts are under it too: the area goes over the other connector, turned and mirrored as the mate puts the two together (the pads say how, so neither needs a place), and limits the parts on that board's facing face to the same `.max_height` from its own face, named `System/member.connector.underside_keepout`. A `.standoff` is a different limit: the gap under the footprint's own outline.
+
+The name is the member's: an `UndersideKeepout` under another name, or one of a board or a module, is an error, and a part has one.
+
+```nsm solve place
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::Resistor
+import std::pcb::UndersideKeepout
+import std::sources::Rail
+
+board Carrier {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .rail: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
+    // Stands for a module whose body covers 20 by 10 mm round its footprint; its maker allows
+    // 0.5 mm under it.
+    .module: Resistor {
+        .resistance &= 15kohm +/- 1%
+        .underside_keepout: UndersideKeepout {
+            .x &= -10mm
+            .y &= -5mm
+            .width &= 20mm
+            .height &= 10mm
+            .max_height &= 0.5mm
+        }
+    }
+    .low: Resistor { .resistance &= 15kohm +/- 1% }
+    .rail.pos ~> .module ~> .rail.neg
+    .rail.pos ~> .low ~> .rail.neg
+    .module.height &= 6mm
+    .low.height &= 1.2mm
+}
+```
+
+```nsm-physical
+import std::pcb::Outline
+
+physical for Carrier {
+    case {
+        .outline: Outline { .width &= 40mm; .height &= 30mm }
+    }
+}
+```
+
+The placer keeps `low` out from under the module. Were it put there by hand (a layout file that locks it 6 mm right of the module), the check would say:
+
+```text
+error: Carrier: `low` (R1) stands 1.20 mm tall on the top face, and the underside keepout of `module` allows 0.50 mm there (0.70 mm too tall), where its body is, around (26.0, 15.0) mm from the board's top left corner
+```
+
+Misuse: an underside keepout of the board.
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+import std::pcb::UndersideKeepout
+
+board Loose {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .area: UndersideKeepout {
+        .x &= 0mm
+        .y &= 0mm
+        .width &= 5mm
+        .height &= 5mm
+        .max_height &= 1mm
+    }
+}
+```
+
+```text
+error: Loose: `area` is an `UndersideKeepout`, and it is the area under a part's body: declare it in the part as its member `.underside_keepout` (issue #1335)
+```
+
 ### Pin protrusion
 
 **Readings (ADR 0045, section 15); the name `.pin_protrusion` and the rule were decided by the owner on 2026-11-04.** On a tight board a flat part sits on one face over the pins of a through-hole part that come through from the other face. The pins are cut after soldering, so what protrudes is lower than the flat part's underside. A part has the built-in member `.pin_protrusion` (a length): how far the pins of a through-hole part protrude out of the far side of the board, whether they were cut or bought short. The board's physical file states it for one part, as it states `.height`, and a path may reach a part inside a module (`.radio.row_a.pin_protrusion &= 0.2mm`). A part that states none has an unknown protrusion, which is not zero: its pads stay an obstacle for a part on that face, as before.

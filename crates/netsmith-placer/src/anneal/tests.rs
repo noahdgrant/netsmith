@@ -524,6 +524,7 @@ fn carrier_with_a_zone(parts: bool, limit: Option<f64>) -> (Board, netsmith_pcb:
         parts,
         max_height: limit,
         on_carrier_face: false,
+        polygon: None,
     });
     (board, zone)
 }

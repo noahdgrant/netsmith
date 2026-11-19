@@ -252,7 +252,7 @@ impl Board {
             {
                 if let Some(limit) = k.max_height
                     && k.limits_height_on(a.side)
-                    && body.overlaps(&k.rect)
+                    && k.covers(&body)
                 {
                     found.push((
                         UnderLimit {

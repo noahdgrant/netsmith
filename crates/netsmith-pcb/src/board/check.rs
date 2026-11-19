@@ -259,7 +259,7 @@ impl Board {
                 {
                     let Some(limit) = k.max_height else { continue };
                     if k.limits_height_on(a.side)
-                        && body.overlaps(&k.rect)
+                        && k.covers(&body)
                         && height > limit + HEIGHT_TOLERANCE
                     {
                         let centre = body.centre();

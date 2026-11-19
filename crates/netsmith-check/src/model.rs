@@ -1571,7 +1571,7 @@ pub enum NearSelect {
 /// A `polygon` statement of an `Outline` (issue #57): its corners in mm, in the order written.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OutlinePolygon {
-    /// The `Outline` it is in.
+    /// The `Outline` it is in, or the `UndersideKeepout` (issue #1335).
     pub outline: InstId,
     pub corners: Vec<PolygonCorner>,
     pub source: SourceId,

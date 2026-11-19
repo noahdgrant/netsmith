@@ -232,7 +232,10 @@ pub(crate) fn fit(
             && inside
             && ((keepouts.is_empty()
                 && placement.height_zones.is_empty()
-                && placement.face_keepouts.is_empty())
+                && placement.face_keepouts.is_empty()
+                // A zone a part carries (a body's standoff, its underside keepout, issue
+                // #1335) is in the way as a keepout is: the rows do not know it.
+                && placement.carried.is_empty())
                 || {
                     // The mechanical parts are in the corners, and stay: with them in the run, their
                     // reference text and silkscreen are kept clear of too.
