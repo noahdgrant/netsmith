@@ -296,3 +296,108 @@ fn measured() {
         }
     }
 }
+
+/// A board for `--widen` (issue #1294): a net `p` that wants 0.5 mm, drawn from pad 2 of one
+/// resistor to pad 1 of another as two straight tracks, 0.15 mm and 0.12 mm wide (two widths,
+/// so that they are no collinear pair), and a track of a locked net of no pads 0.35 mm beside
+/// the middle of the second. The first has room for the whole width; the second, 0.1 mm of
+/// clearance from the locked track, has room for 0.33 mm.
+fn narrow() -> (Board, Routes) {
+    let led = led();
+    let resistor = led
+        .parts
+        .iter()
+        .find(|p| p.refdes == "R1")
+        .expect("the LED board's resistor")
+        .clone();
+    let mut board = led.clone();
+    board.name = "narrow".to_string();
+    board.parts.clear();
+    board.nets.clear();
+    let min = led.outline.min;
+    board.outline = Rect::new(min, min + Pt::new(15.0, 5.0));
+    for (refdes, x) in [("RA", 2.0), ("RB", 12.0)] {
+        let mut part = resistor.clone();
+        part.refdes = refdes.to_string();
+        part.path = refdes.to_lowercase();
+        part.at = min + Pt::new(x, 2.0);
+        board.parts.push(part);
+    }
+    let pad = |refdes: &str, number: &str| PadRef {
+        refdes: refdes.to_string(),
+        number: number.to_string(),
+    };
+    board.nets.push(BoardNet {
+        name: "p".to_string(),
+        pads: vec![pad("RA", "2"), pad("RB", "1")],
+    });
+    board.nets.push(BoardNet {
+        name: "q".to_string(),
+        pads: Vec::new(),
+    });
+    board.net_widths = vec![("p".to_string(), 0.5)];
+    let mut p = straight(CopperLayer::Front, &[[2.51, 2.0], [7.0, 2.0]]);
+    let mut second = straight(CopperLayer::Front, &[[7.0, 2.0], [11.49, 2.0]]);
+    second[0].width = 0.12;
+    p.extend(second);
+    let q = straight(CopperLayer::Front, &[[8.0, 2.35], [10.0, 2.35]]);
+    let mut routes = Routes::default();
+    let table = routes.boards.entry(board.name.clone()).or_default();
+    for (net, tracks, lock) in [("p", p, false), ("q", q, true)] {
+        table.nets.insert(
+            net.to_string(),
+            NetRoutes {
+                pads: netsmith_pcb::pad_hash(&board, net).expect("a net of the board"),
+                lock,
+                tracks,
+                vias: Vec::new(),
+                zones: Vec::new(),
+            },
+        );
+    }
+    (board, routes)
+}
+
+#[test]
+fn widen_makes_each_narrow_track_as_wide_as_its_net_wants_or_its_neighbours_allow() {
+    let (board, routes) = narrow();
+    let widths = |t: &Tidied| -> Vec<f64> {
+        t.routes.boards["narrow"].nets["p"]
+            .tracks
+            .iter()
+            .map(|t| t.width)
+            .collect()
+    };
+    // Without `--widen` nothing is widened.
+    let plain =
+        routes_tidy::tidy_passes(&board, &routes, None, routes_tidy::Checking::Near, false)
+            .unwrap();
+    assert_eq!(plain.counts.widened, 0, "{}", plain.text());
+    assert_eq!(widths(&plain), vec![0.15, 0.12]);
+    for checking in [routes_tidy::Checking::Near, routes_tidy::Checking::Whole] {
+        let tidied = routes_tidy::tidy_passes(&board, &routes, None, checking, true).unwrap();
+        let said = tidied.text();
+        assert_eq!(tidied.counts.widened, 2, "{said}");
+        assert!(tidied.refused.is_empty(), "{said}");
+        // The first to the whole width; the second refused at the whole width and at three
+        // quarters of the way (0.40 mm), and made half the way (0.31 mm).
+        assert_eq!(widths(&tidied), vec![0.5, 0.31], "{said}");
+        assert!(
+            said.contains("to the 0.500 mm its net wants")
+                && said.contains("to 0.310 mm, of the 0.500 mm its net wants"),
+            "{said}"
+        );
+        assert!(said.contains("2 narrow track(s) widened"), "{said}");
+        // The locked track is not touched.
+        assert_eq!(tidied.routes.boards["narrow"].nets["q"], routes.boards["narrow"].nets["q"]);
+        assert_eq!(tidied.findings_after, tidied.findings_before, "{said}");
+    }
+    assert_eq!(
+        routes_tidy::wanted_width(&board, "p", CopperLayer::Front),
+        0.5
+    );
+    assert_eq!(
+        routes_tidy::wanted_width(&board, "q", CopperLayer::Front),
+        board.rules.track_width
+    );
+}
