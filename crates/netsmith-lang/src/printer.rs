@@ -573,6 +573,14 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     a.target.to_source()
                 );
             }
+            Item::SoftMargin(m) => {
+                let _ = write!(
+                    out,
+                    "soft margin {} round {}",
+                    m.margin.to_source(),
+                    m.part.to_source()
+                );
+            }
             Item::Row(r) => {
                 let _ = write!(
                     out,

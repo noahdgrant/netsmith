@@ -21,6 +21,7 @@ mod place;
 mod preferred;
 mod scenario;
 mod sequence;
+mod sim;
 mod solve;
 mod standard;
 mod supply_levels;

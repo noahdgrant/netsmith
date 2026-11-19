@@ -82,6 +82,10 @@ _Avoid_: Length mismatch, delay skew (netsmith measures length, not time)
 A directory in `.agents/skills/` with a `SKILL.md`: instructions an agent loads when its description matches the task. `netsmith-*` skills are for working in a netsmith project and `netsmith project init` copies them into one and `netsmith project refresh` updates the copies you have not edited; `netsmith-dev-*` skills are for working on netsmith and stay in its repository (ADR 0015).
 _Avoid_: Prompt, plugin
 
+**Soft margin**:
+A distance that the physical file asks other parts to keep from a part's courtyard (`soft margin 3mm round .u1`, issue 1310): the room a design note asks for round a module to solder, rework or keep an antenna clear. The placer keeps other parts' courtyards out of it where it can, and a part left inside it is a warning of `fab` and `layout check` (`soft_margin`), an error with `--strict`. It is no wall, and it is not a courtyard, a copper keepout or a routing margin.
+_Avoid_: Clearance (the process's copper rule), keepout (a drawn area with rules of its own), exclusion zone, courtyard margin
+
 **Source (at DC)**:
 A rail that holds its nets over the range of its voltage in the analysis: a `Rail` that the board declares itself, or the rail that a part gives with `dc source` (a connector's supply, ADR 0076, amendment 5). Its `pos` net is held over the range the design states for `.voltage` and its `neg` net at zero; the network on either side of it is an island.
 _Avoid_: Supply part, power source part (a source is a rail, and the part that gives it states `dc source` for it)

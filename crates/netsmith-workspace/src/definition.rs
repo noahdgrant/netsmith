@@ -301,6 +301,14 @@ fn visit<'a>(
         // `case SnapCase` names an enclosure, not a member (ADR 0132).
         Item::CaseOf(_) => {}
         Item::Anchor(a) => path(&a.target, inside),
+        Item::SoftMargin(m) => {
+            path(&m.part, inside);
+            let mut paths = Vec::new();
+            expr_paths(&m.margin, &mut paths);
+            for p in paths {
+                path(p, inside);
+            }
+        }
         // A line of a board's `defaults` names a kind and its field, not a member (issue #625).
         Item::Defaults(_) => {}
         // A part's `layout` block names the part's own pins.
