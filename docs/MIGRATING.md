@@ -35,6 +35,24 @@ A part can state one table of logic levels for its plain pins, as its `.levels` 
 
 A message names the part's levels where it named a pin's: `u.levels.vih` for `u.pb2.vih`.
 
+The rule is general, and only `Attiny13a` is changed for you: any part that gave its I/O pins one table of levels as `Logic` lines (`.pb0: Logic`, `.pb0.vih &= ...`, `.pb0.line` in `pins`) can state the table once as `.levels` and make the pins plain. A project's own part that does so changes the same way for its users:
+
+| Before | Now |
+|---|---|
+| `.pin.line` in the part's `pins`, `.pin: Logic` with the same `.vih`, `.vil`, `.voh`, `.vol` and `.reference` on each pin | the pin plain in `pins`; `.levels: Levels` with `.levels.reference`, `.vih`, `.vil`, `.voh`, `.vol` stated once |
+| `.u.pin.line ~ ...`, `.u.pin.voh`, `.u.pin.vih` in a board | `.u.pin ~ ...`, `.u.levels.voh`, `.u.levels.vih` |
+
+A pin with levels of its own (a reset input) stays a `Logic`: a pin of an interface has its interface's levels and never the part's. The `.levels` gives its levels to the plain pins whose row's kind is `input`, `output`, `bidirectional`, `tri_state` or `open_drain`; a `power`, `passive` or `no_connect` pin takes none. A part that keeps its `Logic` lines still builds, so a part of your own is moved when you choose to.
+
+### What changed with no error
+
+These change what `board drc` and `board fab` report, or what `fab` writes, without an error in the source. A project may see a finding it did not have, or lose one:
+
+- **The rules file.** The `.kicad_dru` that `fab` writes states the pad-to-pad rule as a `physical_clearance` and the hole-to-track rules as `physical_hole_clearance`, which a clearance written on a pad or its footprint (KiCad's own libraries give one to fine-pitch pads) does not silence, as it did the `clearance` constraint before. KiCad's check now reports pads too close, and a track near the hole of a plated pad, where a pad's own clearance made the rule silent; netsmith's check reports the same (`pad_to_pad`, `hole_to_track`), and the cross-check counts KiCad's second finding of two touching pads as the short's (issues #1235, #1231). The guide's chapter 27 says for each rule whether KiCad reports the case where both items are of one footprint.
+- **The pour's fill.** netsmith's fill makes the spokes and islands KiCad's refill makes: a spoke as wide as the pour's `min_width` is made (a narrower `spoke_width` or a smaller `thermal_gap` never starves more pads), an island is found through pieces of the net's zones that touch, and a zone of the net with a higher priority is taken out of the fill last. So `starved_thermal`, `isolated_copper` and `copper_sliver` can name other pads and pieces than on 0.3.1 (issue #1239).
+- **`unjoinable_thermal`.** A pad that no spoke and no track joins to the fill (and no other fill of its net) is no longer a `starved_thermal` but `unjoinable_thermal`, a warning of netsmith's own with the reason for each spoke: another net's clearance by name, a thermal gap, the edge, a keepout, or a strip of fill under `min_width`. KiCad leaves such a pad to its connection check; the pad's own via or track, which the router keeps, joins it. A project that listed `starved_thermal` as ignored or as an error in its `.kicad_pro` `rule_severities` sets `unjoinable_thermal` the same way (issues #1239, #1292). `board fill` lists the pads, and the editor's 2D view rings them.
+- **A footprint's keepout.** A keepout zone that a library's footprint draws is written to the `.kicad_pcb` in board coordinates, turned and moved with the footprint and mirrored on the back, as KiCad saves it, where it was in the footprint's own frame and KiCad's refill poured copper where the footprint forbids it; a panel moves it with the cell. netsmith reads the zone of a footprint in a `.kicad_pcb` as board coordinates too, so a board ported from KiCad keeps its keepout where KiCad has it (issues #1237, #1242).
+
 ## 0.3.0: changes since 0.2.0
 
 ### The commands are grouped under nouns (issue #1090)
