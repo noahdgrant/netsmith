@@ -645,7 +645,8 @@ module Buck<Ic: BuckIc> provides BuckConverter {
     // resistance itself, so it is left out for an IC that states none.
     .dropout == .inductor.current * (.ic.high_side_resistance + .inductor.dc_resistance)
     .vin.voltage >=
-        min(.vout.voltage) + .inductor.current * (.ic.high_side_resistance + .inductor.dc_resistance)
+        min(.vout.voltage) + .inductor.current *
+        (.ic.high_side_resistance + .inductor.dc_resistance)
     .input_cap.total_effective_capacitance >= .ic.min_input_capacitance
     .output_cap.total_effective_capacitance >= .ic.min_output_capacitance
 }
