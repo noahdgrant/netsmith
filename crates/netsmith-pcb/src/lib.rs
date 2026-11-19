@@ -76,6 +76,7 @@ mod summary;
 mod svg;
 mod track_drop;
 mod validate;
+mod walled;
 
 pub use board::{
     Board, BoardCutout, BoardError, BoardKeepout, BoardNet, BoardPour, BoardZone, CopperLayer,
@@ -151,7 +152,7 @@ pub use overhang::{
     Edge, Edges, Overhang, clip as clip_to_outline, needs as overhang_needs,
     reached as overhang_reached,
 };
-pub use part_fit::{FIT_STEP, FitNear, FitPlace, FitTarget, PartFit};
+pub use part_fit::{FIT_STEP, FitNear, FitPlace, FitTarget, MarginShort, PartFit};
 pub use part_geometry::{NoEntry, PadGeometry, PartFrame, PartGeometries, PartGeometry};
 pub use part_layout::{
     LayoutFinding, Limit, LoopPair, Measure, NearPair, PartGuideline, away_pairs, edge_parts,
@@ -196,3 +197,4 @@ pub use track_drop::{
     net_drop as track_drop_of,
 };
 pub use validate::{Subject, validate_pinout};
+pub use walled::{WallPart, WalledPad};

@@ -1362,6 +1362,10 @@ impl<'a> Checker<'a> {
                     .add_field(id, "height_growth", FieldKind::Quantity(Dimension::LENGTH));
             self.model
                 .add_member(id, "height_growth", Member::Field(field));
+            // And one for the room for routing it keeps round its courtyard (issue #1313): the
+            // placer and `layout fit` grow its courtyard by it against other parts' courtyards.
+            // A part that states none keeps the board's `.routing_margin`, 0 unless stated.
+            self.add_routing_margin(id);
             // And one for how high the underside of the body stands above the board (issue
             // #775): a module on pins has a gap under it. A part that does not state it
             // stands on the board.
@@ -1405,6 +1409,11 @@ impl<'a> Checker<'a> {
         // board (ADR 0045): the board narrows its fields like any others. A board has one
         // too, with only `.side`: the face of every part of it, for a board assembled on one
         // face.
+        // A board has a `.routing_margin` too (issue #1313): the room for routing round every
+        // part that states none of its own.
+        if kind == InstKind::Board {
+            self.add_routing_margin(id);
+        }
         if matches!(kind, InstKind::Part | InstKind::Module | InstKind::Board) {
             self.add_place(id, def.span);
             // And a `.silk` for whether the silkscreen prints designators ("show" or "hide"):
@@ -1610,6 +1619,18 @@ impl<'a> Checker<'a> {
     /// module as a block. Its `side` is a hard
     /// requirement on every part of it (ADR 0048, "Syntax decisions" 5). A board's has only
     /// `side`, the same requirement on every part of the board.
+    /// The built-in `.routing_margin` of a part or a board (issue #1313): one length, zero or
+    /// more, that the placer and `layout fit` add to every side of a courtyard against other
+    /// parts' courtyards, so that two neighbours keep the sum of their margins between them for
+    /// tracks and vias. A part's own beats the board's; the design stage reads both.
+    fn add_routing_margin(&mut self, id: InstId) {
+        let field =
+            self.model
+                .add_field(id, "routing_margin", FieldKind::Quantity(Dimension::LENGTH));
+        self.model
+            .add_member(id, "routing_margin", Member::Field(field));
+    }
+
     /// The built-in `.model` of a part (ADR 0108): an instance of the prelude's `StepModel`,
     /// made in the prelude's own file like any member of that type.
     fn add_step_model(&mut self, part: InstId) {
@@ -2772,7 +2793,7 @@ impl Checker<'_> {
                     self.error(
                         span,
                         format!(
-                            "`{path}` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`) and how much it may grow (`.height_growth`), how high its body stands off the board (`.standoff`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`), what its silkscreen prints (`.silk`, `.silk_text`) and the outline, cutouts, keepouts, holes, fiducials, labels and case models it declares, never what a part is; put this in the circuit source"
+                            "`{path}` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`) and how much it may grow (`.height_growth`), how high its body stands off the board (`.standoff`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`), the room for routing kept round it (`.routing_margin`), what its silkscreen prints (`.silk`, `.silk_text`) and the outline, cutouts, keepouts, holes, fiducials, labels and case models it declares, never what a part is; put this in the circuit source"
                         ),
                     );
                     return false;
@@ -2821,6 +2842,14 @@ impl Checker<'_> {
             || f.name == "standoff"
             || f.name == "pin_protrusion")
             && self.model.instance(f.owner).kind == InstKind::Part
+        {
+            return true;
+        }
+        if f.name == "routing_margin"
+            && matches!(
+                self.model.instance(f.owner).kind,
+                InstKind::Part | InstKind::Board
+            )
         {
             return true;
         }

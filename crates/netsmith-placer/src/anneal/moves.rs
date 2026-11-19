@@ -174,8 +174,13 @@ impl<'a> Engine<'a> {
             .iter()
             .map(|r| {
                 let court = r.translated(at);
-                if clip {
+                let court = if clip {
                     netsmith_pcb::clip_to_outline(&court, &self.p.outline)
+                } else {
+                    court
+                };
+                if a.margin > 0.0 {
+                    court.expanded(a.margin)
                 } else {
                     court
                 }
@@ -186,7 +191,7 @@ impl<'a> Engine<'a> {
             .into_iter()
             .filter(|&j| j != i && self.models[j].side == a.side && !self.models[j].hole)
             .any(|j| {
-                let theirs = self.rooms(j);
+                let theirs = self.spaced_rooms(j);
                 mine.iter()
                     .any(|m| theirs.iter().any(|t| penetration(m, t, 0.0) > 1e-6))
             })

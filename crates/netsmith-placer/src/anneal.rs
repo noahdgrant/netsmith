@@ -657,6 +657,10 @@ struct Model {
     protrusion: Option<f64>,
     height: Option<f64>,
     hand_fitted: bool,
+    /// The room for routing kept round its courtyard (`.routing_margin`, issue #1313): its
+    /// courtyard is grown by it on every side against other parts' courtyards
+    /// ([`Engine::spaced_rooms`]), as hard a rule as an overlap.
+    margin: f64,
     /// Which layers the footprint draws its courtyard on, `(F.CrtYd, B.CrtYd)`.
     court_faces: (bool, bool),
     role: Role,

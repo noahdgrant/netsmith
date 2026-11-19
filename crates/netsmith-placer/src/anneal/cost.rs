@@ -190,7 +190,8 @@ impl<'a> Engine<'a> {
         if a.side != b.side && !a.hole && !b.hole {
             return c;
         }
-        let (ca, cb) = (self.rooms(i), self.rooms(j));
+        // Each grown by its routing margin (issue #1313): two parts keep the sum apart.
+        let (ca, cb) = (self.spaced_rooms(i), self.spaced_rooms(j));
         // Each part's pads leave through the space round it. Where a busy part (16 to 66 pads)
         // faces another the space is the same, so the escape spaces of the two add up and each
         // mm short of them costs more than a plain gap. Other pairs keep the larger of the

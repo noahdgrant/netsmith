@@ -383,6 +383,9 @@ pub fn set(design: &Design, file: &Path, path: &str, change: &Change) -> Result<
 pub enum Severity {
     /// The file is wrong: a build or `fab` would refuse it, or its entry cannot be what was meant.
     Error,
+    /// Something the router may trip on (a pad other parts wall in, issue #1313): `fab` goes on,
+    /// and `ok` stays true.
+    Warning,
     /// Worth knowing, nothing is wrong.
     Note,
 }
@@ -391,8 +394,8 @@ pub enum Severity {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Finding {
     pub severity: Severity,
-    /// `no_entry`, `no_part`, `bad_turn`, `bad_place`, `requirement`, `placement` or
-    /// `unmeasured`.
+    /// `no_entry`, `no_part`, `bad_turn`, `bad_place`, `requirement`, `placement`,
+    /// `walled_in` or `unmeasured`.
     pub kind: &'static str,
     /// The part's path.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -430,6 +433,7 @@ impl Checked {
             };
             let severity = match f.severity {
                 Severity::Error => "error",
+                Severity::Warning => "warning",
                 Severity::Note => "note",
             };
             out.push_str(&format!("{place}: {severity}: {}\n", f.message));
@@ -467,13 +471,14 @@ fn locked_breaks(
 
 /// The faults the placement check `fab` runs ([`Board::placement_faults`]) finds on the board of
 /// the parts `layout` places, each where it says ([`Board::laid_out_entries`]): `fab` puts them
-/// there whatever the seed, so a fault among them stops it. Nothing is placed.
+/// there whatever the seed, so a fault among them stops it. With them, the pads that other
+/// parts among them wall in (`Board::walled_pads`, issue #1313). Nothing is placed.
 fn placement_faults(
     design: &Design,
     layout: &Layout,
     file: &Path,
     libraries: &netsmith_pipeline::Libraries,
-) -> Result<Vec<PlacementFault>, String> {
+) -> Result<(Vec<PlacementFault>, Vec<netsmith_pcb::WalledPad>), String> {
     let options = netsmith_pcb::place_options(design, Some(layout));
     let laid = (layout.clone(), file.display().to_string());
     let board = Board::laid_out_entries(
@@ -483,7 +488,7 @@ fn placement_faults(
         &options,
         Some(&laid),
     )?;
-    Ok(board.placement_faults())
+    Ok((board.placement_faults(), board.walled_pads()))
 }
 
 /// What the layout file at `file` has wrong against `design`: a part with no entry (a note: the
@@ -492,7 +497,8 @@ fn placement_faults(
 /// breaks a requirement of the physical file, and each fault the placement check `fab` runs finds
 /// among the parts the file places (`placement`, issue #1224): two courtyards that overlap, a
 /// part past the edge, in a keepout or a cutout, over a height limit, a hole too near another
-/// part. Each finding has the line of its entry.
+/// part; and, as a warning, a pad that other parts the file places wall in (`walled_in`, issue
+/// #1313). Each finding has the line of its entry.
 pub fn check(
     design: &Design,
     file: &Path,
@@ -568,7 +574,20 @@ pub fn check(
     let mut unplaced = None;
     if findings.is_empty() {
         match placement_faults(design, &layout, file, libraries) {
-            Ok(faults) => {
+            Ok((faults, walled)) => {
+                // A pad other parts wall in (issue #1313): a warning, which the router would
+                // report as `walled in` after trying; it does not stop `fab`.
+                for w in walled {
+                    let path = Some(w.path.clone()).filter(|p| entries.parts.contains_key(p));
+                    findings.push(Finding {
+                        severity: Severity::Warning,
+                        kind: "walled_in",
+                        line: path.as_ref().and_then(|p| lines.get(p).copied()),
+                        path: Some(w.path.clone()),
+                        message: w.to_string(),
+                        fault: None,
+                    });
+                }
                 for fault in faults {
                     // The entry the fault is about: the first of its parts the file places.
                     let path = fault

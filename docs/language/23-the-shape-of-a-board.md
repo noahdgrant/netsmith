@@ -56,7 +56,7 @@ physical for Cased {
 ```
 
 - **`case { ... }`** is the section for what the case fixes: the outline, the cutouts, the mounting holes (`MountingHole`), the fiducials (`Fiducial`) and the labels (`Label`) of the board, and the case's own STEP file (`CaseModel`, see _A case model_). It holds the same statements as the rest of the unit, and lifts out unchanged into an `enclosure` that several boards share (_A shared enclosure_, below). These six belong in it; a keepout may be anywhere in the unit.
-- **A path crosses a module boundary here for any statement of physical intent.** `.sensor.j.place.left` names the header inside the `Sensor` module. The circuit source reaches into a module only to narrow a value (ADR 0116); the physical file can also state physical intent about the part. A statement may set or compare only a part's `.place`, a part's `.height` and `.height_growth`, a part's `.standoff`, and what the unit declares itself (the fields of its `.outline`, `.window`, `.rib`). Anything that changes what a part is, or a connection, is refused.
+- **A path crosses a module boundary here for any statement of physical intent.** `.sensor.j.place.left` names the header inside the `Sensor` module. The circuit source reaches into a module only to narrow a value (ADR 0116); the physical file can also state physical intent about the part. A statement may set or compare only a part's `.place`, a part's `.height` and `.height_growth`, a part's `.standoff`, a part's or the board's `.routing_margin`, and what the unit declares itself (the fields of its `.outline`, `.window`, `.rib`). Anything that changes what a part is, or a connection, is refused.
 - **A relation between two parts** is the equation of _Where a part goes_: `.b.place.x - .a.place.x == 17.5mm +/- 0.05mm`. The placer holds it and `fab` measures it (_A relation between two parts_).
 - **`.place.side` on a module** is a requirement on every part of it, at any depth. A module with an exception states the faces of its parts one by one and none for itself; two lines that disagree are an error that names both. `.place.side` with no path, on the board itself, is the same requirement on every part of the board (_A board on one face_).
 - **`.silk` and `.silk_text`** say what the silkscreen prints for a part: nothing, or a text in place of its designator (_Silkscreen text_). `.silk` on a module or on the board reaches every part inside it.
@@ -118,7 +118,7 @@ physical for Wrong {
 ```
 
 ```text
-error: `b.j.assembly` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`) and how much it may grow (`.height_growth`), how high its body stands off the board (`.standoff`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`), what its silkscreen prints (`.silk`, `.silk_text`) and the outline, cutouts, keepouts, holes, fiducials, labels and case models it declares, never what a part is; put this in the circuit source
+error: `b.j.assembly` is not physical intent: a physical file states where a part is (its `.place`), how tall it is (`.height`) and how much it may grow (`.height_growth`), how high its body stands off the board (`.standoff`), how far its pins protrude (`.pin_protrusion`), the STEP model it is drawn from (`.model`), the room for routing kept round it (`.routing_margin`), what its silkscreen prints (`.silk`, `.silk_text`) and the outline, cutouts, keepouts, holes, fiducials, labels and case models it declares, never what a part is; put this in the circuit source
   --> main.physical.nsm:2:5
   |
 2 |     .b.j.assembly &= AssemblyMode::Hand
@@ -285,6 +285,55 @@ When the router's first try leaves connections on a board with a fine-pitch part
 The placer keeps the lanes free of parts (issue #830): a fine-pitch part carries an escape ring, the box round its surface-mount pads grown by the 1.5 mm of a lane, and no other part's courtyard on its face may reach into it. It is a keepout the placer keeps as it keeps the keepouts a part carries, so a board with no other place for a part does not place, and its message names the part that is in the ring, how far, and the fine-pitch part whose ring it is. A capacitor that decouples the part may stand in it, near the pins it decouples, and so may a part that a datasheet's `near` puts by its pins; but such a part keeps 1 mm from each of the part's pads on a net it is not on (issue #1010), so that the tracks of those pins leave between the two with room for a via. A capacitor pressed against a QFN's signal pins left room for one track and no via, and the board did not route. The ring is the placer's: a part placed by hand in it (a layout file's place for both parts) is not refused, and `fab`'s check measures no ring.
 
 The placer also counts what a part with 16 pads or more leaves its tracks (issues #997 and #1035). Each pad on the edge of the part's pads whose net reaches another part (not a plane) leaves through its side. Where the board's edge (less the copper to edge space) or a part on the same face is nearer that side than 1.5 mm, those pads must leave along the gap, and the pads beyond the tracks that fit there are its escape shortfall. Each net short costs as much as 2 mm of wire. So that a part as big as an 80-pad module can leave an edge it was placed against, the placer also moves such a part with the parts it lands on. Over 32 seeds of a tight test board of 99 parts round such a module, one pass of the router left 692 lines with this and 818 without. A layout file's places and the parts a requirement holds are kept as ever.
+
+### Room for routing round a part
+
+The placer keeps courtyards apart and lets them touch, and `layout fit` packs a part courtyard to courtyard, so a dense board can leave no room between two parts for a track or a via, and the router then reports pads `walled in by pad(s)` of their neighbours (issue #1313). A board and each part have the built-in member `.routing_margin` (a length, one value, zero or more, 0 unless stated): the room for routing kept round the part's courtyard. The placer and `layout fit` grow every courtyard by its part's margin on each side before they measure it against other parts' courtyards, so two neighbours keep the sum of their margins between them, as hard a rule as an overlap: a board with no arrangement that keeps it does not place, and the refusal says that the courtyards were grown by their routing margins. A part's own `.routing_margin` beats the board's, so a busy part can ask for more room than the rest (or a small part for none). It is stated as `.height` is, in the circuit source or the physical file, by the part's definition, a user part or the board.
+
+The margin is between parts only: the board's edge, keepouts, cutouts and height limits measure the courtyard as before, and `fab`'s placement check (and `layout check`) do not read it, so a part placed by hand nearer than the margins is not refused. `layout fit` gives no place nearer another part than their two margins, and of a place that is, it says which part, how near, courtyard to courtyard, and what the two margins ask for (`D1 is 1.09 mm from R1, courtyard to courtyard, and their routing margins ask for 1.5 mm ...`), in its `margins` with `--format json`.
+
+```nsm solve
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::{Capacitor, Resistor}
+import std::sources::Rail
+
+board Roomy {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .rail: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC" }
+    .r: Resistor { .resistance &= 10kohm +/- 1% }
+    .c: Capacitor { .capacitance &= 100nF +/- 20% }
+    .rail.pos ~> .r ~> .c ~> .rail.neg
+    // Half a millimetre round every part: a track and its space between two neighbours.
+    .routing_margin &= 0.5mm
+    // The capacitor asks for none: it stands by the resistor.
+    .c.routing_margin &= 0mm
+}
+```
+
+Misuse: a margin is one value, zero or more.
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::Resistor
+
+board Cramped {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .r: Resistor { .resistance &= 15kohm +/- 1% }
+    .r.routing_margin &= -0.2mm
+}
+```
+
+```text
+error: Cramped: `r.routing_margin` is -0.2 mm, and a margin for routing is zero or more: it is the room kept round a courtyard for tracks and vias
+```
+
+**A pad walled in.** Where the parts are placed, before a route is tried, `fab` warns of each surface-mount pad that other parts wall in, and `layout check` says it as a `walled_in` warning among the parts the layout file places (it does not make `ok` false or stop `fab`):
+
+```text
+warning: B: pad 1 of `stage.r` (R1) (net `VCC`) is walled in by `stage.c` (C1) (pad 2), `stage.r` (R1) (pad 2): no 0.1 mm track leaves it 0.1 mm from other copper and no via fits beside it, within 1.5 mm; move C1 away from it, or give the parts a `.routing_margin`
+```
+
+A pad on a net that reaches another part is measured on its copper layer, 1.5 mm round it (the router's escape lanes): a track's centre may not come nearer another net's pad (its own part's too) than the process's clearance and half the router's track, nor nearer the edge than the copper to edge space and half a track. The pad has a way out where its track reaches 1.5 mm from it, or a place beside it where the router's via fits. A pad with neither is walled in, and the finding names the parts whose pads close it, the edge too; a pad only its own footprint walls in is not said. Not measured: a through-hole pad, a pad the process allows a via in (as the router's last way out) that is wide enough for one, the other face under a via, keepouts and cutouts, and copper the routes file fixes, so the router may still find a way, or report a line walled in that this does not.
 
 ### How the router orders the nets
 
@@ -2204,7 +2253,7 @@ physical for Docked {
 }
 ```
 
-- **A module's file states only how its parts stand to one another**, which is the same wherever the board puts the module: a relation whose places cancel along each axis (`.b.place.x - .a.place.x`, the centre between two parts minus a third, a `row`), and a part's `.height`, `.height_growth`, `.standoff`, `.pin_protrusion`, `.model` and `.silk`. A position, a turn or a face stated with `&=` (`.row_a.place.x &= 3mm`), or a sum of two places, is in the board's frame and is refused: the board's file places the module. A module's file declares nothing (no `case { }`, no keepout). It reaches the parts of modules inside the module by path, as a board's does.
+- **A module's file states only how its parts stand to one another**, which is the same wherever the board puts the module: a relation whose places cancel along each axis (`.b.place.x - .a.place.x`, the centre between two parts minus a third, a `row`), and a part's `.height`, `.height_growth`, `.routing_margin`, `.standoff`, `.pin_protrusion`, `.model` and `.silk`. A position, a turn or a face stated with `&=` (`.row_a.place.x &= 3mm`), or a sum of two places, is in the board's frame and is refused: the board's file places the module. A module's file declares nothing (no `case { }`, no keepout). It reaches the parts of modules inside the module by path, as a board's does.
 - **A board's file may only narrow what a module's states.** An offset between two parts that the module's file states may be stated again by the board with a window inside the module's (here 17.5 mm +/- 0.02 mm inside +/- 0.05 mm); a wider window, or one that does not meet it, is an error that names both lines. A `&=` narrows as every `&=` does. A board that needs a different spacing changes the module.
 - **An anchor** (`anchor .dock = .row_a`, in the module's file only) is a second name for a part or a module inside it, which every physical file that reaches into the module may use, the module's own too. A board's file reaches a part inside a module by its path, so a rename inside the module breaks every such path; through an anchor, the rename changes the one `anchor` line. An anchor may not take the name of a member. The circuit source does not see anchors.
 

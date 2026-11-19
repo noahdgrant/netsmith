@@ -173,6 +173,18 @@ pub struct PartHeightGrowth {
     pub growth: f64,
 }
 
+/// The room for routing a part keeps round its courtyard, as the design states it
+/// (`.routing_margin`, issue #1313): the part's own, or the board's for a part that states none.
+/// The placer and `layout fit` grow the courtyard by it on every side against other parts'
+/// courtyards. A part with no margin (0) is not here.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PartRoutingMargin {
+    /// The part's path in the design.
+    pub path: String,
+    /// In mm, how far the courtyard is grown on each side.
+    pub margin: f64,
+}
+
 /// How far the pins of a through-hole part protrude out of the board on the face opposite the
 /// part, whether they were cut after soldering or bought short, as the board's physical file
 /// states it (`.pin_protrusion`, ADR 0045 section 15). A part the design states no

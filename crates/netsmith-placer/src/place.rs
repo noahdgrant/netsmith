@@ -176,9 +176,12 @@ struct Block {
     slots: Vec<(usize, Pt)>,
 }
 
+/// The size a part takes in the rows: its courtyard grown by its routing margin on each side
+/// (issue #1313), so that the rows the annealer starts from already keep the margins.
 fn size_of(parts: &[Placed], index: usize) -> (f64, f64) {
     let c = parts[index].courtyard();
-    (c.width(), c.height())
+    let m = 2.0 * parts[index].routing_margin;
+    (c.width() + m, c.height() + m)
 }
 
 /// Parts one above the other, centred on a common line.
@@ -550,9 +553,11 @@ fn arrange(parts: &mut [Placed], order: &[usize], options: &PlaceOptions) -> Arr
             // is mirrored for a part on the back.
             parts[i].at = Pt::default();
             let courtyard = parts[i].courtyard();
+            // The slot holds the courtyard grown by its routing margin ([`size_of`]).
+            let margin = parts[i].routing_margin;
             parts[i].at = Pt::new(
-                tidy(block_x + corner.x - courtyard.min.x),
-                tidy(top + corner.y - courtyard.min.y),
+                tidy(block_x + corner.x + margin - courtyard.min.x),
+                tidy(top + corner.y + margin - courtyard.min.y),
             );
         }
         x += block.width + BLOCK_GAP;
@@ -1874,6 +1879,7 @@ mod tests {
                     size: (0.6, 0.7),
                     at: (1.0, 1.0),
                     nearest: ("left", 1.0),
+                    margin: 0.0,
                 }],
                 outside_parts: vec![netsmith_pcb::OutsideAt {
                     part: "R3".into(),
@@ -1931,6 +1937,7 @@ mod tests {
                 size: (0.6, 0.7),
                 at: (1.0, 1.0),
                 nearest: ("left", 1.0),
+                margin: 0.0,
             }],
             outside_parts: vec![netsmith_pcb::OutsideAt {
                 part: "R3".into(),
@@ -1987,6 +1994,7 @@ mod tests {
                 size: (1.0, 1.0),
                 at: (0.0, 0.0),
                 nearest: ("left", 0.0),
+                margin: 0.0,
             }],
             paths: board
                 .parts
@@ -2525,6 +2533,82 @@ mod tests {
             .filter(|d| d.starts_with("run "))
             .count();
         assert!(runs > 1, "{runs} runs");
+    }
+
+    /// Twelve resistors in 30 x 20 mm, each with a routing margin of `margin` mm (issue #1313).
+    fn spaced(margin: f64) -> Board {
+        let parts: Vec<Part> = (1..=12)
+            .map(|i| {
+                at_path(
+                    part(&format!("R{i}"), "Resistor", Some("0603")),
+                    &format!("r{i}"),
+                )
+            })
+            .collect();
+        let design = Design {
+            modules: Vec::new(),
+            name: "T".into(),
+            process: Some(crate::testlib::test_process()),
+            features: netsmith_core::Features {
+                routing_margins: parts
+                    .iter()
+                    .filter(|_| margin > 0.0)
+                    .map(|p| netsmith_core::PartRoutingMargin {
+                        path: p.path.clone(),
+                        margin,
+                    })
+                    .collect(),
+                ..Default::default()
+            },
+            interfaces: Vec::new(),
+            notes: Vec::new(),
+            parts,
+            nets: Vec::new(),
+        };
+        let options = PlaceOptions {
+            fit: Some((30.0, 20.0)),
+            ..PlaceOptions::default()
+        };
+        crate::board_from_design_placed(
+            &design,
+            &netsmith_kicad::Mapping::standard(),
+            &fixtures(),
+            &options,
+        )
+        .unwrap()
+    }
+
+    /// The pairs of parts nearer than their routing margins ask, and the nearest two
+    /// courtyards, in mm.
+    fn shortest(board: &Board) -> (usize, f64) {
+        let mut short = 0;
+        let mut nearest = f64::INFINITY;
+        for (i, a) in board.parts.iter().enumerate() {
+            for b in &board.parts[i + 1..] {
+                short += usize::from(a.margin_short(b).is_some());
+                let (ca, cb) = (a.courtyard(), b.courtyard());
+                let dx = (ca.min.x - cb.max.x).max(cb.min.x - ca.max.x);
+                let dy = (ca.min.y - cb.max.y).max(cb.min.y - ca.max.y);
+                nearest = nearest.min(dx.max(dy));
+            }
+        }
+        (short, nearest)
+    }
+
+    #[test]
+    fn the_placer_keeps_the_routing_margins_of_two_parts_between_their_courtyards() {
+        // Without a margin the rows put two resistors nearer than 2 mm.
+        let plain = spaced(0.0);
+        assert_eq!(plain.check_placement(), vec![]);
+        let (_, nearest) = shortest(&plain);
+        assert!(nearest < 2.0 - 1e-6, "{nearest}");
+        // With 1 mm round each, every two keep 2 mm, and the check finds nothing.
+        let board = spaced(1.0);
+        assert_eq!(board.check_placement(), vec![]);
+        assert!(board.parts.iter().all(|p| p.routing_margin == 1.0));
+        let (short, nearest) = shortest(&board);
+        assert_eq!(short, 0, "the nearest two are {nearest} mm apart");
+        assert!(nearest >= 2.0 - 1e-6, "{nearest}");
     }
 
     #[test]
