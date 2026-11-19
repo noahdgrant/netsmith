@@ -620,6 +620,9 @@ pub struct Finding {
     /// For a `track_current` or `via_current` finding: the copper, the current assumed and what
     /// it needs (issue 1373).
     pub carrying: Option<Carrying>,
+    /// Where the figure the finding is judged against comes from, in words, when the process
+    /// records it (issue 1393: the `assembly_size` finding's page, service and day).
+    pub source: Option<String>,
 }
 
 /// The numbers of a `track_current` or `via_current` finding (issue 1373): what the copper is,
@@ -978,6 +981,8 @@ pub struct Marks {
     /// (issue 1285): `None` is not judged.
     pub min_single_sided_assembly_size: Option<f64>,
     pub min_double_sided_assembly_size: Option<f64>,
+    /// Where those figures come from (issue 1393), quoted by the `assembly_size` finding.
+    pub assembly_size_source: Option<String>,
 }
 
 #[derive(Debug, PartialEq)]
