@@ -11,6 +11,42 @@ use std::cmp::Ordering;
 
 pub(crate) const HEADER: [&str; 4] = ["Comment", "Designator", "Footprint", "LCSC Part #"];
 
+/// The columns of `bom-alternates.csv`.
+pub(crate) const ALTERNATES_HEADER: [&str; 3] = ["Designator", "Part Number", "LCSC Part #"];
+
+/// A part another may take the place of on one footprint (issue 1415): the designator it
+/// replaces, which is on the footprint of the part `bom.csv` lists, and what it is.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AlternateEntry {
+    /// The designator of the part it replaces; on a panel, with the cell (`U1_3`).
+    pub designator: String,
+    /// The manufacturer's part number; where the alternate has none, the name of its kind.
+    pub part_number: String,
+    /// JLCPCB's part number, if the alternate has one.
+    pub lcsc: Option<String>,
+}
+
+/// The text of `bom-alternates.csv`: `Designator,Part Number,LCSC Part #`, one row for each
+/// alternate, by designator. It is for a person to read: JLCPCB's upload takes `bom.csv`, which
+/// lists a designator once.
+pub(crate) fn render_alternates(entries: &[AlternateEntry]) -> String {
+    let mut sorted: Vec<&AlternateEntry> = entries.iter().collect();
+    sorted.sort_by(|a, b| {
+        designator_cmp(&a.designator, &b.designator).then_with(|| a.part_number.cmp(&b.part_number))
+    });
+    let rows: Vec<Vec<String>> = sorted
+        .iter()
+        .map(|e| {
+            vec![
+                e.designator.clone(),
+                e.part_number.clone(),
+                e.lcsc.clone().unwrap_or_default(),
+            ]
+        })
+        .collect();
+    csv::file(&ALTERNATES_HEADER, &rows)
+}
+
 /// One kind of part and where it goes. Identical parts may arrive as one entry per
 /// designator or already grouped; [`group`] puts them on one row either way.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

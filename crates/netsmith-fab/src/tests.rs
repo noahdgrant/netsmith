@@ -822,3 +822,50 @@ mod spokes {
         assert!(copper_at(&a, 45.0, 0.9) && !copper_at(&a, 0.0, 0.75));
     }
 }
+
+#[test]
+fn the_alternates_file_has_a_row_for_each_alternate_by_designator() {
+    let alternate = |designator: &str, part: &str, lcsc: Option<&str>| AlternateEntry {
+        designator: designator.into(),
+        part_number: part.into(),
+        lcsc: lcsc.map(Into::into),
+    };
+    let text = bom::render_alternates(&[
+        alternate("U10", "MOD-B", Some("C123")),
+        alternate("U2", "MOD-C", None),
+        alternate("U2", "MOD-B", Some("C123")),
+    ]);
+    assert_eq!(
+        text,
+        "Designator,Part Number,LCSC Part #\nU2,MOD-B,C123\nU2,MOD-C,\nU10,MOD-B,C123\n"
+    );
+    assert_eq!(alternates_csv(&[]), None);
+}
+
+#[test]
+fn a_package_with_alternates_writes_their_file_and_one_without_removes_an_old_one() {
+    let pcb = write_pcb("alternates", &all_top_board());
+    let dir = TempDir::unused("fab-test-alternates-out");
+    let with = Options {
+        alternates: vec![AlternateEntry {
+            designator: "R1".into(),
+            part_number: "MOD-B".into(),
+            lcsc: Some("C123".into()),
+        }],
+        ..Options::default()
+    };
+    let pkg = package(&pcb, &sample_bom(), &with).unwrap();
+    assert_eq!(
+        pkg.alternates_csv.as_deref(),
+        Some("Designator,Part Number,LCSC Part #\nR1,MOD-B,C123\n")
+    );
+    pkg.write(&dir).unwrap();
+    assert!(dir.join("bom-alternates.csv").exists());
+    // The bill and the placement are the fitted part's, as without the alternate.
+    assert!(!pkg.bom_csv.contains("MOD-B"), "{}", pkg.bom_csv);
+
+    let pkg = package(&pcb, &sample_bom(), &Options::default()).unwrap();
+    assert_eq!(pkg.alternates_csv, None);
+    pkg.write(&dir).unwrap();
+    assert!(!dir.join("bom-alternates.csv").exists());
+}
