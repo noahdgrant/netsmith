@@ -1,9 +1,9 @@
 //! The current of each net and the optional features of a design.
 
 use crate::{
-    CaseModel, Cutout, Keepout, Label, Logo, Offset, Outline, PadConnection, PartHeight,
-    PartHeightGrowth, PartKind, PartRoutingMargin, PartSilk, PartSoftMargin, PartStandoff,
-    PinProtrusion, PinRef, Placement, Pour, StepModel,
+    CaseModel, Cutout, Keepout, Label, Logo, Offset, Outline, PadConnection, PadContactOffset,
+    PartHeight, PartHeightGrowth, PartKind, PartRoutingMargin, PartSilk, PartSoftMargin,
+    PartStandoff, PinProtrusion, PinRef, Placement, Pour, StepModel,
 };
 
 /// The current a net carries, and the least track that carries it (issue #431).
@@ -267,6 +267,11 @@ pub struct Features {
     /// states it (`.standoff`, issue #775), by path. Left out of a design file when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub standoffs: Vec<PartStandoff>,
+    /// The contacts of parts' pads that are not at the pads' centres (a part's `pads` block,
+    /// issue #1321), by path and pad, for the package each part is in. Left out of a design file
+    /// when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pad_contacts: Vec<PadContactOffset>,
     /// How much the bodies of parts may grow in height over their life, as the design states it
     /// (`.height_growth`, issue #1263), by path. Left out of a design file when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
