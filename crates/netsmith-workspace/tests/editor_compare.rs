@@ -253,12 +253,19 @@ fn a_changed_value_is_a_field_with_old_and_new_and_a_designator_on_each_side() {
     assert_eq!(change.base_at.as_ref().unwrap().line, at.line);
     // The LED the solver picks for the new current is another one too.
     assert!(led.parts.changed.iter().any(|p| p.path == "led"));
+    // The LED's current crosses the mate (issue 1427): the port and the rail of each board
+    // draw the new current.
     assert_eq!(
         c.summary,
-        "2 values changed, 1 system port changed, 1 rail changed"
+        "2 values changed, 2 system ports changed, 2 rails changed"
     );
-    // The power board is untouched.
-    assert_eq!(board(&c, "TwoBoards/power").status, BoardStatus::Unchanged);
+    // The power board's parts and nets are untouched; only its input rail draws the new
+    // current across the mate.
+    let power = board(&c, "TwoBoards/power");
+    assert_eq!(power.status, BoardStatus::Changed);
+    assert!(power.parts.changed.is_empty() && power.nets.changed.is_empty());
+    let rails: Vec<&str> = power.rails.changed.iter().map(|r| r.net.as_str()).collect();
+    assert_eq!(rails, ["VIN"]);
     // The line of the bill of materials changed with it.
     let bom = led.bom.as_ref().expect("a bill of materials");
     assert!(!bom.added.is_empty() && !bom.removed.is_empty(), "{bom:#?}");
@@ -1356,9 +1363,11 @@ fn two_refs_are_compared_with_each_other_and_the_files_on_disk_are_not_read() {
 
     // Later refs: the resistor is the change between them.
     let c = compare_refs(&w, &second, &third).unwrap();
+    // The LED's current crosses the mate (issue 1427): the port and the rail of each board
+    // draw the new current.
     assert_eq!(
         c.summary,
-        "2 values changed, 1 system port changed, 1 rail changed"
+        "2 values changed, 2 system ports changed, 2 rails changed"
     );
     let led = board(&c, "TwoBoards/led");
     let r1 = led.parts.changed.iter().find(|p| p.path == "r1").unwrap();
