@@ -23,6 +23,7 @@ fn mate(a: &str, b: &str, height: Option<(f64, f64)>) -> MateInput {
             .then(|| format!("the mate of `{a}` and `{b}` has no mated height")),
         window: None,
         keyed: true,
+        soldered: false,
     }
 }
 
@@ -284,4 +285,46 @@ fn pads_that_do_not_turn_onto_pads_key_the_connector() {
     let s = system(&[("carrier", &carrier), ("card", &card)], vec![unkeyed()]);
     let parts: Vec<&str> = unmarked(&s).iter().map(|f| f.parts[0].as_str()).collect();
     assert_eq!(parts, ["carrier/row"]);
+}
+
+#[test]
+fn a_soldered_mate_puts_the_boards_face_to_face_and_its_connectors_in_each_others_board() {
+    // At 0 mm the rows, 1 mm tall, stand in the other board: a collision for a header in a
+    // socket, the joint itself for a soldered mate (issue #1320). The other bodies still collide.
+    let row_against_a_board = |soldered: bool| {
+        let with_row = || {
+            let mut b = board();
+            b.parts.iter_mut().find(|p| p.path == "row").unwrap().height = Some(1.0);
+            b
+        };
+        let (carrier, card) = (with_row(), with_row());
+        let s = system(
+            &[("carrier", &carrier), ("card", &card)],
+            vec![MateInput {
+                soldered,
+                ..mate("carrier.row", "card.row", Some((0.0, 0.0)))
+            }],
+        );
+        assert_eq!(
+            s.member("card").unwrap().place,
+            SystemPlace::Mated { mate: 0 }
+        );
+        let collisions: Vec<Vec<String>> = s
+            .findings
+            .iter()
+            .filter(|f| f.code == SystemCode::SystemCollision)
+            .map(|f| f.parts.clone())
+            .collect();
+        assert!(
+            collisions.contains(&vec!["carrier/".to_string(), "card/b".to_string()]),
+            "{collisions:?}"
+        );
+        assert_eq!(s.mates[0].residual, Some(0.0));
+        collisions
+            .iter()
+            .filter(|p| p.iter().any(|x| x.ends_with("/row")))
+            .count()
+    };
+    assert!(row_against_a_board(false) > 0);
+    assert_eq!(row_against_a_board(true), 0);
 }

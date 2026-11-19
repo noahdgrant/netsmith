@@ -15,7 +15,8 @@
 //!   case for the checks). The member is flipped when its connector would otherwise face the
 //!   same way as its partner (both on the top face, or both on the bottom).
 //! - Only straight-through connectors on parallel boards are placed: every std header and socket
-//!   is one, and nothing else has a `.mating` (ADR 0040).
+//!   is one, and so is a soldered joint (pins in plated holes, castellations, a land grid: issue
+//!   #1320), whose boards are face to face.
 //! - A mate whose two ends are both placed already (a card on two headers, a loop of three
 //!   boards) is checked, not used: each of its pads must land on its partner within
 //!   [`ALIGNMENT`], and its boards' faces must be its mated height apart, else
@@ -33,7 +34,10 @@
 //! about z and a flip keep that, so the checks are exact: a z overlap and a plan overlap measured
 //! as the depth one polygon reaches into the other, with no triangles. Only prisms of different
 //! members are compared, and the two connectors of a mate are exempt against each other, since
-//! one goes into the other. A body that stands wholly inside a cutout of another board does not
+//! one goes into the other. The connectors of a soldered mate (`soldered_pin`, `castellated`,
+//! `land_grid`, issue #1320) are exempt against each other's boards too: the boards are face to
+//! face, at a mated height of 0 mm, and a connector's pins stand in the plated holes of the
+//! other board or its lands on the other's pads. A body that stands wholly inside a cutout of another board does not
 //! meet that board.
 //!
 //! - `system_collision` (an error): a body, a pin protrusion or a board overlaps another
@@ -193,6 +197,10 @@ pub struct MateInput {
     /// Whether either connector is keyed (`.mating.keyed`), so that the mate goes together one
     /// way only; a mate that neither keys has its pin 1 looked for on the pads.
     pub keyed: bool,
+    /// Whether the mate is soldered (`.mating.kind` `soldered_pin`, `castellated` or
+    /// `land_grid`, issue #1320): each connector sits in or on its partner's board, face to
+    /// face, so neither is counted against the other's board.
+    pub soldered: bool,
 }
 
 impl MateInput {
@@ -991,10 +999,14 @@ fn prisms(index: usize, member: &Member) -> Vec<Prism> {
     out
 }
 
+/// A connector of a mate, as `(member, path in the member's board)`.
+type Connector = (String, String);
+
 /// The checks across boards: collisions, and parts of unknown height that face another member.
 fn checks(members: &[Member], mates: &[Mate]) -> Vec<Finding> {
-    // The connector pairs that are exempt against each other, as `(member, path)` pairs.
-    let exempt: Vec<((String, String), (String, String))> = mates
+    // The connector pairs that are exempt against each other, as `(member, path)` pairs, and
+    // whether the mate is soldered, which exempts each connector against its partner's board too.
+    let exempt: Vec<(Connector, Connector, bool)> = mates
         .iter()
         .filter_map(|m| {
             let i = &m.input;
@@ -1002,18 +1014,28 @@ fn checks(members: &[Member], mates: &[Mate]) -> Vec<Finding> {
             Some((
                 (a, MateInput::part(&i.a, &i.a_member)),
                 (b, MateInput::part(&i.b, &i.b_member)),
+                i.soldered,
             ))
         })
         .collect();
     let is_exempt = |a: &Prism, b: &Prism| {
-        let (Some(pa), Some(pb)) = (&a.part, &b.part) else {
-            return false;
+        let key = |p: &Prism| (members[p.member].name.clone(), p.part.clone());
+        let (ka, kb) = (key(a), key(b));
+        let is = |x: &(String, String), k: &(String, Option<String>)| {
+            x.0 == k.0 && k.1.as_deref() == Some(x.1.as_str())
         };
-        let ka = (members[a.member].name.clone(), pa.clone());
-        let kb = (members[b.member].name.clone(), pb.clone());
-        exempt
-            .iter()
-            .any(|(x, y)| (*x == ka && *y == kb) || (*x == kb && *y == ka))
+        // A board of the member, as a prism with no part.
+        let board_of =
+            |x: &(String, String), k: &(String, Option<String>)| x.0 == k.0 && k.1.is_none();
+        exempt.iter().any(|(x, y, soldered)| {
+            (is(x, &ka) && is(y, &kb))
+                || (is(x, &kb) && is(y, &ka))
+                || (*soldered
+                    && ((is(x, &ka) && board_of(y, &kb))
+                        || (is(x, &kb) && board_of(y, &ka))
+                        || (is(y, &ka) && board_of(x, &kb))
+                        || (is(y, &kb) && board_of(x, &ka))))
+        })
     };
     let placed: Vec<(usize, Vec<Prism>)> = members
         .iter()

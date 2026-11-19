@@ -38,10 +38,17 @@ import std::sources::Rail
 /// with `~` between their `.mating`; the checker compares the two and reads each board's own
 /// wiring behind the contacts.
 interface Mating {
-    /// What sort of connector: `pin_header` (headers and sockets). The kinds that need more than
-    /// a contact-for-contact join (flat cables, wire to board) are not modelled.
+    /// What sort of joint: `pin_header` (a header in a socket), or a soldered one (issue
+    /// 1320): `soldered_pin` (pins soldered in another board's plated holes), `castellated`
+    /// (a board's edge half-holes soldered to another's lands) or `land_grid` (a module's lands
+    /// soldered to a land pattern). Every kind joins contact N to contact N with the same checks.
+    /// The kinds that need more than a contact-for-contact join (flat cables, wire to board) are
+    /// not modelled.
     .kind: String
-    /// `header` or `socket`: a header mates with a socket, never with a header.
+    /// `header` or `socket` for a `pin_header`: a header mates with a socket, never with a
+    /// header. `module` or `host` for a soldered kind: the module (the board with the pins, the
+    /// castellations or the lands) is soldered to the host (the board with the holes or the land
+    /// pattern).
     .gender: String
     /// The distance between contacts in a row.
     .pitch: Length
@@ -63,7 +70,8 @@ interface Mating {
     /// both tolerances. It depends on the maker's drawing, so a part states it only through a
     /// `header` catalog row, whose `source` names the drawing; unset means unknown, and a
     /// mate with an unknown seat has no mated height. Never a default and never the part's
-    /// `.height` (a maximum, not a seat).
+    /// `.height` (a maximum, not a seat). A soldered kind is face to face: its seat is 0 mm,
+    /// stated or not, and a seat stated otherwise is refused.
     .seat: Length
     /// `"none"`, or what keys the housing so that it goes in one way (`"shrouded"`,
     /// `"polarised"`). Unset is the same as `"none"`. A mate whose pinout would also work turned

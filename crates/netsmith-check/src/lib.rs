@@ -53,6 +53,7 @@ pub use load_switch::EnableOff;
 pub use loader::Loader;
 pub use loads::{LoadGroup, worst_of};
 pub use lower::closest;
+pub use mate::MateKind;
 pub use model::{
     Balance, Bank, Bookmark, BusAssignment, BusRequest, Catalog, Chain, ChainPin, Checkpoint,
     Contact, ContactSide, DcElement, DcKind, DefaultFrom, DefaultNote, Domain, Draw, EnumId,
