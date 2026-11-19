@@ -4,7 +4,7 @@
 //! `fab`, the editor's PCB view and the `netsmith routes` commands. The import of a KiCad
 //! board's copper is `netsmith_tools::routes_import`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use netsmith_pcb::{
@@ -347,16 +347,40 @@ pub fn edit_all(board: &Board, routes: &mut Routes, changes: &[Edit]) -> Result<
         return Err(Refusal::Refused("no change to make".to_string()));
     }
     let mut hashes: HashMap<&str, String> = HashMap::new();
+    // The nets of the changes that the board has no more, whose records are deleted.
+    let mut gone: HashSet<&str> = HashSet::new();
     for change in changes {
         let net = change.net();
-        if hashes.contains_key(net) {
+        if hashes.contains_key(net) || gone.contains(net) {
             continue;
         }
         let Some(hash) = netsmith_pcb::pad_hash(board, net) else {
-            return Err(Refusal::Refused(format!(
-                "the board {} has no net `{net}`",
-                board.name
-            )));
+            // A record of a net the board no longer has can only be deleted, whole (issue
+            // #1329): nothing of it is drawn, and `fab` and the note of `routes show` tell the
+            // person to delete it.
+            let record = routes.boards.get(&board.name).and_then(|t| t.nets.get(net));
+            let deletes = changes
+                .iter()
+                .filter(|c| c.net() == net)
+                .all(|c| matches!(c, Edit::Delete { shape: None, .. }));
+            match record {
+                Some(_) if deletes => {
+                    gone.insert(net);
+                    continue;
+                }
+                Some(_) => {
+                    return Err(Refusal::Refused(format!(
+                        "the board {} has no net `{net}`, so its record in the routes file can only be deleted whole: `netsmith routes delete --net {net}`",
+                        board.name
+                    )));
+                }
+                None => {
+                    return Err(Refusal::Refused(format!(
+                        "the board {} has no net `{net}`",
+                        board.name
+                    )));
+                }
+            }
         };
         hashes.insert(net, hash);
     }
@@ -382,6 +406,24 @@ pub fn edit_all(board: &Board, routes: &mut Routes, changes: &[Edit]) -> Result<
     let mut said: Vec<String> = Vec::new();
     for change in changes {
         let net = change.net();
+        if gone.contains(net) {
+            // Whatever is locked in it: the net is not on the board, so it cannot be unlocked
+            // (`routes unlock` needs the net), and none of its copper is drawn.
+            let record = table.nets.remove(net).unwrap_or_default();
+            let locked = record.lock
+                || record.tracks.iter().any(|t| t.lock)
+                || record.vias.iter().any(|v| v.lock)
+                || record.zones.iter().any(|z| z.lock);
+            let mut text = format!(
+                "deleted net {net}'s record ({} shape(s)), a net the board does not have",
+                record.shapes()
+            );
+            if locked {
+                text.push_str(" (it, or a shape of it, was locked)");
+            }
+            said.push(text);
+            continue;
+        }
         let hash = &hashes[net];
         if let Edit::Restore { before, after, .. } = change {
             let now = record_text(&board.name, net, table.nets.get(net));
@@ -1217,6 +1259,52 @@ mod tests {
         // Delete of the record takes its zones, and the board's table with it.
         edit(&board, &mut routes, &whole).unwrap();
         assert!(routes.boards.is_empty(), "{routes:?}");
+    }
+
+    #[test]
+    fn a_record_of_a_net_the_board_has_not_is_deleted_whole() {
+        // Issue #1329.
+        let board = led();
+        let mut routes = Routes::default();
+        edit(
+            &board,
+            &mut routes,
+            &zone("GND", rect(1.0, 1.0, 3.0, 3.0), 0),
+        )
+        .unwrap();
+        edit(
+            &board,
+            &mut routes,
+            &zone("VCC", rect(6.0, 1.0, 3.0, 3.0), 0),
+        )
+        .unwrap();
+        let table = routes.boards.get_mut(&board.name).unwrap();
+        let mut old = table.nets.remove("GND").unwrap();
+        old.zones[0].lock = true;
+        table.nets.insert("OLD".into(), old);
+        let delete = |shape| Edit::Delete {
+            net: "OLD".into(),
+            shape,
+        };
+        // A shape of it cannot be named, and the file is as it was.
+        let before = routes.clone();
+        let said = refusal(edit(&board, &mut routes, &delete(Some(Shape::Zone(1)))));
+        assert!(
+            said.contains("has no net `OLD`") && said.contains("deleted whole"),
+            "{said}"
+        );
+        assert_eq!(routes, before);
+        // The record goes, locked or not, and the others stay.
+        let said = edit(&board, &mut routes, &delete(None)).unwrap();
+        assert_eq!(
+            said,
+            "deleted net OLD's record (1 shape(s)), a net the board does not have (it, or a shape of it, was locked)"
+        );
+        let nets: Vec<_> = routes.boards[&board.name].nets.keys().collect();
+        assert_eq!(nets, ["VCC"]);
+        // Nothing of it left: refused as any net the board has not.
+        let said = refusal(edit(&board, &mut routes, &delete(None)));
+        assert!(said.contains("has no net `OLD`"), "{said}");
     }
 
     #[test]

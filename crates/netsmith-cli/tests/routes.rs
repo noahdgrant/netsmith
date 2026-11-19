@@ -192,6 +192,48 @@ fn fab_says_a_record_whose_pads_moved_and_routes_the_net_again() {
 }
 
 #[test]
+fn routes_delete_deletes_a_record_of_a_net_the_board_no_longer_has() {
+    // Issue #1329: the net was renamed in the source, so its record names a net the board lacks;
+    // `fab` says to delete it, by the name it prints, and `routes delete` does.
+    let dir = imported("routes-gone-net");
+    let file = dir.join("led.routes.toml");
+    let routes_text = fs::read_to_string(&file).unwrap();
+    let renamed = routes_text.replace("LedExample.nets.GND", "LedExample.nets.OLD");
+    assert_ne!(renamed, routes_text);
+    fs::write(&file, renamed).unwrap();
+
+    let said = ok(&netsmith(&dir, &["board", "fab", "led.nsm", "--locked", "--out", "gone"]));
+    assert!(
+        said.contains("the routes file has net `OLD`, which the board does not have"),
+        "{said}"
+    );
+    // One shape of it cannot be named: only the whole record goes.
+    let run = routes(&dir, &["delete", "--net", "OLD", "--track", "1"]);
+    assert_eq!(run.status.code(), Some(1), "{}", text(&run));
+    assert!(
+        text(&run).contains("has no net `OLD`") && text(&run).contains("deleted whole"),
+        "{}",
+        text(&run)
+    );
+    // The record was locked: it goes all the same, and the command says what it deleted.
+    let said = ok(&routes(&dir, &["delete", "--net", "OLD"]));
+    assert!(
+        said.contains("deleted net OLD's record (4 shape(s)), a net the board does not have"),
+        "{said}"
+    );
+    assert!(said.contains("was locked"), "{said}");
+    let after = fs::read_to_string(&file).unwrap();
+    assert!(!after.contains("OLD"), "{after}");
+    assert!(after.contains("LedExample.nets.VCC"), "{after}");
+    let said = ok(&netsmith(&dir, &["board", "fab", "led.nsm", "--locked", "--out", "after"]));
+    assert!(!said.contains("does not have"), "{said}");
+    // A net that neither the board nor the file has is still refused.
+    let run = routes(&dir, &["delete", "--net", "OLD"]);
+    assert_eq!(run.status.code(), Some(1), "{}", text(&run));
+    assert!(text(&run).contains("has no net `OLD`"), "{}", text(&run));
+}
+
+#[test]
 fn routes_lock_writes_a_record_whose_pads_moved_again() {
     let dir = imported("routes-relock");
     // A record written for other pads: its hash is not the board's.
