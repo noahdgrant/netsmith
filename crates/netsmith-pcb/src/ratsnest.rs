@@ -1054,7 +1054,8 @@ mod tests {
             }]
         );
 
-        // A via at the open end joins it; the via, joined by the track, is not open itself.
+        // A via at the open end joins that end, but the piece of track and via still reaches
+        // one pad only: it is open at its far end, the via, by the pad that moved.
         board.vias.push(Via {
             net: net.name.clone(),
             at: b,
@@ -1062,7 +1063,14 @@ mod tests {
             drill: 0.3,
             span: None,
         });
-        assert_eq!(open_ends(&board, &net.name, &[0], &[0]), []);
+        assert_eq!(
+            open_ends(&board, &net.name, &[0], &[0]),
+            [OpenEnd {
+                copper: OpenCopper::Via(0),
+                at: b,
+                pad: Some(net.pads[1].clone()),
+            }]
+        );
     }
 
     #[test]
