@@ -855,10 +855,27 @@ package = "Radial_D16.0mm_P7.50mm"
 symbol = "Device:C_Polarized"
 footprint = "Capacitor_THT:CP_Radial_D16.0mm_P7.50mm"
 
+# The tapped can of a two-cell supercapacitor, with `.mid` on pin 2 (issue 1399). The symbol and
+# the footprint are netsmith's own: KiCad has neither, and the land is not from a maker's drawing
+# (the tap midway between the outer leads, 7.5 mm apart; `std/libs/README.md`); compare a real
+# part's drawing with it.
+[[part]]
+kind = "Supercap"
+package = "Radial_D16.0mm_P7.50mm_Tap"
+symbol = "Device:C_Polarized_Tap"
+footprint = "netsmith:CP_Radial_D16.0mm_P7.50mm_Tap"
+
 # A cell's package is the one its catalog row names (issue 1366): here the JST PH lead of a
-# pouch cell. A coin cell with tabs and the tapped supercapacitor wait for a sourced row (issue 1399).
+# pouch cell, and a 2032-size coin cell with solder tabs (issue 1399), whose land is netsmith's
+# own (15 mm between the tab pins, the cell centred between them), not from a maker's drawing.
 [[part]]
 kind = "Cell"
 package = "JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal"
 symbol = "Device:Battery_Cell"
 footprint = "Connector_JST:JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal"
+
+[[part]]
+kind = "Cell"
+package = "Coin_D20.0mm_Tabs_P15.00mm"
+symbol = "Device:Battery_Cell"
+footprint = "netsmith:BatteryCell_Coin_D20.0mm_Tabs_P15.00mm"

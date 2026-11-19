@@ -192,7 +192,8 @@ fn library(symbols: &[String]) -> String {
     )
 }
 
-/// The stock-like `Device` library: `R`, `C`, `LED`, `C_Polarized` and `Battery_Cell`.
+/// The stock-like `Device` library: `R`, `C`, `LED`, `C_Polarized`, `Battery_Cell` and
+/// netsmith's own `C_Polarized_Tap` (issue 1399), which no KiCad library has.
 pub fn device() -> String {
     let vertical = |kind: &str| {
         [
@@ -245,7 +246,18 @@ pub fn device() -> String {
             pin("passive", "", (0.0, -2.54, 90.0), 2.54, "-", "2"),
         ],
     );
-    library(&[r, c, led, cp, cell])
+    let cp_tap = symbol(
+        "C_Polarized_Tap",
+        [(3.175, 3.81, 0.0), (3.175, -3.81, 0.0)],
+        "C_Polarized_Tap",
+        &rectangle((-2.286, 3.556), (2.286, -3.556)),
+        &[
+            pin("passive", "", (0.0, 7.62, 270.0), 4.064, "+", "1"),
+            pin("passive", "", (5.08, 0.0, 180.0), 5.08, "MID", "2"),
+            pin("passive", "", (0.0, -7.62, 90.0), 4.064, "-", "3"),
+        ],
+    );
+    library(&[r, c, led, cp, cell, cp_tap])
 }
 
 /// A single-row connector symbol of `n` pins, as KiCad draws them.
