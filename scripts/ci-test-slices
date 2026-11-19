@@ -27,12 +27,18 @@ if [ "$job" = kicad ]; then
     filter=(-E "$expr")
 fi
 
-# One line per test nextest would run (not the ignored ones), "binary test", sorted.
+# One line per test nextest would run (not the ignored ones), "binary test", sorted. Cargo's own
+# messages go to the log and stay in "$work/cargo" for the check below.
 tests() {
-    cargo nextest list "${select[@]}" --message-format json "${filter[@]}" "$@" |
-        jq -r '."rust-suites" | to_entries[] | .key as $binary | .value.testcases | to_entries[]
-               | select(.value."filter-match".status == "matches") | "\($binary) \(.key)"' |
-        sort
+    if ! cargo nextest list "${select[@]}" --message-format json "${filter[@]}" "$@" \
+        > "$work/list.json" 2> "$work/cargo"; then
+        cat "$work/cargo" >&2
+        return 1
+    fi
+    cat "$work/cargo" >&2
+    jq -r '."rust-suites" | to_entries[] | .key as $binary | .value.testcases | to_entries[]
+               | select(.value."filter-match".status == "matches") | "\($binary) \(.key)"' \
+        "$work/list.json" | sort
 }
 
 tests > "$work/all"
@@ -40,6 +46,14 @@ total="$(wc -l < "$work/all")"
 sum=0
 for k in $(seq 1 "$slices"); do
     tests --partition "slice:$k/$slices" > "$work/slice-$k"
+    # The first listing built what was missing, so a later one compiles nothing. One that does
+    # has a build script that reruns on every cargo call (issue #1352: a `rerun-if-changed` on a
+    # path that does not exist), and every listing would rebuild the crates above it.
+    if grep -q 'Compiling' "$work/cargo"; then
+        echo "::error::listing the tests again compiled crates, so a build script reruns on every cargo call (a rerun-if-changed on a missing path?):"
+        grep 'Compiling' "$work/cargo"
+        exit 1
+    fi
     n="$(wc -l < "$work/slice-$k")"
     echo "$job slice $k/$slices: $n tests"
     if [ "$n" -eq 0 ] && [ "$scoped" = false ]; then echo "::error::$job slice $k is empty"; exit 1; fi
