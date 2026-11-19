@@ -391,7 +391,7 @@ fn an_eagle_librarys_package_becomes_a_footprint_a_board_builds_with() {
         ),
         (
             &["vendor/sensor.lbr", "--ref", "U3", "--name", "own:X"],
-            "error: vendor/sensor.lbr: `--ref` names a part of a board, and a library the command reads has one footprint\n",
+            "error: vendor/sensor.lbr: `--ref` names a part of a board, and a library's package is named with `--footprint`\n",
         ),
     ];
     for (args, want) in cases {
@@ -401,4 +401,123 @@ fn an_eagle_librarys_package_becomes_a_footprint_a_board_builds_with() {
         assert_eq!(run.status.code(), Some(2), "{args:?}");
         assert_eq!(text(&run.stderr), want, "{args:?}");
     }
+}
+
+/// The sensor's library with a second package, `SOT-3-ALT`, whose pad 2 is on the other side.
+fn eagle_library_of_two() -> String {
+    EAGLE_LIBRARY.replace(
+        "</packages>",
+        "<package name=\"SOT-3-ALT\">\n<smd name=\"1\" x=\"-1\" y=\"0\" dx=\"0.6\" dy=\"0.9\" layer=\"1\"/>\n<smd name=\"2\" x=\"1\" y=\"0\" dx=\"0.6\" dy=\"0.9\" layer=\"1\"/>\n</package>\n</packages>",
+    )
+}
+
+#[test]
+fn a_library_of_several_packages_gives_the_one_footprint_names() {
+    let dir = TempDir::new("import-footprint-eagle-several");
+    let dir = dir.path();
+    project(dir, "");
+    fs::write(dir.join("vendor/parts.lbr"), eagle_library_of_two()).unwrap();
+
+    let refused = netsmith(dir, &["import", "footprint", "vendor/parts.lbr", "--name", "own:X"]);
+    assert_eq!(refused.status.code(), Some(2));
+    assert_eq!(
+        text(&refused.stderr),
+        "error: vendor/parts.lbr: the library has 2 packages (SOT-3-SENSOR, SOT-3-ALT): name the one to import with `--footprint NAME`\n"
+    );
+    let missing = netsmith(
+        dir,
+        &["import", "footprint", "vendor/parts.lbr", "--footprint", "NOPE", "--name", "own:X"],
+    );
+    assert_eq!(missing.status.code(), Some(2));
+    assert_eq!(
+        text(&missing.stderr),
+        "error: vendor/parts.lbr: the library has no package `NOPE`; its packages are SOT-3-SENSOR, SOT-3-ALT\n"
+    );
+    assert!(!dir.join("libs").exists());
+
+    let run = netsmith(
+        dir,
+        &[
+            "import", "footprint", "vendor/parts.lbr", "--footprint", "SOT-3-ALT", "--name",
+            "own:Alt",
+        ],
+    );
+    let out = text(&run.stdout);
+    assert!(run.status.success(), "{}{out}", text(&run.stderr));
+    assert!(
+        out.starts_with(
+            "wrote libs/own.pretty/Alt.kicad_mod (2 pads)\nthe file names it `SOT-3-ALT`; it is `Alt` here\n"
+        ),
+        "{out}"
+    );
+}
+
+#[test]
+fn a_pretty_folder_of_several_footprints_gives_the_one_footprint_names() {
+    let dir = TempDir::new("import-footprint-pretty-several");
+    let dir = dir.path();
+    project(dir, "");
+    // A distributor's folder of two footprints.
+    for (name, reference) in [("Alpha", "U3"), ("Beta", "U3")] {
+        let made = netsmith(
+            dir,
+            &[
+                "import", "footprint", "vendor/eval.kicad_pcb", "--ref", reference, "--name",
+                &format!("tmp:{name}"),
+            ],
+        );
+        assert!(made.status.success(), "{}", text(&made.stderr));
+    }
+    fs::rename(dir.join("libs/tmp.pretty"), dir.join("vendor/dist.pretty")).unwrap();
+
+    let refused = netsmith(dir, &["import", "footprint", "vendor/dist.pretty", "--name", "own:X"]);
+    assert_eq!(refused.status.code(), Some(2));
+    assert_eq!(
+        text(&refused.stderr),
+        "error: vendor/dist.pretty: the folder has 2 footprints (Alpha, Beta): name the one to import with `--footprint NAME`\n"
+    );
+    let missing = netsmith(
+        dir,
+        &["import", "footprint", "vendor/dist.pretty", "--footprint", "Gamma", "--name", "own:X"],
+    );
+    assert_eq!(
+        text(&missing.stderr),
+        "error: vendor/dist.pretty: the folder has no footprint `Gamma`; its footprints are Alpha, Beta\n"
+    );
+    let run = netsmith(
+        dir,
+        &["import", "footprint", "vendor/dist.pretty", "--footprint", "Beta", "--name", "own:Picked"],
+    );
+    let out = text(&run.stdout);
+    assert!(run.status.success(), "{}{out}", text(&run.stderr));
+    assert!(out.starts_with("wrote libs/own.pretty/Picked.kicad_mod (3 pads)\n"), "{out}");
+    // The footprint file is the folder's `Beta`, whatever its name was.
+    let kept = fs::read_to_string(dir.join("libs/own.pretty/Picked.kicad_mod")).unwrap();
+    assert!(kept.contains("(footprint \"Picked\""), "{kept}");
+}
+
+#[test]
+fn footprint_is_refused_for_a_board_and_a_footprint_file() {
+    let dir = TempDir::new("import-footprint-flag-refused");
+    let dir = dir.path();
+    project(dir, "");
+    fs::write(dir.join("vendor/eval.brd"), eagle_board()).unwrap();
+    let cases: [(&[&str], &str); 2] = [
+        (
+            &["vendor/eval.kicad_pcb", "--ref", "U3", "--footprint", "X", "--name", "own:X"],
+            "error: vendor/eval.kicad_pcb: `--footprint` picks one of the footprints of a `.pretty` folder or an Eagle library, and a board's part is named with `--ref`\n",
+        ),
+        (
+            &["vendor/eval.brd", "--ref", "U3", "--footprint", "X", "--name", "own:X"],
+            "error: vendor/eval.brd: `--footprint` picks one of the footprints of a `.pretty` folder or an Eagle library, and a board's part is named with `--ref`\n",
+        ),
+    ];
+    for (args, want) in cases {
+        let mut all = vec!["import", "footprint"];
+        all.extend(args);
+        let run = netsmith(dir, &all);
+        assert_eq!(run.status.code(), Some(2), "{args:?}");
+        assert_eq!(text(&run.stderr), want, "{args:?}");
+    }
+    assert!(!dir.join("libs").exists());
 }

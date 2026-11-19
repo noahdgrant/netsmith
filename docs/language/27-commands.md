@@ -92,7 +92,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith import dxf` | `netsmith dxf import` | `--layer`, `--holes-layer`, `--units`, `--board`, `--write` |
 | `netsmith import kicad-libs libraries` | `netsmith kicad-libs import` | none |
 | `netsmith import kicad-libs models` | `netsmith kicad-libs models` | `--library` |
-| `netsmith import footprint` | new | `--ref`, `--name` |
+| `netsmith import footprint` | new | `--ref`, `--footprint`, `--name` |
 | `netsmith import part from-symbol` | `netsmith part from-symbol` | none |
 | `netsmith import port skeleton` | `netsmith port skeleton` | `--write` (was `--out`) |
 | `netsmith import port tables` | `netsmith port tables` | `--url`, `--reference`, `--check` |
