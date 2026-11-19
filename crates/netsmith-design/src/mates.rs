@@ -8,11 +8,15 @@
 //! part's `.height` (a maximum, not a seat). The system scene reads these to place the boards
 //! against each other; nothing here needs geometry.
 //!
+//! A soldered mate (`.mating.kind` `soldered_pin`, `castellated` or `land_grid`, issue #1320)
+//! is face to face: the seat of each side is 0 mm whether or not the part states it, so its
+//! mated height is 0 mm, and a seat stated other than 0 mm is refused with its number.
+//!
 //! A connector's body is its seat, one surface with one tolerance, unless it states
 //! `.mating.body_height` (issue 1324, decided by the owner): the system scene then keeps the
 //! stated body, at its most, out of the other board at the least mated height.
 
-use netsmith_check::{Domain, InstId, Member, Model, System};
+use netsmith_check::{Domain, InstId, MateKind, Member, Model, System};
 use netsmith_solve::Solution;
 
 /// One mate of a system, as the system scene needs it: the two connectors, their boards,
@@ -41,6 +45,10 @@ pub struct SystemMate {
     /// `"none"`), so that the mate goes together one way only. The system scene looks for pin 1
     /// on the pads of a mate that neither keys.
     pub keyed: bool,
+    /// Whether the mate is soldered (`soldered_pin`, `castellated`, `land_grid`): each
+    /// connector is soldered in or on the other's board, face to face, so the system scene
+    /// does not count a connector against its partner's board.
+    pub soldered: bool,
 }
 
 impl SystemMate {
@@ -91,18 +99,20 @@ pub fn system_mates(system: &System, solution: &Solution) -> Result<Vec<SystemMa
     let mut out = Vec::new();
     for mate in model.mates() {
         netsmith_core::job::checkpoint();
+        let kind = kind(model, mate.a);
         out.push(SystemMate {
             a: model.path_of(mate.a),
             b: model.path_of(mate.b),
             a_board: board(mate.a),
             b_board: board(mate.b),
-            a_seat: seat(model, mate.a, &mut errors),
-            b_seat: seat(model, mate.b, &mut errors),
+            a_seat: seat(model, mate.a, kind, &mut errors),
+            b_seat: seat(model, mate.b, kind, &mut errors),
             a_body: length(model, mate.a, "body_height", &mut errors),
             b_body: length(model, mate.b, "body_height", &mut errors),
             window: (mate.a_first != 1 || mate.b_first != 1 || !mates_every_contact(model, mate))
                 .then_some((mate.a_first, mate.b_first, mate.contacts.len())),
             keyed: keyed(model, mate.a) || keyed(model, mate.b),
+            soldered: kind.is_some_and(MateKind::soldered),
         });
     }
     if errors.is_empty() {
@@ -141,25 +151,48 @@ fn keyed(model: &Model, part: InstId) -> bool {
     matches!(&model.field(field).domain, Domain::Text(k) if !k.is_empty() && k != "none")
 }
 
-/// A connector's `.mating.seat` in mm, if something states it.
-fn seat(model: &Model, part: InstId, errors: &mut Vec<String>) -> Option<(f64, f64)> {
+/// A connector's `.mating.kind`, `None` when it names no kind (the checker refused the mate).
+fn kind(model: &Model, part: InstId) -> Option<MateKind> {
+    let mating = model.mating_of(part)?;
+    let Some(Member::Field(field)) = model.member(mating, "kind") else {
+        return None;
+    };
+    match &model.field(field).domain {
+        Domain::Text(k) => MateKind::of(k),
+        _ => None,
+    }
+}
+
+/// A connector's `.mating.seat` in mm, if something states it. A soldered kind's seat is 0 mm,
+/// stated or not, and a stated seat of another number is an error.
+fn seat(
+    model: &Model,
+    part: InstId,
+    kind: Option<MateKind>,
+    errors: &mut Vec<String>,
+) -> Option<(f64, f64)> {
+    let soldered = kind.filter(|k| k.soldered());
+    let stated = stated(model, part, "seat");
+    if let Some(kind) = soldered {
+        if let Some((q, lo, hi)) = stated
+            && (lo != 0.0 || hi != 0.0)
+        {
+            errors.push(format!(
+                "`{}.mating.seat` is {q}, and a `{}` joint is soldered face to face, so its seat is 0mm; remove the seat or state 0mm",
+                model.path_of(part),
+                kind.name()
+            ));
+            return None;
+        }
+        return Some((0.0, 0.0));
+    }
     length(model, part, "seat", errors)
 }
 
 /// A length of a connector's `.mating` (`seat`, `body_height`) in mm, if something states it.
 /// One below the board's face is an error.
 fn length(model: &Model, part: InstId, name: &str, errors: &mut Vec<String>) -> Option<(f64, f64)> {
-    let mating = model.mating_of(part)?;
-    let Member::Field(field) = model.member(mating, name)? else {
-        return None;
-    };
-    let Domain::Quantity(q) = &model.field(field).domain else {
-        return None;
-    };
-    if !(q.lo().is_finite() && q.hi().is_finite()) {
-        return None;
-    }
-    let (lo, hi) = (round(q.lo() * 1e3), round(q.hi() * 1e3));
+    let (q, lo, hi) = stated(model, part, name)?;
     if lo < 0.0 {
         let what = if name == "seat" {
             "a connector's partner does not rest below its board's face"
@@ -173,4 +206,23 @@ fn length(model: &Model, part: InstId, name: &str, errors: &mut Vec<String>) -> 
         return None;
     }
     Some((lo, hi))
+}
+
+/// A length a connector's `.mating` states, with its least and most in mm.
+fn stated(
+    model: &Model,
+    part: InstId,
+    name: &str,
+) -> Option<(netsmith_quantity::Quantity, f64, f64)> {
+    let mating = model.mating_of(part)?;
+    let Member::Field(field) = model.member(mating, name)? else {
+        return None;
+    };
+    let Domain::Quantity(q) = &model.field(field).domain else {
+        return None;
+    };
+    if !(q.lo().is_finite() && q.hi().is_finite()) {
+        return None;
+    }
+    Some((*q, round(q.lo() * 1e3), round(q.hi() * 1e3)))
 }

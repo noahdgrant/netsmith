@@ -169,7 +169,9 @@ system declares, so the base's numbers are those of `--board System/base`.
 - **A mate places a member.** The mates are read in the order the system states them: a mate
   with one end on a placed member places the member at its other end. Contact N meets contact
   N (pad N of a std header or socket), so the turn and offset are the least-squares fit that puts
-  each pad centre of the one connector on its partner's; the two boards' faces are the mate's
+  each pad's contact of the one connector on its partner's (a pad's contact is the centre of its
+  copper unless the part's `pads` block states `.contact_offset`, as a surface-mount header whose
+  feet alternate either side of its pins does, issue #1321); the two boards' faces are the mate's
   _Mated height_ apart, the least of it (the worst case for the checks). Only straight-through
   connectors on parallel boards are placed: every std header and socket is one.
 - **A second mate of two placed members is checked, not used** (a card on two headers, a loop
@@ -222,7 +224,7 @@ exempt against each other, and a body wholly inside another board's cutout does 
 | Code | When | Severity |
 |---|---|---|
 | `system_collision` | A body, pins or a board reaches more than 0.01 mm into another member's, in plan and in z, each of a stated or catalog height (or a board, or pins of a stated length). | error |
-| `mate_misaligned` | A mate's pad lands more than 0.1 mm from its partner, the connectors face the same way, or the faces are not the mated height apart (to within 0.1 mm). | error |
+| `mate_misaligned` | A mate's contact lands more than 0.1 mm from its partner's, the connectors face the same way, or the faces are not the mated height apart (to within 0.1 mm). | error |
 | `system_unchecked` | A collision in which a height is a package standard's maximum (a part in that package may be lower), or a part of unknown height whose face looks at another member's board over it. | warning, an error with strict constraints |
 | `system_apart` | A member drawn apart, with the reason. | warning, an error with strict constraints |
 | `pin1_unmarked` | A connector of a mate that neither connector keys (`.mating.keyed`) whose pad 1, with its pads turned half round about their centre, lands on another pad of the same shape, size and hole, while every pad lands on a pad: pin 1 cannot be told from the pads. Checked for every member, placed or apart. | warning, an error with strict guidelines (`--strict`, `guidelines = "error"`) |

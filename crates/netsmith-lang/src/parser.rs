@@ -545,6 +545,7 @@ impl Parser {
                     | Item::Catalog(_)
                     | Item::Pins(_)
                     | Item::Tie(_)
+                    | Item::Direction(_)
                     | Item::Unused(_)
                     | Item::Sequence(_)
                     | Item::Scenario(_)
@@ -556,6 +557,7 @@ impl Parser {
                     | Item::Support(_)
                     | Item::Defaults(_)
                     | Item::Layout(_)
+                    | Item::Pads(_)
                     | Item::Row(_)
                     | Item::Within(_)
                     | Item::Route(_)
@@ -590,6 +592,9 @@ impl Parser {
                 "catalog" if starts_name => return only_decls(self.catalog(start)?),
                 "tie" if starts_name => return only_decls(self.tie(start)?),
                 "unused" if starts_name => return only_decls(self.unused(start)?),
+                "direction" if matches!(self.peek_second(), Tok::LeadingDot) => {
+                    return only_decls(self.direction(start)?);
+                }
                 "sequence" if matches!(self.peek_second(), Tok::LBrace) => {
                     return only_decls(self.sequence(start)?);
                 }
@@ -610,6 +615,9 @@ impl Parser {
                 }
                 "pins" if matches!(self.peek_second(), Tok::LBrace | Tok::Str(_)) => {
                     return only_decls(self.pins(start)?);
+                }
+                "pads" if matches!(self.peek_second(), Tok::LBrace | Tok::Str(_)) => {
+                    return only_decls(self.pads(start)?);
                 }
                 "row" if matches!(self.peek_second(), Tok::LeadingDot) => {
                     return only_decls(self.row(start)?);
@@ -1206,6 +1214,61 @@ impl Parser {
         Ok(Item::Dc(Dc {
             kind,
             operands,
+            span: self.span_from(start),
+        }))
+    }
+
+    /// `direction .a to .b when .dir high` (issue #1306).
+    fn direction(&mut self, start: usize) -> Res<Item> {
+        const SHAPE: &str = "`direction .a to .b when .dir high`";
+        self.bump();
+        let from = self.path()?;
+        let word = |p: &mut Self, w: &str, what: &str| -> Res<()> {
+            if matches!(&p.peek().tok, Tok::Ident(x) if x == w) {
+                p.bump();
+                Ok(())
+            } else {
+                let t = p.peek().clone();
+                Err(unexpected(&t, &format!("{what} in {SHAPE}")))
+            }
+        };
+        word(self, "to", "`to` and the pin the signal goes to")?;
+        if !self.at(&Tok::LeadingDot) {
+            let t = self.peek().clone();
+            return Err(unexpected(
+                &t,
+                &format!("the pin the signal goes to in {SHAPE}"),
+            ));
+        }
+        let to = self.path()?;
+        word(
+            self,
+            "when",
+            "`when` and the control pin that fixes the direction",
+        )?;
+        if !self.at(&Tok::LeadingDot) {
+            let t = self.peek().clone();
+            return Err(unexpected(&t, &format!("the control pin in {SHAPE}")));
+        }
+        let control = self.path()?;
+        let t = self.peek().clone();
+        let high = match &t.tok {
+            Tok::Ident(w) if w == "high" => true,
+            Tok::Ident(w) if w == "low" => false,
+            _ => {
+                return Err(unexpected(
+                    &t,
+                    &format!("`high` or `low`, the level of the control pin, in {SHAPE}"),
+                ));
+            }
+        };
+        self.bump();
+        Ok(Item::Direction(Direction {
+            from,
+            to,
+            control,
+            high,
+            level_span: t.span,
             span: self.span_from(start),
         }))
     }
@@ -1836,6 +1899,87 @@ impl Parser {
             }
         }
         Ok(Item::Pins(Pins {
+            packages,
+            rows,
+            span: self.span_from(start),
+        }))
+    }
+
+    /// `pads ["PACKAGE" ...] { "PAD" .FIELD = (X, Y) ... }` (issue #1321): what a part states of
+    /// its footprint's pads, one pad and one field to a row.
+    fn pads(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        let mut packages = Vec::new();
+        while let Tok::Str(name) = self.peek().tok.clone() {
+            let span = self.bump().span;
+            if name.is_empty() {
+                return Err(ParseError::new(span, "a package name cannot be empty"));
+            }
+            packages.push((name, span));
+        }
+        let what = if !packages.is_empty() {
+            "`{` or another package name in quotes after the package name"
+        } else {
+            "`{` or a package name in quotes after `pads`"
+        };
+        let open = self.expect(&Tok::LBrace, what)?;
+        let mut rows = Vec::new();
+        loop {
+            self.skip_separators();
+            let t = self.peek().clone();
+            match t.tok {
+                Tok::DocOuter(_) | Tok::DocInner(_) => {
+                    return Err(ParseError::new(
+                        t.span,
+                        "a `pads` block takes `//` notes, not doc comments",
+                    ));
+                }
+                Tok::RBrace => {
+                    self.bump();
+                    break;
+                }
+                Tok::Eof => return Err(ParseError::new(open.span, "this `{` is never closed")),
+                Tok::Str(pad) => {
+                    let row_start = t.span.start;
+                    self.bump();
+                    if !self.at(&Tok::LeadingDot) {
+                        let t = self.peek().clone();
+                        return Err(unexpected(
+                            &t,
+                            "a field of the pad after its number, such as `.contact_offset = (1.175mm, 0mm)`",
+                        ));
+                    }
+                    self.bump();
+                    let field =
+                        self.ident("the name of a field of the pad, such as `contact_offset`")?;
+                    self.expect(&Tok::Eq, "`=` and the value after the field of the pad")?;
+                    self.expect(
+                        &Tok::LParen,
+                        "`(X, Y)` after `=`: the point, such as `(1.175mm, 0mm)`",
+                    )?;
+                    let x = self.expr()?;
+                    self.expect(&Tok::Comma, "`,` between the two numbers of the point")?;
+                    let y = self.expr()?;
+                    self.expect(&Tok::RParen, "`)` after the two numbers of the point")?;
+                    rows.push(PadRow {
+                        pad,
+                        pad_span: t.span,
+                        field,
+                        x,
+                        y,
+                        span: self.span_from(row_start),
+                    });
+                    self.end_statement(true)?;
+                }
+                _ => {
+                    return Err(unexpected(
+                        &t,
+                        "a pad's number in quotes, such as `\"1\" .contact_offset = (1.175mm, 0mm)`, or `}` in a `pads` block",
+                    ));
+                }
+            }
+        }
+        Ok(Item::Pads(Pads {
             packages,
             rows,
             span: self.span_from(start),

@@ -526,6 +526,27 @@ fn corpus() -> Vec<Case> {
         &[(DrcRule::ItemsNotAllowed, 3)],
     ));
 
+    // A hole of a rule area (a further `polygon` of the zone, a cutout) is not in it (issue
+    // #1392): a module's keepout cut out round its own pads flags none of the pads in the hole.
+    // KiCad tests an item against the outline less its holes (`collidesWithArea`, measured with
+    // KiCad 9.0.0). The footprint's own pad and another part's pad in the hole: nothing. The
+    // footprint's own pad across the hole's edge and its own pad in the keepout: flagged (KiCad
+    // flags a footprint's own pads inside its own rule area).
+    let mut b = two_layer();
+    b.raw("(footprint \"Test:MOD\" (layer \"F.Cu\") (at 15 10 0) (property \"Reference\" \"U1\" (at 0 0 0) (layer \"F.Fab\") (hide yes) (effects (font (size 1 1) (thickness 0.15)))) (attr smd) (pad \"1\" smd rect (at -2.5 -0.5) (size 0.6 0.6) (layers \"F.Cu\" \"F.Mask\" \"F.Paste\")) (pad \"2\" smd rect (at 2 0) (size 0.6 0.6) (layers \"F.Cu\" \"F.Mask\" \"F.Paste\")) (pad \"3\" smd rect (at -1 0.5) (size 0.6 0.6) (layers \"F.Cu\" \"F.Mask\" \"F.Paste\")) (zone (net 0) (net_name \"\") (layer \"F.Cu\") (hatch edge 0.5) (connect_pads (clearance 0)) (min_thickness 0.25) (keepout (tracks not_allowed) (vias not_allowed) (pads not_allowed) (copperpour not_allowed) (footprints allowed)) (fill (thermal_gap 0.5) (thermal_bridge_width 0.5)) (polygon (pts (xy 10 8) (xy 20 8) (xy 20 12) (xy 10 12))) (polygon (pts (xy 11 8.5) (xy 14 8.5) (xy 14 11.5) (xy 11 11.5)))))");
+    b.part(
+        "R1",
+        (12.5, 10.7),
+        0.0,
+        &[smd("1", 0.0, 0.0, 0.4, 0.4, "D")],
+        NONE,
+    );
+    cases.push(case(
+        "part_rule_area_hole",
+        b,
+        &[(DrcRule::ItemsNotAllowed, 2)],
+    ));
+
     // A fill the board file holds that reaches into a footprint's keepout that forbids pours
     // (issue #1291): KiCad 9's check does not judge a zone's fill against a rule area (nor
     // against a board's, measured), and neither does netsmith's. The fill keeps out of the

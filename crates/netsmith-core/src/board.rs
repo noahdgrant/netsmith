@@ -167,6 +167,20 @@ pub struct PartStandoff {
     pub standoff: f64,
 }
 
+/// Where the contact of one pad of a part is, as the part's `pads` block states it (issue #1321):
+/// `offset` from the centre of the pad's copper, in the footprint's own frame (y down), in mm.
+/// A pad that is not listed has its contact at its centre. A system's mates are fitted and
+/// checked on the contacts (ADR 0110).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PadContactOffset {
+    /// The part's path in the design.
+    pub path: String,
+    /// The pad's number.
+    pub pad: String,
+    /// `(x, y)` in mm.
+    pub offset: (f64, f64),
+}
+
 /// How much a part's body may grow in height over its life, as the design states it
 /// (`.height_growth`, issue #1263): a cell or a supercapacitor that swells. The height check adds
 /// it to the part's height before it compares the height with a limit, and the finding says so.

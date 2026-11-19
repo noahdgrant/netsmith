@@ -83,6 +83,10 @@ _Avoid_: Customer-supplied part, owner-supplied part, free-issue part, kitted pa
 A value that no choice of parts can change: the field, and the fields joined to it, have a value now and nothing works any of them out. The stated voltage of a rail is one. Parts that read only such values and nothing else in common are searched apart (ADR 0057, proposed).
 _Avoid_: Fixed value, frozen value
 
+**Contact offset**:
+Where a pad's contact is, the point a mating contact meets, from the centre of the pad's copper, in the footprint's frame: `"1" .contact_offset = (-1.175mm, 0mm)` in a part's `pads` block (issue #1321). A pad that states none has its contact at its centre. The _System scene_ fits and checks a mate on its contacts, so a surface-mount pin header whose feet alternate either side of its pins states the offsets that put its contacts on the pins' axis. The copper does not move.
+_Avoid_: Pin offset, pad offset (a pad offset is where its hole is in its copper)
+
 **Copper island**:
 A piece of the fill of a _Pour_, a _Plane_ or a _Zone_ that touches no copper of its net on its layer: no pad, via, track or teardrop of the net, and no piece of another zone of the net. netsmith's fill removes it as KiCad's does, unless the zone keeps its islands or the piece is not smaller than the zone's least island (`islands`, `island_min_area`, issue #837); a fill of no net keeps every piece.
 _Avoid_: Island (alone, that is the DC analysis's), dead copper, orphan copper

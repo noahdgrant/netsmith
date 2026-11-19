@@ -2,7 +2,7 @@
 //! silkscreen, solder mask, rule areas and the outline. Connectivity is in `connect.rs`.
 
 use super::model::{Copper, Kind, Model, open_ring, overlap_area};
-use super::shape::{Shape, gap, near_pairs, touches_area};
+use super::shape::{Shape, gap, near_pairs, touches_area, within_hole};
 use super::{Finding, Item, Rule};
 use crate::artwork::PadKind;
 use crate::edge;
@@ -30,6 +30,29 @@ impl Out<'_> {
         self.push_carrying(rule, message, at, layer, items, None);
     }
 
+    /// A finding that says where the figure it is judged against comes from (issue 1393).
+    pub(super) fn push_sourced(
+        &mut self,
+        rule: Rule,
+        message: String,
+        at: Pt,
+        layer: Option<&str>,
+        source: Option<String>,
+    ) {
+        if let Some(severity) = self.m.rules.severity(rule) {
+            self.findings.push(Finding {
+                rule,
+                severity,
+                message,
+                at,
+                layer: layer.map(str::to_string),
+                items: Vec::new(),
+                carrying: None,
+                source,
+            });
+        }
+    }
+
     /// A finding that has the numbers of copper held to a current (issue 1373).
     pub(super) fn push_carrying(
         &mut self,
@@ -49,6 +72,7 @@ impl Out<'_> {
                 layer: layer.map(str::to_string),
                 items,
                 carrying,
+                source: None,
             });
         }
     }
@@ -788,6 +812,12 @@ fn mask_bridges(out: &mut Out<'_>) {
 /// rule area, as KiCad 9's check does not judge it (measured, `drc_corpus`): the fill keeps out of
 /// one that forbids pours ([`crate::fill`]), as KiCad's refill does. Each finding names the area
 /// and what of it flags the item (`(no tracks)`, `(no vias)`, `(no pads)`, `(no footprints)`).
+/// A hole of the area (each further `polygon` of the zone, a cutout) is not in it: an item in a
+/// hole is not flagged, as KiCad's check tests against the outline less its holes (measured
+/// with KiCad 9.0.0, issue #1392: a module's keepout cut out round its own ground pads). Nor is
+/// a part's own pad exempt otherwise: KiCad 9.0.0 flags a footprint's own pads inside its own
+/// rule area (measured on the stock `Raytac_MDBT42Q`), and 9.0.8's `intersectsArea` exempts only
+/// the footprint itself.
 fn rule_areas(out: &mut Out<'_>) {
     let m = out.m;
     for z in m.art.zones.iter().filter(|z| z.keepout.is_some()) {
@@ -808,13 +838,7 @@ fn rule_areas(out: &mut Out<'_>) {
         let Some(area_bounds) = area_bounds else {
             continue;
         };
-        let outlines: Vec<Area> = z
-            .outlines
-            .iter()
-            .filter(|poly| poly.len() >= 3)
-            .map(|poly| Area::of(poly))
-            .collect();
-        let inner = polygons::shrunk(&outlines, EPS);
+        let inner = polygons::shrunk(&crate::fill::outline_area(z), EPS);
         for c in &m.items {
             let (forbidden, kept) = match c.kind {
                 Kind::Track(_) | Kind::Teardrop(_) => (k.tracks, "tracks"),
@@ -834,7 +858,7 @@ fn rule_areas(out: &mut Out<'_>) {
             }
             let hit = inner
                 .iter()
-                .any(|a| a.outer.len() >= 3 && c.shapes.iter().any(|s| touches_area(s, &a.outer)));
+                .any(|a| c.shapes.iter().any(|s| reaches_into(s, a)));
             if hit {
                 let layer = c
                     .layers
@@ -885,9 +909,12 @@ fn rule_areas(out: &mut Out<'_>) {
                     yard.max,
                     Pt::new(yard.min.x, yard.max.y),
                 ];
-                let hit = inner
-                    .iter()
-                    .any(|a| a.outer.len() >= 3 && overlap_area(&corners, &a.outer));
+                let yard = Shape::polygon(corners.clone(), 0.0);
+                let hit = inner.iter().any(|a| {
+                    a.outer.len() >= 3
+                        && overlap_area(&corners, &a.outer)
+                        && !a.holes.iter().any(|h| within_hole(&yard, h))
+                });
                 if hit {
                     out.push(
                         Rule::ItemsNotAllowed,
@@ -906,6 +933,14 @@ fn rule_areas(out: &mut Out<'_>) {
             }
         }
     }
+}
+
+/// Whether `s` reaches into `area`: it touches the outer ring and is not wholly inside one of
+/// its holes (a cutout of a rule area, where KiCad's `Outline()` has no area, issue #1392).
+fn reaches_into(s: &Shape, area: &Area) -> bool {
+    area.outer.len() >= 3
+        && touches_area(s, &area.outer)
+        && !area.holes.iter().any(|h| within_hole(s, h))
 }
 
 /// A via sunk into a pad, which the process fills only up to a diameter.

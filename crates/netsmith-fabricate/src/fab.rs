@@ -3713,6 +3713,7 @@ pub fn marks_of(board: &Board) -> netsmith_geom::DrcMarks {
         uneven_finish: p.finish.starts_with("HASL").then(|| p.finish.clone()),
         min_single_sided_assembly_size: p.min_single_sided_assembly_size,
         min_double_sided_assembly_size: p.min_double_sided_assembly_size,
+        assembly_size_source: p.assembly_size_source.clone(),
     }
 }
 
@@ -4257,7 +4258,7 @@ mod tests {
 
     /// The fields of a process that are not a rule the router and the design rules check keep,
     /// each with the reason (issue #431).
-    const NOT_A_COPPER_RULE: [(&str, &str); 36] = [
+    const NOT_A_COPPER_RULE: [(&str, &str); 37] = [
         (
             "finish",
             "the surface finish, a word for the notes and the order",
@@ -4288,6 +4289,10 @@ mod tests {
         ("inner8", "a plane or a signal layer, which the board says"),
         ("fabricator", "a name, for the notes"),
         ("source", "where the numbers are published, for the notes"),
+        (
+            "assembly_size_source",
+            "where the assembly size figures come from, a sentence the `assembly_size` finding quotes (issue 1393)",
+        ),
         (
             "stackup",
             "the build of the board: the writers' and the current check's",
@@ -4499,6 +4504,7 @@ mod tests {
                 fine_pitch: p.fine_pitch,
                 min_single_sided_assembly_size: p.min_single_sided_assembly_size,
                 min_double_sided_assembly_size: p.min_double_sided_assembly_size,
+                assembly_size_source: p.assembly_size_source.clone(),
                 ..Default::default()
             }),
             ..Default::default()

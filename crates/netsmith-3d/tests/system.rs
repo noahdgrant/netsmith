@@ -25,6 +25,7 @@ fn mate(a: &str, b: &str, height: Option<(f64, f64)>) -> MateInput {
             .then(|| format!("the mate of `{a}` and `{b}` has no mated height")),
         window: None,
         keyed: true,
+        soldered: false,
     }
 }
 
@@ -286,6 +287,133 @@ fn pads_that_do_not_turn_onto_pads_key_the_connector() {
     let s = system(&[("carrier", &carrier), ("card", &card)], vec![unkeyed()]);
     let parts: Vec<&str> = unmarked(&s).iter().map(|f| f.parts[0].as_str()).collect();
     assert_eq!(parts, ["carrier/row"]);
+}
+
+#[test]
+fn a_soldered_mate_puts_the_boards_face_to_face_and_its_connectors_in_each_others_board() {
+    // At 0 mm the rows, whose bodies are stated 1 mm tall, stand in the other board: a collision
+    // for a header in a socket, the joint itself for a soldered mate (issue #1320). The other
+    // bodies still collide.
+    let row_against_a_board = |soldered: bool| {
+        let with_row = || {
+            let mut b = board();
+            b.parts.iter_mut().find(|p| p.path == "row").unwrap().height = Some(1.0);
+            b
+        };
+        let (carrier, card) = (with_row(), with_row());
+        let s = system(
+            &[("carrier", &carrier), ("card", &card)],
+            vec![MateInput {
+                soldered,
+                a_body: Some((1.0, 1.0)),
+                b_body: Some((1.0, 1.0)),
+                ..mate("carrier.row", "card.row", Some((0.0, 0.0)))
+            }],
+        );
+        assert_eq!(
+            s.member("card").unwrap().place,
+            SystemPlace::Mated { mate: 0 }
+        );
+        let collisions: Vec<Vec<String>> = s
+            .findings
+            .iter()
+            .filter(|f| f.code == SystemCode::SystemCollision)
+            .map(|f| f.parts.clone())
+            .collect();
+        assert!(
+            collisions.contains(&vec!["carrier/".to_string(), "card/b".to_string()]),
+            "{collisions:?}"
+        );
+        assert_eq!(s.mates[0].residual, Some(0.0));
+        collisions
+            .iter()
+            .filter(|p| p.iter().any(|x| x.ends_with("/row")))
+            .count()
+    };
+    assert!(row_against_a_board(false) > 0);
+    assert_eq!(row_against_a_board(true), 0);
+}
+
+/// The row of `b` made a 1x4 header: four pads in a line along the row's own direction, each
+/// foot `feet[i]` mm off the line across it (a surface-mount header's alternate either side).
+fn header_1x4(b: &mut Board, feet: [f64; 4]) {
+    let part = b.parts.iter_mut().find(|p| p.path == "row").unwrap();
+    let pads = &mut part.footprint.pads;
+    let (one, two) = (pads[0].clone(), pads[1].clone());
+    let (dx, dy) = (two.at.x - one.at.x, two.at.y - one.at.y);
+    let len = (dx * dx + dy * dy).sqrt();
+    let (ux, uy) = (dx / len, dy / len);
+    *pads = (0..4)
+        .map(|i| {
+            let mut p = one.clone();
+            p.number = (i + 1).to_string();
+            p.at.x = one.at.x + ux * 2.54 * i as f64 - uy * feet[i];
+            p.at.y = one.at.y + uy * 2.54 * i as f64 + ux * feet[i];
+            p
+        })
+        .collect();
+}
+
+#[test]
+fn a_surface_mount_header_whose_feet_alternate_mates_on_its_stated_contacts() {
+    // Issue 1321: a surface-mount header's feet alternate 1.175 mm either side of its pins. On the
+    // feet's centres the fit turns the card and the mate is misaligned; on the contacts the part
+    // states (`.contact_offset`, back on the pins' axis) it fits.
+    let mut carrier = board();
+    header_1x4(&mut carrier, [0.0; 4]);
+    let feet = [1.175, -1.175, 1.175, -1.175];
+    let mut card = board();
+    header_1x4(&mut card, feet);
+    let s = system(
+        &[("carrier", &carrier), ("card", &card)],
+        vec![mate("carrier.row", "card.row", Some((5.0, 5.4)))],
+    );
+    let bad: Vec<_> = s
+        .findings
+        .iter()
+        .filter(|f| f.code == SystemCode::MateMisaligned)
+        .collect();
+    assert_eq!(bad.len(), 1, "{:?}", codes(&s));
+    assert!(bad[0].distance.unwrap() > 1.0, "{:?}", bad[0].distance);
+    assert!(
+        bad[0].message.contains("`.contact_offset` in its part's `pads` block"),
+        "{}",
+        bad[0].message
+    );
+
+    // The card's part states each contact back on the pins' axis, in the footprint's frame.
+    let part = card.parts.iter_mut().find(|p| p.path == "row").unwrap();
+    // Pads 1 and 3 are on one side of the axis, so the axis runs along them.
+    let (one, three) = (part.footprint.pads[0].at, part.footprint.pads[2].at);
+    let (ax, ay) = ((three.x - one.x) / 5.08, (three.y - one.y) / 5.08);
+    part.contacts = feet
+        .iter()
+        .enumerate()
+        .map(|(i, f)| {
+            (
+                (i + 1).to_string(),
+                netsmith_pcb::Pt {
+                    x: ay * f,
+                    y: -ax * f,
+                },
+            )
+        })
+        .collect();
+    let s = system(
+        &[("carrier", &carrier), ("card", &card)],
+        vec![mate("carrier.row", "card.row", Some((5.0, 5.4)))],
+    );
+    assert!(
+        s.findings
+            .iter()
+            .all(|f| f.code != SystemCode::MateMisaligned),
+        "{:?}",
+        codes(&s)
+    );
+    assert_eq!(s.mates[0].contacts, 4);
+    assert_eq!(s.mates[0].residual, Some(0.0));
+    let m = s.member("card").unwrap();
+    assert_eq!(m.motion.turn.rem_euclid(90.0), 0.0, "{:?}", m.motion);
 }
 
 /// The carrier's row, 5.4 mm tall, seated 5.4 +/- 0.4 mm, with `body` as its

@@ -117,6 +117,13 @@ pub struct Process {
     /// is ordered as a panel. `None` is that it is not judged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_double_sided_assembly_size: Option<f64>,
+    /// Where the two figures above come from, in words (`.process.assembly_size_source`, issue
+    /// 1393): the page, the service and the day it was read. The `assembly_size` finding quotes
+    /// it, so that a person can check the number. `None` is that the process states none (a
+    /// board that states a figure of its own may state its source). Not written to the design
+    /// file when unstated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assembly_size_source: Option<String>,
     /// How much narrower than drawn a finished track may be, as a fraction (0.2 for ±20 %): the
     /// track width check sizes for the narrowest.
     pub track_width_tolerance: f64,

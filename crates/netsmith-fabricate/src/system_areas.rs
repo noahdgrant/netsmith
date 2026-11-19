@@ -10,7 +10,8 @@
 //! - its area is the box round the other member's outline, in the connector's frame (the
 //!   footprint's, as on the top face), found as the system scene finds the other member's place
 //!   (`netsmith_3d::SystemScene`): contact N on contact N, the turn and the offset the
-//!   least-squares fit of the pad centres, the other board turned over when its connector is on
+//!   least-squares fit of the pads' contacts (their centres unless the part's `pads` block states
+//!   `.contact_offset`, issue #1321), the other board turned over when its connector is on
 //!   its top face;
 //! - its height limit is the mate's least mated height, the distance between the two boards'
 //!   faces: a part of this board taller than that stands in the other board;
@@ -39,8 +40,8 @@ use netsmith_pipeline::{Built, Libraries, SolvedSystem};
 /// The area the other board of a mate covers over `host`'s connector, in that connector's
 /// footprint frame, or why it is not known.
 ///
-/// `host` is the connector's pads in its own frame; `partner` the other connector's pad centres
-/// on its board where its place puts it, `partner_side` the face of its board it is on and
+/// `host` is the connector's pads' contacts in its own frame; `partner` the other connector's
+/// contacts on its board where its place puts it, `partner_side` the face of its board it is on and
 /// `outline` the corners of its board's box, in the same frame as `partner`. `pairs` gives
 /// the pad numbers that meet, `(host's, partner's)`.
 pub fn covered_area(
@@ -292,7 +293,7 @@ fn area_of(
             .footprint
             .pads
             .iter()
-            .map(|pad| (pad.number.clone(), pad.at))
+            .map(|pad| (pad.number.clone(), placed.contact(pad)))
             .collect()
     };
     let host_pads = local(h);
