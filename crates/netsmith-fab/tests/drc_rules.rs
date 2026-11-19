@@ -390,6 +390,45 @@ fn a_rule_area_the_board_draws_or_a_footprint_carries_forbids_tracks_vias_pads_a
 }
 
 #[test]
+fn a_rule_area_finding_names_what_of_the_area_flags_the_item_and_its_edge_flags_nothing() {
+    // Issue #1372: each finding says which of the area's keepouts flags the item, and a pad that
+    // only touches the area's edge, as a library draws its keepout up to its own pads, is not in
+    // it (KiCad shrinks the area by its DRC epsilon first, `drc_corpus`).
+    let mut b = Pcb::new(2);
+    b.raw("(footprint \"Test:L\" (layer \"F.Cu\") (at 20 10 0) (property \"Reference\" \"L1\" (at 0 0 0) (layer \"F.Fab\") (hide yes) (effects (font (size 1 1) (thickness 0.15)))) (attr smd) (pad \"1\" smd rect (at -2.5 0) (size 1 1) (layers \"F.Cu\" \"F.Mask\" \"F.Paste\")) (pad \"2\" smd rect (at 2.5 0) (size 1 1) (layers \"F.Cu\" \"F.Mask\" \"F.Paste\")) (fp_rect (start -3 -1) (end 3 1) (stroke (width 0.05) (type solid)) (fill no) (layer \"F.CrtYd\")) (zone (net 0) (net_name \"\") (layer \"F.Cu\") (hatch edge 0.5) (connect_pads (clearance 0)) (min_thickness 0.25) (keepout (tracks not_allowed) (vias not_allowed) (pads not_allowed) (copperpour not_allowed) (footprints not_allowed)) (fill (thermal_gap 0.5) (thermal_bridge_width 0.5)) (polygon (pts (xy 18 8) (xy 22 8) (xy 22 12) (xy 18 12)))))");
+    b.track("GND", "F.Cu", (19.0, 9.0), (21.0, 9.0), 0.2);
+    b.via("GND", (21.0, 11.0), 0.6, 0.3);
+    b.part(
+        "R1",
+        (20.0, 11.0),
+        0.0,
+        &[smd("1", 0.0, 0.0, 0.4, 0.4, "A")],
+        Draw {
+            courtyard: Some((0.6, 0.6)),
+            ..NONE
+        },
+    );
+    let r = check(&mut b);
+    let mut found: Vec<_> = r
+        .findings
+        .iter()
+        .filter(|f| f.rule == DrcRule::ItemsNotAllowed)
+        .map(|f| f.message.as_str())
+        .collect();
+    found.sort_unstable();
+    assert_eq!(
+        found,
+        [
+            "R1 is inside the rule area of L1's footprint (no footprints)",
+            "SMD pad 1 [A] of R1 is inside the rule area of L1's footprint (no pads)",
+            "Track of GND is inside the rule area of L1's footprint (no tracks)",
+            "Via of GND is inside the rule area of L1's footprint (no vias)",
+        ],
+        "{r}"
+    );
+}
+
+#[test]
 fn the_outline_must_be_one_closed_path_and_a_cutout_must_lie_inside_it() {
     let mut b = Pcb::new(2);
     b.raw("(gr_rect (start 30 10) (end 45 20) (stroke (width 0.05) (type default)) (fill no) (layer \"Edge.Cuts\"))");

@@ -501,6 +501,31 @@ fn corpus() -> Vec<Case> {
         &[(DrcRule::ItemsNotAllowed, 6)],
     ));
 
+    // What only touches a rule area's edge is not inside it (issue #1372): KiCad shrinks the area
+    // by its DRC epsilon (half a micrometre) before it asks what reaches into it, so a library's
+    // keepout drawn up to its own pads flags none of them. Measured with KiCad 9.0.0; 9.0.8's
+    // `collidesWithArea` is the same. A pad of the footprint's own (x 11 to 12) and another part's
+    // (y 12 to 12.4) touching the edge, a track's round end and a via touching it: nothing. The
+    // footprint's own pad, a track and a via a micrometre or more into it: flagged.
+    let mut b = two_layer();
+    b.raw("(footprint \"Test:ANT\" (layer \"F.Cu\") (at 15 10 0) (property \"Reference\" \"ANT1\" (at 0 0 0) (layer \"F.Fab\") (hide yes) (effects (font (size 1 1) (thickness 0.15)))) (attr smd) (pad \"1\" smd rect (at -3.5 0) (size 1 1) (layers \"F.Cu\" \"F.Mask\" \"F.Paste\")) (pad \"2\" smd rect (at 3.499 0) (size 1 1) (layers \"F.Cu\" \"F.Mask\" \"F.Paste\")) (zone (net 0) (net_name \"\") (layer \"F.Cu\") (hatch edge 0.5) (connect_pads (clearance 0)) (min_thickness 0.25) (keepout (tracks not_allowed) (vias not_allowed) (pads not_allowed) (copperpour allowed) (footprints allowed)) (fill (thermal_gap 0.5) (thermal_bridge_width 0.5)) (polygon (pts (xy 12 8) (xy 18 8) (xy 18 12) (xy 12 12)))))");
+    b.track("A", "F.Cu", (14.0, 6.0), (14.0, 7.9), 0.2);
+    b.track("A", "F.Cu", (16.5, 6.0), (16.5, 7.95), 0.2);
+    b.via("C", (13.0, 12.3), 0.6, 0.3);
+    b.via("C", (17.0, 12.29), 0.6, 0.3);
+    b.part(
+        "R1",
+        (15.0, 12.2),
+        0.0,
+        &[smd("1", 0.0, 0.0, 0.4, 0.4, "D")],
+        NONE,
+    );
+    cases.push(case(
+        "part_rule_area_edge",
+        b,
+        &[(DrcRule::ItemsNotAllowed, 3)],
+    ));
+
     // A fill the board file holds that reaches into a footprint's keepout that forbids pours
     // (issue #1291): KiCad 9's check does not judge a zone's fill against a rule area (nor
     // against a board's, measured), and neither does netsmith's. The fill keeps out of the
