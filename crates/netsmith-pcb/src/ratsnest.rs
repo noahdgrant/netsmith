@@ -38,7 +38,10 @@
 //! its net with copper on its layer whose centre it covers or whose box holds a corner of it
 //! (a thermal relief's spokes reach the pad's centre; a pad the zone does not join keeps its
 //! clearance), the vias whose centre it covers, and the tracks of its layer that run into it. On
-//! a layer with such a zone, the design's pour or plane is not drawn, and does not join its net.
+//! a layer with such a zone, the design's pour or plane is not drawn where a zone of its own net
+//! restates it; under zones of other nets it is drawn round them, and its fill, computed with
+//! theirs, joins what it reaches as theirs does (issue #1314). Either way it gives no join of its
+//! own there.
 
 use crate::board::rect_distance;
 use crate::board::{
@@ -1364,10 +1367,56 @@ mod tests {
         });
         board.fixed.locked.insert("GND".into());
         assert!(Ratsnest::of(&board).lines.iter().all(|l| l.net != "GND"));
-        // A VCC zone on the front: the GND pour is not drawn there, and GND is left.
+        // A VCC zone of the whole front has all of it: the GND pour, drawn under it, has no
+        // copper, and GND is left.
         board.zones.push(whole_board_zone(&board, "VCC", "F.Cu"));
         let lines = Ratsnest::of(&board).lines;
         assert!(lines.iter().any(|l| l.net == "GND"), "{lines:?}");
         assert!(lines.iter().all(|l| l.net != "VCC"), "{lines:?}");
+    }
+
+    #[test]
+    fn a_zone_of_another_net_leaves_the_pour_to_join_its_net_round_it() {
+        // Issue #1314: a small VCC zone in a corner of the front, away from every pad, leaves
+        // the GND pour round it, and its fill joins GND's pads as it did with no zone.
+        let mut board = crate::board::tests::led_board();
+        board.pours.push(BoardPour {
+            layer: CopperLayer::Front,
+            net: "GND".into(),
+            stitch_pitch: None,
+            thermal_gap: None,
+            spoke_width: None,
+            clearance: None,
+            min_width: None,
+            pads: None,
+        });
+        let o = board.outline;
+        let corner = |x: f64, y: f64| o.min + Pt::new(x, y);
+        let mut zone = whole_board_zone(&board, "VCC", "F.Cu");
+        zone.outline = vec![
+            corner(0.5, 0.5),
+            corner(2.0, 0.5),
+            corner(2.0, 2.0),
+            corner(0.5, 2.0),
+        ];
+        board.zones.push(zone);
+        let fills = crate::copper::zone_fills(&board).unwrap();
+        let gnd: f64 = fills
+            .iter()
+            .filter(|f| f.net == "GND" && f.layer == "F.Cu")
+            .flat_map(|f| f.areas.iter())
+            .map(Area::size)
+            .sum();
+        assert!(
+            gnd > 0.5 * o.width() * o.height(),
+            "the GND pour: {gnd} mm²"
+        );
+        let lines = Ratsnest::of(&board).lines;
+        assert!(lines.iter().all(|l| l.net != "GND"), "{lines:?}");
+        // A GND zone there instead restates the pour: only the corner is GND's, and GND is left.
+        board.zones[0].net = "GND".into();
+        assert!(board.replaced("F.Cu", "GND"));
+        let lines = Ratsnest::of(&board).lines;
+        assert!(lines.iter().any(|l| l.net == "GND"), "{lines:?}");
     }
 }

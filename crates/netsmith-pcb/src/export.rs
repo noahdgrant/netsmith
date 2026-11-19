@@ -800,7 +800,8 @@ fn zone_with(board: &Board, plane: &Plane, net: Sexp, fill: &Fill) -> Sexp {
 
 /// A zone of the routes file as KiCad writes one, unfilled (the fill is [`kicad_pcb_filled`]'s): its outline and each hole a
 /// `(polygon`, and its settings, so that KiCad's fill makes the copper of the zone it was imported
-/// from (a priority of 0, and islands removed, are KiCad's defaults and not written).
+/// from (a priority of 0, and islands removed, are KiCad's defaults and not written). Its
+/// priority is raised by [`Board::zone_lift`] where a pour or a plane is drawn under it.
 fn fixed_zone(board: &Board, i: usize, z: &crate::board::BoardZone, net: Sexp) -> Sexp {
     use crate::board::ZoneIslands;
     let polygon = |ring: &[crate::geometry::Pt]| {
@@ -828,11 +829,9 @@ fn fixed_zone(board: &Board, i: usize, z: &crate::board::BoardZone, net: Sexp) -
         uuid_for(&format!("{}/routes-zone/{i}", board.name)),
         Sexp::node("hatch", vec![Sexp::atom("edge"), Sexp::num(0.5)]),
     ];
-    if z.priority > 0 {
-        fields.push(Sexp::node(
-            "priority",
-            vec![Sexp::num(f64::from(z.priority))],
-        ));
+    let priority = z.priority.saturating_add(board.zone_lift());
+    if priority > 0 {
+        fields.push(Sexp::node("priority", vec![Sexp::num(f64::from(priority))]));
     }
     fields.push(connect_pads(z.pads, z.clearance));
     fields.push(Sexp::node("min_thickness", vec![Sexp::num(z.min_width)]));
@@ -1426,12 +1425,21 @@ pub(crate) fn board_tree(board: &Board) -> Sexp {
     for (i, drop) in board.teardrops.iter().enumerate() {
         items.push(teardrop(board, i, drop, net_number(&drop.net)));
     }
-    // A layer with a zone of the routes file takes its zones from the file alone.
-    for plane in board.planes.iter().filter(|p| !board.zoned(&p.layer)) {
+    // A zone of the routes file of a plane's or a pour's own net on its layer restates it; a
+    // zone of another net is written above it ([`Board::zone_lift`]) and has its area.
+    for plane in board
+        .planes
+        .iter()
+        .filter(|p| !board.replaced(&p.layer, &p.net))
+    {
         items.push(zone(board, plane, net_number(&plane.net)));
     }
     // An outer pour is the same zone on an outer layer; KiCad fills it round the tracks.
-    for pour in board.pours.iter().filter(|p| !board.zoned(p.layer.name())) {
+    for pour in board
+        .pours
+        .iter()
+        .filter(|p| !board.replaced(p.layer.name(), &p.net))
+    {
         let layer = Plane {
             layer: pour.layer.name().to_string(),
             net: pour.net.clone(),
@@ -2729,7 +2737,7 @@ mod tests {
     }
 
     #[test]
-    fn a_routes_zone_is_kicads_zone_and_takes_its_layer_from_the_designs_plane() {
+    fn a_routes_zone_is_kicads_zone_above_the_designs_plane_of_another_net() {
         use crate::board::{BoardZone, ZoneIslands, ZonePads};
         let mut board = four();
         let p = |x: f64, y: f64| board.outline.min + Pt::new(x, y);
@@ -2749,13 +2757,19 @@ mod tests {
         });
         let pcb = parsed(&board);
         let zones: Vec<&Sexp> = pcb.find_all("zone").collect();
-        // In1.Cu's GND plane gives way to the routes file's zone; In2.Cu keeps its plane.
-        assert_eq!(zones.len(), 2);
-        assert_eq!(
-            zones[0].find("layer").unwrap().args()[0].text(),
-            Some("In2.Cu")
-        );
-        let z = zones[1];
+        // In1.Cu's GND plane stays, written under the routes file's 3V3 zone, which is raised
+        // above it (issue #1314); In2.Cu keeps its plane.
+        assert_eq!(zones.len(), 3);
+        let layer = |z: &Sexp| {
+            z.find("layer").unwrap().args()[0]
+                .text()
+                .map(str::to_string)
+        };
+        assert_eq!(layer(zones[0]).as_deref(), Some("In1.Cu"));
+        assert_eq!(layer(zones[1]).as_deref(), Some("In2.Cu"));
+        assert!(zones[0].find("priority").is_none() && zones[1].find("priority").is_none());
+        assert_eq!(board.zone_lift(), 1);
+        let z = zones[2];
         let layers: Vec<&str> = z
             .find("layers")
             .unwrap()
@@ -2765,7 +2779,7 @@ mod tests {
             .collect();
         assert_eq!(layers, ["F.Cu", "In1.Cu"]);
         assert_eq!(z.find("net_name").unwrap().args()[0].text(), Some("3V3"));
-        assert_eq!(numbers(z, "priority"), [3.0]);
+        assert_eq!(numbers(z, "priority"), [4.0]);
         let connect = z.find("connect_pads").unwrap();
         assert_eq!(connect.args()[0].text(), Some("yes"));
         assert_eq!(numbers(connect, "clearance"), [0.15]);
@@ -2782,6 +2796,39 @@ mod tests {
             .collect();
         assert_eq!(polygons, [3, 3]);
         assert!(z.find("filled_polygon").is_none());
+    }
+
+    #[test]
+    fn a_routes_zone_of_a_planes_own_net_restates_it() {
+        use crate::board::{BoardZone, ZoneIslands, ZonePads};
+        let mut board = four();
+        let p = |x: f64, y: f64| board.outline.min + Pt::new(x, y);
+        board.zones.push(BoardZone {
+            net: "GND".into(),
+            layers: vec!["In1.Cu".into()],
+            outline: vec![p(1.0, 1.0), p(6.0, 1.0), p(6.0, 5.0)],
+            holes: Vec::new(),
+            priority: 0,
+            clearance: 0.2,
+            min_width: 0.25,
+            pads: ZonePads::Thermal,
+            thermal_gap: 0.5,
+            spoke_width: 0.5,
+            islands: ZoneIslands::Remove,
+            island_min_area: None,
+        });
+        assert!(board.replaced("In1.Cu", "GND") && !board.replaced("In1.Cu", "3V3"));
+        // The plane of GND on In1.Cu is the zone now; no pour is under a zone, so nothing is
+        // raised.
+        assert_eq!(board.zone_lift(), 0);
+        let pcb = parsed(&board);
+        let zones: Vec<&Sexp> = pcb.find_all("zone").collect();
+        assert_eq!(zones.len(), 2);
+        assert_eq!(
+            zones[0].find("layer").unwrap().args()[0].text(),
+            Some("In2.Cu")
+        );
+        assert!(zones[1].find("priority").is_none());
     }
 
     #[test]

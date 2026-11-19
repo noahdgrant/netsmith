@@ -12,9 +12,10 @@
 //! - a **plane**: an inner layer that is one sheet on a net (`InnerUse::Plane`);
 //! - a **pour**: an outer layer poured on a net by the process (`process.top.net`);
 //! - a **hand zone**: a zone of the routes file (`netsmith routes add-zone`, or imported from a
-//!   KiCad board), counted apart from the process's pours. A layer that has one takes its zones
-//!   from the routes file alone: the plane or the pour of the process on it is not drawn
-//!   ([`AreaLayer::replaced_by_zones`]);
+//!   KiCad board), counted apart from the process's pours. One of the net of the layer's plane
+//!   or pour restates it, and the process's copper there is not drawn
+//!   ([`AreaLayer::replaced_by_zones`]); one of another net has the area it covers, and the
+//!   plane or pour is drawn round it (issue #1314);
 //! - a **teardrop fill**: the copper that widens a track where it meets a pad or a via. The
 //!   router makes it after it has routed the board, so the source holds none and
 //!   [`AreaTeardrops::counted`] is false until a routed board is given to
@@ -93,8 +94,10 @@ pub struct AreaLayer {
     pub pour: Option<AreaPour>,
     /// How many zones of the routes file are on the layer.
     pub zones: u32,
-    /// Whether those zones replace the plane or the pour the layer has: the layer takes its zones
-    /// from the routes file alone, and the process's copper on it is not drawn.
+    /// Whether a zone of the plane's or the pour's own net is among them: the routes file then
+    /// restates that copper, and the process's plane or pour on the layer is not drawn. Zones of
+    /// other nets cut the plane or the pour where they are and leave it drawn round them (issue
+    /// #1314).
     pub replaced_by_zones: bool,
 }
 
@@ -163,17 +166,21 @@ impl CopperAreas {
                 zones.extend(record.zones.iter().map(|z| zone(net, z, record.lock)));
             }
         }
-        let on = |word: &str| -> u32 {
+        let on = |word: &str, net: Option<&str>| -> u32 {
             zones
                 .iter()
                 .filter(|z| z.layers.iter().any(|l| l == word))
+                .filter(|z| net.is_none_or(|n| z.net == n))
                 .count() as u32
         };
         let mut layers = Vec::with_capacity(inner + 2);
         let mut push = |layer: String, kind: AreaKind, net: Option<String>, pour| {
-            let zones = on(&layer);
+            let zones = on(&layer, None);
+            // A zone of the layer's own net restates its pour or plane; one of another net cuts
+            // it (issue #1314).
+            let own = net.as_deref().map_or(0, |n| on(&layer, Some(n)));
             layers.push(AreaLayer {
-                replaced_by_zones: zones > 0 && kind != AreaKind::Signal,
+                replaced_by_zones: own > 0 && kind != AreaKind::Signal,
                 layer,
                 kind,
                 net,
@@ -259,7 +266,12 @@ impl CopperAreas {
             }
             if l.replaced_by_zones {
                 out.push_str(&format!(
-                    " (not drawn: {} zone(s) of the routes file replace it)",
+                    " (not drawn: the routes file's zones of its net replace it; {} zone(s) on the layer)",
+                    l.zones
+                ));
+            } else if l.zones > 0 && l.kind != AreaKind::Signal {
+                out.push_str(&format!(
+                    " (cut by {} hand zone(s) of other nets, drawn round them)",
                     l.zones
                 ));
             } else if l.zones > 0 {
@@ -502,6 +514,19 @@ mod tests {
             areas.layers[1..]
                 .iter()
                 .all(|l| l.zones == 0 && !l.replaced_by_zones)
+        );
+        // A zone of another net cuts the pour and replaces nothing (issue #1314).
+        let routes = routes_with_zone(&design.name, "VCC", "top", false);
+        let areas = CopperAreas::of(&design, Some(&routes)).unwrap();
+        let top = &areas.layers[0];
+        assert_eq!(
+            (top.kind, top.zones, top.replaced_by_zones),
+            (AreaKind::Pour, 1, false)
+        );
+        assert!(
+            areas.text().contains("cut by 1 hand zone(s) of other nets"),
+            "{}",
+            areas.text()
         );
         // On a signal layer the zones replace nothing.
         let routes = routes_with_zone(&design.name, "GND", "bottom", false);

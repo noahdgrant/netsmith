@@ -3,13 +3,41 @@
 use super::*;
 
 impl Board {
-    /// Whether a routes file fixed a zone on `layer` (KiCad's name, `F.Cu`): then the layer's
-    /// zones are the file's alone, and the design's pour or plane on it is not drawn, nor
-    /// counted as joining its net.
+    /// Whether a routes file fixed a zone on `layer` (KiCad's name, `F.Cu`), of any net.
     pub fn zoned(&self, layer: &str) -> bool {
         self.zones
             .iter()
             .any(|z| z.layers.iter().any(|l| l == layer))
+    }
+
+    /// Whether a zone of the routes file of `net` is on `layer`: then the routes file restates
+    /// the design's pour or plane of `net` there, which is not drawn, nor counted as joining
+    /// its net. A zone of another net does not replace it: it has the area it covers, and the
+    /// pour fills round it (issue #1314; [`Board::zone_lift`]).
+    pub fn replaced(&self, layer: &str, net: &str) -> bool {
+        self.zones
+            .iter()
+            .any(|z| z.net == net && z.layers.iter().any(|l| l == layer))
+    }
+
+    /// How far the zones of the routes file are raised above their own priorities in the board
+    /// file: 1 when a pour or a plane of the process is drawn on a layer that has one (of
+    /// another net, [`Board::replaced`]), so that each has the area it covers and the pour,
+    /// written at priority 0, fills round it as KiCad's fill does (issue #1314); 0 otherwise.
+    /// Every zone is raised alike, so their order among themselves is the routes file's.
+    /// `routes import` takes the 1 off again.
+    pub fn zone_lift(&self) -> u32 {
+        let under = self
+            .pours
+            .iter()
+            .map(|p| (p.layer.name(), p.net.as_str()))
+            .chain(
+                self.planes
+                    .iter()
+                    .map(|p| (p.layer.as_str(), p.net.as_str())),
+            )
+            .any(|(layer, net)| self.zoned(layer) && !self.replaced(layer, net));
+        u32::from(under)
     }
 
     pub fn part(&self, refdes: &str) -> Option<&Placed> {

@@ -152,7 +152,7 @@ lock = true
     assert_eq!(layer(&doc, "bottom")["replaced_by_zones"], false);
     assert_eq!(layer(&doc, "inner1")["zones"], 0);
     let said = String::from_utf8_lossy(&copper(&dir, &["main.nsm"]).stdout).into_owned();
-    assert!(said.contains("(not drawn: 1 zone(s) of the routes file replace it)"), "{said}");
+    assert!(said.contains("(not drawn: the routes file's zones of its net replace it; 1 zone(s) on the layer)"), "{said}");
     assert!(said.contains("hand zones (routes file): 1\n  GND on top: 50 mm2, priority 1"), "{said}");
 }
 

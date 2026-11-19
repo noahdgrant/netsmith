@@ -139,12 +139,15 @@ fn gerber_fill(gbr: &str) -> BTreeMap<String, (usize, f64)> {
     out
 }
 
-#[test]
-fn the_kicad_board_holds_the_fill_of_the_gerbers_in_each_zone() {
-    let dir = TempDir::new("poured-kicad-board");
+/// `fab` of the example in `dir`, with `routes` as the routes file beside its layout file when
+/// given: the folder of the board's package, and its notes.
+fn fab_example(dir: &TempDir, routes: Option<&str>) -> (std::path::PathBuf, String) {
     let layout = dir.join("source").join("outline_and_pours.pcb.toml");
     fs::create_dir_all(layout.parent().unwrap()).unwrap();
     fs::write(&layout, LAYOUT).unwrap();
+    if let Some(routes) = routes {
+        fs::write(layout.with_file_name("outline_and_pours.routes.toml"), routes).unwrap();
+    }
     let made = fab_with_options(
         "outline_and_pours.nsm",
         SOURCE,
@@ -166,26 +169,14 @@ fn the_kicad_board_holds_the_fill_of_the_gerbers_in_each_zone() {
         },
     )
     .unwrap_or_else(|e| panic!("{e}"));
-    let out = &made[0].dir;
-    let pcb = fs::read_to_string(out.join(format!("{BOARD}.kicad_pcb"))).unwrap();
-    let held = held(&pcb);
+    (made[0].dir.clone(), made[0].notes.clone())
+}
+
+/// Each zone's fill the board file in `out` holds is the fill of the Gerbers, by net and layer.
+fn assert_held_is_the_gerbers(out: &std::path::Path, held: &BTreeMap<(String, String), Held>) {
     let zip = fs::File::open(out.join(format!("{BOARD}-gerbers.zip"))).unwrap();
     let mut zip = zip::ZipArchive::new(zip).unwrap();
-    // The two inner planes and the two outer pours, each one zone of its layer.
-    let keys: Vec<(&str, &str)> = held
-        .keys()
-        .map(|(n, l)| (n.as_str(), l.as_str()))
-        .collect();
-    assert_eq!(
-        keys,
-        [
-            ("3V3", "In2.Cu"),
-            ("GND", "B.Cu"),
-            ("GND", "F.Cu"),
-            ("GND", "In1.Cu")
-        ]
-    );
-    for ((net, layer), h) in &held {
+    for ((net, layer), h) in held {
         assert_eq!(h.zones, 1, "{net} on {layer}");
         let mut gbr = String::new();
         zip.by_name(&format!("gerber/{BOARD}-{}.gbr", layer.replace('.', "_")))
@@ -202,20 +193,143 @@ fn the_kicad_board_holds_the_fill_of_the_gerbers_in_each_zone() {
             h.pieces, h.area
         );
         assert_eq!(h.pieces, pieces, "{net} on {layer}: the pieces");
-        assert!(area > 100.0, "{net} on {layer}: {area} mm²");
         assert!(
             (h.area - area).abs() <= tolerance,
             "{net} on {layer}: {} mm² held, {area} mm² in the Gerber",
             h.area
         );
     }
+}
+
+#[test]
+fn the_kicad_board_holds_the_fill_of_the_gerbers_in_each_zone() {
+    let dir = TempDir::new("poured-kicad-board");
+    let (out, notes) = fab_example(&dir, None);
+    let pcb = fs::read_to_string(out.join(format!("{BOARD}.kicad_pcb"))).unwrap();
+    let held = held(&pcb);
+    // The two inner planes and the two outer pours, each one zone of its layer.
+    let keys: Vec<(&str, &str)> = held
+        .keys()
+        .map(|(n, l)| (n.as_str(), l.as_str()))
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            ("3V3", "In2.Cu"),
+            ("GND", "B.Cu"),
+            ("GND", "F.Cu"),
+            ("GND", "In1.Cu")
+        ]
+    );
+    for ((net, layer), h) in &held {
+        assert!(h.area > 100.0, "{net} on {layer}: {} mm²", h.area);
+    }
+    assert_held_is_the_gerbers(&out, &held);
     // netsmith reads the fill of the file it wrote as its own and makes it again, so the
     // fill notes still say it filled every zone itself.
     assert!(
-        made[0]
-            .notes
-            .contains("zone fill: netsmith filled GND on In1.Cu, 3V3 on In2.Cu, GND on F.Cu, GND on B.Cu itself"),
-        "{}",
-        made[0].notes
+        notes.contains("zone fill: netsmith filled GND on In1.Cu, 3V3 on In2.Cu, GND on F.Cu, GND on B.Cu itself"),
+        "{notes}"
+    );
+}
+
+/// A hand zone of 3V3 on the bottom, over the pad J2.1 of its net, in the bottom's GND pour.
+const ROUTES_3V3_ZONE: &str = r#"version = 1
+
+[OutlineAndPours.nets.3V3]
+pads = "x"
+
+[[OutlineAndPours.nets.3V3.zones]]
+layers = ["bottom"]
+priority = 0
+clearance = 0.3
+min_width = 0.25
+pads = "thermal"
+thermal_gap = 0.5
+spoke_width = 0.5
+islands = "remove"
+outline = [[25.0, 29.0], [30.0, 29.0], [30.0, 32.5], [25.0, 32.5]]
+lock = true
+"#;
+
+/// The priority a zone of the board file is written with (none is 0).
+fn priorities(pcb: &str) -> BTreeMap<(String, String), u32> {
+    let root = Sexp::parse(pcb).unwrap();
+    let text = |node: &Sexp, key: &str| -> String {
+        node.find(key)
+            .and_then(|n| n.items().get(1)?.text())
+            .unwrap_or_default()
+            .to_string()
+    };
+    root.find_all("zone")
+        .filter(|z| z.find("keepout").is_none() && z.find("attr").is_none())
+        .map(|z| {
+            let p = text(z, "priority").parse().unwrap_or(0);
+            ((text(z, "net_name"), text(z, "layer")), p)
+        })
+        .collect()
+}
+
+#[test]
+fn a_hand_zone_of_another_net_cuts_the_pour_and_kicads_refill_agrees() {
+    // Issue #1314: a hand zone of 3V3 on the bottom left the bottom's GND pour out of the
+    // board. The pour stays, written under the zone, and is filled round it.
+    let dir = TempDir::new("poured-kicad-board-zone");
+    let (out, notes) = fab_example(&dir, Some(ROUTES_3V3_ZONE));
+    let pcb = fs::read_to_string(out.join(format!("{BOARD}.kicad_pcb"))).unwrap();
+    let held = held(&pcb);
+    let keys: Vec<(&str, &str)> = held
+        .keys()
+        .map(|(n, l)| (n.as_str(), l.as_str()))
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            ("3V3", "B.Cu"),
+            ("3V3", "In2.Cu"),
+            ("GND", "B.Cu"),
+            ("GND", "F.Cu"),
+            ("GND", "In1.Cu")
+        ]
+    );
+    let priorities = priorities(&pcb);
+    let key = |n: &str, l: &str| (n.to_string(), l.to_string());
+    assert_eq!(priorities[&key("GND", "B.Cu")], 0, "{priorities:?}");
+    assert_eq!(priorities[&key("3V3", "B.Cu")], 1, "{priorities:?}");
+    // The pour has all of the bottom but the zone and its clearance (the bottom is 1663 mm² of
+    // pour with no zone); the zone has its own 17.5 mm² less its pad's relief.
+    let pour = held[&key("GND", "B.Cu")].area;
+    let zone = held[&key("3V3", "B.Cu")].area;
+    assert!(pour > 1600.0 && pour < 1660.0, "the GND pour: {pour} mm²");
+    assert!(zone > 10.0 && zone < 17.5, "the 3V3 zone: {zone} mm²");
+    assert_held_is_the_gerbers(&out, &held);
+    assert!(
+        notes.contains("B.Cu is a pour on GND, cut by the routes file's zones"),
+        "{notes}"
+    );
+    // KiCad's own filler, where KiCad is installed, fills the board file's zones alike.
+    let Some(cli) = netsmith_fab::KicadCliExe::locate_runnable() else {
+        eprintln!("poured_kicad_board: KiCad is not installed; netsmith's fill alone is checked");
+        return;
+    };
+    let path = out.join(format!("{BOARD}.kicad_pcb"));
+    let refilled = self::held(&cli.refilled(&path).unwrap_or_else(|e| panic!("{e}")));
+    for (k, theirs) in &refilled {
+        let ours = &held[k];
+        eprintln!("{k:?}: {:.3} mm² netsmith's, {:.3} mm² KiCad's", ours.area, theirs.area);
+        // KiCad cuts curves into other straight pieces, and keeps 2.5 µm less: 1 % covers it.
+        // Inside the thermal relief of a pad of the zone's own net, under the pad's copper, the
+        // two polygons differ by up to 1 mm² (the pour's two pads as much as the zone's one), so
+        // a small zone is held to that.
+        assert!(
+            (ours.area - theirs.area).abs() <= (ours.area * 0.01).max(1.0),
+            "{k:?}: {} mm² netsmith's, {} mm² KiCad's",
+            ours.area,
+            theirs.area
+        );
+    }
+    assert_eq!(
+        refilled.keys().collect::<Vec<_>>(),
+        held.keys().collect::<Vec<_>>()
     );
 }

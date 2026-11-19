@@ -531,6 +531,8 @@ pub fn import(
     let (zones, unread) = crate::copper::read_zones(pcb, "the KiCad board")?;
     out.skipped.extend(unread);
     let mut process = netsmith_pcb::process_zones(board);
+    // The layers of the process's own zones the KiCad board has, for the lift below.
+    let mut found: Vec<String> = Vec::new();
     let (mut rule_areas, mut teardrops) = (0, 0);
     for zone in zones {
         match zone.kind {
@@ -588,6 +590,7 @@ pub fn import(
             .position(|(net, own)| net == ours && own.same_copper(&taken))
         {
             let (_, own) = process.remove(i);
+            found.extend(own.layers.iter().cloned());
             out.process_zones += 1;
             out.skipped.push(format!(
                 "a zone of net `{ours}` on {} is the process's own plane or pour: left out (the process draws it)",
@@ -606,6 +609,7 @@ pub fn import(
         });
         record.zones.push(taken);
     }
+    unlift(&mut out.nets, &found);
     if rule_areas > 0 {
         out.skipped.push(format!(
             "{rule_areas} rule area(s) of the KiCad board: left out (the design's keepouts are its own)"
@@ -627,4 +631,21 @@ pub fn import(
         .map(|(theirs, (ours, votes))| (ours, theirs, votes))
         .collect();
     Ok(out)
+}
+
+/// Takes the 1 off each zone's priority that `fab` adds where the process's pour or plane is
+/// drawn under the zones of the routes file (`Board::zone_lift`, issue #1314), so that `fab` and
+/// then `routes import` of its board gives the priorities back as they were: done when the
+/// KiCad board has the process's own zone on a layer (`found`, routes file words) that a zone
+/// taken is on, and every zone taken is of priority 1 or more (the lift leaves none at 0). The
+/// order of the zones among themselves is kept either way.
+fn unlift(nets: &mut BTreeMap<String, NetRoutes>, found: &[String]) {
+    let zones = || nets.values().flat_map(|r| r.zones.iter());
+    let under = zones().any(|z| z.layers.iter().any(|l| found.contains(l)));
+    if !under || zones().any(|z| z.priority == 0) {
+        return;
+    }
+    for z in nets.values_mut().flat_map(|r| r.zones.iter_mut()) {
+        z.priority -= 1;
+    }
 }
