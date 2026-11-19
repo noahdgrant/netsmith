@@ -10,7 +10,7 @@ use netsmith_kicad::{PartPin, PinKind, Pinout};
 use netsmith_pcb::{Subject, validate_pinout};
 
 /// The module of the standard library that defines `kind`.
-const MODULES: [&str; 8] = [
+const MODULES: [&str; 9] = [
     "std::parts::passive",
     "std::parts::diode",
     "std::parts::transistor",
@@ -19,6 +19,7 @@ const MODULES: [&str; 8] = [
     "std::parts::mcu",
     "std::parts::connector",
     "std::parts::mechanical",
+    "std::sources",
 ];
 
 /// The pinout of `kind` in `package`, from the pin tables of the source.
