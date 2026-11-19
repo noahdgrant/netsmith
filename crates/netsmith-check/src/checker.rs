@@ -2380,20 +2380,45 @@ impl<'a> Checker<'a> {
             );
             return false;
         }
-        // A connector that a board declares directly shows a system its `.mating` and nothing
-        // else (ADR 0040).
-        if outside && internal && self.in_system() && inst.kind == InstKind::Board {
+        // A connector of a board shows a system its `.mating` and nothing else (ADR 0040). A
+        // system names a connector inside a module by its path through the modules, as a
+        // board-level path does (issue #1325): `.carrier.sock.j1.mating`. A module's other
+        // members, its ports among them, stay its own and its board's.
+        if outside
+            && internal
+            && self.in_system()
+            && matches!(inst.kind, InstKind::Board | InstKind::Module)
+        {
             if let Member::Inst(child) = member
-                && self.model.mating_of(child).is_some()
+                && (self.model.mating_of(child).is_some()
+                    || self.model.instance(child).kind == InstKind::Module)
             {
                 return true;
             }
             let ty = inst.type_name.clone();
+            let message = if inst.kind == InstKind::Board {
+                format!(
+                    "`{}` is inside board `{ty}`; a system can reach only the ports a board declares directly, such as its rails, and the `.mating` of a connector, by its path through the board's modules",
+                    name.name
+                )
+            } else {
+                format!(
+                    "`{}` is inside module `.{}`, a `{ty}`; a system reaches inside a module only the `.mating` of a connector, by its path through the modules",
+                    name.name,
+                    self.model.path_of(owner)
+                )
+            };
+            self.error(name.span, message);
+            return false;
+        }
+        if outside && self.in_system() && inst.kind == InstKind::Module {
+            let ty = inst.type_name.clone();
             self.error(
                 name.span,
                 format!(
-                    "`{}` is inside board `{ty}`; a system can reach only the ports a board declares directly, such as its rails, and the `.mating` of a connector",
-                    name.name
+                    "`{}` is inside module `.{}`, a `{ty}`; a system reaches inside a module only the `.mating` of a connector, by its path through the modules",
+                    name.name,
+                    self.model.path_of(owner)
                 ),
             );
             return false;
@@ -2401,11 +2426,7 @@ impl<'a> Checker<'a> {
         if self.in_system()
             && inst.kind == InstKind::Part
             && name.name != "mating"
-            && self
-                .model
-                .instance(owner)
-                .parent
-                .is_some_and(|b| self.model.instance(b).kind == InstKind::Board)
+            && self.model.board_of(owner).is_some()
         {
             let (ty, part) = (inst.type_name.clone(), inst.name.clone());
             self.error(

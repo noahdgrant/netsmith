@@ -45,6 +45,7 @@ Many errors at once after a netsmith upgrade, in a project that built before, ar
 | `contact N of the mated connectors ...` | The boards disagree about what contact N is: ground against power or a signal, two outputs, or an input nothing drives. The message names the pin and net on each side; fix the wiring of one connector. |
 | `the mate of ... carries power or signals ... but no ground`, `... are already joined by the mate of ...` | Wire a ground to a contact of both connectors; remove the `~` between ports that the mate already joins. |
 | `... is inside ..., a X; a system can reach only the .mating of a connector` | A system mates connectors and names no pin: join `.board.connector.mating` to another. |
+| `... is inside module ..., a X; a system reaches inside a module only the .mating of a connector` | A system joins a board's own ports and mates connectors: mate the module's connector by its path (`.board.bay.sock.mating`), or join the module's port to a port of the board and join that. |
 
 ## Solver messages (the file is fine, the numbers fail)
 
