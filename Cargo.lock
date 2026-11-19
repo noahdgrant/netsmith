@@ -911,6 +911,7 @@ version = "0.6.0"
 dependencies = [
  "automod",
  "netsmith-core",
+ "netsmith-kicad",
  "netsmith-sexp",
  "netsmith-testkit",
  "roxmltree",
