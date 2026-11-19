@@ -1342,6 +1342,8 @@ pub struct Model {
     pub(crate) sources: SourceTexts,
     /// The `polygon` statements of `Outline`s (issue #57), in the order they were read.
     pub(crate) polygons: Vec<OutlinePolygon>,
+    /// The `soft margin` statements of a physical file (issue 1310), in the order they were read.
+    pub(crate) soft_margins: Vec<SoftMargin>,
     /// The lines of the boards' `defaults` blocks that gave their value to no field (issue
     /// #625), in the order they were read.
     pub default_notes: Vec<DefaultNote>,
@@ -1541,6 +1543,17 @@ pub struct OutlinePolygon {
     pub span: Span,
 }
 
+/// A `soft margin 3mm round .u1` statement (issue 1310): the part and the distance in mm.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SoftMargin {
+    /// The part the distance is kept round.
+    pub part: InstId,
+    /// In mm, from the part's courtyard.
+    pub margin: f64,
+    pub source: SourceId,
+    pub span: Span,
+}
+
 /// A corner of an [`OutlinePolygon`], in mm in the board's frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PolygonCorner {
@@ -1553,6 +1566,11 @@ pub struct PolygonCorner {
 
 impl Model {
     /// The `polygon` statement of an `Outline`, if it has one.
+    /// The `soft margin` statements of the physical files, in the order they were read.
+    pub fn soft_margins(&self) -> &[SoftMargin] {
+        &self.soft_margins
+    }
+
     pub fn polygon_of(&self, outline: InstId) -> Option<&OutlinePolygon> {
         self.polygons.iter().find(|p| p.outline == outline)
     }
@@ -1591,6 +1609,7 @@ impl Model {
             bus_defs: std::collections::BTreeMap::new(),
             sources: SourceTexts::default(),
             polygons: Vec::new(),
+            soft_margins: Vec::new(),
             default_notes: Vec::new(),
             support_sections: Vec::new(),
             layout: Vec::new(),

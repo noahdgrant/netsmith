@@ -1453,6 +1453,7 @@ fn export(
     let mut design = designed.design;
     constraints::name_sources(&mut design, &designed.constraint_sites, sources);
     constraints::name_offset_sources(&mut design, &designed.offset_sites, sources);
+    constraints::name_soft_margin_sources(&mut design, &designed.soft_margin_sites, sources);
     constraints::name_protrusion_sources(&mut design, &designed.protrusion_sites, sources);
     constraints::name_model_sources(&mut design, &designed.model_sites, sources);
     constraints::name_case_model_sources(&mut design, &designed.case_model_sites, sources);

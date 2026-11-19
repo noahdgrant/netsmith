@@ -454,6 +454,32 @@ pub enum Item {
     /// physical file can reach it by (ADR 0048 decision 4); only a module's physical file may
     /// hold one.
     Anchor(Anchor),
+    /// A `soft margin 3mm round .u1` statement; only a physical file may hold one (issue 1310).
+    SoftMargin(SoftMargin),
+}
+
+/// `soft margin 3mm round .u1`: the placer keeps other parts at least this far from the part's
+/// courtyard where it can, and the check says it is a warning where it could not (an error
+/// with `--strict`). It is neither a courtyard nor a copper keepout (issue 1310, owner decision:
+/// a soft requirement of the physical file).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SoftMargin {
+    /// The distance kept round the part: one length.
+    pub margin: Expr,
+    /// The part it is kept round (`.u1`).
+    pub part: Path,
+    pub span: Span,
+}
+
+impl SoftMargin {
+    /// The statement as it reads, for a message: `soft margin 3mm round .u1`.
+    pub fn span_text(&self) -> String {
+        format!(
+            "soft margin {} round {}",
+            self.margin.to_source(),
+            self.part.to_source()
+        )
+    }
 }
 
 /// `physical "radio_dock.physical.nsm"` in a module: the module's physical intent is in that

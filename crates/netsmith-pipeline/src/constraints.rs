@@ -92,6 +92,21 @@ pub fn name_offset_sources(design: &mut Design, sites: &[(SourceId, Span)], sour
     }
 }
 
+/// Say where the design states each soft margin (`design.features.soft_margins`, in the order of
+/// `sites`).
+pub fn name_soft_margin_sources(
+    design: &mut Design,
+    sites: &[(SourceId, Span)],
+    sources: &Sources,
+) {
+    for (margin, site) in design.features.soft_margins.iter_mut().zip(sites) {
+        margin.source = lines_of(std::slice::from_ref(site), sources);
+    }
+    for site in sites {
+        remember_lines(design, std::slice::from_ref(site), sources);
+    }
+}
+
 /// Say where the design states each protrusion (`design.features.protrusions`, in the order of `sites`).
 pub fn name_protrusion_sources(
     design: &mut Design,
