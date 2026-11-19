@@ -396,18 +396,48 @@ impl Checker<'_> {
                 "`{name}` is a member every part has, as text: the number of the catalog row it is (ADR 0122); do not declare it, and narrow it with `.{name} &= \"...\"`"
             );
         }
-        let Some(generic) = self.generic_members.get(&(owner, name.to_string())) else {
-            return format!("`{name}` is already declared in this block");
-        };
-        let word = match self.model.instance(owner).kind {
-            InstKind::Module => "module",
-            _ => "part",
-        };
         let how = match self.model.member(owner, name) {
             Some(Member::Field(_)) if d.body.is_none() => {
                 format!("narrow it with `.{name} &= ...`, or state it with a relation")
             }
             _ => format!("state its values with statements, `.{name}.<field> &= ...`"),
+        };
+        let Some(generic) = self.generic_members.get(&(owner, name.to_string())) else {
+            // A member the language gives every part (or a board its `.routing_margin`): a
+            // part written before the member was added may declare it itself (issue #1371).
+            let kind = self.model.instance(owner).kind;
+            if (kind == InstKind::Part && BUILT_IN.contains(&name))
+                || (kind == InstKind::Board && name == "routing_margin")
+            {
+                let word = if kind == InstKind::Part {
+                    "part"
+                } else {
+                    "board"
+                };
+                return format!(
+                    "`{name}` is already declared in this block: every {word} has it; do not declare it: {how}"
+                );
+            }
+            // A use's block that declares a member its definition declares (`.r: Rail {
+            // .burst: Time }`): an interface, part or module written before the definition
+            // gained the member may have done so (issue #1371).
+            if let Some(def) = self.model.instance(owner).def
+                && Some(def) != self.cur_def_ref()
+            {
+                let defn = &self.modules()[def.0].defs[def.1];
+                if generic_member_names(defn).contains(name) {
+                    return format!(
+                        "`{name}` is declared by `{}`; do not declare it again in a use of it: {how}",
+                        defn.name.name
+                    );
+                }
+            }
+            return format!("`{name}` is already declared in this block");
+        };
+        let word = match self.model.instance(owner).kind {
+            InstKind::Module => "module",
+            InstKind::Interface => "interface",
+            _ => "part",
         };
         format!(
             "`{name}` is declared by `{generic}`, which this {word} provides; do not declare it again: {how}"

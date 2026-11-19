@@ -274,6 +274,85 @@ fn a_provider_may_not_declare_a_member_of_the_generic_again() {
     );
 }
 
+/// A part written before the language gave every part `.height_growth` (and every part and
+/// board `.routing_margin`) may declare the name itself: the message says the member is
+/// built in, not that the block declares it twice (issue #1371).
+#[test]
+fn a_part_or_board_that_declares_a_member_every_one_has_is_told_so() {
+    let root = "\
+part Cell {
+    pins {
+        .a passive \"A\" \"1\"
+    }
+    .height_growth: Length
+    .routing_margin: Length
+}
+
+board B {
+    .routing_margin: Length
+    .c: Cell
+}
+";
+    let c = run(root, &[]);
+    let m = messages(&c);
+    assert_eq!(
+        m,
+        [
+            "`height_growth` is already declared in this block: every part has it; do not declare it: narrow it with `.height_growth &= ...`, or state it with a relation",
+            "`routing_margin` is already declared in this block: every part has it; do not declare it: narrow it with `.routing_margin &= ...`, or state it with a relation",
+            "`routing_margin` is already declared in this block: every board has it; do not declare it: narrow it with `.routing_margin &= ...`, or state it with a relation",
+        ],
+        "{m:?}"
+    );
+}
+
+/// A use's block that declares a member its interface declares (written before the interface
+/// gained it) is told which definition declares it (issue #1371).
+#[test]
+fn a_use_that_declares_a_member_of_its_interface_is_told_so() {
+    let root = "\
+import std::sources::Rail
+
+board B {
+    .r: Rail { .voltage &= 5V; .burst: Time; .mine: Time }
+}
+";
+    let c = run(root, &[]);
+    let m = messages(&c);
+    assert_eq!(
+        m,
+        ["`burst` is declared by `Rail`; do not declare it again in a use of it: narrow it with `.burst &= ...`, or state it with a relation"],
+        "{m:?}"
+    );
+}
+
+/// An interface that provides a generic is called an interface in the message, not a part.
+#[test]
+fn an_interface_provider_that_declares_a_member_again_is_called_an_interface() {
+    let root = "\
+import std::mfg::jlcpcb::TwoLayer
+
+interface MyTwoLayer provides TwoLayer {
+    .min_track &= 0.1mm..
+    .min_clearance &= 0.1mm..
+    .min_annular_ring &= 0.18mm..
+    .min_mask_bridge &= 0.13mm..
+    .stackup.copper_weight &= 1
+    .min_single_sided_assembly_size: Length
+}
+
+board B {
+    .process: TwoLayer
+}
+";
+    let c = run(root, &[]);
+    let m = messages(&c);
+    assert!(
+        m.contains(&"`min_single_sided_assembly_size` is declared by `TwoLayer`, which this interface provides; do not declare it again: narrow it with `.min_single_sided_assembly_size &= ...`, or state it with a relation".to_string()),
+        "{m:?}"
+    );
+}
+
 #[test]
 fn a_provider_that_declares_an_interface_of_the_generic_again_is_told_to_use_statements() {
     let generic = "\
