@@ -115,12 +115,24 @@ fn a_problem_is_quoted_for_the_shells_page() {
 }
 
 /// A stand-in for `netsmith`: a shell script with `body` as its text, in `dir`.
+///
+/// A child process writes the file, never this one (issue 1361). A process that writes an
+/// executable and runs it at once, while another of its threads forks, can get "Text file
+/// busy": the forked child holds a copy of the write handle until it runs its own program,
+/// and the kernel refuses to run a file that is open for writing anywhere. The handle of a
+/// child of ours that has ended is closed, and no other fork can have a copy of it.
 #[cfg(unix)]
 fn stand_in(dir: &Path, body: &str) -> PathBuf {
-    use std::os::unix::fs::PermissionsExt;
     let path = dir.join("netsmith");
-    fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    let status = Command::new("sh")
+        .arg("-c")
+        .arg(r#"printf '#!/bin/sh\n%s\n' "$1" > "$2" && chmod 755 "$2""#)
+        .arg("sh")
+        .arg(body)
+        .arg(&path)
+        .status()
+        .unwrap();
+    assert!(status.success(), "writing the stand-in failed: {status}");
     path
 }
 
