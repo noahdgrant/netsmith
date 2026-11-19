@@ -818,3 +818,47 @@ footprint = "Package_TO_SOT_SMD:SOT-23-6"
 kind = "Attiny13a"
 package = "SOIC-8"
 footprint = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
+
+[[part]]
+kind = "Supercap"
+package = "Radial_D5.0mm_P2.00mm"
+symbol = "Device:C_Polarized"
+footprint = "Capacitor_THT:CP_Radial_D5.0mm_P2.00mm"
+
+[[part]]
+kind = "Supercap"
+package = "Radial_D6.3mm_P2.50mm"
+symbol = "Device:C_Polarized"
+footprint = "Capacitor_THT:CP_Radial_D6.3mm_P2.50mm"
+
+[[part]]
+kind = "Supercap"
+package = "Radial_D8.0mm_P3.50mm"
+symbol = "Device:C_Polarized"
+footprint = "Capacitor_THT:CP_Radial_D8.0mm_P3.50mm"
+
+[[part]]
+kind = "Supercap"
+package = "Radial_D10.0mm_P5.00mm"
+symbol = "Device:C_Polarized"
+footprint = "Capacitor_THT:CP_Radial_D10.0mm_P5.00mm"
+
+[[part]]
+kind = "Supercap"
+package = "Radial_D12.5mm_P5.00mm"
+symbol = "Device:C_Polarized"
+footprint = "Capacitor_THT:CP_Radial_D12.5mm_P5.00mm"
+
+[[part]]
+kind = "Supercap"
+package = "Radial_D16.0mm_P7.50mm"
+symbol = "Device:C_Polarized"
+footprint = "Capacitor_THT:CP_Radial_D16.0mm_P7.50mm"
+
+# A cell's package is the one its catalog row names (issue 1366): here the JST PH lead of a
+# pouch cell. A coin cell with tabs and the tapped supercapacitor wait for a sourced row (issue 1399).
+[[part]]
+kind = "Cell"
+package = "JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal"
+symbol = "Device:Battery_Cell"
+footprint = "Connector_JST:JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal"

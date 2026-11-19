@@ -27,9 +27,11 @@
 //! SMB, SMC, SOT-23 (-3, -5, -6), SOT-223, SC-70 (SOT-323, -343, -353, -363, SC-70-8, each for
 //! reflow and for hand soldering), SOIC, TSSOP, MSOP, SSOP, QFN, DFN, WSON, HVSON and the other
 //! no-lead rows (`Package_DFN_QFN`, `Package_SON`, `Package_CSP`), LQFP, TQFP, VQFP, DPAK
-//! (TO-252), D2PAK (TO-263), SOT-89, SMD crystals, shielded power inductors of one maker's series (`inductor.rs`: the TDK SLF7045 and the Changjiang FNR4020S, 5040S, 6028S and 8040S), BGA on a full regular grid, and pin headers
+//! (TO-252), D2PAK (TO-263), SOT-89, SMD crystals, shielded power inductors of one maker's series (`inductor.rs`: the TDK SLF7045 and the Changjiang FNR4020S, 5040S, 6028S and 8040S), BGA on a full regular grid, pin headers
 //! and sockets (1 or 2 rows, 1 to 40 per row, pad 0.7 of the pitch, drill 1.0 mm or 0.8 mm at
-//! 2.0 mm, pin 1 square). The QFN family is a list of named packages, because the lead and
+//! 2.0 mm, pin 1 square), the polarized radial cans of a supercapacitor (`radial.rs`, six
+//! diameters from 5 mm to 16 mm) and the two-pin JST PH side-entry header of a pouch cell's lead
+//! (`jst.rs`). The QFN family is a list of named packages, because the lead and
 //! exposed pad dimensions of a QFN of a given outline differ from one maker to the next (KiCad has
 //! one footprint per datasheet); a package not in the list needs a library file. The same holds
 //! for the QFPs: KiCad's other QFPs are from one maker's drawing each, and only those that are the
@@ -163,7 +165,7 @@
 //! VSSOP-8/10, SOIC-10, SOIC-20W and SOIC-28W (other IPC fits one by one), X2SON (TI drawings one
 //! each), LGA, PQFP/MQFP, the BGAs with balls left out, with two pitches or two pad sizes and the
 //! four whose courtyard is another number, crystals named for a maker's part and through-hole
-//! crystals, and connectors other than pin headers, mounting holes and fiducials (the std rows that
+//! crystals, and connectors other than pin headers and the two-pin JST PH, mounting holes and fiducials (the std rows that
 //! name those still read KiCad's library: `Button_Switch_SMD`, `MountingHole`, `Fiducial`).
 //! Not built (issue #15): a depopulated BGA grid as a rule (a list of missing balls per row). The ten SC-70
 //! footprints of KiCad 9.0.0 are hand-drawn (pads 0.65 x 0.4 mm at 0.65 mm pitch, one drawn body
@@ -196,6 +198,7 @@ mod gullwing;
 pub(crate) mod header;
 mod inductor;
 pub(crate) mod ipc;
+mod jst;
 mod mechanical;
 pub use mechanical::DRILL as HOLE_DRILL;
 mod outline;
@@ -203,6 +206,7 @@ mod params;
 mod qfn;
 mod qfn_rows;
 mod qfp;
+mod radial;
 mod sot;
 mod tab;
 
@@ -318,6 +322,8 @@ pub fn generate(id: &str) -> Option<Footprint> {
         .or_else(|| inductor::generate(library, name))
         .or_else(|| bga::generate(library, name))
         .or_else(|| mechanical::generate(library, name))
+        .or_else(|| radial::generate(library, name))
+        .or_else(|| jst::generate(library, name))
 }
 
 /// Every `Library:Name` that [`generate`] answers, in a fixed order.
@@ -336,6 +342,8 @@ pub fn names() -> &'static [String] {
         all.extend(inductor::names());
         all.extend(bga::names());
         all.extend(mechanical::names());
+        all.extend(radial::names());
+        all.extend(jst::names());
         all.sort();
         all.dedup();
         all

@@ -217,6 +217,20 @@ impl Drawing {
         );
     }
 
+    /// The outline of a circle round `center`.
+    pub(super) fn circle_at(&mut self, on: Draw, center: Pt, radius: f64) {
+        let _ = writeln!(
+            self.body,
+            "(fp_circle (center {} {}) (end {} {}) (stroke (width {}) (type solid)) (fill no) (layer \"{}\"))",
+            num(center.x),
+            num(center.y),
+            num(center.x + radius),
+            num(center.y),
+            num(on.width()),
+            on.layer()
+        );
+    }
+
     /// The outline of a rectangle with corners `a` and `b`.
     pub(super) fn rect(&mut self, on: Draw, a: Pt, b: Pt) {
         let _ = writeln!(
