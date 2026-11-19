@@ -10,7 +10,7 @@
 //! [`MARGIN`] to spare, and the copper kept so far ([`Room::keep`]) counts too.
 
 use super::model::{Kind, Model};
-use super::shape::{Shape, gap, touches_area};
+use super::shape::{Shape, gap, touches_area, within_hole};
 use super::{Extras, Rules};
 use crate::artwork::{Artwork, PadKind, TrackShape};
 use crate::geom::{Bounds, Pt};
@@ -261,9 +261,11 @@ impl<'a> Room<'a> {
                 && z.keepout.as_ref().is_some_and(|k| k.tracks)
                 && z.layers.iter().any(|l| l == layer_name)
         }) {
+            // A hole of the keepout (a cutout) is not in it (issue #1392).
             if z.outlines
                 .iter()
                 .any(|o| o.len() >= 3 && touches_area(shape, o))
+                && !z.holes.iter().any(|h| within_hole(shape, h))
             {
                 return Some(Hit::Keepout(zi));
             }
@@ -298,5 +300,33 @@ impl<'a> Room<'a> {
             }
         }
         least
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_track_in_a_hole_of_a_keepout_fits_and_one_in_the_keepout_does_not() {
+        // Issue #1392: a hole of a rule area (a further `polygon` of the zone) is not in it.
+        let src = r#"(kicad_pcb (version 20241229) (generator "test")
+  (layers (0 "F.Cu" signal) (31 "B.Cu" signal))
+  (net 0 "") (net 1 "A")
+  (gr_rect (start 0 0) (end 30 30) (layer "Edge.Cuts") (width 0.05))
+  (zone (net 0) (net_name "") (layer "F.Cu") (name "ANT") (hatch edge 0.5)
+    (keepout (tracks not_allowed) (vias not_allowed) (pads not_allowed) (copperpour allowed) (footprints allowed))
+    (polygon (pts (xy 5 5) (xy 25 5) (xy 25 25) (xy 5 25)))
+    (polygon (pts (xy 10 10) (xy 20 10) (xy 20 20) (xy 10 20)))))"#;
+        let art = Artwork::parse(src).unwrap();
+        let (rules, extras) = (Rules::default(), Extras::default());
+        let room = Room::new(&art, &rules, &extras);
+        let f = room.layer("F.Cu").unwrap();
+        let track = |y: f64| Shape::capsule(Pt::new(12.0, y), Pt::new(18.0, y), 0.1);
+        assert!(room.fits(&track(15.0), "A", f, false), "in the hole");
+        assert_eq!(
+            room.in_the_way(&track(7.0), "A", f, false, &[]).as_deref(),
+            Some("keepout ANT")
+        );
     }
 }

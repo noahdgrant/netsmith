@@ -307,6 +307,7 @@ impl<'a> Run<'a> {
             Pinout::Table(table) => {
                 self.pins(part, table);
                 self.ties(part, table);
+                self.directions(part, table);
                 self.functions_used_twice(part, table);
             }
         }
@@ -709,6 +710,42 @@ impl<'a> Run<'a> {
                     inst.type_name
                 ),
             );
+        }
+    }
+
+    /// The kinds a `direction` needs (issue #1306): its control pin is an `input`, and every pin
+    /// on its two sides is `bidirectional` (a pin of any other kind has one direction already).
+    /// A pin the package does not have is skipped, as for a tie.
+    fn directions(&mut self, part: InstId, table: &PinTable) {
+        let model = self.model;
+        for d in &model.instance(part).rules.directions {
+            let kind = |p: InstId| table.row(p).map(|r| r.kind);
+            if let Some(k) = kind(d.control)
+                && k != PinKind::Input
+            {
+                self.report(
+                    (d.source, d.span),
+                    format!(
+                        "`{}` fixes the direction of a `direction`, so it is an input, but it is {}",
+                        model.path_of(d.control),
+                        article(k)
+                    ),
+                );
+            }
+            for &pin in d.from.iter().chain(&d.to) {
+                if let Some(k) = kind(pin)
+                    && k != PinKind::Bidirectional
+                {
+                    self.report(
+                        (d.source, d.span),
+                        format!(
+                            "`{}` is {}, which has one direction already; a `direction` names bidirectional pins",
+                            model.path_of(pin),
+                            article(k)
+                        ),
+                    );
+                }
+            }
         }
     }
 

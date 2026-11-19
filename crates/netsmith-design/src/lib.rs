@@ -907,6 +907,15 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
         // Unstated where the board house publishes no figure. A lower bound, so the bottom.
         min_single_sided_assembly_size: optional_mm("process.min_single_sided_assembly_size"),
         min_double_sided_assembly_size: optional_mm("process.min_double_sided_assembly_size"),
+        // Unstated where the board house publishes no figure; the page, service and day of
+        // the two figures above (issue 1393).
+        assembly_size_source: match model.field_at("process.assembly_size_source") {
+            Some(f) => match &model.field(f).domain {
+                Domain::Text(t) if !t.is_empty() => Some(t.clone()),
+                _ => None,
+            },
+            None => None,
+        },
         track_width_tolerance: number("track_width_tolerance"),
         hole_plating: mm("hole_plating"),
         finish: text(find("finish")),
