@@ -421,8 +421,8 @@ fn a_rule_area_finding_names_what_of_the_area_flags_the_item_and_its_edge_flags_
         [
             "R1 is inside the rule area of L1's footprint (no footprints)",
             "SMD pad 1 [A] of R1 is inside the rule area of L1's footprint (no pads)",
-            "Track of GND is inside the rule area of L1's footprint (no tracks)",
-            "Via of GND is inside the rule area of L1's footprint (no vias)",
+            "Track [GND] on F.Cu, length 2.0000 mm is inside the rule area of L1's footprint (no tracks)",
+            "Via [GND] on F.Cu - B.Cu is inside the rule area of L1's footprint (no vias)",
         ],
         "{r}"
     );

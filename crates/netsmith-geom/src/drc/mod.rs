@@ -129,7 +129,8 @@
 //! flags there. A rule area a library footprint carries is enforced as
 //! KiCad 9 enforces it (issue #1291): a track, a via, a pad or a part inside it on its layers where
 //! it forbids that kind is `items_not_allowed`; the footprint's own pads are flagged too, as KiCad
-//! flags them, and the footprint itself is not (a keepout a part carries in the source is the
+//! flags them, and the footprint itself is not. What only touches the area's edge is not in it:
+//! KiCad shrinks the area by its DRC epsilon first (issue #1372) (a keepout a part carries in the source is the
 //! board's, ADR 0029). A pour's fill is not judged against a rule area, as KiCad's check does not
 //! judge it: the fill keeps out of one that forbids pours. A footprint can state `solder_mask_margin`, `solder_paste_margin`,
 //! `solder_paste_ratio`, `clearance` and `zone_connect` for all its pads; they are read, and a

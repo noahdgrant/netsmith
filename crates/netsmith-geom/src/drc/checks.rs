@@ -829,10 +829,7 @@ fn rule_areas(out: &mut Out<'_>) {
                     .map(|l| m.layer_name(*l).to_string());
                 out.push(
                     Rule::ItemsNotAllowed,
-                    format!(
-                        "{} is inside the rule area {name} (no {kept})",
-                        c.item.what
-                    ),
+                    format!("{} is inside the rule area {name} (no {kept})", c.item.what),
                     c.item.at,
                     layer.as_deref(),
                     vec![c.item.clone()],
@@ -880,10 +877,7 @@ fn rule_areas(out: &mut Out<'_>) {
                 if hit {
                     out.push(
                         Rule::ItemsNotAllowed,
-                        format!(
-                            "{} is inside the rule area {name} (no footprints)",
-                            fp.part
-                        ),
+                        format!("{} is inside the rule area {name} (no footprints)", fp.part),
                         fp.at,
                         Some(side_cu),
                         vec![Item {
