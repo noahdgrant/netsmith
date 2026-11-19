@@ -2067,6 +2067,162 @@
           "vias": 1
         }
       ],
+      "pin_currents": [
+        {
+          "net": "net-lights.led_a.anode",
+          "path": "lights.led_a.anode",
+          "pins": [
+            {
+              "refdes": "D1",
+              "pin": "2"
+            }
+          ],
+          "current": 0.004790327517600245
+        },
+        {
+          "net": "GND",
+          "path": "lights.led_a.cathode",
+          "pins": [
+            {
+              "refdes": "D1",
+              "pin": "1"
+            }
+          ],
+          "current": 0.004790327517600245
+        },
+        {
+          "net": "net-lights.led_b.anode",
+          "path": "lights.led_b.anode",
+          "pins": [
+            {
+              "refdes": "D2",
+              "pin": "2"
+            }
+          ],
+          "current": 0.004790327517600245
+        },
+        {
+          "net": "GND",
+          "path": "lights.led_b.cathode",
+          "pins": [
+            {
+              "refdes": "D2",
+              "pin": "1"
+            }
+          ],
+          "current": 0.004790327517600245
+        },
+        {
+          "net": "net-lights.led_c.anode",
+          "path": "lights.led_c.anode",
+          "pins": [
+            {
+              "refdes": "D3",
+              "pin": "2"
+            }
+          ],
+          "current": 0.004790327517600245
+        },
+        {
+          "net": "GND",
+          "path": "lights.led_c.cathode",
+          "pins": [
+            {
+              "refdes": "D3",
+              "pin": "1"
+            }
+          ],
+          "current": 0.004790327517600245
+        },
+        {
+          "net": "3V3",
+          "path": "lights.r_a.a",
+          "pins": [
+            {
+              "refdes": "R1",
+              "pin": "1"
+            }
+          ],
+          "current": 0.004790327517600245
+        },
+        {
+          "net": "net-lights.led_a.anode",
+          "path": "lights.r_a.b",
+          "pins": [
+            {
+              "refdes": "R1",
+              "pin": "2"
+            }
+          ],
+          "current": 0.004790327517600245
+        },
+        {
+          "net": "3V3",
+          "path": "lights.r_b.a",
+          "pins": [
+            {
+              "refdes": "R2",
+              "pin": "1"
+            }
+          ],
+          "current": 0.004790327517600245
+        },
+        {
+          "net": "net-lights.led_b.anode",
+          "path": "lights.r_b.b",
+          "pins": [
+            {
+              "refdes": "R2",
+              "pin": "2"
+            }
+          ],
+          "current": 0.004790327517600245
+        },
+        {
+          "net": "3V3",
+          "path": "lights.r_c.a",
+          "pins": [
+            {
+              "refdes": "R3",
+              "pin": "1"
+            }
+          ],
+          "current": 0.004790327517600245
+        },
+        {
+          "net": "net-lights.led_c.anode",
+          "path": "lights.r_c.b",
+          "pins": [
+            {
+              "refdes": "R3",
+              "pin": "2"
+            }
+          ],
+          "current": 0.004790327517600245
+        },
+        {
+          "net": "3V3",
+          "path": "pullups.scl_pullup.a",
+          "pins": [
+            {
+              "refdes": "R4",
+              "pin": "1"
+            }
+          ],
+          "current": 0.0007446808510638298
+        },
+        {
+          "net": "3V3",
+          "path": "pullups.sda_pullup.a",
+          "pins": [
+            {
+              "refdes": "R5",
+              "pin": "1"
+            }
+          ],
+          "current": 0.0007446808510638298
+        }
+      ],
       "outline": {
         "width": [
           90.0,

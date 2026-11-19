@@ -644,6 +644,63 @@
           "vias": 1
         }
       ],
+      "pin_currents": [
+        {
+          "net": "net-reg.divider.rbottom.a",
+          "path": "reg.divider.rbottom.a",
+          "pins": [
+            {
+              "refdes": "R1",
+              "pin": "1"
+            }
+          ],
+          "current": 0.00005265993265993267
+        },
+        {
+          "net": "GND",
+          "path": "reg.divider.rbottom.b",
+          "pins": [
+            {
+              "refdes": "R1",
+              "pin": "2"
+            }
+          ],
+          "current": 0.00005265993265993267
+        },
+        {
+          "net": "3V3",
+          "path": "reg.divider.rtop.a",
+          "pins": [
+            {
+              "refdes": "R2",
+              "pin": "1"
+            }
+          ],
+          "current": 0.00005443225736580124
+        },
+        {
+          "net": "net-reg.divider.rbottom.a",
+          "path": "reg.divider.rtop.b",
+          "pins": [
+            {
+              "refdes": "R2",
+              "pin": "2"
+            }
+          ],
+          "current": 0.00005443225736580124
+        },
+        {
+          "net": "net-reg.ic.boost.b",
+          "path": "reg.inductor.a",
+          "pins": [
+            {
+              "refdes": "L1",
+              "pin": "1"
+            }
+          ],
+          "current": 0.5000544322573659
+        }
+      ],
       "outline": null,
       "cutouts": [],
       "pours": [],

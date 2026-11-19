@@ -1646,6 +1646,20 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
         });
     }
     features.branch_currents.sort_by(|a, b| a.path.cmp(&b.path));
+    // The pins whose current the model knows, below their net's (issue #1333): the design
+    // rules check sizes the copper that only feeds them for what they draw.
+    for l in plan.pin_currents {
+        let Some(pins) = pads_of.get(&l.pin) else {
+            continue;
+        };
+        features.pin_currents.push(netsmith_core::PinCurrent {
+            net: l.net,
+            path: model.path_of(l.pin),
+            pins: pins.clone(),
+            current: l.current,
+        });
+    }
+    features.pin_currents.sort_by(|a, b| a.path.cmp(&b.path));
     errors.extend(plan.errors);
     let mut guideline_findings = plan.findings;
     // Every fitted part against the board's environment, if it states one (ADR 0099).

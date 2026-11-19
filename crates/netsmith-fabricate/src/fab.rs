@@ -3427,6 +3427,31 @@ fn with_margin<T>(
 /// #1025), as its message names it: `Board: impedance target guideline: ...`.
 pub const IMPEDANCE_RULE: &str = "impedance target";
 
+/// The pads of a pin that carries `current` on `net`, one entry for each part of a bank, as the
+/// design rules check reads a branch (issues #1113 and #1333).
+fn drc_branches(
+    net: &str,
+    pins: &[netsmith_core::PinRef],
+    current: f64,
+) -> Vec<netsmith_geom::DrcBranch> {
+    let mut parts: Vec<&str> = pins.iter().map(|p| p.refdes.as_str()).collect();
+    parts.sort_unstable();
+    parts.dedup();
+    parts
+        .into_iter()
+        .map(|part| netsmith_geom::DrcBranch {
+            net: net.to_string(),
+            part: part.to_string(),
+            pads: pins
+                .iter()
+                .filter(|p| p.refdes == part)
+                .map(|p| p.pin.clone())
+                .collect(),
+            current,
+        })
+        .collect()
+}
+
 /// What the design rules check needs that the board file does not say: the process's mask
 /// web and widest filled via, the rules a project file cannot say and the least width of the
 /// nets that carry current (issue #431), the
@@ -3462,22 +3487,13 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
         branches: board
             .branch_currents
             .iter()
-            .flat_map(|b| {
-                let mut parts: Vec<&str> = b.pins.iter().map(|p| p.refdes.as_str()).collect();
-                parts.sort_unstable();
-                parts.dedup();
-                parts.into_iter().map(move |part| netsmith_geom::DrcBranch {
-                    net: b.net.clone(),
-                    part: part.to_string(),
-                    pads: b
-                        .pins
-                        .iter()
-                        .filter(|p| p.refdes == part)
-                        .map(|p| p.pin.clone())
-                        .collect(),
-                    current: b.current,
-                })
-            })
+            .flat_map(|b| drc_branches(&b.net, &b.pins, b.current))
+            .collect(),
+        // The pins whose current the model knows (issue #1333).
+        pin_currents: board
+            .pin_currents
+            .iter()
+            .flat_map(|l| drc_branches(&l.net, &l.pins, l.current))
             .collect(),
         sizing: netsmith_design::guidelines::sizing_of(&board.process),
         // The layout file's waivers of findings of a part's own footprint (issue #1196).
