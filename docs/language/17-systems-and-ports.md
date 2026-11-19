@@ -837,3 +837,7 @@ system Kit {
 ```text
 error: Kit: `card.j1.mating.seat` is -1mm, and a connector's partner does not rest below its board's face
 ```
+
+#### Contacts that are not at the pads' centres
+
+The system scene lines two mated connectors up by a least-squares fit that puts each contact of one on its partner's, and checks that each lands within 0.1 mm (`mate_misaligned`, an error that `fab` of a system refuses on, ADR 0110). A contact is the centre of its pad's copper, which is where the pin is for a through-hole header or socket. The feet of a surface-mount pin header alternate either side of its pins, so the centres of its pads zigzag about the pins' axis: fitted on them, the second board would come out turned and the mate misaligned by more than a millimetre, for a connector that fits. Such a part states where each contact is with a `pads` block, `"1" .contact_offset = (-1.175mm, 0mm)` from the pad's centre (chapter _Pins, packages and ties_, _Where a pad's contact is_), and the fit and the check read the contacts and not the copper.

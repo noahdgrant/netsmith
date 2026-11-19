@@ -148,9 +148,26 @@ pub struct Placed {
     /// (ADR 0030, issues #829 and #994). Empty for a part whose definition states none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub layout: Vec<crate::part_layout::PartGuideline>,
+    /// Where the contacts of its pads are that are not at the pads' centres, by pad number: the
+    /// offset from the centre of the copper, in the footprint's frame, in mm (a part's `pads`
+    /// block, issue #1321). A pad not listed has its contact at its centre ([`Placed::contact`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub contacts: Vec<(String, Pt)>,
 }
 
 impl Placed {
+    /// Where the contact of `pad` is, in the footprint's frame: the centre of its copper moved by
+    /// the offset the part states for its number, if any (issue #1321).
+    pub fn contact(&self, pad: &crate::Pad) -> Pt {
+        match self.contacts.iter().find(|(n, _)| *n == pad.number) {
+            Some((_, d)) => Pt {
+                x: pad.at.x + d.x,
+                y: pad.at.y + d.y,
+            },
+            None => pad.at,
+        }
+    }
+
     /// The height a height limit is checked against, in mm: the part's `height` plus its
     /// `height_growth` (issue #1263). `None` when the height is unknown: a growth alone says
     /// nothing of how tall the part is.

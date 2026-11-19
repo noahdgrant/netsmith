@@ -939,3 +939,29 @@ fn a_diff_pair_on_one_net_or_on_a_net_of_another_pair_is_an_error() {
         "{two}"
     );
 }
+
+#[test]
+fn a_parts_pads_block_gives_the_contacts_of_its_package_and_a_package_row_wins() {
+    // Issue 1321: the rows of `pads "SMD"` are kept only for a part in that package, and win over
+    // the block for every package.
+    let part = "part Row4 {\n    pins \"SMD\" \"THT\" {\n        .p1 passive \"P1\" \"1\"\n        .p2 passive \"P2\" \"2\"\n    }\n    .package: Package\n    pads {\n        \"2\" .contact_offset = (0mm, 0.5mm)\n    }\n    pads \"SMD\" {\n        \"1\" .contact_offset = (-1.175mm, 0mm)\n        \"2\" .contact_offset = (1.175mm, 0mm)\n    }\n}\n";
+    let src = board(
+        "    .smd: Row4 { .package &= \"SMD\" }\n    .tht: Row4 { .package &= \"THT\" }\n",
+    )
+    .replace("board B {", &format!("{part}board B {{"));
+    let d = designed(&src).unwrap();
+    let found: Vec<(&str, &str, (f64, f64))> = d
+        .features
+        .pad_contacts
+        .iter()
+        .map(|c| (c.path.as_str(), c.pad.as_str(), c.offset))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            ("smd", "1", (-1.175, 0.0)),
+            ("smd", "2", (1.175, 0.0)),
+            ("tht", "2", (0.0, 0.5)),
+        ]
+    );
+}

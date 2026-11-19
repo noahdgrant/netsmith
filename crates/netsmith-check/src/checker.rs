@@ -2163,6 +2163,7 @@ impl<'a> Checker<'a> {
                 Item::CaseOf(of) => self.case_of(of, false),
                 Item::Defaults(block) => self.defaults_block(block),
                 Item::Layout(block) => self.layout(block),
+                Item::Pads(block) => self.pads(block),
                 Item::Support(support) => {
                     if self.support_allowed() {
                         let items = crate::support::wiring(support);

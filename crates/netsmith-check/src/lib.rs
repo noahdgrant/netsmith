@@ -25,6 +25,7 @@ mod mate;
 mod model;
 mod module_physical;
 mod optional;
+mod pads;
 mod params;
 mod periph_join;
 mod pinedit;
@@ -57,11 +58,11 @@ pub use model::{
     Contact, ContactSide, DcElement, DcKind, DefaultFrom, DefaultNote, Domain, Draw, EnumId,
     EnumInfo, EventKind, Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet,
     GuidelineRule, InstId, InstKind, Instance, JoinedByName, LayoutGuideline, LevelTest, Mate,
-    Member, Model, NearSelect, Net, OptionalMark, OutlinePolygon, PartRules, Peripheral,
-    PeripheralBus, PeripheralFunction, PinAssignment, PinKind, PinRequest, PinRow, PinTable,
-    Pinout, PolygonCorner, Provider, RExpr, RangeEnd, Relation, Requirement, Role, RowLimit,
-    SequenceEvent, SequenceOrder, SharedMember, SharedRes, Snapshot, SupplyRow, SupplySteps, Tie,
-    Unused, VoltageSteps, Written,
+    Member, Model, NearSelect, Net, OptionalMark, OutlinePolygon, PadContact, PartRules,
+    Peripheral, PeripheralBus, PeripheralFunction, PinAssignment, PinKind, PinRequest, PinRow,
+    PinTable, Pinout, PolygonCorner, Provider, RExpr, RangeEnd, Relation, Requirement, Role,
+    RowLimit, SequenceEvent, SequenceOrder, SharedMember, SharedRes, Snapshot, SupplyRow,
+    SupplySteps, Tie, Unused, VoltageSteps, Written,
 };
 pub use pinedit::edit_entry;
 pub use pinfile::{BusEntry, EntrySource, PinEntry, PinFile, PinFileError};

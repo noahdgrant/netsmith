@@ -438,6 +438,9 @@ pub enum Item {
     /// A `layout { ... }` block: the layout guidelines of a part's datasheet, with their
     /// source (ADR 0030, issue #829); only a part may hold one.
     Layout(Layout),
+    /// A `pads { "1" .contact_offset = (1.175mm, 0mm) }` block: what a part states of its
+    /// footprint's pads (issue #1321); only a part may hold one.
+    Pads(Pads),
     /// A `row .a1 .. .a12 along x pitch 2.54mm` statement; only a physical file may hold one.
     Row(Row),
     /// A `polygon (0mm, 0mm) (40mm, 0mm) ...` statement; only an `Outline` in a physical
@@ -688,6 +691,44 @@ pub struct Pins {
     pub packages: Vec<(String, Span)>,
     pub rows: Vec<PinRow>,
     pub span: Span,
+}
+
+/// `pads "SMD" { "1" .contact_offset = (-1.175mm, 0mm) }`: what a part states of the pads of
+/// its footprint in one or more packages, or in every package with no name (issue #1321). Each
+/// row is one pad, by its number, and one field of it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Pads {
+    /// The packages of the header, in the order written; empty for every package.
+    pub packages: Vec<(String, Span)>,
+    pub rows: Vec<PadRow>,
+    pub span: Span,
+}
+
+/// `"1" .contact_offset = (-1.175mm, 0mm)`: one row of a [`Pads`] block.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PadRow {
+    /// The pad's number, as the pin table writes it.
+    pub pad: String,
+    pub pad_span: Span,
+    /// The field of the pad (`contact_offset`).
+    pub field: Ident,
+    /// The value, a point `(x, y)`.
+    pub x: Expr,
+    pub y: Expr,
+    pub span: Span,
+}
+
+impl PadRow {
+    /// The row as source text, as it is written.
+    pub fn to_source(&self) -> String {
+        format!(
+            "{} .{} = ({}, {})",
+            crate::printer::quote(&self.pad),
+            self.field.name,
+            self.x.to_source(),
+            self.y.to_source()
+        )
+    }
 }
 
 /// `tie .sense ~ .vout.pos`: the board must put the two pins on one net.
