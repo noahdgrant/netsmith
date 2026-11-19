@@ -736,6 +736,7 @@ pub fn plan_tracks(
                 // On an inner signal layer: the inner constant and the inner copper (issue #833).
                 inner_least_width: sizing.inner_least_width(total),
                 vias: sizing.vias(total),
+                source: with_unknown(&current_source(analysed.is_some(), plain, &terms), &unknown),
             });
         }
         // Rounded up to the 0.01 mm that a width is written in, so that asking for what the
@@ -791,33 +792,7 @@ pub fn plan_tracks(
         if width >= needs {
             continue;
         }
-        let what = match terms.as_slice() {
-            _ if analysed.is_some() => format!(
-                "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be {}",
-                amps(plain)
-            ),
-            [(c, hi)] => match c.range {
-                Some((lo, _)) if lo >= 0.0 && lo != *hi => {
-                    format!("{}: {} to {}", c.who, amps(lo), amps(*hi))
-                }
-                _ => format!("{}: {}", c.who, amps(*hi)),
-            },
-            many => {
-                let shown: Vec<String> = many
-                    .iter()
-                    .take(4)
-                    .map(|(c, hi)| format!("{} {}", c.who, amps(*hi)))
-                    .collect();
-                let more = match many.len() - shown.len() {
-                    0 => String::new(),
-                    n => format!(" and {n} more"),
-                };
-                format!(
-                    "the sum of the currents on it with every load on at once: {}{more}",
-                    shown.join(" + ")
-                )
-            }
-        };
+        let what = current_source(analysed.is_some(), plain, &terms);
         let (carries_word, what) = if unknown.is_empty() {
             ("up to", what)
         } else {
@@ -906,6 +881,51 @@ fn pin_currents(model: &Model, carriers: &[Carrier], plan: &mut TrackPlan) {
                 });
             }
         }
+    }
+}
+
+/// Where a net's current comes from, in words (issue 1373): the DC analysis' worst case when it
+/// solved the net (`analysed`; `plain` is every current at its largest at once), or the terms
+/// that add up to it, largest first.
+fn current_source(analysed: bool, plain: f64, terms: &[(&Carrier, f64)]) -> String {
+    match terms {
+        _ if analysed => format!(
+            "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be {}",
+            amps(plain)
+        ),
+        [(c, hi)] => match c.range {
+            Some((lo, _)) if lo >= 0.0 && lo != *hi => {
+                format!("{}: {} to {}", c.who, amps(lo), amps(*hi))
+            }
+            _ => format!("{}: {}", c.who, amps(*hi)),
+        },
+        many => {
+            let shown: Vec<String> = many
+                .iter()
+                .take(4)
+                .map(|(c, hi)| format!("{} {}", c.who, amps(*hi)))
+                .collect();
+            let more = match many.len() - shown.len() {
+                0 => String::new(),
+                n => format!(" and {n} more"),
+            };
+            format!(
+                "the sum of the currents on it with every load on at once: {}{more}",
+                shown.join(" + ")
+            )
+        }
+    }
+}
+
+/// `what` with the currents that are not known said after it.
+fn with_unknown(what: &str, unknown: &[&str]) -> String {
+    if unknown.is_empty() {
+        what.to_string()
+    } else {
+        format!(
+            "{what}; the current of {} is not known, so it may be more",
+            unknown.join(", ")
+        )
     }
 }
 

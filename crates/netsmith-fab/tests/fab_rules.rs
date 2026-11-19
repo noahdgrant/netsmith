@@ -5,7 +5,7 @@
 use crate::common;
 
 use common::*;
-use netsmith_geom::{drc_check, DrcExtras, DrcReport, DrcRule};
+use netsmith_geom::{drc_check, DrcExtras, DrcNetCurrent, DrcReport, DrcRule};
 
 const NONE: Draw = Draw {
     courtyard: None,
@@ -255,6 +255,123 @@ fn a_track_narrower_than_its_current_needs_is_named_unless_it_is_near_its_pads()
 }
 
 #[test]
+fn a_track_finding_names_the_width_the_width_needed_and_the_current_assumed() {
+    // Issue 1373: net P carries 1 A (two rails) and needs 0.4 mm; a track 0.2 mm wide says what
+    // it is, what the current needs and on what basis, so that a person can choose between a
+    // wider track and a lower current.
+    let from = "the sum of the currents on it with every load on at once: rail `a` 600 mA + rail `b` 400 mA";
+    let extras = DrcExtras {
+        least_widths: vec![("P".to_string(), 0.4)],
+        neck_reach: 1.0,
+        sizing: Some(sizing()),
+        net_currents: vec![DrcNetCurrent {
+            net: "P".to_string(),
+            current: 1.0,
+            source: from.to_string(),
+        }],
+        ..jlcpcb()
+    };
+    let mut b = Pcb::new(2);
+    b.stub("P", 10.0, 10.0);
+    b.stub("P", 20.0, 10.0);
+    b.track("P", "F.Cu", (10.0, 10.0), (20.0, 10.0), 0.2);
+    let r = check(&mut b, &extras);
+    let found: Vec<_> = r
+        .findings
+        .iter()
+        .filter(|f| f.rule == DrcRule::TrackCurrent)
+        .collect();
+    assert_eq!(found.len(), 1, "{r}");
+    let said = &found[0].message;
+    for part in [
+        "is 0.2000 mm wide",
+        "its net `P` carries 1 A (the sum of the currents on it with every load on at once: rail `a` 600 mA + rail `b` 400 mA)",
+        "which needs 0.4000 mm",
+        "IPC-2221, 35 \u{3bc}m outer copper, a 10 K temperature rise, the fabricator's 20% width tolerance",
+        "widen it to 0.40 mm or more, or lower the current",
+    ] {
+        assert!(said.contains(part), "{part}: {said}");
+    }
+    let c = found[0].carrying.as_ref().expect("the numbers");
+    assert_eq!(c.width, Some(0.2));
+    assert_eq!(c.needed_width, Some(0.4));
+    assert_eq!(c.current, Some(1.0));
+    assert_eq!(c.current_from, from);
+    assert_eq!((c.copper, c.rise, c.tolerance), (Some(0.035), Some(10.0), Some(0.2)));
+    // With no current known the finding still names the widths.
+    let blind = DrcExtras {
+        net_currents: Vec::new(),
+        sizing: None,
+        ..extras
+    };
+    let r = check(&mut b, &blind);
+    let c = r.findings.iter().find(|f| f.rule == DrcRule::TrackCurrent).unwrap();
+    assert!(c.message.contains("its net's current needs 0.4000 mm"), "{}", c.message);
+    assert_eq!(c.carrying.as_ref().unwrap().current, None);
+}
+
+#[test]
+fn the_findings_of_copper_that_feeds_branches_name_the_pins_and_what_they_state() {
+    // Issue 1373: a branch that states 2 A needs 0.98 mm and three vias, and the findings of the
+    // copper say so, with the pin that states it, and not the net's current.
+    let extras = DrcExtras {
+        net_currents: vec![DrcNetCurrent {
+            net: "P".to_string(),
+            current: 1.0,
+            source: "rail `a` 1 A".to_string(),
+        }],
+        ..branch_extras(Some(2.0))
+    };
+    let mut b = branch_board(0.2, false);
+    let r = check(&mut b, &extras);
+    let track = r.findings.iter().find(|f| f.rule == DrcRule::TrackCurrent).unwrap();
+    for part in [
+        "it only feeds branches of net `P` and carries at most 2 A (the most the pins `j1.bias` carry, by their `.current` or what the model finds through them)",
+        "which needs 0.9",
+    ] {
+        assert!(track.message.contains(part), "{part}: {}", track.message);
+    }
+    let c = track.carrying.as_ref().unwrap();
+    assert_eq!((c.current, c.width), (Some(2.0), Some(0.2)));
+    assert!(c.needed_width.unwrap() > 0.9, "{c:?}");
+    let via = r.findings.iter().find(|f| f.rule == DrcRule::ViaCurrent).unwrap();
+    assert!(
+        via.message.contains("carries at most 2 A") && via.message.contains("so 3 side by side are needed"),
+        "{}",
+        via.message
+    );
+    let c = via.carrying.as_ref().unwrap();
+    assert_eq!((c.vias, c.needed_vias, c.current), (Some(1), Some(3), Some(2.0)));
+}
+
+#[test]
+fn a_via_finding_names_the_vias_the_current_needs_and_what_one_carries() {
+    // Issue 1373: net P needs three vias side by side (1.2 A, at 0.56 A a via of 0.3 mm...).
+    let extras = DrcExtras {
+        net_currents: vec![DrcNetCurrent {
+            net: "P".to_string(),
+            current: 1.2,
+            source: "rail `a` 1.2 A".to_string(),
+        }],
+        ..branch_extras(None)
+    };
+    let mut b = branch_board(0.4, false);
+    let r = check(&mut b, &extras);
+    let via = r.findings.iter().find(|f| f.rule == DrcRule::ViaCurrent).unwrap();
+    for part in [
+        "stands with 1 via(s) of its net side by side",
+        "its net `P` carries 1.2 A (rail `a` 1.2 A)",
+        "a via of the process (a 0.30 mm hole plated 18 \u{3bc}m) carries ",
+        "at a 10 K rise (IPC-2221, the inner-layer constant), so 3 side by side are needed",
+    ] {
+        assert!(via.message.contains(part), "{part}: {}", via.message);
+    }
+    let c = via.carrying.as_ref().unwrap();
+    assert_eq!((c.vias, c.needed_vias, c.current), (Some(1), Some(3), Some(1.2)));
+    assert_eq!((c.rise, c.tolerance), (Some(10.0), Some(0.2)));
+}
+
+#[test]
 fn a_track_on_an_inner_signal_layer_is_held_to_the_width_its_current_needs_there() {
     // P needs 0.4 mm on an outer layer and 0.9 mm on an inner one (issue #833): a 0.5 mm track
     // passes on the front and is named on In2.Cu; a net with no inner width is held to its
@@ -411,6 +528,7 @@ fn branch_extras(current: Option<f64>) -> DrcExtras {
         branches: current
             .map(|current| netsmith_geom::DrcBranch {
                 net: "P".to_string(),
+                path: "j1.bias".to_string(),
                 part: "J1".to_string(),
                 pads: vec!["1".to_string()],
                 current,
@@ -452,6 +570,7 @@ fn the_copper_of_a_branch_is_held_to_the_current_its_pin_states_and_not_to_its_n
 fn pin_current(part: &str, current: f64) -> netsmith_geom::DrcBranch {
     netsmith_geom::DrcBranch {
         net: "P".to_string(),
+        path: format!("{}.p1", part.to_lowercase()),
         part: part.to_string(),
         pads: vec!["1".to_string()],
         current,

@@ -606,7 +606,7 @@ fn vias_side_by_side_are_checked_as_a_group_and_one_alone_is_refused() {
     for run in [via(&["--at", "5,5"]), via(&["--at", "5,5", "--at", "5.45,5"])] {
         let said = text(&run);
         assert_eq!(run.status.code(), Some(1), "{said}");
-        assert!(said.contains("via_current") && said.contains("needs 3"), "{said}");
+        assert!(said.contains("via_current") && said.contains("so 3 side by side are needed"), "{said}");
         assert!(!file.exists(), "a refusal leaves the file as it was");
     }
     // Three places side by side (the process's via is 0.45 mm), or a row round one place.
@@ -630,6 +630,59 @@ fn vias_side_by_side_are_checked_as_a_group_and_one_alone_is_refused() {
     assert!(text(&run).contains("round one `--at`"), "{}", text(&run));
     let run = via(&["--at", "1,1", "--count", "3"]);
     assert_eq!(run.status.code(), Some(2), "{}", text(&run));
+}
+
+#[test]
+fn a_track_too_narrow_for_its_current_is_named_with_the_width_needed_and_the_current_assumed() {
+    // Issue 1373: net VCC carries 1.2 A or more (two rails). A track of 1 mm is accepted; the
+    // file is then changed to 0.15 mm, as a hand edit would, and `board drc` says what the track
+    // is, what the current needs, which current it assumed and where it comes from.
+    let dir = heavy_rail("routes-track-current");
+    ok(&netsmith(
+        &dir,
+        &[
+            "routes", "add-track", "--file", "led.nsm", "--net", "VCC", "--layer", "top",
+            "--width", "1.0", "--from", "5.0,5.0", "--to", "7.0,5.0",
+        ],
+    ));
+    let file = dir.join("led.routes.toml");
+    let written = fs::read_to_string(&file).unwrap();
+    let thin = written
+        .lines()
+        .map(|l| {
+            if l.contains("from = [5.0, 5.0]") {
+                let at = l.find("width = ").expect(l);
+                let rest = &l[at + "width = ".len()..];
+                let value_end = rest.find([',', ' ', '}']).unwrap_or(rest.len());
+                format!("{}width = 0.15{}", &l[..at], &rest[value_end..])
+            } else {
+                l.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_ne!(thin, written, "{written}");
+    fs::write(&file, thin).unwrap();
+    let run = netsmith(&dir, &["board", "drc", "led.nsm", "--format", "json"]);
+    let report: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+    let found: Vec<&serde_json::Value> = report["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|f| f["rule"] == "track_current")
+        .collect();
+    assert_eq!(found.len(), 1, "{report}");
+    let f = found[0];
+    assert_eq!(f["width"], 0.15, "{f}");
+    assert!(f["needed_width"].as_f64().unwrap() > 0.5, "{f}");
+    assert!(f["current"].as_f64().unwrap() >= 1.2, "{f}");
+    assert!(f["current_from"].as_str().unwrap().contains("rail `"), "{f}");
+    assert_eq!(f["rise"], 10.0, "{f}");
+    let said = f["message"].as_str().unwrap();
+    assert!(
+        said.contains("its net `VCC` carries") && said.contains("which needs"),
+        "{said}"
+    );
 }
 
 #[test]

@@ -26,6 +26,19 @@ impl Out<'_> {
         layer: Option<&str>,
         items: Vec<Item>,
     ) {
+        self.push_carrying(rule, message, at, layer, items, None);
+    }
+
+    /// A finding that has the numbers of copper held to a current (issue 1373).
+    pub(super) fn push_carrying(
+        &mut self,
+        rule: Rule,
+        message: String,
+        at: Pt,
+        layer: Option<&str>,
+        items: Vec<Item>,
+        carrying: Option<super::Carrying>,
+    ) {
         if let Some(severity) = self.m.rules.severity(rule) {
             self.findings.push(Finding {
                 rule,
@@ -34,6 +47,7 @@ impl Out<'_> {
                 at,
                 layer: layer.map(str::to_string),
                 items,
+                carrying,
             });
         }
     }

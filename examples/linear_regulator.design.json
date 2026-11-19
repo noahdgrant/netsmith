@@ -302,19 +302,22 @@
           "net": "3V3",
           "current": 0.05,
           "least_width": 0.006026516109918563,
-          "vias": 1
+          "vias": 1,
+          "source": "rail `output`: 0 mA to 50 mA"
         },
         {
           "net": "GND",
           "current": 0.1,
           "least_width": 0.015677619109034917,
-          "vias": 1
+          "vias": 1,
+          "source": "the sum of the currents on it with every load on at once: rail `stage.regulator.vin` 50 mA + rail `output` 50 mA"
         },
         {
           "net": "VIN",
           "current": 0.05,
           "least_width": 0.006026516109918563,
-          "vias": 1
+          "vias": 1,
+          "source": "rail `stage.regulator.vin`: 0 mA to 50 mA"
         }
       ],
       "outline": null,
