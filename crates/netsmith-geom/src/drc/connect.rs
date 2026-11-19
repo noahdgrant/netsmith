@@ -1,7 +1,13 @@
 //! Connectivity: which copper of a net is joined to which, and so which connections are
 //! missing, which tracks and vias lead nowhere, and which pours join what.
 //!
-//! Two items of one net are joined if they share a layer and touch. A pour joins every pad,
+//! Two items of one net are joined if they share a layer and their copper runs into each other
+//! by more than [`JOIN`] (issue #1334): a track whose end lies on a pad's edge, or whose round end
+//! runs into it, is joined to the pad, as KiCad's connectivity joins a track's end to what lies
+//! nearer than half its width; a round end that only touches the edge is not, in KiCad as here.
+//! A track's end is held when its round end runs into copper of its net, so such a track is not
+//! dangling either. Copper that only touches, or misses by less than [`NEAR_MISS`], is said so in
+//! the finding, so a near miss is never silent. A pour joins every pad,
 //! via and track of its net that touches its outline on its layer (the pour's fill is not
 //! computed, so copper the fill would cut off is not seen: ADR 0037). Each net's separate
 //! pieces are then joined, in the finding, by the shortest connections between their
@@ -9,7 +15,9 @@
 
 use super::checks::{EPS, Out};
 use super::model::{Copper, Kind, Model};
-use super::shape::{Shape, gap, near_pairs};
+#[cfg(doc)]
+use super::shape::JOIN;
+use super::shape::{Shape, gap, joined, near_pairs};
 use super::{Finding, Rule};
 use crate::artwork::Connect;
 use crate::geom::{Bounds, Pt};
@@ -38,21 +46,35 @@ impl Sets {
     }
 }
 
-fn touches(a: &Copper, b: &Copper) -> bool {
-    a.shapes.iter().any(|sa| {
-        b.shapes
-            .iter()
-            .any(|sb| sa.bounds_touch(sb) && gap(sa, sb).d == 0.0)
-    })
+/// Copper of one net this near other copper of it, and not joined, is a near miss: the finding
+/// that the two are not connected says how far apart they are (issue #1334).
+pub(crate) const NEAR_MISS: f64 = 0.01;
+
+/// What a finding adds of copper that misses other copper of its net by `gap` mm.
+fn near_miss(gap: f64, what: &str) -> String {
+    if gap >= NEAR_MISS {
+        String::new()
+    } else if gap < 1e-6 {
+        format!(
+            "; it only touches {what}, and copper that touches without running into it is not joined (as in KiCad): run it into it"
+        )
+    } else {
+        format!("; it misses {what} by {gap:.4} mm: run it into it")
+    }
 }
 
-impl Shape {
-    fn bounds_touch(&self, o: &Shape) -> bool {
-        self.bounds.min.x <= o.bounds.max.x
-            && o.bounds.min.x <= self.bounds.max.x
-            && self.bounds.min.y <= o.bounds.max.y
-            && o.bounds.min.y <= self.bounds.max.y
-    }
+fn touches(a: &Copper, b: &Copper) -> bool {
+    a.shapes
+        .iter()
+        .any(|sa| b.shapes.iter().any(|sb| joined(sa, sb)))
+}
+
+/// The least gap between the copper of two items.
+fn copper_gap(a: &Copper, b: &Copper) -> f64 {
+    a.shapes
+        .iter()
+        .flat_map(|sa| b.shapes.iter().map(move |sb| gap(sa, sb).d))
+        .fold(f64::MAX, f64::min)
 }
 
 /// Whether a pour reaches an item: the item touches the pour's outline, and for a pad the
@@ -257,10 +279,11 @@ fn missing_connections(out: &mut Out<'_>, sets: &mut Sets) {
             if d < 1e-6 {
                 continue;
             }
+            let miss = near_miss(copper_gap(ca, cb), &cb.item.what);
             out.push(
                 Rule::UnconnectedItems,
                 format!(
-                    "net {net}: {} is not connected to {}, {d:.3} mm away",
+                    "net {net}: {} is not connected to {}, {d:.3} mm away{miss}",
                     ca.item.what, cb.item.what
                 ),
                 Pt::new((qa.x + qb.x) / 2.0, (qa.y + qb.y) / 2.0),
@@ -296,10 +319,12 @@ fn dangling(out: &mut Out<'_>, neighbours: &[Vec<usize>], poured: &[Vec<usize>])
                 let ends = [c.anchors[0], c.anchors[1]];
                 let mut loose = None;
                 for end in ends {
-                    let at = Shape::disc(end, 0.0);
+                    // The round end of the track: KiCad joins what lies within half its width
+                    // of the end (issue #1334).
+                    let at = Shape::disc(end, track.width / 2.0);
                     let held = neighbours[i].iter().any(|&j| {
                         let o = &m.items[j];
-                        o.layers.contains(&layer) && o.shapes.iter().any(|s| gap(s, &at).d == 0.0)
+                        o.layers.contains(&layer) && o.shapes.iter().any(|s| joined(s, &at))
                     }) || poured[i].iter().any(|&p| {
                         m.pours[p].layer == layer
                             && m.pours[p].polygons.iter().any(|poly| {
@@ -308,15 +333,28 @@ fn dangling(out: &mut Out<'_>, neighbours: &[Vec<usize>], poured: &[Vec<usize>])
                             })
                     });
                     if !held {
-                        loose = Some(end);
+                        loose = Some((end, at));
                         break;
                     }
                 }
-                if let Some(end) = loose {
+                if let Some((end, at)) = loose {
+                    // The copper of the net the end only just misses.
+                    let at = &at;
+                    let miss = m
+                        .items
+                        .iter()
+                        .enumerate()
+                        .filter(|&(j, o)| j != i && o.net == c.net && o.layers.contains(&layer))
+                        .filter(|(_, o)| o.bounds.expanded(NEAR_MISS).overlaps(&at.bounds))
+                        .flat_map(|(_, o)| o.shapes.iter().map(move |s| (gap(s, at).d, o)))
+                        .filter(|(g, _)| *g < NEAR_MISS)
+                        .min_by(|x, y| x.0.total_cmp(&y.0))
+                        .map(|(g, o)| near_miss(g, &o.item.what))
+                        .unwrap_or_default();
                     out.push(
                         Rule::TrackDangling,
                         format!(
-                            "{} has an end at ({:.3}, {:.3}) that touches nothing of net {}",
+                            "{} has an end at ({:.3}, {:.3}) that touches nothing of net {}{miss}",
                             c.item.what,
                             end.x,
                             end.y,

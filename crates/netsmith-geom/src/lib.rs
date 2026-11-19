@@ -51,7 +51,7 @@ pub use drc::constraints::{
     RelationEnd as ConstraintRelationEnd, SideRule, body_of as constraint_body_of,
     outcome_findings as constraint_outcome_findings,
 };
-pub use drc::shape::{Gap as ShapeGap, Shape as DrcShape, gap as shape_gap};
+pub use drc::shape::{Gap as ShapeGap, JOIN as COPPER_JOIN, Shape as DrcShape, gap as shape_gap};
 pub use drc::{
     Branch as DrcBranch, Class as DrcClass, Counts as DrcCounts, Error as DrcError,
     Extras as DrcExtras, FONT_MARGIN as DRC_FONT_MARGIN, Finding as DrcFinding,
