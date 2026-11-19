@@ -14,7 +14,8 @@ pub struct Args {
     /// The source file; with none, the project's boards.
     #[arg(value_name = "FILE.NSM")]
     pub file: Option<String>,
-    /// Make a guideline finding an error for this run.
+    /// Make a guideline finding, and a part with no room among the locked parts, an error for
+    /// this run.
     #[arg(long)]
     pub strict: bool,
     #[command(flatten)]
