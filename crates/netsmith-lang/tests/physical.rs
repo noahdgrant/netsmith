@@ -301,3 +301,61 @@ fn case_of_an_enclosure_prints_back() {
     assert_eq!(file.definitions[0].kind, DefKind::Enclosure);
     assert_eq!(file.to_source(), text);
 }
+
+const RF: &str = "\
+physical for Radio {
+    .ant within 8mm of .radio.ant
+    .radio.ant route one_layer
+    .feed.line route any_layer
+}
+";
+
+#[test]
+fn a_within_and_a_route_statement_name_a_part_a_pin_and_a_word() {
+    let file = parse(RF).unwrap();
+    let items = &file.physicals[0].items;
+    let Item::Within(w) = &items[0] else {
+        panic!("a within statement: {:?}", items[0])
+    };
+    assert_eq!(w.subject.to_source(), ".ant");
+    assert_eq!(w.distance.to_source(), "8mm");
+    assert_eq!(w.pin.to_source(), ".radio.ant");
+    let Item::Route(r) = &items[1] else {
+        panic!("a route statement")
+    };
+    assert_eq!(r.pin.to_source(), ".radio.ant");
+    assert!(r.one_layer);
+    let Item::Route(r) = &items[2] else {
+        panic!("a route statement")
+    };
+    assert!(!r.one_layer);
+    let printed = file.to_source();
+    for line in [
+        ".ant within 8mm of .radio.ant",
+        ".radio.ant route one_layer",
+        ".feed.line route any_layer",
+    ] {
+        assert!(printed.contains(line), "{printed}");
+    }
+    assert_eq!(parse(&printed).unwrap().to_source(), printed);
+}
+
+#[test]
+fn a_within_and_a_route_statement_need_each_part_of_them() {
+    let at = |body: &str| parse(&format!("physical for T {{\n    {body}\n}}\n")).unwrap_err();
+    let e = at(".ant within 8mm .radio.ant");
+    assert!(e.message.contains("`of` and the pin"), "{}", e.message);
+    let e = at(".radio.ant route two_layers");
+    assert!(
+        e.message.contains("`one_layer` or `any_layer` after `route`"),
+        "{}",
+        e.message
+    );
+}
+
+#[test]
+fn within_of_and_route_are_still_ordinary_names() {
+    let file =
+        parse("board B {\n    .within: Length\n    .route: Length\n    .of &= 2mm\n}\n").unwrap();
+    assert_eq!(file.definitions.len(), 1);
+}

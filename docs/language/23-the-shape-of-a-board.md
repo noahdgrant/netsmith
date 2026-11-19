@@ -58,6 +58,7 @@ physical for Cased {
 - **`case { ... }`** is the section for what the case fixes: the outline, the cutouts, the mounting holes (`MountingHole`), the fiducials (`Fiducial`) and the labels (`Label`) of the board, and the case's own STEP file (`CaseModel`, see _A case model_). It holds the same statements as the rest of the unit, and lifts out unchanged into an `enclosure` that several boards share (_A shared enclosure_, below). These six belong in it; a keepout may be anywhere in the unit.
 - **A path crosses a module boundary here for any statement of physical intent.** `.sensor.j.place.left` names the header inside the `Sensor` module. The circuit source reaches into a module only to narrow a value (ADR 0116); the physical file can also state physical intent about the part. A statement may set or compare only a part's `.place`, a part's `.height` and `.height_growth`, a part's `.standoff`, a part's or the board's `.routing_margin`, and what the unit declares itself (the fields of its `.outline`, `.window`, `.rib`). Anything that changes what a part is, or a connection, is refused.
 - **A relation between two parts** is the equation of _Where a part goes_: `.b.place.x - .a.place.x == 17.5mm +/- 0.05mm`. The placer holds it and `fab` measures it (_A relation between two parts_).
+- **A part near a pin** is `.antenna within 8mm of .radio.ant` (_A part near a pin_), and **a net on one layer** is `.radio.ant route one_layer` (_RF lines and a net on one layer_). The placer and the router hold them and `fab` measures them.
 - **`.place.side` on a module** is a requirement on every part of it, at any depth. A module with an exception states the faces of its parts one by one and none for itself; two lines that disagree are an error that names both. `.place.side` with no path, on the board itself, is the same requirement on every part of the board (_A board on one face_).
 - **`.silk` and `.silk_text`** say what the silkscreen prints for a part: nothing, or a text in place of its designator (_Silkscreen text_). `.silk` on a module or on the board reaches every part inside it.
 - The case numbers are the maintainer's file to review: put the source of each (a drawing, a sheet) in a comment above the line, and never invent one.
@@ -347,14 +348,15 @@ With `--strict` (or `guidelines = "error"` in netsmith.toml, for `board check`, 
 
 Every connection the router draws has a class, derived from the board with nothing written in the source (issue #416). In the order the router routes them:
 
-1. **Escape**: a connection that must reach a plane, or that ends on a pad deep in a fine-pitch grid of pads, which has the fewest ways out.
-2. **Decoupling**: a decoupling capacitor's pad to the power pin it decouples, the pair the route scorecard measures.
-3. **Pair**: a net of a diff pair (see Diff pairs).
-4. **Clock**: a net on a crystal (a part of the kind `Crystal`, or that provides it), or whose name has `clk`, `xin`, `xout` or `xtal` in it, but not a net with a plane or a pour (a crystal's ground).
-5. **Power**: a net that carries at least 100 mA.
-6. Everything else.
+1. **RF**: a net with a stated impedance of one track (a `TrackImpedance`, issue #1274; see _RF lines and a net on one layer_). It comes first in every order, the first try's too, and from the second try on its copper is not ripped up for a later class.
+2. **Escape**: a connection that must reach a plane, or that ends on a pad deep in a fine-pitch grid of pads, which has the fewest ways out.
+3. **Decoupling**: a decoupling capacitor's pad to the power pin it decouples, the pair the route scorecard measures.
+4. **Pair**: a net of a diff pair (see Diff pairs).
+5. **Clock**: a net on a crystal (a part of the kind `Crystal`, or that provides it), or whose name has `clk`, `xin`, `xout` or `xtal` in it, but not a net with a plane or a pour (a crystal's ground).
+6. **Power**: a net that carries at least 100 mA.
+7. Everything else.
 
-The order is fixed. When the router's first try leaves connections, its second try routes the lines of the first try again with the classes in turn, each class in the order it had, and every later try keeps the classes in turn too. On those tries the copper of a decoupling, pair or clock connection is never ripped up for a connection of a later class: a later connection goes round it or is left, and the pass that takes track off the pours (see Pours) leaves it where it is too. An escape or power connection keeps its place in the order but may be ripped up and routed again (a power net at its full width). The first try is the router's own order with no classes, so a board that routes on its first try is routed exactly as before. This was decided by the agent under the owner's delegation of 2026-11-13: protecting every class left a dense board with a QFN unrouted, and routing the classes in turn on every try made one try of such a board finish less often (issue #431).
+The order is fixed. When the router's first try leaves connections, its second try routes the lines of the first try again with the classes in turn, each class in the order it had, and every later try keeps the classes in turn too. On those tries the copper of a decoupling, pair or clock connection is never ripped up for a connection of a later class: a later connection goes round it or is left, and the pass that takes track off the pours (see Pours) leaves it where it is too. An RF connection is protected as these are. An escape or power connection keeps its place in the order but may be ripped up and routed again (a power net at its full width). The first try is the router's own order with no classes, so a board that routes on its first try is routed exactly as before. This was decided by the agent under the owner's delegation of 2026-11-13: protecting every class left a dense board with a QFN unrouted, and routing the classes in turn on every try made one try of such a board finish less often (issue #431).
 
 ### Connections left: rounds of rip-up
 
@@ -490,6 +492,70 @@ The nets of `canh` and `canl` are a pair to the router, matched to the bus's 2.5
 When a try of the router has routed every connection, and after the passes for diff pairs, pours and decoupling capacitors, it takes vias out (issue #431, as the "remove vias" pass of KiCad's router does): each connection with vias is routed again with a via three times its usual cost, against all the other copper, and the new copper is kept only if it has fewer vias, is at most 2 mm longer for each via it gives up (and at most 10 % longer), and lays at most 5 mm more track for each via on another net's pour. A connection that cannot lose a via so is tried once more with the one connection its way crosses routed again after it, kept only if the two together have fewer vias on the same terms. Vias that join a plane or a pour (every via of a poured or plane net, and a decoupling capacitor's via), vias side by side on a net whose current needs them, and a diff pair's vias are left where they are. No connection is left unrouted, so a board routes as completely as before; the diff pairs' meanders, which match the lengths it leaves, the teardrops and the rounded bends come after. Measured on the three ported boards (2026-11-13, the agent's decision under the owner's delegation): RP2350 142 to 134 vias, Orbit 94 to 85, the Easyduino 105 to 98, with routed length no longer and track on the pours within 4 mm of before.
 
 A pad of a plane net that is not through-hole gets a via of its own beside it, joined by a short track, as its way to the plane. Two such pads can share one (issue #834): after the vias are taken out, two pads of one plane net on the same face, at most 1.5 mm apart and neither a decoupling capacitor's pad, are joined by a track instead, searched for against all the other copper and kept only if it needs no via and is at most 2 mm long; the second pad's via goes, and the first pad's via is the way to the plane of both. A via is shared by two pads at most, the nearest pairs first, and a net whose current needs vias side by side shares none. And a pad in an outer pour of its own net gives its via up once the pours are stitched: the pour joins the pad, and a stitching via the pour reaches joins the pour to the plane. Whether the pour reaches the pad is the ratsnest's, with the pour filled as the Gerbers fill it, less the copper narrower than its minimum width (0.25 mm) and its copper islands, as KiCad's fill has it; a pad the fill leaves on an island with no via keeps its via, and so does a pad the fill joins by fewer than two thermal spokes, counted as KiCad's refill leaves them (issue #1115): KiCad's check would call it a starved thermal relief, and its track and via join it as a second spoke would. KiCad's own check of a board routed so finds every pad joined to its plane.
+
+### RF lines and a net on one layer
+
+A line that carries a radio's signal, from its antenna pin to the connector, must be short, on one layer and without a via: a via is a step in its impedance and a stub (issue #1274, owner decision). A net with a stated impedance of one track, a `TrackImpedance` (chapter _The process of a board_, "Impedance targets"), is an **RF net**, with nothing more written: the placer weighs its length ten times a plain net's of two pads, so its parts are placed first and its line short; the router routes it first (_How the router orders the nets_) and on one copper layer with no via: the outer layer every pad of the net has copper on, the front first. A net of a `PairImpedance` is a diff pair, routed as one (_Diff pairs_), and is no RF net, even with a `TrackImpedance` too.
+
+The physical file says how one net is routed, by a pin on it, as a `TrackImpedance` names its net by its `.line`: `.radio.ant route one_layer` routes any net on one layer with no via, and `.radio.ant route any_layer` lets an RF net change layers as any net does (it is still placed and routed first).
+
+```nsm solve place
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::sources::TrackImpedance
+
+board Feed {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .radio: Header1x2
+    .antenna: Header1x2
+    .sense: Header1x2
+    .antenna.p1 ~ .radio.p1
+    .feed: TrackImpedance { .impedance &= 50ohm }
+    .feed.line ~ .radio.p1
+    .sense.p1 ~ .radio.p2
+}
+```
+
+```nsm-physical
+physical for Feed {
+    // The sense line runs under no other copper: one layer, no via.
+    .sense.p1 route one_layer
+}
+```
+
+A net with no way on its one layer is left unrouted, as any connection the router cannot make, and `fab` says so; it is never given a via. Copper of the routes file, or a board from elsewhere, that puts such a net on two layers or gives it a via is a finding of the rule `constraint`, which stops `fab`:
+
+```text
+error [constraint] constraint sense.p1 route one_layer (feed.physical.nsm:3) is violated: the net `net-radio.p2` has tracks on B.Cu, F.Cu and 1 via, and it is routed on one layer with no via: route it again on one layer (`netsmith routes delete --net net-radio.p2` drops hand-drawn copper), or say `route any_layer` of it in the physical file
+```
+
+An RF net's finding is named after the member that states its impedance, `feed route one_layer (an RF net: ...)`. A net whose pads are on both faces, with no hole, has no one layer: the router routes it as any net, and the check reports it. Two `route` statements that say different things of one net are an error of `build` that names both, and so is a `route` of a pin on no net. Not built: a layer named for the net (`route one_layer` takes the layer its pads are on), and a length limit of the physical file (a datasheet's `route NAME .pin length LENGTH` is one, chapter _Parts_).
+
+Misuse: the net is named by a part.
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+
+board Unnamed {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .radio: Header1x2
+}
+```
+
+```nsm-physical
+physical for Unnamed {
+    .radio route one_layer
+}
+```
+
+```text
+error: `.radio route one_layer` names the net by a pin on it, and `.radio` is a part
+  --> main.physical.nsm:2:5
+  |
+2 |     .radio route one_layer
+  |     ^^^^^^
+```
 
 ### Track widths by rail
 
@@ -2213,6 +2279,76 @@ error: `row .pads.tp1 .. .pads.tp4` has a gap: `pads` has no member `tp3`, and a
   |
 2 |     row .pads.tp1 .. .pads.tp4 along x pitch 5mm
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+#### A part near a pin
+
+A connector that feeds an antenna, a crystal that drives a pin, a part whose line must be short: a datasheet or an RF layout gives the most distance from a part to one pin of another, and the physical file states it as a requirement (issue #1274): `.antenna within 8mm of .radio.ant`. The first path is a part, or a pin of a part; the path after `of` is a pin of a part; the distance is one length above zero. It may reach into modules by path, as every requirement of the physical file does, and a module's own physical file may state it of its parts.
+
+```nsm solve place
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+
+module Radio {
+    .ant: Pin
+    .row_a: Header1x2
+    .row_a.p1 ~ .ant
+}
+
+board Linked {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .radio: Radio
+    .antenna: Header1x2
+    .antenna.p1 ~ .radio.ant
+}
+```
+
+```nsm-physical
+import std::pcb::Outline
+
+physical for Linked {
+    case {
+        .outline: Outline { .width &= 50mm; .height &= 30mm }
+    }
+
+    // Radio datasheet, antenna layout: the connector within 8 mm of the antenna pin.
+    .antenna within 8mm of .radio.row_a.p1
+}
+```
+
+It is measured as a datasheet's `near ... within` is (chapter _Parts_): pad centre to pad centre, from the nearest pad of the part on the net of the pin (any of its pads when none is on it; the pin's own pads when the statement names a pin of the part) to the nearest pad of the pin. The placer pulls the part to the pin as it pulls a decoupling capacitor, and holds the distance as a hard rule, as it holds a wall: each millimetre past it costs as much as a millimetre into a wall. `fab` and `board drc` measure it on the board, and a part farther than the distance is a finding of the rule `constraint`, which stops `fab` as any requirement does (`constraints = "warn"` makes it a warning):
+
+```text
+error [constraint] constraint antenna within 8 mm of radio.row_a.p1 (linked.physical.nsm:9) is violated: the nearest of pad 1 of J2 is 19.5 mm from pad 1 of J1, centre to centre, and it allows at most 8 mm (11.5 mm over): move J2 nearer J1
+```
+
+`netsmith board fab --format json` has the same as data in `requirements`, with `measure` `distance`, `measured`, `max` and `over`. A part of a bank (a `CapacitorBank`'s path) is no part the board has, and a `within` statement about one is not measured.
+
+Misuse: the end is a part, not a pin.
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+
+board Loose {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .radio: Header1x2
+    .antenna: Header1x2
+}
+```
+
+```nsm-physical
+physical for Loose {
+    .antenna within 8mm of .radio
+}
+```
+
+```text
+error: `.radio` is a part, and `.antenna within 8mm of .radio` measures to a pin of a part, such as `.radio.ant`
+  --> main.physical.nsm:2:28
+  |
+2 |     .antenna within 8mm of .radio
+  |                            ^^^^^^
 ```
 
 #### A module's own physical file

@@ -5,7 +5,7 @@
 use crate::common;
 
 use common::*;
-use netsmith_geom::{Artwork, Constraint, Constraints, ConstraintMeasure, ConstraintRelation, ConstraintRelationEnd, SideRule, DrcRule, DrcSeverity};
+use netsmith_geom::{Artwork, Constraint, Constraints, ConstraintMeasure, ConstraintRelation, ConstraintRelationEnd, SideRule, DrcRule, DrcSeverity, OneLayerRule, PinDistanceRule};
 
 fn want(id: &str, parts: &[&str], measure: ConstraintMeasure, lo: f64, hi: f64) -> Constraint {
     Constraint {
@@ -23,6 +23,8 @@ fn set(list: Vec<Constraint>) -> Constraints {
         list,
         sides: Vec::new(),
         relations: Vec::new(),
+        distances: Vec::new(),
+        one_layer: Vec::new(),
         severity: DrcSeverity::Error,
     }
 }
@@ -268,6 +270,8 @@ fn a_face_is_checked_too() {
             side: "bottom".into(),
         }],
         relations: Vec::new(),
+        distances: Vec::new(),
+        one_layer: Vec::new(),
         severity: DrcSeverity::Error,
     };
     let o = &measure(&c, &board())[0];
@@ -365,6 +369,8 @@ fn between(measure: ConstraintMeasure, lo: f64, hi: f64) -> Constraints {
             lo,
             hi,
         }],
+        distances: Vec::new(),
+        one_layer: Vec::new(),
         severity: DrcSeverity::Error,
     }
 }
@@ -532,6 +538,8 @@ fn an_outcome_says_what_it_measured_for_a_program_to_read() {
             side: "bottom".into(),
         }],
         relations: Vec::new(),
+        distances: Vec::new(),
+        one_layer: Vec::new(),
         severity: DrcSeverity::Error,
     };
     let o = &measure(&sides, &board())[0];
@@ -543,4 +551,99 @@ fn an_outcome_says_what_it_measured_for_a_program_to_read() {
     let mut y = between(ConstraintMeasure::Top, 0.0, 0.0);
     y.relations[0].a.measure = ConstraintMeasure::Bottom;
     assert_eq!(measure(&y, &two_bodies((10.0, 10.0), (30.0, 16.0)))[0].measure, "relation_y");
+}
+
+/// A board with the connector `J1` (pads 1 on `RF` and 2 on `GND`) at `at` and the module `U1`
+/// (pad 5 on `RF`) at (10, 10), the line between them on the front, through a via to the back
+/// when `via` is set.
+fn rf_board(at: (f64, f64), via: bool) -> String {
+    let mut b = Pcb::new(2);
+    b.part(
+        "J1",
+        at,
+        0.0,
+        &[
+            smd("1", 0.0, 0.0, 0.6, 0.6, "RF"),
+            smd("2", 2.0, 0.0, 0.6, 0.6, "GND"),
+        ],
+        Draw::default(),
+    );
+    b.part(
+        "U1",
+        (10.0, 10.0),
+        0.0,
+        &[smd("5", 0.0, 0.0, 0.6, 0.6, "RF")],
+        Draw::default(),
+    );
+    if via {
+        let mid = ((at.0 + 10.0) / 2.0, (at.1 + 10.0) / 2.0);
+        b.track("RF", "F.Cu", at, mid, 0.3);
+        b.via("RF", mid, 0.6, 0.3);
+        b.track("RF", "B.Cu", mid, (10.0, 10.0), 0.3);
+    } else {
+        b.track("RF", "F.Cu", at, (10.0, 10.0), 0.3);
+    }
+    b.pcb()
+}
+
+fn rf_rules(within: f64) -> Constraints {
+    Constraints {
+        list: Vec::new(),
+        sides: Vec::new(),
+        relations: Vec::new(),
+        distances: vec![PinDistanceRule {
+            id: "ant within 8 mm of radio.ant".into(),
+            source: "widget.physical.nsm:3".into(),
+            part: "J1".into(),
+            pads: vec!["1".into()],
+            to: "U1".into(),
+            to_pads: vec!["5".into()],
+            within,
+        }],
+        one_layer: vec![OneLayerRule {
+            id: "radio.ant route one_layer".into(),
+            source: "widget.physical.nsm:4".into(),
+            net: "RF".into(),
+        }],
+        severity: DrcSeverity::Error,
+    }
+}
+
+#[test]
+fn a_part_within_a_distance_of_a_pin_is_measured_pad_centre_to_pad_centre() {
+    // Issue #1274: J1's pad 1 is 6 mm left of U1's pad 5, its pad 2 4 mm.
+    let all = measure(&rf_rules(8.0), &rf_board((4.0, 10.0), false));
+    assert!(all.iter().all(|o| o.satisfied), "{all:#?}");
+    assert_eq!(all[0].measured, Some(6.0));
+    assert_eq!(all[0].measure, "distance");
+    assert!((all[0].margin - 2.0).abs() < 1e-9);
+    let all = measure(&rf_rules(5.0), &rf_board((4.0, 10.0), false));
+    assert!(!all[0].satisfied);
+    assert_eq!(
+        all[0].message,
+        "constraint ant within 8 mm of radio.ant (widget.physical.nsm:3) is violated: the nearest of pad 1 of J1 is 6 mm from pad 5 of U1, centre to centre, and it allows at most 5 mm (1 mm over): move J1 nearer U1"
+    );
+    assert!((all[0].over - 1.0).abs() < 1e-9);
+    assert_eq!(all[0].parts, ["J1", "U1"]);
+}
+
+#[test]
+fn a_net_on_one_layer_with_a_via_is_a_violation_that_says_how_to_fix_it() {
+    let all = measure(&rf_rules(8.0), &rf_board((4.0, 10.0), false));
+    assert!(all[1].satisfied, "{all:#?}");
+    assert_eq!(
+        all[1].message,
+        "constraint radio.ant route one_layer (widget.physical.nsm:4) is satisfied: the net `RF` has its tracks on F.Cu and no via"
+    );
+    let all = measure(&rf_rules(8.0), &rf_board((4.0, 10.0), true));
+    assert!(!all[1].satisfied);
+    assert_eq!(all[1].measured, Some(1.0));
+    assert_eq!(
+        all[1].message,
+        "constraint radio.ant route one_layer (widget.physical.nsm:4) is violated: the net `RF` has tracks on B.Cu, F.Cu and 1 via, and it is routed on one layer with no via: route it again on one layer (`netsmith routes delete --net RF` drops hand-drawn copper), or say `route any_layer` of it in the physical file"
+    );
+    let found = rf_rules(8.0).findings(&Artwork::parse(&rf_board((4.0, 10.0), true)).unwrap());
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].rule, DrcRule::Constraint);
+    assert_eq!(found[0].severity, DrcSeverity::Error);
 }

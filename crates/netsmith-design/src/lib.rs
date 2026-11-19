@@ -1200,6 +1200,10 @@ pub struct Designed {
     pub constraint_sites: Sites,
     /// Where the design states each of `design.features.offsets`, in the same order.
     pub offset_sites: Vec<(netsmith_check::SourceId, netsmith_lang::Span)>,
+    /// Where the design states each of `design.features.pin_distances`, in the same order.
+    pub pin_distance_sites: Vec<(netsmith_check::SourceId, netsmith_lang::Span)>,
+    /// Where the design states each of `design.features.net_routes`, in the same order.
+    pub net_route_sites: Vec<(netsmith_check::SourceId, netsmith_lang::Span)>,
     /// Where the design states each of `design.features.protrusions`, in the same order.
     pub protrusion_sites: Vec<Vec<(netsmith_check::SourceId, netsmith_lang::Span)>>,
     /// Where the design states the file of each of `design.features.models`, in the same order.
@@ -1591,6 +1595,10 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     features.constraints = constraints;
     let (offsets, offset_sites) = features::offsets(model, &mut errors);
     features.offsets = offsets;
+    let ((pin_distances, pin_distance_sites), (net_routes, net_route_sites)) =
+        features::rf_statements(model, &mut errors);
+    features.pin_distances = pin_distances;
+    features.net_routes = net_routes;
     let (protrusions, mut protrusion_sites) = features::protrusions(model, &mut errors);
     features.protrusions = protrusions;
     let (models, mut model_sites) = features::models(model, &mut errors);
@@ -1711,6 +1719,8 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
             },
             constraint_sites,
             offset_sites,
+            pin_distance_sites,
+            net_route_sites,
             protrusion_sites,
             model_sites,
             case_model_sites,

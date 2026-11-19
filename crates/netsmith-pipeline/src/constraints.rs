@@ -26,7 +26,7 @@ use netsmith_core::{Design, PlaceField};
 use netsmith_design::Sites;
 use netsmith_geom::{
     Constraint, ConstraintMeasure, ConstraintRelation, ConstraintRelationEnd, Constraints,
-    DrcSeverity, SideRule,
+    DrcSeverity, OneLayerRule, PinDistanceRule, SideRule,
 };
 use netsmith_lang::Span;
 
@@ -88,6 +88,27 @@ pub fn name_offset_sources(design: &mut Design, sites: &[(SourceId, Span)], sour
         offset.source = lines_of(std::slice::from_ref(site), sources);
     }
     for site in sites {
+        remember_lines(design, std::slice::from_ref(site), sources);
+    }
+}
+
+/// Where the design states each of a list of features, in its order.
+type Stated<'a> = &'a [(SourceId, Span)];
+
+/// Say where the design states each `within` and `route` statement of the physical files
+/// (`design.features.pin_distances` and `net_routes`, issue #1274), in the order of the sites.
+pub fn name_rf_sources(
+    design: &mut Design,
+    (distances, routes): (Stated<'_>, Stated<'_>),
+    sources: &Sources,
+) {
+    for (d, site) in design.features.pin_distances.iter_mut().zip(distances) {
+        d.source = lines_of(std::slice::from_ref(site), sources);
+    }
+    for (r, site) in design.features.net_routes.iter_mut().zip(routes) {
+        r.source = lines_of(std::slice::from_ref(site), sources);
+    }
+    for site in distances.iter().chain(routes) {
         remember_lines(design, std::slice::from_ref(site), sources);
     }
 }
@@ -161,7 +182,12 @@ fn measure(field: PlaceField) -> ConstraintMeasure {
 /// The requirements of `design` for the check, if it has any. A violation is a warning when
 /// `warn` is set (`constraints = "warn"`), else an error.
 pub fn of_design(design: &Design, warn: bool) -> Option<Constraints> {
-    if design.features.constraints.is_empty() && design.features.offsets.is_empty() {
+    let one_layer_nets = design.features.one_layer_nets();
+    if design.features.constraints.is_empty()
+        && design.features.offsets.is_empty()
+        && design.features.pin_distances.is_empty()
+        && one_layer_nets.is_empty()
+    {
         return None;
     }
     let mut list = Vec::new();
@@ -233,10 +259,58 @@ pub fn of_design(design: &Design, warn: bool) -> Option<Constraints> {
             })
         })
         .collect();
+    // A part within a distance of a pin, and the nets on one layer (issue #1274).
+    let distances = netsmith_pcb::PinNear::of_design(design)
+        .into_iter()
+        .map(|d| PinDistanceRule {
+            id: d.id,
+            source: d.source,
+            part: d.part,
+            pads: d.pads,
+            to: d.to,
+            to_pads: d.to_pads,
+            within: d.within,
+        })
+        .collect();
+    let one_layer = one_layer_nets
+        .into_iter()
+        .map(|net| {
+            let stated = design
+                .features
+                .net_routes
+                .iter()
+                .find(|r| r.net == net && r.one_layer);
+            match stated {
+                Some(r) => OneLayerRule {
+                    id: format!("{} route one_layer", r.pin),
+                    source: r.source.clone(),
+                    net,
+                },
+                // An RF net's default: named after the member that states its impedance.
+                None => {
+                    let path = design
+                        .features
+                        .impedance_targets
+                        .iter()
+                        .find(|t| t.nets == [net.clone()])
+                        .map_or(net.clone(), |t| t.path.clone());
+                    OneLayerRule {
+                        id: format!(
+                            "{path} route one_layer (an RF net: its impedance is stated; `route any_layer` lets it change layers)"
+                        ),
+                        source: String::new(),
+                        net,
+                    }
+                }
+            }
+        })
+        .collect();
     Some(Constraints {
         list,
         sides,
         relations,
+        distances,
+        one_layer,
         severity: if warn {
             DrcSeverity::Warning
         } else {

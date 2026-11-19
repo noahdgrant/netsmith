@@ -21,6 +21,16 @@ fn target(nets: &[&str], ohms: f64, spacing: Option<f64>) -> ImpedanceTarget {
     }
 }
 
+/// `route any_layer` of `net` (issue #1274): an RF net that may change layers.
+pub(crate) fn any_layer(board: &mut Board, net: &str) {
+    board.net_routes.push(netsmith_core::NetRoute {
+        net: net.into(),
+        pin: "r1.b".into(),
+        one_layer: false,
+        source: "t.physical.nsm:2".into(),
+    });
+}
+
 /// netsmith's own design rules check of the board as `fab` gives it the targets' widths: its
 /// errors and its `track_impedance` findings.
 fn findings(board: &Board) -> Vec<String> {
@@ -52,6 +62,9 @@ fn a_net_with_a_target_is_drawn_at_the_width_that_gives_it_on_each_layer() {
     // narrower for 50 ohm than the microstrip outside.
     let mut board = walled(common::four_layer_signal_process());
     board.set_impedance_targets(vec![target(&["S"], 50.0, None)]);
+    // An RF net stays on one layer unless it says otherwise (issue #1274): this one crosses the
+    // wall on the inner layer.
+    any_layer(&mut board, "S");
     let front = board.target_width("S", CopperLayer::Front).unwrap();
     let inner = board.target_width("S", CopperLayer::Inner(2)).unwrap();
     assert!(inner < front - 1e-9, "{front} mm outside, {inner} mm inside");
@@ -79,6 +92,9 @@ fn a_net_with_a_target_is_drawn_at_the_width_that_gives_it_on_each_layer() {
 fn the_check_names_a_track_of_a_target_net_drawn_at_another_width() {
     let mut board = walled(common::four_layer_signal_process());
     board.set_impedance_targets(vec![target(&["S"], 50.0, None)]);
+    // An RF net stays on one layer unless it says otherwise (issue #1274): this one crosses the
+    // wall on the inner layer.
+    any_layer(&mut board, "S");
     let routing = route_with(&mut board, RouteOptions::default());
     assert!(routing.left.is_empty(), "{:?}", routing.left.lines);
     // The longest track of S, made 0.1 mm wider than its target.

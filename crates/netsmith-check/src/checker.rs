@@ -2170,6 +2170,8 @@ impl<'a> Checker<'a> {
                     }
                 }
                 Item::Row(r) => self.row(r),
+                Item::Within(w) => self.within(w),
+                Item::Route(r) => self.route_layers(r),
                 Item::Polygon(p) => self.polygon(p),
                 Item::PhysicalFile(f) => self.physical_file_here(f),
                 Item::Anchor(a) => self.anchor_here(a),

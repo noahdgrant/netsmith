@@ -157,7 +157,9 @@ interface Rail {
 /// router draws. The router draws the net at that width on each layer (issue #1025), never
 /// narrower than the process's least track or what the net's current needs; what the board
 /// cannot give (no build-up, no width in a formula's domain) is a finding of the guideline
-/// `impedance target`.
+/// `impedance target`. The net is an RF net (issue #1274): the placer and the router take it
+/// first and keep it short, and the router keeps it on one layer with no via, unless the
+/// physical file says `.pin route any_layer` of it.
 ///
 /// Why an interface of its own, joined with `~` (the choice follows `Rail`'s `.min_track`,
 /// the owner's decision of 2026-11-02 that a width is a field of a std interface and not a
