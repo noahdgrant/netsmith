@@ -6,6 +6,7 @@
 
 #![cfg_attr(not(test), warn(unreachable_pub))]
 
+mod eagle_footprint;
 mod footprint_import;
 mod footprint_spec;
 mod footprint_table;
@@ -22,6 +23,7 @@ mod sexp;
 mod stdlib;
 mod symbols;
 
+pub use eagle_footprint::{EagleSource, import_eagle_footprint};
 pub use footprint_import::{FootprintSource, ImportedFootprint, import_footprint};
 pub use footprint_spec::{FootprintSpec, LIBRARY as GENERATED_FOOTPRINT_LIBRARY};
 pub use footprint_table::{BODY_TOLERANCE, FootprintTable, PITCH_TOLERANCE, TableSize};
