@@ -30,6 +30,10 @@ _Avoid_: Termination voltage, CV voltage
 **Footprint**:
 The copper pads and outline a part has on a board, named by the CAD tool's library.
 
+**Footprint table**:
+The numbers of a datasheet's package drawing that a footprint must have, stated by the `table` of its row in `kicad.toml`: `pads` (counted by number), `pitch` (the least distance between two pads in one row or column) and `body` (what the footprint draws on `F.Fab`, across and along), `table = "pads=8, pitch=1.27mm, body=3.9x4.9mm"` (issue #1281). `build` and `fab` measure the footprint against it and stop on a disagreement. Not a pin table, which says which pad is which pin.
+_Avoid_: Land-pattern spec, package spec
+
 **Function**:
 One of the things a pin can be, listed with `fn` in its pinout row (`fn GPIO UART1_TX`). A connected pin with more than one function needs the board to choose, `.u.pa2.function &= UART1_TX`; there is no default, and one function can be chosen on only one pin of a part, except a **class** (next paragraph), which any number of pins can be. A function may carry its own kind after a colon (`fn GPIO:bidirectional UART1_TX:output`, ADR 0046); the net rules judge a pin by the kind of the function chosen, and the pin's kind is the default for any function without one.
 A function may be listed by a peripheral instead of a row, and a **class** is a function that rows list (`fn APP_GPIO NET_GPIO`) and peripherals are `on`: the function a board chooses for a pin that a core owns names the core (ADR 0071).

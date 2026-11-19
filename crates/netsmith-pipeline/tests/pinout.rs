@@ -208,3 +208,51 @@ fn an_output_symbol_pin_on_a_power_pin_that_gives_no_power_stops_the_build() {
         "{err}"
     );
 }
+
+/// Build the `Chip` board with a `table` on its row of `kicad.toml` (issue #1281); the error
+/// text if it does not build.
+fn build_with_table(table: &str) -> Result<(), String> {
+    let dir = TempDir::new("pinout-table");
+    common::chip_libraries(
+        dir.path(),
+        &common::chip_symbol(&common::CHIP_PINS),
+        &common::chip_footprint(&PADS),
+    );
+    let file = dir.path().join("kicad.toml");
+    let text = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(&file, format!("{text}table = \"{table}\"\n")).unwrap();
+    let libraries = netsmith_pipeline::Libraries::with_mapping(
+        netsmith_kicad::Mapping::for_project(Some(dir.path())).unwrap_or_else(|e| panic!("{e}")),
+        netsmith_kicad::SymbolLib::at(netsmith_testkit::sample_symbols()),
+        netsmith_pcb::FootprintLibrary::at(netsmith_testkit::sample_footprints()),
+    );
+    build_with(
+        "t.nsm",
+        &common::chip_source(common::CHIP_PART),
+        &Loader::std(),
+        &Catalogs::jlcpcb(),
+        &libraries,
+    )
+    .map(|_| ())
+}
+
+#[test]
+fn a_footprint_that_agrees_with_the_table_of_its_row_builds() {
+    // The chip's footprint: two columns of three pads, 1 mm apart.
+    build_with_table("pads=6, pitch=1mm").unwrap_or_else(|e| panic!("{e}"));
+}
+
+#[test]
+fn a_footprint_that_disagrees_with_the_table_of_its_row_stops_the_build_naming_both() {
+    let err = build_with_table("pads=8, pitch=0.95mm, body=1.6x2.9mm").unwrap_err();
+    assert!(
+        err.contains(
+            "error: B: U1 (Chip): the footprint `tiny:SOT-6` has 6 pads, but the table \
+             `pads=8, pitch=0.95mm, body=1.6x2.9mm` of kicad.toml line 11 says 8"
+        ),
+        "{err}"
+    );
+    assert!(err.contains("has its pads 1mm apart"), "{err}");
+    // The footprint draws nothing on `F.Fab`.
+    assert!(err.contains("draws no body on its fabrication layer"), "{err}");
+}
