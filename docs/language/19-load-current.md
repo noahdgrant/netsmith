@@ -470,7 +470,7 @@ It is judged at the parts' own figures, and again at each corner of the board (_
 error: `hold` does not hold `out` up at the corner `eol_cold` (253.15 K (-20degC), at the end of life): `out` draws 150mW for 6s (47.85mA at its least 3.135V), so the storage gives the chain 47.85mA (and leaks 5uA), 1.344J over the time; the storage (560mF of effective capacitance) gives only 1.141J between its starting 4.9V and 4.465V, where a peak of 100mA keeps `out` at 3.135V only while the storage is at 4.465V or more (600mV across `d`, 680mV of dropout in `ldo`, 50mV across the storage's ESR of 500mΩ): holding it takes 660mF of effective capacitance
 ```
 
-The storage's row is a project's (the standard catalog `supercap` has none yet, and the standard KiCad mapping no footprint for it, issue #1366), so the guide checks the board and `crates/netsmith-cli/tests/hold_up.rs` builds it with an invented row, a curve of its DC ESR over temperature and a `kicad.toml` row of its own, and holds the message to the one above.
+The storage's row is a project's (the standard catalog `supercap` has none yet, and the standard KiCad mapping no footprint for it, issue #1366), so the guide checks the board and `crates/netsmith-cli/tests/hold_up.rs` builds it with an invented row, a curve of its DC ESR over temperature and a `kicad.toml` row and footprint of its own (it needs no KiCad install), and holds the message to the one above.
 
 Rules.
 
