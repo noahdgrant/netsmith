@@ -2184,7 +2184,8 @@ impl Model {
     /// a `Rail`, the most that one load draws at an instant (an inrush): two loads on one rail
     /// each have their own, and each is checked against the rail's `max_peak_current`, which `~`
     /// does share. So are a `Rail`'s `burst` and `duty`, which say how that load draws its peak
-    /// (issue #1279).
+    /// (issue #1279). So are the `classes` of a `Sim`, the voltage classes one side of a SIM bus
+    /// supports (issue 1280).
     pub fn is_pin_figure(&self, field: FieldId) -> bool {
         let f = self.field(field);
         let kind = match f.name.as_str() {
@@ -2197,6 +2198,13 @@ impl Model {
                 return f.kind == FieldKind::Quantity(dimension)
                     && self.instance(f.owner).kind == InstKind::Interface
                     && self.instance(f.owner).type_name == "Rail";
+            }
+            // The voltage classes one side of a SIM bus supports (`std::bus::Sim`, issue 1280):
+            // the host's and the card's are held against each other, never made one.
+            "classes" => {
+                return matches!(f.kind, FieldKind::Enum(_))
+                    && self.instance(f.owner).kind == InstKind::Interface
+                    && self.instance(f.owner).type_name == "Sim";
             }
             "ii" => FieldKind::Quantity(Dimension::CURRENT),
             "roh" | "rol" => FieldKind::Quantity(Dimension::RESISTANCE),

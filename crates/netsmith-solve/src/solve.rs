@@ -1134,6 +1134,11 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
     for d in scenario_faults {
         s.report(d.source, d.span, d.message);
     }
+    // The voltage classes of a SIM bus against its supply (issue 1280).
+    let (sim_faults, sim_notes) = crate::sim::check(&s.model);
+    for d in sim_faults {
+        s.report(d.source, d.span, d.message);
+    }
     let supply_found = s.dc_check_supplies();
     s.dc_report_disagreements(supply_found);
     for d in netsmith_check::pin_faults_solved(model, &s.model) {
@@ -1156,6 +1161,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
     not_evaluated.extend(charging_notes);
     not_evaluated.extend(sequence_notes);
     not_evaluated.extend(scenario_notes);
+    not_evaluated.extend(sim_notes);
     // A bus on which one part states its role and another does not (ADR 0064).
     for (at, message) in netsmith_check::unstated_roles(&s.model) {
         not_evaluated.push(crate::levels::NotEvaluated {
