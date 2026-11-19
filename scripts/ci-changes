@@ -216,7 +216,7 @@ example_readers() {
         led_panel | outline_and_pours) echo "$any_example netsmith-fabricate" ;;
         two_buck) echo "$any_example netsmith-fabricate" ;;
         # The KiCad comparison of the parity audit (`kicad_drc.rs` of netsmith-fabricate) fabs it (issue #1185).
-        buck_converter) echo "$any_example netsmith-fabricate" ;;
+        buck_converter) echo "$any_example netsmith-fabricate netsmith-design" ;;
         rp2350_minimal) echo "$any_example netsmith-pcb netsmith-fabricate" ;;
         # The editor backend's tests open it as a project (the `example_project` helper takes a name).
         schematic_bench) echo "$any_example" ;;
