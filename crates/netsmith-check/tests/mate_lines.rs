@@ -135,7 +135,7 @@ fn two_outputs_that_only_the_carrier_joins_are_refused_once() {
 
 #[test]
 fn a_push_pull_output_and_an_open_drain_one_through_the_carrier_are_refused() {
-    // The open-drain card has no pull-up, which its own board refuses as well.
+    // No board pulls the open-drain line up, which the system refuses as well (issue #1436).
     let c = kit(("Talker", "out.line"), ("Opener", "out.line"));
     let m = messages(&c);
     let line = m

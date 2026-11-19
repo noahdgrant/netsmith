@@ -316,3 +316,84 @@ system Kit {
         "{fault}"
     );
 }
+
+/// A card whose open-drain driver is on contact 3 with no pull-up of its own, a carrier that
+/// pulls the line up to its own rail at `pull_up_to` and has a `Pad` receiver on it, and a
+/// second `Pad` on the card's own net (issue #1436).
+fn pulled_up_on_the_carrier(pull_up_to: &str) -> String {
+    format!(
+        r#"
+board Carrier {{
+    .vcc: Rail {{
+        .voltage &= {pull_up_to}
+        .pos.net &= "VCC"
+        .neg.net &= "GND"
+    }}
+    .u1: Pad
+    .u1.vdd ~ .vcc
+    .r1: Resistor {{ .resistance &= 4.7kohm +/- 1% }}
+    .slot: Socket1x4
+    .vcc.neg ~ .slot.p1
+    .vcc.pos ~> .r1 ~> .u1.in.line
+    .u1.in.line ~ .slot.p3
+}}
+
+board Card {{
+    .vcc: Rail {{
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+    }}
+    .u2: Opener
+    .u2.vdd ~ .vcc
+    .u3: Pad
+    .u3.vdd ~ .vcc
+    .j1: Header1x4
+    .vcc.neg ~ .j1.p1
+    .u2.out.line ~ .u3.in.line
+    .u2.out.line ~ .j1.p3
+}}
+
+system Kit {{
+    .carrier: Carrier
+    .card: Card
+    .carrier.slot.mating ~ .card.j1.mating
+}}
+"#
+    )
+}
+
+#[test]
+fn an_open_drain_driver_takes_its_high_from_a_pull_up_on_the_other_board() {
+    let s = run(&pulled_up_on_the_carrier("3.3V +/- 5%"));
+    let m = messages(&s);
+    assert!(
+        !m.iter().any(|m| m.contains("pull-up")),
+        "3.3 V meets both receivers' 2 V: {m:#?}"
+    );
+    let n = notes(&s);
+    assert!(
+        !n.iter().any(|n| n.contains("pull-up that would set")),
+        "the carrier's pull-up is read: {n:#?}"
+    );
+}
+
+#[test]
+fn a_pull_up_on_the_other_board_to_a_low_rail_fails_the_receivers_on_both_boards() {
+    let s = run(&pulled_up_on_the_carrier("1.8V +/- 5%"));
+    let m = messages(&s);
+    let faults: Vec<&String> = m
+        .iter()
+        .filter(|m| m.contains("pull-up `carrier.r1`"))
+        .collect();
+    assert!(
+        faults.iter().any(|f| f.contains("`card.u3.in.vih` needs 2V")),
+        "the receiver on the driver's own board: {m:#?}"
+    );
+    assert!(
+        faults
+            .iter()
+            .any(|f| f.contains("mated at") && f.contains("`carrier.u1.in.vih` needs 2V")),
+        "the receiver on the carrier: {m:#?}"
+    );
+}

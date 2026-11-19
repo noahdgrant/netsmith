@@ -48,8 +48,8 @@ pub struct ImportedFootprint {
     pub board_angle: f64,
     /// The `.kicad_mod` text.
     pub text: String,
-    /// What the import left out or changed, one line each (an Altium file's texts, a layer it
-    /// does not take); none for a KiCad file, which is taken whole.
+    /// What the import changed or left out that the person should check, one sentence each
+    /// (an Eagle package's drawings on a layer KiCad has none for); none from a KiCad file.
     pub notes: Vec<String>,
 }
 

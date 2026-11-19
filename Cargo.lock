@@ -914,6 +914,7 @@ dependencies = [
  "netsmith-kicad",
  "netsmith-sexp",
  "netsmith-testkit",
+ "roxmltree",
  "serde",
  "toml",
  "uuid",
