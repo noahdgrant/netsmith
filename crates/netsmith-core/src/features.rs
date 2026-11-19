@@ -51,6 +51,22 @@ pub struct BranchCurrent {
     pub vias: usize,
 }
 
+/// A pin on a net with a known current whose own current the model knows and is less than the
+/// net's (issue #1333): the sum of what the rails and the parts that pass a current through it
+/// carry at their largest, as a feedback divider's top resistor carries microamps from a rail
+/// of amps. The design rules check sizes the copper that only feeds such pins (and pins that
+/// state their current, [`BranchCurrent`]) for what flows to them; the router does not read it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PinCurrent {
+    pub net: String,
+    /// The pin's path in the design (`reg.r_top.p1`).
+    pub path: String,
+    /// The pads of the pin: one for each pad, and for each part of a bank.
+    pub pins: Vec<PinRef>,
+    /// The most that flows through the pin, in amperes.
+    pub current: f64,
+}
+
 /// The impedance a design states for the tracks of one net or of a pair of nets (issue #1007):
 /// a `TrackImpedance` or a `PairImpedance` of the design (`std::pcb`).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -148,6 +164,11 @@ pub struct Features {
     /// design rules check holds that copper to it. Left out of a design file when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub branch_currents: Vec<BranchCurrent>,
+    /// The pins whose current the model knows, below their net's (issue #1333), by the pin's
+    /// path: the design rules check holds the copper that only feeds them to what they draw.
+    /// Left out of a design file when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pin_currents: Vec<PinCurrent>,
     pub outline: Option<Outline>,
     pub cutouts: Vec<Cutout>,
     pub pours: Vec<Pour>,

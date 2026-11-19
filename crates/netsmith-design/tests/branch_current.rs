@@ -111,3 +111,40 @@ fn a_rail_s_min_track_is_the_least_a_branch_is_drawn_at() {
     let b = &d.design.features.branch_currents[0];
     assert!((b.width - 0.3).abs() < 1e-9, "{b:?}");
 }
+
+#[test]
+fn a_feedback_divider_s_top_carries_what_flows_through_it_without_a_statement() {
+    // Issue #1333: a buck's output of 500 mA, whose feedback divider's top resistor takes
+    // microamps from it. Nothing states a current on a pin; the model knows the resistor's.
+    let src = include_str!("../../../examples/buck_converter.nsm");
+    let d = design(src).unwrap_or_else(|e| panic!("{e:?}"));
+    let f = &d.design.features;
+    assert!(f.branch_currents.is_empty(), "{:?}", f.branch_currents);
+    let net = f.net_currents.iter().find(|c| c.net == "3V3").unwrap();
+    let top = f
+        .pin_currents
+        .iter()
+        .find(|l| l.net == "3V3" && l.path.contains("rtop"))
+        .unwrap_or_else(|| panic!("{:?}", f.pin_currents));
+    assert!(
+        top.current > 0.0 && top.current < 0.01 * net.current,
+        "{top:?} on {net:?}"
+    );
+    assert_eq!(top.pins.len(), 1, "{top:?}");
+    // Every pin current is below its net's current, and is of a known net.
+    for l in &f.pin_currents {
+        let n = f.net_currents.iter().find(|c| c.net == l.net).unwrap();
+        assert!(l.current < n.current, "{l:?} on {n:?}");
+    }
+}
+
+#[test]
+fn a_pin_with_no_known_current_has_no_pin_current() {
+    // The probe header's pin is on `5V`, and nothing carries a current through it.
+    let d = design(&board("")).unwrap_or_else(|e| panic!("{e:?}"));
+    let paths: Vec<&str> = d.design.features.pin_currents.iter().map(|l| l.path.as_str()).collect();
+    assert!(!paths.contains(&"probe.p1"), "{paths:?}");
+    // The part's own rail draws up to 20 mA through `u.vdd.pos` of a 3 A net.
+    let u = d.design.features.pin_currents.iter().find(|l| l.path == "u.vdd.pos");
+    assert_eq!(u.map(|l| l.current), Some(0.02), "{paths:?}");
+}

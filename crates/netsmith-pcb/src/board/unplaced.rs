@@ -115,6 +115,7 @@ impl Unplaced {
             length_groups: design.features.length_groups.clone(),
             net_currents: design.features.net_currents.clone(),
             branch_currents: design.features.branch_currents.clone(),
+            pin_currents: design.features.pin_currents.clone(),
             overhang,
             pinned,
             imported: Default::default(),

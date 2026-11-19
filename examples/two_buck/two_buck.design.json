@@ -2662,6 +2662,423 @@
           "vias": 1
         }
       ],
+      "pin_currents": [
+        {
+          "net": "net-buck_3v3.light.anode",
+          "path": "buck_3v3.light.anode",
+          "pins": [
+            {
+              "refdes": "D1",
+              "pin": "2"
+            }
+          ],
+          "current": 0.0016818181818181817
+        },
+        {
+          "net": "GND",
+          "path": "buck_3v3.light.cathode",
+          "pins": [
+            {
+              "refdes": "D1",
+              "pin": "1"
+            }
+          ],
+          "current": 0.0016818181818181817
+        },
+        {
+          "net": "3V3",
+          "path": "buck_3v3.light_resistor.a",
+          "pins": [
+            {
+              "refdes": "R1",
+              "pin": "1"
+            }
+          ],
+          "current": 0.0016818181818181817
+        },
+        {
+          "net": "net-buck_3v3.light.anode",
+          "path": "buck_3v3.light_resistor.b",
+          "pins": [
+            {
+              "refdes": "R1",
+              "pin": "2"
+            }
+          ],
+          "current": 0.0016818181818181817
+        },
+        {
+          "net": "3V3",
+          "path": "buck_3v3.pg_pullup.resistor.a",
+          "pins": [
+            {
+              "refdes": "R2",
+              "pin": "1"
+            }
+          ],
+          "current": 0.000035000000000000004
+        },
+        {
+          "net": "net-buck_3v3.stage.divider.rbottom.a",
+          "path": "buck_3v3.stage.divider.rbottom.a",
+          "pins": [
+            {
+              "refdes": "R3",
+              "pin": "1"
+            }
+          ],
+          "current": 0.00037098255280073466
+        },
+        {
+          "net": "GND",
+          "path": "buck_3v3.stage.divider.rbottom.b",
+          "pins": [
+            {
+              "refdes": "R3",
+              "pin": "2"
+            }
+          ],
+          "current": 0.00037098255280073466
+        },
+        {
+          "net": "3V3",
+          "path": "buck_3v3.stage.divider.rtop.a",
+          "pins": [
+            {
+              "refdes": "R4",
+              "pin": "1"
+            }
+          ],
+          "current": 0.00038085385808607345
+        },
+        {
+          "net": "net-buck_3v3.stage.divider.rbottom.a",
+          "path": "buck_3v3.stage.divider.rtop.b",
+          "pins": [
+            {
+              "refdes": "R4",
+              "pin": "2"
+            }
+          ],
+          "current": 0.00038085385808607345
+        },
+        {
+          "net": "GND",
+          "path": "buck_3v3.stage.ic.enable_bottom.b",
+          "pins": [
+            {
+              "refdes": "R5",
+              "pin": "2"
+            }
+          ],
+          "current": 2.23995947391004
+        },
+        {
+          "net": "VIN",
+          "path": "buck_3v3.stage.ic.enable_top.a",
+          "pins": [
+            {
+              "refdes": "R6",
+              "pin": "1"
+            }
+          ],
+          "current": 0.7378618018701351
+        },
+        {
+          "net": "GND",
+          "path": "buck_3v3.stage.ic.vin.neg",
+          "pins": [
+            {
+              "refdes": "U1",
+              "pin": "6"
+            },
+            {
+              "refdes": "U1",
+              "pin": "7"
+            }
+          ],
+          "current": 2.23995947391004
+        },
+        {
+          "net": "VIN",
+          "path": "buck_3v3.stage.ic.vin.pos",
+          "pins": [
+            {
+              "refdes": "U1",
+              "pin": "2"
+            }
+          ],
+          "current": 0.7378618018701351
+        },
+        {
+          "net": "net-buck_5v.light.anode",
+          "path": "buck_5v.light.anode",
+          "pins": [
+            {
+              "refdes": "D2",
+              "pin": "2"
+            }
+          ],
+          "current": 0.003484848484848485
+        },
+        {
+          "net": "GND",
+          "path": "buck_5v.light.cathode",
+          "pins": [
+            {
+              "refdes": "D2",
+              "pin": "1"
+            }
+          ],
+          "current": 0.003484848484848485
+        },
+        {
+          "net": "5V",
+          "path": "buck_5v.light_resistor.a",
+          "pins": [
+            {
+              "refdes": "R7",
+              "pin": "1"
+            }
+          ],
+          "current": 0.003484848484848485
+        },
+        {
+          "net": "net-buck_5v.light.anode",
+          "path": "buck_5v.light_resistor.b",
+          "pins": [
+            {
+              "refdes": "R7",
+              "pin": "2"
+            }
+          ],
+          "current": 0.003484848484848485
+        },
+        {
+          "net": "5V",
+          "path": "buck_5v.pg_pullup.resistor.a",
+          "pins": [
+            {
+              "refdes": "R8",
+              "pin": "1"
+            }
+          ],
+          "current": 0.00005303030303030303
+        },
+        {
+          "net": "net-buck_5v.stage.divider.rbottom.a",
+          "path": "buck_5v.stage.divider.rbottom.a",
+          "pins": [
+            {
+              "refdes": "R9",
+              "pin": "1"
+            }
+          ],
+          "current": 0.0008161616161616162
+        },
+        {
+          "net": "GND",
+          "path": "buck_5v.stage.divider.rbottom.b",
+          "pins": [
+            {
+              "refdes": "R9",
+              "pin": "2"
+            }
+          ],
+          "current": 0.0008161616161616162
+        },
+        {
+          "net": "5V",
+          "path": "buck_5v.stage.divider.rtop.a",
+          "pins": [
+            {
+              "refdes": "R10",
+              "pin": "1"
+            }
+          ],
+          "current": 0.0008358186739648418
+        },
+        {
+          "net": "net-buck_5v.stage.divider.rbottom.a",
+          "path": "buck_5v.stage.divider.rtop.b",
+          "pins": [
+            {
+              "refdes": "R10",
+              "pin": "2"
+            }
+          ],
+          "current": 0.0008358186739648418
+        },
+        {
+          "net": "GND",
+          "path": "buck_5v.stage.ic.enable_bottom.b",
+          "pins": [
+            {
+              "refdes": "R11",
+              "pin": "2"
+            }
+          ],
+          "current": 2.714119021767654
+        },
+        {
+          "net": "VIN",
+          "path": "buck_5v.stage.ic.enable_top.a",
+          "pins": [
+            {
+              "refdes": "R12",
+              "pin": "1"
+            }
+          ],
+          "current": 1.1580635061239917
+        },
+        {
+          "net": "GND",
+          "path": "buck_5v.stage.ic.vin.neg",
+          "pins": [
+            {
+              "refdes": "U2",
+              "pin": "6"
+            },
+            {
+              "refdes": "U2",
+              "pin": "7"
+            }
+          ],
+          "current": 2.714119021767654
+        },
+        {
+          "net": "VIN",
+          "path": "buck_5v.stage.ic.vin.pos",
+          "pins": [
+            {
+              "refdes": "U2",
+              "pin": "2"
+            }
+          ],
+          "current": 1.1580635061239917
+        },
+        {
+          "net": "net-input_light.anode",
+          "path": "input_light.anode",
+          "pins": [
+            {
+              "refdes": "D3",
+              "pin": "2"
+            }
+          ],
+          "current": 0.003008811519449818
+        },
+        {
+          "net": "GND",
+          "path": "input_light.cathode",
+          "pins": [
+            {
+              "refdes": "D3",
+              "pin": "1"
+            }
+          ],
+          "current": 0.003008811519449818
+        },
+        {
+          "net": "VIN",
+          "path": "input_light_resistor.a",
+          "pins": [
+            {
+              "refdes": "R13",
+              "pin": "1"
+            }
+          ],
+          "current": 0.003008811519449818
+        },
+        {
+          "net": "net-input_light.anode",
+          "path": "input_light_resistor.b",
+          "pins": [
+            {
+              "refdes": "R13",
+              "pin": "2"
+            }
+          ],
+          "current": 0.003008811519449818
+        },
+        {
+          "net": "GND",
+          "path": "ldo.vin.neg",
+          "pins": [
+            {
+              "refdes": "U3",
+              "pin": "1"
+            }
+          ],
+          "current": 0.10336363636363638
+        },
+        {
+          "net": "5V",
+          "path": "ldo.vin.pos",
+          "pins": [
+            {
+              "refdes": "U3",
+              "pin": "3"
+            }
+          ],
+          "current": 0.05168181818181819
+        },
+        {
+          "net": "net-ldo_light.anode",
+          "path": "ldo_light.anode",
+          "pins": [
+            {
+              "refdes": "D4",
+              "pin": "2"
+            }
+          ],
+          "current": 0.0016818181818181817
+        },
+        {
+          "net": "GND",
+          "path": "ldo_light.cathode",
+          "pins": [
+            {
+              "refdes": "D4",
+              "pin": "1"
+            }
+          ],
+          "current": 0.0016818181818181817
+        },
+        {
+          "net": "3V3A",
+          "path": "ldo_light_resistor.a",
+          "pins": [
+            {
+              "refdes": "R14",
+              "pin": "1"
+            }
+          ],
+          "current": 0.0016818181818181817
+        },
+        {
+          "net": "net-ldo_light.anode",
+          "path": "ldo_light_resistor.b",
+          "pins": [
+            {
+              "refdes": "R14",
+              "pin": "2"
+            }
+          ],
+          "current": 0.0016818181818181817
+        },
+        {
+          "net": "VIN",
+          "path": "reverse_diode.cathode",
+          "pins": [
+            {
+              "refdes": "D5",
+              "pin": "1"
+            }
+          ],
+          "current": 3.0
+        }
+      ],
       "outline": null,
       "cutouts": [],
       "pours": [],
