@@ -7,6 +7,7 @@ use super::{Finding, Item, Rule};
 use crate::artwork::PadKind;
 use crate::edge;
 use crate::geom::{self, Bounds, Pt};
+use crate::polygons::{self, Area};
 
 /// What a measurement may fall short of its limit by and still pass: KiCad's own epsilon
 /// (half a micrometre), so that a track routed exactly at the limit passes in both checks.
@@ -780,9 +781,13 @@ fn mask_bridges(out: &mut Out<'_>) {
 /// Tracks, vias, pads and parts inside a rule area that forbids them: the board's own and those a
 /// footprint carries (a library's keepout over or round its pads, issue #1291), as KiCad's check
 /// flags both. A footprint's rule area forbids its own pads too, but not the footprint itself
-/// (measured with KiCad 9). A pour's fill is not judged against a rule area, as KiCad 9's check
-/// does not judge it (measured, `drc_corpus`): the fill keeps out of one that forbids pours
-/// ([`crate::fill`]), as KiCad's refill does.
+/// (measured with KiCad 9.0.0, and so in 9.0.8's source). An item counts when it reaches into the
+/// area by more than [`EPS`]: KiCad shrinks the area by its DRC epsilon first, so a pad, a track
+/// or a via that only touches the area's edge is not flagged (measured, issue #1372; a library's
+/// keepout drawn up to its own pads is the usual case). A pour's fill is not judged against a
+/// rule area, as KiCad 9's check does not judge it (measured, `drc_corpus`): the fill keeps out of
+/// one that forbids pours ([`crate::fill`]), as KiCad's refill does. Each finding names the area
+/// and what of it flags the item (`(no tracks)`, `(no vias)`, `(no pads)`, `(no footprints)`).
 fn rule_areas(out: &mut Out<'_>) {
     let m = out.m;
     for z in m.art.zones.iter().filter(|z| z.keepout.is_some()) {
@@ -803,12 +808,19 @@ fn rule_areas(out: &mut Out<'_>) {
         let Some(area_bounds) = area_bounds else {
             continue;
         };
+        let outlines: Vec<Area> = z
+            .outlines
+            .iter()
+            .filter(|poly| poly.len() >= 3)
+            .map(|poly| Area::of(poly))
+            .collect();
+        let inner = polygons::shrunk(&outlines, EPS);
         for c in &m.items {
-            let forbidden = match c.kind {
-                Kind::Track(_) | Kind::Teardrop(_) => k.tracks,
-                Kind::Via(_) => k.vias,
-                Kind::Pad(_) => k.pads,
-                Kind::Graphic(_) => false,
+            let (forbidden, kept) = match c.kind {
+                Kind::Track(_) | Kind::Teardrop(_) => (k.tracks, "tracks"),
+                Kind::Via(_) => (k.vias, "vias"),
+                Kind::Pad(_) => (k.pads, "pads"),
+                Kind::Graphic(_) => (false, ""),
             };
             if !forbidden || !c.layers.iter().any(|l| on.contains(l)) {
                 continue;
@@ -820,11 +832,10 @@ fn rule_areas(out: &mut Out<'_>) {
             {
                 continue;
             }
-            let hit = z
-                .outlines
+            let hit = inner
                 .iter()
-                .find(|poly| poly.len() >= 3 && c.shapes.iter().any(|s| touches_area(s, poly)));
-            if hit.is_some() {
+                .any(|a| a.outer.len() >= 3 && c.shapes.iter().any(|s| touches_area(s, &a.outer)));
+            if hit {
                 let layer = c
                     .layers
                     .iter()
@@ -832,10 +843,7 @@ fn rule_areas(out: &mut Out<'_>) {
                     .map(|l| m.layer_name(*l).to_string());
                 out.push(
                     Rule::ItemsNotAllowed,
-                    format!(
-                        "{} is inside the rule area {name}, which does not allow it",
-                        c.item.what
-                    ),
+                    format!("{} is inside the rule area {name} (no {kept})", c.item.what),
                     c.item.at,
                     layer.as_deref(),
                     vec![c.item.clone()],
@@ -877,17 +885,13 @@ fn rule_areas(out: &mut Out<'_>) {
                     yard.max,
                     Pt::new(yard.min.x, yard.max.y),
                 ];
-                let hit = z
-                    .outlines
+                let hit = inner
                     .iter()
-                    .any(|poly| poly.len() >= 3 && overlap_area(&corners, poly));
+                    .any(|a| a.outer.len() >= 3 && overlap_area(&corners, &a.outer));
                 if hit {
                     out.push(
                         Rule::ItemsNotAllowed,
-                        format!(
-                            "{} is inside the rule area {name}, which does not allow parts",
-                            fp.part
-                        ),
+                        format!("{} is inside the rule area {name} (no footprints)", fp.part),
                         fp.at,
                         Some(side_cu),
                         vec![Item {
