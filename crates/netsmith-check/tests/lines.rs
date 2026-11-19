@@ -763,3 +763,150 @@ fn i2c_lines_are_bidirectional_for_a_controller_and_a_target() {
     let c = run(&src);
     assert!(c.is_ok(), "{}", c.render());
 }
+
+const SWD_PARTS: &str = r#"
+import std::bus::{Swd, SwdRole}
+import std::sources::Rail
+
+/// Zprobe, an invented debug probe with the trace input.
+part Zprobe {
+    .vdd: Rail
+    .swd: Swd
+    .swd.role &= SwdRole::Probe
+
+    pins {
+        .vdd.pos   power         "VDD"   "1"
+        .vdd.neg   power         "GND"   "2"
+        .swd.swdio bidirectional "SWDIO" "3"
+        .swd.swclk output        "SWCLK" "4"
+        .swd.swo   input         "SWO"   "5"
+        .swd.reset output        "NRST"  "6"
+    }
+}
+
+/// Ztrace, an invented target with trace output.
+part Ztrace {
+    .vdd: Rail
+    .swd: Swd
+    .swd.role &= SwdRole::Target
+
+    pins {
+        .vdd.pos   power         "VDD"   "1"
+        .vdd.neg   power         "GND"   "2"
+        .swd.swdio bidirectional "SWDIO" "3"
+        .swd.swclk input         "SWCLK" "4"
+        .swd.swo   output        "SWO"   "5"
+        .swd.reset input         "NRST"  "6"
+    }
+}
+
+/// Zquiet, an invented target whose datasheet has no SWO pin at all.
+part Zquiet {
+    .vdd: Rail
+    .swd: Swd
+    .swd.role &= SwdRole::Target
+
+    pins {
+        .vdd.pos   power         "VDD"   "1"
+        .vdd.neg   power         "GND"   "2"
+        .swd.swdio bidirectional "SWDIO" "3"
+        .swd.swclk input         "SWCLK" "4"
+        .swd.reset input         "NRST"  "6"
+    }
+}
+
+/// Zquietprobe, an invented probe with no trace input.
+part Zquietprobe {
+    .vdd: Rail
+    .swd: Swd
+    .swd.role &= SwdRole::Probe
+
+    pins {
+        .vdd.pos   power         "VDD"   "1"
+        .vdd.neg   power         "GND"   "2"
+        .swd.swdio bidirectional "SWDIO" "3"
+        .swd.swclk output        "SWCLK" "4"
+        .swd.reset output        "NRST"  "6"
+    }
+}
+
+/// Zbadquiet, a target with no SWO pin whose clock is an output.
+part Zbadquiet {
+    .vdd: Rail
+    .swd: Swd
+    .swd.role &= SwdRole::Target
+
+    pins {
+        .vdd.pos   power         "VDD"   "1"
+        .vdd.neg   power         "GND"   "2"
+        .swd.swdio bidirectional "SWDIO" "3"
+        .swd.swclk output        "SWCLK" "4"
+        .swd.reset input         "NRST"  "6"
+    }
+}
+"#;
+
+fn swd_board(parts: &[(&str, &str)], joins: &str) -> String {
+    let mut body = String::new();
+    for (name, ty) in parts {
+        body.push_str(&format!("    .{name}: {ty}\n    .supply ~ .{name}.vdd\n"));
+    }
+    format!("{SWD_PARTS}\nboard B {{\n{SUPPLY}{body}{joins}\n}}\n")
+}
+
+/// The path of every terminal on the net of `pin`, or none when `pin` is on no net.
+fn net_of(c: &Checked, pin: &str) -> Vec<String> {
+    let model = &c.board("B").unwrap().model;
+    let id = model.inst_at(pin).expect(pin);
+    let mut names: Vec<String> = model.net_of(id).map_or_else(Vec::new, |n| {
+        n.terminals.iter().map(|&t| model.path_of(t)).collect()
+    });
+    names.sort();
+    names
+}
+
+#[test]
+fn a_target_with_no_swo_pin_joins_a_probe_that_has_one() {
+    let src = swd_board(&[("probe", "Zprobe"), ("t", "Zquiet")], "    .probe.swd ~ .t.swd\n");
+    let c = run(&src);
+    assert!(c.is_ok(), "{}", c.render());
+    // The other lines join, and the probe's `swo` stays on no net.
+    assert_eq!(net_of(&c, "probe.swd.swclk"), ["probe.swd.swclk", "t.swd.swclk"]);
+    assert_eq!(net_of(&c, "probe.swd.swdio"), ["probe.swd.swdio", "t.swd.swdio"]);
+    assert_eq!(net_of(&c, "probe.swd.reset"), ["probe.swd.reset", "t.swd.reset"]);
+    assert!(net_of(&c, "probe.swd.swo").is_empty());
+}
+
+#[test]
+fn a_probe_with_no_swo_pin_joins_a_target_that_has_one() {
+    let src = swd_board(&[("probe", "Zquietprobe"), ("t", "Ztrace")], "    .probe.swd ~ .t.swd\n");
+    let c = run(&src);
+    assert!(c.is_ok(), "{}", c.render());
+    assert!(net_of(&c, "t.swd.swo").is_empty());
+    assert_eq!(net_of(&c, "probe.swd.swclk"), ["probe.swd.swclk", "t.swd.swclk"]);
+}
+
+#[test]
+fn a_target_and_a_probe_that_both_have_a_swo_pin_join_it() {
+    let src = swd_board(&[("probe", "Zprobe"), ("t", "Ztrace")], "    .probe.swd ~ .t.swd\n");
+    let c = run(&src);
+    assert!(c.is_ok(), "{}", c.render());
+    assert_eq!(net_of(&c, "probe.swd.swo"), ["probe.swd.swo", "t.swd.swo"]);
+}
+
+#[test]
+fn a_target_and_a_probe_with_no_swo_pin_join() {
+    let src = swd_board(&[("probe", "Zquietprobe"), ("t", "Zquiet")], "    .probe.swd ~ .t.swd\n");
+    let c = run(&src);
+    assert!(c.is_ok(), "{}", c.render());
+}
+
+#[test]
+fn a_target_with_no_swo_pin_is_still_judged_by_its_roles() {
+    // Its clock is an output, as a probe's is: two outputs on a net, and the line is `swclk`.
+    let src = swd_board(&[("probe", "Zprobe"), ("t", "Zbadquiet")], "    .probe.swd ~ .t.swd\n");
+    let c = run(&src);
+    assert!(!c.is_ok(), "{}", c.render());
+    let m = messages(&c).join("\n");
+    assert!(m.contains("swclk"), "{m}");
+}

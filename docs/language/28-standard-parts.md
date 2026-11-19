@@ -3798,7 +3798,7 @@ A bus interface names its lines, and its definition in `std::bus` says more: for
 - An SPI bus does not cross. The master's `mosi` is an output and the slave's is an input, and the two join with `~`.
 - A quad SPI bus (`Qspi`, a processor and its program flash) has a clock, a select and four data lines `io0` to `io3`, each `bidirectional` for both roles, because in quad mode every data line carries data both ways. It is not an `Spi`, whose `mosi` and `miso` each have one direction.
 - An I2C bus needs a pull-up on each line, and the checker refuses a line without one. `std::bus::I2cPullups` is the pair, with the resistance as a value (`.pullups.resistance &= 4.7kohm +/- 5%`) and a supply rail. The module states the current it draws from that rail (each pull-up carries nothing while its line is released and at most the supply voltage over its resistance while it is held low, the two together on `supply.current`), so a board states no load for it; a current the board does state on `supply` is a budget the sum must fit in (ADR 0038).
-- A debug port `Swd` meets a programming connector pin by pin: the connector's pins are passive.
+- A debug port `Swd` meets a programming connector pin by pin: the connector's pins are passive. Its `swo` (the trace output) is `optional`, the word a `pins` row and a member already use for "may be absent", here on a pin of an interface (issue 1272): a target with no trace pin, as a small Cortex-M0 part has none, gives `swo` no row, and `~` between its `Swd` and a probe's joins the data line, the clock and the reset and leaves the line out, so the probe's `swo` stays open. The roles and the levels of the lines that are joined are checked as for any target. `optional` on a pin is allowed only in an interface; elsewhere a pin that need not be connected says so in its `pins` row.
 - `Usb2` joins a host and a device with `~`: D+ to D+. `vbus` is a `Rail`. A receptacle between them is a pass-through, not an end (below).
 
 Some invented parts for the examples. A UART has the same pins at both ends, so one part serves for both; SPI has a master and a slave.
@@ -3951,6 +3951,59 @@ board Straight {
     .supply ~ .a.vdd
     .supply ~ .b.vdd
     .a.uart ~ .b.uart
+}
+```
+
+A target that has no `swo` pin joins a probe that has one, with `~`; the probe's `swo` is left open:
+
+```nsm module=src::debug
+import std::bus::{Swd, SwdRole}
+import std::sources::Rail
+
+/// A debug probe with a trace input. Illustrative.
+part Probe {
+    .vdd: Rail
+    .swd: Swd
+    .swd.role &= SwdRole::Probe
+
+    pins {
+        .vdd.pos   power         "VDD"   "1"
+        .vdd.neg   power         "GND"   "2"
+        .swd.swdio bidirectional "SWDIO" "3"
+        .swd.swclk output        "SWCLK" "4"
+        .swd.swo   input         "SWO"   "5"
+        .swd.reset output        "NRST"  "6"
+    }
+}
+
+/// A target whose datasheet has no trace pin: its table has no row for `swo`. Illustrative.
+part SmallTarget {
+    .vdd: Rail
+    .swd: Swd
+    .swd.role &= SwdRole::Target
+
+    pins {
+        .vdd.pos   power         "VDD"   "1"
+        .vdd.neg   power         "GND"   "2"
+        .swd.swdio bidirectional "SWDIO" "3"
+        .swd.swclk input         "SWCLK" "4"
+        .swd.reset input         "NRST"  "5"
+    }
+}
+```
+
+```nsm evaluate
+import std::sources::Rail
+
+import src::debug::{Probe, SmallTarget}
+
+board NoTrace {
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .probe: Probe
+    .target: SmallTarget
+    .supply ~ .probe.vdd
+    .supply ~ .target.vdd
+    .probe.swd ~ .target.swd
 }
 ```
 

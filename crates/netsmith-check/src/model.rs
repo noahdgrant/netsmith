@@ -1258,6 +1258,10 @@ pub struct Model {
     /// a part inside it, as (the module's, the part's). Whether each makes the module's an
     /// alias of the part's is settled when the balances are made (ADR 0077).
     pub(crate) rail_aliases: Vec<(InstId, InstId)>,
+    /// The pins of interfaces that their definition marks `optional` (`.swo: Pin optional` in
+    /// `Swd`, issue 1272): a part may give such a pin no row, and `~` between two interfaces
+    /// leaves it unjoined when either side has none.
+    pub(crate) optional_pins: std::collections::HashSet<InstId>,
     /// The output levels stated with a test current, in the order they were read (ADR 0076).
     pub(crate) level_tests: Vec<LevelTest>,
     /// The `.max_voltage` members stated in steps over temperature (issue #1257).
@@ -1518,6 +1522,7 @@ impl Model {
             ground_groups: Vec::new(),
             part_joins: Vec::new(),
             rail_aliases: Vec::new(),
+            optional_pins: Default::default(),
             level_tests: Vec::new(),
             voltage_steps: Vec::new(),
             unused: Vec::new(),

@@ -223,12 +223,15 @@ enum SwdRole {
 /// A serial-wire debug port: the data line `swdio`, the clock `swclk`, the trace output `swo`
 /// and the reset `reset`. The target's `swo` is an output, its `swclk` an input and its `swdio`
 /// a bidirectional pin; a probe's connector has passive pins. `frequency` is the clock of the
-/// port, as for `Spi`.
+/// port, as for `Spi`. `swo` is `optional` (issue 1272): a target with no trace pin (a Cortex-M0
+/// part, say) gives it no row, and `~` leaves the line unjoined, so the probe's `swo` stays open
+/// while the data line, the clock and the reset are joined and checked against the roles and the
+/// levels as before.
 interface Swd {
     .role: SwdRole
     .swdio: Pin
     .swclk: Pin
-    .swo: Pin
+    .swo: Pin optional
     .reset: Pin
     .levels: Levels
     .frequency: Frequency

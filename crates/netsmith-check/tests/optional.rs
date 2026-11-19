@@ -180,6 +180,14 @@ fn optional_on_a_pin_is_refused_and_says_where_the_other_word_goes() {
 }
 
 #[test]
+fn optional_on_a_pin_of_an_interface_is_allowed_and_nowhere_else_is() {
+    let ok = run("interface I {\n    .a: Pin\n    .b: Pin optional\n}\nboard B {\n    .i: I\n}\n");
+    assert!(ok.is_ok(), "{}", ok.render());
+    let m = refused("part P {\n    .p: Pin optional\n}\nboard B {\n    .x: P\n}\n");
+    assert!(m.iter().any(|m| m.contains("but `.p` is a pin")), "{m:#?}");
+}
+
+#[test]
 fn optional_on_an_interface_a_part_or_a_module_is_refused() {
     let src = |ty: &str, defs: &str| {
         format!(
