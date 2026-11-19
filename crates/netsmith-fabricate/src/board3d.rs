@@ -1420,6 +1420,37 @@ impl Placed<'_> {
         &self,
         then: impl FnOnce(&Built, &Board) -> T,
     ) -> Result<T, String> {
+        self.laid_out(
+            |design, mapping, library, options, layout| {
+                Board::as_laid_out(design, mapping, library, options, layout)
+                    .map(|board| (board, Vec::new()))
+            },
+            |built, board, _| then(built, board),
+        )
+    }
+
+    /// [`Placed::with_board_as_laid_out`] for the parts that have a place: a part with no entry
+    /// in the layout file and no requirement that pins it is no refusal, it is left off the
+    /// board and `then` is given it as `(designator, path)` (issue 1308). An outline whose size
+    /// is not stated exactly is still refused.
+    pub fn with_board_as_laid_out_partial<T>(
+        &self,
+        then: impl FnOnce(&Built, &Board, &[(String, String)]) -> T,
+    ) -> Result<T, String> {
+        self.laid_out(Board::as_laid_out_partial, then)
+    }
+
+    fn laid_out<T>(
+        &self,
+        make: impl FnOnce(
+            &netsmith_core::Design,
+            &netsmith_kicad::Mapping,
+            &netsmith_pcb::FootprintLibrary,
+            &netsmith_pcb::PlaceOptions,
+            Option<&(netsmith_pcb::Layout, String)>,
+        ) -> Result<(Board, Vec<(String, String)>), String>,
+        then: impl FnOnce(&Built, &Board, &[(String, String)]) -> T,
+    ) -> Result<T, String> {
         let outcome = netsmith_pipeline::outcome_with(
             self.name,
             self.text,
@@ -1440,7 +1471,7 @@ impl Placed<'_> {
             crate::layout::read_board(built, self.loader, &self.layout, &names).map_err(&fail)?;
         let mut options = netsmith_pcb::place_options(&built.design, layout.as_ref().map(|l| &l.0));
         options.lines_warn = self.catalogs.constraints_warn();
-        let board = Board::as_laid_out(
+        let (board, absent) = make(
             &built.design,
             &self.libraries.mapping,
             &self.libraries.footprints,
@@ -1448,7 +1479,7 @@ impl Placed<'_> {
             layout.as_ref(),
         )
         .map_err(fail)?;
-        Ok(then(built, &board))
+        Ok(then(built, &board, &absent))
     }
 
     /// `then` of the board picked, checked, solved and designed but not placed: what a command

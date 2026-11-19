@@ -540,11 +540,43 @@ fn parts_picks_parts_by_path_designator_or_module_and_refuses_a_name_the_board_l
 }
 
 #[test]
-fn parts_is_refused_as_laid_out_for_a_part_with_no_entry() {
+fn parts_as_laid_out_answers_for_the_parts_with_an_entry_and_lists_the_others() {
+    // Only the led has an entry (PLACED): the others are listed as having none, no refusal.
     let dir = project("layout-parts-open", Some(PLACED));
-    let run = netsmith(&dir, &["parts", "--as-laid-out"]);
+    let json = parts_json(&dir, &["--as-laid-out"]);
+    let parts = json["parts"].as_array().unwrap();
+    assert_eq!(parts.len(), 1, "{json}");
+    assert_eq!(parts[0]["path"], "led", "{json}");
+    assert_eq!(parts[0]["frame"]["at"], serde_json::json!([30.0, 12.0]));
+    let none: Vec<&str> = json["no_entry"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n["path"].as_str().unwrap())
+        .collect();
+    assert_eq!(none.len(), 2, "{json}");
+    assert!(none.contains(&"r1") && none.contains(&"power_in"), "{json}");
+    assert!(json["no_entry"][0]["refdes"].is_string(), "{json}");
+    // A part with no entry that a PATH names is listed too, and only it.
+    let json = parts_json(&dir, &["r1", "--as-laid-out"]);
+    assert!(json["parts"].as_array().unwrap().is_empty(), "{json}");
+    assert_eq!(json["no_entry"].as_array().unwrap().len(), 1, "{json}");
+    assert_eq!(json["no_entry"][0]["path"], "r1", "{json}");
+    // A part the board has none by is still refused.
+    let run = netsmith(&dir, &["parts", "nosuch", "--as-laid-out"]);
     assert_eq!(code(&run), 1);
-    assert!(!stderr(&run).is_empty());
+    assert!(stderr(&run).contains("no part `nosuch`"), "{}", stderr(&run));
+    // For a person: a line for each part with none, and the exit code is 0.
+    let run = netsmith(&dir, &["parts", "--as-laid-out"]);
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    let text = stdout(&run);
+    assert!(text.contains("(r1): no entry in the layout file"), "{text}");
+    assert!(text.contains("(power_in): no entry in the layout file"), "{text}");
+    // A board whose every part has an entry lists none.
+    let dir = project("layout-parts-all", Some(ALL_PLACED));
+    let json = parts_json(&dir, &["--as-laid-out"]);
+    assert!(json["no_entry"].as_array().unwrap().is_empty(), "{json}");
+    // `--place-seeds` still cannot go with it.
     let run = netsmith(&dir, &["parts", "--as-laid-out", "--place-seeds", "2"]);
     assert_eq!(code(&run), 2);
 }

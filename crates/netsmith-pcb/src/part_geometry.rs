@@ -45,6 +45,17 @@ pub struct PartGeometries {
     /// Why the placer refused the layout file, when it did: the parts are then where the placer
     /// ended, with the layout file's places. `null` for a board that was placed.
     pub placement_refused: Option<String>,
+    /// The parts asked for that the layout file has no place for (and no requirement pins), as
+    /// `layout parts --as-laid-out` finds them (issue 1308): they are not on the board, so they
+    /// are not in `parts`. Empty for a board that was placed.
+    pub no_entry: Vec<NoEntry>,
+}
+
+/// A part with no place in the layout file, left out of the parts of a board as it is laid out.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct NoEntry {
+    pub refdes: String,
+    pub path: String,
 }
 
 /// One part: its frame, its courtyard and its pads.
@@ -122,11 +133,28 @@ impl PartGeometries {
     /// or a module's path (every part inside it); with none named, every part. A name that is
     /// none of those is the error, with the nearest names.
     pub fn of(board: &Board, which: &[String]) -> Result<PartGeometries, String> {
+        Self::of_partial(board, which, &[])
+    }
+
+    /// [`PartGeometries::of`] for a board that lacks the parts `absent` (designator, path): a
+    /// part with no place in the layout file, left off the board. A name that is one of them,
+    /// or a module with one inside, is no error: they are given as `no_entry`, those `which`
+    /// names, or all of them when it names none.
+    pub fn of_partial(
+        board: &Board,
+        which: &[String],
+        absent: &[(String, String)],
+    ) -> Result<PartGeometries, String> {
+        let absent_by = |name: &str| {
+            absent
+                .iter()
+                .any(|(refdes, path)| path_names(path, refdes, name))
+        };
         let wanted: Vec<&Placed> = if which.is_empty() {
             board.parts.iter().collect()
         } else {
             for name in which {
-                if !board.parts.iter().any(|p| names(p, name)) {
+                if !board.parts.iter().any(|p| names(p, name)) && !absent_by(name) {
                     return Err(no_part(board, name));
                 }
             }
@@ -198,6 +226,16 @@ impl PartGeometries {
             placement: board.placement_faults(),
             conflicts: Vec::new(),
             placement_refused: None,
+            no_entry: absent
+                .iter()
+                .filter(|(refdes, path)| {
+                    which.is_empty() || which.iter().any(|name| path_names(path, refdes, name))
+                })
+                .map(|(refdes, path)| NoEntry {
+                    refdes: refdes.clone(),
+                    path: path.clone(),
+                })
+                .collect(),
         })
     }
 
@@ -249,6 +287,12 @@ impl PartGeometries {
                 ));
             }
         }
+        for n in &self.no_entry {
+            text.push_str(&format!(
+                "{} ({}): no entry in the layout file, and no requirement pins it: it has no place yet\n",
+                n.refdes, n.path
+            ));
+        }
         if let Some(refused) = &self.placement_refused {
             text.push_str(&format!("placer refused the layout file: {refused}\n"));
         }
@@ -264,9 +308,14 @@ impl PartGeometries {
 
 /// Whether `name` names the part: its path, its designator, or a module the part is in.
 fn names(p: &Placed, name: &str) -> bool {
-    p.path == name
-        || p.refdes == name
-        || p.path
+    path_names(&p.path, &p.refdes, name)
+}
+
+/// [`names`] for a part given by its path and designator.
+fn path_names(path: &str, refdes: &str, name: &str) -> bool {
+    path == name
+        || refdes == name
+        || path
             .strip_prefix(name)
             .is_some_and(|rest| rest.starts_with('.') || rest.starts_with('['))
 }
