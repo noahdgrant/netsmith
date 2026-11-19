@@ -482,6 +482,30 @@ board Tracker {
 - With the alternate fitted, the rest of the source is read as written: the connections and narrowings that name `.u` and its pins reach the alternate, so a pin it lacks is refused where it is used, and a supply range or a level it does not meet is refused as it would be for the member.
 - The footprint is the member's: when both parts state a package it must be the same, and each pad of the alternate must be joined to the same pins of the other parts as the member's pad of that number. A pad on no net is on none for both.
 - The pick lock holds the member's row; the alternate's row is picked fresh each build and is not written to the lock.
+- A board that a system places is checked with the alternate fitted as the system uses it (issue #1414): the system is checked and solved again, its mates are seated again, and the power tree is read across its boards, so a supply that another board gives reaches the alternate.
+- The guideline findings (an unconstrained pick, an unstated value, an open circle, a bus role, a track width) are made for the board with the alternate fitted too. Each one the board as written does not have is a warning of the board, said under the alternate's statement as the re-check's errors are (below); with `--strict` or `guidelines = "error"` it stops the build. A finding the board as written has is said once.
+
+A finding that only the board with the alternate fitted has is said under the alternate's statement. Here nothing limits the capacitor's value:
+
+```nsm solve warns
+import std::parts::connector::Header1x2
+import std::parts::passive::Capacitor
+import std::parts::passive::Resistor
+
+board Filter {
+    .j: Header1x2
+    .r: Resistor { .resistance &= 10kohm +/- 5%; .package &= "0402" }
+    alternate .r: Capacitor { .package &= "0402" }
+    .j.p1 ~ .r.a
+    .j.p2 ~ .r.b
+}
+```
+
+```text
+Filter: unconstrained pick guideline: with `alternate .r: Capacitor` (main.nsm:8) fitted in the place of `r`: `r` (Capacitor) was chosen with nothing limiting its capacitance, so the solver took the first row that fits, 18pF 5% 50V C0G 0402 C1549: state it, `.r.capacitance &= 100nF +/- 10%`, or bound a value that it decides (a current or a voltage the design checks), or say that any value will do, `.r.capacitance &= 10nF..10uF`
+```
+
+A value of the alternate alone is stated in the alternate's body, `alternate .r: Capacitor { .package &= "0402"; .capacitance &= 100nF +/- 10% }`, as the member's own body would state it.
 
 An alternate that fails one of the board's checks is named with the check's own message:
 
