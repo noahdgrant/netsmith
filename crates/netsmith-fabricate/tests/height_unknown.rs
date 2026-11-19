@@ -13,6 +13,22 @@ use netsmith_pipeline::{Built, Libraries, build_with};
 use netsmith_solve::Catalogs;
 use netsmith_testkit::TempDir;
 
+/// The shipped catalogs and an invented resistor row of 31.7 kohm (a value the shipped catalog
+/// has no row of) whose `height` cell is empty: a part picked as it has no height, which is what
+/// these tests are about. Every chip row of the shipped catalogs has a height (issue #1421).
+fn catalogs() -> Catalogs {
+    let mut c = Catalogs::jlcpcb();
+    c.add_file("resistor", "catalogs/resistor.csv", NO_HEIGHT_ROW)
+        .unwrap();
+    c
+}
+
+/// The invented row (an invented part number too), with no `height`.
+const NO_HEIGHT_ROW: &str = "\
+lcsc,mpn,resistance,max_power,package,height,library,source
+C900317,ACME-R317,31.7kohm +/- 1%,62.5mW,0402,,Basic,https://example.invalid/acme.pdf
+";
+
 /// Three resistors and a 1x4 pin header standing for a module on pin strips.
 const SOURCE: &str = "\
 import std::parts::connector::Header1x4
@@ -32,9 +48,9 @@ board Widget {
     .module: Header1x4
     .rail.pos ~ .module.p1
     .rail.neg ~ .module.p2
-    .r1: Resistor { .resistance &= 15kohm +/- 1% }
-    .r2: Resistor { .resistance &= 15kohm +/- 1% }
-    .r3: Resistor { .resistance &= 15kohm +/- 1% }
+    .r1: Resistor { .resistance &= 31.7kohm +/- 1% }
+    .r2: Resistor { .resistance &= 31.7kohm +/- 1% }
+    .r3: Resistor { .resistance &= 31.7kohm +/- 1% }
     .rail.pos ~> .r1 ~> .rail.neg
     .rail.pos ~> .r2 ~> .rail.neg
     .rail.pos ~> .r3 ~> .rail.neg
@@ -75,7 +91,7 @@ fn built(extra: &str) -> Built {
         "widget.nsm",
         SOURCE,
         &loader,
-        &Catalogs::jlcpcb(),
+        &catalogs(),
         &Libraries::sample(),
     )
     .unwrap_or_else(|e| panic!("{e}"))
@@ -186,7 +202,7 @@ fn fab_says_height_unknown_once_in_its_notes_and_still_passes() {
         SOURCE,
         &loader,
         &dir.join("fab"),
-        &Catalogs::jlcpcb(),
+        &catalogs(),
         &Libraries::sample(),
         None,
         &FabOptions::default(),
