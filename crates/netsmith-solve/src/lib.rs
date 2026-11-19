@@ -19,6 +19,7 @@ mod lock;
 mod ohm;
 mod place;
 mod preferred;
+pub mod radio;
 mod scenario;
 mod sequence;
 mod sim;

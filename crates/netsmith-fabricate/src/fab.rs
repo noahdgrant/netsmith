@@ -1921,6 +1921,8 @@ fn fab_board(
         );
         // What the check of the environment did and did not do, for a board that has one.
         extras.extend(environment.notes);
+        // The conditions of each radio's grant that a person must verify (issue #1278).
+        extras.extend(netsmith_solve::radio::verify_lines(&built.trace.model));
         // The notes lead with what is wrong, so that nobody orders an incomplete board.
         if let Some(incomplete) = &incomplete {
             extras.insert(0, format!("ERROR: INCOMPLETE: {}", incomplete.headline()));
