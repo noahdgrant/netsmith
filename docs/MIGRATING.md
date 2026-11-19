@@ -13,6 +13,18 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+### `Resistor`, `Capacitor` and `Inductor` gain `.fitted` and `.tune`; `Bool`, `true` and `false` are known everywhere (issue #1273)
+
+A part that provides `std::parts::passive::Resistor`, `Capacitor` or `Inductor` and declared `.fitted` or `.tune` for itself stops at the declaration:
+
+```text
+error: `tune` is declared by `Capacitor`, which this part provides; do not declare it again: narrow it with `.tune &= ...`, or state it with a relation
+```
+
+Delete the declaration. `.fitted` is a `Bool` (`.fitted &= false` marks a position that is not fitted until it is tuned on the bench), and `.tune` is the value's own quantity (`.tune &= 1pF..10pF`). `true` and `false` are written bare; `Bool::true` is refused.
+
+There is no ADR: the owner decided it on the issue.
+
 ### A provider does not declare `.assembly_size_source` (issue 1393)
 
 `std::mfg::jlcpcb::TwoLayer`, `FourLayer`, `SixLayer`, `HdiFourLayer`, `HdiSixLayer`, `HdiEightLayer` and `std::mfg::acme::EightLayer`, `TenLayer` declare `.assembly_size_source`, the page, service and day of their assembly size figures, which the `assembly_size` finding quotes. A provider of yours that declared a member of that name (it is unlikely) deletes the declaration and keeps the narrowing (ADR 0134):

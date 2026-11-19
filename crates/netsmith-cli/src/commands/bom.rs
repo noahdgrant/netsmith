@@ -114,6 +114,12 @@ fn text(bom: &Bom) -> String {
         out.push_str("\nSoldered by hand (the board house does not place these):\n");
         out.push_str(&lines(&bom.hand));
     }
+    if !bom.not_fitted.is_empty() {
+        out.push_str(
+            "\nNot fitted (DNP lines of bom.csv: the footprint is on the board, the value is chosen on the bench):\n",
+        );
+        out.push_str(&lines(&bom.not_fitted));
+    }
     out.push('\n');
     match bom.total_usd {
         Some(total) => out.push_str(&format!("Total of the priced lines: ${total:.2}\n")),

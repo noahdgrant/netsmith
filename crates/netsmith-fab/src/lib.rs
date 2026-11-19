@@ -197,6 +197,11 @@ pub struct Options {
     /// that is not a part of the board file (a hole or a fiducial whose footprint is left
     /// out of the bill of materials) is still listed in the notes.
     pub fit: std::collections::BTreeMap<String, Fit>,
+    /// The parts, by designator, that are not fitted and that `bom.csv` lists as `DNP` lines
+    /// (`.fitted &= false`, issue #1273): their entries are kept, with no LCSC number, and
+    /// they are on no placement file. A part that is not fitted and is not named here (a hole,
+    /// a fiducial, a footprint KiCad marks `dnp`) leaves the bill as before.
+    pub dnp: std::collections::BTreeSet<String>,
 }
 
 #[derive(Debug)]
@@ -362,7 +367,12 @@ pub struct Plan {
     /// The board's parts to place, in the BOM or among the consigned.
     pub assembled: Vec<BoardPart>,
     pub hand_solder: Vec<String>,
+    /// The parts nobody fits that `bom.csv` does not list: holes, fiducials, test points.
     pub not_fitted: Vec<String>,
+    /// Grouped BOM rows of the parts that are not fitted and that the BOM lists (`DNP`, issue
+    /// #1273): a footprint whose value is chosen on the bench. They are in `bom.csv` with
+    /// their comment (`DNP (tune 1pF..10pF)`) and no LCSC number, and in no placement file.
+    pub dnp: Vec<BomEntry>,
     /// Parts without an LCSC number that were allowed through.
     pub unassembled: Vec<String>,
 }
@@ -371,7 +381,13 @@ impl Plan {
     /// The rows of `bom.csv`: the parts from stock and the consigned parts, by first
     /// designator.
     pub fn bom_rows(&self) -> Vec<BomEntry> {
-        let mut rows: Vec<BomEntry> = self.bom.iter().chain(&self.consigned).cloned().collect();
+        let mut rows: Vec<BomEntry> = self
+            .bom
+            .iter()
+            .chain(&self.consigned)
+            .chain(&self.dnp)
+            .cloned()
+            .collect();
         rows.sort_by(|a, b| bom::designator_cmp(&a.designators[0], &b.designators[0]));
         rows
     }
@@ -407,6 +423,7 @@ pub fn plan(board: &Board, entries: &[BomEntry], options: &Options) -> Result<Pl
     // Keep only the parts that are surface mount and populated, in the grouped rows.
     let mut bom = Vec::new();
     let mut consigned = Vec::new();
+    let mut dnp = Vec::new();
     let mut missing = Vec::new();
     let mut unassembled = Vec::new();
     for entry in &grouped {
@@ -424,6 +441,19 @@ pub fn plan(board: &Board, entries: &[BomEntry], options: &Options) -> Result<Pl
         if !own.is_empty() {
             consigned.push(BomEntry {
                 designators: own,
+                ..entry.clone()
+            });
+        }
+        // A part that is not fitted and that the design lists is a `DNP` line, with no
+        // number to buy.
+        let unfitted: Vec<String> = with_fit(Fit::NotFitted)
+            .into_iter()
+            .filter(|d| options.dnp.contains(d))
+            .collect();
+        if !unfitted.is_empty() {
+            dnp.push(BomEntry {
+                designators: unfitted,
+                lcsc: None,
                 ..entry.clone()
             });
         }
@@ -479,12 +509,18 @@ pub fn plan(board: &Board, entries: &[BomEntry], options: &Options) -> Result<Pl
         named.dedup();
         sorted(named)
     };
+    let in_dnp = |d: &String| dnp.iter().any(|e: &BomEntry| e.designators.contains(d));
+    let not_fitted = with_fit(Fit::NotFitted)
+        .into_iter()
+        .filter(|d| !in_dnp(d))
+        .collect();
     Ok(Plan {
         bom,
         consigned,
         assembled,
         hand_solder: with_fit(Fit::HandSolder),
-        not_fitted: with_fit(Fit::NotFitted),
+        not_fitted,
+        dnp,
         unassembled: sorted(unassembled),
     })
 }
@@ -868,6 +904,20 @@ fn notes(
         lines.push(format!(
             "not fitted (no BOM line, no placement): {}",
             plan.not_fitted.join(", ")
+        ));
+    }
+    if !plan.dnp.is_empty() {
+        let parts: Vec<String> = plan
+            .dnp
+            .iter()
+            .map(|e| {
+                let value = e.value.strip_prefix("DNP").unwrap_or(&e.value).trim();
+                format!("{} {value}", e.designators.join(", "))
+            })
+            .collect();
+        lines.push(format!(
+            "DNP (a DNP line of bom.csv with no LCSC number, no placement; the footprint is on the board, and the value is chosen on the bench): {}; check on JLCPCB's order page that none of them is placed",
+            parts.join("; ")
         ));
     }
     if !plan.unassembled.is_empty() {

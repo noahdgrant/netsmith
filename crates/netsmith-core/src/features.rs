@@ -204,6 +204,23 @@ pub struct NetRoute {
     pub source: String,
 }
 
+/// A part that is not fitted until it is tuned (issue #1273).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NotFitted {
+    pub refdes: String,
+    /// The range its value may be tuned in, as a message writes it (`1pF..10pF`), if the
+    /// design states one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tune: Option<String>,
+}
+
+impl Features {
+    /// Whether the part with this designator is not fitted (issue #1273).
+    pub fn is_not_fitted(&self, refdes: &str) -> bool {
+        self.not_fitted.iter().any(|n| n.refdes == refdes)
+    }
+}
+
 /// What a design says about the board beyond its parts and nets (ADR 0020). Everything is
 /// optional; a design that says none of it is laid out as before.
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
@@ -257,6 +274,11 @@ pub struct Features {
     /// out of a design file when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pad_pours: Vec<PadPour>,
+    /// The parts that are not fitted (`.fitted &= false`, issue #1273), by designator: a
+    /// footprint on the board whose value is chosen on the bench. A schematic and a board mark
+    /// them DNP. Left out of a design file when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub not_fitted: Vec<NotFitted>,
     pub outline: Option<Outline>,
     pub cutouts: Vec<Cutout>,
     pub pours: Vec<Pour>,

@@ -250,6 +250,10 @@ pub struct Board {
     /// on each of their pads ([`Board::pad_pour`]), and the fill reads it there.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pad_pours: Vec<netsmith_core::PadPour>,
+    /// The parts that are not fitted (`.fitted &= false`, issue #1273), by reference
+    /// designator: their footprints are on the board and marked `dnp` in the KiCad board.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub not_fitted: std::collections::BTreeSet<String>,
     /// The parts the person said may hang over the board edge, by reference designator
     /// (ADR 0045, "Built: overhang"). [`Board::check_placement`] does not report the
     /// courtyard of such a part past an edge it may hang over.

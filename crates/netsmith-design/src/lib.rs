@@ -1153,6 +1153,9 @@ pub struct Sourced {
     /// resolved it (`None` before, and for a part that was not generic): the row's name and its
     /// temperature range in kelvin, for the judgement against the board's environment (ADR 0099).
     pub resolved_row: Option<ResolvedRow>,
+    /// Set for a part that is not fitted (`.fitted &= false`, issue #1273): a `DNP` line of
+    /// `bom.csv` and on no placement file. Its `assembly` is then `None`.
+    pub not_fitted: Option<netsmith_core::NotFitted>,
 }
 
 /// The catalog row that stands for a generic part, as far as the judgement against the board's
@@ -1463,6 +1466,25 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
                 ),
             },
         };
+        // A part that is not fitted (issue #1273) is assembled by nobody, whatever else says
+        // who assembles it, and keeps the range it is tuned in.
+        let tune = (text_of(model, *id, "fitted").as_deref() == Some("false")).then(|| match model
+            .member(*id, "tune")
+        {
+            Some(Member::Field(f)) if model.field(f).domain != Domain::Unset => {
+                Some(model.field(f).domain.to_string())
+            }
+            _ => None,
+        });
+        let (assembly, assembly_stated) = match tune {
+            Some(_) => (Assembly::None, true),
+            None => (assembly, assembly_stated),
+        };
+        // A part that is not fitted and was given no row shows the range it is tuned in.
+        let value = match (&tune, pick) {
+            (Some(Some(range)), None) => range.clone(),
+            _ => value,
+        };
         fitted.push(environment::Fitted {
             part: *id,
             kind,
@@ -1503,6 +1525,10 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
                 catalog_height: pick.and_then(|p| p.height),
                 generic: pick.and_then(|p| p.generic.clone()),
                 resolved_row: None,
+                not_fitted: tune.as_ref().map(|tune| netsmith_core::NotFitted {
+                    refdes: refdes.clone(),
+                    tune: tune.clone(),
+                }),
             });
             parts.push(Part {
                 refdes: refdes.clone(),
@@ -1511,7 +1537,12 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
                 // project's own generic of the same name is not that one.
                 provides: provides.clone(),
                 declared_kind: inst.marks.declared_kind,
-                value: value.clone(),
+                // The schematic marks a part that is not fitted where its value is written
+                // (issue #1273); KiCad's draws its symbol crossed out as well.
+                value: match tune {
+                    Some(_) => format!("DNP {value}"),
+                    None => value.clone(),
+                },
                 package: package.clone(),
                 path,
                 pins: pins_of(model, *id),
@@ -1618,6 +1649,10 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
         features::features_of(model, &net_names, layers, least_text, least, &mut errors);
     let (constraints, constraint_sites) = features::placements(model, &mut errors);
     features.constraints = constraints;
+    features.not_fitted = sourcing
+        .iter()
+        .filter_map(|s: &Sourced| s.not_fitted.clone())
+        .collect();
     let (offsets, offset_sites) = features::offsets(model, &mut errors);
     features.offsets = offsets;
     let ((pin_distances, pin_distance_sites), (net_routes, net_route_sites)) =

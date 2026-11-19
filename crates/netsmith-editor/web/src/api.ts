@@ -880,6 +880,12 @@ lines: Array<BomLine>,
  */
 hand: Array<BomLine>, 
 /**
+ * Not fitted (`.fitted &= false`, issue 1273): a footprint on the board whose value is
+ * chosen on the bench, a `DNP` line of `bom.csv` with no number to buy. The value is the
+ * line's comment there (`DNP (tune 1pF..10pF)`).
+ */
+notFitted: Array<BomLine>, 
+/**
  * The sum of the lines that have a price.
  */
 totalUsd: number | null, 

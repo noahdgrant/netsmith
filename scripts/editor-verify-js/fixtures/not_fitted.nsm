@@ -1,0 +1,35 @@
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::{Capacitor, Resistor}
+import std::sources::Rail
+
+/// Two positions tuned on the bench (issue #1273): one with no value, one that starts at 100 nF.
+board Match {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .supply: Rail {
+        .voltage &= 3.3V +/- 5%
+        .pos.net &= "VCC"
+    }
+    .feed: Resistor {
+        .resistance &= 1kohm +/- 1%
+    }
+    .load: Resistor {
+        .resistance &= 1kohm +/- 1%
+    }
+    .supply.pos ~> .feed ~> .load ~> .supply.neg
+    .shunt: Capacitor {
+        .fitted &= false
+        .tune &= 1pF..10pF
+        .package &= "0402"
+    }
+    .shunt.a ~ .feed.b
+    .shunt.b ~ .supply.neg
+    .trim: Capacitor {
+        .fitted &= false
+        .tune &= 10nF..1uF
+        .capacitance &= 100nF +/- 10%
+    }
+    .trim.a ~ .feed.b
+    .trim.b ~ .supply.neg
+}
