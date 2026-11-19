@@ -2,7 +2,7 @@
 
 import std::parts::diode::Schottky
 import std::parts::passive::{Capacitor, CapacitorBank, Inductor, Resistor}
-import std::sources::Rail
+import std::sources::{Rail, Reverse}
 
 /// A linear regulator with a fixed output. Its input and output share a ground. Which
 /// pad is which depends on the package, so there is a pin table for each package its
@@ -60,6 +60,9 @@ generic LinearRegulator {
     /// optional (ADR 0074): while a part states none, the latest time of such an enable is
     /// not known.
     .enable_threshold: Voltage optional
+    /// What the part does with current from its output back to its input (issue #1258): a
+    /// board's `scenario` reads it. The default is a body diode (`std::sources::Reverse`).
+    .reverse: Reverse
 
     // What the input draws is what the output supplies and the quiescent current.
     .vin.current == -.vout.current + .quiescent_current
@@ -299,6 +302,9 @@ generic BuckIc {
     /// A board's `sequence` reads it when an RC delays the enable (issue #1267); optional
     /// (ADR 0074): while an IC states none, the latest time of such an enable is not known.
     .enable_threshold: Voltage optional
+    /// What the part does with current from its output back to its input (issue #1258): a
+    /// board's `scenario` reads it. The default is a body diode (`std::sources::Reverse`).
+    .reverse: Reverse
     /// The capacitance the datasheet asks for on the input and the output, as effective
     /// capacitance in use (ADR 0013).
     .min_input_capacitance: Capacitance

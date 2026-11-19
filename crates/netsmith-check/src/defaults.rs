@@ -598,6 +598,7 @@ fn item_span(item: &Item) -> Span {
         Item::Tie(t) => t.span,
         Item::Unused(u) => u.span,
         Item::Sequence(q) => q.span,
+        Item::Scenario(q) => q.span,
         Item::Peripheral(p) => p.span,
         Item::Shared(s) => s.span,
         Item::Lines(l) => l.span,

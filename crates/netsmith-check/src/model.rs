@@ -1176,6 +1176,31 @@ pub struct SequenceOrder {
     pub span: Span,
 }
 
+/// A path a `scenario` names (issue #1258): the instance it resolves to and how the board
+/// writes it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScenarioPath {
+    /// A rail for `remove` and `source`; a pin for `sense` (a rail's `pos`, when the board
+    /// names a rail).
+    pub inst: InstId,
+    /// The path as the board writes it (`.usb`).
+    pub written: String,
+    pub span: Span,
+}
+
+/// A board's `scenario` (issue #1258): the supplies it takes away, the sources that stay and
+/// whose reach is listed, and the nets whose settling voltage is listed and judged. The solver
+/// analyses the power graph in it (`netsmith-solve`, `scenario.rs`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Scenario {
+    pub name: String,
+    pub removed: Vec<ScenarioPath>,
+    pub sources: Vec<ScenarioPath>,
+    pub senses: Vec<ScenarioPath>,
+    pub source: SourceId,
+    pub span: Span,
+}
+
 /// A request for a pin by capability (`.status: .u.GPIO`, ADR 0101): the pin of the board it
 /// declares, the part it asks and what it needs the pin to offer. Which pin it gets is decided
 /// after the elaboration, in `assign.rs`.
@@ -1299,6 +1324,8 @@ pub struct Model {
     pub(crate) unused: Vec<Unused>,
     /// The orders of the board's `sequence` statements (issue #1267), in the order written.
     pub(crate) sequence: Vec<SequenceOrder>,
+    /// The board's `scenario` statements (issue #1258), in the order written.
+    pub(crate) scenarios: Vec<Scenario>,
     /// The enums that fields of this model have the type of.
     pub(crate) enums: Vec<EnumInfo>,
     /// The members declared with the type of a generic, in the order they were made.
@@ -1577,6 +1604,7 @@ impl Model {
             supply_steps: Vec::new(),
             unused: Vec::new(),
             sequence: Vec::new(),
+            scenarios: Vec::new(),
             enums: Vec::new(),
             uses: Vec::new(),
             provider_conflicts: Vec::new(),
@@ -1645,6 +1673,11 @@ impl Model {
     /// The orders of the board's `sequence` statements (issue #1267), in the order written.
     pub fn sequence(&self) -> &[SequenceOrder] {
         &self.sequence
+    }
+
+    /// The board's `scenario` statements (issue #1258), in the order written.
+    pub fn scenarios(&self) -> &[Scenario] {
+        &self.scenarios
     }
 
     /// The statement that makes `inst` unused, when it is, or is inside, an interface the board
@@ -1735,6 +1768,13 @@ impl Model {
         m.uses.retain(|u| inside(&u.inst));
         m.sequence
             .retain(|o| inside(&o.earlier.inst) && inside(&o.later.inst));
+        m.scenarios.retain(|q| {
+            q.removed
+                .iter()
+                .chain(&q.sources)
+                .chain(&q.senses)
+                .all(|p| inside(&p.inst))
+        });
         m.equalities.retain(|(a, b)| owned(a) && owned(b));
         Arc::make_mut(&mut m.relations).retain(|r| {
             let mut fields = Vec::new();
