@@ -139,7 +139,8 @@ static RESISTOR: Standard = Standard {
 };
 
 /// `catalog capacitor { .capacitance, .effective_capacitance, .max_voltage, .package,
-/// .dielectric optional, .esr optional }`.
+/// .dielectric optional, .esr optional, .capacitance_at_end_of_life optional, .esr_growth
+/// optional }`.
 static CAPACITOR: Standard = Standard {
     catalog: "capacitor",
     word: "capacitor",
@@ -163,6 +164,14 @@ static CAPACITOR: Standard = Standard {
         text("dielectric", Fill::Empty),
         // Likewise: a generic part has no ESR, and a design that bounds the ESR is given a row.
         quantity("esr", Dimension::RESISTANCE, Fill::Empty, false),
+        // What a corner at the end of life reads (issue #1256); a generic part has neither.
+        quantity(
+            "capacitance_at_end_of_life",
+            Dimension::NONE,
+            Fill::Empty,
+            false,
+        ),
+        quantity("esr_growth", Dimension::NONE, Fill::Empty, false),
     ],
     make: generic::capacitors,
 };
@@ -446,6 +455,8 @@ mod tests {
                 ("resistor", "temperature_coefficient"),
                 ("capacitor", "dielectric"),
                 ("capacitor", "esr"),
+                ("capacitor", "capacitance_at_end_of_life"),
+                ("capacitor", "esr_growth"),
                 ("led", "max_forward_current"),
                 ("led", "test_current"),
                 ("inductor", "rms_current"),

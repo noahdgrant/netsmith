@@ -128,12 +128,20 @@ generic Capacitor {
     /// a catalog row does; a relation that reads it (the ripple of a buck stage) is not
     /// evaluated for a row that records none, and says nothing about it.
     .esr: Resistance optional
+    /// The share of its capacitance left at the end of its life, as its maker's endurance test
+    /// states it (`0.7` for "within -30 % of the initial value"): a corner at `Life::End`
+    /// multiplies `.effective_capacitance` by it (`std::env::Corner`, issue #1256).
+    .capacitance_at_end_of_life: Number optional
+    /// How many times its ESR is at the end of its life, as its maker's endurance test states
+    /// it (`2` for "not more than 200 % of the initial specified value"): a corner at
+    /// `Life::End` multiplies `.esr` by it (`std::env::Corner`, issue #1256).
+    .esr_growth: Number optional
     bridge .a ~> .b
 
     .package: Package
     catalog capacitor {
         .capacitance, .effective_capacitance, .max_voltage, .package, .dielectric optional,
-        .esr optional
+        .esr optional, .capacitance_at_end_of_life optional, .esr_growth optional
     }
 }
 
@@ -192,12 +200,17 @@ generic CapacitorBank {
     .dielectric: Dielectric
     /// The ESR of one capacitor, as `Capacitor.esr`.
     .esr: Resistance optional
+    /// The share of its capacitance one capacitor keeps at the end of its life, as
+    /// `Capacitor.capacitance_at_end_of_life`.
+    .capacitance_at_end_of_life: Number optional
+    /// How many times its ESR one capacitor has at the end of its life, as `Capacitor.esr_growth`.
+    .esr_growth: Number optional
     bridge .a ~> .b
 
     .package: Package
     catalog capacitor {
         .capacitance, .effective_capacitance, .max_voltage, .package, .dielectric optional,
-        .esr optional
+        .esr optional, .capacitance_at_end_of_life optional, .esr_growth optional
     }
 }
 

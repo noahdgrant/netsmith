@@ -370,7 +370,7 @@ No standard row has a curve file yet: a curve is added, as a row is, only with i
 
 #### An optional column
 
-A column that a row may leave empty says so with the word `optional` after it in the `catalog` statement (ADR 0078), the word that a member (ADR 0074) and a `pins` row already use for "may be absent". The standard library does it for `temperature_coefficient`, `dielectric`, a capacitor's `esr`, `rms_current`, a TVS diode's `breakdown_voltage` and the `efficiency` of a buck IC (below), and a project's own part does it for a column of its own catalog. A fuse that records a surge rating only for some parts (invented, like the file below):
+A column that a row may leave empty says so with the word `optional` after it in the `catalog` statement (ADR 0078), the word that a member (ADR 0074) and a `pins` row already use for "may be absent". The standard library does it for `temperature_coefficient`, `dielectric`, a capacitor's `esr`, `capacitance_at_end_of_life` and `esr_growth` (see _Named corners_), `rms_current`, a TVS diode's `breakdown_voltage` and the `efficiency` of a buck IC (below), and a project's own part does it for a column of its own catalog. A fuse that records a surge rating only for some parts (invented, like the file below):
 
 ```nsm module=src::zfuse
 /// A fuse with an optional surge rating. Illustrative; not a real part.

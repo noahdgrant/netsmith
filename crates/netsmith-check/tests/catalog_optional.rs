@@ -79,7 +79,18 @@ fn the_standard_tvs_diode_marks_its_breakdown_voltage() {
 fn the_standard_catalogs_mark_the_columns_that_were_optional_before_the_marker() {
     for (generic, module, column) in [
         ("Resistor", "passive", vec!["temperature_coefficient"]),
-        ("Capacitor", "passive", vec!["dielectric", "esr"]),
+        // The two columns a named corner reads at the end of life (issue #1256) are optional
+        // from the start: a row states them only from its maker's endurance test.
+        (
+            "Capacitor",
+            "passive",
+            vec![
+                "dielectric",
+                "esr",
+                "capacitance_at_end_of_life",
+                "esr_growth",
+            ],
+        ),
         ("Inductor", "passive", vec!["rms_current"]),
     ] {
         let c = run(&format!(

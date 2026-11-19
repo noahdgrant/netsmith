@@ -5,7 +5,7 @@
 _Avoid_: Viewer, IDE, GUI
 
 **Effective capacitance**:
-A capacitor's `.effective_capacitance`: the marked value after the DC bias across it and its tolerance, in the worst case over the range the bias can take. A ceramic capacitor holds less than its marked value as the bias rises, so a design states what it needs of the effective capacitance where the circuit depends on it, such as a regulator's output capacitor. The solver works it out from the part's published curve, and a part with no curve cannot be used for it. Temperature and ageing are not part of it yet.
+A capacitor's `.effective_capacitance`: the marked value after the DC bias across it and its tolerance, in the worst case over the range the bias can take. A ceramic capacitor holds less than its marked value as the bias rises, so a design states what it needs of the effective capacitance where the circuit depends on it, such as a regulator's output capacitor. The solver works it out from the part's published curve, and a part with no curve cannot be used for it. Temperature is not part of it; ageing is, at a _Named corner_ at the end of life, where it is multiplied by the part's `.capacitance_at_end_of_life` (issue #1256).
 _Avoid_: Derated capacitance, usable capacitance
 
 **Enclosure**:
@@ -15,6 +15,10 @@ _Avoid_: Seed, start window (those are a range the board writes by hand and stat
 **Enclosure definition**:
 A definition `enclosure Name { ... }` whose body is what a `case { }` section of a physical file holds (the outline, cutouts, mounting holes, fiducials, labels, keepouts and height limits of a case, and its `CaseModel` files), shared by the boards whose physical units say `case Name`: its statements are read as if they were written in that unit's `case { }` section, in the enclosure's own file (ADR 0132). It is written in a file of `src/` of its own or in a physical file, never in a board's circuit source. A board is in one; it is not a member and has no instance. The keyword is `enclosure`, and next to a case, a board's physical file or a `case` line, "an enclosure" means this; where the solver's range above could be meant, say enclosure definition.
 _Avoid_: Case definition, housing, frame (the board's coordinate frame)
+
+**End of life**:
+The point of a capacitor's life its maker rates it for (`Life::End`), at which its endurance test states how much of its capacitance it keeps (`.capacitance_at_end_of_life`, `0.7`) and how many times its ESR it has (`.esr_growth`, `2`). A _Named corner_ at `Life::End` judges the bounds with those figures (issue #1256).
+_Avoid_: EOL (in messages and docs; a member name may use it), aged, worn
 
 **Enum**:
 A type whose values are a fixed list of named variants, declared with `enum Name { A, B }` and imported like a definition (ADR 0054). A variant is written with its enum, `Name::A`; a field of the enum type takes only its variants, with `&=`, `?=` and `==`. `AssemblyMode` is the one enum in scope in every file without an import (`std/prelude.nsm`).
