@@ -211,6 +211,14 @@
 //! would be a rounded `1 / k` (write `0.5 * .vdd.voltage`); a factor that is a range is not read as
 //! one; two rails that a board gives the same range on two nets are two voltages.
 //!
+//! Levels cross the mates of a system (issue #1323, the owner's decision): a driver on a net of
+//! one board against a receiver on a net of another that mated contacts join, the nets paired by
+//! the mate's contact map, each part's levels from its own board's supply, and a fault at the
+//! mate that names both nets, their boards and the contacts (`Run::across_mates`). Not built: the
+//! DC analysis across a mate (it solves each board's nets alone, so an open-drain line's high is
+//! read from the pull-ups of every board it reaches), and the notes of the other passes (a pin
+//! with no levels, a level through a series part) across a mate.
+//!
 //! Accepted as built by the owner, 2026-11-11. Not built: the rule for affine forms (a fraction of
 //! the supply with an offset, `.vdd.voltage - 0.4V`), which a corner comparison decides exactly,
 //! and the same treatment of the pull-up path above for a receiver at a fraction of that rail; not
