@@ -19,6 +19,10 @@ _Avoid_: Mock fab, dummy process, generic fabricator
 How the editor's schematic shows a net that goes on to another module: a pentagon pointing at the end of the short stub of a pin, like KiCad's hierarchical label, with the net's name in it (none for a net with a generated name). A net that goes on has a flag at the end of the stub of each group of its pins in the module (a main part and the small parts that serve its pins).
 _Avoid_: Port (a `Rail`'s and a module's ports are pins), off-sheet label, sheet
 
+**Float voltage**:
+The voltage a rechargeable cell is charged to and held at, as its datasheet's range (`Cell.float_voltage`), and the voltage a charger regulates its output to (`Charger.float_voltage`), which must lie within the cell's (issue #1262).
+_Avoid_: Termination voltage, CV voltage
+
 **Footprint**:
 The copper pads and outline a part has on a board, named by the CAD tool's library.
 

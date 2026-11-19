@@ -75,7 +75,8 @@ pub struct Args {
     /// Each copper layer of the Gerbers is drawn as `view gerber` draws it and compared with the board as `view pcb` draws it (the limits are in the language guide); a difference stops `fab`, lists each place as a `--region` box and is a finding of `fab-notes.txt`. This needs no KiCad. With KiCad's command-line tool installed (`$KICAD_CLI`, then `kicad-cli` or `kicad-cli.exe` on `PATH`, then Windows KiCad 9 under WSL) the files and the findings are compared with KiCad's own plot and check too; without it only the viewer comparison runs, and `fab-notes.txt` says so.
     #[arg(long)]
     pub cross_check: bool,
-    /// Make a guideline finding an error for this run.
+    /// Make a guideline finding, and a part with no room among the locked parts, an error for
+    /// this run.
     #[arg(long)]
     pub strict: bool,
     /// Stop when the pick lock or the pin file would change; implies `--pins locked`.

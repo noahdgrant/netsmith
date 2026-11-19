@@ -894,12 +894,15 @@ pub struct PrecheckReport {
 /// libraries cannot give footprints for (no KiCad install, a part with no mapping) has nothing
 /// proved here: `build` has never needed them, and `fab` reports that when it places. A lock
 /// that breaks a requirement is refused here, with the board as the lock leaves it as data
-/// (`requirements`, `placement`, issue #779).
+/// (`requirements`, `placement`, issue #779). A part the placer places that has no room among
+/// the parts that stay where they are ([`netsmith_pcb::parts_without_room`], issue #1283) is a
+/// warning, an error when `strict` (`--strict`, or `guidelines = "error"`).
 pub fn precheck_board(
     built: &Built,
     layout: Option<&(netsmith_pcb::Layout, String)>,
     libraries: &Libraries,
     constraints_warn: bool,
+    strict: bool,
 ) -> PrecheckReport {
     let mut report = PrecheckReport {
         board: built.label(),
@@ -939,6 +942,33 @@ pub fn precheck_board(
             }
         }
         Err(_) => {}
+    }
+    // Each part the placer places against the room the parts that stay leave it (issue #1283),
+    // when nothing above stops the board: a part bigger than the outline is said there.
+    if report.errors.is_empty()
+        && let Ok(room) = netsmith_pcb::parts_without_room(
+            &built.design,
+            &libraries.mapping,
+            &libraries.footprints,
+            &placement,
+        )
+    {
+        // Each message keeps its own proofs, by its place in the list.
+        report.error_proofs.resize(report.errors.len(), Vec::new());
+        report
+            .warning_proofs
+            .resize(report.warnings.len(), Vec::new());
+        for part in room.no_room {
+            if strict {
+                report.errors.push(format!(
+                    "{part}; this is an error because the run is strict (`--strict` or `guidelines = \"error\"`)"
+                ));
+                report.error_proofs.push(Vec::new());
+            } else {
+                report.warnings.push(part.to_string());
+                report.warning_proofs.push(Vec::new());
+            }
+        }
     }
     report
 }
@@ -1168,6 +1198,7 @@ fn fab_board(
                 layout.as_ref(),
                 libraries,
                 catalogs.constraints_warn(),
+                catalogs.strict_guidelines(),
             )
         });
         for warning in &precheck.warnings {
@@ -3427,6 +3458,31 @@ fn with_margin<T>(
 /// #1025), as its message names it: `Board: impedance target guideline: ...`.
 pub const IMPEDANCE_RULE: &str = "impedance target";
 
+/// The pads of a pin that carries `current` on `net`, one entry for each part of a bank, as the
+/// design rules check reads a branch (issues #1113 and #1333).
+fn drc_branches(
+    net: &str,
+    pins: &[netsmith_core::PinRef],
+    current: f64,
+) -> Vec<netsmith_geom::DrcBranch> {
+    let mut parts: Vec<&str> = pins.iter().map(|p| p.refdes.as_str()).collect();
+    parts.sort_unstable();
+    parts.dedup();
+    parts
+        .into_iter()
+        .map(|part| netsmith_geom::DrcBranch {
+            net: net.to_string(),
+            part: part.to_string(),
+            pads: pins
+                .iter()
+                .filter(|p| p.refdes == part)
+                .map(|p| p.pin.clone())
+                .collect(),
+            current,
+        })
+        .collect()
+}
+
 /// What the design rules check needs that the board file does not say: the process's mask
 /// web and widest filled via, the rules a project file cannot say and the least width of the
 /// nets that carry current (issue #431), the
@@ -3462,22 +3518,13 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
         branches: board
             .branch_currents
             .iter()
-            .flat_map(|b| {
-                let mut parts: Vec<&str> = b.pins.iter().map(|p| p.refdes.as_str()).collect();
-                parts.sort_unstable();
-                parts.dedup();
-                parts.into_iter().map(move |part| netsmith_geom::DrcBranch {
-                    net: b.net.clone(),
-                    part: part.to_string(),
-                    pads: b
-                        .pins
-                        .iter()
-                        .filter(|p| p.refdes == part)
-                        .map(|p| p.pin.clone())
-                        .collect(),
-                    current: b.current,
-                })
-            })
+            .flat_map(|b| drc_branches(&b.net, &b.pins, b.current))
+            .collect(),
+        // The pins whose current the model knows (issue #1333).
+        pin_currents: board
+            .pin_currents
+            .iter()
+            .flat_map(|l| drc_branches(&l.net, &l.pins, l.current))
             .collect(),
         sizing: netsmith_design::guidelines::sizing_of(&board.process),
         // The layout file's waivers of findings of a part's own footprint (issue #1196).

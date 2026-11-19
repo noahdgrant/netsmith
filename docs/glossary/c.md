@@ -32,12 +32,24 @@ _Avoid_: Reason, category, kind of note, note type
 One board of a panel's grid, counted along the rows from the top left.
 _Avoid_: Slot, tile
 
+**Cell**:
+A rechargeable cell, `std::sources::Cell` (issue #1262): the part whose terminals are the rail `.terminals`, with its chemistry, capacity, internal resistance, charge and discharge temperature windows, float voltage and largest charge current from its datasheet. A charger joined to it with `~` is held against it after the solve (_Charger_).
+_Avoid_: Battery (for one cell), accumulator
+
 **Chain**:
 A run of series connections from one pin through bridge parts to another. A series chain passes one current, the through-current (`.current`) of each of its parts, taken from the first terminal of the part's `bridge` to the second; the first part's is drawn from the net the chain starts on (ADR 0014). A chain from a rail's `pos` to the same rail's `neg`, untapped, whose parts are each a `dc resistor` or a `dc diode` the way it runs, also has its current set by Kirchhoff's voltage law before the pick: the rail's voltage less the forward voltages, over the resistances (ADR 0113).
 
 **Channel**:
 The function of a pin row that is the pin's channel of a class, written `of CLASS` after it in the row (`fn GPIO class ANALOG class AIN1 of ANALOG`): the name firmware reads the pin by when the board asks for the class. The pin file and the firmware's pin map record it for a request of the class (issue #787). A pin is one channel of one class.
 _Avoid_: Channel for a line of a bus (that is a _Line_) or for the room between two rows of pads (that is a _Corridor_)
+
+**Charge time limit**:
+The longest a charge of the storage on a rail may take, `Rail.charge_time_limit` (issue #1262): a field of the connection between a charger and what it charges, shared by `~`, which the check of the charge time reads (issue #1264): the storage on the net (a _Cell_'s capacity, the capacitance across the rail from the least of its window to the charger's least float voltage) over the least charge current less the storage's leakage must take no longer.
+_Avoid_: Charge timeout, safety timer (the charger's own timer is a part of the IC)
+
+**Charger**:
+A charger IC for one rechargeable cell, a part that provides `std::parts::regulator::Charger` (issue #1262): the rails `.vin` and `.out`, and its `.float_voltage`, `.charge_current` (set by its programming pin) and `.thermistor_window`. When its `.out` is joined with `~` to a _Cell_'s terminals, its float voltage and thermistor window must lie within the cell's float voltage and charge window, and the most of its charge current within the cell's limit. What it takes from `.vin` while it charges, with the other loads on the net, must be within the `.max_peak_current` of the source in front of it (issue #1264).
+_Avoid_: Battery charger, charge controller
 
 **Checkpoint**:
 A place in a long call (the checker's instances, a trial of the solver's search, a part or a net of the design stage, a sheet or a pass of the schematic's layout, a move of the placer) that asks whether the job it belongs to was cancelled, and ends the call if so. A job is cancelled with a token (`netsmith_core::job::Cancel`) that the one who started it installs for its thread; a cancelled call unwinds to him with nothing of what it made kept, and the analysis that was cancelled leaves the last reading as it was (ADR 0062). It is the _Cancel_ button's reach: a call is stopped at its next checkpoint, not at once.

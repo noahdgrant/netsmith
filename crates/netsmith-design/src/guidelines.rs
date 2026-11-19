@@ -488,8 +488,20 @@ pub struct TrackPlan {
     /// The pins of parts that state the current of their branch (issue #1113), with the copper
     /// that current needs, by the pin's path.
     pub branches: Vec<Branch>,
+    /// The pins whose current the model knows and is less than their net's (issue #1333).
+    pub pin_currents: Vec<PinCurrent>,
     /// A pin whose branch is stated to carry less than the model says flows through it.
     pub errors: Vec<String>,
+}
+
+/// A pin of a part whose current the model knows, on a net with a known current, below the
+/// net's (issue #1333), as `pin_currents` finds it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PinCurrent {
+    pub pin: InstId,
+    pub net: String,
+    /// The most that flows through the pin, in amperes.
+    pub current: f64,
 }
 
 /// A pin of a part that states the current of its branch (issue #1113): the copper from the
@@ -839,7 +851,62 @@ pub fn plan_tracks(
     }
     plan.widths.sort_by(|a, b| a.0.cmp(&b.0));
     branches(model, process, features, &sizing, &carriers, &mut plan);
+    pin_currents(model, &carriers, &mut plan);
     plan
+}
+
+/// The pins whose own current the model knows, below the current of their net (issue #1333):
+/// a feedback divider's top resistor on a rail of amps carries microamps, and the copper that
+/// only feeds it needs no more. What flows through a pin is the sum of what the rails whose
+/// `pos` or `neg` it is and the parts with an end of their `bridge` on it carry, each at the
+/// larger end of its range in size, with the pins joined to it inside its part (an alias with
+/// no pad of its own is the same copper). A pin that nothing carries a current through (a
+/// capacitor's, a pin no rail names), or that one carrier with no known current does, is left
+/// out: its
+/// current is not known, and the design rules check holds the copper to it to its net's. So is
+/// a pin that carries its whole net's current, which says nothing more than the net does. Only
+/// the nets with a known current ([`TrackPlan::currents`]) are read: the others are not held
+/// to a width. The router does not read these; a pin that states its own current
+/// ([`branches`]) is drawn for it.
+fn pin_currents(model: &Model, carriers: &[Carrier], plan: &mut TrackPlan) {
+    for net in model.nets() {
+        let Some(total) = plan
+            .currents
+            .iter()
+            .find(|c| c.net == net.name)
+            .map(|c| c.current)
+        else {
+            continue;
+        };
+        for &pin in &net.terminals {
+            if model.instance(pin).kind != InstKind::Pin
+                || plan.branches.iter().any(|b| b.pin == pin)
+            {
+                continue;
+            }
+            // The pin and the pins joined to it inside its part are one copper.
+            let mut same = model.joined_inside(pin);
+            same.push(pin);
+            let mut through = carriers
+                .iter()
+                .filter(|c| c.pins().any(|p| same.contains(&p)))
+                .map(|c| c.range.map(|(lo, hi)| lo.abs().max(hi.abs())))
+                .peekable();
+            if through.peek().is_none() {
+                continue;
+            }
+            let Some(current) = through.sum::<Option<f64>>() else {
+                continue;
+            };
+            if current < total * (1.0 - 1e-9) {
+                plan.pin_currents.push(PinCurrent {
+                    pin,
+                    net: net.name.clone(),
+                    current,
+                });
+            }
+        }
+    }
 }
 
 /// The pins of parts that state the current of their branch, sized (issue #1113), and the ones

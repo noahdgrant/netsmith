@@ -26,6 +26,10 @@ _Avoid_: Terminator, terminal (a pin of a part is a _Terminal_)
 The current a logic level was measured at, written after the value: `.voh &= .vdd.voltage - 0.4V at 2mA`. The statement narrows or constrains the level as it does without `at`; the checker records the current beside the level, and a later analysis derives the pin's output resistance from it (ADR 0076, amendment 1). Only `voh` and `vol` take one, and a level has one.
 _Avoid_: Load current (a part's `.current` is its draw), drive current
 
+**Thermistor window**:
+The cell temperatures a charger charges between, read by the thermistor on its temperature-sense pin: `Charger.thermistor_window` (issue #1262), which must lie within the charge window of the cell it charges (`Cell.charge_temperature`).
+_Avoid_: NTC window, JEITA range
+
 **Tie**:
 `tie .sense ~ .vout.pos` in a part: the two pins must be on one net, which the board makes. It is skipped in a package that lacks either pin, and the solver does not choose a package that has both pins of a tie the board does not make.
 _Avoid_: Short, jumper

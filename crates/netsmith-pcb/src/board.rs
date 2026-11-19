@@ -237,6 +237,11 @@ pub struct Board {
     /// pad is drawn, and its vias counted, for the branch's current ([`Board::branch_of`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub branch_currents: Vec<netsmith_core::BranchCurrent>,
+    /// The pins whose current the model knows, below their net's (issue #1333): the design
+    /// rules check sizes the copper that only feeds them for what they draw. The router does
+    /// not read them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pin_currents: Vec<netsmith_core::PinCurrent>,
     /// The parts the person said may hang over the board edge, by reference designator
     /// (ADR 0045, "Built: overhang"). [`Board::check_placement`] does not report the
     /// courtyard of such a part past an edge it may hang over.

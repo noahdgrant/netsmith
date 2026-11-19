@@ -830,6 +830,10 @@ pub struct Extras {
     /// pour, and it carries what it needs for the branches of the others. Not checked without
     /// `sizing`.
     pub branches: Vec<Branch>,
+    /// The pins whose current the model knows, below their net's (issue #1333): a feedback
+    /// divider's top on a rail of amps. Read as `branches` are, after them: a pad of a pin in
+    /// both is the stated branch's, and a pad in neither is of the trunk.
+    pub pin_currents: Vec<Branch>,
     pub sizing: Option<crate::ipc2221::TrackSizing>,
     /// The layout file's waivers of findings of a part's own footprint (issue #1196, `waivers.rs`):
     /// a finding one covers is moved to [`Report::waived`], and one that covers none is an error.

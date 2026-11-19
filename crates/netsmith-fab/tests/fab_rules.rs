@@ -448,3 +448,71 @@ fn the_copper_of_a_branch_is_held_to_the_current_its_pin_states_and_not_to_its_n
     };
     assert_eq!(counts(&mut b, &blind), (2, 1));
 }
+
+fn pin_current(part: &str, current: f64) -> netsmith_geom::DrcBranch {
+    netsmith_geom::DrcBranch {
+        net: "P".to_string(),
+        part: part.to_string(),
+        pads: vec!["1".to_string()],
+        current,
+    }
+}
+
+#[test]
+fn the_copper_to_a_pin_whose_current_the_model_knows_is_held_to_what_flows_through_it() {
+    // Issue #1333: the same 0.2 mm branch with one via, to a pin that states nothing but whose
+    // current the model knows (a feedback divider's top takes microamps from a rail of amps).
+    let counts = |b: &mut Pcb, extras: &DrcExtras| {
+        let r = check(b, extras);
+        (r.count(DrcRule::TrackCurrent), r.count(DrcRule::ViaCurrent))
+    };
+    let with = |pin_currents: Vec<netsmith_geom::DrcBranch>| DrcExtras {
+        pin_currents,
+        ..branch_extras(None)
+    };
+    let mut b = branch_board(0.2, false);
+    assert_eq!(counts(&mut b, &with(vec![pin_current("J1", 1e-5)])), (0, 0));
+    // A pin current that needs more than the branch's copper carries is named as the net's would be.
+    assert_eq!(counts(&mut b, &with(vec![pin_current("J1", 2.0)])), (2, 1));
+    // A pin current of another net is not this one's.
+    let other = netsmith_geom::DrcBranch {
+        net: "Q".to_string(),
+        ..pin_current("J1", 1e-5)
+    };
+    assert_eq!(counts(&mut b, &with(vec![other])), (2, 1));
+    // A stated current comes before the model's: a pin stated at 2 A is held to 2 A.
+    let both = DrcExtras {
+        pin_currents: vec![pin_current("J1", 1e-5)],
+        ..branch_extras(Some(2.0))
+    };
+    assert_eq!(counts(&mut b, &both), (2, 1));
+    // The trunk is the net's whatever the pins past it carry.
+    let mut b = branch_board(0.2, true);
+    assert_eq!(counts(&mut b, &with(vec![pin_current("J1", 1e-5)])), (1, 0));
+}
+
+#[test]
+fn a_branch_carries_the_sum_of_the_currents_of_the_pins_past_it() {
+    // Issue #1333: the branch of `branch_board` goes on past J1 to J2. Its first track carries
+    // both pins' currents, the last only J2's.
+    let mut b = branch_board(0.2, false);
+    b.part(
+        "J2",
+        (20.0, 32.0),
+        0.0,
+        &[thru("1", 0.0, 0.0, 1.2, 0.7, "P")],
+        NONE,
+    );
+    b.track("P", "B.Cu", (20.0, 22.0), (20.0, 32.0), 0.2);
+    let mut tracks = |j1: f64, j2: f64| {
+        let extras = DrcExtras {
+            pin_currents: vec![pin_current("J1", j1), pin_current("J2", j2)],
+            ..branch_extras(None)
+        };
+        check(&mut b, &extras).count(DrcRule::TrackCurrent)
+    };
+    // 0.2 mm carries about 0.6 A at JLCPCB's copper: each pin alone fits, both do not.
+    assert_eq!(tracks(1e-5, 1e-5), 0);
+    assert_eq!(tracks(0.4, 0.4), 2, "the two tracks before J1 carry 0.8 A");
+    assert_eq!(tracks(0.0, 2.0), 3, "all three carry J2's 2 A");
+}

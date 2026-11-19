@@ -1328,3 +1328,59 @@ part Tps54202 provides BuckIc {
         .boost.max_voltage >= 7V
     }
 }
+
+/// A charger IC for one rechargeable cell (issue #1262): it takes power from `.vin` and charges
+/// the cell on `.out`, the rail a board joins with `~` to the cell's terminals
+/// (`.charger.out ~ .cell.terminals`, `std::sources::Cell`). A concrete IC is a
+/// `part X provides Charger` that writes its pin table, against the pins of this generic
+/// (`.vin.pos`, `.vin.neg`, `.out.pos` and its own), and its datasheet's numbers as narrowings.
+///
+/// What a charger states, from its datasheet:
+///
+/// - `.float_voltage`: the voltage it charges the cell to and holds it at (its regulation
+///   voltage), as the datasheet's range over the conditions it gives (`4.168V..4.232V`).
+/// - `.charge_current`: the fast charge current, as its programming pin sets it: a part states
+///   the datasheet's equation over the resistor on the pin (`.charge_current == 1000V / .rprog`,
+///   with `.rprog == .r_prog.resistance` on the board), so it carries the resistor's tolerance.
+/// - `.thermistor_window`: the temperatures of the cell, read by the thermistor on its
+///   temperature-sense pin, between which it charges, as the temperatures the datasheet gives
+///   for the thermistor and the resistors a board fits (`0degC..45degC`). Optional (ADR 0074): a
+///   charger with no thermistor input states none.
+///
+/// When `.out` is joined to a cell, the check after the solve holds these against the cell's
+/// `.float_voltage`, `.charge_temperature` and `.max_charge_current` (see `Cell`) and names both
+/// sides' numbers. A charger joined to no cell is not judged.
+///
+/// Two more checks after the solve read the charge current (issue #1264). When the connection
+/// on `.out` states `.charge_time_limit`, the storage on its net (a cell's `.capacity`, and the
+/// capacitance across the rail with its `.leakage_current`) is charged at the least of
+/// `.charge_current` and the time held against the limit. When the source in front of `.vin`
+/// states `.max_peak_current` (a regulator states it for its output), what the charger takes
+/// (the most of `.vin.current` when the part states it, and of `.charge_current` otherwise)
+/// and the other loads on the net must be within it. A part may state `.charge_current` as a limit
+/// (`.charge_current &= 500mA +/- 10%`) when its current is not set by a pin.
+///
+/// Not modelled: the charger's own current and a switching charger's input (a part states
+/// `.vin.current` for them), its heat, its preconditioning and termination,
+/// and the constant-voltage tail of a charge.
+#[kind(ic)]
+generic Charger {
+    .designator &= "U"
+
+    .vin: Rail
+    .out: Rail
+    .vin.neg ~ .out.neg
+
+    pins {
+        .vin.pos power
+        .vin.neg power
+        .out.pos power
+    }
+
+    /// The voltage it charges the cell to and holds it at, as the datasheet's range.
+    .float_voltage: Voltage
+    /// The fast charge current, as its programming pin sets it.
+    .charge_current: Current
+    /// The cell temperatures it charges between, read by its thermistor.
+    .thermistor_window: Temperature optional
+}
