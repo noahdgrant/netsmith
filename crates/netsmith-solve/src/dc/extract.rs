@@ -3,7 +3,10 @@
 //! What is read from the model:
 //!
 //! - **The nets** the checker made (the pins that `~`, `~>` and each `bridge` join). A net is a
-//!   node.
+//!   node. In a system, the nets that mated contacts join are one node (issue #1427,
+//!   `crate::mated`): the analysis solves the circuit of both boards at once. A mated contact is a
+//!   wire and draws nothing, and a board's port on such a node is not an outside that may draw or
+//!   drive: the outside is the other board, which the analysis has.
 //! - **Sources.** A `Rail` that the board itself declares (its supply from outside), with a
 //!   voltage that the design states and that is finite, is an ideal source between its `pos`
 //!   and `neg` nets. Its nets are *held*: the `neg` net at zero, the `pos` net over the range of
@@ -237,6 +240,9 @@ struct Item {
 /// relations; the instances, the nets and the root stay as the checker made them, so one index
 /// serves every pick of a solve (issue #568).
 pub(crate) struct Index {
+    /// The nets that mated contacts join, read as one node (issue #1427, `crate::mated`): `None`
+    /// where no mate joins two nets, and the nets are the model's.
+    joined: Option<crate::mated::Joined>,
     net_of: HashMap<InstId, usize>,
     /// The part pins of each net, as a set.
     terminals: Vec<HashSet<InstId>>,
@@ -257,7 +263,8 @@ pub(crate) struct Index {
 
 impl Index {
     pub(crate) fn new(model: &Model) -> Self {
-        let nets = model.nets();
+        let joined = crate::mated::Joined::of(model);
+        let nets = crate::mated::nets(model, joined.as_ref());
         let mut net_of: HashMap<InstId, usize> = HashMap::new();
         for (i, n) in nets.iter().enumerate() {
             for &p in &n.pins {
@@ -334,6 +341,7 @@ impl Index {
             list.dedup();
         }
         Self {
+            joined,
             net_of,
             terminals,
             by_net,
@@ -348,6 +356,22 @@ impl Index {
     /// The rails under the root, with their `.voltage`, in the order of their ids.
     pub(crate) fn rails(&self) -> &[(InstId, FieldId)] {
         &self.rails
+    }
+
+    /// Whether a pin is a contact that a mate joins to the other board: a wire, which draws
+    /// nothing from its node (issue #1427).
+    fn mated_contact(&self, pin: InstId) -> bool {
+        self.joined
+            .as_ref()
+            .is_some_and(|j| j.contacts.contains(&pin))
+    }
+
+    /// Whether a node is nets of more than one board that mates join: what is outside each
+    /// board on it is the other boards, which the analysis models (issue #1427).
+    fn mated_node(&self, net: usize) -> bool {
+        self.joined
+            .as_ref()
+            .is_some_and(|j| j.groups.contains(&net))
     }
 }
 
@@ -424,7 +448,7 @@ fn extract_in(
     scope: Option<&Scope<'_>>,
     into_open: Option<&HashMap<InstId, Range>>,
 ) -> (Extracted, BTreeSet<usize>) {
-    let nets = model.nets();
+    let nets = crate::mated::nets(model, ix.joined.as_ref());
     let net_of = &ix.net_of;
     // With a scope: the instances that make an element on its nets, and its parts, in the
     // order of their ids (the order the whole model's are looked at in).
@@ -954,7 +978,7 @@ fn extract_in(
     // The logic pins that drive: each is one of its states (high, low, high impedance) through
     // its output resistance, which the level and the current it is measured at give (ADR 0076,
     // amendment 4).
-    let reader = crate::levels::reader(model);
+    let reader = crate::levels::joined_reader(model, ix.joined.as_ref());
     let mut drivers: Vec<Driver> = Vec::new();
     let mut leaky_open: BTreeSet<usize> = BTreeSet::new();
     for (index, net) in scoped_nets() {
@@ -1099,9 +1123,13 @@ fn extract_in(
                 }
                 _ => None,
             });
+        // A rail of a board whose nets mates join to other boards: what is outside the board
+        // on them is those boards, which the analysis models (issue #1427).
+        let mated = |pin: InstId| net_of.get(&pin).is_some_and(|&n| ix.mated_node(n));
         match (is_rail, current) {
             (Some((_, pos, neg)), _)
                 if source_pins.contains(&pos) && source_pins.contains(&neg) => {}
+            (Some((_, pos, neg)), _) if mated(pos) && mated(neg) => {}
             (Some((_, pos, neg)), Some(i)) => {
                 if let (Some(&np), Some(&nn)) = (net_of.get(&pos), net_of.get(&neg)) {
                     items.push(Item {
@@ -1124,8 +1152,12 @@ fn extract_in(
             _ => {}
         }
     }
-    // Every pin of a board's own ports that is not one of those above.
+    // Every pin of a board's own ports that is not one of those above, on a node that no mate
+    // joins to another board (on one that a mate does, the outside is the other board).
     for (index, net) in scoped_nets() {
+        if ix.mated_node(index) {
+            continue;
+        }
         for &p in &net.pins {
             if ix.terminals[index].contains(&p)
                 || accounted.contains(&p)
@@ -1216,7 +1248,8 @@ fn extract_in(
                     break;
                 };
                 let connector = model.member(part, "mating").is_some();
-                let draws_nothing = !connector && model.pin_draws_nothing(t);
+                let draws_nothing =
+                    ix.mated_contact(t) || (!connector && model.pin_draws_nothing(t));
                 let unused = model.pin_kind(t) == Some(PinKind::NoConnect);
                 if !(draws_nothing || unused) {
                     open.insert(index);

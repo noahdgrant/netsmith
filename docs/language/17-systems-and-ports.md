@@ -594,7 +594,7 @@ The check reads the copper pads and no silkscreen mark, since every footprint ha
 
 #### Logic levels across a mate
 
-A mated contact joins a net of one board to a net of the other, so a driver on one board drives a receiver on the other, and the logic levels are checked across it as on one net (issue #1323; chapter _Standard parts_, _Logic levels and absolute maximums_). The nets are paired by the mate's contacts, contact N of one connector with contact N of the other (or the contacts a partial mate names), through as many mates as join them: a card's output through the carrier to a second card. Each part's levels are those of its own board's supply, measured from its own ground, and the two grounds are one where the mate's ground contacts join them. Levels stated as fractions of two rails that the mate's power contacts join are compared at one supply voltage, as on one board; rails of their own on the two boards are two voltages. An open-drain line takes its high from the pull-ups on every board it reaches. A contact that is power or ground on either board carries no line. The fault is reported at the mate and names both nets, their boards and the contacts between them.
+A mated contact joins a net of one board to a net of the other, so a driver on one board drives a receiver on the other, and the logic levels are checked across it as on one net (issue #1323; chapter _Standard parts_, _Logic levels and absolute maximums_). The nets are paired by the mate's contacts, contact N of one connector with contact N of the other (or the contacts a partial mate names), through as many mates as join them: a card's output through the carrier to a second card. Each part's levels are those of its own board's supply, measured from its own ground, and the two grounds are one where the mate's ground contacts join them. Levels stated as fractions of two rails that the mate's power contacts join are compared at one supply voltage, as on one board; rails of their own on the two boards are two voltages. An open-drain line takes its high from the pull-ups on every board it reaches. A contact that is power or ground on either board carries no line. The fault is reported at the mate and names both nets, their boards and the contacts between them. What else the check reads of a line's circuit crosses the mate too (below).
 
 A carrier at 3.3 V drives a card whose receiver runs from 5 V of its own:
 
@@ -662,6 +662,82 @@ error: the nets `net-slot.p3` of `carrier` and `net-j1.p3` of `card`, mated at `
    |
 54 |     .carrier.slot.mating ~ .card.j1.mating
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+#### The circuit of a line across a mate
+
+The nets that mated contacts join are one node for the DC analysis and for the checks of a line's circuit (issue #1427). The analysis solves the circuit of both boards at once: an open-drain line whose pull-up is on one board and whose pull-down, driver or receiver is on the other has its high from the solved circuit, with every driver letting go, and not only from the pull-ups. A supply that a power contact carries, and the grounds that ground contacts join, are one node as well. A contact is a wire: it draws nothing from the line. A port of a board whose nets a mate joins to another board is not something outside the board that may draw from it or drive it: what is outside is the other board, and the analysis has it.
+
+The other checks of a line follow the mate too. A pin with no levels on one board, on a line that a part with levels on the other board drives or reads, is named as not evaluated. A receiver whose level comes through a series resistor or a two-resistor divider is judged when the driver is on the other board. These messages name the line as `the nets ... mated at ...`, the nets in the order of their boards in the system. A carrier at 3.3 V drives a card that divides the line in two before its receiver:
+
+```nsm fails
+import std::logic::Logic
+import std::parts::connector::{Header1x4, Socket1x4}
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+/// Invented: drives a high to its supply less 0.1 V and a low to 0.1 V.
+part Driver {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.voh &= .vdd.voltage - 0.1V
+    .out.vol &= 0.1V
+    pins {
+        .vdd.pos  power  "VDD" "1"
+        .vdd.neg  power  "GND" "2"
+        .out.line output "OUT" "3"
+    }
+}
+
+/// Invented: reads a high from 70 % of its supply and a low up to 30 %.
+part Receiver {
+    .vdd: Rail
+    .in: Logic
+    .in.reference ~ .vdd
+    .in.vih &= 0.7 * .vdd.voltage
+    .in.vil &= 0.3 * .vdd.voltage
+    pins {
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+        .in.line input "IN"  "3"
+    }
+}
+
+board Carrier {
+    .vcc: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .u1: Driver
+    .u1.vdd ~ .vcc
+    .slot: Socket1x4
+    .vcc.neg ~ .slot.p1
+    .u1.out.line ~ .slot.p3
+}
+
+board Card {
+    .vcc: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .u2: Receiver
+    .u2.vdd ~ .vcc
+    .r1: Resistor { .resistance &= 10kohm +/- 1% }
+    .r2: Resistor { .resistance &= 10kohm +/- 1% }
+    .j1: Header1x4
+    .vcc.neg ~ .j1.p1
+    .j1.p3 ~> .r1 ~> .u2.in.line
+    .u2.in.line ~> .r2 ~> .vcc.neg
+}
+
+system Kit {
+    .carrier: Carrier
+    .card: Card
+    .carrier.slot.mating ~ .card.j1.mating
+}
+```
+
+```text
+error: net `net-r1.b`: with `carrier.u1.out` driving high, the divider of `card.r1` from the nets `net-slot.p3` of `carrier` and `net-j1.p3` of `card`, mated at `carrier.slot` pin 3 against `card.j1` pin 3 and `card.r2` to ground `GND` holds the line at 1.502V..1.7V but `card.u2.in.vih` needs 2.194V..2.426V: a high of 1.502V is not always read as a high, which takes 2.426V
+   --> main.nsm:45:5
+   |
+45 |     .u2: Receiver
+   |     ^^^^^^^^^^^^^
 ```
 
 #### A connector inside a module
