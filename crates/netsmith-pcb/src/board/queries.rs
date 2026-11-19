@@ -93,10 +93,16 @@ impl Board {
             .filter_map(|k| {
                 let at = k.at?;
                 let local = Rect::new(at, Pt::new(at.x + k.size.0, at.y + k.size.1));
+                let mut layers = k.layers.clone();
                 let rect = match &k.part {
                     None => local.translated(self.outline.min),
                     Some(path) => {
                         let part = self.parts.iter().find(|p| &p.path == path)?;
+                        // One whose faces turn over with its carrier (issue 1331) is on the
+                        // other face for a carrier on the back.
+                        if k.on_carrier_face && part.side == Side::Back {
+                            layers = turned_over(&layers);
+                        }
                         Rect::around(local.corners().map(|c| part.to_board(c)))?
                     }
                 };
@@ -104,7 +110,7 @@ impl Board {
                     name: k.name.clone(),
                     carrier: k.part.clone(),
                     rect,
-                    layers: k.layers.clone(),
+                    layers,
                     tracks: k.tracks,
                     vias: k.vias,
                     copper: k.copper,
@@ -280,7 +286,7 @@ impl Board {
                     front: on("top"),
                     back: on("bottom"),
                     limit: k.max_height,
-                    on_carrier_face: false,
+                    on_carrier_face: k.on_carrier_face,
                 })
             })
             .chain(standoffs)
@@ -384,4 +390,17 @@ impl Board {
             }
         }
     }
+}
+
+/// The layer words of a keepout turned over with its carrier: `top` and `bottom` swap, and an
+/// inner layer stays (issue 1331).
+fn turned_over(layers: &[String]) -> Vec<String> {
+    layers
+        .iter()
+        .map(|l| match l.as_str() {
+            "top" => "bottom".to_string(),
+            "bottom" => "top".to_string(),
+            other => other.to_string(),
+        })
+        .collect()
 }

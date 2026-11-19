@@ -140,6 +140,7 @@ fn design(case: &Case) -> Design {
                     copper: false,
                     parts: false,
                     max_height: Some(limit),
+                    on_carrier_face: false,
                 })
                 .into_iter()
                 .collect(),

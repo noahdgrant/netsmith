@@ -771,7 +771,7 @@ pub(crate) fn carried_zones(design: &Design) -> Vec<CarriedZone> {
                 front: on("top"),
                 back: on("bottom"),
                 limit: k.max_height,
-                on_carrier_face: false,
+                on_carrier_face: k.on_carrier_face,
             })
         })
         .collect()
@@ -970,6 +970,7 @@ fn drawn_keepout(
         copper,
         parts,
         max_height: None,
+        on_carrier_face: false,
     })
 }
 
@@ -1289,6 +1290,7 @@ at = [5.0, 4.0]
         // one of the boxes the placer keeps clear of, nor a height zone; it is a carried zone.
         let keepout =
             |name: &str, part: Option<&str>, parts: bool, max_height| netsmith_core::Keepout {
+                on_carrier_face: false,
                 name: name.into(),
                 part: part.map(Into::into),
                 at: Some((2.0, -5.0)),

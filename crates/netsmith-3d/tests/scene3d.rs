@@ -167,6 +167,7 @@ fn limit(name: &str, at: (f64, f64), size: (f64, f64), layers: &[&str], max: f64
         copper: false,
         parts: false,
         max_height: Some(max),
+        on_carrier_face: false,
     }
 }
 

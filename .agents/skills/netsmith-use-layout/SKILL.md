@@ -9,6 +9,8 @@ The layout file, `<stem>.pcb.toml` beside the source, holds the **solution**: wh
 
 A board of a system defined in another file has its own layout file, the one beside that file (`--board Kit/lamp` of `src/kit.nsm` reads and writes `src/lamp.pcb.toml`): write a member's entries there, never copy them into the system's file. A table for a member left in the system's file still wins, and a `note:` says so: move it to the member's file. (issue #1327)
 
+The connector of a mate to another board of the system is a mechanical fit: lock it (`--board Kit/lamp`), and the board mated on it lies over a known area of the other board, which that board's placer, `layout check` and `fab` keep the parts taller than the mated height out of (`the keepout `Kit/lamp over power_out` allows 10.65 mm there`, issue #1331). Unlocked, `fab` says in a `note:` that the area is not known before placing. Move the part the finding names, or the connector; never add a keepout for it.
+
 A part with no entry is placed by the placer round the parts the file places; a part with `lock` is left where it is; any other entry is where the placer starts from, and moving a part by hand moves nothing else.
 
 ## Loop

@@ -784,6 +784,7 @@ fn heads(model: &Model, copper_layers: u32, errors: &mut Vec<String>) -> Vec<Kee
             copper: true,
             parts: true,
             max_height: None,
+            on_carrier_face: false,
         });
     }
     found
@@ -1634,6 +1635,7 @@ pub(crate) fn features_of(
                         copper: flags[2],
                         parts: flags[3],
                         max_height,
+                        on_carrier_face: false,
                     });
                 }
             }
@@ -2121,6 +2123,7 @@ pub(crate) fn layout(
                     copper,
                     parts,
                     max_height: None,
+                    on_carrier_face: false,
                 });
                 continue;
             }
