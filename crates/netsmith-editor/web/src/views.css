@@ -103,6 +103,15 @@ button.chip.pin-chip.cur, button.chip.cur { border-color: var(--sel-line); backg
 .pinrow { display: grid; grid-template-columns: 1.875rem minmax(0, 1fr); align-items: center; gap: 0.375rem; }
 .pinrow .chip { justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .pin-no { color: var(--text-faint); font-family: var(--mono); font-size: var(--fs-sm); text-align: right; font-variant-numeric: tabular-nums; }
+/* The pin budget of a host processor in the board summary (issue 1284). */
+.pb-head { margin: 0 0 0.25rem; font-size: var(--fs-sm); }
+.pb-list { list-style: none; margin: 0 0 0.375rem; padding: 0; display: flex; flex-direction: column; }
+.pb-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 0.5rem; align-items: baseline; padding: 0.25rem 2px; border-bottom: 1px solid var(--row-line); font-size: var(--fs-sm); }
+.pb-row:last-child { border-bottom: none; }
+.pb-mod { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pb-pins { color: var(--text-muted); white-space: nowrap; }
+.pb-blocks { grid-column: 1 / -1; color: var(--text-muted); font-size: var(--fs-xs); }
+.pb-row.full .pb-pins { color: var(--text-faint); }
 /* The pin map of a part (a padlock and a move write the pin file, ADR 0101) and the board's pick lock, read only (ADR 0100). */
 .pinmap { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .pm-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 0.5rem; row-gap: 1px; align-items: baseline; padding: 0.3125rem 2px; border-bottom: 1px solid var(--row-line); font-size: var(--fs-sm); }

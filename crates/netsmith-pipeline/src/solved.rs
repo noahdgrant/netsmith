@@ -35,9 +35,14 @@
 //! turn passed over, in the shape a pick has. The first turn is the one the search made when it
 //! first reached the part, with the parts before it at the first rows that fit.
 //!
+//! A board that is built also has its `pin_budgets` (issue 1284): for each host processor, the
+//! pins and serial blocks each module uses of it and how many are left, as
+//! [`crate::pin_budget`] says (the editor's `PinBudget`, field for field).
+//!
 //! [`explain`] reads the same values as text, for `netsmith board explain`.
 
 use netsmith_check::{Domain, Model};
+use netsmith_editor::api::PinBudget;
 use serde_json::{Map, Value, json};
 
 use crate::Built;
@@ -59,6 +64,8 @@ pub fn to_value(built: &Built) -> Value {
         "board": built.label(),
         "members": members(&built.trace.model),
         "picks": picks(&built.picks, &built.trace.model, &built.trace.sources),
+        "pin_budgets": serde_json::to_value(crate::pin_budget::of(built))
+            .expect("a pin budget always serialises to JSON"),
     })
 }
 
@@ -184,6 +191,20 @@ fn inside(path: &str, within: &str) -> bool {
             .is_some_and(|rest| rest.starts_with('.'))
 }
 
+/// The pin budgets of the board's hosts at `path` or inside it (`mcu`, or `core` for
+/// `core.mcu`).
+fn budgets_at(board: &Value, path: &str) -> Vec<PinBudget> {
+    board["pin_budgets"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter(|v| v["host"].as_str().is_some_and(|h| inside(h, path)))
+                .filter_map(|v| serde_json::from_value(v.clone()).ok())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// How many paths [`explain`] lists when it finds nothing at the path it was given.
 const LISTED: usize = 12;
 
@@ -210,7 +231,8 @@ pub fn explain(boards: &[Value], path: &str, rows: Option<usize>) -> Result<Stri
                 .unwrap_or_default()
         };
         let (picks, unpicked, members) = (list("picks"), list("unpicked"), list("members"));
-        if picks.is_empty() && unpicked.is_empty() && members.is_empty() {
+        let budgets = budgets_at(board, path);
+        if picks.is_empty() && unpicked.is_empty() && members.is_empty() && budgets.is_empty() {
             continue;
         }
         let failed = board["failed"] == true;
@@ -224,6 +246,7 @@ pub fn explain(boards: &[Value], path: &str, rows: Option<usize>) -> Result<Stri
         for part in unpicked {
             out.push_str(&explain_pick(part, false, rows));
         }
+        out.push_str(&crate::pin_budget::text(&budgets));
         if !members.is_empty() {
             let width = members
                 .iter()
@@ -300,7 +323,8 @@ pub fn explain_json(boards: &[Value], path: &str, rows: Option<usize>) -> Result
                 .unwrap_or_default()
         };
         let (picks, unpicked, members) = (list("picks"), list("unpicked"), list("members"));
-        if picks.is_empty() && unpicked.is_empty() && members.is_empty() {
+        let budgets = budgets_at(board, path);
+        if picks.is_empty() && unpicked.is_empty() && members.is_empty() && budgets.is_empty() {
             continue;
         }
         let mut one = Map::new();
@@ -311,6 +335,12 @@ pub fn explain_json(boards: &[Value], path: &str, rows: Option<usize>) -> Result
         one.insert("picks".into(), picks.into());
         one.insert("unpicked".into(), unpicked.into());
         one.insert("members".into(), members.into());
+        if !budgets.is_empty() {
+            one.insert(
+                "pin_budgets".into(),
+                serde_json::to_value(&budgets).expect("a pin budget always serialises to JSON"),
+            );
+        }
         found.push(Value::Object(one));
     }
     if found.is_empty() {

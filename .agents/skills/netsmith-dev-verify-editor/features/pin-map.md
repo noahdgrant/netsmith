@@ -27,3 +27,7 @@ The editor writes the pin file's `lock`, `pin` and `source` lines of one entry, 
 - The lock is solved for on the first ask after each reading (a solve of the whole source file, with no KiCad): a big project pays for it once per reading, on the first board asked for.
 - A pin the editor writes is one the next reading keeps: the move is judged by the rules the check applies to a pin file (offers the function, one request each, nothing the source holds, `shared`), from the analysis of the files on disk.
 - The editor still solves from the source and does not hold parts to the lock; the panel says what `netsmith project lock --check` says.
+
+## Pin budget (recipe `pin-budget`)
+
+With nothing selected in the schematic, the board summary has a _Pin budget · u_ section for each host processor (a part whose pin table lists a function, issue 1284): `3 of 4 pins used` for the fixture's `u`, a row for each module with its pins (`(board)` for the parts the board declares) and serial blocks, and the serial blocks by bus with those left (`other 0 of 1 used, 1 left (UARTE0)`). The numbers are `/api/board`'s `pin_budgets`, the record `netsmith board explain u` prints. Read only.

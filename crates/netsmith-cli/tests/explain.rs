@@ -187,3 +187,109 @@ fn json_for_a_path_with_nothing_is_a_finding_with_the_exit_code_the_text_has() {
     assert_eq!(doc["findings"][0]["code"], "explain");
     assert!(doc["findings"][0]["message"].as_str().unwrap().contains("no member and no part"));
 }
+
+/// An invented host processor with six pins, a UART and an I2C controller that share one serial
+/// unit and a second UART, and a board whose module `pullups` takes the I2C controller (issue
+/// 1284). The footprint is a generator's, so no KiCad is needed.
+const HOST: &str = r#"import std::bus::{I2c, I2cRole, Uart}
+import std::parts::passive::Resistor
+
+part Zhost {
+    peripheral UARTE0 on GPIO as Uart { UARTE0_TX:output as tx; UARTE0_RX:input as rx }
+    peripheral TWIM0 on GPIO as I2c I2cRole::Controller { TWIM0_SCL as scl; TWIM0_SDA as sda }
+    peripheral UARTE1 on GPIO as Uart { UARTE1_TX:output as tx; UARTE1_RX:input as rx }
+    shared SERIAL0 { UARTE0 TWIM0 }
+
+    pins {
+        .p00 bidirectional "P0.00" "1" fn GPIO
+        .p01 bidirectional "P0.01" "2" fn GPIO
+        .p02 bidirectional "P0.02" "3" fn GPIO
+        .p03 bidirectional "P0.03" "4" fn GPIO
+        .p04 bidirectional "P0.04" "5" fn GPIO
+        .p05 bidirectional "P0.05" "6" fn GPIO
+    }
+}
+
+module Pullups {
+    .scl: Pin
+    .sda: Pin
+    .r1: Resistor { .resistance &= 4.7kohm +/- 5% }
+    .r2: Resistor { .resistance &= 4.7kohm +/- 5% }
+    .scl ~ .r1.a
+    .sda ~ .r2.a
+}
+
+board Bench {
+    .mcu: Zhost
+    .pullups: Pullups
+    .led: Resistor { .resistance &= 1kohm +/- 5% }
+    .mcu.p00.function &= TWIM0_SCL
+    .mcu.p01.function &= TWIM0_SDA
+    .mcu.p00 ~ .pullups.scl
+    .mcu.p01 ~ .pullups.sda
+    .mcu.p02.function &= GPIO
+    .mcu.p02 ~ .led.a
+}
+"#;
+
+fn host_project(label: &str) -> TempDir {
+    let dir = TempDir::new(label);
+    fs::create_dir_all(dir.join("src")).unwrap();
+    fs::write(
+        dir.join("netsmith.toml"),
+        "[project]\nname = \"budget\"\ntop_level = [\"src/main.nsm\"]\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("kicad.toml"),
+        "[[part]]\nkind = \"Zhost\"\npackage = \"SOT-23-6\"\ndefault = true\nfootprint = \"gen:SOT23(pins=6)\"\n",
+    )
+    .unwrap();
+    fs::write(dir.join("src/main.nsm"), HOST).unwrap();
+    dir
+}
+
+#[test]
+fn a_host_says_its_pin_budget_by_module_and_the_serial_blocks_left() {
+    let dir = host_project("explain-budget");
+    let run = explain(&dir, &["mcu"]);
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let said = String::from_utf8_lossy(&run.stdout);
+    assert!(
+        said.contains(
+            "  pin budget of `mcu` (`Zhost`, U1): 6 pins, 3 used, 3 left\n    (board)  1 pin (P0.02)\n    pullups  2 pins (P0.00, P0.01); serial blocks TWIM0\n"
+        ),
+        "{said}"
+    );
+    // UARTE0 shares its unit with TWIM0, which is in use, so only UARTE1 is left.
+    assert!(
+        said.contains("    serial blocks: I2c 1 of 1 used, 0 left; Uart 0 of 2 used, 1 left (UARTE1)\n"),
+        "{said}"
+    );
+    // A part that is no host has no budget.
+    let led = explain(&dir, &["led"]);
+    assert!(!String::from_utf8_lossy(&led.stdout).contains("pin budget"));
+}
+
+#[test]
+fn json_has_the_pin_budget_of_a_host() {
+    let dir = host_project("explain-budget-json");
+    let run = explain(&dir, &["mcu", "--format", "json"]);
+    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    let doc = json(&run);
+    let budget = &doc["boards"][0]["pin_budgets"][0];
+    assert_eq!(budget["host"], "mcu");
+    assert_eq!((budget["pins"].as_u64(), budget["used"].as_u64(), budget["left"].as_u64()), (Some(6), Some(3), Some(3)));
+    assert_eq!(budget["modules"][1]["module"], "pullups");
+    assert_eq!(budget["modules"][1]["pins"], serde_json::json!(["P0.00", "P0.01"]));
+    assert_eq!(budget["modules"][1]["blocks"], serde_json::json!(["TWIM0"]));
+    let blocks = budget["blocks"].as_array().unwrap();
+    let block = |name: &str| blocks.iter().find(|b| b["name"] == name).unwrap();
+    assert_eq!(block("TWIM0")["bus"], "I2c");
+    assert_eq!((block("TWIM0")["used"].as_bool(), block("TWIM0")["left"].as_bool()), (Some(true), Some(false)));
+    assert_eq!(block("UARTE0")["left"], false);
+    assert_eq!(block("UARTE1")["left"], true);
+    // The board's own record has no budget for a path that holds no host.
+    let led = explain(&dir, &["led", "--format", "json"]);
+    assert!(json(&led)["boards"][0].get("pin_budgets").is_none());
+}

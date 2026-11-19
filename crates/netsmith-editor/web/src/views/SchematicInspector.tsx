@@ -15,6 +15,7 @@ import { plural } from '../util';
 import { Defs, InspectorAction, InspectorHead, InspectorSection, PinChip } from '../components/Inspector';
 import { Icon } from '../components/Icons';
 import { PickLock, PinMap } from '../components/Sidecars';
+import { PinBudgets } from '../components/PinBudget';
 import type { SheetRow } from './SheetNav';
 import { removedOn } from '../compare/model';
 import { baseLocation, marks, openDiff, refText } from '../compare/store';
@@ -343,6 +344,7 @@ function SheetPanel({ rows, current, drawing, goNet, goBus, openSheet }: Inspect
             { label: 'Nets', value: d?.nets.length ?? '-' },
           ]}
         />
+        <PinBudgets budgets={d?.pin_budgets} />
         <p class="ih-help">Click a module to open it. Click a part or a wire there to select it.</p>
       </section>
     );
@@ -352,6 +354,7 @@ function SheetPanel({ rows, current, drawing, goNet, goBus, openSheet }: Inspect
     return (
       <section aria-label="Board summary">
         <InspectorHead eyebrow="Board" icon="board" tone="board" title={d?.name ?? ''} titleTag="div" />
+        <PinBudgets budgets={d?.pin_budgets} />
         <p class="ih-help">Click a part, a wire, a label or a flag to select it.</p>
       </section>
     );
