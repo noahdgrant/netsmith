@@ -1097,7 +1097,7 @@ board Switched {
 
 `std::parts::regulator::Charger` is a charger IC, a generic with the rails `.vin`, where its power comes from, and `.out`, which charges the cell, on one ground. A concrete IC is a part that provides it and states, from its datasheet, `.float_voltage` (its regulation voltage, as a range), `.charge_current` (the fast charge current, as its programming pin sets it: the datasheet's equation over the resistor on the pin, so it carries the resistor's tolerance) and, for an IC with a thermistor input, `.thermistor_window`, the cell temperatures it charges between (optional, ADR 0074). When the charger's `.out` is joined with `~` to a cell's `.terminals` (directly, or through a module's rail), the check after the solve holds the two against each other: the charger's float voltage must lie within the cell's, both ends; its thermistor window within the cell's charge window, both ends; and the most of its charge current at most the cell's `.max_charge_current`. A value of either side that has none is listed as not evaluated. A charger that states no thermistor window is not judged on it, and a charger joined to no cell is not judged at all.
 
-The rail between them carries `.charge_time_limit`, the longest a charge may take: it is a field of the connection, so the charger's `.out` and the cell's `.terminals` share it, and either side may state it (`.bat.terminals.charge_time_limit &= ..10.8ks`, three hours). The time a charge takes is checked against it by issue #1264; until then nothing reads it.
+The rail between them carries `.charge_time_limit`, the longest a charge may take: it is a field of the connection, so the charger's `.out` and the cell's `.terminals` share it, and either side may state it (`.bat.terminals.charge_time_limit &= ..10.8ks`, three hours). The time a charge takes is checked against it (see _The time a charge takes_ below).
 
 Here an invented cell and an invented charger, whose 2.2 kohm programming resistor sets 1000 V / 2.2 kohm, 455 mA, within the cell's 500 mA:
 
@@ -1188,7 +1188,179 @@ error: `charger` charges the cell `bat` at up to 1.01A (`charger.charge_current`
    |     ^^^^^^^^^^^^^^
 ```
 
-Not modelled: the cell's voltage over its state of charge, its self-discharge and ageing, the current the charger draws and its heat, and the time a charge takes (issue #1264).
+Not modelled: the cell's voltage over its state of charge, its self-discharge and ageing, the current the charger draws and its heat.
+
+### The time a charge takes, and what the charger takes from its supply
+
+Two more checks after the solve read a charger's `.charge_current` (issue #1264). The charge current is what the part states: the equation of its programming pin over the resistor there, with the resistor's tolerance, or a limit, for an IC whose current is fixed or set by a pin with no resistor (`.charge_current &= 200mA +/- 10%`). The charger is taken as a constant-current source, at the least of that range, up to its float voltage.
+
+**The charge time.** When the connection on the charger's `.out` states `.charge_time_limit` (on the charger's `.out` or on what it is joined to with `~`, such as the cell's `.terminals`), the storage on that net is charged in the worst case and the time held against the most of the limit:
+
+- a cell joined to it, by its `.capacity`, charged from empty;
+- each part with a `bias` across the rail's two nets (a supercapacitor, a capacitor, a bank), by the most of its effective capacitance, charged from the least of the rail's window (its `.voltage_floor`, or the least of `.voltage`) to the top of `.voltage`, or to the least of the charger's `.float_voltage` when that is lower: the voltage the charger is sure to reach;
+- less the most of the storage's `.leakage_current`, taken from the charge current for the whole charge (a ceramic capacitor has none).
+
+So the time is the charge over the current: `(capacity + C * (end - start)) / (min(charge_current) - leakage)`. A charge current at or below the leakage never finishes the charge, and that is an error too. A limit on a net with no cell and no capacitor is listed as not evaluated, and so is a charge whose values have none; a connection that states no limit is not checked.
+
+**The supply's budget.** While the charger charges, the source in front of it gives the charge current and the other loads on the net at once. When `.vin` has a `.max_peak_current` (a regulator states it for its output, and `~` shares it; a rail from outside the board states it, `.usb.max_peak_current &= 500mA`), what the charger takes and the most the other loads draw must be within it. The charger takes the most of its `.vin.current` when the part states it (a switching charger takes less than it gives) and the most of its `.charge_current` otherwise, as a linear charger does. The other loads are counted as for a load that bursts (chapter 19): each load of the net at its most, and the loads beyond a module's port; a load whose current has no value counts nothing here. A source that states no `.max_peak_current` is not checked.
+
+A charger part states what it takes from `.vin` (`.vin.current`), as its datasheet gives it: a linear charger takes its charge current and its own supply current, and a switching charger less than it gives. Then the balance of the net carries it, and a regulator in front is judged with it by its own bounds, as any load is; this check adds the message that names the charge. A part that states none is taken at its charge current here, and the regulator's bounds on its current are not evaluated.
+
+Here a 12 V input, a 5 V buck that gives at most 600 mA, an MCU that draws up to 150 mA, and an invented charger that charges an invented 0.5 F supercapacitor, which leaks up to 6 uA, from 0 V to 4.75 V, its least float voltage. The 2.7 kohm resistor sets 366.7 mA to 374.1 mA: the charge takes 0.6 F times 4.75 V over 366.7 mA less 6 uA, 7.773 s, within the 10 s limit, and the buck gives up to 375.1 mA and 150 mA, within its 600 mA:
+
+```csv file=catalogs/supercap.csv set=backup
+mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,height_growth,library,source
+ZZS-0F5,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,Reflow,Radial_D16.0mm_P7.50mm,1mm,Extended,invented for the guide
+```
+
+```nsm evaluate catalogs=backup
+import std::parts::passive::{Resistor, Supercap}
+import std::parts::regulator::{Buck, Charger, Lmr16006y}
+import std::sources::Rail
+
+/// Invented: a charger IC whose fast charge current is 1000 V over the resistor on `PROG`.
+part Zchg provides Charger {
+    .package: Package
+    .package &= "SOT-23-5"
+    pins "SOT-23-5" {
+        .nc      no_connect "NC"   "1"
+        .out.pos power      "VBAT" "3"
+        .vin.neg power      "VSS"  "2"
+        .vin.pos power      "VDD"  "4"
+        .prog    input      "PROG" "5"
+    }
+    /// The resistor from `PROG` to `VSS`.
+    .rprog: Resistance
+    .charge_current == 1000V / .rprog
+    // A linear charger takes the charge current from its input, and its own 1 mA.
+    .vin.current == .charge_current + 1mA
+    .float_voltage &= 4.75V..4.85V
+}
+
+board Backup {
+    .input: Rail { .voltage &= 9V..16V; .peak &= 24V; .pos.net &= "VIN" }
+    .reg: Buck<Lmr16006y> { .vout.pos.net &= "V5"; .vout.voltage &= 5V +/- 5% }
+    .input ~ .reg.vin
+    .reg.vout ~ .mcu
+    .reg.vout ~ .charger.vin
+    .charger.prog ~> .rprog ~> .reg.vout.neg
+    .mcu: Rail { .current &= 5mA..150mA }
+    .charger: Zchg
+    .rprog: Resistor { .resistance &= 2.7kohm +/- 1% }
+    .charger.rprog == .rprog.resistance
+    .charger.out.voltage &= 0V..4.8V
+    .charger.out.pos.net &= "VCAP"
+    .charger.out.charge_time_limit &= ..10s
+    .hold: Supercap
+    .charger.out.pos ~> .hold ~> .charger.out.neg
+}
+```
+
+A 10 kohm resistor sets as little as 99.01 mA, so the charge takes up to 28.79 s:
+
+```nsm fails catalogs=backup
+import std::parts::passive::{Resistor, Supercap}
+import std::parts::regulator::{Buck, Charger, Lmr16006y}
+import std::sources::Rail
+
+/// Invented: a charger IC whose fast charge current is 1000 V over the resistor on `PROG`.
+part Zchg provides Charger {
+    .package: Package
+    .package &= "SOT-23-5"
+    pins "SOT-23-5" {
+        .nc      no_connect "NC"   "1"
+        .out.pos power      "VBAT" "3"
+        .vin.neg power      "VSS"  "2"
+        .vin.pos power      "VDD"  "4"
+        .prog    input      "PROG" "5"
+    }
+    /// The resistor from `PROG` to `VSS`.
+    .rprog: Resistance
+    .charge_current == 1000V / .rprog
+    // A linear charger takes the charge current from its input, and its own 1 mA.
+    .vin.current == .charge_current + 1mA
+    .float_voltage &= 4.75V..4.85V
+}
+
+board Backup {
+    .input: Rail { .voltage &= 9V..16V; .peak &= 24V; .pos.net &= "VIN" }
+    .reg: Buck<Lmr16006y> { .vout.pos.net &= "V5"; .vout.voltage &= 5V +/- 5% }
+    .input ~ .reg.vin
+    .reg.vout ~ .mcu
+    .reg.vout ~ .charger.vin
+    .charger.prog ~> .rprog ~> .reg.vout.neg
+    .mcu: Rail { .current &= 5mA..150mA }
+    .charger: Zchg
+    .rprog: Resistor { .resistance &= 10kohm +/- 1% }
+    .charger.rprog == .rprog.resistance
+    .charger.out.voltage &= 0V..4.8V
+    .charger.out.pos.net &= "VCAP"
+    .charger.out.charge_time_limit &= ..10s
+    .hold: Supercap
+    .charger.out.pos ~> .hold ~> .charger.out.neg
+}
+```
+
+```text
+error: `charger` takes up to 28.79s to charge 600mF across the rail (`hold`) from 0V to 4.75V: 2.85C at as little as 99.01mA (`charger.charge_current`, 99.01mA to 101mA) less the 6uA the storage leaks, longer than the 10s of `charger.out.charge_time_limit`; a charge in that time needs at least 285mA of charge current, or less storage
+   --> main.nsm:37:5
+   |
+37 |     .charger.out.charge_time_limit &= ..10s
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+The same charger at 2.2 kohm from a USB port that gives at most 500 mA takes up to 460.1 mA, and with the MCU's 150 mA the port would give 610.1 mA:
+
+```nsm fails catalogs=backup
+import std::parts::passive::{Resistor, Supercap}
+import std::parts::regulator::Charger
+import std::sources::Rail
+
+/// Invented: a charger IC whose fast charge current is 1000 V over the resistor on `PROG`.
+part Zchg provides Charger {
+    .package: Package
+    .package &= "SOT-23-5"
+    pins "SOT-23-5" {
+        .nc      no_connect "NC"   "1"
+        .out.pos power      "VBAT" "3"
+        .vin.neg power      "VSS"  "2"
+        .vin.pos power      "VDD"  "4"
+        .prog    input      "PROG" "5"
+    }
+    /// The resistor from `PROG` to `VSS`.
+    .rprog: Resistance
+    .charge_current == 1000V / .rprog
+    // A linear charger takes the charge current from its input, and its own 1 mA.
+    .vin.current == .charge_current + 1mA
+    .float_voltage &= 4.75V..4.85V
+}
+
+board Backup {
+    .usb: Rail { .voltage &= 5V +/- 5%; .pos.net &= "V5"; .max_peak_current &= 500mA }
+    .usb ~ .mcu
+    .usb ~ .charger.vin
+    .charger.prog ~> .rprog ~> .usb.neg
+    .mcu: Rail { .current &= 5mA..150mA }
+    .charger: Zchg
+    .rprog: Resistor { .resistance &= 2.2kohm +/- 1% }
+    .charger.rprog == .rprog.resistance
+    .charger.out.voltage &= 0V..4.8V
+    .charger.out.pos.net &= "VCAP"
+    .charger.out.charge_time_limit &= ..10s
+    .hold: Supercap
+    .charger.out.pos ~> .hold ~> .charger.out.neg
+}
+```
+
+```text
+error: while `charger` charges it takes up to 460.1mA from `charger.vin` (`charger.vin.current`, 451mA to 460.1mA) and the other loads on the net draw up to 150mA, so the source gives up to 610.1mA, above the 500mA it can give (`charger.vin.max_peak_current`); lower the charge current, or supply the charger from a source that gives more
+   --> main.nsm:30:5
+   |
+30 |     .charger: Zchg
+   |     ^^^^^^^^^^^^^^
+```
+
+Not modelled: the constant-voltage tail of a charge, which makes a real charge of a cell longer than its capacity over the current; the charger's preconditioning and thermal regulation; and a load on the charged rail during the charge.
 
 ### Dropout
 
@@ -2534,7 +2706,7 @@ error: `supply.current` is stated -500mA..0A, so the supply `supply` gives at mo
 
 ### Logic levels and absolute maximums
 
-A digital line is a `Logic` (`std::logic::Logic`): a pin `.line` and the rail `.reference` whose `neg` is its ground. It also has four voltages, `.vih`, `.vil`, `.voh` and `.vol`, as a datasheet gives them (ADR 0046). A part states those it has, with fixed volts or with an equation on its rail: `.in.vih &= 2V`, `.in.vih &= 0.7 * .vdd.voltage`, `.out.voh &= .vdd.voltage - 0.1V`. Every pin also has `.abs_min` and `.abs_max`, the voltages it survives relative to its ground. A part writes them at the end of the pin's row, `abs_min -0.5V abs_max 3.6V` (ADR 0126), and nowhere else: a statement such as `.in.line.abs_max &= 3.6V` is an error that names the row. A `Logic` line or a bus pin is measured from its interface's ground; any other pin names its ground in the row, or takes the part's ("Several packages, and the absolute limits in the row").
+A digital line is a `Logic` (`std::logic::Logic`): a pin `.line` and the rail `.reference` whose `neg` is its ground. It also has four voltages, `.vih`, `.vil`, `.voh` and `.vol`, as a datasheet gives them (ADR 0046). A part states those it has, with fixed volts or with an equation on its rail: `.in.vih &= 2V`, `.in.vih &= 0.7 * .vdd.voltage`, `.out.voh &= .vdd.voltage - 0.1V`. An input level that the datasheet gives in rows by the supply is stated in those rows (see "Levels in rows by the supply" below). Every pin also has `.abs_min` and `.abs_max`, the voltages it survives relative to its ground. A part writes them at the end of the pin's row, `abs_min -0.5V abs_max 3.6V` (ADR 0126), and nowhere else: a statement such as `.in.line.abs_max &= 3.6V` is an error that names the row. A `Logic` line or a bus pin is measured from its interface's ground; any other pin names its ground in the row, or takes the part's ("Several packages, and the absolute limits in the row").
 
 After the rails are solved, the solver checks two things. A fault is an error; a check that cannot be made is a note `not evaluated: ...`, never a pass.
 
@@ -3493,7 +3665,7 @@ board B {
 ```
 
 ```text
-error: `at <current>` states the load of an output level; `.out.vih` is a level that a datasheet states without a load: only an output level, `voh` or `vol`, is measured at a current
+error: an input level is not measured at a load: `at` after `vih` or `vil` takes the supply the level holds at, such as `at 3.0V..3.6V`
   --> main.nsm:8:23
   |
 8 |     .out.vih &= 2V at 2mA
@@ -3564,6 +3736,162 @@ error: `.out.voh` is already stated at 2mA (at main.nsm:8): a level is one value
 9 |     .out.voh >= 2V at 8mA
   |                       ^^^
 ```
+
+#### Levels in rows by the supply
+
+A datasheet often gives an input's thresholds in rows by its supply: `VIH` is 0.65 x VCCI from 1.1 V to 1.95 V and a fixed 2.0 V from 3.0 V to 3.6 V, and `VIL` 0.35 x VCCI and 0.8 V in the same rows. A part states its `vih` or `vil` as the table is printed (issue #1305): each row is the level, `at`, and the supply it holds at, a range or one voltage, with the rows written from the lowest supply and separated by commas. The level may name the supply's voltage, as a level stated without rows does. The supply is the level's reference rail, the `.reference` of its `Logic` or `Levels`.
+
+```nsm evaluate
+import std::logic::Logic
+import std::sources::Rail
+
+/// Invented: an input whose thresholds are a fraction of its supply from 1.1 V to 1.95 V and
+/// fixed from 3.0 V to 3.6 V.
+part Receiver {
+    .vcc: Rail
+    .a: Logic
+    .a.reference ~ .vcc
+    .a.reference.current &= 0A
+    .a.vih &= 0.65 * .vcc.voltage at 1.1V..1.95V, 2.0V at 3.0V..3.6V
+    .a.vil &= 0.35 * .vcc.voltage at 1.1V..1.95V, 0.8V at 3.0V..3.6V
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+        .a.line  input "A"   "3"
+    }
+}
+
+/// Invented: drives within 0.1 V of its supply.
+part Host {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.reference.current &= 0A
+    .out.voh &= .vdd.voltage - 0.1V
+    .out.vol &= 0.1V
+    pins {
+        .vdd.pos  power  "VDD" "1"
+        .vdd.neg  power  "GND" "2"
+        .out.line output "OUT" "3"
+    }
+}
+
+board Low {
+    .core: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8"; .neg.net &= "GND" }
+    .host: Host
+    .rx: Receiver
+    .core ~ .host.vdd
+    .core ~ .rx.vcc
+    .host.out.line ~ .rx.a.line
+}
+```
+
+The rows are read once the rails are solved. Each row that the rail's range reaches gives the level over the part of the range it holds at, with the supply's voltage in the row held to that part: on 1.71 V..1.89 V, `rx.a.vih` is 0.65 of it, 1.112 V..1.229 V, and the host's high of at least 1.61 V is read as a high. A rail whose range spans two rows is judged against the worse of them: the level is the range of every row it reaches, and the check holds a high against its highest `vih` and a low against its lowest `vil`. The same receiver on 3.3 V takes the fixed row, and the host on 1.8 V does not reach it:
+
+```nsm fails
+import std::logic::Logic
+import std::sources::Rail
+
+/// Invented: an input whose thresholds are a fraction of its supply from 1.1 V to 1.95 V and
+/// fixed from 3.0 V to 3.6 V.
+part Receiver {
+    .vcc: Rail
+    .a: Logic
+    .a.reference ~ .vcc
+    .a.reference.current &= 0A
+    .a.vih &= 0.65 * .vcc.voltage at 1.1V..1.95V, 2.0V at 3.0V..3.6V
+    .a.vil &= 0.35 * .vcc.voltage at 1.1V..1.95V, 0.8V at 3.0V..3.6V
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+        .a.line  input "A"   "3"
+    }
+}
+
+/// Invented: drives within 0.1 V of its supply.
+part Host {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.reference.current &= 0A
+    .out.voh &= .vdd.voltage - 0.1V
+    .out.vol &= 0.1V
+    pins {
+        .vdd.pos  power  "VDD" "1"
+        .vdd.neg  power  "GND" "2"
+        .out.line output "OUT" "3"
+    }
+}
+
+board Translated {
+    .core: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8"; .neg.net &= "GND" }
+    .io: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3"; .neg.net &= "GND" }
+    .host: Host
+    .rx: Receiver
+    .core ~ .host.vdd
+    .io ~ .rx.vcc
+    .host.out.line ~ .rx.a.line
+}
+```
+
+```text
+error: net `net-host.out.line`: `host.out.voh` is 1.61V..1.79V but `rx.a.vih` needs 2V: a high of 1.61V is not always read as a high, which takes 2V
+   --> main.nsm:38:5
+   |
+38 |     .host: Host
+   |     ^^^^^^^^^^^
+```
+
+Between two rows the datasheet guarantees nothing. A supply that the rail's range reaches and no row holds at, between two rows, below the first or above the last, gives the level no value, and the levels check says it is not evaluated and why: on 2.5 V the receiver above has the note ``not evaluated: the high level from `host.out` to `rx.a` on net `net-host.out.line`: `rx.a.vih` has no value: `rx.a.vih` is stated in rows by the supply, and no row gives it at 2.5V of the 2.5V of `rx.a.reference.voltage` (...)``.
+
+Some datasheets say the level is linear in the supply between two rows, such as a Schmitt input whose guaranteed thresholds are given at 1.65 V and at 2.3 V (issue #1307). The part says so with `interpolated` after the last row, and between two rows the level is then on the line from the value of the one at its highest supply to the value of the next at its lowest. On 1.71 V..1.89 V the input below needs 1.037 V..1.148 V:
+
+```nsm evaluate
+import std::logic::Logic
+import std::sources::Rail
+
+/// Invented: a Schmitt input whose guaranteed high threshold is given at 1.65 V and at 2.3 V,
+/// and which its datasheet says is linear in the supply between them.
+part Schmitt {
+    .vcc: Rail
+    .a: Logic
+    .a.reference ~ .vcc
+    .a.reference.current &= 0A
+    .a.vih &= 1.0V at 1.65V, 1.4V at 2.3V interpolated
+    .a.vil &= 0.4V
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+        .a.line  input "A"   "3"
+    }
+}
+
+/// Invented: drives within 0.1 V of its supply.
+part Host {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.reference.current &= 0A
+    .out.voh &= .vdd.voltage - 0.1V
+    .out.vol &= 0.1V
+    pins {
+        .vdd.pos  power  "VDD" "1"
+        .vdd.neg  power  "GND" "2"
+        .out.line output "OUT" "3"
+    }
+}
+
+board Shaped {
+    .core: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8"; .neg.net &= "GND" }
+    .host: Host
+    .in: Schmitt
+    .core ~ .host.vdd
+    .core ~ .in.vcc
+    .host.out.line ~ .in.a.line
+}
+```
+
+Only an input level, the `vih` or `vil` of a `Logic` or of `Levels`, takes rows, and only with `&=`; a row's supply is the number the datasheet prints, above zero, and the rows rise and do not overlap (two may share an end, where both hold). A level has one table, and `interpolated` needs two rows. One row alone (`.a.vih &= 2.0V at 3.0V..3.6V`) is a table too: the receiver is judged on that supply and is not evaluated on any other. An output level is not stated in rows: its `at` is the current it was measured at (above). A level that another statement also narrows takes the overlap of the two, and a fault at the rows when there is none.
 
 ### A level translator
 

@@ -89,9 +89,12 @@ interface Rail {
     /// output is joined with `~` to a cell (`std::sources::Cell`) or that holds a storage
     /// capacitor up may take to charge it (issue #1262). It is a field of the connection, so the
     /// charger's output and the cell's terminals, joined with `~`, share it, and either side may
-    /// state it (`.cell.terminals.charge_time_limit &= ..10.8ks`, three hours). The check of
-    /// the time a charge takes against it is issue #1264; until then nothing reads it. Left
-    /// unstated, nothing is checked (ADR 0074).
+    /// state it (`.cell.terminals.charge_time_limit &= ..10.8ks`, three hours). The check after
+    /// the solve (issue #1264) charges the storage on the net at the least of the charger's
+    /// `.charge_current`, less the storage's leakage: a cell's `.capacity`, and the capacitance
+    /// across the rail from the least of its window (`.voltage_floor`, or the least of
+    /// `.voltage`) to the top of `.voltage` or the charger's least float voltage, whichever is
+    /// lower. Left unstated, nothing is checked (ADR 0074).
     .charge_time_limit: Time optional
     /// The narrowest track the nets of this rail are routed with: a lower bound, written as
     /// a range (`.min_track &= 0.5mm..`). Both pins get it, since the return current is the
@@ -286,8 +289,12 @@ enum Chemistry {
 /// (`data/jlcpcb/README.md`). A project adds rows in a file of its own catalog `cell`. The
 /// pins are `+` (pad 1) and `-` (pad 2) in whatever package the row names.
 ///
-/// Not modelled: the cell's voltage over its state of charge, the self-discharge, ageing and
-/// the time a charge takes (issue #1264, which reads the rail's `.charge_time_limit`).
+/// The time a charge takes is checked against the rail's `.charge_time_limit` (issue #1264), as
+/// the cell's `.capacity` over the least of the charger's charge current: the charge is taken
+/// as constant-current from empty.
+///
+/// Not modelled: the cell's voltage over its state of charge, the constant-voltage tail of a
+/// charge, the self-discharge and ageing.
 generic Cell {
     .designator &= "BT"
 

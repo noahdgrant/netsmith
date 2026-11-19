@@ -36,7 +36,8 @@ pub struct Args {
     /// Check the Gerbers against the board with netsmith's viewer (no KiCad), and with KiCad's plot and check when KiCad is installed.
     #[arg(long)]
     pub cross_check: bool,
-    /// Make a guideline finding an error for this run.
+    /// Make a guideline finding, and a part with no room among the locked parts, an error for
+    /// this run.
     #[arg(long)]
     pub strict: bool,
     /// Stop when the pick lock or the pin file of a source file of the order would change.

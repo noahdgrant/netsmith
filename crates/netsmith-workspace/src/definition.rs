@@ -355,6 +355,12 @@ fn expr_paths<'a>(e: &'a Expr, out: &mut Vec<&'a Path>) {
                 expr_paths(&step.to, out);
             }
         }
+        Expr::SupplySteps { rows, .. } => {
+            for row in rows {
+                expr_paths(&row.value, out);
+                expr_paths(&row.at, out);
+            }
+        }
         Expr::Number(..) | Expr::Str(..) | Expr::Variant { .. } => {}
     }
 }

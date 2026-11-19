@@ -16,8 +16,8 @@
 //!   `.max_charge_current`.
 //!
 //! A value of either side that has none after the solve is listed as not evaluated. The cell's
-//! `.discharge_temperature` and the rail's `.charge_time_limit` are not read here (the charge
-//! time is issue #1264).
+//! `.discharge_temperature` is not read, and the time a charge takes and what the charger takes
+//! from its supply are `charging`'s (issue #1264).
 
 use netsmith_check::{Diagnostic, Domain, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::Cause;
@@ -50,7 +50,7 @@ pub(crate) fn check(model: &Model) -> (Vec<Diagnostic>, Vec<NotEvaluated>) {
 }
 
 /// Whether an instance is a part that stands for the standard generic `name`.
-fn stands_for(inst: &netsmith_check::Instance, name: &str) -> bool {
+pub(crate) fn stands_for(inst: &netsmith_check::Instance, name: &str) -> bool {
     inst.kind == InstKind::Part && inst.standard.iter().any(|s| s == name)
 }
 
@@ -174,7 +174,7 @@ fn judge(
 }
 
 /// The rail member `name` of an instance.
-fn rail(model: &Model, inst: InstId, name: &str) -> Option<InstId> {
+pub(crate) fn rail(model: &Model, inst: InstId, name: &str) -> Option<InstId> {
     match model.member(inst, name) {
         Some(Member::Inst(r)) => Some(r),
         _ => None,
@@ -182,13 +182,13 @@ fn rail(model: &Model, inst: InstId, name: &str) -> Option<InstId> {
 }
 
 /// The net (its place in `Model::nets`) of a rail's `pos`.
-fn pos_net(model: &Model, rail: InstId) -> Option<usize> {
+pub(crate) fn pos_net(model: &Model, rail: InstId) -> Option<usize> {
     let (_, pos, _) = model.rail_of(rail)?;
     model.nets().iter().position(|n| n.pins.contains(&pos))
 }
 
 /// The value of a member of an instance, when it is a quantity that has one.
-fn known(model: &Model, inst: InstId, name: &str) -> Option<Quantity> {
+pub(crate) fn known(model: &Model, inst: InstId, name: &str) -> Option<Quantity> {
     let Some(Member::Field(f)) = model.member(inst, name) else {
         return None;
     };
@@ -208,7 +208,7 @@ fn stated(model: &Model, inst: InstId, name: &str) -> bool {
 }
 
 /// Where a member was stated, or the instance when it was not.
-fn statement_of(model: &Model, inst: InstId, name: &str) -> (SourceId, Span) {
+pub(crate) fn statement_of(model: &Model, inst: InstId, name: &str) -> (SourceId, Span) {
     if let Some(Member::Field(f)) = model.member(inst, name)
         && let Some(&at) = model.field(f).narrowed_at.last()
     {
@@ -243,7 +243,7 @@ fn outside(dim: Dimension, inner: Quantity, outer: Quantity) -> String {
     parts.join(" and ")
 }
 
-fn range(dim: Dimension, q: Quantity) -> String {
+pub(crate) fn range(dim: Dimension, q: Quantity) -> String {
     if (q.hi() - q.lo()).abs() <= 1e-12 * q.hi().abs().max(1e-12) {
         show(dim, q.lo())
     } else {
@@ -251,7 +251,7 @@ fn range(dim: Dimension, q: Quantity) -> String {
     }
 }
 
-fn show(dim: Dimension, value: f64) -> String {
+pub(crate) fn show(dim: Dimension, value: f64) -> String {
     if dim == Dimension::TEMPERATURE {
         let c = value - netsmith_quantity::CELSIUS_ZERO_K;
         let c = (c * 1e6).round() / 1e6;

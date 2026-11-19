@@ -894,12 +894,15 @@ pub struct PrecheckReport {
 /// libraries cannot give footprints for (no KiCad install, a part with no mapping) has nothing
 /// proved here: `build` has never needed them, and `fab` reports that when it places. A lock
 /// that breaks a requirement is refused here, with the board as the lock leaves it as data
-/// (`requirements`, `placement`, issue #779).
+/// (`requirements`, `placement`, issue #779). A part the placer places that has no room among
+/// the parts that stay where they are ([`netsmith_pcb::parts_without_room`], issue #1283) is a
+/// warning, an error when `strict` (`--strict`, or `guidelines = "error"`).
 pub fn precheck_board(
     built: &Built,
     layout: Option<&(netsmith_pcb::Layout, String)>,
     libraries: &Libraries,
     constraints_warn: bool,
+    strict: bool,
 ) -> PrecheckReport {
     let mut report = PrecheckReport {
         board: built.label(),
@@ -939,6 +942,33 @@ pub fn precheck_board(
             }
         }
         Err(_) => {}
+    }
+    // Each part the placer places against the room the parts that stay leave it (issue #1283),
+    // when nothing above stops the board: a part bigger than the outline is said there.
+    if report.errors.is_empty()
+        && let Ok(room) = netsmith_pcb::parts_without_room(
+            &built.design,
+            &libraries.mapping,
+            &libraries.footprints,
+            &placement,
+        )
+    {
+        // Each message keeps its own proofs, by its place in the list.
+        report.error_proofs.resize(report.errors.len(), Vec::new());
+        report
+            .warning_proofs
+            .resize(report.warnings.len(), Vec::new());
+        for part in room.no_room {
+            if strict {
+                report.errors.push(format!(
+                    "{part}; this is an error because the run is strict (`--strict` or `guidelines = \"error\"`)"
+                ));
+                report.error_proofs.push(Vec::new());
+            } else {
+                report.warnings.push(part.to_string());
+                report.warning_proofs.push(Vec::new());
+            }
+        }
     }
     report
 }
@@ -1168,6 +1198,7 @@ fn fab_board(
                 layout.as_ref(),
                 libraries,
                 catalogs.constraints_warn(),
+                catalogs.strict_guidelines(),
             )
         });
         for warning in &precheck.warnings {

@@ -383,8 +383,9 @@ pub fn set(design: &Design, file: &Path, path: &str, change: &Change) -> Result<
 pub enum Severity {
     /// The file is wrong: a build or `fab` would refuse it, or its entry cannot be what was meant.
     Error,
-    /// Something the router may trip on (a pad other parts wall in, issue #1313): `fab` goes on,
-    /// and `ok` stays true.
+    /// Something the router or the placer may trip on (a pad other parts wall in, issue #1313;
+    /// a part with no room among the locked parts, issue #1283): `fab` goes on, and `ok` stays
+    /// true.
     Warning,
     /// Worth knowing, nothing is wrong.
     Note,
@@ -395,7 +396,7 @@ pub enum Severity {
 pub struct Finding {
     pub severity: Severity,
     /// `no_entry`, `no_part`, `bad_turn`, `bad_place`, `requirement`, `placement`,
-    /// `walled_in` or `unmeasured`.
+    /// `walled_in`, `no_room` or `unmeasured`.
     pub kind: &'static str,
     /// The part's path.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -538,11 +539,15 @@ fn placement_faults(
 /// among the parts the file places (`placement`, issue #1224): two courtyards that overlap, a
 /// part past the edge, in a keepout or a cutout, over a height limit, a hole too near another
 /// part; and, as a warning, a pad that other parts the file places wall in (`walled_in`, issue
-/// #1313). Each finding has the line of its entry.
+/// #1313); and, as a warning (an error when `strict`), a part the placer places that has no
+/// room among the parts that stay where they are (`no_room`, issue #1283,
+/// [`netsmith_pcb::parts_without_room`]), as `fab` says it before placing. Each finding has the
+/// line of its entry.
 pub fn check(
     design: &Design,
     file: &Path,
     libraries: &netsmith_pipeline::Libraries,
+    strict: bool,
 ) -> Result<Checked, String> {
     let read = read(file)?;
     let exists = read.is_some();
@@ -648,6 +653,31 @@ pub fn check(
                 }
             }
             Err(e) => unplaced = Some(e),
+        }
+        // A part the placer places with no room among the locked ones (issue #1283), as the
+        // check `fab` runs before placing says it. A board it cannot be measured on is said by
+        // the placement check above.
+        let options = netsmith_pcb::place_options(design, Some(&layout));
+        if let Ok(room) = netsmith_pcb::parts_without_room(
+            design,
+            &libraries.mapping,
+            &libraries.footprints,
+            &options,
+        ) {
+            for part in room.no_room {
+                findings.push(Finding {
+                    severity: if strict {
+                        Severity::Error
+                    } else {
+                        Severity::Warning
+                    },
+                    kind: "no_room",
+                    line: lines.get(&part.path).copied(),
+                    path: Some(part.path.clone()),
+                    message: part.to_string(),
+                    fault: None,
+                });
+            }
         }
     }
     findings.sort_by_key(|f| (f.line.unwrap_or(usize::MAX), f.path.clone()));
