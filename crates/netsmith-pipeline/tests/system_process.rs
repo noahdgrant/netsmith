@@ -8,8 +8,14 @@ use netsmith_solve::Catalogs;
 
 /// A board with a header and a process: `process` is the type and what it states.
 fn board(name: &str, process: &str) -> String {
+    // A four-layer process says what its inner layers are.
+    let inner = if process.starts_with("FourLayer") {
+        "    .process.inner1.use &= \"signal\"\n    .process.inner2.use &= \"signal\"\n"
+    } else {
+        ""
+    };
     format!(
-        "board {name} {{\n    .process: {process}\n    .process.inner1.use &= \"signal\"\n    .process.inner2.use &= \"signal\"\n    .input: Rail {{ .voltage &= 5V +/- 5%; .pos.net &= \"VIN\" }}\n    .j1: Header1x2\n    .input.pos ~ .j1.p1\n    .input.neg ~ .j1.p2\n}}\n"
+        "board {name} {{\n    .process: {process}\n{inner}    .input: Rail {{ .voltage &= 5V +/- 5%; .pos.net &= \"VIN\" }}\n    .j1: Header1x2\n    .input.pos ~ .j1.p1\n    .input.neg ~ .j1.p2\n}}\n"
     )
 }
 
@@ -17,7 +23,7 @@ fn board(name: &str, process: &str) -> String {
 /// `b1`...
 fn system(processes: &[&str]) -> String {
     let mut text = String::from(
-        "import std::mfg::jlcpcb::FourLayer\nimport std::parts::connector::Header1x2\nimport std::sources::Rail\n\n",
+        "import std::mfg::jlcpcb::FourLayer\nimport std::mfg::jlcpcb::TwoLayer\nimport std::parts::connector::Header1x2\nimport std::sources::Rail\n\n",
     );
     for (i, process) in processes.iter().enumerate() {
         text.push_str(&board(&format!("B{i}"), process));
@@ -102,4 +108,20 @@ fn a_thickness_no_provider_has_is_reported_inside_its_board_alone() {
     let m = messages(&e).join("\n");
     assert!(m.contains("b1.process"), "{m}");
     assert!(!m.contains("b0.process"), "{m}");
+}
+
+#[test]
+fn a_thickness_outside_the_generics_own_range_is_the_contradiction_at_the_narrowing() {
+    // Every copper weight of `TwoLayer` refuses 3 mm alike (the generic's own 0.4 mm to 2 mm),
+    // so the check's own words stand, at the line, as on a board alone.
+    let e = build(&system(&[&thick("1.6mm"), "TwoLayer { .stackup.thickness &= 3mm }"]))
+        .err()
+        .expect("no process is 3 mm thick");
+    let m = messages(&e);
+    assert_eq!(m.len(), 1, "{m:#?}");
+    assert!(
+        m[0].starts_with("contradiction on `b1.process.stackup.thickness`"),
+        "{m:#?}"
+    );
+    assert_eq!(e[0].board.as_deref(), Some("Stack/b1"));
 }
