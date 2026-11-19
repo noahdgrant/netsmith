@@ -101,6 +101,8 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith dev board3d` | `netsmith board3d` | `--board`, `--format` (was `--json`), `--glb`, `--step`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor` |
 | `netsmith mcp` | new | `--project`, `--editor` |
 
+`netsmith layout check` (issue 1309) measures the parts the layout file places against each other, one list of findings (courtyards, keepouts, cutouts, the edge: `placement`), and `netsmith board fab` runs the same check before the placer starts.
+
 `netsmith layout parts --as-laid-out` (issue 1308) answers for the parts that have a place: the board is made as the layout file has it, a part with no entry in the layout file and no requirement that pins it is not on it, and the document lists it as having none (`no_entry`, a `refdes` and a `path` for each; a line of text for each) instead of refusing the board, also when the part (or a module with one in it) is what a PATH names. The exit code is that of a placed board: 0 when the data is printed. A script that must know whether every part has a place reads `no_entry` (or runs `netsmith layout check`, whose notes say the same). Only an outline whose size is not stated exactly is refused, as the placing alone gives it. `layout fit --as-laid-out` still needs every part to have a place, since the part it fits is tried against all the others.
 
 ### The MCP server
