@@ -96,6 +96,7 @@ impl Unplaced {
                     copper: k.copper,
                     parts: k.parts,
                     max_height: k.max_height,
+                    on_carrier_face: k.on_carrier_face,
                 })
                 .collect(),
             parts,
@@ -117,6 +118,7 @@ impl Unplaced {
             net_currents: design.features.net_currents.clone(),
             branch_currents: design.features.branch_currents.clone(),
             pin_currents: design.features.pin_currents.clone(),
+            pad_pours: design.features.pad_pours.clone(),
             overhang,
             pinned,
             imported: Default::default(),

@@ -1,9 +1,9 @@
 //! The current of each net and the optional features of a design.
 
 use crate::{
-    CaseModel, Cutout, Keepout, Label, Logo, Offset, Outline, PartHeight, PartHeightGrowth,
-    PartKind, PartRoutingMargin, PartSilk, PartSoftMargin, PartStandoff, PinProtrusion, PinRef,
-    Placement, Pour, StepModel,
+    CaseModel, Cutout, Keepout, Label, Logo, Offset, Outline, PadConnection, PartHeight,
+    PartHeightGrowth, PartKind, PartRoutingMargin, PartSilk, PartSoftMargin, PartStandoff,
+    PinProtrusion, PinRef, Placement, Pour, StepModel,
 };
 
 /// The current a net carries, and the least track that carries it (issue #431).
@@ -71,6 +71,28 @@ pub struct PinCurrent {
     pub pins: Vec<PinRef>,
     /// The most that flows through the pin, in amperes.
     pub current: f64,
+}
+
+/// How a pour joins the pads of one pin, as the pin of its part states it (issue #1276):
+/// `.gnd.pour_connection &= PadConnection::Solid`, or a thermal relief with spokes of its own
+/// width, `.gnd.spoke_width &= 0.3mm..`. It overrides the setting of every pour, plane and zone
+/// of the pin's net for these pads: the board file writes it on each pad (KiCad's
+/// `zone_connect` and `thermal_bridge_width`), and the fill, the design rules check and the
+/// fill report read it from there.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PadPour {
+    /// The pin's path in the design (`radio.gnd`).
+    pub path: String,
+    /// The pads of the pin: one for each pad, and for each part of a bank.
+    pub pins: Vec<PinRef>,
+    /// `Solid` or `Thermal`; `None` when the pin states only the width of its spokes, which
+    /// then hold wherever a pour makes a relief round its pads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connection: Option<PadConnection>,
+    /// The width of the spokes of a thermal relief round its pads, in mm: the bottom of the
+    /// range stated, in place of the pour's `.spoke_width`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spoke_width: Option<f64>,
 }
 
 /// The impedance a design states for the tracks of one net or of a pair of nets (issue #1007):
@@ -231,6 +253,10 @@ pub struct Features {
     /// Left out of a design file when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pin_currents: Vec<PinCurrent>,
+    /// The pins that state how a pour joins their pads (issue #1276), by the pin's path. Left
+    /// out of a design file when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pad_pours: Vec<PadPour>,
     pub outline: Option<Outline>,
     pub cutouts: Vec<Cutout>,
     pub pours: Vec<Pour>,

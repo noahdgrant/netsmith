@@ -1555,8 +1555,9 @@ pub struct PcbRouteNet {
     pub net: String,
     /// The router adds no copper to the net.
     pub lock: bool,
-    /// The net's pads are where the record was written: every shape is drawn. When not, only
-    /// the locked shapes are, and the findings say so; a net the board does not have draws none.
+    /// The net's pads are where the record was written. When not, every shape is still drawn
+    /// and the findings say where it is open (issue 1328); a net the board does not have draws
+    /// none.
     pub current: bool,
     pub tracks: Vec<PcbRouteTrack>,
     pub vias: Vec<PcbRouteVia>,
@@ -1572,9 +1573,9 @@ pub struct PcbRouteTrack {
     /// For an arc, a point on it halfway from `from` to `to`.
     pub mid: Option<PcbPoint>,
     pub to: PcbPoint,
-    /// Kept when the net's pads move; not deleted until unlocked.
+    /// Not deleted, moved or tidied until unlocked.
     pub lock: bool,
-    /// Whether it is on the board (see [`PcbRouteNet::current`]).
+    /// Whether it is on the board: false only for a net the board does not have.
     pub drawn: bool,
 }
 

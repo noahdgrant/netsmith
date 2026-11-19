@@ -607,6 +607,7 @@ mod tests {
             paste_ratio: None,
             zone_connect: None,
             thermal_angle: None,
+            thermal_bridge: None,
             remove_unused_layers: false,
             clearance: None,
         }

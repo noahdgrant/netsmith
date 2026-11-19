@@ -257,6 +257,7 @@ pub fn zone(
         vias: false,
         copper: false,
         parts: max_height.is_none(),
+        on_carrier_face: false,
         max_height,
     }
 }

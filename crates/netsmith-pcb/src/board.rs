@@ -246,6 +246,10 @@ pub struct Board {
     /// not read them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pin_currents: Vec<netsmith_core::PinCurrent>,
+    /// The pins that state how a pour joins their pads (issue #1276): the board file writes it
+    /// on each of their pads ([`Board::pad_pour`]), and the fill reads it there.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pad_pours: Vec<netsmith_core::PadPour>,
     /// The parts the person said may hang over the board edge, by reference designator
     /// (ADR 0045, "Built: overhang"). [`Board::check_placement`] does not report the
     /// courtyard of such a part past an edge it may hang over.
