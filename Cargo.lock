@@ -913,6 +913,7 @@ dependencies = [
  "netsmith-core",
  "netsmith-sexp",
  "netsmith-testkit",
+ "roxmltree",
  "serde",
  "toml",
  "uuid",
