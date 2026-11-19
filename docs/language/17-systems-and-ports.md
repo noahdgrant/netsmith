@@ -103,6 +103,7 @@ The system names no pin and no net. After the nets of the boards are known, the 
 - The two connectors must mate: the same kind, rows, positions and pitch, and a header with a socket (a module with its host, for a soldered joint, below). A header does not mate with a header. A connector that takes a smaller one (a 1x8 header in a 1x10 socket) says which of its contacts are mated with `.mating.contacts` (below).
 - Contact N of one board meets contact N of the other, with the rules a board already has on a net: two outputs are refused, an `input` with nothing that drives it on either board is refused, ground against power or a signal is a short. A power contact against a power contact equates their voltages, as `~` of rails does, and an open contact is fine against anything but an input.
 - A mate that carries power or a signal must carry a ground: a contact that is ground on both boards.
+- A driver on one board and a receiver on the other meet at their logic levels, each from the supply of its own board ("Logic levels across a mate", below).
 - The ports the mate carries are joined by it: a port of one board whose pins are all on contacts that a port of the same kind on the other board has its pins on is joined to it, as an explicit `~` of the two would join them (values equated, currents balanced). A `~` between ports that the mate carries is refused with a message naming the mate, so a join has one spelling. A port no connector carries (a soldered lead) is still joined with `~`. If a board has two ports on the same contacts, the mate cannot say which is joined, and says so.
 - Each board keeps its own ground net. The system reports the ground groups: which boards share a ground through the mated ground contacts. A group holds no isolated ground of a board with another ground of the same board ("Isolated grounds", below).
 - The contacts carry the current. The rated current of one contact (`pin_current`) times the contacts that carry a rail's `pos`, or the ground the rails return through, is at least the current of the rail, in either direction. A connector that is rated is picked from the `header` catalog (`data/jlcpcb/catalog/header.csv`, one row for each series and pin count from a public datasheet), so the solver chooses a row that works. A connector with no rating is not checked, and the check is listed as not evaluated.
@@ -590,6 +591,78 @@ Kit: warning: pin1_unmarked: pin 1 of `card.j1` cannot be told from its pads, an
 ```
 
 The check reads the copper pads and no silkscreen mark, since every footprint has pads, and it is the same whether or not the system scene could place the member, since it is a fact of the footprint.
+
+#### Logic levels across a mate
+
+A mated contact joins a net of one board to a net of the other, so a driver on one board drives a receiver on the other, and the logic levels are checked across it as on one net (issue #1323; chapter _Standard parts_, _Logic levels and absolute maximums_). The nets are paired by the mate's contacts, contact N of one connector with contact N of the other (or the contacts a partial mate names), through as many mates as join them: a card's output through the carrier to a second card. Each part's levels are those of its own board's supply, measured from its own ground, and the two grounds are one where the mate's ground contacts join them. Levels stated as fractions of two rails that the mate's power contacts join are compared at one supply voltage, as on one board; rails of their own on the two boards are two voltages. An open-drain line takes its high from the pull-ups on every board it reaches. A contact that is power or ground on either board carries no line. The fault is reported at the mate and names both nets, their boards and the contacts between them.
+
+A carrier at 3.3 V drives a card whose receiver runs from 5 V of its own:
+
+```nsm fails
+import std::logic::Logic
+import std::parts::connector::{Header1x4, Socket1x4}
+import std::sources::Rail
+
+/// Invented: drives a high to its supply less 0.1 V and a low to 0.1 V.
+part Driver {
+    .vdd: Rail
+    .out: Logic
+    .out.reference ~ .vdd
+    .out.voh &= .vdd.voltage - 0.1V
+    .out.vol &= 0.1V
+    pins {
+        .vdd.pos  power  "VDD" "1"
+        .vdd.neg  power  "GND" "2"
+        .out.line output "OUT" "3"
+    }
+}
+
+/// Invented: reads a high from 70 % of its supply and a low up to 30 %.
+part Receiver {
+    .vdd: Rail
+    .in: Logic
+    .in.reference ~ .vdd
+    .in.vih &= 0.7 * .vdd.voltage
+    .in.vil &= 0.3 * .vdd.voltage
+    pins {
+        .vdd.pos power "VDD" "1"
+        .vdd.neg power "GND" "2"
+        .in.line input "IN"  "3"
+    }
+}
+
+board Carrier {
+    .vcc: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .u1: Driver
+    .u1.vdd ~ .vcc
+    .slot: Socket1x4
+    .vcc.neg ~ .slot.p1
+    .u1.out.line ~ .slot.p3
+}
+
+board Card {
+    .vcc: Rail { .voltage &= 5V +/- 5%; .pos.net &= "5V" }
+    .u2: Receiver
+    .u2.vdd ~ .vcc
+    .j1: Header1x4
+    .vcc.neg ~ .j1.p1
+    .u2.in.line ~ .j1.p3
+}
+
+system Kit {
+    .carrier: Carrier
+    .card: Card
+    .carrier.slot.mating ~ .card.j1.mating
+}
+```
+
+```text
+error: the nets `net-slot.p3` of `carrier` and `net-j1.p3` of `card`, mated at `carrier.slot` pin 3 against `card.j1` pin 3: `carrier.u1.out.voh` is 3.035V..3.365V but `card.u2.in.vih` needs 3.325V..3.675V: a high of 3.035V is not always read as a high, which takes 3.675V
+   --> main.nsm:54:5
+   |
+54 |     .carrier.slot.mating ~ .card.j1.mating
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
 
 #### A connector inside a module
 
