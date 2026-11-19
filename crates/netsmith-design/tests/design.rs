@@ -2378,6 +2378,43 @@ fn a_seat_below_the_board_is_refused_with_its_number() {
     );
 }
 
+/// [`own_connectors`] with the joint soldered: `kind` on both, the header a `module` and the
+/// socket a `host`.
+fn soldered(kind: &str, header_seat: &str) -> String {
+    own_connectors(header_seat)
+        .replace("\"pin_header\"", &format!("\"{kind}\""))
+        .replace("\"header\"", "\"module\"")
+        .replace("\"socket\"", "\"host\"")
+}
+
+#[test]
+fn a_soldered_mate_is_face_to_face_whether_or_not_a_seat_is_stated() {
+    for kind in ["soldered_pin", "castellated", "land_grid"] {
+        for seat in ["", ".seat &= 0mm"] {
+            let mates = mates_of(&soldered(kind, seat)).unwrap();
+            let [mate] = &mates[..] else {
+                panic!("one mate: {mates:?}")
+            };
+            assert_eq!((mate.a_seat, mate.b_seat), (Some((0.0, 0.0)), Some((0.0, 0.0))));
+            assert_eq!(mate.mated_height(), Some((0.0, 0.0)), "{kind} {seat}");
+            assert!(mate.soldered, "{kind}");
+        }
+    }
+    let mates = mates_of(&own_connectors(".seat &= 3mm")).unwrap();
+    assert!(!mates[0].soldered);
+}
+
+#[test]
+fn a_soldered_mate_with_a_seat_other_than_0_mm_is_refused_with_its_number() {
+    let errors = mates_of(&soldered("castellated", ".seat &= 1mm")).unwrap_err();
+    assert_eq!(
+        errors,
+        [
+            "`top.j.mating.seat` is 1mm, and a `castellated` joint is soldered face to face, so its seat is 0mm; remove the seat or state 0mm"
+        ],
+    );
+}
+
 /// A carrier with a 1x4 socket and a card with a 1x2 header, mated in contacts 2 and 3 of the
 /// socket (`.mating.contacts`) when `subset` says so.
 fn partial_mate(subset: &str) -> String {
@@ -2429,4 +2466,18 @@ fn a_mate_is_keyed_when_either_connector_says_what_keys_it() {
     assert!(!keyed(""));
     assert!(!keyed(".bottom.j.mating.keyed &= \"none\""));
     assert!(keyed(".bottom.j.mating.keyed &= \"polarised\""));
+}
+
+#[test]
+fn a_body_height_is_read_apart_from_the_seat_and_refused_below_the_board() {
+    let mates = mates_of(&own_connectors(".seat &= 3mm +/- 0.2mm\n        .body_height &= 3.5mm")).unwrap();
+    assert_eq!(mates[0].a_seat, Some((2.8, 3.2)));
+    assert_eq!(mates[0].a_body, Some((3.5, 3.5)));
+    // Unset, the body is the seat.
+    assert_eq!(mates[0].b_body, None);
+    let errors = mates_of(&own_connectors(".body_height &= -1mm")).unwrap_err();
+    assert_eq!(
+        errors,
+        ["`top.j.mating.body_height` is -1mm, and a connector's body does not reach below its board's face"],
+    );
 }

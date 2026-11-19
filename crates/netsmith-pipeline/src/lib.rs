@@ -1459,6 +1459,7 @@ fn export(
         sources,
     );
     constraints::name_soft_margin_sources(&mut design, &designed.soft_margin_sites, sources);
+    constraints::name_keep_apart_sources(&mut design, &designed.keep_apart_sites, sources);
     constraints::name_protrusion_sources(&mut design, &designed.protrusion_sites, sources);
     constraints::name_model_sources(&mut design, &designed.model_sites, sources);
     constraints::name_case_model_sources(&mut design, &designed.case_model_sites, sources);

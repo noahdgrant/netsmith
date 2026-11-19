@@ -178,6 +178,20 @@ pub struct PartStandoff {
     pub standoff: f64,
 }
 
+/// Where the contact of one pad of a part is, as the part's `pads` block states it (issue #1321):
+/// `offset` from the centre of the pad's copper, in the footprint's own frame (y down), in mm.
+/// A pad that is not listed has its contact at its centre. A system's mates are fitted and
+/// checked on the contacts (ADR 0110).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PadContactOffset {
+    /// The part's path in the design.
+    pub path: String,
+    /// The pad's number.
+    pub pad: String,
+    /// `(x, y)` in mm.
+    pub offset: (f64, f64),
+}
+
 /// How much a part's body may grow in height over its life, as the design states it
 /// (`.height_growth`, issue #1263): a cell or a supercapacitor that swells. The height check adds
 /// it to the part's height before it compares the height with a limit, and the finding says so.
@@ -200,6 +214,28 @@ pub struct PartRoutingMargin {
     pub path: String,
     /// In mm, how far the courtyard is grown on each side.
     pub margin: f64,
+}
+
+/// A distance a board's physical file asks between two kinds of parts
+/// (`keep 10mm between BuckIc and Crystal`, issue 1277): every part of the first kind and every
+/// part of the second keep at least `distance` between their courtyards, in the plane of the
+/// board whatever faces they are on. A requirement on where parts go: the placer keeps it as it
+/// keeps an overlap out, and `fab` stops where it is not met.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct KeepApart {
+    /// The statement as written (`keep 10mm between BuckIc and Crystal`).
+    pub rule: String,
+    /// The two kinds as written.
+    pub kinds: [String; 2],
+    /// In mm, the least distance between the courtyards.
+    pub distance: f64,
+    /// The paths of the parts of each kind. A part of both kinds is in both; it is not kept
+    /// apart from itself.
+    pub parts: [Vec<String>; 2],
+    /// The line that states it (`widget.physical.nsm:14`). Filled by the caller that knows the
+    /// source files; empty otherwise.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub source: String,
 }
 
 /// The distance a physical file asks other parts to keep from a part's courtyard

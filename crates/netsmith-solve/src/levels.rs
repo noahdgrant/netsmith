@@ -147,6 +147,19 @@
 //! pin on a rail against `vil` as well (a strap to a rail means a high), and a rail that is the
 //! output of a part that may be off (a load switch), which is held at its range as any rail is.
 //!
+//! A bidirectional pin whose direction a strapped control pin fixes is judged in that direction
+//! only (#1306, the owner's decision: the part states which direction a control pin fixes, and
+//! the check judges the direction the strap fixes, both when it cannot tell). A one-bit translator
+//! with its `DIR` pin tied high passes a signal from A to B only, and its A pin was judged as a
+//! driver of the host's pin as well, which it never is. A part that states `direction .a to .b
+//! when .dir high` gives its pins a kind for the levels check (`kind_of`): the pins of `.a` are
+//! `input`s and those of `.b` `output`s while `.dir` is on a net that holds the `pos` of a rail,
+//! and the statement for `low` holds while it is on a ground (`holder`, as for a strapped input).
+//! A control pin that a pin drives or a resistor pulls, a level no statement names and an open
+//! control pin leave the pins `bidirectional`. Not taken: following a pull-up or a driver of the
+//! control pin to its level (a resistor can be overridden, a driver changes), and giving the net
+//! rules the fixed kind (they read a bidirectional pin as before).
+//!
 //! A level through a two-resistor divider is followed (#1270; the owner's decision: two-resistor
 //! dividers only). A board shifts a host's 3.3 V output into a 1.8 V input with a series resistor
 //! and a resistor to ground, and the driver, which states no test current, was a note. Where the
@@ -295,7 +308,7 @@ pub(crate) fn series_drivers(model: &Model) -> BTreeMap<(InstId, usize), BTreeSe
             for &t in &model.nets()[far].terminals {
                 if model.unused_by(t).is_none()
                     && model.owner_of(t) != Some(part)
-                    && model.pin_kind(t).is_some_and(is_driver)
+                    && run.kind_of(t).is_some_and(is_driver)
                 {
                     out.entry((t, index)).or_default().insert(part);
                 }
@@ -387,6 +400,29 @@ impl Run<'_> {
                 message,
             });
         }
+    }
+
+    /// The kind of a pin for the levels check: its kind (`Model::pin_kind`), or, for a pin whose
+    /// part fixes its direction by a control pin (`direction`, issue #1306), the kind that the
+    /// level of the control pin's strap gives it, an `input` or an `output`. The control is
+    /// strapped high on a net that holds the positive pin of a rail and low on a ground
+    /// (`holder`, as for a strapped input, #1304); a control pin driven or pulled, or at a
+    /// level that no `direction` of the part names, leaves the pin `bidirectional`, judged both
+    /// ways.
+    pub(crate) fn kind_of(&self, pin: InstId) -> Option<PinKind> {
+        let kind = self.model.pin_kind(pin)?;
+        if kind != PinKind::Bidirectional {
+            return Some(kind);
+        }
+        let Some((control, high, low)) = self.model.direction_of(pin) else {
+            return Some(kind);
+        };
+        let fixed = match self.net_index(control).and_then(|i| self.holder(i)) {
+            Some(Holder::Rail { .. }) => high,
+            Some(Holder::Ground { .. }) => low,
+            None => None,
+        };
+        Some(fixed.unwrap_or(kind))
     }
 
     /// The interface that holds the levels of a pin: the `Logic` the pin is the line of, the
@@ -523,7 +559,7 @@ impl Run<'_> {
             let (Some(logic), Some(part), Some(kind)) = (
                 self.logic_of(pin),
                 self.model.owner_of(pin),
-                self.model.pin_kind(pin),
+                self.kind_of(pin),
             ) else {
                 continue;
             };
@@ -708,7 +744,7 @@ impl Run<'_> {
         net.terminals
             .iter()
             .filter(|&&pin| model.unused_by(pin).is_none() && self.logic_of(pin).is_none())
-            .filter_map(|&pin| Some((pin, model.owner_of(pin)?, model.pin_kind(pin)?)))
+            .filter_map(|&pin| Some((pin, model.owner_of(pin)?, self.kind_of(pin)?)))
             .collect()
     }
 
@@ -823,7 +859,7 @@ impl Run<'_> {
         let model = self.model;
         net.terminals
             .iter()
-            .any(|&t| model.unused_by(t).is_none() && model.pin_kind(t).is_some_and(is_driver))
+            .any(|&t| model.unused_by(t).is_none() && self.kind_of(t).is_some_and(is_driver))
     }
 
     /// The series parts a receiver's level comes through (#850): when nothing on the net drives
@@ -893,7 +929,7 @@ impl Run<'_> {
                 .iter()
                 .copied()
                 .filter(|&t| model.unused_by(t).is_none())
-                .filter(|&t| model.pin_kind(t).is_some_and(is_driver))
+                .filter(|&t| self.kind_of(t).is_some_and(is_driver))
                 .collect();
             let unloaded = self.unloaded_through(index, part);
             for r in &receivers {
@@ -951,7 +987,7 @@ impl Run<'_> {
                 if model.owner_of(t) == Some(part) {
                     return true;
                 }
-                model.pin_kind(t) == Some(PinKind::Input)
+                self.kind_of(t) == Some(PinKind::Input)
                     && self.logic_of(t).is_some_and(|logic| {
                         self.value(logic, "ii").is_none_or(|(_, q)| q.hi() <= 0.0)
                     })
@@ -961,7 +997,7 @@ impl Run<'_> {
     /// Whether a pin draws nothing from its net: an `input` that states no leakage, or a
     /// leakage of nothing (#1045, #1270).
     fn draws_nothing(&self, pin: InstId) -> bool {
-        self.model.pin_kind(pin) == Some(PinKind::Input)
+        self.kind_of(pin) == Some(PinKind::Input)
             && self
                 .logic_of(pin)
                 .is_none_or(|logic| self.value(logic, "ii").is_none_or(|(_, q)| q.hi() <= 0.0))
@@ -1265,7 +1301,7 @@ impl Run<'_> {
             .terminals
             .iter()
             .filter(|&&t| model.unused_by(t).is_none())
-            .filter_map(|&t| model.pin_kind(t))
+            .filter_map(|&t| self.kind_of(t))
             .filter(|&k| is_driver(k))
             .collect();
         if own.is_empty()
@@ -2084,7 +2120,7 @@ impl Run<'_> {
                 }
                 continue;
             }
-            let Some(kind) = model.pin_kind(t) else {
+            let Some(kind) = self.kind_of(t) else {
                 continue;
             };
             if !is_driver(kind) {

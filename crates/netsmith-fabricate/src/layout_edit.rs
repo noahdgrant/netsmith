@@ -533,6 +533,7 @@ fn placement_faults(
         faults: board.placement_faults(),
         walled: board.walled_pads(),
         soft: board.soft_margins_broken(),
+        apart: board.kept_apart_broken(),
     })
 }
 
@@ -542,6 +543,8 @@ struct PlacementChecks {
     walled: Vec<netsmith_pcb::WalledPad>,
     /// A part inside the soft margin of another (issue 1310).
     soft: Vec<netsmith_pcb::SoftMarginBroken>,
+    /// Two parts nearer each other than a `keep` statement asks (issue 1277).
+    apart: Vec<netsmith_pcb::ApartBroken>,
 }
 
 /// What the layout file at `file` has wrong against `design`: a part with no entry (a note: the
@@ -552,7 +555,8 @@ struct PlacementChecks {
 /// part past the edge, in a keepout or a cutout, over a height limit, a hole too near another
 /// part; and, as a warning, a pad that other parts the file places wall in (`walled_in`, issue
 /// #1313); and, as a warning (an error when `strict`), a part the file places inside the `soft
-/// margin` of another (`soft_margin`, issue 1310); and, as a warning (an error when `strict`), a part the placer places that has no
+/// margin` of another (`soft_margin`, issue 1310); and, as an error, two parts the file places
+/// nearer each other than a `keep` statement asks (`requirement`, issue 1277); and, as a warning (an error when `strict`), a part the placer places that has no
 /// room among the parts that stay where they are (`no_room`, issue #1283,
 /// [`netsmith_pcb::parts_without_room`]), as `fab` says it before placing. Each finding has the
 /// line of its entry.
@@ -636,7 +640,24 @@ pub fn check(
                 faults,
                 walled,
                 soft,
+                apart,
             }) => {
+                // Two parts the file places nearer each other than a `keep` statement asks
+                // (issue 1277): a requirement, an error as `fab` says it.
+                for b in apart {
+                    let line = lines
+                        .get(&b.other_path)
+                        .or_else(|| lines.get(&b.path))
+                        .copied();
+                    findings.push(Finding {
+                        severity: Severity::Error,
+                        kind: "requirement",
+                        line,
+                        path: Some(b.other_path.clone()),
+                        message: b.to_string(),
+                        fault: None,
+                    });
+                }
                 // A part inside the soft margin of another (issue 1310): a warning, an error
                 // when strict, as `fab` says it.
                 for b in soft {

@@ -268,6 +268,11 @@ fn visit<'a>(
             path(&t.a, inside);
             path(&t.b, inside);
         }
+        Item::Direction(d) => {
+            path(&d.from, inside);
+            path(&d.to, inside);
+            path(&d.control, inside);
+        }
         Item::Unused(u) => path(&u.path, inside),
         Item::Sequence(q) => {
             for step in &q.steps {
@@ -299,6 +304,10 @@ fn visit<'a>(
         }
         // A peripheral names functions, which are words and not paths.
         Item::Peripheral(_) => {}
+        // A part's `.variants` names order codes and features, not members (issue 1311).
+        Item::Variants(_) => {}
+        // A part's `pads` block names pads by their numbers, which are text, not members.
+        Item::Pads(_) => {}
         // A polygon's corners are numbers; a path in one is refused by the checker.
         Item::Polygon(_) => {}
         // A module's `physical "..."` names a file, not a member.
@@ -314,6 +323,8 @@ fn visit<'a>(
                 path(p, inside);
             }
         }
+        // `keep 10mm between BuckIc and Crystal` names two kinds, not members (issue 1277).
+        Item::KeepApart(_) => {}
         // A line of a board's `defaults` names a kind and its field, not a member (issue #625).
         Item::Defaults(_) => {}
         // A part's `layout` block names the part's own pins.

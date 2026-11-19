@@ -128,6 +128,17 @@ pub fn name_soft_margin_sources(
     }
 }
 
+/// Say where the design states each distance between kinds of parts
+/// (`design.features.keep_apart`, in the order of `sites`, issue 1277).
+pub fn name_keep_apart_sources(design: &mut Design, sites: &[(SourceId, Span)], sources: &Sources) {
+    for (rule, site) in design.features.keep_apart.iter_mut().zip(sites) {
+        rule.source = lines_of(std::slice::from_ref(site), sources);
+    }
+    for site in sites {
+        remember_lines(design, std::slice::from_ref(site), sources);
+    }
+}
+
 /// Say where the design states each protrusion (`design.features.protrusions`, in the order of `sites`).
 pub fn name_protrusion_sources(
     design: &mut Design,

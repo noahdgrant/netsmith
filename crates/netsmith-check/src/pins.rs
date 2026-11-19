@@ -1,4 +1,4 @@
-//! `pins` tables and `tie` statements in a part (ADR 0016).
+//! `pins` tables, `tie` and `direction` statements in a part (ADR 0016, issue #1306).
 //!
 //! A row of a table names a pin of the part. A plain pin (`.sense`) is declared by the first
 //! row that names it, in whichever table; a pin of an interface (`.vout.pos`) is the one the
@@ -10,7 +10,9 @@ use netsmith_lang::Span;
 use netsmith_lang::ast::{self, PinKind, Requirement};
 
 use crate::checker::{Checker, Res};
-use crate::model::{InstId, InstKind, Member, PinFunction, PinRow, PinTable, RowLimit, Tie};
+use crate::model::{
+    Direction, InstId, InstKind, Member, PinFunction, PinRow, PinTable, RowLimit, Tie,
+};
 
 impl Checker<'_> {
     /// First pass: make the plain pins that the rows of a table name.
@@ -700,6 +702,117 @@ impl Checker<'_> {
             source,
             span: tie.span,
         });
+    }
+}
+
+impl Checker<'_> {
+    /// `direction .a to .b when .dir high` (issue #1306): the control pin is a pin of the part,
+    /// each side a pin or an interface of it (all its pins), and a pin is on one side of one
+    /// statement for each level of one control pin. The kinds are held to the pin table
+    /// (`faults.rs`, `directions`).
+    pub fn direction(&mut self, d: &ast::Direction) {
+        let Some(part) = self.rules_part(d.span, "direction", "the direction of a pin") else {
+            return;
+        };
+        let control = self.part_pin(&d.control);
+        let from = self.side_pins(&d.from);
+        let to = self.side_pins(&d.to);
+        let (Some(control), Some(from), Some(to)) = (control, from, to) else {
+            return;
+        };
+        let control_text = d.control.to_source();
+        if from.contains(&control) || to.contains(&control) {
+            self.error(
+                d.control.span,
+                format!(
+                    "`{control_text}` fixes the direction, so it is not a pin the signal passes through"
+                ),
+            );
+            return;
+        }
+        if let Some(&both) = from.iter().find(|p| to.contains(p)) {
+            self.error(
+                d.span,
+                format!(
+                    "`{}` is on both sides of the `direction`: a signal goes from one pin to another",
+                    self.written_pin(part, both)
+                ),
+            );
+            return;
+        }
+        let level = if d.high { "high" } else { "low" };
+        for &pin in from.iter().chain(&to) {
+            let before = self.model.instance(part).rules.directions.iter().find(|o| {
+                (o.from.contains(&pin) || o.to.contains(&pin))
+                    && (o.control != control || o.high == d.high)
+            });
+            if let Some(o) = before {
+                let path = self.written_pin(part, pin);
+                let message = if o.control != control {
+                    format!(
+                        "`{path}` already has its direction fixed by `{}`; one control pin fixes the direction of a pin",
+                        self.written_pin(part, o.control)
+                    )
+                } else {
+                    format!(
+                        "the direction of `{path}` when `{control_text}` is {level} is already stated"
+                    )
+                };
+                self.error(d.span, message);
+                return;
+            }
+        }
+        let source = self.cur_source();
+        self.model.instances[part.0]
+            .rules
+            .directions
+            .push(Direction {
+                from,
+                to,
+                control,
+                high: d.high,
+                source,
+                span: d.span,
+            });
+    }
+
+    /// A pin as the part's own source names it: `.a.line`.
+    fn written_pin(&self, part: InstId, pin: InstId) -> String {
+        let (whole, of) = (self.model.path_of(pin), self.model.path_of(part));
+        match whole.strip_prefix(&of) {
+            Some(rest) if !of.is_empty() => rest.to_string(),
+            _ => format!(".{whole}"),
+        }
+    }
+
+    /// The pins one side of a `direction` names: a pin of the part, or every pin of an
+    /// interface of it but the pins of its rails (the reference of a `Logic` or of a bus's
+    /// `levels`), which carry no signal.
+    fn side_pins(&mut self, path: &ast::Path) -> Option<Vec<InstId>> {
+        let part = self.current();
+        let Res::Inst(i) = self.resolve_path(path) else {
+            return self.part_pin(path).map(|p| vec![p]);
+        };
+        if self.model.instance(i).kind != InstKind::Interface
+            || self.model.owner_of(i) != Some(part)
+        {
+            return self.part_pin(path).map(|p| vec![p]);
+        }
+        let mut pins = Vec::new();
+        let mut stack = vec![i];
+        while let Some(at) = stack.pop() {
+            for (_, m) in &self.model.instance(at).children {
+                if let Member::Inst(c) = m {
+                    match self.model.instance(*c).kind {
+                        InstKind::Pin => pins.push(*c),
+                        InstKind::Interface if self.model.rail_of(*c).is_none() => stack.push(*c),
+                        _ => {}
+                    }
+                }
+            }
+        }
+        pins.sort();
+        Some(pins)
     }
 }
 

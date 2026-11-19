@@ -49,8 +49,9 @@
 //! before, and headers and sockets carry an LCSC number though they are hand-soldered. Contact N is
 //! pin `pN`; a header and its socket number alike. This is a library convention and not a field.
 //!
-//! **What is checked**, each reported at the `~` with the nets and pins of both sides: kind (only
-//! `pin_header` is modelled), gender (header with socket; two headers or two sockets do not mate),
+//! **What is checked**, each reported at the `~` with the nets and pins of both sides: kind (one of
+//! [`MateKind`], the same on both sides), gender (header with socket, or a soldered kind's module
+//! with its host; two headers or two sockets do not mate),
 //! positions, rows, pitch. A 1x8 header in a 1x10 socket mates physically, but which eight
 //! contacts is a statement someone must make: a partial mate (below). Per contact, ground against power or a
 //! signal is a short, two outputs are refused, an input no board drives is refused (an open or
@@ -118,6 +119,65 @@ use crate::model::{
     Contact, ContactSide, Domain, FieldId, GroundGroup, GroundNet, InstId, InstKind, Mate,
     MateDecl, Member, Model, PinKind, RExpr, Relation, Role,
 };
+
+/// The kinds of mate (`.mating.kind`, issue #1320). Every kind joins contact N to contact N and
+/// has the same checks contact by contact; they differ in the genders that meet and in the seat.
+///
+/// - `pin_header`: a header in a socket. Each states its seat (`.mating.seat`), which the
+///   catalog row gives.
+/// - `soldered_pin`: pins soldered in another board's plated holes; `castellated`: a board's
+///   edge half-holes soldered to the lands of another; `land_grid`: a module's lands soldered
+///   to a land pattern, a surface joint. The three are soldered: a `module` (the board with the
+///   pins, castellations or lands) on a `host` (the board with the holes or the land pattern),
+///   face to face, so the seat of each side is 0 mm and a seat stated otherwise is refused
+///   (`netsmith_design::system_mates`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MateKind {
+    PinHeader,
+    SolderedPin,
+    Castellated,
+    LandGrid,
+}
+
+impl MateKind {
+    /// Every kind, in the order a message lists them.
+    pub const ALL: [MateKind; 4] = [
+        MateKind::PinHeader,
+        MateKind::SolderedPin,
+        MateKind::Castellated,
+        MateKind::LandGrid,
+    ];
+
+    /// The kind a `.mating.kind` names, `None` for a name that is none.
+    pub fn of(name: &str) -> Option<MateKind> {
+        MateKind::ALL.into_iter().find(|k| k.name() == name)
+    }
+
+    /// How `.mating.kind` spells it.
+    pub fn name(self) -> &'static str {
+        match self {
+            MateKind::PinHeader => "pin_header",
+            MateKind::SolderedPin => "soldered_pin",
+            MateKind::Castellated => "castellated",
+            MateKind::LandGrid => "land_grid",
+        }
+    }
+
+    /// The two genders of the kind: a connector of one meets a connector of the other.
+    pub fn genders(self) -> [&'static str; 2] {
+        if self.soldered() {
+            ["module", "host"]
+        } else {
+            ["header", "socket"]
+        }
+    }
+
+    /// Whether the joint is soldered, face to face: its seats are 0 mm, and each connector
+    /// sits in or on the other's board.
+    pub fn soldered(self) -> bool {
+        self != MateKind::PinHeader
+    }
+}
 
 /// What the board behind one contact has on its net: the role, and the pins that say it.
 struct Side {
@@ -488,23 +548,29 @@ impl Checker<'_> {
             );
             return None;
         }
-        if ka != "pin_header" {
+        let Some(kind) = MateKind::of(&ka) else {
             self.fail(
                 decl,
                 format!(
-                    "{sa} and {sb} are `{ka}` connectors, and only `pin_header` mates are modelled"
+                    "{sa} and {sb} are `{ka}` connectors, and the mate kinds are {}",
+                    MateKind::ALL
+                        .iter()
+                        .map(|k| format!("`{}`", k.name()))
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 ),
             );
             return None;
-        }
+        };
         let (ga, gb) = (
             self.text(a, "gender").expect("checked"),
             self.text(b, "gender").expect("checked"),
         );
+        let [one, other] = kind.genders();
         for (part, g) in [(a, &ga), (b, &gb)] {
-            if g != "header" && g != "socket" {
+            if g != one && g != other {
                 let message = format!(
-                    "{} has the gender `{g}`; a `pin_header` is a `header` or a `socket`",
+                    "{} has the gender `{g}`; a `{ka}` is a `{one}` or a `{other}`",
                     self.shown(part)
                 );
                 self.fail(decl, message);
@@ -518,7 +584,7 @@ impl Checker<'_> {
                     "{sa} and {sb} are both {ga}s ({} and {}); a {ga} mates with a {}",
                     ty(a),
                     ty(b),
-                    if ga == "header" { "socket" } else { "header" }
+                    if ga == one { other } else { one }
                 ),
             );
             return None;

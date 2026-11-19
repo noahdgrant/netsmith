@@ -151,11 +151,21 @@ fn the_least_assembly_board_comes_from_the_process_and_a_board_may_raise_it() {
     let marks = netsmith_fabricate::fab::marks_of(&board);
     assert_eq!(marks.min_single_sided_assembly_size, Some(10.0));
     assert_eq!(marks.min_double_sided_assembly_size, Some(70.0));
+    // The figures' source is the process's (issue 1393): the page, the services and the day.
+    let source = marks.assembly_size_source.as_deref().expect("a source");
+    assert!(
+        source.contains("https://jlcpcb.com/capabilities/pcb-assembly-capabilities")
+            && source.contains("Standard PCBA")
+            && source.contains("read 2026-11-19"),
+        "{source}"
+    );
     // A process that states none (the model's `None`) is not judged.
     let mut none = board.clone();
     none.process.min_single_sided_assembly_size = None;
     none.process.min_double_sided_assembly_size = None;
+    none.process.assembly_size_source = None;
     let marks = netsmith_fabricate::fab::marks_of(&none);
     assert_eq!(marks.min_single_sided_assembly_size, None);
     assert_eq!(marks.min_double_sided_assembly_size, None);
+    assert_eq!(marks.assembly_size_source, None);
 }

@@ -17,10 +17,7 @@
 use netsmith_lang::ast::SoftMargin;
 
 use crate::checker::{Checker, Res};
-use crate::lower::VTy;
 use crate::model::{InstKind, SoftMargin as Stated};
-use crate::polygon::{NotFixed, fixed};
-use netsmith_quantity::Dimension;
 
 impl Checker<'_> {
     /// Keep a `soft margin` statement on the model. Every refusal names the statement and what
@@ -41,7 +38,7 @@ impl Checker<'_> {
             );
             return;
         }
-        let Some(margin) = self.margin_length(m, &text) else {
+        let Some(margin) = self.fixed_length(&m.margin, &text, "margin", "3mm") else {
             return;
         };
         let part = match self.resolve_path(&m.part) {
@@ -86,40 +83,5 @@ impl Checker<'_> {
             source,
             span: m.span,
         });
-    }
-
-    /// The distance of the statement in mm, zero or more, or `None` after reporting why not.
-    fn margin_length(&mut self, m: &SoftMargin, text: &str) -> Option<f64> {
-        let shown = m.margin.to_source();
-        let why = match self.lower(&m.margin) {
-            None => NotFixed::Reported,
-            Some(t) if t.ty != VTy::Q(Dimension::LENGTH) => NotFixed::Kind,
-            Some(t) => match fixed(&t.e) {
-                Ok(q) if q.hi() - q.lo() < 1e-12 => {
-                    let mm = (q.mid() * 1e12).round() / 1e9;
-                    if mm < 0.0 {
-                        self.error(
-                            m.margin.span(),
-                            format!("`{text}`: a margin is zero or more, and `{shown}` is {mm} mm"),
-                        );
-                        return None;
-                    }
-                    return Some(mm);
-                }
-                Ok(_) => NotFixed::Relation,
-                Err(why) => why,
-            },
-        };
-        let message = match why {
-            NotFixed::Reported => return None,
-            NotFixed::Kind => {
-                format!("`{text}`: the margin is a length such as `3mm`, and `{shown}` is not")
-            }
-            _ => format!(
-                "`{text}`: the margin is one fixed length such as `3mm`, and `{shown}` is a range or reads another value"
-            ),
-        };
-        self.error(m.margin.span(), message);
-        None
     }
 }

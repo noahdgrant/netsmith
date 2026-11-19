@@ -10,12 +10,14 @@
 //! - The mates are read in the order the system states them, again and again until none places
 //!   another member: a mate with one end on a placed member places the member at its other end.
 //!   Contact N meets contact N (pad N of a std header or socket), so the turn and the offset are
-//!   the least-squares fit that puts each pad centre of the one connector on its partner's; the
-//!   distance between the two boards' faces is the mate's _Mated height_, its least (the worst
-//!   case for the checks). The member is flipped when its connector would otherwise face the
+//!   the least-squares fit that puts each pad's contact of the one connector on its partner's (a
+//!   pad's contact is its centre unless the part's `pads` block states `.contact_offset`, issue
+//!   #1321); the distance between the two boards' faces is the mate's _Mated height_, its least
+//!   (the worst case for the checks). The member is flipped when its connector would otherwise face the
 //!   same way as its partner (both on the top face, or both on the bottom).
 //! - Only straight-through connectors on parallel boards are placed: every std header and socket
-//!   is one, and nothing else has a `.mating` (ADR 0040).
+//!   is one, and so is a soldered joint (pins in plated holes, castellations, a land grid: issue
+//!   #1320), whose boards are face to face.
 //! - A mate whose two ends are both placed already (a card on two headers, a loop of three
 //!   boards) is checked, not used: each of its pads must land on its partner within
 //!   [`ALIGNMENT`], and its boards' faces must be its mated height apart, else
@@ -33,12 +35,24 @@
 //! about z and a flip keep that, so the checks are exact: a z overlap and a plan overlap measured
 //! as the depth one polygon reaches into the other, with no triangles. Only prisms of different
 //! members are compared, and the two connectors of a mate are exempt against each other, since
-//! one goes into the other. A body that stands wholly inside a cutout of another board does not
+//! one goes into the other. The connectors of a soldered mate (`soldered_pin`, `castellated`,
+//! `land_grid`, issue #1320) are exempt against each other's boards too: the boards are face to
+//! face, at a mated height of 0 mm, and a connector's pins stand in the plated holes of the
+//! other board or its lands on the other's pads. A body that stands wholly inside a cutout of another board does not
 //! meet that board.
 //!
 //! - `system_collision` (an error): a body, a pin protrusion or a board overlaps another
 //!   member's by more than [`COLLISION`] in both plan and z, each of a stated or catalog height
 //!   (or a board, or pins of a stated length).
+//! - A mated connector's body against the other board of its mate (issue 1324, decided by the
+//!   owner) reaches to its _Seat_, not to its `.height`: the body and the seat are one surface
+//!   with one tolerance, so the body moves with the seat and the other board, which rests on the
+//!   partner at the two seats' sum, never meets it. Where the connector states
+//!   `.mating.body_height` the body is not the seat: it reaches to that height at its most, and
+//!   it collides when that is above the least mated height, which keeps it out of the other
+//!   board for the whole tolerance. In the scene the body reaches to the least seat, as the
+//!   boards are placed at the least mated height. The part's `.height` (its tallest point, the
+//!   contacts that go into the partner) is still its body against everything else.
 //! - `system_unchecked` (a warning; an error with strict constraints): a collision in which a
 //!   height is a package standard's maximum (a part in that package may be lower), or a part of
 //!   unknown height on a face that faces another member's board over it.
@@ -66,7 +80,7 @@
 
 use netsmith_pcb::{Board, Pad, PadKind, PadShape, Side};
 
-use crate::scene3d::{Body, HeightProvenance, Pins, Plan, Scene, pad_centres};
+use crate::scene3d::{Body, HeightProvenance, Pins, Plan, Scene, pad_contacts};
 
 /// How far a pad of a mate that did not place its member may land from its partner, in mm (ADR
 /// 0110).
@@ -182,6 +196,10 @@ pub struct MateInput {
     /// Each connector's seat in mm, `(least, most)`, `None` when nothing states it.
     pub a_seat: Option<(f64, f64)>,
     pub b_seat: Option<(f64, f64)>,
+    /// Each connector's `.mating.body_height` in mm, `(least, most)`: `None` when nothing
+    /// states it, and its body is then its seat (issue 1324).
+    pub a_body: Option<(f64, f64)>,
+    pub b_body: Option<(f64, f64)>,
     /// The distance between the two boards' faces, `(least, most)`: the seats added.
     pub mated_height: Option<(f64, f64)>,
     /// Why it has none.
@@ -193,6 +211,10 @@ pub struct MateInput {
     /// Whether either connector is keyed (`.mating.keyed`), so that the mate goes together one
     /// way only; a mate that neither keys has its pin 1 looked for on the pads.
     pub keyed: bool,
+    /// Whether the mate is soldered (`.mating.kind` `soldered_pin`, `castellated` or
+    /// `land_grid`, issue #1320): each connector sits in or on its partner's board, face to
+    /// face, so neither is counted against the other's board.
+    pub soldered: bool,
 }
 
 impl MateInput {
@@ -499,7 +521,7 @@ impl SystemScene {
                 let mut problem = None;
                 if worst.0 > ALIGNMENT {
                     problem = Some(format!(
-                        "contact {} of `{}` lands {:.3} mm from its partner on `{}`, more than {ALIGNMENT} mm",
+                        "contact {} of `{}` lands {:.3} mm from its partner on `{}`, more than {ALIGNMENT} mm; a connector whose contacts are not at the centres of its pads (a surface-mount header's feet) states where they are with `.contact_offset` in its part's `pads` block",
                         worst.1, mate.a, worst.0, mate.b
                     ));
                 }
@@ -581,8 +603,8 @@ pub(crate) fn meshes(system: &SystemScene) -> Vec<crate::mesh::Mesh> {
     out
 }
 
-/// The pads of the two connectors that meet, by number: `(number, centre of a's, centre of b's)`
-/// in each board's own plan, in the order of a's footprint. Pads with no number are not
+/// The pads of the two connectors that meet, by number: `(number, contact of a's, contact of
+/// b's)` in each board's own plan, in the order of a's footprint. Pads with no number are not
 /// contacts. With a window (a `.mating.contacts` subset), pad `first_a + i` of a meets pad
 /// `first_b + i` of b, and a's pads outside it meet nothing.
 fn pairs(
@@ -601,7 +623,10 @@ fn pairs(
         }
         seen
     };
-    let (pa, pb) = (first(pad_centres(a, a_part)), first(pad_centres(b, b_part)));
+    let (pa, pb) = (
+        first(pad_contacts(a, a_part)),
+        first(pad_contacts(b, b_part)),
+    );
     let partner = |n: &str| match window {
         None => Some(n.to_string()),
         Some((fa, fb, count)) => {
@@ -885,6 +910,9 @@ struct Prism {
     /// The board's cutouts, each a core and a radius: a body wholly inside one does not meet
     /// the board.
     cutouts: Vec<(Vec<Plan>, f64)>,
+    /// A body's face in the system and the way out of it (+1 up, -1 down), for the body of a
+    /// mated connector against the other board of its mate.
+    face: Option<(f64, f64)>,
 }
 
 fn rect(min: Plan, max: Plan) -> Vec<Plan> {
@@ -938,6 +966,7 @@ fn prisms(index: usize, member: &Member) -> Vec<Prism> {
         core: moved(core),
         radius,
         z: m.z_range(-s.board.thickness, 0.0),
+        face: None,
         cutouts: s
             .board
             .cutouts
@@ -966,6 +995,10 @@ fn prisms(index: usize, member: &Member) -> Vec<Prism> {
                 radius: 0.0,
                 z: m.z_range(lo, hi),
                 cutouts: Vec::new(),
+                face: Some((
+                    m.z(body.z_face),
+                    m.out(if body.side == Side::Back { -1.0 } else { 1.0 }),
+                )),
             });
         }
         if let Pins::Known {
@@ -985,16 +1018,21 @@ fn prisms(index: usize, member: &Member) -> Vec<Prism> {
                 radius: 0.0,
                 z: m.z_range(*z_bottom, *z_top),
                 cutouts: Vec::new(),
+                face: None,
             });
         }
     }
     out
 }
 
+/// A connector of a mate, as `(member, path in the member's board)`.
+type Connector = (String, String);
+
 /// The checks across boards: collisions, and parts of unknown height that face another member.
 fn checks(members: &[Member], mates: &[Mate]) -> Vec<Finding> {
-    // The connector pairs that are exempt against each other, as `(member, path)` pairs.
-    let exempt: Vec<((String, String), (String, String))> = mates
+    // The connector pairs that are exempt against each other, as `(member, path)` pairs, and
+    // whether the mate is soldered, which exempts each connector against its partner's board too.
+    let exempt: Vec<(Connector, Connector, bool)> = mates
         .iter()
         .filter_map(|m| {
             let i = &m.input;
@@ -1002,18 +1040,28 @@ fn checks(members: &[Member], mates: &[Mate]) -> Vec<Finding> {
             Some((
                 (a, MateInput::part(&i.a, &i.a_member)),
                 (b, MateInput::part(&i.b, &i.b_member)),
+                i.soldered,
             ))
         })
         .collect();
     let is_exempt = |a: &Prism, b: &Prism| {
-        let (Some(pa), Some(pb)) = (&a.part, &b.part) else {
-            return false;
+        let key = |p: &Prism| (members[p.member].name.clone(), p.part.clone());
+        let (ka, kb) = (key(a), key(b));
+        let is = |x: &(String, String), k: &(String, Option<String>)| {
+            x.0 == k.0 && k.1.as_deref() == Some(x.1.as_str())
         };
-        let ka = (members[a.member].name.clone(), pa.clone());
-        let kb = (members[b.member].name.clone(), pb.clone());
-        exempt
-            .iter()
-            .any(|(x, y)| (*x == ka && *y == kb) || (*x == kb && *y == ka))
+        // A board of the member, as a prism with no part.
+        let board_of =
+            |x: &(String, String), k: &(String, Option<String>)| x.0 == k.0 && k.1.is_none();
+        exempt.iter().any(|(x, y, soldered)| {
+            (is(x, &ka) && is(y, &kb))
+                || (is(x, &kb) && is(y, &ka))
+                || (*soldered
+                    && ((is(x, &ka) && board_of(y, &kb))
+                        || (is(x, &kb) && board_of(y, &ka))
+                        || (is(y, &ka) && board_of(x, &kb))
+                        || (is(y, &kb) && board_of(x, &ka))))
+        })
     };
     let placed: Vec<(usize, Vec<Prism>)> = members
         .iter()
@@ -1041,8 +1089,18 @@ fn checks(members: &[Member], mates: &[Mate]) -> Vec<Finding> {
                     if is_exempt(a, b) {
                         continue;
                     }
-                    let lo = a.z.0.max(b.z.0);
-                    let hi = a.z.1.min(b.z.1);
+                    // A mated connector's body against the other board of its mate reaches to
+                    // its body surface, not its height.
+                    let surface = mated_body(members, mates, a, b)
+                        .map(|s| (true, s))
+                        .or_else(|| mated_body(members, mates, b, a).map(|s| (false, s)));
+                    let (az, bz) = match &surface {
+                        Some((true, s)) => (s.z, b.z),
+                        Some((false, s)) => (a.z, s.z),
+                        None => (a.z, b.z),
+                    };
+                    let lo = az.0.max(bz.0);
+                    let hi = az.1.min(bz.1);
                     if hi - lo <= COLLISION {
                         continue;
                     }
@@ -1054,8 +1112,9 @@ fn checks(members: &[Member], mates: &[Mate]) -> Vec<Finding> {
                         continue;
                     }
                     let known = a.sure == Sure::Known && b.sure == Sure::Known;
-                    let (code, tail) = if known {
-                        (Code::SystemCollision, String::new())
+                    let stated = surface.as_ref().and_then(|(_, s)| s.stated.clone());
+                    let (code, tail) = if known || stated.is_some() {
+                        (Code::SystemCollision, stated.unwrap_or_default())
                     } else {
                         (
                             Code::SystemUnchecked,
@@ -1138,6 +1197,61 @@ fn checks(members: &[Member], mates: &[Mate]) -> Vec<Finding> {
         }
     }
     out
+}
+
+/// The body of a mated connector as it meets the other board of its mate: its z interval, and
+/// what to say of a stated `.mating.body_height`.
+struct Surface {
+    z: (f64, f64),
+    stated: Option<String>,
+}
+
+/// When `body` is the body of a connector of a mate and `board` is the board of the mate's
+/// other member, the body as it meets that board (issue 1324): from its face to its
+/// `.mating.body_height` at its most when stated, else to its seat, one surface with it, at the
+/// least seat (the scene's mated height is the least). `None` otherwise, or when the connector
+/// states neither.
+fn mated_body(members: &[Member], mates: &[Mate], body: &Prism, board: &Prism) -> Option<Surface> {
+    if body.what != "body" || board.what != "board" {
+        return None;
+    }
+    let (part, (face, out)) = (body.part.as_ref()?, body.face?);
+    let (own, other) = (&members[body.member].name, &members[board.member].name);
+    mates.iter().find_map(|m| {
+        let i = &m.input;
+        let ends = [
+            (&i.a, &i.a_member, i.a_seat, i.a_body, &i.b_member),
+            (&i.b, &i.b_member, i.b_seat, i.b_body, &i.a_member),
+        ];
+        ends.into_iter().find_map(|(path, member, seat, stated, partner)| {
+            if member.as_ref() != Some(own)
+                || partner.as_ref() != Some(other)
+                || MateInput::part(path, member) != *part
+            {
+                return None;
+            }
+            let (height, note) = match (stated, seat) {
+                (Some((_, most)), _) => (
+                    most,
+                    Some(format!(
+                        "; `{path}.mating.body_height` reaches {most:.3} mm at its most{}",
+                        i.mated_height
+                            .map(|(least, _)| format!(
+                                ", and the boards' faces are {least:.3} mm apart at the least mated height"
+                            ))
+                            .unwrap_or_default()
+                    )),
+                ),
+                (None, Some((least, _))) => (least, None),
+                (None, None) => return None,
+            };
+            let (p, q) = (face, clean(face + out * height));
+            Some(Surface {
+                z: (p.min(q), p.max(q)),
+                stated: note,
+            })
+        })
+    })
 }
 
 /// Whether the body prism `body` stands wholly inside a cutout of the board prism `board`.
