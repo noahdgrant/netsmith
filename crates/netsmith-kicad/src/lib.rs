@@ -6,6 +6,7 @@
 
 #![cfg_attr(not(test), warn(unreachable_pub))]
 
+mod altium;
 mod eagle_footprint;
 mod footprint_import;
 mod footprint_spec;
@@ -23,6 +24,9 @@ mod sexp;
 mod stdlib;
 mod symbols;
 
+#[cfg(feature = "test-support")]
+pub use altium::fixture as altium_fixture;
+pub use altium::{import_altium_footprint, is_compound_file};
 pub use eagle_footprint::{EagleSource, import_eagle_footprint};
 pub use footprint_import::{FootprintSource, ImportedFootprint, import_footprint};
 pub use footprint_spec::{FootprintSpec, LIBRARY as GENERATED_FOOTPRINT_LIBRARY};
