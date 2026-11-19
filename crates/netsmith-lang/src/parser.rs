@@ -560,6 +560,7 @@ impl Parser {
                     | Item::Polygon(_)
                     | Item::PhysicalFile(_)
                     | Item::Anchor(_)
+                    | Item::SoftMargin(_)
                     | Item::Constraint(_)
                     | Item::Connect(_)
                     | Item::JoinMap(_),
@@ -624,6 +625,9 @@ impl Parser {
                 }
                 "anchor" if matches!(self.peek_second(), Tok::LeadingDot) => {
                     return only_decls(self.anchor(start)?);
+                }
+                "soft" if matches!(self.peek_second(), Tok::Ident(w) if w == "margin") => {
+                    return only_decls(self.soft_margin(start)?);
                 }
                 "polygon" if matches!(self.peek_second(), Tok::LParen) => {
                     return only_decls(self.polygon(start)?);
@@ -969,6 +973,27 @@ impl Parser {
             axis,
             axis_span,
             pitch,
+            span: self.span_from(start),
+        }))
+    }
+
+    /// `soft margin 3mm round .u1`.
+    fn soft_margin(&mut self, start: usize) -> Res<Item> {
+        self.bump();
+        self.bump();
+        let margin = self.additive()?;
+        let t = self.peek().clone();
+        if !matches!(&t.tok, Tok::Ident(w) if w == "round") {
+            return Err(unexpected(
+                &t,
+                "`round` and the part after the distance (`soft margin 3mm round .u1`)",
+            ));
+        }
+        self.bump();
+        let part = self.path()?;
+        Ok(Item::SoftMargin(SoftMargin {
+            margin,
+            part,
             span: self.span_from(start),
         }))
     }

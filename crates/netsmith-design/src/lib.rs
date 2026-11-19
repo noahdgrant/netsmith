@@ -1200,6 +1200,8 @@ pub struct Designed {
     pub constraint_sites: Sites,
     /// Where the design states each of `design.features.offsets`, in the same order.
     pub offset_sites: Vec<(netsmith_check::SourceId, netsmith_lang::Span)>,
+    /// Where the design states each of `design.features.soft_margins`, in the same order.
+    pub soft_margin_sites: Vec<(netsmith_check::SourceId, netsmith_lang::Span)>,
     /// Where the design states each of `design.features.protrusions`, in the same order.
     pub protrusion_sites: Vec<Vec<(netsmith_check::SourceId, netsmith_lang::Span)>>,
     /// Where the design states the file of each of `design.features.models`, in the same order.
@@ -1592,6 +1594,8 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     features.constraints = constraints;
     let (offsets, offset_sites) = features::offsets(model, &mut errors);
     features.offsets = offsets;
+    let (soft_margins, mut soft_margin_sites) = features::soft_margins(model);
+    features.soft_margins = soft_margins;
     let (protrusions, mut protrusion_sites) = features::protrusions(model, &mut errors);
     features.protrusions = protrusions;
     let (models, mut model_sites) = features::models(model, &mut errors);
@@ -1610,6 +1614,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
         &mut features,
         &mut constraint_sites,
         &mut offset_sites,
+        &mut soft_margin_sites,
         &mut protrusion_sites,
         &mut model_sites,
         &banks,
@@ -1714,6 +1719,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
             },
             constraint_sites,
             offset_sites,
+            soft_margin_sites,
             protrusion_sites,
             model_sites,
             case_model_sites,

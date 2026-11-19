@@ -301,3 +301,51 @@ fn case_of_an_enclosure_prints_back() {
     assert_eq!(file.definitions[0].kind, DefKind::Enclosure);
     assert_eq!(file.to_source(), text);
 }
+
+const SOFT: &str = "\
+physical for Trellis {
+    soft margin 3mm round .u1
+    soft margin 2mm + 1mm round .radio.module
+}
+";
+
+#[test]
+fn a_soft_margin_statement_names_a_distance_and_a_part() {
+    let file = parse(SOFT).unwrap();
+    let items = &file.physicals[0].items;
+    let Item::SoftMargin(m) = &items[0] else {
+        panic!("a soft margin statement")
+    };
+    assert!(matches!(m.margin, Expr::Number(..)));
+    assert_eq!(m.part.to_source(), ".u1");
+    let Item::SoftMargin(m) = &items[1] else {
+        panic!("a soft margin statement")
+    };
+    assert!(matches!(m.margin, Expr::Binary { .. }));
+    assert_eq!(m.part.to_source(), ".radio.module");
+}
+
+#[test]
+fn a_soft_margin_statement_prints_back_to_source() {
+    let printed = parse(SOFT).unwrap().to_source();
+    assert!(printed.contains("soft margin 3mm round .u1"), "{printed}");
+    assert_eq!(parse(&printed).unwrap().to_source(), printed);
+}
+
+#[test]
+fn a_soft_margin_statement_needs_each_part_of_it() {
+    let at = |body: &str| parse(&format!("physical for T {{\n    {body}\n}}\n")).unwrap_err();
+    let e = at("soft margin 3mm .u1");
+    assert!(e.message.contains("`round` and the part"), "{}", e.message);
+    let e = at("soft margin round .u1");
+    assert!(e.message.contains("`round` and the part"), "{}", e.message);
+    let e = at("soft margin 3mm round");
+    assert!(e.message.contains("name"), "{}", e.message);
+}
+
+#[test]
+fn soft_margin_and_round_are_still_ordinary_names() {
+    let file =
+        parse("board B {\n    .soft: Length\n    .margin: Length\n    .round: Length\n}\n").unwrap();
+    assert_eq!(file.definitions.len(), 1);
+}

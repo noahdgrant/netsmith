@@ -133,6 +133,15 @@ pub struct Placed {
     /// measured against the courtyard itself, and `fab`'s placement check does not read it.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub routing_margin: f64,
+    /// The distance other parts are asked to keep from its courtyard, in mm, as the physical
+    /// file states it (`soft margin 3mm round .u1`, issue 1310). Zero when it states none. The
+    /// placer pays for a courtyard inside it, and a courtyard that is still inside it on the
+    /// placed board is a warning ([`Placed::soft_short`]), an error when strict.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub soft_margin: f64,
+    /// The line that states `soft_margin` (`widget.physical.nsm:14`), for a message.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub soft_margin_source: String,
     /// How far its pins protrude out of the opposite face
     /// (`.pin_protrusion`, ADR 0045 section 15). `None` is unknown: the pads are an obstacle.
     pub protrusion: Option<crate::protrusion::Protrusion>,
@@ -232,6 +241,29 @@ impl Placed {
     /// when the courtyards overlap (the placement check says that).
     pub fn margin_short(&self, other: &Placed) -> Option<(f64, f64)> {
         let need = self.routing_margin + other.routing_margin;
+        if need <= 0.0 || (self.side != other.side && !self.has_hole() && !other.has_hole()) {
+            return None;
+        }
+        let mut gap = f64::INFINITY;
+        for a in self.courtyards() {
+            for b in other.courtyards() {
+                let dx = (a.min.x - b.max.x).max(b.min.x - a.max.x);
+                let dy = (a.min.y - b.max.y).max(b.min.y - a.max.y);
+                gap = gap.min(dx.max(dy));
+            }
+        }
+        (gap > -1e-6 && gap < need - 1e-6).then_some((gap.max(0.0), need))
+    }
+
+    /// How near `other`'s courtyard is to this part's, when this part has a soft margin
+    /// (`soft margin 3mm round .u1`, issue 1310) that it is nearer than: `Some((gap, margin))`,
+    /// in mm. The gap is measured as [`Placed::margin_short`] measures it, the larger of the
+    /// spaces along x and along y between the nearest two shapes of the courtyards. `None` when
+    /// the part has no soft margin, when `other` keeps it, when they are on opposite faces and
+    /// neither has a hole, and when the courtyards overlap (the placement check says that).
+    /// Only this part's margin counts: a margin is asked round the part that states it.
+    pub fn soft_short(&self, other: &Placed) -> Option<(f64, f64)> {
+        let need = self.soft_margin;
         if need <= 0.0 || (self.side != other.side && !self.has_hole() && !other.has_hole()) {
             return None;
         }
