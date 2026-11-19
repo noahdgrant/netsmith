@@ -57,7 +57,12 @@ pub struct Args {
     /// and `shown`, the value as a message prints it. Each board also has its `picks`: each part
     /// the solver chose a row for, the row, and the rows it passed over before it with `why`
     /// (`unfit`, `refused`, `later`, `same`, `skipped`, `partly`), the `message` and, for a
-    /// refusal, `at`, the relation's `file:line`. A board whose solve fails is written too, with
+    /// refusal, `at`, the relation's `file:line`; and its `pin_budgets`: for each host processor
+    /// (a part whose pin table lists a function) its `host` path, `kind`, `refdes`, how many
+    /// `pins` list a function, how many are `used` and `left`, the `modules` that use it (each its
+    /// `module` path, `""` for the board, and the `pins` and serial `blocks` it uses), and its
+    /// serial `blocks` (each its `name`, the `bus` it is an end of, `used`, `left` and `modules`).
+    /// A board whose solve fails is written too, with
     /// `"failed": true`: the members and picks the solve got to, and `unpicked`, for each part of
     /// the group that failed the rows its first turn passed over (`with` the choices before it).
     /// The file is written when a board fails only if some board left such a record; a mistake

@@ -23,6 +23,12 @@ pub struct NetCurrent {
     pub inner_least_width: Option<f64>,
     /// How many of the process's vias, side by side, carry it where a track changes layer.
     pub vias: usize,
+    /// Where the current comes from, in words (issue 1373): the loads on the net that add up
+    /// to it, as the track width check says them (`the sum of the currents on it with every
+    /// load on at once: rail `a` 2 A + rail `b` 1 A`), or what the DC analysis found. Empty
+    /// where a design file written before it says none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub source: String,
 }
 
 /// A branch of a net that carries a current of its own (issue #1113): the copper from the pads

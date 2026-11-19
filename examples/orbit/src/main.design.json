@@ -3468,37 +3468,43 @@
           "net": "+3.3V",
           "current": 0.0031525340887558527,
           "least_width": 0.00013318828540283064,
-          "vias": 1
+          "vias": 1,
+          "source": "the sum of the currents on it with every load on at once: part `i2c_pullups.sda_pullup` 1.56 mA + part `i2c_pullups.scl_pullup` 1.56 mA + part `buck_boost.pg_pullup.resistor` 0.0342 mA + part `buck_boost.divider.rtop` 0.00522 mA; the current of part `user_button` is not known, so it may be more"
         },
         {
           "net": "net-buck_boost.divider.rbottom.a",
           "current": 5.222098328158936e-6,
           "least_width": 1.944730750358556e-8,
-          "vias": 1
+          "vias": 1,
+          "source": "part `buck_boost.divider.rtop`: 0.00479 mA to 0.00522 mA"
         },
         {
           "net": "net-buck_boost.ic.pg",
           "current": 0.00003424375063769004,
           "least_width": 2.602509254750269e-7,
-          "vias": 1
+          "vias": 1,
+          "source": "part `buck_boost.pg_pullup.resistor`: 0 mA to 0.0342 mA"
         },
         {
           "net": "net-eeprom.i2c.scl",
           "current": 0.0015565341198950017,
           "least_width": 0.000050315967307142516,
-          "vias": 1
+          "vias": 1,
+          "source": "part `i2c_pullups.scl_pullup`: 0 mA to 1.56 mA"
         },
         {
           "net": "net-eeprom.i2c.sda",
           "current": 0.0015565341198950017,
           "least_width": 0.000050315967307142516,
-          "vias": 1
+          "vias": 1,
+          "source": "part `i2c_pullups.sda_pullup`: 0 mA to 1.56 mA"
         },
         {
           "net": "net-user_button.b",
           "current": 0.00003424375063769004,
           "least_width": 2.602509254750269e-7,
-          "vias": 1
+          "vias": 1,
+          "source": "part `user_pulldown.resistor`: 0 mA to 0.0342 mA; the current of part `user_button`, part `user_series` is not known, so it may be more"
         }
       ],
       "pin_currents": [

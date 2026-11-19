@@ -420,3 +420,60 @@ Rules.
 - `.duty` is the fraction of the time the load bursts (one 3 ms slot in every 100 ms is `0.03`). The bursts alone average the peak times the duty, so the most of the stated average must be at least that: `max(.current) >= max(.peak_current) * max(.duty)`, which a radio of `10mA..40mA` with `.duty &= 0.1` and a 500 mA peak fails (40 mA is below 50 mA).
 - A peak above the source's limit alone is refused by `Rail`'s own `.peak_current <= .max_peak_current`, which also makes the solver pick a regulator that gives it. The capacitance across the rail helps only with the other loads' share.
 - The capacitance is read at 25 C and new, and its ESR is not added to the fall (issue #1256 has the corners). A burst seen on the input of the converter that feeds the load is not judged (issue #1340).
+
+### Holding a rail up
+
+A board that must keep working for a while after its supply goes (to write its last record, to close a valve) holds a rail up from a storage element: a supercapacitor or a capacitor bank, charged while the supply is there, behind a chain of diodes, switches and regulators. A `std::checks::HoldUp` states that it must (issue #1255). Its `.storage` is joined with `~` to the positive terminal of the storage and its `.rail` to the `pos` of the rail it holds up, as the pins of a `DiffPair` are joined to their nets, and it states the load while it holds: `.average_power`, `.peak_current` (the most it draws at an instant, as a positive number) and `.duration`.
+
+```nsm
+import std::checks::HoldUp
+import std::env::{Corner, Environment, Life}
+import std::parts::diode::Schottky
+import std::parts::passive::Supercap
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+
+board Logger {
+    .environment: Environment { .temperature &= -20degC..85degC }
+    .new: Corner { .temperature &= 25degC; .life &= Life::New }
+    .eol_cold: Corner { .temperature &= -20degC; .life &= Life::End }
+
+    .backup: Rail { .voltage &= 5V +/- 2%; .pos.net &= "VB" }
+    .sc: Supercap
+    .backup.pos ~> .sc ~> .backup.neg
+
+    .vin: Rail { .voltage &= 4.2V..4.6V; .pos.net &= "VIN" }
+    .vin.neg ~ .backup.neg
+    .d: Schottky { .current &= 0mA..100mA }
+    .backup.pos ~> .d ~> .vin.pos
+
+    .ldo: LinearRegulator { .vout.voltage &= 3.3V +/- 5% }
+    .vin ~ .ldo.vin
+    .out: Rail { .current &= 0mA..60mA; .pos.net &= "V3V3" }
+    .ldo.vout ~ .out
+
+    .hold: HoldUp { .average_power &= 0.15W; .peak_current &= 100mA; .duration &= 5s }
+    .hold.storage ~ .sc.p
+    .hold.rail ~ .out.pos
+}
+```
+
+Once the parts are picked the solver walks the chain from the storage's net to the rail's, through the parts' `dc` statements: a `dc diode` drops its forward voltage at the current, a `dc resistor` (a fuse, a bead, an inductor's winding) and a `dc load_switch` the current times their resistance, a `dc linear_regulator` needs its `.dropout` at its output current and adds its quiescent current, and a `dc switching_regulator` needs the larger of its `.min_input_voltage` and its output's need plus the current through its `.high_side_resistance` (or over `1 - .min_off_time * .fsw`), and draws its output's power over the least of its `.efficiency` at that input. The rail's minimum is its `.voltage_floor` where it states one (_Dropout_ in the chapter on standard parts), and the least of its `.voltage` otherwise; of several rails on the net, the board's own is the one.
+
+- **The cut-off.** Walked back from the rail's minimum at the peak, the chain says what the storage must keep at its terminal, and the peak across the storage's ESR adds to it (a supercapacitor's `.dc_esr`, another part's `.esr`; parts that state one share the peak in parallel, and a part that states none is left out of the parallel). Below that voltage the peak pulls the rail under its minimum.
+- **The usable energy** is what the storage gives between its starting voltage, the least of its `.bias` (the rail it is charged from gives it), and the cut-off: `C * (V0^2 - Vcut^2) / 2`, with the effective capacitance of every part across the storage's net and the rail's ground (a bank's total).
+- **The need** is what the chain takes from the storage to give the rail `.average_power` for `.duration`: the current at the rail's minimum, walked back the same way (a switching regulator's at its least input, its largest), and the storage's `.leakage_current`, as a charge given out between the starting voltage and the cut-off. The two meet when the charge is the capacitance times the headroom, so a failure says the capacitance that holds the rail.
+
+It is judged at the parts' own figures, and again at each corner of the board (_Named corners_ in the chapter on the environment): the capacitance and the ESR as a corner reads them, at the end of life and off the row's curve over temperature, and a diode's forward voltage and a regulator's dropout off the row's curve file at the corner's temperature and the step's current (_Curve files_ in the catalogs chapter). A row with no curve gives its single figure, the datasheet's maximum, at every corner. With the supercapacitor's DC ESR at 250 mohm cold, doubled at the end of its life, and 70 % of its 0.8 F left, the board above holds 5 s; asked for 6 s it fails at the end of its life:
+
+```text
+error: `hold` does not hold `out` up at the corner `eol_cold` (253.15 K (-20degC), at the end of life): `out` draws 150mW for 6s (47.85mA at its least 3.135V), so the storage gives the chain 47.85mA (and leaks 5uA), 1.344J over the time; the storage (560mF of effective capacitance) gives only 1.141J between its starting 4.9V and 4.465V, where a peak of 100mA keeps `out` at 3.135V only while the storage is at 4.465V or more (600mV across `d`, 680mV of dropout in `ldo`, 50mV across the storage's ESR of 500mΩ): holding it takes 660mF of effective capacitance
+```
+
+The storage's row is a project's (the standard catalog `supercap` has none yet, and the standard KiCad mapping no footprint for it, issue #1366), so the guide checks the board and `crates/netsmith-cli/tests/hold_up.rs` builds it with an invented row, a curve of its DC ESR over temperature and a `kicad.toml` row and footprint of its own (it needs no KiCad install), and holds the message to the one above.
+
+Rules.
+
+- **A hold-up is joined to both nets.** A `.storage` or `.rail` joined to nothing, a `.rail` on a net no rail's `pos` is on, and a storage net with no part of a capacitance on it are errors that name the hold-up.
+- **What is not walked is named, never passed.** A chain the check cannot walk (a FET that is an ideal diode, a `dc nmos` or `dc pmos`), a load that states no average, peak or time, and a value a corner cannot read (an end-of-life factor, a curve that does not reach the corner or the step) leave the hold-up unjudged there, with a note that says what to state.
+- **The need is the worst case.** A switching regulator draws less as its input rises; the check takes the current at its least input for the whole time. The energy a regulator's input capacitance holds and the step of the load are not modelled.

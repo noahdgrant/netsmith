@@ -129,7 +129,8 @@
 //! flags there. A rule area a library footprint carries is enforced as
 //! KiCad 9 enforces it (issue #1291): a track, a via, a pad or a part inside it on its layers where
 //! it forbids that kind is `items_not_allowed`; the footprint's own pads are flagged too, as KiCad
-//! flags them, and the footprint itself is not (a keepout a part carries in the source is the
+//! flags them, and the footprint itself is not. What only touches the area's edge is not in it:
+//! KiCad shrinks the area by its DRC epsilon first (issue #1372) (a keepout a part carries in the source is the
 //! board's, ADR 0029). A pour's fill is not judged against a rule area, as KiCad's check does not
 //! judge it: the fill keeps out of one that forbids pours. A footprint can state `solder_mask_margin`, `solder_paste_margin`,
 //! `solder_paste_ratio`, `clearance` and `zone_connect` for all its pads; they are read, and a
@@ -616,6 +617,33 @@ pub struct Finding {
     pub at: Pt,
     pub layer: Option<String>,
     pub items: Vec<Item>,
+    /// For a `track_current` or `via_current` finding: the copper, the current assumed and what
+    /// it needs (issue 1373).
+    pub carrying: Option<Carrying>,
+}
+
+/// The numbers of a `track_current` or `via_current` finding (issue 1373): what the copper is,
+/// the current it was held to and where that comes from, and what that current needs, so that a
+/// person can choose between wider copper and a lower current.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Carrying {
+    /// The current assumed, in amperes: the net's (`current_from` says which loads) or, for
+    /// copper that only feeds branches, what those branches draw.
+    pub current: Option<f64>,
+    /// Where `current` comes from, in words; empty when it is not known.
+    pub current_from: String,
+    /// A track's width and the least width the current needs on its layer, in mm.
+    pub width: Option<f64>,
+    pub needed_width: Option<f64>,
+    /// The vias side by side a cluster has and the number the current needs.
+    pub vias: Option<usize>,
+    pub needed_vias: Option<usize>,
+    /// What the sizing is based on, as the design stage sizes copper (ADR 0036): the copper's
+    /// thickness in mm, the temperature rise in kelvin and the fabricator's width tolerance
+    /// (0.2 for 20 %).
+    pub copper: Option<f64>,
+    pub rise: Option<f64>,
+    pub tolerance: Option<f64>,
 }
 
 impl Finding {
@@ -835,6 +863,9 @@ pub struct Extras {
     /// both is the stated branch's, and a pad in neither is of the trunk.
     pub pin_currents: Vec<Branch>,
     pub sizing: Option<crate::ipc2221::TrackSizing>,
+    /// The current each net carries where it is known, with where it comes from (issue 1373),
+    /// for the words of a `track_current` and a `via_current` finding.
+    pub net_currents: Vec<NetCurrent>,
     /// The layout file's waivers of findings of a part's own footprint (issue #1196, `waivers.rs`):
     /// a finding one covers is moved to [`Report::waived`], and one that covers none is an error.
     pub waivers: Vec<Waiver>,
@@ -845,9 +876,20 @@ pub struct Extras {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Branch {
     pub net: String,
+    /// The pin's path in the design (`ldo.bias`).
+    pub path: String,
     pub part: String,
     pub pads: Vec<String>,
     pub current: f64,
+}
+
+/// The current a net carries (issue 1373): in amperes, the worst case, and in words where it
+/// comes from (the loads that add up to it).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct NetCurrent {
+    pub net: String,
+    pub current: f64,
+    pub source: String,
 }
 
 /// What the check needs to judge a board's vias against the process (the `via_span` and

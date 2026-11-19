@@ -75,3 +75,22 @@ fn nothing_at_the_path_says_which_parts_have_a_record() {
     assert!(e.contains("at or inside `nowhere`") && e.contains("`reg.inductor`, `reg.cap`"), "{e}");
     assert!(explain(&[], "x", None).unwrap_err().contains("have no picks"));
 }
+
+#[test]
+fn a_host_inside_the_path_prints_its_pin_budget() {
+    let boards = vec![json!({
+        "board": "Bench", "members": [], "picks": [],
+        "pin_budgets": [{
+            "host": "core.mcu", "kind": "Zhost", "refdes": "U1", "pins": 4, "used": 1, "left": 3,
+            "modules": [{"module": "", "pins": ["P0.02"], "blocks": ["UARTE0"]}],
+            "blocks": [{"name": "UARTE0", "bus": "Uart", "used": true, "left": false, "modules": [""]},
+                       {"name": "GPIOTE", "used": false, "left": true, "modules": []}],
+        }],
+    })];
+    let said = explain(&boards, "core", None).unwrap();
+    assert_eq!(
+        said,
+        "board Bench\n  pin budget of `core.mcu` (`Zhost`, U1): 4 pins, 1 used, 3 left\n    (board)  1 pin (P0.02); serial blocks UARTE0\n    serial blocks: Uart 1 of 1 used, 0 left; other 0 of 1 used, 1 left (GPIOTE)\n"
+    );
+    assert!(explain(&boards, "cor", None).is_err());
+}

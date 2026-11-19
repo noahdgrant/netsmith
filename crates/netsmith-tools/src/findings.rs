@@ -142,6 +142,57 @@ pub struct Finding {
     pub reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// For a `track_current` or `via_current` finding (issue 1373): the copper, the current it
+    /// was held to and what that needs. Its fields are the finding's own in the JSON.
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub carrying: Option<Carrying>,
+}
+
+/// The numbers of a `track_current` or `via_current` finding (issue 1373), so that a person can
+/// choose between wider copper and a lower current.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Carrying {
+    /// The current assumed, in amperes: the net's, or, for copper that only feeds branches, what
+    /// they draw. Left out when it is not known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current: Option<f64>,
+    /// Where the current comes from, in words: which loads, or the pins that state it.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub current_from: String,
+    /// A track's width, in mm, and the width its current needs on its layer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub needed_width: Option<f64>,
+    /// The vias side by side a cluster has, and how many its current needs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vias: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub needed_vias: Option<usize>,
+    /// What the sizing is based on: the copper's thickness in mm, the temperature rise in kelvin
+    /// and the fabricator's width tolerance (0.2 is 20 %).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub copper: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rise: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tolerance: Option<f64>,
+}
+
+impl From<&netsmith_geom::DrcCarrying> for Carrying {
+    fn from(c: &netsmith_geom::DrcCarrying) -> Carrying {
+        Carrying {
+            current: c.current,
+            current_from: c.current_from.clone(),
+            width: c.width,
+            needed_width: c.needed_width,
+            vias: c.vias,
+            needed_vias: c.needed_vias,
+            copper: c.copper,
+            rise: c.rise,
+            tolerance: c.tolerance,
+        }
+    }
 }
 
 /// Where a finding of the design rules check is.
@@ -178,6 +229,7 @@ impl Finding {
             waiver: None,
             reason: None,
             source: None,
+            carrying: None,
         }
     }
 
@@ -221,6 +273,7 @@ pub fn of_drc_finding(f: &netsmith_geom::DrcFinding, board: Option<&str>) -> Fin
         nets,
         parts: f.parts(),
         footprint: f.own_part().map(str::to_string),
+        carrying: f.carrying.as_ref().map(Carrying::from),
         ..Finding::plain(
             match f.severity {
                 netsmith_geom::DrcSeverity::Error => Severity::Error,
@@ -464,5 +517,46 @@ mod tests {
             serde_json::to_string(&f).unwrap(),
             r#"{"severity":"note","code":"note.other","message":"hello"}"#
         );
+    }
+
+    /// Issue 1373: a `track_current` finding has the width, the width needed and the current as
+    /// fields of its own, and a finding of another rule has none of them.
+    #[test]
+    fn a_current_finding_has_its_numbers_as_fields() {
+        use netsmith_geom::{DrcCarrying, DrcFinding, DrcRule, DrcSeverity};
+        let finding = |carrying| DrcFinding {
+            rule: DrcRule::TrackCurrent,
+            severity: DrcSeverity::Error,
+            message: "m".to_string(),
+            at: Default::default(),
+            layer: Some("F.Cu".to_string()),
+            items: Vec::new(),
+            carrying,
+        };
+        let with = finding(Some(DrcCarrying {
+            current: Some(2.5),
+            current_from: "rail `a` 2.5 A".to_string(),
+            width: Some(0.2),
+            needed_width: Some(0.55),
+            copper: Some(0.035),
+            rise: Some(10.0),
+            tolerance: Some(0.2),
+            ..DrcCarrying::default()
+        }));
+        let json = serde_json::to_value(of_drc_finding(&with, None)).unwrap();
+        assert_eq!(json["rule"], "track_current");
+        assert_eq!(json["width"], 0.2);
+        assert_eq!(json["needed_width"], 0.55);
+        assert_eq!(json["current"], 2.5);
+        assert_eq!(json["current_from"], "rail `a` 2.5 A");
+        assert_eq!(
+            (json["copper"].clone(), json["rise"].clone()),
+            (0.035.into(), 10.0.into())
+        );
+        assert!(json.get("vias").is_none(), "{json}");
+        let without = serde_json::to_value(of_drc_finding(&finding(None), None)).unwrap();
+        for key in ["width", "needed_width", "current", "current_from"] {
+            assert!(without.get(key).is_none(), "{key}: {without}");
+        }
     }
 }

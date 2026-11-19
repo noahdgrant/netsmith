@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.6.0](https://github.com/noahdgrant/netsmith/compare/v0.5.0...v0.6.0) (2026-11-19)
+
+
+### Features
+
+* **check:** input levels in rows by the supply, judged against the worse row and interpolated only when the part says so ([#1375](https://github.com/noahdgrant/netsmith/issues/1375)) ([69f656c](https://github.com/noahdgrant/netsmith/commit/69f656cce8e105b8af3fe9bfa67c28e2429aad8f)), closes [#1305](https://github.com/noahdgrant/netsmith/issues/1305) [#1307](https://github.com/noahdgrant/netsmith/issues/1307)
+* **fab:** a board under the assembly house's least size for its faces needs a panel ([#1358](https://github.com/noahdgrant/netsmith/issues/1358)) ([5c00369](https://github.com/noahdgrant/netsmith/commit/5c00369c6e8f6531fb7d9644dd03e0974c25aed2))
+* **layout:** a part with no room among the locked parts is a warning before placing ([#1370](https://github.com/noahdgrant/netsmith/issues/1370)) ([9c73fec](https://github.com/noahdgrant/netsmith/commit/9c73fec6f3bf6cd4d2450cebb23b8bbe83ceb76f)), closes [#1283](https://github.com/noahdgrant/netsmith/issues/1283)
+* **placer:** a .routing_margin that the placer and layout fit keep, and a warning of a pad walled in ([#1356](https://github.com/noahdgrant/netsmith/issues/1356)) ([89bb766](https://github.com/noahdgrant/netsmith/commit/89bb766d8f63d9e00644bcc97131909d143cb7dd))
+* **placer:** a board and a part state a .routing_margin that the placer and layout fit keep, and fab warns of a pad walled in ([89bb766](https://github.com/noahdgrant/netsmith/commit/89bb766d8f63d9e00644bcc97131909d143cb7dd)), closes [#1313](https://github.com/noahdgrant/netsmith/issues/1313)
+* **solve:** a charger's charge time against .charge_time_limit, and its supply's budget during the charge ([#1374](https://github.com/noahdgrant/netsmith/issues/1374)) ([7060f40](https://github.com/noahdgrant/netsmith/commit/7060f40690125b6f6039292531fe2560dba03485)), closes [#1264](https://github.com/noahdgrant/netsmith/issues/1264)
+* **std:** a rail's voltage floor lets a regulator's output fall below its range in dropout ([#1346](https://github.com/noahdgrant/netsmith/issues/1346)) ([2e0dac3](https://github.com/noahdgrant/netsmith/commit/2e0dac365eb21dd99bb6af9534fbe610461f72df))
+* **std:** a rechargeable cell and a charger generic, checked against each other when joined ([#1367](https://github.com/noahdgrant/netsmith/issues/1367)) ([4626676](https://github.com/noahdgrant/netsmith/commit/46266761ed817d1ca175e45c20a893dba76d5e81)), closes [#1262](https://github.com/noahdgrant/netsmith/issues/1262)
+* **std:** the swo pin of the standard Swd interface is optional ([#1359](https://github.com/noahdgrant/netsmith/issues/1359)) ([d3f7c91](https://github.com/noahdgrant/netsmith/commit/d3f7c91d47c7751e42afc48a8168ce0652cbeded))
+* **std:** the swo pin of the standard Swd interface is optional, so a target with no trace pin joins a probe ([d3f7c91](https://github.com/noahdgrant/netsmith/commit/d3f7c91d47c7751e42afc48a8168ce0652cbeded))
+
+
+### Bug Fixes
+
+* **desktop:** the launch tests' stand-in server is written by a child process (ETXTBSY) ([#1362](https://github.com/noahdgrant/netsmith/issues/1362)) ([2a05036](https://github.com/noahdgrant/netsmith/commit/2a050364cfb4cd54ddf8901cf7e0a1930bfce601))
+* **desktop:** the stand-in server of the launch tests is written by a child process, not by the test (ETXTBSY) ([2a05036](https://github.com/noahdgrant/netsmith/commit/2a050364cfb4cd54ddf8901cf7e0a1930bfce601))
+* **drc:** track_current sizes a branch of a power net by the currents of the pins past it ([#1364](https://github.com/noahdgrant/netsmith/issues/1364)) ([d5976e7](https://github.com/noahdgrant/netsmith/commit/d5976e708cfa8a736d3941cc5c7a992a29728b56))
+* **layout:** layout fit notes a fault among the other parts and answers for the part ([#1330](https://github.com/noahdgrant/netsmith/issues/1330)) ([50a9236](https://github.com/noahdgrant/netsmith/commit/50a9236f96a29bcfdb11d9515620970f44ad772d))
+* **layout:** layout fit notes a fault among the other parts and answers for the part ([#1365](https://github.com/noahdgrant/netsmith/issues/1365)) ([50a9236](https://github.com/noahdgrant/netsmith/commit/50a9236f96a29bcfdb11d9515620970f44ad772d))
+* **pcb:** a surface pad's offset from its anchor moves its copper in every view ([#1360](https://github.com/noahdgrant/netsmith/issues/1360)) ([2295f30](https://github.com/noahdgrant/netsmith/commit/2295f30259e03f5adeae1f18742c755651d8c4c9))
+* **pcb:** a surface pad's offset from its anchor moves its copper in every view, the DRC and the plots ([2295f30](https://github.com/noahdgrant/netsmith/commit/2295f30259e03f5adeae1f18742c755651d8c4c9)), closes [#1322](https://github.com/noahdgrant/netsmith/issues/1322)
+
+
+### Documentation
+
+* **migrating:** changes of 0.5.0 ([#1377](https://github.com/noahdgrant/netsmith/issues/1377)) ([4e00dc7](https://github.com/noahdgrant/netsmith/commit/4e00dc75774a2fc75eb968f5456bb7e46e50b854)), closes [#1371](https://github.com/noahdgrant/netsmith/issues/1371)
+* **migrating:** changes of 0.6.0 ([#1382](https://github.com/noahdgrant/netsmith/issues/1382)) ([a006ead](https://github.com/noahdgrant/netsmith/commit/a006eadb4e33a51d02fcc92330ffc081a17c6af7))
+
 ## [0.5.0](https://github.com/noahdgrant/netsmith/compare/v0.4.0...v0.5.0) (2026-11-19)
 
 

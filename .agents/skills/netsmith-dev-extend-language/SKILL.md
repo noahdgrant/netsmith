@@ -33,6 +33,8 @@ Tests live in each crate's `tests/`. Add a test for the behaviour and one for ea
 
 Put it in `std/**.nsm` with `///` docs that state its source for any number. A new `part` states its designator letters (`.designator &= "R"`, IEEE 315 and ASME Y14.44 usage); a test fails without them. A new file also needs an entry in `Loader::std()` in `crates/netsmith-check/src/loader.rs`. List the definition in the catalogue in the last chapter of the guide (`docs/language/29-the-standard-library.md`). The guide test fails until you do.
 
+A member added to a std generic or interface, or to every part (as `.height_growth` is), breaks a project that declared the same name itself: a part that provides the generic, or a use's block (`.load: Rail { .burst: Time }`), is refused as declaring it twice. Such a pull request has `!` in its title and an entry under _Unreleased_ in `docs/MIGRATING.md` that names the definition, the member and the line to delete, even when the member is optional (AGENTS.md, ADR 0134; issue #1371). A new definition breaks nothing.
+
 ## Update the documents
 
 - `docs/language/`: the guide is a file for each chapter (`docs/LANGUAGE.md` is its index): edit the chapter of the construct, its example and its message, so a change to another chapter never conflicts. Examples marked `nsm` are run by `crates/netsmith-tools/tests/guide.rs`. Run `GUIDE_BLESS=1 cargo test -p netsmith-tools --test main guide::` to refresh message blocks, then read the diff.

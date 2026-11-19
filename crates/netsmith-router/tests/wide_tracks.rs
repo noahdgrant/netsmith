@@ -131,6 +131,7 @@ fn with_currents(mut board: Board) -> Board {
             least_width: *width,
             inner_least_width: None,
             vias: 1,
+            source: String::new(),
         })
         .collect();
     board

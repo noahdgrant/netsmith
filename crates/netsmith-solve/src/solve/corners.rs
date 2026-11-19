@@ -302,7 +302,7 @@ impl Corners {
     }
 
     /// Whether a corner can move a field.
-    fn moves(&self, f: FieldId) -> bool {
+    pub(super) fn moves(&self, f: FieldId) -> bool {
         self.base.contains_key(&f) || self.defs.contains_key(&f)
     }
 }
@@ -542,6 +542,62 @@ impl Solver<'_> {
         c.over(&ranges).ok()
     }
 
+    /// A field a corner moves, at the corner (a bank's total, a capacitor's effective
+    /// capacitance), for a check outside the bounds: the hold-up (issue #1255).
+    pub(super) fn corners_value(&self, f: FieldId, corner: &Corner) -> Result<Quantity, Miss> {
+        let mut at = At {
+            corner,
+            memo: HashMap::new(),
+            visiting: HashSet::new(),
+            read: Vec::new(),
+            touched: false,
+        };
+        self.corner_value(f, &mut at)
+    }
+
+    /// An ESR of a part at a corner, read as a corner reads `.esr` (its curve, its figure at
+    /// 25 degC, and its `esr_growth` at the end of life), for any ESR member: a
+    /// supercapacitor's `.dc_esr` too.
+    pub(super) fn esr_at_corner(
+        &self,
+        f: FieldId,
+        part: InstId,
+        corner: &Corner,
+    ) -> Result<Quantity, Miss> {
+        let mut at = At {
+            corner,
+            memo: HashMap::new(),
+            visiting: HashSet::new(),
+            read: Vec::new(),
+            touched: false,
+        };
+        self.base_value(f, part, Base::Esr, &mut at)
+    }
+
+    /// Why a corner cannot read a value, in the words of a note, or `None` for a value that is
+    /// still unknown.
+    pub(super) fn miss_words(&self, miss: &Miss, corner: &Corner) -> Option<String> {
+        let part = match miss {
+            Miss::Member { part, .. } | Miss::NoCurve { part } | Miss::Beyond { part, .. } => *part,
+            Miss::Unknown => return None,
+        };
+        let path = self.model.path_of(part);
+        Some(match miss {
+            Miss::Member { member, .. } => format!(
+                "`{path}` states no `{member}` (its catalog row's column, from the maker's endurance test, or `.{path}.{member} &= ...`)"
+            ),
+            Miss::NoCurve { .. } => format!(
+                "the ESR of `{path}` is its row's single figure, which its datasheet states at 25degC, and no curve file over temperature gives it at {} (`curves/<catalog>/<row>.csv` with the axis `temperature`, or `.{path}.esr` stated for every temperature)",
+                netsmith_check::environment::show(corner.kelvin)
+            ),
+            Miss::Beyond { file, .. } => format!(
+                "the curve file {file} of `{path}` does not reach {}",
+                netsmith_check::environment::show(corner.kelvin)
+            ),
+            Miss::Unknown => return None,
+        })
+    }
+
     /// The bounds that a corner could not judge, one note for each corner, part and missing
     /// value, naming the bounds (`relations` are the design's, by their place).
     pub(super) fn corner_notes(&self, relations: &[usize]) -> Vec<crate::levels::NotEvaluated> {
@@ -577,26 +633,14 @@ impl Solver<'_> {
             .map(|((k, miss), bounds)| {
                 let corner = &self.corners.corners[k];
                 let part = match &miss {
-                    Miss::Member { part, .. } | Miss::NoCurve { part } | Miss::Beyond { part, .. } => {
-                        *part
-                    }
+                    Miss::Member { part, .. }
+                    | Miss::NoCurve { part }
+                    | Miss::Beyond { part, .. } => *part,
                     Miss::Unknown => unreachable!("an unknown value is not named"),
                 };
-                let path = self.model.path_of(part);
-                let why = match &miss {
-                    Miss::Member { member, .. } => format!(
-                        "`{path}` states no `{member}` (its catalog row's column, from the maker's endurance test, or `.{path}.{member} &= ...`)"
-                    ),
-                    Miss::NoCurve { .. } => format!(
-                        "the ESR of `{path}` is its row's single figure, which its datasheet states at 25degC, and no curve file over temperature gives it at {} (`curves/<catalog>/<row>.csv` with the axis `temperature`, or `.{path}.esr` stated for every temperature)",
-                        netsmith_check::environment::show(corner.kelvin)
-                    ),
-                    Miss::Beyond { file, .. } => format!(
-                        "the curve file {file} of `{path}` does not reach {}",
-                        netsmith_check::environment::show(corner.kelvin)
-                    ),
-                    Miss::Unknown => unreachable!("an unknown value is not named"),
-                };
+                let why = self
+                    .miss_words(&miss, corner)
+                    .expect("an unknown value is not named");
                 crate::levels::NotEvaluated {
                     at: part,
                     involves: vec![part],

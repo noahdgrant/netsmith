@@ -999,6 +999,8 @@ impl Workspace {
             nets,
             notes: built.notes.clone(),
             lock: None,
+            pin_budgets: Some(netsmith_pipeline::pin_budget::of(built))
+                .filter(|budgets| !budgets.is_empty()),
         }
     }
 }

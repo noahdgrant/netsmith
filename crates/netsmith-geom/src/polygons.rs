@@ -292,6 +292,16 @@ pub(crate) fn grown(areas: &[Area], by: f64) -> Vec<Area> {
     to_areas(rings)
 }
 
+/// The areas shrunk by `by` mm with round corners: everything of them further than `by` from
+/// their edge, as KiCad deflates a rule area by its DRC epsilon before it asks what reaches into
+/// it (issue #1372).
+pub(crate) fn shrunk(areas: &[Area], by: f64) -> Vec<Area> {
+    if by <= 0.0 || areas.is_empty() {
+        return areas.to_vec();
+    }
+    difference(areas, &to_areas(band(areas, by, Corners::Round)))
+}
+
 /// The areas with the copper narrower than `min_width` taken out, as KiCad's fill trims a zone
 /// to its `min_thickness`: each area is shrunk by half the width and the rest grown back by as
 /// much, so a neck narrower than the width parts the area in two and a sliver goes.

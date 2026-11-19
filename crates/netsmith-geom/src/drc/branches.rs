@@ -24,10 +24,18 @@ use std::collections::HashSet;
 use super::connect::net_graph;
 use super::model::{Kind, Model};
 
+/// What copper that only feeds branches carries (issue 1373): the most, in amperes, and the
+/// pins of the branches it feeds, by their paths in the design, each once.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Through {
+    pub current: f64,
+    pub pins: Vec<String>,
+}
+
 /// The most the copper of `removed` (indices into the model's items, all of `net`) carries, in
 /// amperes, when it only feeds branches, as the header says; `None` when it may carry the net's
 /// current.
-pub(crate) fn current_through(m: &Model<'_>, net: &str, removed: &[usize]) -> Option<f64> {
+pub(crate) fn current_through(m: &Model<'_>, net: &str, removed: &[usize]) -> Option<Through> {
     // The stated branches first, so that a pad of a pin in both is the stated branch's.
     let branches: Vec<&super::Branch> = (m.extras.branches.iter())
         .chain(&m.extras.pin_currents)
@@ -77,6 +85,7 @@ pub(crate) fn current_through(m: &Model<'_>, net: &str, removed: &[usize]) -> Op
     // Each piece: whether it is trunk, and what its branches draw.
     let mut trunks = 0;
     let mut drawn: Vec<f64> = Vec::new();
+    let mut named: Vec<Vec<usize>> = Vec::new();
     for piece in &pieces {
         let mut trunk = false;
         let mut pins: HashSet<usize> = HashSet::new();
@@ -103,16 +112,35 @@ pub(crate) fn current_through(m: &Model<'_>, net: &str, removed: &[usize]) -> Op
         if trunk {
             trunks += 1;
             drawn.push(f64::INFINITY);
+            named.push(Vec::new());
         } else {
             drawn.push(pins.iter().map(|&b| branches[b].current).sum());
+            named.push(pins.iter().copied().collect());
         }
     }
-    match trunks {
+    let (current, counted): (f64, Vec<usize>) = match trunks {
         0 => {
             let largest = drawn.iter().copied().fold(0.0, f64::max);
-            Some(drawn.iter().sum::<f64>() - largest)
+            let skip = drawn.iter().position(|&d| d == largest);
+            (
+                drawn.iter().sum::<f64>() - largest,
+                (0..drawn.len()).filter(|&k| Some(k) != skip).collect(),
+            )
         }
-        1 => Some(drawn.iter().filter(|d| d.is_finite()).sum()),
-        _ => None,
-    }
+        1 => (
+            drawn.iter().filter(|d| d.is_finite()).sum(),
+            (0..drawn.len()).filter(|&k| drawn[k].is_finite()).collect(),
+        ),
+        _ => return None,
+    };
+    let mut pins: Vec<usize> = counted
+        .into_iter()
+        .flat_map(|k| named[k].iter().copied())
+        .collect();
+    pins.sort_unstable();
+    pins.dedup();
+    Some(Through {
+        current,
+        pins: pins.into_iter().map(|b| branches[b].path.clone()).collect(),
+    })
 }

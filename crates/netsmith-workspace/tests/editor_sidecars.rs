@@ -372,3 +372,19 @@ fn the_lock_file_is_among_the_files_the_editor_watches() {
     write_lock(&root);
     assert!(target.watched().contains(&lock));
 }
+
+#[test]
+fn the_board_detail_has_the_pin_budget_of_its_host() {
+    let (_root, editor) = project("sidecars-pin-budget", &board(GOOD));
+    let detail = editor.board("Sensors").unwrap();
+    let budgets = detail.pin_budgets.expect("the board has a host");
+    assert_eq!(budgets.len(), 1, "{budgets:?}");
+    let u = &budgets[0];
+    assert_eq!((u.host.as_str(), u.kind.as_str()), ("u", "Zmcu4"));
+    assert_eq!((u.pins, u.used, u.left), (4, 2, 2));
+    // Both requests reach the board's own resistor, so the board itself uses the pins.
+    assert_eq!(u.modules.len(), 1);
+    assert_eq!(u.modules[0].module, "");
+    assert_eq!(u.modules[0].pins, ["P0.00", "P0.02"]);
+    assert!(u.blocks.is_empty());
+}

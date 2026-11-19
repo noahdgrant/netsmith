@@ -7,6 +7,8 @@ export async function run({ page, shot, step, expect, section }) {
   step('open the PCB tab');
   await section('pcb');
   await page.waitForSelector('.pcb-host svg');
+  // The labels are fitted to the parts in an effect after the drawing (and the zoom of the first fit) is shown: read them once the page is idle (issue 1376).
+  await whenIdle(page);
   expect((await page.locator('.pcb-host svg [stroke-dasharray]').count()) >= 2, 'a dashed border for each plane');
   step('a plane is coloured by its real layer and named with it (the drawing\'s data-layer)');
   const planes = await page.evaluate(() => [...document.querySelectorAll('.pcb-host svg .l-planes > rect[data-net]')].map((r) => ({ net: r.getAttribute('data-net'), layer: r.getAttribute('data-layer'), tone: r.getAttribute('data-plane'), stroke: getComputedStyle(r).stroke })));

@@ -13,6 +13,83 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+## 0.6.0: changes since 0.5.0
+
+### A provider, a use or a part does not declare a member the language or std now declares (issue #1371)
+
+The same break as 0.5.0's below, for the members added since. Delete the declaration and keep the narrowing:
+
+| Where it is declared | Members it gained | Pull request |
+|---|---|---|
+| every part and every board (built in) | `.routing_margin`, the room for routing kept round a part's courtyard | #1356 |
+| `std::mfg::jlcpcb::TwoLayer`, `FourLayer`, `SixLayer`, `HdiFourLayer`, `HdiSixLayer`, `HdiEightLayer`, `std::mfg::acme::EightLayer`, `TenLayer` | `.min_single_sided_assembly_size`, `.min_double_sided_assembly_size` | #1358 |
+| `std::sources::Rail` | `.voltage_floor`, `.charge_time_limit` | #1346, #1367 |
+
+```text
+error: `routing_margin` is already declared in this block: every part has it; do not declare it: narrow it with `.routing_margin &= ...`, or state it with a relation
+error: `min_single_sided_assembly_size` is declared by `TwoLayer`, which this interface provides; do not declare it again: narrow it with `.min_single_sided_assembly_size &= ...`, or state it with a relation
+error: `voltage_floor` is declared by `Rail`; do not declare it again in a use of it: narrow it with `.voltage_floor &= ...`, or state it with a relation
+```
+
+## 0.5.0: changes since 0.4.0
+
+The pull requests below did not have `!` in their titles, so the release notes of 0.5.0 do not list them as breaking (issue #1371).
+
+### A provider does not declare a member its standard generic now declares (issue #1371)
+
+```text
+error: `enable_threshold` is declared by `BuckIc`, which this part provides; do not declare it again: narrow it with `.enable_threshold &= ...`, or state it with a relation
+  --> src/buck.nsm:12:5
+   |
+12 |     .enable_threshold: Voltage
+   |     ^^^^^^^^^^^^^^^^^
+```
+
+A part that provides a generic has every member of the generic and does not declare it again (the guide's chapter 14, _A provider_). 0.5.0 added members to some standard generics, so a part of your own that provides one and declared the same name for itself on 0.4.0 stops at the declaration. Delete the declaration and keep the narrowing (`.enable_threshold &= 1.2V`) and the relations: they now state the generic's member, which the checks read.
+
+| Generic | Members it gained | Pull request |
+|---|---|---|
+| `std::parts::regulator::LinearRegulator` | `.output_current`, `.enable_delay`, `.soft_start_time`, `.enable_threshold` | #1302, #1350 |
+| `std::parts::regulator::BuckIc` | `.high_side_resistance`, `.enable_delay`, `.enable_threshold` | #1302, #1350 |
+| `std::parts::passive::Capacitor`, `CapacitorBank` | `.capacitance_at_end_of_life`, `.esr_growth` | #1303 |
+
+| Before | Now |
+|---|---|
+| `.enable_threshold: Voltage` and `.enable_threshold &= 1.2V` in a `part X provides BuckIc` | `.enable_threshold &= 1.2V` |
+| `.output_current: Current` in a `part X provides LinearRegulator` | nothing: the generic states `.output_current == -.vout.current`, the current the regulator gives its load |
+
+Each member keeps the generic's meaning, so read its doc comment in `std/` before you keep a narrowing of your own: `LinearRegulator`'s `.output_current` is the current its output supplies (`-.vout.current`), not the most the part gives (that is `.max_current`); `.enable_delay` is the time from the enable to the start of the output's rise and `.soft_start_time` the length of the rise, which a board's `sequence` reads (the guide's chapter 28, _The power-up order of a board_); `.high_side_resistance` is the resistance of a buck IC's high-side switch held on, which with the inductor's DC resistance gives the buck's dropout; `.capacitance_at_end_of_life` and `.esr_growth` are what a board's corner at `Life::End` applies to the capacitance and the ESR. A member of your own that meant something else is renamed.
+
+### A part does not declare `.height_growth` (issue #1263)
+
+```text
+error: `height_growth` is already declared in this block: every part has it; do not declare it: narrow it with `.height_growth &= ...`, or state it with a relation
+```
+
+Every part has `.height_growth`, how much its body may grow in height over its life, and the height check adds it to the part's height (#1288). A part of your own that declared `.height_growth: Length` deletes the declaration and keeps its narrowing (0.5.0 itself says only the first half of the message).
+
+| Before | Now |
+|---|---|
+| `.height_growth: Length` and `.height_growth &= 0.5mm` in a part | `.height_growth &= 0.5mm` |
+
+### A use does not declare a member its standard interface now declares (issue #1371)
+
+```text
+error: `burst` is declared by `Rail`; do not declare it again in a use of it: narrow it with `.burst &= ...`, or state it with a relation
+```
+
+A use's block may declare a member of its own (`.load: Rail { .on_time: Time }`), and that member is refused once the interface declares the same name. 0.5.0 itself says "`burst` is already declared in this block". Delete the declaration, keep the narrowing, and check that the interface's meaning is the one you meant (its doc comment in `std/`); a member of your own that meant something else is renamed.
+
+| Interface | Members it gained | Pull request |
+|---|---|---|
+| `std::sources::Rail` | `.burst` (how long a peak lasts), `.duty` (the part of the time the peak is drawn) | #1341 |
+| `std::sources::DiffPair`, `PairImpedance`, `std::bus::Usb2`, `Can` | `.skew` (the most the pair's two lengths may differ) | #1253 |
+
+| Before | Now |
+|---|---|
+| `.load: Rail { .burst: Time; .burst &= 2ms }` | `.load: Rail { .burst &= 2ms }` |
+| `.usb: Usb2 { .skew: Length; .skew &= 0mm..0.15mm }` | `.usb: Usb2 { .skew &= 0mm..0.15mm }` |
+
 ## 0.4.0: changes since 0.3.1
 
 ### The ATtiny13A's I/O pins are plain pins with the part's levels (issue #1190)

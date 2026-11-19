@@ -42,6 +42,7 @@ fn with_a_branch(seed: u64) -> Option<(Board, String, PinRef)> {
         least_width: least,
         inner_least_width: None,
         vias: SIZING.vias(2.0),
+        source: String::new(),
     });
     let centre = |p: &netsmith_pcb::PadRef| {
         let part = board.part(&p.refdes).unwrap();
@@ -83,6 +84,7 @@ fn extras(board: &Board) -> DrcExtras {
             .iter()
             .map(|b| DrcBranch {
                 net: b.net.clone(),
+                path: b.path.clone(),
                 part: b.pins[0].refdes.clone(),
                 pads: vec![b.pins[0].pin.clone()],
                 current: b.current,

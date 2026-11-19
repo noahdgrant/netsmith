@@ -1196,3 +1196,14 @@ fn on_a_board_with_an_inner_signal_layer_a_net_gets_the_width_its_current_needs_
 fn on_a_board_whose_inner_layers_are_planes_a_net_gets_no_inner_width() {
     assert_eq!(four_layer_node(false).inner_least_width, None);
 }
+
+#[test]
+fn a_nets_current_says_where_it_comes_from() {
+    // Issue 1373: the design file's current of a net names the loads that add up to it, as the
+    // track width check does, for the design rules check's findings.
+    let node = four_layer_node(true);
+    assert!(
+        node.source.contains("part `diode`") && node.source.contains("2 A"),
+        "{node:?}"
+    );
+}
