@@ -177,7 +177,7 @@ fn statement_of(
 /// balance it is a term of that only draw (a term that may supply is a source), each at its most (a group of loads at its worst), and for
 /// a port of the balance's module the loads beyond it in the parent's balance. `None` when a
 /// current has no value or the rail is a term of no balance.
-fn other_loads(model: &Model, current: FieldId, depth: usize) -> Option<f64> {
+pub(crate) fn other_loads(model: &Model, current: FieldId, depth: usize) -> Option<f64> {
     if depth > 32 {
         return None;
     }
