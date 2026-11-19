@@ -93,7 +93,11 @@ impl Checker<'_> {
                 features,
             });
         }
-        if let Some(generic) = self.generic_members.get(&(part, "needs".to_string())).cloned() {
+        if let Some(generic) = self
+            .generic_members
+            .get(&(part, "needs".to_string()))
+            .cloned()
+        {
             // A generic that wants order codes declares `.needs: String optional` (issue 1402),
             // so that a use of it reaches the need; the table of this provider fills it.
             let declared = match self.model.member(part, "needs") {
