@@ -607,6 +607,7 @@ fn item_span(item: &Item) -> Span {
         Item::Support(s) => s.span,
         Item::Defaults(d) => d.span,
         Item::Layout(l) => l.span,
+        Item::Pads(p) => p.span,
         Item::Row(r) => r.span,
         Item::Within(w) => w.span,
         Item::Route(r) => r.span,

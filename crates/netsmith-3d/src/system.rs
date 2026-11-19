@@ -10,9 +10,10 @@
 //! - The mates are read in the order the system states them, again and again until none places
 //!   another member: a mate with one end on a placed member places the member at its other end.
 //!   Contact N meets contact N (pad N of a std header or socket), so the turn and the offset are
-//!   the least-squares fit that puts each pad centre of the one connector on its partner's; the
-//!   distance between the two boards' faces is the mate's _Mated height_, its least (the worst
-//!   case for the checks). The member is flipped when its connector would otherwise face the
+//!   the least-squares fit that puts each pad's contact of the one connector on its partner's (a
+//!   pad's contact is its centre unless the part's `pads` block states `.contact_offset`, issue
+//!   #1321); the distance between the two boards' faces is the mate's _Mated height_, its least
+//!   (the worst case for the checks). The member is flipped when its connector would otherwise face the
 //!   same way as its partner (both on the top face, or both on the bottom).
 //! - Only straight-through connectors on parallel boards are placed: every std header and socket
 //!   is one, and nothing else has a `.mating` (ADR 0040).
@@ -75,7 +76,7 @@
 
 use netsmith_pcb::{Board, Pad, PadKind, PadShape, Side};
 
-use crate::scene3d::{Body, HeightProvenance, Pins, Plan, Scene, pad_centres};
+use crate::scene3d::{Body, HeightProvenance, Pins, Plan, Scene, pad_contacts};
 
 /// How far a pad of a mate that did not place its member may land from its partner, in mm (ADR
 /// 0110).
@@ -512,7 +513,7 @@ impl SystemScene {
                 let mut problem = None;
                 if worst.0 > ALIGNMENT {
                     problem = Some(format!(
-                        "contact {} of `{}` lands {:.3} mm from its partner on `{}`, more than {ALIGNMENT} mm",
+                        "contact {} of `{}` lands {:.3} mm from its partner on `{}`, more than {ALIGNMENT} mm; a connector whose contacts are not at the centres of its pads (a surface-mount header's feet) states where they are with `.contact_offset` in its part's `pads` block",
                         worst.1, mate.a, worst.0, mate.b
                     ));
                 }
@@ -594,8 +595,8 @@ pub(crate) fn meshes(system: &SystemScene) -> Vec<crate::mesh::Mesh> {
     out
 }
 
-/// The pads of the two connectors that meet, by number: `(number, centre of a's, centre of b's)`
-/// in each board's own plan, in the order of a's footprint. Pads with no number are not
+/// The pads of the two connectors that meet, by number: `(number, contact of a's, contact of
+/// b's)` in each board's own plan, in the order of a's footprint. Pads with no number are not
 /// contacts. With a window (a `.mating.contacts` subset), pad `first_a + i` of a meets pad
 /// `first_b + i` of b, and a's pads outside it meet nothing.
 fn pairs(
@@ -614,7 +615,10 @@ fn pairs(
         }
         seen
     };
-    let (pa, pb) = (first(pad_centres(a, a_part)), first(pad_centres(b, b_part)));
+    let (pa, pb) = (
+        first(pad_contacts(a, a_part)),
+        first(pad_contacts(b, b_part)),
+    );
     let partner = |n: &str| match window {
         None => Some(n.to_string()),
         Some((fa, fb, count)) => {

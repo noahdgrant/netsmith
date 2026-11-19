@@ -1354,6 +1354,9 @@ pub struct Model {
     /// The guidelines of the parts' `layout` blocks (ADR 0030, issues #829 and #994), one for each
     /// instance of a part that states one, in the order they were read.
     pub layout: Vec<LayoutGuideline>,
+    /// The contacts that the parts' `pads` blocks state away from their pads' centres (issue
+    /// #1321), one for each instance of a part and pad, in the order they were read.
+    pub pad_contacts: Vec<PadContact>,
     /// The `within` statements of the physical files (issue #1274), in the order they were read.
     pub pin_distances: Vec<PinDistance>,
     /// The `route` statements of the physical files (issue #1274), in the order they were read.
@@ -1455,6 +1458,23 @@ impl Model {
         *held = Some(Arc::clone(&made));
         made
     }
+}
+
+/// Where a pad's contact is, as a row of a part's `pads` block states it (issue #1321), for one
+/// instance of the part: the point a mating contact meets, `offset` from the centre of the
+/// pad's copper, in the footprint's own frame, in mm. A pad no row names has its contact at its
+/// centre.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PadContact {
+    /// The part instance whose definition states it.
+    pub part: InstId,
+    /// The package of a `pads "SMD" { }` block: the row applies only to an instance in that
+    /// package. None for every package.
+    pub package: Option<String>,
+    /// The pad's number (`"1"`).
+    pub pad: String,
+    /// `(x, y)` in mm, in the footprint's frame (y down, as the footprint's pads are).
+    pub offset: (f64, f64),
 }
 
 /// A guideline of a part's `layout` block (ADR 0030, issues #829 and #994), for one instance
@@ -1648,6 +1668,7 @@ impl Model {
             default_notes: Vec::new(),
             support_sections: Vec::new(),
             layout: Vec::new(),
+            pad_contacts: Vec::new(),
             pin_distances: Vec::new(),
             net_routes: Vec::new(),
             load_groups: Vec::new(),

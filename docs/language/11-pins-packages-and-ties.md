@@ -2044,6 +2044,46 @@ error: `q` is a `NoPad` and its pins (`b`) have no pads, so it cannot be placed 
 
 The table is also checked against the KiCad symbol and footprint the part is exported with. `build` and `fab` stop when a pad of the table is not a pad of the footprint or a pin of the symbol, when a footprint pad or symbol pin belongs to no pin of the table, when the symbol names the pin otherwise than the table's datasheet name (after the `pin_names` of `kicad.toml`), or when the symbol's electrical type does not suit the pin's kind. Each message names the part and both sides, for example `pad 3 is the input pin `en` (`EN`) in the part, but pin 3 of the symbol `tiny:Chip` is named `ENABLE``. A `power` pin suits a symbol pin typed `power_in` or `power_out`, and also `output` when the solved design says the pin gives power (the current of its rail is below 0 A, as at the output of a regulator with a load behind it): many library symbols type a regulator's output `output`, and a part that provides `LinearRegulator` or `BuckIc` keeps the generic's `power` row and uses such a symbol as it is. The schematic puts a power flag on a net that no `power_out` drives, so KiCad's electrical rules check sees the rail driven. A symbol pin typed `passive` suits every kind. This is a fact about your libraries and not about the circuit, so `check` does not report it. A footprint that `kicad.toml` asks for with `gen:` (_A part of your own, with no KiCad installed_) is checked the same way, and the message adds the row, its line and the pad count.
 
+#### Where a pad's contact is
+
+A pad's contact, the point a mating contact meets, is the centre of its copper unless the part says otherwise (issue #1321). A part's `pads` block says it: one row for a pad, by the number its pin table gives it, and the field `.contact_offset = (X, Y)`, how far the contact is from the centre of the pad's copper, in the footprint's frame (x to the right, y down, as the footprint's pads are, before the part is turned or put on the bottom). A pad no row names has its contact at its centre, `(0mm, 0mm)`. The feet of a surface-mount pin header alternate either side of its pins, so each foot's copper is off the pins' axis by half the distance between the rows of feet; its part states the offset that takes each foot back to the axis. `pads "SMD" { }` is for one package of the part and is kept only for a part in that package, a `pads { }` with no package for every package; a row of the block for the package wins over a row of the block for every package.
+
+```nsm
+import std::parts::connector::{Connector, Mating}
+
+/// A surface-mount 1x4 pin header whose feet alternate 1.175 mm either side of the pins, pad 1
+/// on the right. Illustrative; not a real part.
+part SmdHeader1x4 provides Connector {
+    pins "SMD" {
+        .p1 passive "P1" "1"
+        .p2 passive "P2" "2"
+        .p3 passive "P3" "3"
+        .p4 passive "P4" "4"
+    }
+    .package: Package
+    .package &= "SMD"
+    pads "SMD" {
+        "1" .contact_offset = (-1.175mm, 0mm)
+        "2" .contact_offset = (1.175mm, 0mm)
+        "3" .contact_offset = (-1.175mm, 0mm)
+        "4" .contact_offset = (1.175mm, 0mm)
+    }
+    .mating: Mating {
+        .kind &= "pin_header"
+        .gender &= "header"
+        .pitch &= 2.54mm
+        .rows &= 1
+        .positions &= 4
+    }
+}
+
+board Card {
+    .j1: SmdHeader1x4
+}
+```
+
+What reads the contacts is the system scene: it lines the connectors of a mate up, and checks them, on their contacts (chapter _Systems and ports_, _Contacts that are not at the pads' centres_). The copper itself, what the router, the design rules check and the board house see, is the footprint's and does not move. A `pads` block is only in a part's own definition, as a `pins` table is. A row names a pad of the part's pin table (`the part's pin table has no pad "9"`), states each field once, and its point is two lengths; a pad has no other field.
+
 A pin may also say how a pour of its net joins its pads, solid or with spokes of its own width (`.gnd.pour_connection &= PadConnection::Solid`, `.gnd.spoke_width &= 0.3mm..`, issue #1276): see "A pad's own connection", under Pours in _The shape of a board_.
 
 ### Mistakes in a table
