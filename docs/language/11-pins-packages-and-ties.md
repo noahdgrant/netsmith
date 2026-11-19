@@ -1984,6 +1984,17 @@ error: `d.out` (`Zdrv`) is an output on net `GND`, the net of rail `gnd` (`gnd.n
 
 The schematic's project file (`<board>.kicad_pro` beside the `.kicad_sch` that `build` writes) holds an ERC pin map that says the same as these rules: KiCad's default map, but a bidirectional or tri-state pin on a net with a power output, and a tri-state pin on a net with a power input, are not findings. So KiCad's electrical rules check of the exported schematic stays quiet about a GPIO tied to ground, where KiCad's own default reports `pin_to_pin` against the power flag on the ground net. The map is never stricter than KiCad's: what netsmith refuses, it reports itself.
 
+### A direction a control pin fixes
+
+A bidirectional pin may pass a signal one way only, chosen by the level of a control pin: the A and B pins of a one-bit translator, A to B while `DIR` is high and B to A while it is low. The part says so with `direction`, one statement for each level the datasheet gives a direction for (issue #1306):
+
+```text
+direction .a to .b when .dir high
+direction .b to .a when .dir low
+```
+
+While the control pin is at the level, the pins of the first side only read and those of the second only drive. A side is a pin of the part, or an interface of it standing for all its pins but the pins of its rails (the reference of a `Logic`), so `.a` above is the line of a `Logic` called `a`. The control pin is an `input` and every pin on the two sides is `bidirectional`: a pin of any other kind has one direction already, and the checker says which pin is not. A pin is on one side of a statement, its direction is fixed by one control pin, and a level is stated once for it; only a part may hold a `direction`. The levels check judges the direction a strap of the control pin fixes, and both directions when it cannot tell (chapter 28, "A pin whose direction a strapped control pin fixes"). The net rules still read the pin as `bidirectional`.
+
 ### Pads
 
 Pads are checked after the solver has chosen the package, because they depend on it. Two pins on one pad are an error unless the part joins them, which makes them one pin:

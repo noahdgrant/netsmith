@@ -414,6 +414,16 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
             Item::Tie(t) => {
                 let _ = write!(out, "tie {} ~ {}", t.a.to_source(), t.b.to_source());
             }
+            Item::Direction(d) => {
+                let _ = write!(
+                    out,
+                    "direction {} to {} when {} {}",
+                    d.from.to_source(),
+                    d.to.to_source(),
+                    d.control.to_source(),
+                    if d.high { "high" } else { "low" }
+                );
+            }
             Item::Unused(u) => {
                 let _ = write!(out, "unused {}", u.path.to_source());
             }

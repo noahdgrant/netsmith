@@ -263,6 +263,11 @@ fn visit<'a>(
             path(&t.a, inside);
             path(&t.b, inside);
         }
+        Item::Direction(d) => {
+            path(&d.from, inside);
+            path(&d.to, inside);
+            path(&d.control, inside);
+        }
         Item::Unused(u) => path(&u.path, inside),
         Item::Sequence(q) => {
             for step in &q.steps {
