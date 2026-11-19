@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.5.0](https://github.com/noahdgrant/netsmith/compare/v0.4.0...v0.5.0) (2026-11-19)
+
+
+### Features
+
+* **catalog:** curve files give a row's forward voltage over current and temperature ([#1266](https://github.com/noahdgrant/netsmith/issues/1266)) ([4e8a28f](https://github.com/noahdgrant/netsmith/commit/4e8a28ff6ed3f6f437bab905587c6d390aca8aaf))
+* **check:** a part's maximum voltage in steps over temperature, judged against the board's operating range ([#1286](https://github.com/noahdgrant/netsmith/issues/1286)) ([90b7b8a](https://github.com/noahdgrant/netsmith/commit/90b7b8ac1612af56b24d11def72456aaa3f9b71e)), closes [#1257](https://github.com/noahdgrant/netsmith/issues/1257)
+* **check:** named corners of a board judge capacitance and ESR at each temperature and point of life ([#1303](https://github.com/noahdgrant/netsmith/issues/1303)) ([717a964](https://github.com/noahdgrant/netsmith/commit/717a964f43a1a7007bd2cd614b5a6e7ec1cdf1a7))
+* **dc:** a part states a dc source or a regulator for each rail it gives ([#1348](https://github.com/noahdgrant/netsmith/issues/1348)) ([c8eafb2](https://github.com/noahdgrant/netsmith/commit/c8eafb2771e0f7a56e981dacbd0a07a8318458b0)), closes [#1271](https://github.com/noahdgrant/netsmith/issues/1271)
+* **height:** a part's .height_growth is added to its height before a height limit is checked ([#1288](https://github.com/noahdgrant/netsmith/issues/1288)) ([53098ed](https://github.com/noahdgrant/netsmith/commit/53098edae1ba5da3ed5cc206313db8f814867658)), closes [#1263](https://github.com/noahdgrant/netsmith/issues/1263)
+* **height:** an SC-70 with five or six leads takes its package standard's maximum height ([#1332](https://github.com/noahdgrant/netsmith/issues/1332)) ([58d4a7c](https://github.com/noahdgrant/netsmith/commit/58d4a7cf75454fe239dacb7986da84ce1cebe5a7))
+* **height:** an SC-70 with five or six leads takes its package standard's maximum height ([#1337](https://github.com/noahdgrant/netsmith/issues/1337)) ([58d4a7c](https://github.com/noahdgrant/netsmith/commit/58d4a7cf75454fe239dacb7986da84ce1cebe5a7))
+* **lang:** a board states its power-up order with a sequence, checked against the regulators' delays ([#1350](https://github.com/noahdgrant/netsmith/issues/1350)) ([742f70d](https://github.com/noahdgrant/netsmith/commit/742f70d430288126e301fdb06ebbfa74473833f2)), closes [#1267](https://github.com/noahdgrant/netsmith/issues/1267)
+* **layout:** fab checks the parts the layout file places against each other before it places anything ([#1351](https://github.com/noahdgrant/netsmith/issues/1351)) ([d6ab127](https://github.com/noahdgrant/netsmith/commit/d6ab127d3d156cc899c502c7444036f75dbfb51f))
+* **layout:** layout fit says how far the placing has got and when --as-laid-out answers at once ([#1287](https://github.com/noahdgrant/netsmith/issues/1287)) ([cbae14f](https://github.com/noahdgrant/netsmith/commit/cbae14f0ebe7e52f477b5a24c16815d39e5c0873)), closes [#1282](https://github.com/noahdgrant/netsmith/issues/1282)
+* **layout:** layout parts --as-laid-out answers for the parts with an entry and lists the others ([#1345](https://github.com/noahdgrant/netsmith/issues/1345)) ([db00f7c](https://github.com/noahdgrant/netsmith/commit/db00f7c5d5faf6881743fb8a469aafcd8b063074)), closes [#1308](https://github.com/noahdgrant/netsmith/issues/1308)
+* **levels:** a level through a two-resistor divider is judged at the divided levels ([#1270](https://github.com/noahdgrant/netsmith/issues/1270)) ([d7a6c2d](https://github.com/noahdgrant/netsmith/commit/d7a6c2dbffce9bffb97ac0b73761f7ab91022a3b))
+* **levels:** a level through a two-resistor divider is judged at the divided levels ([#1347](https://github.com/noahdgrant/netsmith/issues/1347)) ([d7a6c2d](https://github.com/noahdgrant/netsmith/commit/d7a6c2dbffce9bffb97ac0b73761f7ab91022a3b))
+* **power:** a buck converter's output rating is its rail's limit in the budget and board power ([#1316](https://github.com/noahdgrant/netsmith/issues/1316)) ([15dff35](https://github.com/noahdgrant/netsmith/commit/15dff3555ae2c42c48526948b2b368f41a1f24a0))
+* **power:** a buck converter's output rating is its rail's limit in the budget and board power ([#1343](https://github.com/noahdgrant/netsmith/issues/1343)) ([15dff35](https://github.com/noahdgrant/netsmith/commit/15dff3555ae2c42c48526948b2b368f41a1f24a0))
+* **router:** a pair is routed beside copper already there, and as two lines when as a pair it leaves connections ([#1298](https://github.com/noahdgrant/netsmith/issues/1298)) ([d37e6a8](https://github.com/noahdgrant/netsmith/commit/d37e6a86782efbf180362d42f665d97761f0ede7))
+* **routes:** routes join-pad joins a pad to the fill of its net, and board fill's JSON has each fill's outline ([#1355](https://github.com/noahdgrant/netsmith/issues/1355)) ([db7183c](https://github.com/noahdgrant/netsmith/commit/db7183cc50d0496c042f0ca0018894493b10b7ac))
+* **routes:** routes tidy --widen widens each narrow track as far as its neighbours allow ([#1353](https://github.com/noahdgrant/netsmith/issues/1353)) ([f252ada](https://github.com/noahdgrant/netsmith/commit/f252adaaf9b078bb30b5a42a70a2fff22d941ed1))
+* **std:** a diff pair's own skew limit, and groups of nets matched in length on the board ([#1253](https://github.com/noahdgrant/netsmith/issues/1253)) ([ffda380](https://github.com/noahdgrant/netsmith/commit/ffda380a3f9b209870d2065c28c0d2b989561f0c))
+* **std:** a load states its burst, and the source and the bulk capacitance are checked against it ([#1341](https://github.com/noahdgrant/netsmith/issues/1341)) ([f26a677](https://github.com/noahdgrant/netsmith/commit/f26a6770bfd71eaa7ab3913b9fe8110ca6d74c5b)), closes [#1279](https://github.com/noahdgrant/netsmith/issues/1279)
+* **std:** a load switch is a converter between two rails, its output sourced when its enable can turn it on ([#1342](https://github.com/noahdgrant/netsmith/issues/1342)) ([361dc1f](https://github.com/noahdgrant/netsmith/commit/361dc1f893e2c07e8c239832c1d016138d43ea13)), closes [#1269](https://github.com/noahdgrant/netsmith/issues/1269)
+* **std:** a source states a group of nets matched in length with a LengthGroup ([#1289](https://github.com/noahdgrant/netsmith/issues/1289)) ([aa04c21](https://github.com/noahdgrant/netsmith/commit/aa04c216fdaa59533ce19e777bf121f7bd1ca227))
+* **std:** a supercapacitor generic with a balance tap, ESR at AC and DC, leakage and its soldering method ([#1349](https://github.com/noahdgrant/netsmith/issues/1349)) ([1774929](https://github.com/noahdgrant/netsmith/commit/17749295156c9e0161f2cc2d19779ce5f63735c0)), closes [#1261](https://github.com/noahdgrant/netsmith/issues/1261)
+* **std:** regulator dropout from the load, and the least input for the output rail's minimum ([#1302](https://github.com/noahdgrant/netsmith/issues/1302)) ([98e86cb](https://github.com/noahdgrant/netsmith/commit/98e86cb49e457e871de03efb916de7700968fd78))
+
+
+### Bug Fixes
+
+* **ci:** stop netsmith-solve's build script rerunning on every cargo call ([#1354](https://github.com/noahdgrant/netsmith/issues/1354)) ([fc5f919](https://github.com/noahdgrant/netsmith/commit/fc5f919d7e3059c8d14542717ea11c00bbb76085)), closes [#1352](https://github.com/noahdgrant/netsmith/issues/1352)
+* **drc:** a footprint's keepout is checked and kept out of by the router, the stitching and the vias in pads ([#1300](https://github.com/noahdgrant/netsmith/issues/1300)) ([8ed02b0](https://github.com/noahdgrant/netsmith/commit/8ed02b00d9820e3e09d3d68139bea7001b2464fa)), closes [#1291](https://github.com/noahdgrant/netsmith/issues/1291)
+* **drc:** a pad another fill of its net joins is not unjoinable_thermal ([#1297](https://github.com/noahdgrant/netsmith/issues/1297)) ([f3ca61f](https://github.com/noahdgrant/netsmith/commit/f3ca61fb5bc96cf8180605af0e75227d5f7b9b11))
+* **drc:** copper of a net is joined where it runs in, as KiCad joins it ([#1338](https://github.com/noahdgrant/netsmith/issues/1338)) ([d872fcf](https://github.com/noahdgrant/netsmith/commit/d872fcf156c198ca6a12d5045739e6f17e1638db))
+* **drc:** copper of a net is joined where it runs in, as KiCad joins it, and copper that only touches is said ([d872fcf](https://github.com/noahdgrant/netsmith/commit/d872fcf156c198ca6a12d5045739e6f17e1638db)), closes [#1334](https://github.com/noahdgrant/netsmith/issues/1334)
+* **editor:** the PCB view is always shown the placer's last glimpse ([#1251](https://github.com/noahdgrant/netsmith/issues/1251)) ([94bd50f](https://github.com/noahdgrant/netsmith/commit/94bd50f8f1dfea6f31ebe25ccd483d1469f77417)), closes [#1249](https://github.com/noahdgrant/netsmith/issues/1249)
+* **layout:** a board of a system reads the layout file beside its own source ([#1339](https://github.com/noahdgrant/netsmith/issues/1339)) ([bbb7f13](https://github.com/noahdgrant/netsmith/commit/bbb7f136610575c62bc7e93ec2a0cba7d51ae3e3)), closes [#1327](https://github.com/noahdgrant/netsmith/issues/1327)
+* **levels:** an input strapped to a rail or to ground is judged at its voltage, with no note ([#1319](https://github.com/noahdgrant/netsmith/issues/1319)) ([05358ca](https://github.com/noahdgrant/netsmith/commit/05358ca91e3bf4ca2bede8debad73f8a54c85073)), closes [#1304](https://github.com/noahdgrant/netsmith/issues/1304)
+* **pcb:** a hand zone of another net cuts the process's pour instead of replacing it ([#1318](https://github.com/noahdgrant/netsmith/issues/1318)) ([00c2a0e](https://github.com/noahdgrant/netsmith/commit/00c2a0e3ff39b928f8c528e9d6253b736ae4a82c))
+* **routes:** routes delete deletes a record of a net the board no longer has ([#1336](https://github.com/noahdgrant/netsmith/issues/1336)) ([22a2664](https://github.com/noahdgrant/netsmith/commit/22a26645c075a2ccac2b4153e8315b15b92d3458))
+* **routes:** routes route never suggests ripping a net a pour or a plane joins ([#1317](https://github.com/noahdgrant/netsmith/issues/1317)) ([ef2f6ca](https://github.com/noahdgrant/netsmith/commit/ef2f6ca3dea8f2fee2cea7fba8ba910e57c07ecc))
+* **solve:** the DC analysis follows a series bead to a pull-up fed from the far rail ([#1290](https://github.com/noahdgrant/netsmith/issues/1290)) ([c1d48e2](https://github.com/noahdgrant/netsmith/commit/c1d48e2cc2fd4eda533a001acc9f3df01406dec6))
+* **solve:** the sequence check reads the first dc element of a resistor ([#1357](https://github.com/noahdgrant/netsmith/issues/1357)) ([27faf8a](https://github.com/noahdgrant/netsmith/commit/27faf8a62cdeba9b30db39eab11fdddf2504c8eb))
+* **solve:** the sequence check reads the first dc element of a resistor, now that a part has several ([#1267](https://github.com/noahdgrant/netsmith/issues/1267), [#1271](https://github.com/noahdgrant/netsmith/issues/1271)) ([27faf8a](https://github.com/noahdgrant/netsmith/commit/27faf8a62cdeba9b30db39eab11fdddf2504c8eb))
+
+
+### Documentation
+
+* **migrating:** the general rule of .levels and what else changed in 0.4.0 ([#1344](https://github.com/noahdgrant/netsmith/issues/1344)) ([6d37fc7](https://github.com/noahdgrant/netsmith/commit/6d37fc70060cf45e2c4ba802cbb3bcfd17d45d16))
+
 ## [0.4.0](https://github.com/noahdgrant/netsmith/compare/v0.3.1...v0.4.0) (2026-11-18)
 
 
