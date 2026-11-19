@@ -30,3 +30,7 @@ _Avoid_: Default height, assumed height, placeholder height
 **Height provenance**:
 Where a part's height came from, in the 3D view, its scene and the reports: `stated` (the source or the physical file states `.height`), `catalog` (the picked row's _Catalog height_), `standard` (the footprint's _Standard height_) or `unknown` (none of them; drawn as a hatched outline, never given a height), in that order of strength (ADR 0094, ADR 0106).
 _Avoid_: Height source (a row's `source` is its document), height origin, confidence
+
+**Hold-up**:
+How long a storage element (a supercapacitor, a capacitor bank) keeps a rail at its minimum after the rail's supply goes, through the chain between them (diodes, switches, regulators). A board states one with `std::checks::HoldUp`: `.storage` and `.rail` joined to the storage's positive terminal and the rail's `pos`, and the load's `.average_power`, `.peak_current` and `.duration`. The solver compares the energy the storage gives down to its _Cut-off voltage_ with what the load takes, at the parts' own figures and at each _Named corner_ (issue #1255).
+_Avoid_: Backup time, ride-through (a converter's figure), holdover (a clock's)

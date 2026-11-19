@@ -16,6 +16,7 @@ const TRANSISTOR: &str = include_str!("../../../std/parts/transistor.nsm");
 const MECHANICAL: &str = include_str!("../../../std/parts/mechanical.nsm");
 const CONNECTOR: &str = include_str!("../../../std/parts/connector.nsm");
 const BUS: &str = include_str!("../../../std/bus.nsm");
+const CHECKS: &str = include_str!("../../../std/checks.nsm");
 
 fn def<'a>(file: &'a File, name: &str) -> &'a Definition {
     file.definitions
@@ -126,6 +127,20 @@ fn passive_parts_parse() {
 
     let cap = def(&file, "Capacitor");
     assert!(cap.items.iter().any(|i| matches!(i, Item::Bridge(_))));
+}
+
+#[test]
+fn checks_parse() {
+    let file = parse(CHECKS).unwrap();
+    // The hold-up of a rail by a storage element (issue #1255).
+    assert_eq!(file.definitions.len(), 1);
+    let hold = def(&file, "HoldUp");
+    assert_eq!(hold.kind, DefKind::Interface);
+    assert_eq!(
+        hold.items.len(),
+        5,
+        "the storage and the rail it is joined to, the average power, the peak current and the duration"
+    );
 }
 
 #[test]

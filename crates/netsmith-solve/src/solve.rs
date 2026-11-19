@@ -274,6 +274,7 @@ mod equations;
 mod findings;
 mod floors;
 mod hold;
+mod holdup;
 mod narrow;
 mod pick;
 mod propagate;
@@ -913,6 +914,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         corners,
         floors: floors::Floors::of(model),
         corner_curves: Default::default(),
+        keep_curves: false,
         model: model.clone(),
         catalogs,
         locked: catalogs
@@ -963,6 +965,12 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         kept_apart: 0,
         aside: HashMap::new(),
     };
+    // The curves a row's columns were read off are kept for the corners and the hold-ups,
+    // which read them again at a temperature and a current of their own.
+    s.keep_curves = !s.corners.corners.is_empty()
+        || model.instances().any(|(_, i)| {
+            i.kind == netsmith_check::InstKind::Interface && i.type_name == holdup::HOLD_UP
+        });
     job::checkpoint();
     for (source, span, message) in corners_refused {
         s.report(source, span, message);
@@ -1101,6 +1109,11 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
     for d in burst_faults {
         s.report(d.source, d.span, d.message);
     }
+    // The hold-ups of rails by a storage element (issue #1255).
+    let (hold_faults, hold_notes) = s.hold_up();
+    for d in hold_faults {
+        s.report(d.source, d.span, d.message);
+    }
     // A charger joined to a rechargeable cell (issue #1262).
     let (charge_faults, charge_notes) = crate::charge::check(&s.model);
     for d in charge_faults {
@@ -1133,6 +1146,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
     not_evaluated.extend(dc_notes);
     not_evaluated.extend(corner_notes);
     not_evaluated.extend(burst_notes);
+    not_evaluated.extend(hold_notes);
     not_evaluated.extend(charge_notes);
     not_evaluated.extend(charging_notes);
     not_evaluated.extend(sequence_notes);
@@ -1388,6 +1402,8 @@ struct Solver<'a> {
     /// The curve each column read off a curve file was given from, with the domain it gave, so
     /// that a corner reads the curve at its own temperature.
     corner_curves: corners::CornerCurves,
+    /// Whether `corner_curves` is kept: the board states a corner or a hold-up.
+    keep_curves: bool,
     catalogs: &'a Catalogs,
     /// The rows a pick lock holds the parts of this board or system to, by path (see
     /// `PickLock`). A part held to a row by `Catalogs::with_pin` is not held by the lock.

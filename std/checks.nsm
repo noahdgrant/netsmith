@@ -1,0 +1,58 @@
+//! Checks a board states about its circuit as a whole, each an interface joined with `~` to the
+//! nets it speaks of, as `std::sources::DiffPair` is.
+
+/// That a storage element holds a rail up for a while after its supply goes (issue #1255): a
+/// capacitor bank or a supercapacitor behind a chain of diodes, switches and regulators, and a
+/// load on the rail with an average power, a peak current and a time it must be held for.
+///
+/// `.storage` is joined with `~` to the positive terminal of the storage element
+/// (`.hold.storage ~ .sc.p`) and `.rail` to the `pos` of the rail it holds up
+/// (`.hold.rail ~ .out.pos`). The storage is every part with a capacitance (its
+/// `.total_effective_capacitance` for a bank, its `.effective_capacitance` otherwise) between the
+/// storage's net and the rail's ground; it starts at the least of the voltage across it (its
+/// `.bias`, which the rail it is charged from gives). The chain is the parts from the storage's
+/// net to the rail's, through the elements of their `dc` statements: a `dc diode` (its forward
+/// voltage), a `dc resistor` (a fuse, a ferrite bead, an inductor's winding: the current times
+/// its resistance), a `dc load_switch` (its on-resistance), a `dc linear_regulator` (its
+/// `.dropout`, the least headroom of its input over its output) and a `dc switching_regulator`
+/// (its `.efficiency`, and its `.min_input_voltage`, `.high_side_resistance` or `.min_off_time`
+/// where it states them). The rail is the one whose `pos` is on the net of `.rail` nearest the
+/// board (the board's own before a module's), and its minimum is its `.voltage_floor` where it
+/// states one, and the least of its `.voltage` otherwise.
+///
+/// The check walks the chain back from the rail at `.peak_current` to the voltage the storage
+/// must keep for the peak to hold the rail at its minimum: the rail's minimum, plus each drop of
+/// the chain at the current it carries then, plus the current from the storage times the
+/// storage's ESR (`.dc_esr` where the part has it, a supercapacitor's, and `.esr` otherwise;
+/// several parts share the peak, their ESRs in parallel). The usable energy is what the storage
+/// gives between its starting voltage and that one, `C * (V0^2 - Vcut^2) / 2`. The need is what
+/// the chain takes from the storage to give the rail `.average_power` for `.duration`: the
+/// current at the rail's minimum, walked back through the chain (a regulator's quiescent current
+/// and a switching regulator's input current at its least input, its largest), and the storage's
+/// own leakage, for the time. The check holds when the usable energy covers the need, and a
+/// failure says how much effective capacitance would.
+///
+/// It is judged at the parts' own figures, and again at each named corner of the board
+/// (`std::env::Corner`): the capacitance and the ESR as a corner reads them (the end of life and
+/// the curve over temperature), and a diode's forward voltage and a regulator's dropout off the
+/// row's curve file at the corner's temperature and the current of the step (the row's single
+/// figure where it has no curve). A failure names the corner; a value a corner needs that nothing
+/// states leaves the corner unjudged, with a note that names it.
+///
+/// Not modelled: the energy a switching regulator's input capacitance holds, a FET that is an
+/// ideal diode (a `dc nmos` or `dc pmos` in the chain leaves it unwalked, with a note), and the
+/// way the current of a switching regulator falls as its input rises (the need takes the current
+/// at its least input for the whole time, which is the worst case).
+interface HoldUp {
+    /// Joined to the positive terminal of the storage element.
+    .storage: Pin
+    /// Joined to the `pos` of the rail the storage holds up.
+    .rail: Pin
+    /// What the load on the rail draws on average while it is held up.
+    .average_power: Power
+    /// The most the load on the rail draws at an instant while it is held up, as a positive
+    /// number.
+    .peak_current: Current
+    /// How long the rail must be held up.
+    .duration: Time
+}
