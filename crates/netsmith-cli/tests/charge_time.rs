@@ -57,37 +57,18 @@ const SUPERCAP: &str = "mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,c
 ZZS-0F5,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,Reflow,Radial_D16.0mm_P7.50mm,1mm,Extended,invented for a test
 ";
 
-/// The charger's footprint from the generator, and the supercapacitor's, which the standard
-/// library does not map yet, from a file of the project.
-const KICAD: &str = r#"[[library]]
-name = "own"
-footprints = "libs/own.pretty"
-
-[[part]]
+/// The charger's footprint from the generator; the supercapacitor is in the standard mapping.
+const KICAD: &str = r#"[[part]]
 kind = "Zchg"
 package = "SOT-23-5"
 default = true
 footprint = "gen:SOT23(pins=5)"
-
-[[part]]
-kind = "Supercap"
-package = "Radial_D16.0mm_P7.50mm"
-default = true
-footprint = "own:Radial16"
-"#;
-
-const FOOTPRINT: &str = r#"(footprint "Radial16" (layer "F.Cu")
-  (attr through_hole)
-  (pad "1" thru_hole circle (at -3.75 0) (size 2 2) (drill 1) (layers "*.Cu" "*.Mask"))
-  (pad "2" thru_hole circle (at 3.75 0) (size 2 2) (drill 1) (layers "*.Cu" "*.Mask"))
-  (fp_circle (center 0 0) (end 8.25 0) (stroke (width 0.05) (type solid)) (fill none) (layer "F.CrtYd"))
-)
 "#;
 
 /// `netsmith board build` on the project with the programming resistor `rprog`, and what it
 /// printed.
 fn build(root: &Path, rprog: &str) -> std::process::Output {
-    for dir in ["src", "catalogs", "libs/own.pretty"] {
+    for dir in ["src", "catalogs"] {
         fs::create_dir_all(root.join(dir)).unwrap();
     }
     fs::write(
@@ -102,7 +83,6 @@ fn build(root: &Path, rprog: &str) -> std::process::Output {
     .unwrap();
     fs::write(root.join("catalogs/supercap.csv"), SUPERCAP).unwrap();
     fs::write(root.join("kicad.toml"), KICAD).unwrap();
-    fs::write(root.join("libs/own.pretty/Radial16.kicad_mod"), FOOTPRINT).unwrap();
     Command::new(env!("CARGO_BIN_EXE_netsmith"))
         .args(["board", "build", "--out", "out"])
         .current_dir(root)

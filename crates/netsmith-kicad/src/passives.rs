@@ -1,5 +1,6 @@
 //! The symbols of the standard mapping that netsmith draws itself (ADR 0097, step 2): the
-//! passives and discrete parts (a resistor, a capacitor, an inductor, a ferrite bead, a fuse, a
+//! passives and discrete parts (a resistor, a capacitor, a polarized capacitor, a battery cell,
+//! an inductor, a ferrite bead, a fuse, a
 //! crystal, an LED and four diodes, a switch and the N and P FETs), the connectors (the generic
 //! pin headers and sockets, the USB-C receptacles and the coaxial connector), the mechanical
 //! parts (a test point, a mounting hole, a plated hole and a fiducial) and the power flag.
@@ -390,6 +391,47 @@ fn fuse() -> Vec<Shape> {
     vec![
         boxed((-0.762, 2.54), (0.762, -2.54)),
         line(&[(0.0, 2.54), (0.0, -2.54)], THIN),
+    ]
+}
+
+/// A polarized capacitor (an electrolytic or a supercapacitor): the positive plate an open
+/// box, the negative one filled (IEC 60617), and a plus sign at the positive plate's corner. The
+/// plates' outer faces are where the pins end (y ±1.016). Extent x ±2.286, y -1.016 to 2.794.
+fn polarized_capacitor() -> Vec<Shape> {
+    vec![
+        Shape::Rect {
+            a: (-2.286, 1.016),
+            b: (2.286, 0.508),
+            width: THIN,
+            fill: Fill::None,
+        },
+        polygon(
+            &[
+                (-2.286, -0.508),
+                (2.286, -0.508),
+                (2.286, -1.016),
+                (-2.286, -1.016),
+            ],
+            THIN,
+            Fill::Solid,
+        ),
+        line(&[(-1.778, 2.286), (-0.762, 2.286)], THIN),
+        line(&[(-1.27, 2.794), (-1.27, 1.778)], THIN),
+    ]
+}
+
+/// One cell of a battery: a long thin plate, the positive one, above a short thick one, a lead
+/// from each plate to its pin's end (y 2.54 and 0), and a plus sign beside the positive lead.
+/// Extent x ±2.286, y 0 to 3.556.
+fn battery_cell() -> Vec<Shape> {
+    let (positive, negative) = (1.651, 0.762);
+    vec![
+        line(&[(0.0, 2.54), (0.0, positive)], THIN),
+        line(&[(-2.286, positive), (2.286, positive)], BODY),
+        line(&[(-1.27, negative), (1.27, negative)], HEAVY),
+        line(&[(0.0, negative), (0.0, 0.0)], THIN),
+        line(&[(0.762, 3.048), (1.778, 3.048)], BODY),
+        line(&[(1.27, 3.556), (1.27, 2.54)], BODY),
     ]
 }
 
@@ -851,6 +893,41 @@ fn passive_specs() -> Vec<Spec> {
             },
             pins: vertical(2.794, ["~", "~"]),
             glyph: capacitor(),
+            ..BASE
+        },
+        Spec {
+            id: "Device:C_Polarized".into(),
+            reference: "C",
+            description: "Polarized capacitor".into(),
+            reference_at: (0.635, 2.54, 0.0),
+            value_at: (0.635, -2.54, 0.0),
+            numbers_hidden: HIDDEN,
+            names: Names {
+                offset: Some(0.254),
+                hidden: SHOWN,
+            },
+            pins: vertical(2.794, ["~", "~"]),
+            fields_left: true,
+            glyph: polarized_capacitor(),
+            ..BASE
+        },
+        Spec {
+            id: "Device:Battery_Cell".into(),
+            reference: "BT",
+            description: "Single-cell battery".into(),
+            reference_at: (2.54, 2.54, 0.0),
+            value_at: (2.54, 0.0, 0.0),
+            numbers_hidden: HIDDEN,
+            names: Names {
+                offset: Some(0.0),
+                hidden: HIDDEN,
+            },
+            pins: vec![
+                pin(PinType::Passive, (0.0, 5.08, 270.0), 2.54, "+", "1", false),
+                pin(PinType::Passive, (0.0, -2.54, 90.0), 2.54, "-", "2", false),
+            ],
+            fields_left: true,
+            glyph: battery_cell(),
             ..BASE
         },
         Spec {
@@ -1468,9 +1545,9 @@ mod tests {
                 "{id} is not deterministic"
             );
         }
-        // 14 passives and discrete parts, 7 headers, 4 sockets, 2 USB-C receptacles, the coaxial
+        // 16 passives and discrete parts, 7 headers, 4 sockets, 2 USB-C receptacles, the coaxial
         // connector, 4 mechanical parts and the power flag.
-        assert_eq!(seen.len(), 33);
+        assert_eq!(seen.len(), 35);
         // Two ids never answer with one symbol.
         let answers: std::collections::HashSet<String> =
             ids().map(|id| answer_id(id).unwrap()).collect();

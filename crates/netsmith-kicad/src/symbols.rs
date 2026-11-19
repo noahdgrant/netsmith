@@ -1064,7 +1064,7 @@ mod tests {
         let lib = lib.with_library("proj", &file);
         assert_eq!(lib.symbol("proj:Reg").unwrap().pin_numbers().len(), 3);
         // A stock library says what was looked for, every place, and the variables.
-        let text = lib.symbol("Device:C_Polarized").unwrap_err().to_string();
+        let text = lib.symbol("Device:C_Polarized_US").unwrap_err().to_string();
         assert!(text.contains("symbol library `Device` not found"), "{text}");
         assert!(text.contains("no KiCad symbol libraries found"), "{text}");
         assert!(text.contains("usr/share/kicad/symbols"), "{text}");
