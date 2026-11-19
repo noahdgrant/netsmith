@@ -9,8 +9,8 @@ use netsmith_check::{Domain, GuidelineRule, InstId, InstKind, Member, Model, Sou
 use netsmith_core::{
     CaseModel, Cutout, Features, ImpedanceTarget, Keepout, Label, LengthGroup, Logo, LogoLayer,
     NetPair, Offset, OffsetEnd, Outline, PadConnection, PadContactOffset, PartHeight,
-    PartHeightGrowth, PartKind, PartRoutingMargin, PartSilk, PartStandoff, PinProtrusion,
-    PlaceBound, PlaceField, Placement, Pour, SilkPrint, StepModel,
+    PartHeightGrowth, PartKind, PartRoutingMargin, PartSilk, PartSoftMargin, PartStandoff,
+    PinProtrusion, PlaceBound, PlaceField, Placement, Pour, SilkPrint, StepModel,
 };
 use netsmith_lang::Span;
 use std::collections::{BTreeMap, BTreeSet};
@@ -679,6 +679,31 @@ fn pad_contacts(model: &Model) -> Vec<PadContactOffset> {
     }
     found.sort_by(|a, b| (&a.path, &a.pad).cmp(&(&b.path, &b.pad)));
     found
+}
+
+/// The `soft margin` statements of the physical files (issue 1310), by path, and where each is
+/// written, in the same order.
+pub(crate) fn soft_margins(model: &Model) -> (Vec<PartSoftMargin>, Vec<(SourceId, Span)>) {
+    let mut stated: Vec<(String, f64, SourceId, Span)> = model
+        .soft_margins()
+        .iter()
+        .map(|s| (model.path_of(s.part), s.margin, s.source, s.span))
+        .collect();
+    stated.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut margins = Vec::new();
+    let mut sites = Vec::new();
+    for (path, margin, source, span) in stated {
+        // A margin of 0 asks for nothing.
+        if margin > 0.0 {
+            margins.push(PartSoftMargin {
+                path,
+                margin,
+                source: String::new(),
+            });
+            sites.push((source, span));
+        }
+    }
+    (margins, sites)
 }
 
 /// The standoffs the design states for its parts (`.standoff`, issue #775), by path: how high
@@ -1823,10 +1848,12 @@ fn members(path: &str, banks: &BTreeMap<String, usize>) -> Vec<String> {
 /// window may be unplaceable where the first alone was (not tried: the placer reports an unmet
 /// requirement for each part it concerns). Rejected: a note that the later capacitors are not
 /// covered, which would leave the defect in place with a warning.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn expand_banks(
     features: &mut Features,
     place_sites: &mut Sites,
     offset_sites: &mut Vec<(SourceId, Span)>,
+    soft_margin_sites: &mut Vec<(SourceId, Span)>,
     protrusion_sites: &mut Vec<Vec<(SourceId, Span)>>,
     model_sites: &mut Vec<Vec<(SourceId, Span)>>,
     banks: &BTreeMap<String, usize>,
@@ -1946,6 +1973,18 @@ pub(crate) fn expand_banks(
             features
                 .routing_margins
                 .push(PartRoutingMargin { path, ..m.clone() });
+        }
+    }
+    let (old, old_sites) = (
+        std::mem::take(&mut features.soft_margins),
+        std::mem::take(soft_margin_sites),
+    );
+    for (m, site) in old.into_iter().zip(old_sites) {
+        for path in members(&m.path, banks) {
+            features
+                .soft_margins
+                .push(PartSoftMargin { path, ..m.clone() });
+            soft_margin_sites.push(site);
         }
     }
     let old = std::mem::take(&mut features.silks);

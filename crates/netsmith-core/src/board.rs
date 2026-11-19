@@ -199,6 +199,22 @@ pub struct PartRoutingMargin {
     pub margin: f64,
 }
 
+/// The distance a physical file asks other parts to keep from a part's courtyard
+/// (`soft margin 3mm round .u1`, issue 1310). The placer keeps other courtyards out of it where
+/// it can, and the check says where one is inside it (a warning, an error when strict). A part
+/// with no `soft margin` is not here.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PartSoftMargin {
+    /// The part's path in the design.
+    pub path: String,
+    /// In mm, how far from the courtyard other parts' courtyards are asked to stay.
+    pub margin: f64,
+    /// The line that states it (`widget.physical.nsm:14`). Filled by the caller that knows the
+    /// source files; empty otherwise.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub source: String,
+}
+
 /// How far the pins of a through-hole part protrude out of the board on the face opposite the
 /// part, whether they were cut after soldering or bought short, as the board's physical file
 /// states it (`.pin_protrusion`, ADR 0045 section 15). A part the design states no

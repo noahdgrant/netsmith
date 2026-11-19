@@ -396,7 +396,7 @@ pub enum Severity {
 pub struct Finding {
     pub severity: Severity,
     /// `no_entry`, `no_part`, `bad_turn`, `bad_place`, `requirement`, `placement`,
-    /// `walled_in`, `no_room` or `unmeasured`.
+    /// `walled_in`, `soft_margin`, `no_room` or `unmeasured`.
     pub kind: &'static str,
     /// The part's path.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -517,7 +517,7 @@ fn placement_faults(
     layout: &Layout,
     file: &Path,
     libraries: &netsmith_pipeline::Libraries,
-) -> Result<(Vec<PlacementFault>, Vec<netsmith_pcb::WalledPad>), String> {
+) -> Result<PlacementChecks, String> {
     // The board `entry_faults` measures, measured once for both: its faults are the same, and
     // with them the pads that other parts it places wall in (`Board::walled_pads`, issue #1313).
     let options = netsmith_pcb::place_options(design, Some(layout));
@@ -529,7 +529,19 @@ fn placement_faults(
         &options,
         Some(&laid),
     )?;
-    Ok((board.placement_faults(), board.walled_pads()))
+    Ok(PlacementChecks {
+        faults: board.placement_faults(),
+        walled: board.walled_pads(),
+        soft: board.soft_margins_broken(),
+    })
+}
+
+/// What the placement check finds on the parts a layout file places.
+struct PlacementChecks {
+    faults: Vec<PlacementFault>,
+    walled: Vec<netsmith_pcb::WalledPad>,
+    /// A part inside the soft margin of another (issue 1310).
+    soft: Vec<netsmith_pcb::SoftMarginBroken>,
 }
 
 /// What the layout file at `file` has wrong against `design`: a part with no entry (a note: the
@@ -539,7 +551,8 @@ fn placement_faults(
 /// among the parts the file places (`placement`, issue #1224): two courtyards that overlap, a
 /// part past the edge, in a keepout or a cutout, over a height limit, a hole too near another
 /// part; and, as a warning, a pad that other parts the file places wall in (`walled_in`, issue
-/// #1313); and, as a warning (an error when `strict`), a part the placer places that has no
+/// #1313); and, as a warning (an error when `strict`), a part the file places inside the `soft
+/// margin` of another (`soft_margin`, issue 1310); and, as a warning (an error when `strict`), a part the placer places that has no
 /// room among the parts that stay where they are (`no_room`, issue #1283,
 /// [`netsmith_pcb::parts_without_room`]), as `fab` says it before placing. Each finding has the
 /// line of its entry.
@@ -619,7 +632,31 @@ pub fn check(
     let mut unplaced = None;
     if findings.is_empty() {
         match placement_faults(design, &layout, file, libraries) {
-            Ok((faults, walled)) => {
+            Ok(PlacementChecks {
+                faults,
+                walled,
+                soft,
+            }) => {
+                // A part inside the soft margin of another (issue 1310): a warning, an error
+                // when strict, as `fab` says it.
+                for b in soft {
+                    let line = lines
+                        .get(&b.other_path)
+                        .or_else(|| lines.get(&b.path))
+                        .copied();
+                    findings.push(Finding {
+                        severity: if strict {
+                            Severity::Error
+                        } else {
+                            Severity::Warning
+                        },
+                        kind: "soft_margin",
+                        line,
+                        path: Some(b.other_path.clone()),
+                        message: b.to_string(),
+                        fault: None,
+                    });
+                }
                 // A pad other parts wall in (issue #1313): a warning, which the router would
                 // report as `walled in` after trying; it does not stop `fab`.
                 for w in walled {

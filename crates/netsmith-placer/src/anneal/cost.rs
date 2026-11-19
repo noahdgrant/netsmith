@@ -232,7 +232,29 @@ impl<'a> Engine<'a> {
         }
         c += self.silk_cost(sa, pa, sb, pb, &cb);
         c += self.silk_cost(sb, pb, sa, pa, &ca);
+        c.soft += self.soft_margin_cost(i, j) + self.soft_margin_cost(j, i);
         c
+    }
+
+    /// What part `j`'s courtyard costs for being inside the `soft margin` of part `i` (issue
+    /// 1310): [`W_SOFT_MARGIN`] for each mm of it, measured as the check measures it, from
+    /// courtyard to courtyard. Only part `i`'s margin counts here; `0` when it has none.
+    pub(super) fn soft_margin_cost(&self, i: usize, j: usize) -> f64 {
+        let margin = self.models[i].soft;
+        if margin <= 0.0 {
+            return 0.0;
+        }
+        let mut cost = 0.0;
+        for x in self.rooms(i) {
+            for y in self.rooms(j) {
+                // Overlap is the hard rule's; the margin is asked outside the courtyard.
+                let depth = penetration(&x, &y, margin);
+                if depth > 0.0 {
+                    cost += W_SOFT_MARGIN * depth;
+                }
+            }
+        }
+        cost
     }
 
     /// [`Engine::court_cost`] where `escape` of the space asked for beyond `gap` is the room

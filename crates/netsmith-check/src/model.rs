@@ -1342,6 +1342,8 @@ pub struct Model {
     pub(crate) sources: SourceTexts,
     /// The `polygon` statements of `Outline`s (issue #57), in the order they were read.
     pub(crate) polygons: Vec<OutlinePolygon>,
+    /// The `soft margin` statements of a physical file (issue 1310), in the order they were read.
+    pub(crate) soft_margins: Vec<SoftMargin>,
     /// The lines of the boards' `defaults` blocks that gave their value to no field (issue
     /// #625), in the order they were read.
     pub default_notes: Vec<DefaultNote>,
@@ -1561,6 +1563,17 @@ pub struct OutlinePolygon {
     pub span: Span,
 }
 
+/// A `soft margin 3mm round .u1` statement (issue 1310): the part and the distance in mm.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SoftMargin {
+    /// The part the distance is kept round.
+    pub part: InstId,
+    /// In mm, from the part's courtyard.
+    pub margin: f64,
+    pub source: SourceId,
+    pub span: Span,
+}
+
 /// A corner of an [`OutlinePolygon`], in mm in the board's frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PolygonCorner {
@@ -1573,6 +1586,11 @@ pub struct PolygonCorner {
 
 impl Model {
     /// The `polygon` statement of an `Outline`, if it has one.
+    /// The `soft margin` statements of the physical files, in the order they were read.
+    pub fn soft_margins(&self) -> &[SoftMargin] {
+        &self.soft_margins
+    }
+
     pub fn polygon_of(&self, outline: InstId) -> Option<&OutlinePolygon> {
         self.polygons.iter().find(|p| p.outline == outline)
     }
@@ -1611,6 +1629,7 @@ impl Model {
             bus_defs: std::collections::BTreeMap::new(),
             sources: SourceTexts::default(),
             polygons: Vec::new(),
+            soft_margins: Vec::new(),
             default_notes: Vec::new(),
             support_sections: Vec::new(),
             layout: Vec::new(),
@@ -2205,7 +2224,8 @@ impl Model {
     /// a `Rail`, the most that one load draws at an instant (an inrush): two loads on one rail
     /// each have their own, and each is checked against the rail's `max_peak_current`, which `~`
     /// does share. So are a `Rail`'s `burst` and `duty`, which say how that load draws its peak
-    /// (issue #1279).
+    /// (issue #1279). So are the `classes` of a `Sim`, the voltage classes one side of a SIM bus
+    /// supports (issue 1280).
     pub fn is_pin_figure(&self, field: FieldId) -> bool {
         let f = self.field(field);
         let kind = match f.name.as_str() {
@@ -2218,6 +2238,13 @@ impl Model {
                 return f.kind == FieldKind::Quantity(dimension)
                     && self.instance(f.owner).kind == InstKind::Interface
                     && self.instance(f.owner).type_name == "Rail";
+            }
+            // The voltage classes one side of a SIM bus supports (`std::bus::Sim`, issue 1280):
+            // the host's and the card's are held against each other, never made one.
+            "classes" => {
+                return matches!(f.kind, FieldKind::Enum(_))
+                    && self.instance(f.owner).kind == InstKind::Interface
+                    && self.instance(f.owner).type_name == "Sim";
             }
             "ii" => FieldKind::Quantity(Dimension::CURRENT),
             "roh" | "rol" => FieldKind::Quantity(Dimension::RESISTANCE),
