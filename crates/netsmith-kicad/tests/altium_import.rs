@@ -107,7 +107,7 @@ fn pads(text: &str) -> Vec<String> {
 #[test]
 fn a_library_footprint_becomes_a_kicad_footprint_seen_from_the_top() {
     let file = pcblib(&[("SENSOR-6", sensor(NO_COMPONENT, &same, 0.0, false))]);
-    let got = import_altium_footprint(&file, FootprintSource::File, None).unwrap();
+    let got = import_altium_footprint(&file, FootprintSource::File, None, None).unwrap();
     assert_eq!(got.source_name, "SENSOR-6");
     assert_eq!(got.name, "SENSOR-6");
     assert!(!got.from_bottom);
@@ -163,7 +163,7 @@ fn through_hole_pads_keep_their_holes_and_shapes() {
         free.record(),
     ];
     let file = pcblib(&[("Terminal_1x4", records)]);
-    let got = import_altium_footprint(&file, FootprintSource::File, Some("Terminal")).unwrap();
+    let got = import_altium_footprint(&file, FootprintSource::File, None, Some("Terminal")).unwrap();
     assert_eq!(got.name, "Terminal");
     assert_eq!(got.source_name, "Terminal_1x4");
     assert_eq!(
@@ -199,7 +199,7 @@ fn placed(origin: (f64, f64), angle: f64, bottom: bool) -> impl Fn((f64, f64)) -
 #[test]
 fn a_part_of_a_board_comes_back_as_the_library_draws_it() {
     let lib = pcblib(&[("SENSOR-6", sensor(NO_COMPONENT, &same, 0.0, false))]);
-    let want = import_altium_footprint(&lib, FootprintSource::File, None).unwrap();
+    let want = import_altium_footprint(&lib, FootprintSource::File, None, None).unwrap();
     for (angle, bottom) in [(0.0, false), (90.0, false), (90.0, true), (210.0, true)] {
         let place = placed((20.0, 30.0), angle, bottom);
         // `R1` at index 0 is another part; the sensor is `U3` at index 1.
@@ -243,7 +243,7 @@ fn a_part_of_a_board_comes_back_as_the_library_draws_it() {
                 ("Texts6", texts),
             ],
         );
-        let got = import_altium_footprint(&board, FootprintSource::Board { reference: "U3" }, None)
+        let got = import_altium_footprint(&board, FootprintSource::Board { reference: "U3" }, None, None)
             .unwrap();
         assert_eq!(got.from_bottom, bottom);
         assert_eq!(got.board_angle, angle);
@@ -281,7 +281,7 @@ fn what_cannot_be_imported_says_why() {
         (
             &two,
             FootprintSource::File,
-            "the library holds 2 footprints (A-PART, B-PART): copy the one to import into a library of its own",
+            "the library holds 2 footprints (A-PART, B-PART): name the one to import with `--footprint NAME`",
         ),
         (
             &board,
@@ -310,11 +310,38 @@ fn what_cannot_be_imported_says_why() {
         ),
     ];
     for (bytes, source, want) in cases {
-        let got = import_altium_footprint(bytes, source, None).unwrap_err();
+        let got = import_altium_footprint(bytes, source, None, None).unwrap_err();
         assert!(got.starts_with(want), "{got}\n{want}");
     }
     // A file cut short is an error, not a panic.
-    assert!(import_altium_footprint(&cut, FootprintSource::File, None).is_err());
+    assert!(import_altium_footprint(&cut, FootprintSource::File, None, None).is_err());
+}
+
+#[test]
+fn a_library_of_several_footprints_gives_the_one_named() {
+    let pad = |n: &str, x: f64| Pad::smd(n, (x, 0.0), (1.0, 1.0), Shape::Rect).record();
+    let lib = pcblib(&[
+        ("B-PART", vec![pad("1", 0.0), pad("2", 1.0)]),
+        ("A-PART", vec![pad("1", 0.0)]),
+    ]);
+    let pick = |name| import_altium_footprint(&lib, FootprintSource::File, Some(name), None);
+    let a = pick("A-PART").unwrap();
+    assert_eq!(a.source_name, "A-PART");
+    assert_eq!(a.text.matches("(pad ").count(), 1);
+    let b = pick("B-PART").unwrap();
+    assert_eq!(b.source_name, "B-PART");
+    assert_eq!(b.text.matches("(pad ").count(), 2);
+    assert_eq!(
+        pick("C-PART").unwrap_err(),
+        "the library has no footprint `C-PART`; its footprints are A-PART, B-PART"
+    );
+    // A library of one is asked by name too.
+    let one = pcblib(&[("A-PART", vec![pad("1", 0.0)])]);
+    let err = import_altium_footprint(&one, FootprintSource::File, Some("B-PART"), None).unwrap_err();
+    assert_eq!(
+        err,
+        "the library has no footprint `B-PART`; its footprints are A-PART"
+    );
 }
 
 #[test]
@@ -326,7 +353,7 @@ fn a_footprint_larger_than_the_mini_stream_reads_from_whole_sectors() {
         .collect();
     assert!(records.concat().len() > 4096);
     let file = pcblib(&[("QFN-40", records)]);
-    let got = import_altium_footprint(&file, FootprintSource::File, None).unwrap();
+    let got = import_altium_footprint(&file, FootprintSource::File, None, None).unwrap();
     let pads = pads(&got.text);
     assert_eq!(pads.len(), 40);
     assert_eq!(pads[39], "(pad \"40\" smd rect (at 19.5 0) (size 0.3 1))");
