@@ -1,0 +1,108 @@
+//! Load switches: a part that passes its input rail to its output rail when its enable turns it
+//! on (issue 1269).
+
+import std::parts::transistor::PMosfet
+import std::sources::Rail
+
+/// A load switch IC: a switch between two rails that shares their ground, on when its enable is
+/// high. A concrete IC is a `part X provides LoadSwitch` that writes its pin table, against the
+/// pins of this generic (`.in.pos`, `.in.neg`, `.out.pos`, `.enable`), and its datasheet's numbers
+/// as narrowings (`.on_resistance &= 0mohm..60mohm`, `.max_current &= 2A`).
+///
+/// What it is for the checks (the owner, issue 1269). It is a converter between two rails, as a
+/// regulator is: its output supplies what the loads on it draw, and its input draws that and its
+/// quiescent current, so the current budget and the power tree see the output's loads on the
+/// input's rail. The output's voltage is the input's less the drop across the switch, its on
+/// resistance times the load. The DC analysis puts the on resistance between the two rails' `pos`
+/// nets (`dc load_switch`), so the voltage of the output and the current of the input are the
+/// circuit's, and the stage in front of the input is asked for the output's load.
+///
+/// The output is supplied when the enable can turn the switch on: a host's pin that drives the
+/// enable, the enable strapped to a supply (the input's own, for a switch that is always on), or
+/// a pull-up or any other passive part on its net. The switch is then taken as on, the worst case
+/// for what the input supplies. An enable that is on a net with nothing else, that the board
+/// states `unused`, or that only grounds, inputs and open-drain outputs are on, cannot turn it
+/// on: the DC analysis leaves the switch open and the power tree says that its output has no
+/// source, and why. An enable that a pull-up inside the IC holds high when it floats is taken as
+/// off (the pin table says nothing of the pull-up): tie it to the input. An IC whose enable is
+/// active low is not this generic.
+///
+/// Not checked: the switch's own heat (the drop times the load), its turn-on time and inrush
+/// current, its reverse-current blocking, and an output that a switch which is off pulls down
+/// (a quick output discharge).
+#[kind(ic)]
+generic LoadSwitch {
+    .designator &= "U"
+
+    .in: Rail
+    .out: Rail
+    .in.neg ~ .out.neg
+
+    pins {
+        .in.pos  power
+        .in.neg  power
+        .out.pos power
+        // High turns the switch on.
+        .enable  input
+    }
+
+    /// The resistance of the switch while it is on, at its largest over the conditions the
+    /// design runs in: the datasheet's maximum at the input voltage of the board.
+    .on_resistance: Resistance
+    /// The largest continuous current the switch passes.
+    .max_current: Current
+    /// The current the switch draws from its input for itself, as a range, as
+    /// `LinearRegulator`'s is: the datasheet's quiescent current while it is on. A part that
+    /// states nothing has the default, none.
+    .quiescent_current: Current
+    .quiescent_current ?= 0A
+
+    // What the input draws is what the output supplies and the quiescent current, and the
+    // output is the input less the drop across the switch.
+    .in.current == -.out.current + .quiescent_current
+    .out.voltage == .in.voltage - .on_resistance * (-.out.current)
+    -.out.current <= .max_current
+    // What a load draws at an instant is checked against the rated current (issue #750).
+    .out.max_peak_current == .max_current
+
+    dc load_switch .in .out .enable .on_resistance .quiescent_current
+}
+
+/// A P-channel MOSFET used as a load switch: its source on the input, its drain on the output and
+/// its gate the enable, low to turn it on (issue 1269). The solver picks the MOSFET (`PMosfet`,
+/// its catalog `p_mosfet`); a board narrows it from outside (`.sw.q.max_drain_current >= 2A`).
+///
+/// The MOSFET is a `~>` chain from the input's `pos` to the output's `pos`, so its `.current` is
+/// what the output's loads draw and the input draws the same: the current budget and the power
+/// tree see the output's loads on the input's rail, as for `LoadSwitch`. The output's voltage is
+/// the input's less the drop across the channel. The DC analysis models the MOSFET as a switch
+/// when what sets its gate is known (a host's pin, a resistor, a held net): on when the gate can
+/// be driven past its threshold below the input, open when it cannot (see "DC analysis" in the
+/// guide).
+///
+/// What it assumes: the enable is pulled to the input's ground to turn it on, so the gate-source
+/// voltage while on is the input's voltage, and the channel blocks the input's voltage while it
+/// is off. A board puts the pull-up that holds the gate at the input while the host lets go (a
+/// resistor from `.enable` to the input's `pos`), and a level shifter where the host's high is
+/// below the input.
+module PmosLoadSwitch {
+    .in: Rail
+    .out: Rail
+    .in.neg ~ .out.neg
+    /// The gate: low turns the switch on.
+    .enable: Pin
+    .q: PMosfet
+    /// The resistance of the channel while it is on: the MOSFET's.
+    .on_resistance: Resistance
+    .on_resistance == .q.on_resistance
+    /// The largest continuous current the switch passes: the MOSFET's.
+    .max_current: Current
+    .max_current == .q.max_drain_current
+
+    .in.pos ~> .q ~> .out.pos
+    .enable ~ .q.gate
+
+    .out.voltage == .in.voltage - .on_resistance * .q.current
+    .q.gate_source_voltage == .in.voltage
+    .q.drain_source_voltage == .in.voltage
+}

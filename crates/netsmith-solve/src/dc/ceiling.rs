@@ -64,6 +64,16 @@ impl Ceilings {
                         held.push(dc.pins[1]);
                     }
                 }
+                // A load switch that can be on passes its input's voltage, less a drop, to its
+                // output (issue 1269), as a series resistor does.
+                DcKind::LoadSwitch => {
+                    if model.load_switch_can_turn_on(part)
+                        && let (Some((_, a, _)), Some((_, b, _))) =
+                            (model.rail_of(dc.pins[0]), model.rail_of(dc.pins[1]))
+                    {
+                        join(a, b);
+                    }
+                }
             }
         }
         let mut supplies: HashMap<usize, f64> = HashMap::new();

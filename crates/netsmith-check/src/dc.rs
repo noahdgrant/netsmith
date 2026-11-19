@@ -82,10 +82,11 @@ impl Checker<'_> {
         }
         let mut ok = true;
         let mut pins = Vec::new();
-        for (path, role) in d.operands.iter().zip(pin_roles) {
+        for (index, (path, role)) in d.operands.iter().zip(pin_roles).enumerate() {
+            let rail = kind.takes_rail(index);
             match self.resolve_path(path) {
                 Res::Inst(i)
-                    if kind.takes_rails()
+                    if rail
                         && self.model.instance(i).kind == InstKind::Interface
                         && self.model.rail_of(i).is_some() =>
                 {
@@ -103,9 +104,7 @@ impl Checker<'_> {
                         ok = false;
                     }
                 }
-                Res::Inst(i)
-                    if !kind.takes_rails() && self.model.instance(i).kind == InstKind::Pin =>
-                {
+                Res::Inst(i) if !rail && self.model.instance(i).kind == InstKind::Pin => {
                     if self.model.owner_of(i) == Some(cur) {
                         pins.push(i);
                     } else {
@@ -126,7 +125,7 @@ impl Checker<'_> {
                         format!(
                             "`dc {}` takes the {role} here, {}, and `{}` is not one; the statement is `{}`",
                             kind.word(),
-                            if kind.takes_rails() { "a rail" } else { "a pin" },
+                            if rail { "a rail" } else { "a pin" },
                             path.to_source(),
                             kind.example()
                         ),
@@ -190,14 +189,14 @@ impl Checker<'_> {
         if !ok {
             return;
         }
-        if (1..pins.len()).any(|i| pins[..i].contains(&pins[i])) {
+        if let Some(i) = (1..pins.len()).find(|&i| pins[..i].contains(&pins[i])) {
             self.error(
                 d.span,
                 format!(
                     "`dc {}` names the same {what} twice; its {what}s are different ones, as in `{}`",
                     kind.word(),
                     kind.example(),
-                    what = if kind.takes_rails() { "rail" } else { "pin" }
+                    what = if kind.takes_rail(i) { "rail" } else { "pin" }
                 ),
             );
             return;
@@ -241,9 +240,12 @@ impl Checker<'_> {
         let channel = match el.kind {
             DcKind::Resistor | DcKind::Diode => [el.pins[0], el.pins[1]],
             DcKind::Nmos | DcKind::Pmos => [el.pins[1], el.pins[2]],
-            // A regulator is between rails, a source is one rail, and a `bridge` is no part of
+            // A regulator and a load switch are between rails, a source is one rail, and a `bridge` is no part of
             // either.
-            DcKind::LinearRegulator | DcKind::SwitchingRegulator | DcKind::Source => return,
+            DcKind::LinearRegulator
+            | DcKind::SwitchingRegulator
+            | DcKind::Source
+            | DcKind::LoadSwitch => return,
         };
         if (channel[0] == a && channel[1] == b) || (channel[0] == b && channel[1] == a) {
             return;

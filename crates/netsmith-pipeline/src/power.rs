@@ -33,7 +33,9 @@ pub fn api_location(l: crate::Location) -> Location {
 
 /// The power tree of one board's model, with its issues.
 pub fn board_tree(model: &Model, sources: &Sources) -> PowerTree {
-    build(model, sources, &[(model.root, None)])
+    let (mut tree, off) = build(model, sources, &[(model.root, None)]);
+    say_why_off(&mut tree, &off);
+    tree
 }
 
 /// The power tree of a system's model: each board a scope, and the joins of their ports as
@@ -44,7 +46,7 @@ pub fn system_tree(
     sources: &Sources,
     scopes: &[(InstId, Option<String>)],
 ) -> PowerTree {
-    let mut tree = build(model, sources, scopes);
+    let (mut tree, off) = build(model, sources, scopes);
     for &(a, b) in model.joins() {
         let (from, to) = (node_of(model, scopes, a), node_of(model, scopes, b));
         if let (Some(from), Some(to)) = (from, to) {
@@ -59,7 +61,25 @@ pub fn system_tree(
         }
     }
     tree.issues = issues_of(&tree);
+    say_why_off(&mut tree, &off);
     tree
+}
+
+/// A load switch whose enable cannot turn it on (issue 1269): the node of its output, and why.
+struct Off {
+    node: String,
+    why: String,
+}
+
+/// The note of a rail that nothing supplies says so when a load switch on it is off for good.
+fn say_why_off(tree: &mut PowerTree, off: &[Off]) {
+    for issue in &mut tree.issues {
+        if issue.text.starts_with("has no source")
+            && let Some(o) = off.iter().find(|o| o.node == issue.id)
+        {
+            issue.text = format!("has no source: {}", o.why);
+        }
+    }
 }
 
 /// The id of the node on the net a port's `pos` pin is on, if the net has a node.
@@ -119,7 +139,19 @@ fn sum(dim: Dimension, ranges: impl Iterator<Item = (f64, f64)>) -> Option<Quant
     Quantity::interval(dim, lo, hi).ok()
 }
 
-fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) -> PowerTree {
+fn build(
+    model: &Model,
+    sources: &Sources,
+    scopes: &[(InstId, Option<String>)],
+) -> (PowerTree, Vec<Off>) {
+    let mut off: Vec<Off> = Vec::new();
+    // The output rails of the load switches whose enable cannot turn them on: they supply
+    // nothing, whatever their current says.
+    let off_rails: std::collections::HashSet<InstId> = model
+        .dc_elements()
+        .filter(|(part, _)| matches!(model.load_switch_enable(*part), Some((_, Some(_)))))
+        .filter_map(|(_, dc)| dc.pins.get(1).copied())
+        .collect();
     let mut nodes: Vec<PowerNode> = Vec::new();
     let mut edges: Vec<Edge> = Vec::new();
     let mut stages: Vec<Stage> = Vec::new();
@@ -186,6 +218,7 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
                     at: Some(api_location(locate(sources, src, span))),
                 };
                 match &range {
+                    Some(q) if supplies(q) && off_rails.contains(&owner) => {}
                     Some(q) if supplies(q) => node.supplies.push(item),
                     _ => node.loads.push(item),
                 }
@@ -220,6 +253,25 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
                 || id == *scope
                 || !matches!(inst.kind, InstKind::Module | InstKind::Part)
             {
+                continue;
+            }
+            // A load switch supplies its output only when its enable can turn it on (issue
+            // 1269); one that cannot is no edge, and its output says why it has no source.
+            if let Some((enable, Some(why))) = model.load_switch_enable(id) {
+                let dc = inst.dc.as_ref().expect("a load switch states `dc`");
+                if let Some((_, pos, _)) = model.rail_of(dc.pins[1])
+                    && let Some(net) = model.nets().iter().find(|n| n.pins.contains(&pos))
+                {
+                    off.push(Off {
+                        node: node_id(prefix, &net.name),
+                        why: format!(
+                            "the load switch `{}` is off, since its enable `{}` {}",
+                            model.path_below(id, *scope),
+                            model.path_below(enable, *scope),
+                            why.text()
+                        ),
+                    });
+                }
                 continue;
             }
             let rails: Vec<InstId> = inst
@@ -324,7 +376,7 @@ fn build(model: &Model, sources: &Sources, scopes: &[(InstId, Option<String>)]) 
     }
     classify(&mut tree, &grouped);
     tree.issues = issues_of(&tree);
-    tree
+    (tree, off)
 }
 
 /// What the solver settled for the efficiency of the converter `inst`: the first field called

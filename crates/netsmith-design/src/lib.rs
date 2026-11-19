@@ -1844,6 +1844,7 @@ mod tests {
             ("Label", "LBL"),
             ("Logo", "LOGO"),
             ("LinearRegulator", "U"),
+            ("LoadSwitch", "U"),
         ];
         let parts = std_parts();
         for (kind, letters) in expected {

@@ -17,6 +17,7 @@ mod faults;
 mod isolation;
 mod layout;
 mod lines;
+mod load_switch;
 mod loader;
 mod loads;
 mod lower;
@@ -46,6 +47,7 @@ pub use busnets::{
 pub use checker::physical_file_name;
 pub use diag::{Diagnostic, Source, SourceId, Sources};
 pub use faults::{pin_faults, pin_faults_solved};
+pub use load_switch::EnableOff;
 pub use loader::Loader;
 pub use loads::{LoadGroup, worst_of};
 pub use lower::closest;
