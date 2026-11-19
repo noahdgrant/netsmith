@@ -255,6 +255,33 @@ footprint = "gen:SOT23(pins=3)"
 
 The board file, the bill of materials and the placement file name the member's footprint. A path given twice is refused. The rows are the project's, and its files may hold several boards, so a row whose path is no part of the board being built is not used there: check the path when you rename a member (a port's test compares every footprint with the original's, which finds a stale row).
 
+**A footprint checked against the datasheet's table.** A footprint drawn by hand, copied from a vendor's file or taken from a library can be the wrong one: a 0.65 mm pitch where the package has 0.635 mm, a pad too few, a body of the next size. A row (or a `[[member]]` row) states the numbers of the datasheet's package drawing with `table`, and `build` and `fab` measure its footprint against them and stop on a disagreement, as they do on one with the pin table (issue #1281):
+
+```toml
+[[part]]
+kind = "Driver"
+package = "SOIC-8"
+default = true
+footprint = "own:Driver"
+table = "pads=8, pitch=1.27mm, body=3.9x4.9mm"
+```
+
+The text is written as the parameters of a `gen:` footprint are, and has three columns, each optional, at least one given:
+
+| Column | What the footprint must have |
+|---|---|
+| `pads` | That many pads, counted by number: the pieces of an exposed pad that share a number are one, and an unnumbered pad (a paste opening) is none. A 48-pin QFN with an exposed pad has `pads=49`. |
+| `pitch` | The least distance between the centres of two pads of different numbers in one row or one column (the same y, or the same x), to 0.005 mm, so 0.635 mm and 0.65 mm are told apart. A SOT-23-3, whose two pads on one side are 1.9 mm apart, has `pitch=1.9mm`. |
+| `body` | The body the footprint draws on its fabrication layer (`F.Fab`), across (x in the footprint's frame) and then along (y): `3.9x4.9mm`, matched to 0.05 mm each way, or a size each, `6.9-7.1x6.9-7.1mm`, matched as it stands. A footprint that draws nothing on `F.Fab` has no body to measure, and a `body` column is refused for it. |
+
+Each disagreement names the part, the footprint, the row's table and line, and both numbers:
+
+```text
+error: B: U1 (Driver, package "SOIC-8"): the footprint `own:Driver` has its pads 1.25mm apart, but the table `pads=8, pitch=1.27mm, body=3.9x4.9mm` of kicad.toml line 5 says a pitch of 1.27mm; the pitch is the least distance between the centres of two pads in one row or column
+```
+
+A `[[member]]` row's footprint is checked against the member row's own `table`, never the (kind, package) row's. A column that is not one of the three, or a value that is not a count, a length or two sizes, is refused when the file is read, with the row and the line.
+
 **A footprint on the bottom face.** Draw every footprint as seen from the top, as KiCad's libraries do. A part on the bottom (`.place.side &= "bottom"`, or `side = "bottom"` in the layout file) is the footprint seen in a mirror: every x of the footprint's frame (pads, drawings, courtyard) negated, then turned by `.place.rotation`, with every layer on the other face (`F.Cu` becomes `B.Cu`, `F.CrtYd` becomes `B.CrtYd`). The board file `fab` writes stores it as KiCad's flip does, which mirrors in y: every y of the footprint's frame negated and the footprint turned by `.place.rotation` plus 180, which puts the pads, the drawings and KiCad's 3D model in the same place. A board file from KiCad stores a footprint on the back the same way, and so does a port's `placements.toml`, which is read from it: to draw a footprint from those figures, negate each y and each pad's own angle (its angle less the footprint's) in the footprint, and put each layer on the other face; the part's `.place.rotation` is the file's rotation less 180. A footprint drawn from them as they stand comes out flipped twice: its pads mirrored and on the wrong face.
 
 **A courtyard of several shapes.** The placer and the placement check keep other parts out of a part's courtyard. Each drawing on the footprint's `F.CrtYd` layer (or `B.CrtYd` where it draws no front one) is a shape, and drawings whose boxes overlap or touch are one shape (the four sides of a rectangle drawn as lines are one). A footprint that draws two courtyard rectangles, one for each strip of sockets of a plug-in module, has two shapes, and another part may stand in the space between them as long as its own courtyard touches neither, as KiCad's own check treats each `F.CrtYd` drawing apart. A shape is the box round its drawing: a courtyard drawn as an L is its box. A footprint that draws one shape, or none, is as it was: its courtyard is one box that takes in every hole that reaches past it and every pad that does with 0.15 mm round it (the pad's reach, `PAD_COURTYARD_MARGIN`; KiCad's courtyard clearance for chip parts smaller than 0603, KLC F5.3). With two shapes or more, a hole or a pad that lies outside every shape is a shape of its own (the pad's box with the same 0.15 mm, the hole's reach), so it is kept clear as copper where it is and does not widen the courtyard over the space between the shapes; a part cannot stand on it. The box round all the shapes is still what the outline, a requirement on the body (where no fabrication outline is drawn), the reference text and the editor's selection use: a part is inside the outline when that box is. The overlap with other parts, a keepout that forbids parts and a cutout are judged shape by shape, and the proofs before placing (_Where a part goes_) leave a part with several shapes to the check after placing. `netsmith dev board3d --format json` lists the shapes in `parts[].courtyards` and the editor's scene in each part's `courtyards`, beside the box.

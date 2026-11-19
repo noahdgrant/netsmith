@@ -27,7 +27,7 @@ use netsmith_design::{
 };
 use netsmith_kicad::{Mapping, Pinout, emit_schematic, project_file};
 use netsmith_lang::{ParseError, Span};
-use netsmith_pcb::{Subject, validate_pinout};
+use netsmith_pcb::{Subject, validate_pinout, validate_table};
 use netsmith_solve::{Catalogs, PickLock, Solution, solve, solve_system};
 
 pub use libraries::Libraries;
@@ -1599,13 +1599,15 @@ fn export(
                         .on_board(&label),
                     ]);
                 }
+                let subject = Subject {
+                    refdes: &s.refdes,
+                    kind: &s.kind,
+                    package: s.package.as_deref(),
+                };
+                // The datasheet's table of the row, when it states one (issue #1281).
+                disagreements.extend(validate_table(&subject, &mapped, &footprint));
                 // Any other symbol that cannot be read is named by the schematic below.
                 if let (Some(pinout), Ok(symbol)) = (Pinout::of(part), symbol) {
-                    let subject = Subject {
-                        refdes: &s.refdes,
-                        kind: &s.kind,
-                        package: s.package.as_deref(),
-                    };
                     disagreements.extend(validate_pinout(
                         &subject, &pinout, &mapped, &symbol, &footprint,
                     ));

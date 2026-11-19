@@ -267,8 +267,16 @@
       "keepouts": [],
       "heights": [
         {
+          "path": "led",
+          "height": 0.7
+        },
+        {
           "path": "power_in",
           "height": 8.9
+        },
+        {
+          "path": "r1",
+          "height": 0.4
         }
       ],
       "protrusions": [],

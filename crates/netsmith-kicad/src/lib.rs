@@ -7,6 +7,7 @@
 #![cfg_attr(not(test), warn(unreachable_pub))]
 
 mod footprint_spec;
+mod footprint_table;
 mod generate;
 mod hierarchy;
 mod install;
@@ -21,6 +22,7 @@ mod stdlib;
 mod symbols;
 
 pub use footprint_spec::{FootprintSpec, LIBRARY as GENERATED_FOOTPRINT_LIBRARY};
+pub use footprint_table::{BODY_TOLERANCE, FootprintTable, PITCH_TOLERANCE, TableSize};
 pub use generate::{
     Side, overlapping_names, part_gives_power, side_of, symbol as generated_symbol, symbol_name,
 };

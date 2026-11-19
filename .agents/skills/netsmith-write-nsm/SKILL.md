@@ -90,4 +90,6 @@ A rechargeable cell is `std::sources::Cell` (the rail `.terminals`, which it giv
 
 ## Loop
 
+A part of your own needs a row in the project's `kicad.toml` (a `.kicad_mod` file of a `[[library]]`, or a `gen:` footprint). When the footprint is drawn by hand or copied from a vendor's file, give the row the datasheet's package numbers, `table = "pads=8, pitch=1.27mm, body=3.9x4.9mm"`: `build` then measures the footprint against them and stops on a wrong pad count, pitch or body (chapter 26, _A footprint checked against the datasheet's table_).
+
 Write a little, run `netsmith board build`, read the first error, fix it. See `netsmith-read-errors`. When it builds, run `netsmith project lint` and act on what it finds: an unused import or definition, a statement a default already makes, a name against the convention (`CamelCase` definitions, `snake_case` members). A finding that is to stay gets `// lint: off <rule>` on its line. Then run `netsmith project fmt`: it puts the files in the language's one layout (4 spaces, 100 columns, pin tables in columns, imports sorted) and changes nothing they say, so write freely and let it lay the text out.
