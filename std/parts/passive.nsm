@@ -66,6 +66,19 @@ generic Resistor {
 
     .drop == .current * .resistance
     .drop * .current <= .max_power
+    /// Whether the part is soldered on: `false` for a position whose footprint is on the board
+    /// and whose value is chosen on the bench, such as a shunt of a matching network (issue
+    /// #1273). A part that is not fitted is marked DNP on the schematic and the board, is a
+    /// `DNP` line of `bom.csv` with its `.tune` range and on no placement file, and is given a
+    /// catalog row only when the design states its `.resistance`.
+    .fitted: Bool
+    .fitted ?= true
+    /// The range the value may be tuned in on the bench, `&= 10kohm..100kohm`. A stated
+    /// `.resistance` must lie in it; a part that is not fitted and states no value is judged by
+    /// every relation over the whole range.
+    .tune: Resistance optional
+    .resistance >= min(.tune)
+    .resistance <= max(.tune)
     bridge .a ~> .b
     dc resistor .a .b .resistance
 
@@ -137,6 +150,19 @@ generic Capacitor {
     /// `Life::End` multiplies `.esr` by it (`std::env::Corner`, issue #1256).
     .esr_growth: Number optional
     bridge .a ~> .b
+    /// Whether the part is soldered on: `false` for a position whose footprint is on the board
+    /// and whose value is chosen on the bench, such as a shunt of a matching network (issue
+    /// #1273). A part that is not fitted is marked DNP on the schematic and the board, is a
+    /// `DNP` line of `bom.csv` with its `.tune` range and on no placement file, and is given a
+    /// catalog row only when the design states its `.capacitance`.
+    .fitted: Bool
+    .fitted ?= true
+    /// The range the value may be tuned in on the bench, `&= 1pF..10pF`. A stated
+    /// `.capacitance` must lie in it; a part that is not fitted and states no value is judged by
+    /// every relation over the whole range.
+    .tune: Capacitance optional
+    .capacitance >= min(.tune)
+    .capacitance <= max(.tune)
 
     .package: Package
     catalog capacitor {
@@ -319,6 +345,19 @@ generic Inductor {
 
     .drop == .current * .dc_resistance
     .current <= .saturation_current
+    /// Whether the part is soldered on: `false` for a position whose footprint is on the board
+    /// and whose value is chosen on the bench, such as a shunt of a matching network (issue
+    /// #1273). A part that is not fitted is marked DNP on the schematic and the board, is a
+    /// `DNP` line of `bom.csv` with its `.tune` range and on no placement file, and is given a
+    /// catalog row only when the design states its `.inductance`.
+    .fitted: Bool
+    .fitted ?= true
+    /// The range the value may be tuned in on the bench, `&= 1nH..10nH`. A stated
+    /// `.inductance` must lie in it; a part that is not fitted and states no value is judged by
+    /// every relation over the whole range.
+    .tune: Inductance optional
+    .inductance >= min(.tune)
+    .inductance <= max(.tune)
     bridge .a ~> .b
     // At DC an inductor is its winding (ADR 0076, amendment 6): the node past a buck stage's
     // inductor is the switch node less what the load makes the winding drop.

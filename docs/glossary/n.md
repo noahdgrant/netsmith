@@ -36,3 +36,7 @@ _Avoid_: Netlist diff (a diff compares names)
 **Nominal value**:
 `nominal(.f)`: the value a field is stated at, without its tolerance, as one number of the field's own kind, written in a `<=` or `>=` statement (`nominal(.rprog) >= 2kohm`) for a datasheet limit on the value a part is built with. A range is stored as its two ends, so it is their mean (`2kohm +/- 1%` is 2 kohm, `1kohm..3kohm` is 2 kohm). Read like a range end: never solved for, never prunes, waits while the field has no value. The plain `>=` still reads the worst case.
 _Avoid_: Typical value (a datasheet's typical column is a different figure), centre value
+
+**Not fitted**:
+A part whose footprint is on the board and whose value is chosen on the bench, such as a shunt of a matching network: a `Resistor`, `Capacitor` or `Inductor` with `.fitted &= false`, and usually `.tune &= 1pF..10pF`, the range it is tuned in (issue #1273). It is marked DNP on the schematic and the board, is a `DNP` line of `bom.csv` with its range and no part number, is on no placement file, and is given a catalog row only when the design states its value. A hole or a fiducial is fitted by nobody too, but is on no bill (`AssemblyMode::None`, _Assembly_).
+_Avoid_: Unpopulated, unstuffed, placeholder part

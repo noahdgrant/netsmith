@@ -1163,7 +1163,13 @@ fn placed_symbol(design: &Design, placement: &Placement, origin: (f64, f64)) -> 
             "on_board",
             vec![Sexp::yes_no(placement.real && placement.symbol.on_board())],
         ),
-        Sexp::node("dnp", vec![Sexp::atom("no")]),
+        // A part that is not fitted (issue #1273): KiCad draws its symbol crossed out.
+        Sexp::node(
+            "dnp",
+            vec![Sexp::yes_no(
+                placement.real && design.features.is_not_fitted(placement.reference),
+            )],
+        ),
         Sexp::node("fields_autoplaced", vec![Sexp::atom("yes")]),
         Sexp::node("uuid", vec![Sexp::string(key(&unit_suffix("symbol")))]),
         field("Reference", placement.reference, placement.hidden_reference),

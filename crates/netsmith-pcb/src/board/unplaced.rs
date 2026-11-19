@@ -115,11 +115,18 @@ impl Unplaced {
             impedance_targets: design.features.impedance_targets.clone(),
             pairs: design.features.pairs.clone(),
             length_groups: design.features.length_groups.clone(),
+            track_paths: design.features.track_paths.clone(),
             net_routes: design.features.net_routes.clone(),
             net_currents: design.features.net_currents.clone(),
             branch_currents: design.features.branch_currents.clone(),
             pin_currents: design.features.pin_currents.clone(),
             pad_pours: design.features.pad_pours.clone(),
+            not_fitted: design
+                .features
+                .not_fitted
+                .iter()
+                .map(|n| n.refdes.clone())
+                .collect(),
             overhang,
             pinned,
             imported: Default::default(),

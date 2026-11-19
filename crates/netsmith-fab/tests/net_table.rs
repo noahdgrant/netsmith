@@ -146,3 +146,38 @@ fn a_length_group_has_each_nets_length_and_its_spread_against_its_tolerance() {
     };
     assert!(NetTable::of(&art, &[], &[lone]).groups.is_empty());
 }
+
+#[test]
+fn a_track_path_sums_its_nets_lengths_against_its_budget() {
+    let path = |budget: Option<f64>| netsmith_core::TrackPath {
+        path: "rf".into(),
+        // `X` has no track: it counts 0 mm.
+        nets: vec!["P".into(), "S".into(), "X".into()],
+        parts: vec!["c1".into(), "r1".into()],
+        ohms: 50.0,
+        budget_length: budget,
+        budget_loss: None,
+        corner: netsmith_core::TrackCorner::Rounded,
+        fence: None,
+    };
+    let art = Artwork::parse(&board().pcb()).unwrap();
+    let t = NetTable::of(&art, &[], &[]).with_paths(&[path(Some(20.0))]);
+    let p = &t.paths[0];
+    assert!(close(p.length, 25.0) && p.over, "{p:?}");
+    assert_eq!(p.nets.len(), 3);
+    let lines = t.over_lines();
+    assert_eq!(
+        lines,
+        ["track path: rf: 3 nets, 25 mm of track, over its length budget of 20 mm; move the parts of the path nearer each other"]
+    );
+    assert!(
+        t.text().contains("path rf: P 20.00, S 5.00, X 0.00 mm, 25.00 mm in all (over the 20 mm budget)"),
+        "{}",
+        t.text()
+    );
+    let t = NetTable::of(&art, &[], &[]).with_paths(&[path(Some(30.0))]);
+    assert!(!t.paths[0].over && t.over_lines().is_empty());
+    // No budget: the length is said and not judged.
+    let t = NetTable::of(&art, &[], &[]).with_paths(&[path(None)]);
+    assert!(!t.paths[0].over && t.text().contains("25.00 mm in all\n"));
+}

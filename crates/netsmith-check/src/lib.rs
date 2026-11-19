@@ -42,6 +42,7 @@ mod sequence;
 mod shared;
 mod soft_margin;
 mod support;
+mod tuning;
 mod unused;
 mod variants;
 

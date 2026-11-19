@@ -31,6 +31,8 @@
 //! - A **group** is a `LengthGroup` of the design (issue #1234): its **spread** is its longest
 //!   net's track length less its shortest's, over when it is more than the group's tolerance.
 //!   A net of the group with no track is left out of it.
+//! - A **path** is a `TrackPath` of the design (issue #1275): its **length** is the sum of the
+//!   track lengths of all its nets, over when it is more than the top of its `.budget_length`.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -114,6 +116,34 @@ pub struct GroupRow {
     pub over: bool,
 }
 
+/// One line of one impedance through parts in series (issue #1275).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct PathRow {
+    /// The path of the member that states it.
+    pub path: String,
+    /// Each net of the chain with its track length, in mm, from the first pin's net.
+    pub nets: Vec<GroupNet>,
+    /// The length of all of them together, in mm.
+    pub length: f64,
+    /// The most it may be, in mm; none when the path states no budget.
+    pub budget: Option<f64>,
+    /// Whether `length` is more than `budget`.
+    pub over: bool,
+}
+
+impl PathRow {
+    /// The note of `board drc` for a path over its length budget.
+    pub fn over_line(&self) -> String {
+        format!(
+            "track path: {}: {} nets, {} mm of track, over its length budget of {} mm; move the parts of the path nearer each other",
+            self.path,
+            self.nets.len(),
+            number(self.length),
+            number(self.budget.unwrap_or(0.0)),
+        )
+    }
+}
+
 /// A diff pair as [`NetTable::of`] takes it: the positive net, the negative and the skew it may
 /// have, in mm.
 pub type PairLimit = (String, String, f64);
@@ -129,6 +159,10 @@ pub struct NetTable {
     pub pairs: Vec<PairRow>,
     /// The groups of nets matched in length, in the order given.
     pub groups: Vec<GroupRow>,
+    /// The lines of one impedance through parts in series ([`NetTable::with_paths`]), in the
+    /// order given.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub paths: Vec<PathRow>,
 }
 
 /// A straight piece of track: net, layer, its ends and its width.
@@ -395,7 +429,45 @@ impl NetTable {
                 .collect(),
             nets,
             groups,
+            paths: Vec::new(),
         }
+    }
+
+    /// The table with a row for each of the design's `TrackPath`s (issue #1275), which the
+    /// board file does not hold.
+    pub fn with_paths(mut self, paths: &[netsmith_core::TrackPath]) -> NetTable {
+        self.paths = paths
+            .iter()
+            .map(|p| {
+                let nets: Vec<GroupNet> = p
+                    .nets
+                    .iter()
+                    .map(|n| GroupNet {
+                        net: n.clone(),
+                        length: self
+                            .nets
+                            .iter()
+                            .find(|r| &r.net == n)
+                            .map_or(0.0, |r| r.length),
+                        short_by: 0.0,
+                    })
+                    .collect();
+                let length = nets.iter().map(|n| n.length).sum();
+                PathRow {
+                    path: p.path.clone(),
+                    nets,
+                    length,
+                    budget: p.budget_length,
+                    over: p.budget_length.is_some_and(|b| length > b + 1e-9),
+                }
+            })
+            .collect();
+        self
+    }
+
+    /// The paths over their length budget.
+    pub fn paths_over(&self) -> impl Iterator<Item = &PathRow> {
+        self.paths.iter().filter(|p| p.over)
     }
 
     /// The nets longest first, by name on a tie.
@@ -420,6 +492,7 @@ impl NetTable {
         self.over()
             .map(PairRow::over_line)
             .chain(self.groups_over().map(GroupRow::over_line))
+            .chain(self.paths_over().map(PathRow::over_line))
             .collect()
     }
 
@@ -488,6 +561,27 @@ impl NetTable {
                 g.spread,
                 if g.over { "over " } else { "within " },
                 number(g.tolerance),
+            ));
+        }
+        for p in &self.paths {
+            let nets: Vec<String> = p
+                .nets
+                .iter()
+                .map(|n| format!("{} {:.2}", n.net, n.length))
+                .collect();
+            let budget = match p.budget {
+                Some(b) => format!(
+                    " ({}the {} mm budget)",
+                    if p.over { "over " } else { "within " },
+                    number(b)
+                ),
+                None => String::new(),
+            };
+            out.push_str(&format!(
+                "path {}: {} mm, {:.2} mm in all{budget}\n",
+                p.path,
+                nets.join(", "),
+                p.length,
             ));
         }
         out

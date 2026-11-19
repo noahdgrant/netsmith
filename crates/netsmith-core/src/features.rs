@@ -148,6 +148,63 @@ pub struct LengthGroup {
     pub tolerance: f64,
 }
 
+/// How the tracks of a [`TrackPath`] turn (issue #1275): `std::sources::TrackCorner`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrackCorner {
+    /// Bends rounded with arcs, as the router rounds every net's.
+    #[default]
+    Rounded,
+    /// Bends cut at 45 degrees, with no arc.
+    Mitered,
+}
+
+impl TrackCorner {
+    /// The corner a variant of `TrackCorner` names.
+    pub fn of_variant(variant: &str) -> Option<TrackCorner> {
+        match variant {
+            "Rounded" => Some(TrackCorner::Rounded),
+            "Mitered" => Some(TrackCorner::Mitered),
+            _ => None,
+        }
+    }
+}
+
+/// One line of one impedance from a pin to a pin through the parts in series on it (issue
+/// #1275): a `std::sources::TrackPath` of the design. Each of its nets also has an
+/// [`ImpedanceTarget`] of the path's impedance, so the router, the notes and the RF rules
+/// treat them as they treat a `TrackImpedance`'s net.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TrackPath {
+    /// The member's path in the design.
+    pub path: String,
+    /// The nets of the chain, from the net of `.first` to the net of `.last`, each once.
+    pub nets: Vec<String>,
+    /// The parts in series between them, by their path in the design: one fewer than `nets`.
+    pub parts: Vec<String>,
+    /// The impedance in ohms.
+    pub ohms: f64,
+    /// The most the tracks of all the nets may be long together, in mm: the top of
+    /// `.budget_length`; none when the design states none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_length: Option<f64>,
+    /// The most the line may lose, in dB: the top of `.budget_loss`; none when unstated. It is
+    /// listed, not measured (netsmith has no loss model of a track).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_loss: Option<f64>,
+    /// How the tracks turn.
+    #[serde(default, skip_serializing_if = "is_rounded")]
+    pub corner: TrackCorner,
+    /// The distance between the ground vias of a fence along both sides of the tracks, in mm;
+    /// none for no fence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fence: Option<f64>,
+}
+
+fn is_rounded(c: &TrackCorner) -> bool {
+    *c == TrackCorner::Rounded
+}
+
 /// `.ant within 8mm of .radio.ant` in a physical file (issue #1274): a part within a distance
 /// of a pin of another part. Measured pad centre to pad centre, from the nearest pad of the
 /// part on the net of the pin (any of its pads when none is on it; only the pads of `pin` when
@@ -204,6 +261,23 @@ pub struct NetRoute {
     pub source: String,
 }
 
+/// A part that is not fitted until it is tuned (issue #1273).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NotFitted {
+    pub refdes: String,
+    /// The range its value may be tuned in, as a message writes it (`1pF..10pF`), if the
+    /// design states one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tune: Option<String>,
+}
+
+impl Features {
+    /// Whether the part with this designator is not fitted (issue #1273).
+    pub fn is_not_fitted(&self, refdes: &str) -> bool {
+        self.not_fitted.iter().any(|n| n.refdes == refdes)
+    }
+}
+
 /// What a design says about the board beyond its parts and nets (ADR 0020). Everything is
 /// optional; a design that says none of it is laid out as before.
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
@@ -238,6 +312,10 @@ pub struct Features {
     /// paths. Left out of a design file when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub length_groups: Vec<LengthGroup>,
+    /// The lines of one impedance through parts in series (issue #1275), in the order of their
+    /// paths. Left out of a design file when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub track_paths: Vec<TrackPath>,
     /// The current each net carries, where it is known, and the least width that carries it
     /// (IPC-2221 at the width tolerance, ADR 0036): what the router may not narrow a track of
     /// the net below, away from its pads, and what the design rules check holds the routed
@@ -257,6 +335,11 @@ pub struct Features {
     /// out of a design file when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pad_pours: Vec<PadPour>,
+    /// The parts that are not fitted (`.fitted &= false`, issue #1273), by designator: a
+    /// footprint on the board whose value is chosen on the bench. A schematic and a board mark
+    /// them DNP. Left out of a design file when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub not_fitted: Vec<NotFitted>,
     pub outline: Option<Outline>,
     pub cutouts: Vec<Cutout>,
     pub pours: Vec<Pour>,

@@ -212,6 +212,58 @@ interface TrackImpedance {
     .impedance: Resistance
 }
 
+/// How the tracks of a `TrackPath` turn (issue #1275): the type of its `.corner`.
+enum TrackCorner {
+    /// Each bend of 45 degrees or less is rounded with an arc, as the router rounds the bends
+    /// of every net it can.
+    Rounded,
+    /// Each bend is cut at 45 degrees and keeps its corner: no arc is drawn on the path's nets.
+    Mitered,
+}
+
+/// One line of one impedance from a pin to a pin, through the parts in series on it (issue
+/// #1275): a 50 ohm antenna line from a radio's pin through a DC-blocking capacitor and a 0 ohm
+/// link to a connector is one statement, `.rf: TrackPath { .impedance &= 50ohm }` with
+/// `.rf.first ~ .radio.ant` and `.rf.last ~ .j1.sig`. The nets of the path are the chain of nets
+/// from the net of `.first` to the net of `.last`, each two joined by a part with two pins on
+/// them (a capacitor, a resistor, an inductor or a ferrite in series); a rail's net (a supply or
+/// a ground) is never a link of the chain, so a part to ground beside the line (a shunt of a
+/// matching network) is not in series, and an end on a rail's net is an error. A path whose chain
+/// is not one, none or two of the same length, is an error of the build that names them.
+///
+/// Each net of the path takes the target as a `TrackImpedance` of its own would: the router
+/// draws it at the width that gives `.impedance`, it is an RF net (placed and routed first, on
+/// one layer, issue #1274), and `fab-notes.txt` gives its width on each layer. The budget is
+/// over the whole chain: the tracks of all its nets together are no longer than the top of
+/// `.budget_length`, and `netsmith board nets`, `board drc` and `fab-notes.txt` say each path's
+/// length against it.
+///
+/// Why an interface joined with `~` to the first and the last pin: the owner's decision on
+/// issue #1275. A module carries the path out through its interface, as a `TrackImpedance`.
+interface TrackPath {
+    /// The pin the line starts at (the radio's antenna pin).
+    .first: Pin
+    /// The pin the line ends at (the connector's signal pin).
+    .last: Pin
+    /// The impedance, as a single value (`50ohm`), from each track to its reference layer.
+    .impedance: Resistance
+    /// The most the tracks of the whole chain may be long together, as a range whose top is
+    /// the limit (`.rf.budget_length &= 0mm..25mm`). Unset, the length is said and not judged.
+    .budget_length: Length optional
+    /// The most the line may lose, in decibels (`.rf.budget_loss &= 0..0.5`). netsmith has no
+    /// model of a track's loss yet (it needs the frequency and the loss tangent of the build-up),
+    /// so `fab-notes.txt` lists the budget as not measured (issue #1405).
+    .budget_loss: Number optional
+    /// How the path's tracks turn at a bend.
+    .corner: TrackCorner
+    .corner ?= TrackCorner::Rounded
+    /// Ground vias along both sides of the path's tracks at this distance from each other
+    /// (`.rf.fence &= 1.5mm`), each as near the track as the rules' space allows, joined to the
+    /// ground of the board: the net of the pour on the track's layer, else of an inner plane
+    /// that is a rail's net. A place no via fits is left without one. Unset, no fence.
+    .fence: Length optional
+}
+
 /// The impedance between the two tracks of a pair, an edge-coupled differential pair (issue
 /// #1007): `.p` and `.n` are joined with `~` to the pair's two nets (`.usb.dp` and
 /// `.usb.dm`), `.impedance` is the target between them (90 ohm for USB 2.0) and `.spacing`
