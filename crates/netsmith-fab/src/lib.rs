@@ -118,7 +118,8 @@ pub use kicad_drc::{
 };
 pub use net_routes::{LONG_EXCESS, LONG_RATIO, MOST_VIAS, NetRoute, NetRoutes, VIAS_LEAST};
 pub use net_table::{
-    GroupNet, GroupRow, NetRow, NetTable, PairLimit, PairRow, SAMPLE as PAIR_SAMPLE, VIA_PAIR_GAP,
+    GroupNet, GroupRow, NetRow, NetTable, PairLimit, PairRow, PathRow, SAMPLE as PAIR_SAMPLE,
+    VIA_PAIR_GAP,
 };
 pub use panel::{
     Cell as PanelCell, CellFacts as PanelCellFacts, CellInput as PanelCellInput,
@@ -175,6 +176,9 @@ pub struct Options {
     /// The board's groups of nets matched in length (issue #1234): [`check`] notes each group
     /// whose spread is over its tolerance.
     pub length_groups: Vec<netsmith_core::LengthGroup>,
+    /// The design's lines of one impedance through parts in series (issue #1275): [`check`]
+    /// notes each path whose tracks are longer than its length budget.
+    pub track_paths: Vec<netsmith_core::TrackPath>,
     /// Package even though some parts have no LCSC part number. Those parts are left out
     /// of the BOM and placement file and listed in the notes as unassembled.
     pub allow_missing_lcsc: bool,
@@ -623,6 +627,9 @@ pub struct Checked {
     /// The groups of [`Options::length_groups`] whose spread is over their tolerance (issue
     /// #1234): notes, not findings.
     pub spread: Vec<GroupRow>,
+    /// The paths of [`Options::track_paths`] longer than their length budget (issue #1275):
+    /// notes, not findings.
+    pub long_paths: Vec<PathRow>,
 }
 
 /// The design rules check of the board file `src` (the text of a `.kicad_pcb`, with the
@@ -632,9 +639,11 @@ pub fn check(src: &str, project: Option<&str>, options: &Options) -> Result<Chec
     let mut report = drc_check(src, project, &options.drc)?;
     let art = Artwork::parse(src)?;
     let routes = NetRoutes::of(&art);
-    let table = NetTable::of(&art, &options.pairs, &options.length_groups);
+    let table =
+        NetTable::of(&art, &options.pairs, &options.length_groups).with_paths(&options.track_paths);
     let skewed = table.over().cloned().collect();
     let spread = table.groups_over().cloned().collect();
+    let long_paths = table.paths_over().cloned().collect();
     let outcomes = match &options.constraints {
         Some(c) => {
             let outcomes = c.measure(&art);
@@ -654,6 +663,7 @@ pub fn check(src: &str, project: Option<&str>, options: &Options) -> Result<Chec
         routes,
         skewed,
         spread,
+        long_paths,
     })
 }
 
@@ -680,6 +690,7 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         routes,
         skewed: _,
         spread: _,
+        long_paths: _,
     } = check(&src, drc_project_of(pcb).as_deref(), options)?;
     // A requirement of the design is not a design rule: waiving the rules does not waive it.
     let unmet: Vec<String> = drc_report

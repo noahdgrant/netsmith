@@ -629,6 +629,38 @@ error: `.radio route one_layer` names the net by a pin on it, and `.radio` is a 
   |     ^^^^^^
 ```
 
+### A line of one impedance through parts in series
+
+An antenna line runs from a radio's pin through a DC-blocking capacitor or a 0 ohm link to its connector: several nets, one line (issue #1275, owner decision). A `std::sources::TrackPath` states it once: `.first` and `.last` are joined with `~` to the pins the line starts and ends at, and `.impedance` is the target. The path's nets are the chain from the net of `.first` to the net of `.last`, each two joined by a part in series, a part with two pins, one on each of two nets; a rail's net (a supply or a ground) is never a link of the chain, so a shunt part of a matching network, from the line to ground, is beside the line and not in it. Each net of the chain takes the target as a `TrackImpedance` of its own would: the router draws it at the width that gives it, it is an RF net (placed and routed first, short, on one layer), and `fab-notes.txt` gives its width on each layer. A net another target names at another impedance is an error that names both.
+
+```nsm solve
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::parts::passive::Capacitor
+import std::sources::{TrackCorner, TrackPath}
+
+board Antenna {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .radio: Header1x2
+    .connector: Header1x2
+    .block: Capacitor { .capacitance &= 100pF +/- 5% }
+    .radio.p1 ~ .block.a
+    .block.b ~ .connector.p1
+    .rf: TrackPath {
+        .impedance &= 50ohm
+        .budget_length &= 0mm..25mm
+        .corner &= TrackCorner::Mitered
+        .fence &= 1.5mm
+    }
+    .rf.first ~ .radio.p1
+    .rf.last ~ .connector.p1
+}
+```
+
+The budget is over the chain: `.budget_length`, the top of its range, is the most the tracks of all its nets may be long together. `netsmith board nets` lists each path's nets, their lengths and the sum against it (`path rf: ...`), `board drc` notes a path over it (`track path: rf: ...`), and `fab-notes.txt` has a `track path:` line for each path with its chain, its length and its budget. `.budget_loss` is the most the line may lose, in decibels; netsmith has no model of a track's loss (it needs the frequency and the loss tangent of the build-up), so the notes list it as not measured (issue #1405). `.corner` is `TrackCorner::Rounded`, the default, which rounds the bends with arcs as every net's are, or `TrackCorner::Mitered`, which keeps their 45 degree corners. `.fence` puts ground vias along both sides of the path's tracks at that distance from each other, each as near the track as the rules' space allows, joined to the net of the pour on the track's layer, else to an inner plane of a rail's net; a place no via fits, or with a ground via within half the distance already, is left without one, and a path with no such ground gets no fence and the notes say so.
+
+A chain that is not one is an error of `build`: `.first` and `.last` joined by no chain of parts in series, or by two of the same length (two capacitors side by side), and `.first` or `.last` on no net or on a rail's net. A budget with no top, or a top of 0, is an error too.
+
 ### Track widths by rail
 
 A rail's `.min_track` is the narrowest track its nets are drawn with. It is a lower bound, written as a range like a process rule, and the bottom of what is left is the width. Both pins of the rail get it. A net takes the widest `.min_track` of the rails on it, so `GND` below is 0.8 mm without anyone saying so. `~` between rails equates the width too, so a module's rail carries it.

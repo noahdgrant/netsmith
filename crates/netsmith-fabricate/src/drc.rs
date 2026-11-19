@@ -22,6 +22,7 @@ pub fn of_board(board: &Board, constraints: Option<Constraints>) -> Result<Check
         constraints,
         pairs: board.diff_pairs_with_skew(),
         length_groups: board.length_groups.clone(),
+        track_paths: board.track_paths.clone(),
         ..Options::default()
     };
     netsmith_fab::check(&kicad_pcb(board), Some(&kicad_pro(board)), &options)

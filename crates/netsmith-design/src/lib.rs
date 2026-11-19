@@ -17,6 +17,7 @@ pub use features::Sites;
 pub mod guidelines;
 mod mates;
 mod soldering;
+mod track_path;
 pub use mates::{SystemMate, system_mates};
 
 use std::cell::RefCell;
