@@ -709,7 +709,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-3d"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "i_overlay",
@@ -726,7 +726,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-catalog"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "netsmith-check",
@@ -743,7 +743,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-check"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "netsmith-core",
@@ -754,7 +754,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-cli"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "clap",
@@ -787,7 +787,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-core"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "flate2",
@@ -798,7 +798,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-design"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "netsmith-check",
@@ -812,7 +812,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-draw"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "flate2",
@@ -823,14 +823,14 @@ dependencies = [
 
 [[package]]
 name = "netsmith-dxf"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
 ]
 
 [[package]]
 name = "netsmith-editor"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "axum",
@@ -846,7 +846,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-fab"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "i_overlay",
@@ -863,7 +863,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-fabricate"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "netsmith-3d",
@@ -898,7 +898,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-geom"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "i_overlay",
  "netsmith-sexp",
@@ -907,7 +907,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-kicad"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "netsmith-core",
@@ -920,14 +920,14 @@ dependencies = [
 
 [[package]]
 name = "netsmith-lang"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
 ]
 
 [[package]]
 name = "netsmith-lint"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "netsmith-check",
@@ -938,7 +938,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-netlist"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "netsmith-sexp",
@@ -948,7 +948,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-pcb"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "netsmith-check",
@@ -966,7 +966,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-pipeline"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "netsmith-3d",
@@ -991,7 +991,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-placer"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "netsmith-check",
@@ -1008,14 +1008,14 @@ dependencies = [
 
 [[package]]
 name = "netsmith-quantity"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
 ]
 
 [[package]]
 name = "netsmith-router"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "netsmith-check",
@@ -1034,14 +1034,14 @@ dependencies = [
 
 [[package]]
 name = "netsmith-sexp"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "netsmith-solve"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "netsmith-check",
@@ -1052,11 +1052,11 @@ dependencies = [
 
 [[package]]
 name = "netsmith-testkit"
-version = "0.5.0"
+version = "0.6.0"
 
 [[package]]
 name = "netsmith-tools"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "netsmith-3d",
@@ -1089,7 +1089,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-view"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "netsmith-core",
@@ -1102,7 +1102,7 @@ dependencies = [
 
 [[package]]
 name = "netsmith-workspace"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "automod",
  "netsmith-3d",
