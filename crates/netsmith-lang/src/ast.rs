@@ -413,6 +413,10 @@ pub enum Item {
     Tie(Tie),
     /// `unused .processor.usb`: the board says that nothing on it uses an interface (ADR 0083).
     Unused(Unused),
+    /// `sequence { .a.vout; then 6ms; .b.vout; after .e }`: the order in which rails come up and
+    /// enable pins go high at power-up, with the least delay between two of them (issue #1267);
+    /// only a board may hold one.
+    Sequence(Sequence),
     /// `peripheral UARTE0 { UARTE0_TX:output UARTE0_RX:input }`; only a part may hold one
     /// (ADR 0071).
     Peripheral(Peripheral),
@@ -701,6 +705,41 @@ pub struct Tie {
 pub struct Unused {
     pub path: Path,
     pub span: Span,
+}
+
+/// `sequence { .a.vout; then 6ms; .b.vout; after .e }`: an order of power-up events that the
+/// board must keep (issue #1267). Each event is a rail coming up or a pin going high, named by
+/// its path; `then` between two events says the second comes at least the delay after the first
+/// (at or after it when no delay is written), and `after` names an event that the event before it
+/// must also follow.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Sequence {
+    pub steps: Vec<SequenceStep>,
+    pub span: Span,
+}
+
+/// One statement of a [`Sequence`], in the order written.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SequenceStep {
+    /// `.b.vout`: an event of the order.
+    Event(Path),
+    /// `then 6ms`, or `then` alone: the next event comes at least this long after the one
+    /// before.
+    Then {
+        delay: Option<(Number, Span)>,
+        span: Span,
+    },
+    /// `after .e`: the event before this statement also comes at or after `.e`.
+    After { event: Path, span: Span },
+}
+
+impl SequenceStep {
+    pub fn span(&self) -> Span {
+        match self {
+            Self::Event(p) => p.span,
+            Self::Then { span, .. } | Self::After { span, .. } => *span,
+        }
+    }
 }
 
 /// `peripheral UARTE0 on APP_GPIO { UARTE0_TX:output UARTE0_RX:input }`: the functions of a part

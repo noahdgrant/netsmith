@@ -31,6 +31,10 @@ A whole number in the layout file (`seed = 3` in a board's table) that picks whi
 A pin a part's `kelvin` statement names: it measures the voltage of the pad it senses, the sensed pad, and is routed from that pad alone (_Kelvin connection_, issue #1148).
 _Avoid_: Tap pin, Kelvin pin
 
+**Sequence**:
+A board's statement of the order in which its rails come up and its enable pins go high at power-up, with the least delay between two events: `sequence { .core.vout; then 2ms; .io.vout; after .radio.en }` (issue #1267). The solver gives each event a window from power-on, from a regulator's `.enable_delay` and `.soft_start_time` and an RC on an enable pin, and refuses an order whose margin is negative, naming the two events.
+_Avoid_: Power sequencing (the general practice; the statement is a sequence), timing constraint
+
 **Shared bus**:
 A bus whose members have a pin on more than two main parts of a module, or on two and go on to another module: an I2C bus with several devices, an SPI bus with a clock and data lines that every device has. One thick line with a spine at each part and a branch from each spine to the line, and the members' entries as for any bus (ADR 0067). It needs three members between two places and two among three or more.
 _Avoid_: Multidrop bus, tap, bus with taps, daisy chain
