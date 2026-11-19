@@ -140,3 +140,46 @@ fn an_unstated_impedance_and_a_budget_with_no_top_are_refused() {
         "{e:#?}"
     );
 }
+
+#[test]
+fn the_frequency_is_read_and_a_range_or_zero_is_refused() {
+    let d = designed(&format!("{PATH}\n    .rf.frequency &= 2.4GHz"))
+        .unwrap_or_else(|e| panic!("{e:#?}"));
+    assert_eq!(d.design.features.track_paths[0].frequency, Some(2.4e9));
+    let d = designed(PATH).unwrap_or_else(|e| panic!("{e:#?}"));
+    assert_eq!(d.design.features.track_paths[0].frequency, None);
+    let e = designed(&format!("{PATH}\n    .rf.frequency &= 2GHz..3GHz"))
+        .err()
+        .unwrap();
+    assert!(
+        e.iter().any(|m| m.contains("`rf.frequency` is")
+            && m.contains("a range, and the loss is worked out at one frequency")),
+        "{e:#?}"
+    );
+    let e = designed(&format!("{PATH}\n    .rf.frequency &= 0Hz"))
+        .err()
+        .unwrap();
+    assert!(
+        e.iter().any(|m| m.contains("`rf.frequency` is") && m.contains("a frequency above 0")),
+        "{e:#?}"
+    );
+}
+
+#[test]
+fn a_board_states_the_loss_tangent_of_its_build_up_and_no_jlcpcb_build_up_does() {
+    let stackup = |extra: &str| {
+        let source = format!(
+            "import std::mfg::jlcpcb::FourLayer\nboard B {{\n    .process: FourLayer {{\n        .stackup.thickness &= 1.6mm\n        .inner1.use &= \"signal\"\n        .inner2.use &= \"signal\"\n{extra}    }}\n}}\n"
+        );
+        let c = check("t.nsm", &source, &Loader::std());
+        assert!(c.is_ok(), "{}", c.render());
+        let s = solve(&c.boards[0], &Catalogs::jlcpcb());
+        let d = design_board(&c.boards[0], &s).unwrap_or_else(|e| panic!("{e:#?}"));
+        d.design.process.unwrap().stackup.inner.unwrap().loss_tangent
+    };
+    assert_eq!(stackup(""), None);
+    assert_eq!(
+        stackup("        .stackup.loss_tangent &= 0.02\n"),
+        Some(0.02)
+    );
+}

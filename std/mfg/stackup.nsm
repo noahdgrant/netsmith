@@ -48,6 +48,16 @@ interface Stackup {
     /// copper with its plating, and not the nominal thickness of the copper weight.
     .impedance_outer_copper: Length optional
 
+    /// The loss tangent (dissipation factor, Df) of the build-up's dielectric, every layer of
+    /// it, at the frequencies its tracks carry (issue #1405): the loss of a
+    /// `std::sources::TrackPath` is worked out with it. A process states it only from a source
+    /// that gives it for that build-up's laminate, and no build-up of the standard library
+    /// does: JLCPCB's impedance page gives each prepreg's permittivity and no loss tangent, and
+    /// names no laminate. A board whose laminate's datasheet gives one states it,
+    /// `.process.stackup.loss_tangent &= 0.02`; unstated, no loss is worked out and the notes
+    /// say so. Read only on a board with a build-up (more than two layers).
+    .loss_tangent: Number optional
+
     /// The colour of the solder mask, both faces (issue #771): a variant of the same `Color` an
     /// LED's `.color` is, and a board states it, `.process.stackup.mask_colour &= Color::Black`.
     /// It is a choice of the board, not a rule of the process, so no process states it; a board

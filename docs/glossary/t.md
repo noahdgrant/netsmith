@@ -46,12 +46,16 @@ _Avoid_: IR drop, voltage loss, track loss
 The characteristic impedance of a track on one layer of a board with a _Build-up_, worked out from the thickness and relative permittivity of each _Dielectric layer_ and the copper's thickness by closed forms (`netsmith_pcb::impedance`, issues #759 and #1007): microstrip on an outer layer, under the solder mask where the process states JLCPCB's calculator parameters, and stripline on an inner one; for two tracks side by side (an edge-coupled pair), the even and odd modes, and the differential impedance as twice the odd mode's. `fab-notes.txt` lists it for each layer a track may be on: the width of a 50 ohm track and the impedance of the router's width, and for each _Impedance target_ the design states, the width that gives it and the impedance of the width the router draws.
 _Avoid_: Trace impedance; controlled impedance and impedance control for the figure (those are the fabricator's service of making a board to an impedance and testing it)
 
+**Track loss**:
+What the tracks of a _Track path_ lose at its `.frequency`, in dB (issue #1405): the copper's skin-effect loss and the dielectric's, from the build-up's loss tangent (`.stackup.loss_tangent`), worked out on the routed board for each track and added up (`netsmith_pcb::impedance::loss_per_mm`). The parts in series are not counted. A build-up with no loss tangent recorded, which is every one of the standard library, has none.
+_Avoid_: Insertion loss (it counts the parts), attenuation
+
 **Track overflow**:
 The placer's estimate of how far a placement asks more track of the board than it holds (issue #820): the board cut into square bins of 1 mm or more, each net of ten pads or fewer that is not a plane spreading its half perimeter of track evenly over the box round its pads, each pad taking the room of its copper, and every bin holding track on each signal layer (the two outer layers and every inner layer that is not a plane) at the process's track pitch over half its area; the overflow is the sum, over the bins, of what each is asked beyond that, in mm of track. The annealer weighs it only when its caller asks (`PlaceOptions::track_overflow`, 0 by default), because on the boards it was measured on it did not leave the router clearly fewer lines (`anneal/overflow.rs`).
 _Avoid_: congestion (the router's negotiation over cells), crowding (the coarse plan's measure of a tile), demand
 
 **Track path**:
-One line of one impedance from a pin to a pin through the parts in series on it, a `std::sources::TrackPath` (issue #1275): an antenna line through a DC-blocking capacitor is one path of two nets. Each net of its chain takes its _Impedance target_ and is an _RF net_; its length budget is over the whole chain, and it may state mitered corners and a fence of ground vias.
+One line of one impedance from a pin to a pin through the parts in series on it, a `std::sources::TrackPath` (issue #1275): an antenna line through a DC-blocking capacitor is one path of two nets. Each net of its chain takes its _Impedance target_ and is an _RF net_; its length budget and its _Track loss_ budget are over the whole chain, and it may state mitered corners and a fence of ground vias.
 _Avoid_: RF chain, transmission path
 
 **Transferred bound**:

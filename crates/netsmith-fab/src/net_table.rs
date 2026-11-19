@@ -33,6 +33,10 @@
 //!   A net of the group with no track is left out of it.
 //! - A **path** is a `TrackPath` of the design (issue #1275): its **length** is the sum of the
 //!   track lengths of all its nets, over when it is more than the top of its `.budget_length`.
+//!   Its **loss** (issue #1405) is the caller's, worked out on the board at the path's
+//!   `.frequency` (`netsmith_pcb::Board::track_path_loss`, which the board file cannot: it does
+//!   not hold the build-up's loss tangent), over when it is more than the top of its
+//!   `.budget_loss`.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -129,18 +133,47 @@ pub struct PathRow {
     pub budget: Option<f64>,
     /// Whether `length` is more than `budget`.
     pub over: bool,
+    /// The frequency the loss is worked out at, in Hz: the path's `.frequency`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frequency: Option<f64>,
+    /// The loss of the tracks of all the nets together at `frequency`, in dB; none when the
+    /// path states no frequency or no figure could be worked out (`loss_unknown` says why).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loss: Option<f64>,
+    /// Why the loss of a path with a frequency has no figure.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loss_unknown: Option<String>,
+    /// The most it may lose, in dB; none when the path states no loss budget.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loss_budget: Option<f64>,
+    /// Whether `loss` is more than `loss_budget`.
+    pub loss_over: bool,
 }
 
 impl PathRow {
-    /// The note of `board drc` for a path over its length budget.
-    pub fn over_line(&self) -> String {
-        format!(
-            "track path: {}: {} nets, {} mm of track, over its length budget of {} mm; move the parts of the path nearer each other",
-            self.path,
-            self.nets.len(),
-            number(self.length),
-            number(self.budget.unwrap_or(0.0)),
-        )
+    /// The note of `board drc` for a path over its length budget or its loss budget: one line
+    /// for each budget it is over.
+    pub fn over_lines(&self) -> Vec<String> {
+        let mut lines = Vec::new();
+        if self.over {
+            lines.push(format!(
+                "track path: {}: {} nets, {} mm of track, over its length budget of {} mm; move the parts of the path nearer each other",
+                self.path,
+                self.nets.len(),
+                number(self.length),
+                number(self.budget.unwrap_or(0.0)),
+            ));
+        }
+        if self.loss_over {
+            lines.push(format!(
+                "track path: {}: {:.3} dB of track loss at {}, over its loss budget of {} dB; shorten the path or widen its tracks on a thicker dielectric",
+                self.path,
+                self.loss.unwrap_or(0.0),
+                hertz(self.frequency.unwrap_or(0.0)),
+                number(self.loss_budget.unwrap_or(0.0)),
+            ));
+        }
+        lines
     }
 }
 
@@ -434,11 +467,18 @@ impl NetTable {
     }
 
     /// The table with a row for each of the design's `TrackPath`s (issue #1275), which the
-    /// board file does not hold.
-    pub fn with_paths(mut self, paths: &[netsmith_core::TrackPath]) -> NetTable {
+    /// board file does not hold, and the loss of each, in the same order, as the board works it
+    /// out (`netsmith_pcb::Board::track_path_loss`, issue #1405): `None` for a path with no
+    /// frequency, or a loss not given, and an error that says why a path has no figure.
+    pub fn with_paths(
+        mut self,
+        paths: &[netsmith_core::TrackPath],
+        losses: &[Option<Result<f64, String>>],
+    ) -> NetTable {
         self.paths = paths
             .iter()
-            .map(|p| {
+            .enumerate()
+            .map(|(k, p)| {
                 let nets: Vec<GroupNet> = p
                     .nets
                     .iter()
@@ -453,21 +493,31 @@ impl NetTable {
                     })
                     .collect();
                 let length = nets.iter().map(|n| n.length).sum();
+                let (loss, loss_unknown) = match losses.get(k).cloned().flatten() {
+                    Some(Ok(l)) => (Some(l), None),
+                    Some(Err(e)) => (None, Some(e)),
+                    None => (None, None),
+                };
                 PathRow {
                     path: p.path.clone(),
                     nets,
                     length,
                     budget: p.budget_length,
                     over: p.budget_length.is_some_and(|b| length > b + 1e-9),
+                    frequency: p.frequency,
+                    loss,
+                    loss_unknown,
+                    loss_budget: p.budget_loss,
+                    loss_over: matches!((loss, p.budget_loss), (Some(l), Some(b)) if l > b + 1e-9),
                 }
             })
             .collect();
         self
     }
 
-    /// The paths over their length budget.
+    /// The paths over their length budget or their loss budget.
     pub fn paths_over(&self) -> impl Iterator<Item = &PathRow> {
-        self.paths.iter().filter(|p| p.over)
+        self.paths.iter().filter(|p| p.over || p.loss_over)
     }
 
     /// The nets longest first, by name on a tie.
@@ -492,7 +542,7 @@ impl NetTable {
         self.over()
             .map(PairRow::over_line)
             .chain(self.groups_over().map(GroupRow::over_line))
-            .chain(self.paths_over().map(PathRow::over_line))
+            .chain(self.paths_over().flat_map(PathRow::over_lines))
             .collect()
     }
 
@@ -577,8 +627,22 @@ impl NetTable {
                 ),
                 None => String::new(),
             };
+            let at = hertz(p.frequency.unwrap_or(0.0));
+            let loss = match (p.loss, &p.loss_unknown, p.loss_budget) {
+                (Some(l), _, Some(b)) => format!(
+                    "; {l:.3} dB at {at} ({}the {} dB budget)",
+                    if p.loss_over { "over " } else { "within " },
+                    number(b)
+                ),
+                (Some(l), _, None) => format!("; {l:.3} dB at {at}"),
+                (None, Some(why), _) => format!("; no loss at {at}: {why}"),
+                (None, None, Some(b)) => {
+                    format!("; its {} dB loss budget needs a `.frequency`", number(b))
+                }
+                (None, None, None) => String::new(),
+            };
             out.push_str(&format!(
-                "path {}: {} mm, {:.2} mm in all{budget}\n",
+                "path {}: {} mm, {:.2} mm in all{budget}{loss}\n",
                 p.path,
                 nets.join(", "),
                 p.length,
@@ -586,6 +650,22 @@ impl NetTable {
         }
         out
     }
+}
+
+/// A frequency for a message: `2.4 GHz`, `100 MHz` (as `netsmith_pcb::hertz` writes it; this
+/// crate does not depend on that one).
+fn hertz(f: f64) -> String {
+    let (v, unit) = if f >= 1e9 {
+        (f / 1e9, "GHz")
+    } else if f >= 1e6 {
+        (f / 1e6, "MHz")
+    } else if f >= 1e3 {
+        (f / 1e3, "kHz")
+    } else {
+        (f, "Hz")
+    };
+    let s = format!("{v:.3}");
+    format!("{} {unit}", s.trim_end_matches('0').trim_end_matches('.'))
 }
 
 /// A number with at most two decimals and no trailing zeros: `3`, `2.45`.

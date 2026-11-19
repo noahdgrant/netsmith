@@ -433,7 +433,8 @@ pub struct BoardOut {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub group_spreads: Vec<netsmith_fab::GroupRow>,
     /// For `board drc` of a design's board: the `TrackPath`s whose tracks are longer than
-    /// their length budget (issue #1275). Left out when there are none.
+    /// their length budget (issue #1275) or lose more than their loss budget (issue #1405).
+    /// Left out when there are none.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub long_paths: Vec<netsmith_fab::PathRow>,
 }

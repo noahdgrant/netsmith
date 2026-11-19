@@ -547,6 +547,7 @@ mod tests {
             ohms: 50.0,
             budget_length: None,
             budget_loss: None,
+            frequency: None,
             corner: netsmith_core::TrackCorner::Mitered,
             fence: None,
         });

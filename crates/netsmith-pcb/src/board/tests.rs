@@ -1485,3 +1485,74 @@ fn a_target_the_board_cannot_give_is_a_finding() {
         "{found:?}"
     );
 }
+
+/// The four-layer board with its tracks taken away and one straight 10 mm track of `net` on
+/// `layer`, 0.35 mm wide, on a `TrackPath` at 2.4 GHz with a loss budget of `budget` dB, and the
+/// build-up's loss tangent `tan_d` (issue #1405).
+fn lossy(layer: CopperLayer, tan_d: Option<f64>, budget: Option<f64>) -> Board {
+    let mut board = four_layer_board();
+    board.tracks.clear();
+    let net = board.nets[0].name.clone();
+    board.tracks.push(Track::straight(
+        &net,
+        layer,
+        Pt::new(0.0, 0.0),
+        Pt::new(10.0, 0.0),
+        0.35,
+    ));
+    board.process.stackup.inner.as_mut().unwrap().loss_tangent = tan_d;
+    board.track_paths = vec![netsmith_core::TrackPath {
+        path: "rf".into(),
+        nets: vec![net],
+        parts: Vec::new(),
+        ohms: 50.0,
+        budget_length: None,
+        budget_loss: budget,
+        frequency: Some(2.4e9),
+        corner: netsmith_core::TrackCorner::Rounded,
+        fence: None,
+    }];
+    board
+}
+
+#[test]
+fn a_track_paths_loss_is_its_tracks_length_times_their_loss_per_mm_against_its_budget() {
+    let board = lossy(CopperLayer::Front, Some(0.02), Some(0.5));
+    let per_mm = crate::loss_per_mm(&board.process.stackup, "F.Cu", 0.35, 2.4e9)
+        .unwrap()
+        .total();
+    let got = board
+        .track_path_loss(&board.track_paths[0])
+        .unwrap()
+        .unwrap();
+    assert!((got - 10.0 * per_mm).abs() < 1e-12, "{got} {per_mm}");
+    let line = &board.track_path_lines()[0];
+    assert!(
+        line.contains(&format!(
+            "{got:.3} dB of track loss at 2.4 GHz, within its loss budget of 0.5 dB"
+        )),
+        "{line}"
+    );
+    let board = lossy(CopperLayer::Front, Some(0.02), Some(0.05));
+    let line = &board.track_path_lines()[0];
+    assert!(line.contains("OVER its loss budget of 0.05 dB"), "{line}");
+}
+
+#[test]
+fn a_track_path_with_no_loss_tangent_or_no_frequency_says_why_its_loss_is_not_judged() {
+    let board = lossy(CopperLayer::Front, None, Some(0.5));
+    let line = &board.track_path_lines()[0];
+    assert!(
+        line.contains("its loss budget of 0.5 dB is not judged: no loss at 2.4 GHz: build-up")
+            && line.contains("records no loss tangent"),
+        "{line}"
+    );
+    let mut board = lossy(CopperLayer::Front, Some(0.02), Some(0.5));
+    board.track_paths[0].frequency = None;
+    assert_eq!(board.track_path_loss(&board.track_paths[0]), None);
+    let line = &board.track_path_lines()[0];
+    assert!(
+        line.contains("is not judged: the path states no `.frequency`"),
+        "{line}"
+    );
+}
