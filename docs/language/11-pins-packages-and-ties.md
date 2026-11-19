@@ -1918,7 +1918,7 @@ error: net `net-a.out` has an open_drain output (`a.out`) and no pull-up: nothin
 
 ### A pin tied to a rail
 
-A pin may be tied to a rail: a GPIO strapped to ground, a configuration pin to the supply, a spare input to either. Any kind but `output` may be, with no statement for it. A push-pull `output` on the net of a rail, its positive or its negative pin, drives the rail to its other level whenever it drives, which is a short, and is refused (#461). An output that is itself a pin of a rail (the VBUS a hub's table writes as `output`) is a supply the part gives, and is not this case.
+A pin may be tied to a rail: a GPIO strapped to ground, a configuration pin to the supply, a spare input to either. Any kind but `output` may be, with no statement for it. An input that states logic levels is judged at the rail's voltage, or at 0 V on a ground (chapter 28, "A pin strapped to a rail or to ground"). A push-pull `output` on the net of a rail, its positive or its negative pin, drives the rail to its other level whenever it drives, which is a short, and is refused (#461). An output that is itself a pin of a rail (the VBUS a hub's table writes as `output`) is a supply the part gives, and is not this case.
 
 ```nsm fails
 import std::sources::Rail

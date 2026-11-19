@@ -127,6 +127,21 @@
 //! (`levels .io`), which would allow two groups on two supplies in one part (today one of them is
 //! an interface with `levels`, or `Logic` lines), and a block that lists the pins of a group.
 //!
+//! A control input strapped to a rail or to ground is at a known level (#1304). A board ties a
+//! mode pin of a transceiver straight to its supply or to ground, and the pin was judged as a net
+//! that nothing drives: every passive on the ground whose far end something drives (a pull-down
+//! on another line) was a series part the level came through, and each strapped pin gave a note
+//! for each of them. A net that holds the `pos` of a rail is held at the rail's voltage range,
+//! and one that holds a `neg` (and no `pos`) at 0 V (`holder`): a receiver on it that states
+//! `vih` or `vil` is judged by that range against its `vih` (a rail) or its `vil` (a ground),
+//! measured from its own ground, and no level comes into the net through a series part
+//! (`series_sources` and `crossings` skip it), so nothing names its passives. The resistors on
+//! such a net do not move it for an absolute maximum (`net_range`): a resistor from the supply to
+//! ground left the ground at the supply's voltage. A level the pin does not state, a rail with no
+//! voltage, and a rail or a ground that is not the pin's ground are notes. Not taken: judging a
+//! pin on a rail against `vil` as well (a strap to a rail means a high), and a rail that is the
+//! output of a part that may be off (a load switch), which is held at its range as any rail is.
+//!
 //! A pair of which neither end states a level is still not looked at. Not taken (#850, #1045):
 //! judging a receiver against a driver the DC analysis does not model behind a series part into
 //! a net that something draws from, from the driver's levels alone (only the analysis knows the
@@ -493,8 +508,136 @@ impl Run<'_> {
                 self.pair(net, d, r);
             }
         }
+        self.strapped(index, &lines);
         self.plain_pins(index, &lines);
         self.through_series(index, &lines);
+    }
+
+    /// What holds a net at a voltage of its own (#1304): the positive pin of a rail, or a ground
+    /// (the negative pin of a rail). The rail named is the one with the shortest path, which is
+    /// the board's where the board states one; a net with both a rail and a ground on it (a
+    /// rail of 0 V, or a short) takes the rail. None when no rail is on the net.
+    fn holder(&self, index: usize) -> Option<Holder> {
+        let model = self.model;
+        let mut rail: Option<(String, InstId, FieldId, InstId)> = None;
+        let mut ground: Option<InstId> = None;
+        for &pin in &model.nets()[index].pins {
+            let Some(parent) = model.instance(pin).parent else {
+                continue;
+            };
+            let Some((voltage, pos, neg)) = model.rail_of(parent) else {
+                continue;
+            };
+            if pin == pos {
+                let path = model.path_of(parent);
+                let shorter = rail.as_ref().is_none_or(|(p, ..)| {
+                    (path.matches('.').count(), &path) < (p.matches('.').count(), p)
+                });
+                if shorter {
+                    rail = Some((path, parent, voltage, neg));
+                }
+            } else if pin == neg && ground.is_none() {
+                ground = Some(neg);
+            }
+        }
+        match (rail, ground) {
+            (Some((path, _, voltage, neg)), _) => Some(Holder::Rail { path, voltage, neg }),
+            (None, Some(neg)) => Some(Holder::Ground { neg }),
+            (None, None) => None,
+        }
+    }
+
+    /// An input strapped to a rail or to ground (#1304): a receiver that states `vih` or `vil`
+    /// on a net that holds the positive pin of a rail is held at the rail's voltage range, and
+    /// one on a ground at 0 V, measured from its own ground, with no part between. A rail is a
+    /// high, judged against `vih`, and a ground a low, judged against `vil`; a level the pin
+    /// does not state, a rail with no voltage and a rail or a ground that is not the pin's
+    /// ground are notes. Such a net is held, so no level comes into it through a series part,
+    /// whatever the parts on it join it to (`series_sources`, `crossings`).
+    fn strapped(&mut self, index: usize, lines: &[Line]) {
+        let model = self.model;
+        let net = &model.nets()[index];
+        let Some(holder) = self.holder(index) else {
+            return;
+        };
+        let receivers: Vec<&Line> = lines
+            .iter()
+            .filter(|l| is_receiver(l.kind) && self.states_input_levels(l.logic))
+            .collect();
+        for r in receivers {
+            let Some(rg) = self.ground_pin(r.logic) else {
+                continue;
+            };
+            let rl = model.path_of(r.logic);
+            let (neg, what) = match &holder {
+                Holder::Rail { path, neg, .. } => (*neg, format!("rail `{path}`")),
+                Holder::Ground { neg } => (*neg, "a ground".to_string()),
+            };
+            if !self.same_ground(neg, rg) {
+                self.note(
+                    r.part,
+                    vec![r.logic],
+                    Cause::Unjudged,
+                    format!(
+                        "not evaluated: the logic levels into `{rl}` on net `{}`: {what} holds it, and its ground `{}` is on net `{}`, not `{}`",
+                        net.name,
+                        model.path_of(neg),
+                        self.name_of_net(neg),
+                        self.name_of_net(rg)
+                    ),
+                );
+                continue;
+            }
+            match &holder {
+                Holder::Rail { path, voltage, .. } => {
+                    let Domain::Quantity(q) = model.field(*voltage).domain else {
+                        self.note(
+                            r.part,
+                            vec![r.logic],
+                            Cause::Unjudged,
+                            format!(
+                                "not evaluated: the high level into `{rl}` on net `{}`: rail `{path}` holds it and has no voltage",
+                                net.name
+                            ),
+                        );
+                        continue;
+                    };
+                    let Some(vih) = self.value(r.logic, "vih") else {
+                        self.note(
+                            r.part,
+                            vec![r.logic],
+                            Cause::PartModel,
+                            format!(
+                                "not evaluated: the high level into `{rl}` on net `{}`: rail `{path}` holds it at {}, and `{rl}.vih` has no value",
+                                net.name,
+                                range_text((q.lo(), q.hi()))
+                            ),
+                        );
+                        continue;
+                    };
+                    self.held_high(net, r, vih, (q.lo(), q.hi()), |high| {
+                        format!("rail `{path}` holds the line at {high}")
+                    });
+                }
+                Holder::Ground { .. } => {
+                    let Some(vil) = self.value(r.logic, "vil") else {
+                        self.note(
+                            r.part,
+                            vec![r.logic],
+                            Cause::PartModel,
+                            format!(
+                                "not evaluated: the low level into `{rl}` on net `{}`: it is a ground, and `{rl}.vil` has no value",
+                                net.name
+                            ),
+                        );
+                        continue;
+                    };
+                    self.held_low(net, r, vil, (0.0, 0.0), |low| {
+                        format!("the ground holds the line at {low}")
+                    });
+                }
+            }
+        }
     }
 
     /// Whether a line states a level a receiver is judged by (`vih` or `vil`).
@@ -644,6 +787,7 @@ impl Run<'_> {
         let model = self.model;
         let net = &model.nets()[index];
         if self.drives(net)
+            || self.holder(index).is_some()
             || !lines
                 .iter()
                 .any(|l| is_receiver(l.kind) && self.states_input_levels(l.logic))
@@ -903,6 +1047,7 @@ impl Run<'_> {
             .collect();
         if own.is_empty()
             || own.contains(&PinKind::Output)
+            || self.holder(index).is_some()
             || !lines
                 .iter()
                 .any(|l| is_receiver(l.kind) && self.states_input_levels(l.logic))
@@ -1670,13 +1815,18 @@ impl Run<'_> {
                 ));
             }
         }
+        // A net that a rail or a ground holds is at that voltage, whatever resistors join it to
+        // other rails (#1304): a resistor from a rail to ground does not lift the ground.
+        let held = self.holder(index).is_some();
         for &t in &net.terminals {
             // A resistor to a rail or to ground pulls the net there: a pull-up or a
             // pull-down.
             if let Some(far) = self.resistor_far_end(t)
                 && let Some(far_net) = self.net_index(far)
             {
-                self.pull(far_net, ground, &mut swing)?;
+                if !held {
+                    self.pull(far_net, ground, &mut swing)?;
+                }
                 continue;
             }
             let Some(kind) = model.pin_kind(t) else {
@@ -1774,6 +1924,18 @@ fn factor_of_rail(e: &RExpr) -> Option<(f64, FieldId)> {
         },
         _ => None,
     }
+}
+
+/// What holds a net at a voltage of its own (#1304).
+enum Holder {
+    /// The positive pin of a rail: its path, its voltage field and its ground pin.
+    Rail {
+        path: String,
+        voltage: FieldId,
+        neg: InstId,
+    },
+    /// The negative pin of a rail, and no positive one.
+    Ground { neg: InstId },
 }
 
 /// A resistor that holds a net at a rail: the rail and the range of its voltage.
