@@ -393,14 +393,24 @@ impl Workspace {
         }
     }
 
-    /// The layout files beside the top-level files, and the routes file beside each (they may
-    /// not exist): a change to one by another program places the boards again.
+    /// The layout files beside the top-level files and beside the project's other files (a
+    /// board of a system defined in one reads it, issue #1327), and the routes file beside each
+    /// (they may not exist): a change to one by another program places the boards again.
     fn layout_files(&self) -> Vec<PathBuf> {
-        self.target()
-            .files
+        let target = self.target();
+        let modules = target
+            .project
+            .as_ref()
+            .and_then(|p| p.modules().ok())
+            .unwrap_or_default();
+        let mut sources: Vec<PathBuf> = target.files.iter().map(|f| f.path.clone()).collect();
+        sources.extend(modules.into_iter().map(|m| m.path));
+        sources.sort();
+        sources.dedup();
+        sources
             .iter()
-            .flat_map(|f| {
-                let layout = netsmith_fabricate::layout::layout_path(&f.path);
+            .flat_map(|source| {
+                let layout = netsmith_fabricate::layout::layout_path(source);
                 let routes = netsmith_fabricate::routes::beside_layout(&layout);
                 [layout, routes]
             })
@@ -619,7 +629,7 @@ impl Workspace {
             Some(layers) => layers,
             None => pcb::place(&data, name)?.layers(),
         };
-        let mut layout = netsmith_fabricate::layout::read(file, boards)
+        let mut layout = netsmith_fabricate::layout::read_checked(file, boards.as_deref())
             .map_err(|e| ApiError::internal(format!("{name}: {e}")))?
             .map_or_else(netsmith_pcb::Layout::default, |(layout, _)| layout);
         let before = layout.clone();

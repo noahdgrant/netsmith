@@ -1372,11 +1372,14 @@ impl Project {
             };
             let name = m.name(&self.root);
             loader.insert(&m.key, &name, &text);
+            loader.attach_path(&name, &m.path);
             crate::physical::attach(&mut loader, &name, &m.path, unsaved)?;
         }
         for dependency in self.dependencies()? {
             loader.add_dependency(&dependency.name);
         }
+        // A dependency's file is given no path (`Loader::attach_path`): the layout file beside
+        // it is not the project's to write, so a board of it keeps the system's (issue #1327).
         for (m, name) in self.dependency_modules()? {
             let text = match unsaved.get(&m.path) {
                 Some(text) => text.clone(),
@@ -1890,6 +1893,7 @@ impl Target {
         };
         // A top-level file may stand outside `src/`: it has its physical file all the same.
         for file in &self.files {
+            loader.attach_path(&file.name, &file.path);
             crate::physical::attach(&mut loader, &file.name, &file.path, unsaved)?;
             crate::pins::attach(&mut loader, &file.name, &file.path, unsaved)?;
             // Its module path is the project's, not the spelling it was typed with: the

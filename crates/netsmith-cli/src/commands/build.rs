@@ -345,15 +345,15 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
         }
         // What the requirements prove cannot be placed is said now, with no placing
         // (ADR 0045 section 14); the layout file's locks count.
+        // A board of a system defined in another file reads the layout file beside that file
+        // (issue #1327).
         let names: Vec<String> = boards.iter().map(|b| b.design.name.clone()).collect();
-        let layout = netsmith_fabricate::layout::read(
-            &netsmith_fabricate::layout::layout_path(&source.path),
-            &names,
-        )
-        .ok()
-        .flatten();
+        let beside = netsmith_fabricate::layout::layout_path(&source.path);
         let mut unplaceable = false;
         for b in &boards {
+            let layout = netsmith_fabricate::layout::read_board(b, &loader, &beside, &names)
+                .ok()
+                .and_then(|(read, _)| read);
             let found = netsmith_fabricate::fab::precheck_board(
                 b,
                 layout.as_ref(),

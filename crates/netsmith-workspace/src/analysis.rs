@@ -74,9 +74,11 @@ pub struct BoardData {
     /// The KiCad libraries of the project, for what needs a footprint: the bill of
     /// materials and the PCB. A mistake in `kicad.toml` is the error.
     pub libraries: Arc<Result<Libraries, String>>,
-    /// The layout file beside the source file (ADR 0032), and the names of all the boards the
-    /// source file holds, so that a table for a board that is gone is found.
-    pub layout: Option<(std::path::PathBuf, Vec<String>)>,
+    /// The layout file of the board (ADR 0032; beside the source file, or for a board of a
+    /// system defined in another file beside that file, issue #1327), and the names of all the
+    /// boards the source file holds, so that a table for a board that is gone is found (none for
+    /// a board's own file, whose other tables are of the boards of its file).
+    pub layout: Option<(std::path::PathBuf, Option<Vec<String>>)>,
     /// The physical file beside the source file (ADR 0048), which may not exist: where the
     /// editor writes the keepouts it draws.
     pub physical: std::path::PathBuf,
@@ -587,14 +589,7 @@ impl Workspace {
                         &hints_name,
                         &source_boards.iter().map(String::as_str).collect::<Vec<_>>(),
                     ));
-                    let layout = Some((
-                        netsmith_fabricate::layout::layout_path(&file.path),
-                        outcome
-                            .boards
-                            .iter()
-                            .map(|b| b.design.name.clone())
-                            .collect::<Vec<_>>(),
-                    ));
+                    let beside = netsmith_fabricate::layout::layout_path(&file.path);
                     snapshot
                         .pins
                         .insert(file.name.clone(), Arc::new(outcome.pins.clone()));
@@ -706,14 +701,28 @@ impl Workspace {
                         for issue in &built.power {
                             snapshot.problems.push(power_problem(&built, issue));
                         }
+                        // A board of a system defined in another file has the layout file
+                        // and the physical file beside that file (issue #1327).
+                        let at = netsmith_fabricate::layout::board_file(&built, &loader, &beside);
+                        if let Some(note) = &at.note {
+                            snapshot
+                                .problems
+                                .push(model_problem(&label, Severity::Note, note));
+                        }
+                        let layout = Some((at.file, (!at.own).then(|| source_boards.clone())));
+                        let physical = match &built.system {
+                            Some(_) => netsmith_fabricate::layout::defined_in(&built, &loader)
+                                .unwrap_or_else(|| file.path.clone()),
+                            None => file.path.clone(),
+                        };
                         snapshot.boards.push((
                             Arc::new(BoardData {
                                 file: file.name.clone(),
                                 built,
                                 svg,
                                 libraries: libraries.clone(),
-                                layout: layout.clone(),
-                                physical: netsmith_fabricate::physical::physical_path(&file.path),
+                                layout,
+                                physical: netsmith_fabricate::physical::physical_path(&physical),
                                 constraints_warn: catalogs.constraints_warn(),
                                 place_seeds: netsmith_fabricate::layout::place_seeds(
                                     target.project.as_ref(),
@@ -1089,10 +1098,10 @@ fn value_from(
 
 /// What finding a part's STEP model found (ADR 0108), for the board `label`.
 fn model_problem(label: &str, severity: Severity, message: &str) -> Problem {
-    let word = if severity == Severity::Error {
-        "error"
-    } else {
-        "warning"
+    let word = match severity {
+        Severity::Error => "error",
+        Severity::Warning => "warning",
+        Severity::Note => "note",
     };
     Problem {
         severity,

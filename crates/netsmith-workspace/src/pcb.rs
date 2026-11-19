@@ -286,7 +286,8 @@ pub fn place_checked(data: &BoardData, name: &str) -> Result<Entry, PlaceError> 
     // this reading refused, not applied over the change.
     let stamp = stamp(data);
     let layout = match &data.layout {
-        Some((file, boards)) => netsmith_fabricate::layout::read(file, boards).map_err(|e| {
+        Some((file, boards)) => netsmith_fabricate::layout::read_checked(file, boards.as_deref())
+            .map_err(|e| {
             PlaceError::Other(ApiError::unprocessable(
                 format!("{name}: {e}"),
                 "layout_unreadable",
@@ -2468,9 +2469,13 @@ pub fn digest(entry: &Entry, data: &BoardData) -> PcbDigest {
             )
         })
         .collect();
-    let layout_file = netsmith_fabricate::layout::layout_path(std::path::Path::new(&data.file))
-        .to_string_lossy()
-        .into_owned();
+    // A board's own layout file (a board of a system defined in another file, issue #1327).
+    let layout_file = match &data.layout {
+        Some((file, None)) => file.clone(),
+        _ => netsmith_fabricate::layout::layout_path(std::path::Path::new(&data.file)),
+    }
+    .to_string_lossy()
+    .into_owned();
     PcbDigest {
         layout_file,
         outline_stated: data.built.design.features.outline.is_some(),

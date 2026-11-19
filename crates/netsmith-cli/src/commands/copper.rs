@@ -34,7 +34,10 @@ pub fn run(args: Args) -> ExitCode {
         |placed| {
             placed
                 .with_built(|built| {
-                    netsmith_fabricate::routes::copper_areas(&built.design, &placed.layout)
+                    netsmith_fabricate::routes::copper_areas(
+                        &built.design,
+                        &placed.layout_of(built).file,
+                    )
                 })
                 .and_then(|areas| areas.map_err(|e| format!("error: {e}\n")))
         },

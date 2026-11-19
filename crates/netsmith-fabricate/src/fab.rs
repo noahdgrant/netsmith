@@ -690,6 +690,28 @@ pub fn fab_detailed(
         crate::routes::read(&crate::routes::beside_layout(file), &board_names)
             .map_err(|e| format!("error: {name}: {e}\n"))?;
     }
+    // A board of a system defined in another file of the project reads the layout file beside
+    // that file, and the routes file beside it (issue #1327, `crate::layout::board_file`); a
+    // wrong one stops fab before anything is placed too. Each such board is made with the
+    // options naming its own file, so its seed and its copper go there.
+    let mut own: BTreeMap<String, (LayoutFile, FabOptions)> = BTreeMap::new();
+    if let Some(file) = &options.layout {
+        for built in &built_boards {
+            let label = built.label();
+            let fail = |e: String| format!("error: {label}: {e}\n");
+            let (read, at) =
+                crate::layout::read_board(built, loader, file, &board_names).map_err(fail)?;
+            if let Some(note) = &at.note {
+                say(format!("{label}: note: {note}"));
+            }
+            if at.own {
+                crate::routes::load(&crate::routes::beside_layout(&at.file)).map_err(fail)?;
+                let mut theirs = options.clone();
+                theirs.layout = Some(at.file);
+                own.insert(label, (read, theirs));
+            }
+        }
+    }
     // Two requests that are one signal in the C header of the pin map are an error, said now
     // with every other check of the source and before any board is placed or written.
     let mut collisions = String::new();
@@ -753,12 +775,16 @@ pub fn fab_detailed(
             }
         }
         let stages_before = timings::stages_run();
+        let (layout, options) = match own.get(&label) {
+            Some((layout, options)) => (layout, options),
+            None => (&layout, options),
+        };
         let mut run = fab_board_pinned(
             &Pass { name, text, loader },
             built,
             &mut pin_state,
             out,
-            &layout,
+            layout,
             libraries,
             kicad,
             options,

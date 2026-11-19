@@ -7,6 +7,8 @@ description: Place, turn, flip and lock parts of a board in its layout file with
 
 The layout file, `<stem>.pcb.toml` beside the source, holds the **solution**: where each part is, its turn, its face and whether it is locked. The physical file holds the **requirements** on where a part may be (`netsmith-use-constraints`); a requirement never goes in the layout file, nor a solved position in the physical file. The guide's section "The layout file" (`docs/language/23-the-shape-of-a-board.md`) has the format, the frame and the seed rules. `netsmith layout --help` and its subcommands' help have the flags.
 
+A board of a system defined in another file has its own layout file, the one beside that file (`--board Kit/lamp` of `src/kit.nsm` reads and writes `src/lamp.pcb.toml`): write a member's entries there, never copy them into the system's file. A table for a member left in the system's file still wins, and a `note:` says so: move it to the member's file. (issue #1327)
+
 A part with no entry is placed by the placer round the parts the file places; a part with `lock` is left where it is; any other entry is where the placer starts from, and moving a part by hand moves nothing else.
 
 ## Loop

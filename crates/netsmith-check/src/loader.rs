@@ -1,6 +1,7 @@
 //! Where `import` paths come from. The standard library is embedded in the binary.
 
 use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 /// The standard library's files: module path, display name and text (made by build.rs from the
 /// `std/` folder).
@@ -26,6 +27,10 @@ pub struct Loader {
     /// of each of their files (`shared::power`). In such a file, an import of `src::` is of the
     /// dependency's own `src/`.
     dependencies: HashSet<String>,
+    /// A source file's name (as `check` is given it, or as `insert` names a module) to its path
+    /// on disk, for a tool that finds a file beside the source a board is defined in: the layout
+    /// file of a board of a system defined in another file (issue #1327).
+    paths: HashMap<String, PathBuf>,
 }
 
 impl Loader {
@@ -143,6 +148,18 @@ impl Loader {
         self.default_environment
             .as_ref()
             .map(|(module, name)| (module.as_str(), name.as_str()))
+    }
+
+    /// Say that the source file called `source_name` is the file at `path` on disk.
+    pub fn attach_path(&mut self, source_name: &str, path: &Path) {
+        self.paths
+            .insert(source_name.to_string(), path.to_path_buf());
+    }
+
+    /// The path on disk of the source file called `source_name`, when [`Loader::attach_path`]
+    /// said it: none for the standard library, or for a text given with no file.
+    pub fn path_of(&self, source_name: &str) -> Option<&Path> {
+        self.paths.get(source_name).map(PathBuf::as_path)
     }
 
     /// The physical file paired with a source file: its name and text.
