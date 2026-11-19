@@ -255,6 +255,17 @@ Where the pages differ the stricter number is stated: the panel for assembly is 
 
 **Not found on any page, so unverified:** the designators JLCPCB accepts in the BOM and CPL of a panel made by the customer (the help pages say nothing; a 6-year-old EasyEDA forum thread has a user guessing that the CPL follows the panel); the V-cut file format their Gerber viewer reads beyond the instruction above (a forum user reports a V-cut on a user layer appearing in the outline layer of their viewer); the mask opening round a fiducial (netsmith uses the project's own `Fiducial_1mm_Mask2mm`, twice the copper); the tab count of a routed panel. JLCPCB has not accepted a netsmith panel.
 
+## Board size for assembly (`std/mfg/jlcpcb.nsm`, issue 1285)
+
+Not parts: the least single board JLCPCB assembles, the `.min_single_sided_assembly_size` and `.min_double_sided_assembly_size` of every JLCPCB process. Read on 2026-11-19 from `https://jlcpcb.com/capabilities/pcb-assembly-capabilities` with WebFetch (the page text, summarised by a tool, each figure asked for by name and quoted below). The page lists two services:
+
+| Service | Placement | Single PCB size | Panel size | Edge rails |
+|---|---|---|---|---|
+| Economic PCBA | "Single sided placement (SMT/Thru-hole)" | "10x10mm - 470x500mm" | "10x10mm - 250x250mm" | "Not necessary" |
+| Standard PCBA | "Single & double sided placement (SMT/Thru-hole)" | "70x70mm - 460x500mm" | "70x70mm - 250x250mm" | "Necessary" |
+
+The page states no minimum by face, so the figure for parts on one face is the Economic service's, 10 mm, and for parts on both faces the Standard service's, 70 mm (a board with parts on one face only could also be ordered at Standard, so 10 mm is the least that any service takes). The assembly FAQ (`https://jlcpcb.com/help/article/pcb-assembly-faqs`) states no minimum size, read on the same day. A board under the figure for its faces gets the design rules check's `assembly_size` warning, which says it needs a panel; it is a warning because the check judges one board and cannot see the panel it is ordered in. The fictional ACME process leaves both unstated, and a board may state a figure (`.process.min_double_sided_assembly_size &= 70mm..`) for a house whose page it has read.
+
 ## Datasheet numbers in `std/` (not catalog rows)
 
 A part in `std/` that states numbers from a datasheet records the document and the table of each number in its doc comment, and here.

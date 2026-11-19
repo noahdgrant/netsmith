@@ -83,6 +83,20 @@
 //!   clearance to the component body 0.5 mm and 1.0 mm (to a part above 6.4 mm tall, 2.0 mm and
 //!   5.0 mm); clearance to the board edge 3.2 mm and 3.8 mm.
 //!
+//! The size of a board for assembly (issue 1285), read 2026-11-19 from
+//! https://jlcpcb.com/capabilities/pcb-assembly-capabilities with WebFetch (a summary of the
+//! page by a tool, each figure asked for by name and quoted): the Economic service, "Single
+//! sided placement (SMT/Thru-hole)", "Single PCB Size: 10x10mm - 470x500mm", "PCB Panel Size:
+//! 10x10mm - 250x250mm", edge rails "not necessary"; the Standard service, "Single & double
+//! sided placement (SMT/Thru-hole)", "Single PCB Size: 70x70mm - 460x500mm", "PCB Panel Size:
+//! 70x70mm - 250x250mm", edge rails "necessary". The page gives no minimum by face, so the
+//! smallest single board for parts on one face is the Economic service's 10 mm and for parts on
+//! both faces the Standard service's 70 mm (`.min_single_sided_assembly_size` and
+//! `.min_double_sided_assembly_size`). The assembly FAQ (`https://jlcpcb.com/help/article/pcb-assembly-faqs`)
+//! states no minimum. A smaller board is ordered as a panel, which the design rules check's
+//! `assembly_size` says; it is a guideline because the check judges one board and cannot see
+//! the panel it is ordered in.
+//!
 //! Classified: the fiducial edge space is a limit ("must maintain a minimum clearance"), as are
 //! exposed copper ("must be exposed copper") and the clear zone ("is necessary", taken to be the
 //! mask opening, which the page makes equal to the mask clearance); the count ("a minimum of two"
@@ -353,6 +367,20 @@ generic TwoLayer {
     /// (`.process.min_round_track_angle &= 60`). It is a lower bound: `&= 60..` allows 60
     /// and over. Unstated, round copper is not judged.
     .min_round_track_angle: Number
+    /// The least side of a single board that JLCPCB assembles with parts on one face
+    /// (`.min_single_sided_assembly_size`, issue 1285): the assembly capabilities page's
+    /// "Single PCB Size: 10x10mm - 470x500mm" of the Economic service (single sided
+    /// placement). A smaller board is ordered as a panel; the design rules check's
+    /// `assembly_size` says so (a warning, as the check cannot see the panel). A lower
+    /// bound: `&= 100mm..` asks for more. Source: https://jlcpcb.com/capabilities/pcb-assembly-capabilities
+    /// (read 2026-11-19, `data/jlcpcb/README.md`).
+    .min_single_sided_assembly_size: Length
+    .min_single_sided_assembly_size &= 10mm..
+    /// The same for a board with parts on both faces: the page's "Single PCB Size: 70x70mm -
+    /// 460x500mm" of the Standard service (single and double sided placement), the one that
+    /// places parts on both faces.
+    .min_double_sided_assembly_size: Length
+    .min_double_sided_assembly_size &= 70mm..
     /// How much narrower than drawn a finished track may be, as a fraction: the page's "track
     /// width tolerance ±20%: for a 0.1 mm track, the finished track width ranges from 0.08 and
     /// 0.12 mm". The track width check sizes a net for the current at the narrowest track the
@@ -650,6 +678,20 @@ generic FourLayer {
     /// (`.process.min_round_track_angle &= 60`). It is a lower bound: `&= 60..` allows 60
     /// and over. Unstated, round copper is not judged.
     .min_round_track_angle: Number
+    /// The least side of a single board that JLCPCB assembles with parts on one face
+    /// (`.min_single_sided_assembly_size`, issue 1285): the assembly capabilities page's
+    /// "Single PCB Size: 10x10mm - 470x500mm" of the Economic service (single sided
+    /// placement). A smaller board is ordered as a panel; the design rules check's
+    /// `assembly_size` says so (a warning, as the check cannot see the panel). A lower
+    /// bound: `&= 100mm..` asks for more. Source: https://jlcpcb.com/capabilities/pcb-assembly-capabilities
+    /// (read 2026-11-19, `data/jlcpcb/README.md`).
+    .min_single_sided_assembly_size: Length
+    .min_single_sided_assembly_size &= 10mm..
+    /// The same for a board with parts on both faces: the page's "Single PCB Size: 70x70mm -
+    /// 460x500mm" of the Standard service (single and double sided placement), the one that
+    /// places parts on both faces.
+    .min_double_sided_assembly_size: Length
+    .min_double_sided_assembly_size &= 70mm..
     /// How much narrower than drawn a finished track may be, as a fraction: the page's "track
     /// width tolerance ±20%: for a 0.1 mm track, the finished track width ranges from 0.08 and
     /// 0.12 mm". The track width check sizes a net for the current at the narrowest track the
@@ -1025,6 +1067,20 @@ generic SixLayer {
     /// (`.process.min_round_track_angle &= 60`). It is a lower bound: `&= 60..` allows 60
     /// and over. Unstated, round copper is not judged.
     .min_round_track_angle: Number
+    /// The least side of a single board that JLCPCB assembles with parts on one face
+    /// (`.min_single_sided_assembly_size`, issue 1285): the assembly capabilities page's
+    /// "Single PCB Size: 10x10mm - 470x500mm" of the Economic service (single sided
+    /// placement). A smaller board is ordered as a panel; the design rules check's
+    /// `assembly_size` says so (a warning, as the check cannot see the panel). A lower
+    /// bound: `&= 100mm..` asks for more. Source: https://jlcpcb.com/capabilities/pcb-assembly-capabilities
+    /// (read 2026-11-19, `data/jlcpcb/README.md`).
+    .min_single_sided_assembly_size: Length
+    .min_single_sided_assembly_size &= 10mm..
+    /// The same for a board with parts on both faces: the page's "Single PCB Size: 70x70mm -
+    /// 460x500mm" of the Standard service (single and double sided placement), the one that
+    /// places parts on both faces.
+    .min_double_sided_assembly_size: Length
+    .min_double_sided_assembly_size &= 70mm..
     /// How much narrower than drawn a finished track may be, as a fraction: the page's "track
     /// width tolerance ±20%: for a 0.1 mm track, the finished track width ranges from 0.08 and
     /// 0.12 mm". The track width check sizes a net for the current at the narrowest track the
@@ -1414,6 +1470,20 @@ interface HdiFourLayer {
     /// (`.process.min_round_track_angle &= 60`). It is a lower bound: `&= 60..` allows 60
     /// and over. Unstated, round copper is not judged.
     .min_round_track_angle: Number
+    /// The least side of a single board that JLCPCB assembles with parts on one face
+    /// (`.min_single_sided_assembly_size`, issue 1285): the assembly capabilities page's
+    /// "Single PCB Size: 10x10mm - 470x500mm" of the Economic service (single sided
+    /// placement). A smaller board is ordered as a panel; the design rules check's
+    /// `assembly_size` says so (a warning, as the check cannot see the panel). A lower
+    /// bound: `&= 100mm..` asks for more. Source: https://jlcpcb.com/capabilities/pcb-assembly-capabilities
+    /// (read 2026-11-19, `data/jlcpcb/README.md`).
+    .min_single_sided_assembly_size: Length
+    .min_single_sided_assembly_size &= 10mm..
+    /// The same for a board with parts on both faces: the page's "Single PCB Size: 70x70mm -
+    /// 460x500mm" of the Standard service (single and double sided placement), the one that
+    /// places parts on both faces.
+    .min_double_sided_assembly_size: Length
+    .min_double_sided_assembly_size &= 70mm..
     /// How much narrower than drawn a finished track may be, as a fraction: the page's "track
     /// width tolerance ±20%: for a 0.1 mm track, the finished track width ranges from 0.08 and
     /// 0.12 mm". The track width check sizes a net for the current at the narrowest track the
@@ -1690,6 +1760,20 @@ interface HdiSixLayer {
     /// (`.process.min_round_track_angle &= 60`). It is a lower bound: `&= 60..` allows 60
     /// and over. Unstated, round copper is not judged.
     .min_round_track_angle: Number
+    /// The least side of a single board that JLCPCB assembles with parts on one face
+    /// (`.min_single_sided_assembly_size`, issue 1285): the assembly capabilities page's
+    /// "Single PCB Size: 10x10mm - 470x500mm" of the Economic service (single sided
+    /// placement). A smaller board is ordered as a panel; the design rules check's
+    /// `assembly_size` says so (a warning, as the check cannot see the panel). A lower
+    /// bound: `&= 100mm..` asks for more. Source: https://jlcpcb.com/capabilities/pcb-assembly-capabilities
+    /// (read 2026-11-19, `data/jlcpcb/README.md`).
+    .min_single_sided_assembly_size: Length
+    .min_single_sided_assembly_size &= 10mm..
+    /// The same for a board with parts on both faces: the page's "Single PCB Size: 70x70mm -
+    /// 460x500mm" of the Standard service (single and double sided placement), the one that
+    /// places parts on both faces.
+    .min_double_sided_assembly_size: Length
+    .min_double_sided_assembly_size &= 70mm..
     /// How much narrower than drawn a finished track may be, as a fraction: the page's "track
     /// width tolerance ±20%: for a 0.1 mm track, the finished track width ranges from 0.08 and
     /// 0.12 mm". The track width check sizes a net for the current at the narrowest track the
@@ -1967,6 +2051,20 @@ interface HdiEightLayer {
     /// (`.process.min_round_track_angle &= 60`). It is a lower bound: `&= 60..` allows 60
     /// and over. Unstated, round copper is not judged.
     .min_round_track_angle: Number
+    /// The least side of a single board that JLCPCB assembles with parts on one face
+    /// (`.min_single_sided_assembly_size`, issue 1285): the assembly capabilities page's
+    /// "Single PCB Size: 10x10mm - 470x500mm" of the Economic service (single sided
+    /// placement). A smaller board is ordered as a panel; the design rules check's
+    /// `assembly_size` says so (a warning, as the check cannot see the panel). A lower
+    /// bound: `&= 100mm..` asks for more. Source: https://jlcpcb.com/capabilities/pcb-assembly-capabilities
+    /// (read 2026-11-19, `data/jlcpcb/README.md`).
+    .min_single_sided_assembly_size: Length
+    .min_single_sided_assembly_size &= 10mm..
+    /// The same for a board with parts on both faces: the page's "Single PCB Size: 70x70mm -
+    /// 460x500mm" of the Standard service (single and double sided placement), the one that
+    /// places parts on both faces.
+    .min_double_sided_assembly_size: Length
+    .min_double_sided_assembly_size &= 70mm..
     /// How much narrower than drawn a finished track may be, as a fraction: the page's "track
     /// width tolerance ±20%: for a 0.1 mm track, the finished track width ranges from 0.08 and
     /// 0.12 mm". The track width check sizes a net for the current at the narrowest track the

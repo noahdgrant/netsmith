@@ -28,7 +28,10 @@
 //!   not in it and is judged as any other). The blog
 //!   is about the fixture an in-circuit test needs and not a statement of what JLCPCB makes, so
 //!   it is advice, and its "recommended production value" of each row is named in the finding and
-//!   not enforced.
+//!   not enforced. And `assembly_size` (issue 1285): the assembly capabilities page's "Single PCB
+//!   Size" of the service that places parts on one face, and of the one that places them on both,
+//!   a limit of the page's, but a board is judged alone and the panel it may be ordered in is not
+//!   known here, so a board under it is told it needs a panel and is not refused.
 //!
 //! **The measures.** The fiducial's distance to the edge is from its copper (`Fiducial_1mm_Mask2mm`
 //! centred 3.85 mm from the edge is 3.35 mm of copper, as the panel's rails put theirs, which is
@@ -54,6 +57,7 @@ pub(crate) fn run(out: &mut Out<'_>) {
     fiducial_count(out, &marks);
     fiducial_angle(out, &marks);
     finish_fine_pitch(out, &marks);
+    assembly_size(out, &marks);
     test_points(out, &marks);
 }
 
@@ -398,6 +402,41 @@ fn fiducials(out: &mut Out<'_>, marks: &Marks) {
             );
         }
     }
+}
+
+/// A guideline (issue 1285): a board smaller than the least the board house assembles as a
+/// single board, which depends on whether it has assembled parts on one face or on both, is
+/// ordered as a panel. The board is judged alone, so the finding is advice and not a refusal:
+/// the panel it is ordered in is not known here, and a panel the file declares is checked for
+/// its own size.
+fn assembly_size(out: &mut Out<'_>, marks: &Marks) {
+    let m = out.m;
+    let (least, faces) = match (marks.assembled_front, marks.assembled_back) {
+        (true, true) => (marks.min_double_sided_assembly_size, "both faces"),
+        (true, false) => (marks.min_single_sided_assembly_size, "the front"),
+        (false, true) => (marks.min_single_sided_assembly_size, "the back"),
+        (false, false) => return,
+    };
+    let Some(least) = least else {
+        return;
+    };
+    if m.edge.is_empty() {
+        return;
+    }
+    let b = Model::bounds_of(&m.edge.iter().map(|(s, _)| s.clone()).collect::<Vec<_>>());
+    let (w, h) = (b.max.x - b.min.x, b.max.y - b.min.y);
+    if w >= least - EPS && h >= least - EPS {
+        return;
+    }
+    out.push(
+        Rule::AssemblySize,
+        format!(
+            "the board is {w:.1} x {h:.1} mm and has parts the board house assembles on {faces}; it assembles a single board of that kind at {least:.0} x {least:.0} mm at least, so this board needs a panel (a `panel` of the source, or a larger board)"
+        ),
+        Pt::new(b.min.x, b.min.y),
+        Some("Edge.Cuts"),
+        Vec::new(),
+    );
 }
 
 /// A guideline: each side that has assembled parts has at least `min_fiducials` of them.

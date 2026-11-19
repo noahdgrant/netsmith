@@ -106,6 +106,17 @@ pub struct Process {
     /// rule (`acid_trap`, a warning). Not written to the design file when unstated.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_round_track_angle: Option<f64>,
+    /// The least side, in mm, of a single board that the assembly house places parts on one
+    /// side of, if the process states it (`.process.min_single_sided_assembly_size`, issue
+    /// 1285). `None`, what a process leaves it where its house publishes no figure, is that the
+    /// board's size is not judged. Not written to the design file when unstated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_single_sided_assembly_size: Option<f64>,
+    /// The same for a board with assembled parts on both faces
+    /// (`.process.min_double_sided_assembly_size`): a board smaller than this on either side
+    /// is ordered as a panel. `None` is that it is not judged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_double_sided_assembly_size: Option<f64>,
     /// How much narrower than drawn a finished track may be, as a fraction (0.2 for ±20 %): the
     /// track width check sizes for the narrowest.
     pub track_width_tolerance: f64,

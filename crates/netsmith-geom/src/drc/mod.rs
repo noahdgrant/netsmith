@@ -77,8 +77,8 @@
 //! editor add it to the findings, as an error or, with `constraints = "warn"`, a warning), the
 //! rules of the fabricator's page for fiducials and test points (`fiducial_edge`, `fiducial_mask`
 //! and `fiducial_keepout`, limits, errors; `fiducial_count`, `fiducial_size`, `fiducial_angle`,
-//! `finish_fine_pitch` and the `test_point_*` rules, guidelines, warnings: `marks.rs`, issues
-//! #761 and #1006), `acid_trap` (a track
+//! `finish_fine_pitch`, `assembly_size` and the `test_point_*` rules, guidelines, warnings:
+//! `marks.rs`, issues #761, #1006 and 1285), `acid_trap` (a track
 //! that meets a pad's straight edge or another track of its net at an acute angle, a warning:
 //! `acid.rs`, issue #838), `stackup` (a board file whose copper layers, thickness or stackup
 //! the process does not make, an error: `stackup.rs`, issue #993), `unmatched_waiver` (a waiver of
@@ -347,6 +347,10 @@ pub enum Rule {
     /// A part of ultra-fine pitch on a board finished with HASL, whose surface is uneven
     /// (netsmith's, issue #1006): a guideline.
     FinishFinePitch,
+    /// A board smaller than the least the board house assembles as a single board with its
+    /// parts on one face, or on both, so it is ordered as a panel (netsmith's, issue 1285): a
+    /// guideline.
+    AssemblySize,
     /// A test point smaller than the probe pad the board house advises (netsmith's): a
     /// guideline.
     TestPointPad,
@@ -387,7 +391,7 @@ pub enum Rule {
 }
 
 impl Rule {
-    pub const ALL: [Rule; 57] = [
+    pub const ALL: [Rule; 58] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -432,6 +436,7 @@ impl Rule {
         Rule::FiducialSize,
         Rule::FiducialAngle,
         Rule::FinishFinePitch,
+        Rule::AssemblySize,
         Rule::TestPointPad,
         Rule::TestPointPitch,
         Rule::TestPointBody,
@@ -494,6 +499,7 @@ impl Rule {
             Rule::FiducialSize => "fiducial_size",
             Rule::FiducialAngle => "fiducial_angle",
             Rule::FinishFinePitch => "finish_fine_pitch",
+            Rule::AssemblySize => "assembly_size",
             Rule::TestPointPad => "test_point_pad",
             Rule::TestPointPitch => "test_point_pitch",
             Rule::TestPointBody => "test_point_body",
@@ -536,6 +542,7 @@ impl Rule {
                 | Rule::FiducialSize
                 | Rule::FiducialAngle
                 | Rule::FinishFinePitch
+                | Rule::AssemblySize
                 | Rule::TestPointPad
                 | Rule::TestPointPitch
                 | Rule::TestPointBody
@@ -570,6 +577,7 @@ impl Rule {
             | Rule::FiducialSize
             | Rule::FiducialAngle
             | Rule::FinishFinePitch
+            | Rule::AssemblySize
             | Rule::TestPointPad
             | Rule::TestPointPitch
             | Rule::TestPointBody
@@ -920,6 +928,10 @@ pub struct Marks {
     /// The finish when it leaves an uneven surface that is harder for the board house's vision
     /// system to read (the HASL finishes): `None` for a flat finish.
     pub uneven_finish: Option<String>,
+    /// The least side of a single board with assembled parts on one face, and on both, in mm
+    /// (issue 1285): `None` is not judged.
+    pub min_single_sided_assembly_size: Option<f64>,
+    pub min_double_sided_assembly_size: Option<f64>,
 }
 
 #[derive(Debug, PartialEq)]
