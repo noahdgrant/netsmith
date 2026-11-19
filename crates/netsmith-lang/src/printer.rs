@@ -635,6 +635,15 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     m.part.to_source()
                 );
             }
+            Item::KeepApart(k) => {
+                let _ = write!(
+                    out,
+                    "keep {} between {} and {}",
+                    k.distance.to_source(),
+                    k.kinds[0].name,
+                    k.kinds[1].name
+                );
+            }
             Item::Row(r) => {
                 let _ = write!(
                     out,

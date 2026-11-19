@@ -1240,6 +1240,7 @@ impl<'a> Checker<'a> {
         self.model.root = root;
         self.apply_default_joins();
         self.apply_board_defaults();
+        self.resolve_keep_apart();
         self.resolve_defaults();
         // The order code of each part that states `.variants`, from what the design needs of
         // it (issue 1311): only a design that places the part needs one.
@@ -2216,6 +2217,7 @@ impl<'a> Checker<'a> {
                 Item::SoftMargin(m) => self.soft_margin(m),
                 // Read in the first pass (`declare_variants`).
                 Item::Variants(_) => {}
+                Item::KeepApart(k) => self.keep_apart(k),
                 Item::Connect(c) if self.phys.is_none() => self.connect(c),
                 Item::JoinMap(b) if self.phys.is_none() => self.join_map(b),
                 Item::Bridge(b) if self.phys.is_none() => self.bridge(b),

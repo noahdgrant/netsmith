@@ -2480,6 +2480,81 @@ error: `.radio` is a part, and `.antenna within 8mm of .radio` measures to a pin
   |                            ^^^^^^
 ```
 
+#### A distance between kinds of parts
+
+Where a datasheet gives no number, a project keeps rules of thumb about which kinds of parts stand apart: a radio module and a switching regulator, a crystal and a buck converter, an antenna connector and a fast clock. The `keep` statement of a board's physical file says one (issue 1277, owner decision): `keep 10mm between BuckIc and Crystal` asks every part of the first kind to stand at least 10 mm from every part of the second. A kind is a part or a generic the physical file imports, as a line of `defaults` names one: the standard library's (`std::parts::regulator::BuckIc`, `std::parts::passive::Crystal`) or the project's own, and a kind reaches every part made from it or providing it, at any depth of the board. The two kinds may be the same: `keep 20mm between Radio and Radio` keeps every two radios apart. The distance is one fixed length of zero or more, and a pair of kinds states one.
+
+```nsm solve place
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::Capacitor
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Spaced {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .rail: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
+    .r1: Resistor { .resistance &= 15kohm +/- 1% }
+    .r2: Resistor { .resistance &= 15kohm +/- 1% }
+    .c1: Capacitor { .capacitance &= 100nF +/- 10%; .max_voltage >= .bias * 1.5 }
+    .rail.pos ~> .r1 ~> .rail.neg
+    .rail.pos ~> .r2 ~> .rail.neg
+    .rail.pos ~ .c1.a
+    .rail.neg ~ .c1.b
+}
+```
+
+```nsm-physical
+import std::parts::passive::Capacitor
+import std::parts::passive::Resistor
+import std::pcb::Outline
+
+physical for Spaced {
+    case {
+        .outline: Outline { .width &= 30mm; .height &= 20mm }
+    }
+
+    // Project rule of thumb (no datasheet number): the capacitor stands 6 mm from every resistor.
+    keep 6mm between Resistor and Capacitor
+}
+```
+
+It is a requirement on where parts go, as a `.place` line is. The distance is measured from courtyard to courtyard in the plane of the board, whatever faces the two parts are on (a regulator under a radio is no further from it): the least distance between any two shapes of the courtyards, along one axis where they face each other and corner to corner otherwise. The placer keeps it as hard as an overlap, and a board on which it cannot hold is placed as near as the placer gets. Where the placed board has two parts nearer than the statement asks, `fab` stops after placing and before routing, with both parts, the numbers and the line:
+
+```text
+error: requirement `keep 6mm between Resistor and Capacitor` (main.physical.nsm:11) is violated: `c1` (C1) is 1.5 mm from `r1` (R1), courtyard to courtyard, and it asks for 6 mm (4.5 mm short); move them apart, or change the rule
+```
+
+`board fab --format json` has each pair in `requirements`, with `measure` `distance`, the `measured` distance, the least as `min` and how far short as `over`. `constraints = "warn"` in netsmith.toml (or `board fab --constraints warn`) makes it a warning, and `--for-review` lists it under FOR REVIEW. `layout check` says two parts the layout file places too near as a `requirement` error, at the line of the entry of one of them. A statement that reaches no two parts (the board has none of a kind, or one part of a kind kept from itself) is a note. The statement belongs in a board's physical file, outside `case { }`: in the circuit source and in a module's own physical file it is an error. A module is not a kind here (name the kind of the part inside it), nor is an interface or a value. Not built: a distance by face, and a keepout between two kinds (a band where nothing of either kind goes).
+
+Misuse: an interface is not a kind of part.
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+
+board Apart {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .j: Header1x2
+}
+```
+
+```nsm-physical
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+physical for Apart {
+    keep 3mm between Rail and Header1x2
+}
+```
+
+```text
+error: `Rail` is an interface; `keep` names a part or a generic
+  --> main.physical.nsm:5:22
+  |
+5 |     keep 3mm between Rail and Header1x2
+  |                      ^^^^
+```
+
 #### A module's own physical file
 
 A module can carry the geometry that is true wherever it goes: the 17.5 mm between two rows of sockets that a radio's datasheet gives, two parts on one line. It states it in a physical file of its own, and every board that uses the module gets it (ADR 0048, the module layer; owner decision of 2026-11-11). The module names the file in its circuit source with `physical "<stem>.physical.nsm"`, the file beside its source by stem, and the file holds a unit `physical for Module { ... }`. The same file may hold the units of the source's boards too, as below. A module that names a file that is not there, or a file with no unit for it, is an error, and so is a unit for a module that does not name its file: the geometry never goes missing without a message when the module is copied to another project.

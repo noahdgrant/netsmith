@@ -186,6 +186,8 @@ impl<'a> Engine<'a> {
         let (a, b) = (&self.models[i], &self.models[j]);
         let (sa, sb) = (self.shape(i), self.shape(j));
         let (pa, pb) = (self.pos(i), self.pos(j));
+        // A distance the two keep (issue 1277) holds whatever faces they are on.
+        c.hard += self.apart_cost(i, j);
         // Parts on opposite faces share area unless one has a hole through the board.
         if a.side != b.side && !a.hole && !b.hole {
             return c;
@@ -234,6 +236,26 @@ impl<'a> Engine<'a> {
         c += self.silk_cost(sb, pb, sa, pa, &ca);
         c.soft += self.soft_margin_cost(i, j) + self.soft_margin_cost(j, i);
         c
+    }
+
+    /// What parts `i` and `j` cost for standing nearer each other than a `keep` statement asks
+    /// (issue 1277): [`W_HARD`] for each mm, and a little more, as a relation that does not hold
+    /// costs, measured between the boxes of their courtyards grown by the distance (a corner
+    /// counts as near as a side, so the placer keeps at least what the check measures).
+    pub(super) fn apart_cost(&self, i: usize, j: usize) -> f64 {
+        let Some(&(_, distance)) = self.models[i].apart.iter().find(|(k, _)| *k == j) else {
+            return 0.0;
+        };
+        let mut cost = 0.0;
+        for x in self.rooms(i) {
+            for y in self.rooms(j) {
+                let depth = penetration(&x, &y, distance);
+                if depth > 1e-6 {
+                    cost += W_HARD * (depth + 0.05);
+                }
+            }
+        }
+        cost
     }
 
     /// What part `j`'s courtyard costs for being inside the `soft margin` of part `i` (issue

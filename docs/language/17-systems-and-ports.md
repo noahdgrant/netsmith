@@ -99,7 +99,7 @@ Boards that plug into each other do it through connectors, and a system says whi
 
 The system names no pin and no net. After the nets of the boards are known, the checker reads what each board has behind each contact, a role: ground (the net is the `neg` of a rail), power (the `pos` of a rail), a signal (a part's `input`, `output` or `bidirectional` pin is on it) or open. Then:
 
-- The two connectors must mate: the same kind, rows, positions and pitch, and a header with a socket. A header does not mate with a header. A connector that takes a smaller one (a 1x8 header in a 1x10 socket) says which of its contacts are mated with `.mating.contacts` (below).
+- The two connectors must mate: the same kind, rows, positions and pitch, and a header with a socket (a module with its host, for a soldered joint, below). A header does not mate with a header. A connector that takes a smaller one (a 1x8 header in a 1x10 socket) says which of its contacts are mated with `.mating.contacts` (below).
 - Contact N of one board meets contact N of the other, with the rules a board already has on a net: two outputs are refused, an `input` with nothing that drives it on either board is refused, ground against power or a signal is a short. A power contact against a power contact equates their voltages, as `~` of rails does, and an open contact is fine against anything but an input.
 - A mate that carries power or a signal must carry a ground: a contact that is ground on both boards.
 - The ports the mate carries are joined by it: a port of one board whose pins are all on contacts that a port of the same kind on the other board has its pins on is joined to it, as an explicit `~` of the two would join them (values equated, currents balanced). A `~` between ports that the mate carries is refused with a message naming the mate, so a join has one spelling. A port no connector carries (a soldered lead) is still joined with `~`. If a board has two ports on the same contacts, the mate cannot say which is joined, and says so.
@@ -913,3 +913,121 @@ Kit/power: note: the area `lamp` covers over `power_out` is not known before pla
 ```
 
 The system scene checks the boards after placing in any case (`system_collision`), and it alone measures what stands on the other board's facing face and the pins through it: the keepout is the other board's face, not what hangs below it, and its box may be larger than an outline that is not a rectangle. A mate with no mated height gives no keepout.
+
+#### A soldered joint
+
+A board soldered to another is a mate too, of one of three soldered kinds (issue #1320): `soldered_pin` (pins soldered in the other board's plated holes), `castellated` (a board's edge half-holes soldered to the other's lands) and `land_grid` (a module's lands soldered to a land pattern, a surface joint). Its two genders are `module`, the board with the pins, the castellations or the lands, and `host`, the board with the holes or the land pattern: a module mates with a host. Contact N meets contact N with every check a header in a socket has, contact by contact: the roles, the ground the mate must carry, the ports it joins, the current and the contacts a partial mate names.
+
+A soldered joint is face to face: the seat of each side is 0 mm, whether or not the part states it, so the mated height is 0 mm. The system scene places the module on the host with no gap, and does not count either connector against the other's board, where its pins or lands are soldered. A module's castellations and the host's lands, as a project writes them:
+
+```nsm
+import std::parts::connector::{Connector, Mating}
+import std::sources::Rail
+
+/// The castellated edge of a radio module, four half-holes at 1.27 mm. Invented.
+part RadioEdge provides Connector {
+    pins {
+        .p1 passive "P1" "1"
+        .p2 passive "P2" "2"
+        .p3 passive "P3" "3"
+        .p4 passive "P4" "4"
+    }
+    .mating: Mating {
+        .kind &= "castellated"
+        .gender &= "module"
+        .pitch &= 1.27mm
+        .rows &= 1
+        .positions &= 4
+    }
+}
+
+/// The lands a host gives `RadioEdge`. Invented.
+part RadioLands provides Connector {
+    pins {
+        .p1 passive "P1" "1"
+        .p2 passive "P2" "2"
+        .p3 passive "P3" "3"
+        .p4 passive "P4" "4"
+    }
+    .mating: Mating {
+        .kind &= "castellated"
+        .gender &= "host"
+        .pitch &= 1.27mm
+        .rows &= 1
+        .positions &= 4
+    }
+}
+
+board Radio {
+    .supply: Rail { .pos.net &= "3V3"; .current &= -40mA..-5mA }
+    .edge: RadioEdge
+    .supply.neg ~ .edge.p1
+    .supply.pos ~ .edge.p2
+}
+
+board Host {
+    .rail: Rail { .pos.net &= "3V3"; .voltage &= 3.3V +/- 5% }
+    .lands: RadioLands
+    .rail.neg ~ .lands.p1
+    .rail.pos ~ .lands.p2
+}
+
+system Kit {
+    .host: Host
+    .radio: Radio
+    .host.lands.mating ~ .radio.edge.mating
+}
+```
+
+A seat stated other than 0 mm on a soldered kind is refused with its number:
+
+```nsm fails
+import std::parts::connector::{Connector, Mating}
+
+part PinnedModule provides Connector {
+    pins {
+        .p1 passive "P1" "1"
+        .p2 passive "P2" "2"
+    }
+    .mating: Mating {
+        .kind &= "soldered_pin"
+        .gender &= "module"
+        .pitch &= 2.54mm
+        .rows &= 1
+        .positions &= 2
+        .seat &= 2mm
+    }
+}
+
+part PlatedHoles provides Connector {
+    pins {
+        .p1 passive "P1" "1"
+        .p2 passive "P2" "2"
+    }
+    .mating: Mating {
+        .kind &= "soldered_pin"
+        .gender &= "host"
+        .pitch &= 2.54mm
+        .rows &= 1
+        .positions &= 2
+    }
+}
+
+board Module {
+    .j1: PinnedModule
+}
+
+board Host {
+    .holes: PlatedHoles
+}
+
+system Kit {
+    .host: Host
+    .module: Module
+    .host.holes.mating ~ .module.j1.mating
+}
+```
+
+```text
+error: Kit: `module.j1.mating.seat` is 2mm, and a `soldered_pin` joint is soldered face to face, so its seat is 0mm; remove the seat or state 0mm
+```

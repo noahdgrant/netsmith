@@ -2378,6 +2378,43 @@ fn a_seat_below_the_board_is_refused_with_its_number() {
     );
 }
 
+/// [`own_connectors`] with the joint soldered: `kind` on both, the header a `module` and the
+/// socket a `host`.
+fn soldered(kind: &str, header_seat: &str) -> String {
+    own_connectors(header_seat)
+        .replace("\"pin_header\"", &format!("\"{kind}\""))
+        .replace("\"header\"", "\"module\"")
+        .replace("\"socket\"", "\"host\"")
+}
+
+#[test]
+fn a_soldered_mate_is_face_to_face_whether_or_not_a_seat_is_stated() {
+    for kind in ["soldered_pin", "castellated", "land_grid"] {
+        for seat in ["", ".seat &= 0mm"] {
+            let mates = mates_of(&soldered(kind, seat)).unwrap();
+            let [mate] = &mates[..] else {
+                panic!("one mate: {mates:?}")
+            };
+            assert_eq!((mate.a_seat, mate.b_seat), (Some((0.0, 0.0)), Some((0.0, 0.0))));
+            assert_eq!(mate.mated_height(), Some((0.0, 0.0)), "{kind} {seat}");
+            assert!(mate.soldered, "{kind}");
+        }
+    }
+    let mates = mates_of(&own_connectors(".seat &= 3mm")).unwrap();
+    assert!(!mates[0].soldered);
+}
+
+#[test]
+fn a_soldered_mate_with_a_seat_other_than_0_mm_is_refused_with_its_number() {
+    let errors = mates_of(&soldered("castellated", ".seat &= 1mm")).unwrap_err();
+    assert_eq!(
+        errors,
+        [
+            "`top.j.mating.seat` is 1mm, and a `castellated` joint is soldered face to face, so its seat is 0mm; remove the seat or state 0mm"
+        ],
+    );
+}
+
 /// A carrier with a 1x4 socket and a card with a 1x2 header, mated in contacts 2 and 3 of the
 /// socket (`.mating.contacts`) when `subset` says so.
 fn partial_mate(subset: &str) -> String {
