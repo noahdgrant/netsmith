@@ -274,7 +274,7 @@ fn zone_clearance(z: &Zone, rules: &Rules) -> f64 {
 }
 
 /// A zone's outline less its holes.
-fn outline_area(z: &Zone) -> Vec<Area> {
+pub(crate) fn outline_area(z: &Zone) -> Vec<Area> {
     let mut p = Polygons::new();
     for o in z.outlines.iter().filter(|o| o.len() >= 3) {
         p.region(Contour::polygon(o), None, &[]);
