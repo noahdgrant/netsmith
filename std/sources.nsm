@@ -146,6 +146,43 @@ interface Rail {
     .isolated: String
 }
 
+/// What a part between two rails does with current that would flow backwards, from its output
+/// to its input (issue #1258): the type of the `.reverse` of `LinearRegulator`, `BuckIc` and
+/// `LoadSwitch`. A board's `scenario` reads it to say where a backup source on an output reaches
+/// when the input's supply is taken away. A part states what its datasheet says
+/// (`.reverse.path &= ReversePath::Blocking`, with `import std::sources::ReversePath`); one that
+/// states nothing has the defaults below, a body diode, which is the case in which the most is
+/// powered from behind.
+enum ReversePath {
+    /// The output reaches the input through a diode, the body diode of the pass transistor (a
+    /// linear regulator's PMOS, a buck's high-side switch, a load switch's MOSFET): the input
+    /// sits `forward_voltage` below the output.
+    BodyDiode,
+    /// The part blocks current from its output to its input (a regulator or a load switch with
+    /// reverse-current protection): nothing reaches the input from behind, the leakage aside.
+    Blocking,
+}
+
+/// The reverse behaviour of a part between two rails (issue #1258). A load switch that is on
+/// passes its output back to its input through its on resistance as well, unless it blocks.
+interface Reverse {
+    /// How current from the output reaches the input.
+    .path: ReversePath
+    .path ?= ReversePath::BodyDiode
+    /// The drop across the body diode, from the output to the input. The default is wide on
+    /// purpose and not one datasheet's: from a silicon junction at a small current to the most
+    /// a power MOSFET's source-drain diode drops at its rated current, so that a part that
+    /// states nothing is judged both at the highest and at the lowest voltage its input may be
+    /// fed at. A part narrows it from its datasheet.
+    .forward_voltage: Voltage
+    .forward_voltage ?= 0.4V..1.2V
+    /// The most current the part passes from its output to its input before it limits it (a
+    /// regulator's reverse-current limit, a body diode's rating). The loads on the input that
+    /// draw more than this cannot be held up from behind, and the input's voltage is not known.
+    /// Optional (ADR 0074): a part that states none passes what its input draws.
+    .max_current: Current optional
+}
+
 /// The impedance the tracks of one net are held to (issue #1007): one pin that `~` joins to
 /// the pin or the net the track is on, and the target from the track to its reference layer. A
 /// 50 ohm antenna line is `.rf_line: TrackImpedance { .impedance &= 50ohm }` and

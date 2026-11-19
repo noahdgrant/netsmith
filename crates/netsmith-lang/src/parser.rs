@@ -527,6 +527,11 @@ impl Parser {
         &self.toks[(self.pos + 1).min(self.toks.len() - 1)].tok
     }
 
+    /// The token two after the next one, without consuming anything.
+    fn peek_third(&self) -> &Tok {
+        &self.toks[(self.pos + 2).min(self.toks.len() - 1)].tok
+    }
+
     fn item(&mut self, docs: Docs) -> Res<Item> {
         let start = self.peek().span.start;
         let doc_span = docs.first;
@@ -542,6 +547,7 @@ impl Parser {
                     | Item::Tie(_)
                     | Item::Unused(_)
                     | Item::Sequence(_)
+                    | Item::Scenario(_)
                     | Item::Peripheral(_)
                     | Item::Shared(_)
                     | Item::Lines(_)
@@ -582,6 +588,12 @@ impl Parser {
                 "unused" if starts_name => return only_decls(self.unused(start)?),
                 "sequence" if matches!(self.peek_second(), Tok::LBrace) => {
                     return only_decls(self.sequence(start)?);
+                }
+                "scenario"
+                    if matches!(self.peek_second(), Tok::Ident(_) | Tok::QuotedIdent(_))
+                        && matches!(self.peek_third(), Tok::LBrace) =>
+                {
+                    return only_decls(self.scenario(start)?);
                 }
                 "peripheral" if matches!(self.peek_second(), Tok::Ident(_)) => {
                     return only_decls(self.peripheral(start)?);
@@ -1213,6 +1225,76 @@ impl Parser {
             ));
         }
         Ok(Item::Sequence(Sequence { steps, span }))
+    }
+
+    /// `scenario backup { remove .usb; source .cell; sense .usb_sense }` (issue #1258): a name,
+    /// then statements of `remove`, `source` or `sense` and a path, one to a line.
+    fn scenario(&mut self, start: usize) -> Res<Item> {
+        const SHAPE: &str = "a `scenario` names the supplies it takes away and the source that stays: `scenario backup { remove .usb; source .cell; sense .usb_sense }`";
+        self.bump();
+        let name = self.ident("the name of the scenario")?;
+        let open = self.bump();
+        let mut steps: Vec<ScenarioStep> = Vec::new();
+        loop {
+            self.skip_separators();
+            let t = self.peek().clone();
+            match &t.tok {
+                Tok::RBrace => {
+                    self.bump();
+                    break;
+                }
+                Tok::Eof => {
+                    return Err(ParseError::new(
+                        open.span,
+                        "this `{` of a `scenario` is not closed",
+                    ));
+                }
+                Tok::Ident(w) if ScenarioWord::ALL.iter().any(|k| k.word() == w) => {
+                    let word = ScenarioWord::ALL
+                        .into_iter()
+                        .find(|k| k.word() == w)
+                        .unwrap_or(ScenarioWord::Remove);
+                    self.bump();
+                    if !matches!(
+                        self.peek().tok,
+                        Tok::LeadingDot | Tok::Ident(_) | Tok::QuotedIdent(_)
+                    ) {
+                        return Err(ParseError::new(
+                            t.span,
+                            format!("`{w}` is followed by the path it names: {SHAPE}"),
+                        ));
+                    }
+                    let path = self.path()?;
+                    steps.push(ScenarioStep {
+                        word,
+                        path,
+                        span: self.span_from(t.span.start),
+                    });
+                }
+                _ => {
+                    return Err(unexpected(
+                        &t,
+                        "`remove`, `source` or `sense` and a path in a `scenario`",
+                    ));
+                }
+            }
+            if !self.at(&Tok::RBrace) {
+                self.end_statement(true)?;
+            }
+        }
+        let span = self.span_from(start);
+        for (word, what) in [
+            (ScenarioWord::Remove, "a supply it takes away (`remove`)"),
+            (ScenarioWord::Source, "a source that stays (`source`)"),
+        ] {
+            if !steps.iter().any(|s| s.word == word) {
+                return Err(ParseError::new(
+                    span,
+                    format!("a `scenario` names {what}: {SHAPE}"),
+                ));
+            }
+        }
+        Ok(Item::Scenario(Scenario { name, steps, span }))
     }
 
     fn tie(&mut self, start: usize) -> Res<Item> {

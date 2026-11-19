@@ -424,6 +424,15 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                 out.push_str(&"    ".repeat(depth + 1));
                 out.push('}');
             }
+            Item::Scenario(q) => {
+                let _ = writeln!(out, "scenario {} {{", q.name.to_source());
+                for step in &q.steps {
+                    out.push_str(&"    ".repeat(depth + 2));
+                    let _ = writeln!(out, "{} {}", step.word.word(), step.path.to_source());
+                }
+                out.push_str(&"    ".repeat(depth + 1));
+                out.push('}');
+            }
             Item::Peripheral(p) => {
                 let functions: Vec<String> =
                     p.functions.iter().map(PinFunction::to_source).collect();
