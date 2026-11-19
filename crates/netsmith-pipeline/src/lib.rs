@@ -560,8 +560,8 @@ pub fn outcome_observed(
         });
         refuse_power(&board.name, &power_issues, |_| true)?;
         // The board again with each alternate fitted (issue 1312).
-        let fitted = if board.model.alternates.is_empty() {
-            Vec::new()
+        let rechecked = if board.model.alternates.is_empty() {
+            alternates::Rechecked::default()
         } else {
             let assignment = Assignment::from([(
                 board.name.clone(),
@@ -578,13 +578,18 @@ pub fn outcome_observed(
                         loader,
                         assignment: &assignment,
                     },
-                    board,
+                    alternates::Unit::Board(board),
                     sources,
-                    &designed.design,
+                    &alternates::Primary {
+                        design: &designed.design,
+                        guidelines: &designed.guidelines,
+                        model: &solution.model,
+                    },
                     catalogs,
                 )
             })?
         };
+        designed.guidelines.extend(rechecked.guidelines);
         let provided = providers::notes_for(&solution.model, None, &passed);
         let mut notes = provider_lines(&provided);
         notes.extend(self::notes(solution, None));
@@ -605,7 +610,7 @@ pub fn outcome_observed(
             )
         })?;
         one.providers = provided;
-        one.alternates = fitted;
+        one.alternates = rechecked.fitted;
         one.power = power_issues;
         one.picks = solution.picks.clone();
         one.rechecks = resolve::Rechecks::plan(solution, &one.design.parts, catalogs, || {
@@ -762,6 +767,43 @@ pub fn outcome_observed(
             }
             let mine = |issue: &PowerIssue| issue.board.as_deref() == Some(member.name.as_str());
             refuse_power(&label, &power_issues, mine)?;
+            // The board again with each alternate fitted, as the system uses it (issue 1414).
+            let prefix = format!("{}.", member.name);
+            let rechecked = if !system
+                .model
+                .alternates
+                .iter()
+                .any(|a| a.path.starts_with(&prefix))
+            {
+                alternates::Rechecked::default()
+            } else {
+                let assignment = Assignment::from([(
+                    system.name.clone(),
+                    pick_lock::providers_of(&solution.model)
+                        .into_iter()
+                        .map(|p| (p.path, p.provider))
+                        .collect(),
+                )]);
+                timings::stage("alternates", &label, || {
+                    alternates::check_each(
+                        &alternates::Source {
+                            name,
+                            text,
+                            loader,
+                            assignment: &assignment,
+                        },
+                        alternates::Unit::Member { system, member },
+                        sources,
+                        &alternates::Primary {
+                            design: &designed.design,
+                            guidelines: &designed.guidelines,
+                            model: &solution.model,
+                        },
+                        catalogs,
+                    )
+                })?
+            };
+            designed.guidelines.extend(rechecked.guidelines);
             let provided = providers::notes_for(&solution.model, Some(member.inst), &passed);
             let mut notes = provider_lines(&provided);
             notes.extend(self::notes(solution, Some(member.inst)));
@@ -782,6 +824,7 @@ pub fn outcome_observed(
                 )
             })?;
             one.providers = provided;
+            one.alternates = rechecked.fitted;
             one.power = power_issues.iter().filter(|i| mine(i)).cloned().collect();
             one.picks = solution
                 .picks
