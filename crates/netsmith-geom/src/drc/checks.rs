@@ -30,6 +30,29 @@ impl Out<'_> {
         self.push_carrying(rule, message, at, layer, items, None);
     }
 
+    /// A finding that says where the figure it is judged against comes from (issue 1393).
+    pub(super) fn push_sourced(
+        &mut self,
+        rule: Rule,
+        message: String,
+        at: Pt,
+        layer: Option<&str>,
+        source: Option<String>,
+    ) {
+        if let Some(severity) = self.m.rules.severity(rule) {
+            self.findings.push(Finding {
+                rule,
+                severity,
+                message,
+                at,
+                layer: layer.map(str::to_string),
+                items: Vec::new(),
+                carrying: None,
+                source,
+            });
+        }
+    }
+
     /// A finding that has the numbers of copper held to a current (issue 1373).
     pub(super) fn push_carrying(
         &mut self,
@@ -49,6 +72,7 @@ impl Out<'_> {
                 layer: layer.map(str::to_string),
                 items,
                 carrying,
+                source: None,
             });
         }
     }

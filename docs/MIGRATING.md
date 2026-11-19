@@ -13,6 +13,14 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+### A provider does not declare `.assembly_size_source` (issue 1393)
+
+`std::mfg::jlcpcb::TwoLayer`, `FourLayer`, `SixLayer`, `HdiFourLayer`, `HdiSixLayer`, `HdiEightLayer` and `std::mfg::acme::EightLayer`, `TenLayer` declare `.assembly_size_source`, the page, service and day of their assembly size figures, which the `assembly_size` finding quotes. A provider of yours that declared a member of that name (it is unlikely) deletes the declaration and keeps the narrowing (ADR 0134):
+
+```text
+error: `assembly_size_source` is declared by `TwoLayer`, which this interface provides; do not declare it again: narrow it with `.assembly_size_source &= ...`, or state it with a relation
+```
+
 ## 0.6.0: changes since 0.5.0
 
 ### A provider, a use or a part does not declare a member the language or std now declares (issue #1371)
