@@ -548,7 +548,13 @@ export type BoardDetail = { name: string, file: string, parts: Array<PartInfo>, 
  * current, read-only. Absent when there is nothing to compare, because the source does not
  * build (the problems list says why).
  */
-lock?: PickLockInfo, };
+lock?: PickLockInfo, 
+/**
+ * The pin budget of each host processor of the board (issue 1284), in the order of the
+ * parts: what `netsmith board explain <host>` prints under _pin budget_. Empty for a board
+ * with no part whose pin table lists a function, and then absent.
+ */
+pin_budgets?: Array<PinBudget>, };
 
 export type PickLockInfo = { 
 /**
@@ -579,6 +585,74 @@ reported: string,
  * words, with the place in it). Then the other fields say nothing of the rows.
  */
 error?: string, };
+
+export type PinBudget = { 
+/**
+ * The host's path from the board: `mcu`, `core.mcu`.
+ */
+host: string, 
+/**
+ * Its definition: `Stm32F030C8`.
+ */
+kind: string, refdes: string, 
+/**
+ * How many of its pins list a function.
+ */
+pins: number, 
+/**
+ * How many of them are used.
+ */
+used: number, 
+/**
+ * `pins - used`.
+ */
+left: number, 
+/**
+ * Each module that uses a pin or a serial block of the host, in the byte order of the
+ * paths; the board itself (a part declared in the board) is the module `""`.
+ */
+modules: Array<PinBudgetModule>, 
+/**
+ * Each peripheral of the host, in the order the part states them.
+ */
+blocks: Array<SerialBlock>, };
+
+export type PinBudgetModule = { 
+/**
+ * The module's path from the board: `sensors`; `""` for the board itself.
+ */
+module: string, 
+/**
+ * The pins of the host it uses, by the datasheet's names (`PA9`), in pin table order.
+ */
+pins: Array<string>, 
+/**
+ * The serial blocks it uses, by name (`USART1`).
+ */
+blocks: Array<string>, };
+
+export type SerialBlock = { 
+/**
+ * The peripheral's name: `USART1`.
+ */
+name: string, 
+/**
+ * The bus it is an end of (`peripheral USART1 as Uart`): `Uart`, `Spi`, `I2c`. Absent for
+ * a peripheral that names no bus.
+ */
+bus?: string, 
+/**
+ * Whether the board chose one of its functions on a pin.
+ */
+used: boolean, 
+/**
+ * Whether it is free to use: not used, and every `shared` resource it is in has room.
+ */
+left: boolean, 
+/**
+ * The modules that use it, as in `PinBudget::modules`.
+ */
+modules: Array<string>, };
 
 export type Range = { lo: number, hi: number, text: string, };
 

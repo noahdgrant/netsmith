@@ -1708,6 +1708,44 @@ error: `shared UARTS limit 2` allows every one of its 2 members at once, so it s
   |                        ^
 ```
 
+### The pin budget of a host
+
+`netsmith board explain <host>` says how much of a processor a board has spent (issue #1284): for each module, the pins and serial blocks of the host it uses, and how many are left. A host is a part whose pin table lists a function on a pin (`fn GPIO`), and its pins are those rows in the package the part is in; a supply pin, or a pin with no function, is not counted. A pin is used when its net reaches a pin of another part, or when the board chooses a function on it. The use belongs to the innermost module that holds the other part (`(board)` for a part the board declares itself); a pin whose net reaches parts of several modules is a use of each, and counted once in the total. A serial block is a `peripheral` of the part, counted by the bus it is an end of (`as Uart`, `other` for one that names none): it is used when the board chooses one of its functions on a pin, and left when it is not used and every `shared` resource that lists it still has room. Here a console module takes the first unit of the `Zmcu` above as a UART:
+
+```nsm
+import std::parts::connector::Header1x4
+
+import src::zmcu::Zmcu
+
+/// A console on a header: the two lines of a UART.
+module Console {
+    .tx: Pin
+    .rx: Pin
+    .j: Header1x4
+    .tx ~ .j.p1
+    .rx ~ .j.p2
+}
+
+board Budget {
+    .u: Zmcu
+    .console: Console
+    .u.p00 ~ .console.tx
+    .u.p01 ~ .console.rx
+    .u.p00.function &= UARTE0_TX
+    .u.p01.function &= UARTE0_RX
+}
+```
+
+`netsmith board explain u` prints, before the members of `u`:
+
+```text
+  pin budget of `u` (`Zmcu`, U1): 4 pins, 2 used, 2 left
+    console  2 pins (P0.00, P0.01); serial blocks UARTE0
+    serial blocks: other 1 of 4 used, 2 left (UARTE1, TWIM1)
+```
+
+`TWIM0` is not left, because it shares `SERIAL0` with `UARTE0`, which is in use. `UARTE1` and `TWIM1` are each left, though `SERIAL1` runs one of them at a time. With `--format json` the board has `pin_budgets`, the same numbers as data (_The solved values_, in the chapter on commands), and the editor's board summary (the schematic's inspector with no module open) has a _Pin budget_ section for each host with the same lines.
+
 ### Outputs
 
 Two outputs on one net would fight, so the checker refuses them. An output and a bidirectional pin may share a net.

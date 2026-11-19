@@ -36,6 +36,7 @@ Every board goes through the same steps. Do them in this order and say what each
 | State where parts must be for a case or a carrier | the physical file, then `board fab` | `netsmith-use-constraints` |
 | Finish copper the router left open, keep copper a person drew, run the design rules check alone | `routes`, `board drc`, `board fab` with `--reuse-routes` | `netsmith-route-a-board` |
 | Fix pins of a part's functions | `board pins` | `netsmith-design-a-board` |
+| See how many pins and serial blocks (UART, SPI, I2C) of a processor each module uses, and how many are left | `board explain <processor>` (its pin budget) | `netsmith-design-a-board` |
 | Arrange the schematic | `schematic` | `netsmith-design-a-board` |
 | Bring in a DXF drawing, KiCad's libraries, a part from a symbol, a case's STEP model | `import` | `netsmith-design-a-board` |
 | Move a KiCad board into the project | `import port` | `netsmith-port-a-kicad-board` |

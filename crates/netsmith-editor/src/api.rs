@@ -761,6 +761,69 @@ pub struct BoardDetail {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub lock: Option<PickLockInfo>,
+    /// The pin budget of each host processor of the board (issue 1284), in the order of the
+    /// parts: what `netsmith board explain <host>` prints under _pin budget_. Empty for a board
+    /// with no part whose pin table lists a function, and then absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pin_budgets: Option<Vec<PinBudget>>,
+}
+
+/// How many of a host processor's pins and serial blocks each module of the board uses, and how
+/// many are left (issue 1284). A host is a part whose pin table lists a function on a pin
+/// (`fn GPIO`): the pins counted are those, in the package the part is in. A pin is used when
+/// its net reaches a pin of another part or the board chose a function on it. A serial block is
+/// a `peripheral` of the part (ADR 0071); it is used when the board chose one of its functions
+/// on a pin, and left when it is not used and every `shared` resource it is in still has room.
+/// The fields are single words, so the JSON of `board explain` and of the editor are the same.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct PinBudget {
+    /// The host's path from the board: `mcu`, `core.mcu`.
+    pub host: String,
+    /// Its definition: `Stm32F030C8`.
+    pub kind: String,
+    pub refdes: String,
+    /// How many of its pins list a function.
+    pub pins: u32,
+    /// How many of them are used.
+    pub used: u32,
+    /// `pins - used`.
+    pub left: u32,
+    /// Each module that uses a pin or a serial block of the host, in the byte order of the
+    /// paths; the board itself (a part declared in the board) is the module `""`.
+    pub modules: Vec<PinBudgetModule>,
+    /// Each peripheral of the host, in the order the part states them.
+    pub blocks: Vec<SerialBlock>,
+}
+
+/// What one module uses of a host. A pin whose net reaches parts of several modules is used by
+/// each of them, and counted once in the host's `used`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct PinBudgetModule {
+    /// The module's path from the board: `sensors`; `""` for the board itself.
+    pub module: String,
+    /// The pins of the host it uses, by the datasheet's names (`PA9`), in pin table order.
+    pub pins: Vec<String>,
+    /// The serial blocks it uses, by name (`USART1`).
+    pub blocks: Vec<String>,
+}
+
+/// One peripheral of a host and its use.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct SerialBlock {
+    /// The peripheral's name: `USART1`.
+    pub name: String,
+    /// The bus it is an end of (`peripheral USART1 as Uart`): `Uart`, `Spi`, `I2c`. Absent for
+    /// a peripheral that names no bus.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub bus: Option<String>,
+    /// Whether the board chose one of its functions on a pin.
+    pub used: bool,
+    /// Whether it is free to use: not used, and every `shared` resource it is in has room.
+    pub left: bool,
+    /// The modules that use it, as in `PinBudget::modules`.
+    pub modules: Vec<String>,
 }
 
 /// What `netsmith project lock --check` says of the pick lock of one source file, which holds every
@@ -2398,6 +2461,9 @@ pub fn typescript() -> String {
         NetInfo,
         BoardDetail,
         PickLockInfo,
+        PinBudget,
+        PinBudgetModule,
+        SerialBlock,
         Range,
         Draw,
         Budget,

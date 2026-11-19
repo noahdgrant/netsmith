@@ -6,6 +6,7 @@ pub mod constraints;
 pub mod heights;
 pub mod libraries;
 pub mod pick_lock;
+pub mod pin_budget;
 pub mod portable;
 pub mod power;
 pub mod providers;
