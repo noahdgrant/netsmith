@@ -28,7 +28,9 @@ import std::sources::{Rail, Reverse}
 /// active low is not this generic.
 ///
 /// Not checked: the switch's own heat (the drop times the load), its turn-on time and inrush
-/// current, and an output that a switch which is off pulls down (a quick output discharge). Its
+/// current, and an output that a switch which is off pulls down (a quick output discharge). An
+/// IC sold as several order codes, with and without such a feature, lists them in a `.variants`
+/// table, and a board that names the feature in `.needs` gets a code that has it (issue 1402). Its
 /// reverse behaviour is data, `.reverse` (issue #1258): a board's `scenario` reads it, through
 /// the on resistance while the switch is on and the body diode while it is off, unless it
 /// blocks.
@@ -62,6 +64,9 @@ generic LoadSwitch {
     /// default is a body diode (`std::sources::Reverse`); an IC with reverse-current blocking
     /// states `.reverse.path &= ReversePath::Blocking`.
     .reverse: Reverse
+    /// What the design needs of the IC's order code (`.sw.needs &= QuickDischarge`, issue
+    /// 1402): a feature of a provider's `.variants` table. A provider with no table has none.
+    .needs: String optional
 
     // What the input draws is what the output supplies and the quiescent current, and the
     // output is the input less the drop across the switch.

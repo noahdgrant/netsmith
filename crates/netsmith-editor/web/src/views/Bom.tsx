@@ -563,12 +563,12 @@ export function Bom() {
                     <span class="grp-label">
                       <Icon name="minus" size={13} />
                       <b>Not fitted</b>
-                      <span class="faint">DNP lines of bom.csv: the footprint is on the board, the value is chosen on the bench</span>
+                      <span class="faint">DNP lines of bom.csv: the footprint is on the board, the value is chosen on the bench; an alternate is a part the footprint may take in place of the one fitted</span>
                     </span>
                   </td>
                 </tr>
                 {notFitted.map((l) => (
-                  <tr key={`dnp/${l.designators.join(',')}`} class="dr" data-testid="bom-not-fitted-row">
+                  <tr key={`dnp/${l.kind}/${l.designators.join(',')}`} class="dr" data-testid="bom-not-fitted-row">
                     <td class="des">
                       <div class="des-cell">
                         {l.designators.map((d) => (

@@ -17,10 +17,20 @@
 //! (`12-catalogs-and-how-the-solver-picks-parts.md`). The `.mpn` it narrows is a hand pick (ADR
 //! 0122) for a part with a catalog keyed by `.mpn`, and the bill of materials' number for a part
 //! with none.
+//!
+//! **Through a generic** (owner, issue 1402). A use of a generic reaches only the generic's
+//! members, so a generic whose providers are sold as order codes declares `.needs: String
+//! optional`, and a provider with a `.variants` table takes it as its own `.needs`. A provider
+//! of such a generic with no table has the member and no feature, so a need refuses it. Inside a
+//! use with several providers every refusal of a need or a code is kept as a provider conflict
+//! (ADR 0113), so the build tries the other providers before it stops on one.
 
 use netsmith_lang::ast::{self, CmpOp, Expr, Variants};
 
+use netsmith_lang::Span;
+
 use crate::checker::Checker;
+use crate::diag::{Diagnostic, SourceId};
 use crate::lower::{closest, list_of};
 use crate::model::{
     Domain, FieldId, FieldKind, InstId, InstKind, Member, Need, OrderCode, PartVariants,
@@ -83,7 +93,26 @@ impl Checker<'_> {
                 features,
             });
         }
-        if self.model.member(part, "needs").is_some() {
+        if let Some(generic) = self
+            .generic_members
+            .get(&(part, "needs".to_string()))
+            .cloned()
+        {
+            // A generic that wants order codes declares `.needs: String optional` (issue 1402),
+            // so that a use of it reaches the need; the table of this provider fills it.
+            let declared = match self.model.member(part, "needs") {
+                Some(Member::Field(f)) => Some(self.model.field(f)),
+                _ => None,
+            };
+            if !declared.is_some_and(|f| f.kind == FieldKind::Text && f.optional.is_some()) {
+                self.error(
+                    v.span,
+                    format!(
+                        "`{generic}`, which this part provides, declares `.needs` as something other than what a design needs of an order code; declare it `.needs: String optional` in `{generic}`"
+                    ),
+                );
+            }
+        } else if self.model.member(part, "needs").is_some() {
             self.error(
                 v.span,
                 format!(
@@ -105,10 +134,33 @@ impl Checker<'_> {
         );
     }
 
-    /// Whether `field` is the `.needs` of a part that states `.variants`.
+    /// Whether `field` is the `.needs` of a part that states `.variants`, or the `.needs` that a
+    /// generic declares (`.needs: String optional`, issue 1402) on any of its providers.
     pub(crate) fn is_needs(&self, field: FieldId) -> bool {
         let f = self.model.field(field);
-        f.name == "needs" && self.model.variants.contains_key(&f.owner)
+        f.name == "needs"
+            && (self.model.variants.contains_key(&f.owner)
+                || (f.kind == FieldKind::Text
+                    && self
+                        .generic_members
+                        .contains_key(&(f.owner, "needs".to_string()))))
+    }
+
+    /// A refusal of what the design needs of `part`: inside a use with several providers,
+    /// another provider may have the order code the design needs, so the build tries the
+    /// others before it stops on it (ADR 0113, issue 1402).
+    fn refuse_need(&mut self, part: InstId, at: (SourceId, Span), message: String) {
+        if self.in_varied_use(part) {
+            self.provider_conflicts.push((
+                vec![part],
+                Diagnostic {
+                    source: at.0,
+                    span: at.1,
+                    message: message.clone(),
+                },
+            ));
+        }
+        self.report(at.0, at.1, message);
     }
 
     /// `.u.needs &= GNSS`: the design needs the feature of the part's order code. Only `&=`
@@ -117,7 +169,24 @@ impl Checker<'_> {
         let part = self.model.field(field).owner;
         let path = self.model.path_of(part);
         let ty = self.model.instance(part).type_name.clone();
-        let Some(features) = self.model.variants.get(&part).map(PartVariants::features) else {
+        let features = self.model.variants.get(&part).map(PartVariants::features);
+        let Some(features) = features else {
+            // A provider of a generic that declares `.needs`, with no `.variants` table: it is
+            // sold as one part, with no feature to need (issue 1402).
+            let at = (self.cur_source(), c.span);
+            let feature = match &c.rhs {
+                Expr::Path(p) if !p.leading_dot && p.segments.len() == 1 => {
+                    format!("`{}`", p.segments[0].name)
+                }
+                _ => "a feature".to_string(),
+            };
+            self.refuse_need(
+                part,
+                at,
+                format!(
+                    "`{path}` is a `{ty}`, which states no `.variants`: it is one order code with no feature, and the design needs {feature} of it; name a part whose `.variants` table has the feature, or remove the need"
+                ),
+            );
             return;
         };
         let known = if features.is_empty() {
@@ -152,8 +221,10 @@ impl Checker<'_> {
             let hint = closest(&name.name, &features)
                 .map(|f| format!("; did you mean `{f}`?"))
                 .unwrap_or_default();
-            self.error(
-                name.span,
+            let at = (self.cur_source(), name.span);
+            self.refuse_need(
+                part,
+                at,
                 format!(
                     "`{}` is not a feature of `{ty}` (`{path}`); {known}{hint}",
                     name.name
@@ -200,9 +271,9 @@ impl Checker<'_> {
             let at = mpn_at.unwrap_or_else(|| self.model.instance(part).at());
             let Some(row) = v.code(&code) else {
                 let codes: Vec<String> = v.codes.iter().map(|c| format!("`{}`", c.code)).collect();
-                self.report(
-                    at.0,
-                    at.1,
+                self.refuse_need(
+                    part,
+                    at,
                     format!(
                         "`{path}.mpn` is `{code}`, which is not an order code of `{ty}`; its order codes are {}",
                         list_of(&codes)
@@ -236,9 +307,9 @@ impl Checker<'_> {
                 let codes: Vec<String> = fitting.iter().map(|c| format!("`{}`", c.code)).collect();
                 format!("the order codes that have them are {}", list_of(&codes))
             };
-            self.report(
-                at.0,
-                at.1,
+            self.refuse_need(
+                part,
+                at,
                 format!(
                     "`{path}.mpn` is `{code}`, which has no {}, and the design needs {}; {instead}",
                     list_of(&missing.iter().map(|m| format!("`{m}`")).collect::<Vec<_>>()),
@@ -262,9 +333,9 @@ impl Checker<'_> {
                     .map_or_else(|| self.model.instance(part).at(), |n| n.at);
                 let needs: Vec<String> = needed.iter().map(|n| format!("`{n}`")).collect();
                 let has: Vec<String> = v.codes.iter().map(describe).collect();
-                self.report(
-                    at.0,
-                    at.1,
+                self.refuse_need(
+                    part,
+                    at,
                     format!(
                         "no order code of `{ty}` has {} together, which the design needs of `{path}`: {}",
                         list_of(&needs),
@@ -281,9 +352,9 @@ impl Checker<'_> {
                     .find(|f| !needed.contains(f))
                     .map(|f| format!("`.{path}.needs &= {f}`, "))
                     .unwrap_or_default();
-                self.report(
-                    at.0,
-                    at.1,
+                self.refuse_need(
+                    part,
+                    at,
                     format!(
                         "`{path}` is a `{ty}`, which is sold as {}; state what the design needs of it ({example}one statement for each feature) or name the order code (`.{path}.mpn &= \"{}\"`)",
                         list_of(&has),

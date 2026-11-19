@@ -333,6 +333,29 @@ fn write_variants(out: &mut String, inner_docs: &[String], variants: &[Variant])
     out.push('}');
 }
 
+/// Writes `.name: Type { ... }` at `depth`, without its docs and attributes.
+fn write_decl(out: &mut String, d: &Decl, depth: usize) {
+    let ty = if d.ty.of_member {
+        format!(".{}", join(&d.ty.segments, "."))
+    } else {
+        d.ty.to_source()
+    };
+    let count = d.count.map_or(String::new(), |c| format!("{} x ", c.n));
+    let ty = if d.list.is_some() {
+        format!("[{ty}]")
+    } else {
+        ty
+    };
+    let _ = write!(out, "{}: {count}{ty}", d.name.to_source());
+    if d.optional.is_some() {
+        out.push_str(" optional");
+    }
+    if let Some(body) = &d.body {
+        out.push(' ');
+        write_block(out, &[], body, depth + 1);
+    }
+}
+
 /// Writes `{ ... }` at `depth`, leaving the cursor after the closing brace.
 fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: usize) {
     if items.is_empty() && inner_docs.is_empty() {
@@ -342,32 +365,16 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
     out.push_str("{\n");
     write_docs(out, inner_docs, "//!", depth + 1);
     for item in items {
-        if let Item::Decl(d) = item {
+        if let Item::Decl(d) | Item::Alternate(Alternate { decl: d, .. }) = item {
             write_docs(out, &d.docs, "///", depth + 1);
             write_attrs(out, &d.attrs, depth + 1);
         }
         out.push_str(&"    ".repeat(depth + 1));
         match item {
-            Item::Decl(d) => {
-                let ty = if d.ty.of_member {
-                    format!(".{}", join(&d.ty.segments, "."))
-                } else {
-                    d.ty.to_source()
-                };
-                let count = d.count.map_or(String::new(), |c| format!("{} x ", c.n));
-                let ty = if d.list.is_some() {
-                    format!("[{ty}]")
-                } else {
-                    ty
-                };
-                let _ = write!(out, "{}: {count}{ty}", d.name.to_source());
-                if d.optional.is_some() {
-                    out.push_str(" optional");
-                }
-                if let Some(body) = &d.body {
-                    out.push(' ');
-                    write_block(out, &[], body, depth + 1);
-                }
+            Item::Decl(d) => write_decl(out, d, depth),
+            Item::Alternate(a) => {
+                out.push_str("alternate ");
+                write_decl(out, &a.decl, depth);
             }
             Item::Constraint(c) => {
                 let _ = write!(

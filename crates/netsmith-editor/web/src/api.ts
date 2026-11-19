@@ -883,6 +883,8 @@ hand: Array<BomLine>,
  * Not fitted (`.fitted &= false`, issue 1273): a footprint on the board whose value is
  * chosen on the bench, a `DNP` line of `bom.csv` with no number to buy. The value is the
  * line's comment there (`DNP (tune 1pF..10pF)`).
+ * And each `alternate` part of the board (issue 1312), on the designator of the part whose
+ * footprint it may take, one line each: in no line of `bom.csv`. Not in the total.
  */
 notFitted: Array<BomLine>, 
 /**
