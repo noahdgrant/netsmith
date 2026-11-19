@@ -1095,7 +1095,7 @@ board Switched {
 
 ### A rechargeable cell and its charger
 
-`std::sources::Cell` is one rechargeable cell (issue #1262). Its terminals are the rail `.terminals`, which the cell gives: the DC analysis takes it as a source (`dc source`), held over the range the board states for `.terminals.voltage`. Its values are the datasheet's, from a row of the catalog `cell`: `.chemistry` (a `Chemistry`: `LiIon`, `LiPolymer`, `LiFePO4` or `NiMH`), `.capacity` (a charge, in coulombs: 1 mAh is 3.6 C, so 1000 mAh is `3.6kC`), `.internal_resistance` (the datasheet's largest), `.charge_temperature` and `.discharge_temperature` (the ranges it may be charged and discharged in), `.float_voltage` (the voltage it is charged to and held at, as the datasheet's range) and `.max_charge_current`. Its pins are `+` and `-` in the package the row names. The standard catalog `cell` has no row: no cell has a recorded source yet, so a project brings its own rows. A cell is drawn with netsmith's own `Device:Battery_Cell` (pins `+` and `-`), and `std/kicad.toml` maps the packages a cell's row may name: so far the JST PH side-entry lead of a pouch cell, `JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal`, whose footprint netsmith generates (issue #1366). A row in another package needs a row of the project's `kicad.toml`.
+`std::sources::Cell` is one rechargeable cell (issue #1262). Its terminals are the rail `.terminals`, which the cell gives: the DC analysis takes it as a source (`dc source`), held over the range the board states for `.terminals.voltage`. Its values are the datasheet's, from a row of the catalog `cell`: `.chemistry` (a `Chemistry`: `LiIon`, `LiPolymer`, `LiFePO4` or `NiMH`), `.capacity` (a charge, in coulombs: 1 mAh is 3.6 C, so 1000 mAh is `3.6kC`), `.internal_resistance` (the datasheet's largest), `.charge_temperature` and `.discharge_temperature` (the ranges it may be charged and discharged in), `.float_voltage` (the voltage it is charged to and held at, as the datasheet's range) and `.max_charge_current`. Its pins are `+` and `-` in the package the row names. The standard catalog `cell` has no row: no cell has a recorded source yet, so a project brings its own rows. A cell is drawn with netsmith's own `Device:Battery_Cell` (pins `+` and `-`), and `std/kicad.toml` maps the packages a cell's row may name, both with footprints netsmith makes: the JST PH side-entry lead of a pouch cell, `JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal`, KiCad's footprint of that name, generated (issue #1366), and a 2032-size coin cell with solder tabs lying flat, `Coin_D20.0mm_Tabs_P15.00mm`, on `netsmith:BatteryCell_Coin_D20.0mm_Tabs_P15.00mm` (issue #1399). The coin cell's land is netsmith's own, not a maker's drawing: KiCad has no footprint of the name, so it is a file of netsmith's own library, and the name says what it is, a cell 20 mm across with its two tab pins 15 mm apart, the positive one pad 1, each a 1.0 mm hole in a 2.0 mm pad, and the cell centred between them. Makers differ in where the tabs come down, so compare a real cell's drawing with it before a board is ordered. A row in another package needs a row of the project's `kicad.toml`.
 
 `std::parts::regulator::Charger` is a charger IC, a generic with the rails `.vin`, where its power comes from, and `.out`, which charges the cell, on one ground. A concrete IC is a part that provides it and states, from its datasheet, `.float_voltage` (its regulation voltage, as a range), `.charge_current` (the fast charge current, as its programming pin sets it: the datasheet's equation over the resistor on the pin, so it carries the resistor's tolerance) and, for an IC with a thermistor input, `.thermistor_window`, the cell temperatures it charges between (optional, ADR 0074). When the charger's `.out` is joined with `~` to a cell's `.terminals` (directly, or through a module's rail), the check after the solve holds the two against each other: the charger's float voltage must lie within the cell's, both ends; its thermistor window within the cell's charge window, both ends; and the most of its charge current at most the cell's `.max_charge_current`. A value of either side that has none is listed as not evaluated. A charger that states no thermistor window is not judged on it, and a charger joined to no cell is not judged at all.
 
@@ -1197,6 +1197,26 @@ import std::parts::passive::Resistor
 import std::sources::Cell
 
 board Pouch {
+    .bat: Cell
+    .bat.terminals.voltage &= 3V..4.2V
+    .bat.terminals.pos.net &= "VBAT"
+    .load: Resistor { .resistance &= 10kohm +/- 1% }
+    .bat.terminals.pos ~> .load ~> .bat.terminals.neg
+}
+```
+
+The same board with an invented coin cell, 40 mAh (144 C), in the tabbed package:
+
+```csv file=catalogs/cell.csv set=coin
+mpn,chemistry,capacity,internal_resistance,charge_temperature,discharge_temperature,float_voltage,max_charge_current,package,library,source
+ZZC-40,LiIon,144C,1ohm,0degC..45degC,-20degC..60degC,4.2V +/- 50mV,40mA,Coin_D20.0mm_Tabs_P15.00mm,Extended,invented for the guide
+```
+
+```nsm solve catalogs=coin
+import std::parts::passive::Resistor
+import std::sources::Cell
+
+board Coin {
     .bat: Cell
     .bat.terminals.voltage &= 3V..4.2V
     .bat.terminals.pos.net &= "VBAT"
@@ -1890,7 +1910,7 @@ error: d.supply_fault_current must always be at most d.max_forward_current, but 
 error: `hold` may be soldered by hand only (its catalog row ZZS-0F5 states `soldering` Hand), and its assembly is `AssemblyMode::Fab`: the board house solders the parts it places in a reflow oven, which the part's datasheet forbids; state `.hold.assembly &= AssemblyMode::Hand`, or choose a part that allows reflow
 ```
 
-The standard catalog `supercap` has no row: no part has a recorded source yet, so a project brings its own rows in a file of the catalog `supercap`. A supercapacitor is drawn with netsmith's own `Device:C_Polarized` (pin 1 the positive lead), and its two-lead packages, `Radial_D5.0mm_P2.00mm` to `Radial_D16.0mm_P7.50mm`, are KiCad's `CP_Radial` footprints, which netsmith generates (issue #1366). The tapped package, `Radial_D16.0mm_P7.50mm_Tap`, has no footprint yet: where its middle lead is waits for the drawing of a real part (issue #1399), so a board that joins `.mid` is solved and checked but not exported. Here the invented 0.5 F part across a 5 V rail, built and exported:
+The standard catalog `supercap` has no row: no part has a recorded source yet, so a project brings its own rows in a file of the catalog `supercap`. A supercapacitor is drawn with netsmith's own `Device:C_Polarized` (pin 1 the positive lead), and its two-lead packages, `Radial_D5.0mm_P2.00mm` to `Radial_D16.0mm_P7.50mm`, are KiCad's `CP_Radial` footprints, which netsmith generates (issue #1366). The tapped package, `Radial_D16.0mm_P7.50mm_Tap`, is drawn with `Device:C_Polarized_Tap`, two polarized capacitors in series with pin 1 `+` above, pin 3 `-` below and pin 2 `MID` on the right at the node between them, on the footprint `netsmith:CP_Radial_D16.0mm_P7.50mm_Tap` (issue #1399). Both are netsmith's own: KiCad has neither, and the land is not a maker's drawing, so the footprint is a file of netsmith's own library (`std/libs/netsmith.pretty/`, written by a generator), which a board that uses it gets beside it. The name gives the can, 16 mm, and the pitch, 7.5 mm between the outer leads, pad 1 and pad 3, as the two-lead can of that name has them; the tap, pad 2, is midway between them on the same line, and every lead is a 1.2 mm hole in a 2.4 mm pad. A real part's middle lead may stand elsewhere, so compare its drawing with the land before a board is ordered, and give a part whose leads differ a footprint of the project's own `kicad.toml`. Here the invented 0.5 F part across a 5 V rail, built and exported:
 
 ```nsm solve catalogs=backup
 import std::parts::passive::Supercap
@@ -1900,6 +1920,28 @@ board Backup {
     .rail: Rail { .voltage &= 5V +/- 5%; .pos.net &= "V5" }
     .hold: Supercap
     .rail.pos ~> .hold ~> .rail.neg
+}
+```
+
+And an invented tapped part, its two cells held at half the rail each by two equal resistors, one across each cell (a board that joins `.mid` is given a row in the tapped package):
+
+```csv file=catalogs/supercap.csv set=tapped
+mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,height_growth,library,source
+ZZS-0F5-T,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,Reflow,Radial_D16.0mm_P7.50mm_Tap,1mm,Extended,invented for the guide
+```
+
+```nsm solve catalogs=tapped
+import std::parts::passive::{Resistor, Supercap}
+import std::sources::Rail
+
+board Balanced {
+    .rail: Rail { .voltage &= 5V +/- 5%; .pos.net &= "V5" }
+    .hold: Supercap
+    .rail.pos ~> .hold ~> .rail.neg
+    .top: Resistor { .resistance &= 100kohm +/- 1% }
+    .bottom: Resistor { .resistance &= 100kohm +/- 1% }
+    .rail.pos ~> .top ~> .hold.mid
+    .hold.mid ~> .bottom ~> .rail.neg
 }
 ```
 

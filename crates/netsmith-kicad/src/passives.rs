@@ -1,5 +1,6 @@
 //! The symbols of the standard mapping that netsmith draws itself (ADR 0097, step 2): the
-//! passives and discrete parts (a resistor, a capacitor, a polarized capacitor, a battery cell,
+//! passives and discrete parts (a resistor, a capacitor, a polarized capacitor, the same with a
+//! balance tap, a battery cell,
 //! an inductor, a ferrite bead, a fuse, a
 //! crystal, an LED and four diodes, a switch and the N and P FETs), the connectors (the generic
 //! pin headers and sockets, the USB-C receptacles and the coaxial connector), the mechanical
@@ -30,7 +31,10 @@
 //!   the same id in KiCad 9's stock libraries (the test
 //!   `generated_symbols_agree_with_the_installed_kicad_symbols` of
 //!   `crates/netsmith-pipeline/tests/passives.rs` proves it where KiCad is installed). A pin that moved
-//!   by a grid step would move every wire the schematic view draws to it.
+//!   by a grid step would move every wire the schematic view draws to it. One symbol has no
+//!   stock counterpart: `Device:C_Polarized_Tap`, the three-pin polarized capacitor of a
+//!   supercapacitor with a balance tap (issue 1399), whose geometry is netsmith's own (pin 1 `+`
+//!   above, pin 2 `MID` on the right at the node between the two cells, pin 3 `-` below).
 //! - **The look**: what is drawn inside that extent. It is the glyph function of one symbol
 //!   ([`resistor`], [`capacitor`], [`usb_c`], ...), which returns its [`Shape`]s, and the three
 //!   line weights ([`THIN`], [`BODY`], [`HEAVY`]) and fills at the top of the file. To change
@@ -418,6 +422,39 @@ fn polarized_capacitor() -> Vec<Shape> {
         line(&[(-1.778, 2.286), (-0.762, 2.286)], THIN),
         line(&[(-1.27, 2.794), (-1.27, 1.778)], THIN),
     ]
+}
+
+/// A polarized capacitor of two cells in series with the node between them brought out (a
+/// supercapacitor's balance tap, issue 1399): two of [`polarized_capacitor`]'s plate pairs, one
+/// above the other, joined by a lead through the tap's end (0, 0). The outer plates' faces are
+/// where pins 1 and 3 end (y 3.556 and -3.556). Extent x ±2.286, y -3.556 to 5.334.
+fn polarized_capacitor_tap() -> Vec<Shape> {
+    let cell = |y: f64| {
+        vec![
+            Shape::Rect {
+                a: (-2.286, y + 1.016),
+                b: (2.286, y + 0.508),
+                width: THIN,
+                fill: Fill::None,
+            },
+            polygon(
+                &[
+                    (-2.286, y - 0.508),
+                    (2.286, y - 0.508),
+                    (2.286, y - 1.016),
+                    (-2.286, y - 1.016),
+                ],
+                THIN,
+                Fill::Solid,
+            ),
+            line(&[(-1.778, y + 2.286), (-0.762, y + 2.286)], THIN),
+            line(&[(-1.27, y + 2.794), (-1.27, y + 1.778)], THIN),
+        ]
+    };
+    let mut shapes = cell(2.54);
+    shapes.extend(cell(-2.54));
+    shapes.push(line(&[(0.0, 1.524), (0.0, -1.524)], THIN));
+    shapes
 }
 
 /// One cell of a battery: a long thin plate, the positive one, above a short thick one, a lead
@@ -860,7 +897,8 @@ const BASE: Spec = Spec {
 };
 
 /// The passives and discrete parts. The numbers are those of KiCad 9's stock symbol of the same
-/// id, measured with `kicad-cli`'s libraries, and the test
+/// id (except `Device:C_Polarized_Tap`, netsmith's own, which KiCad has not), measured with
+/// `kicad-cli`'s libraries, and the test
 /// `generated_symbols_agree_with_the_installed_kicad_symbols`
 /// (`crates/netsmith-pipeline/tests/passives.rs`) proves each against the installed library.
 fn passive_specs() -> Vec<Spec> {
@@ -909,6 +947,29 @@ fn passive_specs() -> Vec<Spec> {
             pins: vertical(2.794, ["~", "~"]),
             fields_left: true,
             glyph: polarized_capacitor(),
+            ..BASE
+        },
+        Spec {
+            // netsmith's own (issue 1399): KiCad 9 has no three-pin polarized capacitor, so the
+            // geometry is this table's, not a stock symbol's.
+            id: "Device:C_Polarized_Tap".into(),
+            reference: "C",
+            description: "Polarized capacitor of two cells in series, with the tap between them"
+                .into(),
+            reference_at: (3.175, 3.81, 0.0),
+            value_at: (3.175, -3.81, 0.0),
+            numbers_hidden: HIDDEN,
+            names: Names {
+                offset: Some(0.0),
+                hidden: HIDDEN,
+            },
+            pins: vec![
+                pin(PinType::Passive, (0.0, 7.62, 270.0), 4.064, "+", "1", false),
+                pin(PinType::Passive, (5.08, 0.0, 180.0), 5.08, "MID", "2", false),
+                pin(PinType::Passive, (0.0, -7.62, 90.0), 4.064, "-", "3", false),
+            ],
+            fields_left: true,
+            glyph: polarized_capacitor_tap(),
             ..BASE
         },
         Spec {
@@ -1545,9 +1606,9 @@ mod tests {
                 "{id} is not deterministic"
             );
         }
-        // 16 passives and discrete parts, 7 headers, 4 sockets, 2 USB-C receptacles, the coaxial
+        // 17 passives and discrete parts, 7 headers, 4 sockets, 2 USB-C receptacles, the coaxial
         // connector, 4 mechanical parts and the power flag.
-        assert_eq!(seen.len(), 35);
+        assert_eq!(seen.len(), 36);
         // Two ids never answer with one symbol.
         let answers: std::collections::HashSet<String> =
             ids().map(|id| answer_id(id).unwrap()).collect();
