@@ -96,7 +96,7 @@ error: a system joins two ports of the same kind; a pin is not a port
 
 ### Connectors that mate
 
-Boards that plug into each other do it through connectors, and a system says which. `~` between the `.mating` of two connectors says they are mated, contact N to contact N (ADR 0040). Every pin header and socket of the standard library states its `.mating` (`std::parts::connector::Mating`): its `kind`, `gender`, `pitch`, `rows` and `positions`, and, when its datasheet rates it, the current of one contact, `pin_current`, and when its drawing gives it, its `seat` (below). A system can reach a connector's `.mating` and nothing else of it.
+Boards that plug into each other do it through connectors, and a system says which. `~` between the `.mating` of two connectors says they are mated, contact N to contact N (ADR 0040). Every pin header and socket of the standard library states its `.mating` (`std::parts::connector::Mating`): its `kind`, `gender`, `pitch`, `rows` and `positions`, and, when its datasheet rates it, the current of one contact, `pin_current`, and when its drawing gives it, its `seat` (below). A system can reach a connector's `.mating` and nothing else of it. A connector inside a module is named by its path through the modules, as a board names it (`.carrier.bay.sock.mating`, below).
 
 The system names no pin and no net. After the nets of the boards are known, the checker reads what each board has behind each contact, a role: ground (the net is the `neg` of a rail), power (the `pos` of a rail), a signal (a part's `input`, `output` or `bidirectional` pin is on it) or open. Then:
 
@@ -590,6 +590,79 @@ Kit: warning: pin1_unmarked: pin 1 of `card.j1` cannot be told from its pads, an
 ```
 
 The check reads the copper pads and no silkscreen mark, since every footprint has pads, and it is the same whether or not the system scene could place the member, since it is a fact of the footprint.
+
+#### A connector inside a module
+
+A board that puts its connector in a module (a bay with its socket and the parts beside it, used twice) is mated the same way: the system names the connector by its path through the board's members, `.carrier.bay.sock.mating`, as a path in the board would (issue #1325). The mate reads what the board has behind each contact, whatever module the connector is in, and every check of a mate holds: the roles, the ground, the ports of the boards it joins, the current and a partial mate's `.contacts`. Messages, the system scene and `fab` name the connector by the same path. Inside a module a system reaches a connector's `.mating` and nothing else: a module's ports and values are its board's, and the system joins the board's ports.
+
+```nsm evaluate
+import std::parts::connector::{Header1x2, Socket1x2}
+import std::sources::Rail
+
+/// A socket and the rail it carries, as a board would use it once for each card.
+module Bay {
+    .power: Rail
+    .sock: Socket1x2
+    .power.neg ~ .sock.p1
+    .power.pos ~ .sock.p2
+}
+
+board Carrier {
+    .supply: Rail { .voltage &= 3.3V +/- 5%; .current &= 0mA..100mA }
+    .bay: Bay
+    .supply ~ .bay.power
+}
+
+board Card {
+    .supply: Rail { .current &= -30mA..-5mA }
+    .j1: Header1x2
+    .supply.neg ~ .j1.p1
+    .supply.pos ~ .j1.p2
+}
+
+system Kit {
+    .carrier: Carrier
+    .card: Card
+    // The mate joins `.carrier.supply` and `.card.supply`, the rails behind its contacts.
+    .carrier.bay.sock.mating ~ .card.j1.mating
+}
+```
+
+A module's port is not a port of the system:
+
+```nsm fails
+import std::parts::connector::Socket1x2
+import std::sources::Rail
+
+module Bay {
+    .power: Rail
+    .sock: Socket1x2
+    .power.neg ~ .sock.p1
+    .power.pos ~ .sock.p2
+}
+
+board Carrier {
+    .bay: Bay
+}
+
+board Card {
+    .supply: Rail
+}
+
+system Kit {
+    .carrier: Carrier
+    .card: Card
+    .carrier.bay.power ~ .card.supply
+}
+```
+
+```text
+error: `power` is inside module `.carrier.bay`, a `Bay`; a system reaches inside a module only the `.mating` of a connector, by its path through the modules
+   --> main.nsm:22:18
+   |
+22 |     .carrier.bay.power ~ .card.supply
+   |                  ^^^^^
+```
 
 #### A partial mate
 
