@@ -1084,6 +1084,11 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
     // current and the bound proves it (never otherwise).
     let (deferred, current_bounds) = s.prove_by_ohm(deferred);
     s.verify_balances();
+    // A load that bursts: the others on its net during the burst, and the bulk capacitance.
+    let (burst_faults, burst_notes) = crate::burst::check(&s.model);
+    for d in burst_faults {
+        s.report(d.source, d.span, d.message);
+    }
     let supply_found = s.dc_check_supplies();
     s.dc_report_disagreements(supply_found);
     for d in netsmith_check::pin_faults_solved(model, &s.model) {
@@ -1094,6 +1099,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
     not_evaluated.extend(crate::busfigures::notes(&s.model, &deferred));
     not_evaluated.extend(dc_notes);
     not_evaluated.extend(corner_notes);
+    not_evaluated.extend(burst_notes);
     // A bus on which one part states its role and another does not (ADR 0064).
     for (at, message) in netsmith_check::unstated_roles(&s.model) {
         not_evaluated.push(crate::levels::NotEvaluated {

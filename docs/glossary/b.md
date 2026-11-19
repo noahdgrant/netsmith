@@ -57,6 +57,10 @@ _Avoid_: Lamination, stack-up (for this; the _Stackup_ is the whole)
 **Buried via**:
 A via that joins two inner layers and reaches neither outer one: on an HDI process with `.buried_vias &= "core"` (issue #1015), the mechanically drilled via through the core, between the inner layers the build-up layers end on, which the fabricator plugs with resin and caps. See _Via span_.
 
+**Burst**:
+A stretch of time in which a load draws its `.peak_current`, as a radio does while it transmits: the `.burst` of a `Rail`, how long one lasts, with `.duty`, the fraction of the time it bursts, optional (issue #1279). A load that bursts states `.current` as its average, which the balance and a regulator's dissipation read; during a burst the source gives the peak and the other loads' steady current together, held against `.max_peak_current`, and the capacitors across the rail give what it cannot, as long as the rail stays at or above the least voltage a part on the net states. Each load states its own: `~` does not share it.
+_Avoid_: Pulse, transmit current, peak duration
+
 **Bus**:
 The interfaces of one definition that share a net: the processor's `spi` and a flash's `spi` are one bus because `sclk` is on one net. The limit of a role is counted for a bus (ADR 0064). The editor's schematic draws the members of a bus's interfaces as one thick line (_Bus drawing_).
 _Avoid_: Interface (the type), network
