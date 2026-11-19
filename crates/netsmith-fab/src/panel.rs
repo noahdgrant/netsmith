@@ -755,6 +755,9 @@ fn panel_extras(board: &DrcExtras, spec: &Spec, g: &Geometry, back: bool) -> Drc
         marks.round_angle = 0.0;
         marks.fine_pitch = 0.0;
         marks.uneven_finish = None;
+        // The panel is the size the board house wants; its cells' size is asked of the board.
+        marks.min_single_sided_assembly_size = None;
+        marks.min_double_sided_assembly_size = None;
     }
     extras
 }

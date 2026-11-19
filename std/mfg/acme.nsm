@@ -164,6 +164,13 @@ interface EightLayer {
     /// (`.process.min_round_track_angle &= 60`). It is a lower bound: `&= 60..` allows 60
     /// and over. Unstated, round copper is not judged.
     .min_round_track_angle: Number
+    /// The least side of a single board that the assembly house places parts on one face
+    /// of, and on both (`.min_single_sided_assembly_size`, issue 1285), for the
+    /// `assembly_size` rule. The fictional house publishes no figure and leaves both
+    /// unstated, so the size of a board is not judged; a board that wants it judged states
+    /// one (`.process.min_double_sided_assembly_size &= 70mm..`).
+    .min_single_sided_assembly_size: Length
+    .min_double_sided_assembly_size: Length
     /// How much narrower than drawn a finished track may be, as a fraction.
     .track_width_tolerance: Number
     .track_width_tolerance &= 0.2
@@ -369,6 +376,13 @@ interface TenLayer {
     /// (`.process.min_round_track_angle &= 60`). It is a lower bound: `&= 60..` allows 60
     /// and over. Unstated, round copper is not judged.
     .min_round_track_angle: Number
+    /// The least side of a single board that the assembly house places parts on one face
+    /// of, and on both (`.min_single_sided_assembly_size`, issue 1285), for the
+    /// `assembly_size` rule. The fictional house publishes no figure and leaves both
+    /// unstated, so the size of a board is not judged; a board that wants it judged states
+    /// one (`.process.min_double_sided_assembly_size &= 70mm..`).
+    .min_single_sided_assembly_size: Length
+    .min_double_sided_assembly_size: Length
     /// How much narrower than drawn a finished track may be, as a fraction.
     .track_width_tolerance: Number
     .track_width_tolerance &= 0.2
