@@ -734,15 +734,24 @@ impl Parser {
                 };
                 self.bump();
                 self.skip_newlines();
-                let rhs = self.value()?;
-                // `at` and a current after the value: the load a level is measured at.
-                let at = if matches!(&self.peek().tok, Tok::Ident(w) if w == "at") {
+                let rhs_start = self.peek().span.start;
+                let mut rhs = self.value()?;
+                // `at` and a current after the value: the load a level is measured at; `at`
+                // and a voltage, the supply an input level holds at (issue #1305), which is a
+                // table of rows when a comma or `interpolated` follows.
+                let mut at = if matches!(&self.peek().tok, Tok::Ident(w) if w == "at") {
                     self.bump();
                     self.skip_newlines();
                     Some(self.expr()?)
                 } else {
                     None
                 };
+                if let Some(first_at) = at.take_if(|_| {
+                    self.at(&Tok::Comma)
+                        || matches!(&self.peek().tok, Tok::Ident(w) if w == "interpolated")
+                }) {
+                    rhs = self.supply_rows(rhs, first_at, rhs_start)?;
+                }
                 only_decls(Item::Constraint(Constraint {
                     lhs,
                     op,
@@ -2500,6 +2509,37 @@ impl Parser {
         }
         Ok(Expr::Steps {
             steps,
+            span: self.span_from(start),
+        })
+    }
+
+    /// The rows of a level by the supply after the first (`value at supply`), separated by
+    /// commas, and `interpolated` after the last when the part says so (issues #1305, #1307).
+    fn supply_rows(&mut self, value: Expr, at: Expr, start: usize) -> Res<Expr> {
+        let mut rows = vec![SupplyRow { value, at }];
+        while self.at(&Tok::Comma) {
+            self.bump();
+            self.skip_newlines();
+            let value = self.expr()?;
+            if !matches!(&self.peek().tok, Tok::Ident(w) if w == "at") {
+                let next = self.peek().clone();
+                return Err(unexpected(
+                    &next,
+                    "`at` and the supply the row holds at, such as `2.0V at 3.0V..3.6V`",
+                ));
+            }
+            self.bump();
+            self.skip_newlines();
+            let at = self.expr()?;
+            rows.push(SupplyRow { value, at });
+        }
+        let interpolated = matches!(&self.peek().tok, Tok::Ident(w) if w == "interpolated");
+        if interpolated {
+            self.bump();
+        }
+        Ok(Expr::SupplySteps {
+            rows,
+            interpolated,
             span: self.span_from(start),
         })
     }

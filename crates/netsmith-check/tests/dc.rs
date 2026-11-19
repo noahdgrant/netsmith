@@ -945,7 +945,13 @@ fn an_input_level_has_no_test_current() {
     let m = only(&run(&driver(".out.vih &= 2V at 2mA")));
     assert_eq!(
         m,
-        "`at <current>` states the load of an output level; `.out.vih` is a level that a datasheet states without a load: only an output level, `voh` or `vol`, is measured at a current"
+        "an input level is not measured at a load: `at` after `vih` or `vil` takes the supply the level holds at, such as `at 3.0V..3.6V`"
+    );
+    // A comparison other than `&=` keeps the words of the test current, and names the rows.
+    let m = only(&run(&driver(".out.vih >= 2V at 2mA")));
+    assert!(
+        m.contains("only an output level, `voh` or `vol`, is measured at a current (an input level holds at a supply, stated with `&=`"),
+        "{m}"
     );
 }
 

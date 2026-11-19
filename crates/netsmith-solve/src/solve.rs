@@ -996,6 +996,16 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         }
     }
     s.check_windows();
+    // The input levels stated in rows by the supply, read at the solved rails (issue #1305),
+    // before the DC analysis, which reads which receivers state levels.
+    let mut supply_done = HashSet::new();
+    let supply = crate::supply_levels::write(&mut s.model, &mut supply_done);
+    for d in supply.faults {
+        s.report(d.source, d.span, d.message);
+    }
+    for c in s.propagate() {
+        s.report(c.source, c.span, c.message);
+    }
     // The picked parts' network is solved, and what it gives is written where nothing states
     // a value (ADR 0076); the relations that waited are then judged with numbers.
     let (dc, dc_notes, net_reads, net_currents) =
@@ -1106,7 +1116,13 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
     for d in netsmith_check::pin_faults_solved(model, &s.model) {
         s.report(d.source, d.span, d.message);
     }
-    let (level_faults, mut not_evaluated) = crate::levels::check(&s.model, &net_reads);
+    // Again for a reference rail that the DC analysis gave a voltage.
+    let supply = crate::supply_levels::write(&mut s.model, &mut supply_done);
+    for d in supply.faults {
+        s.report(d.source, d.span, d.message);
+    }
+    let (level_faults, mut not_evaluated) =
+        crate::levels::check(&s.model, &net_reads, &supply.unread);
     not_evaluated.extend(crate::busclock::notes(&s.model));
     not_evaluated.extend(crate::busfigures::notes(&s.model, &deferred));
     not_evaluated.extend(dc_notes);

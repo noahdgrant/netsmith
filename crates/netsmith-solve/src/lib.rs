@@ -21,6 +21,7 @@ mod preferred;
 mod sequence;
 mod solve;
 mod standard;
+mod supply_levels;
 mod table;
 
 pub use catalog::{

@@ -22,6 +22,14 @@ use crate::model::{
 /// The example every message about steps over temperature shows (issue #1257).
 const STEPS_EXAMPLE: &str = "`.max_voltage &= 5.5V to 70degC, 4.2V to 85degC`";
 
+/// The example every message about an input level in rows by the supply shows (issue #1305).
+const SUPPLY_EXAMPLE: &str = "`.vih &= 0.65 * .vcc.voltage at 1.1V..1.95V, 2.0V at 3.0V..3.6V`";
+
+/// A voltage for a message, in the unit a datasheet prints.
+fn show_volts(v: f64) -> String {
+    Quantity::literal(v, Some("V")).map_or_else(|_| format!("{v} V"), |l| l.quantity.to_string())
+}
+
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum VTy {
     Q(Dimension),
@@ -275,6 +283,15 @@ impl Checker<'_> {
     pub fn lower(&mut self, e: &Expr) -> Option<Typed> {
         match e {
             // Steps stand only as the whole value of a narrowing (`narrow_statement`).
+            Expr::SupplySteps { span, .. } => {
+                self.error(
+                    *span,
+                    format!(
+                        "rows by the supply are an input level, stated with `&=` on its own: {SUPPLY_EXAMPLE}"
+                    ),
+                );
+                None
+            }
             Expr::Steps { span, .. } => {
                 self.error(
                     *span,
@@ -651,6 +668,10 @@ impl Checker<'_> {
             }
             return;
         };
+        // `at` after an input level is its supply, read with the statement (issue #1305).
+        if self.is_input_level(level) && matches!(c.op, CmpOp::Narrow | CmpOp::Default) {
+            return;
+        }
         let f = self.model.field(level);
         let name = f.name.clone();
         // The level as the definition that states it names it, so that the message reads the
@@ -659,7 +680,7 @@ impl Checker<'_> {
         if !self.model.is_level(level) || !matches!(name.as_str(), "voh" | "vol") {
             let why = if self.model.is_level(level) {
                 format!(
-                    "`{path}` is a level that a datasheet states without a load: only an output level, `voh` or `vol`, is measured at a current"
+                    "`{path}` is a level that a datasheet states without a load: only an output level, `voh` or `vol`, is measured at a current (an input level holds at a supply, stated with `&=`: {SUPPLY_EXAMPLE})"
                 )
             } else {
                 format!(
@@ -759,6 +780,19 @@ impl Checker<'_> {
         self.narrowing = false;
         if let Expr::Steps { steps, span } = &c.rhs {
             return self.steps_statement(target, p, c, steps, *span);
+        }
+        if let Expr::SupplySteps {
+            rows, interpolated, ..
+        } = &c.rhs
+        {
+            let rows: Vec<(&Expr, &Expr)> = rows.iter().map(|r| (&r.value, &r.at)).collect();
+            return self.supply_steps_statement(&target, p, c, &rows, *interpolated);
+        }
+        // `.vih &= 2.0V at 3.0V..3.6V`: one row by the supply (issue #1305).
+        if let (Some(at), Res::Field(f)) = (&c.at, &target)
+            && self.is_input_level(*f)
+        {
+            return self.supply_steps_statement(&target, p, c, &[(&c.rhs, at)], false);
         }
         let rhs = match target {
             Res::Field(f) => {
@@ -933,6 +967,185 @@ impl Checker<'_> {
             span: c.span,
         });
         Some(f)
+    }
+
+    /// Whether a field is an input level, the `vih` or `vil` of a `Logic` or a `Levels`: the
+    /// levels a datasheet gives in rows by the supply (issue #1305).
+    fn is_input_level(&self, f: FieldId) -> bool {
+        self.model.is_level(f) && matches!(self.model.field(f).name.as_str(), "vih" | "vil")
+    }
+
+    /// `.vih &= 0.65 * .vcc.voltage at 1.1V..1.95V, 2.0V at 3.0V..3.6V [interpolated]` (issues
+    /// #1305 and #1307): an input level in rows by the supply, as a datasheet's table gives it.
+    /// Each row is a voltage, which may name the supply's voltage, and after `at` the supply it
+    /// holds at, a range or one voltage; the rows rise and do not overlap. The level is not
+    /// narrowed here: the solver reads the rows at the level's reference rail once the rails are
+    /// solved (`levels::supply` in `netsmith-solve`).
+    fn supply_steps_statement(
+        &mut self,
+        target: &Res,
+        p: &ast::Path,
+        c: &ast::Constraint,
+        rows: &[(&Expr, &Expr)],
+        interpolated: bool,
+    ) -> Option<FieldId> {
+        let Res::Field(f) = *target else {
+            if matches!(target, Res::Inst(_)) {
+                self.error(
+                    p.span,
+                    format!(
+                        "`{}` is not a field: rows by the supply state an input level, {SUPPLY_EXAMPLE}",
+                        p.to_source()
+                    ),
+                );
+            }
+            return None;
+        };
+        let path = self.model.field_in_scope(f);
+        if !self.is_input_level(f) {
+            let why = if self.model.is_level(f) {
+                "an output level is stated at its load (`at 2mA`), and its rows by the supply are not read"
+            } else {
+                "only an input level, the `vih` or `vil` of a `Logic` or of `Levels`, is"
+            };
+            self.error(
+                p.span,
+                format!(
+                    "`{path}` cannot be stated in rows by the supply: {why}, as {SUPPLY_EXAMPLE}"
+                ),
+            );
+            return None;
+        }
+        if c.op != CmpOp::Narrow {
+            self.error(
+                c.span,
+                format!(
+                    "rows by the supply are stated with `&=`, not `{}`: {SUPPLY_EXAMPLE}",
+                    c.op.symbol()
+                ),
+            );
+            return None;
+        }
+        let mut read: Vec<crate::model::SupplyRow> = Vec::new();
+        for &(value, at) in rows {
+            let t = self.lower(value)?;
+            let value_e = match t.ty {
+                VTy::Q(d) if d == Dimension::VOLTAGE => t.e,
+                ty => {
+                    let word = self.describe(ty);
+                    self.error(
+                        value.span(),
+                        format!(
+                            "`{}` is {word}, but a row of `{path}` is a voltage, such as `2.0V` or `0.65 * .vcc.voltage`",
+                            value.to_source()
+                        ),
+                    );
+                    return None;
+                }
+            };
+            let (lo, hi) = self.supply_of_row(at)?;
+            if let Some(before) = read.last()
+                && lo < before.hi
+            {
+                self.error(
+                    at.span(),
+                    format!(
+                        "the supplies of the rows rise from the first to the last and do not overlap, but `{}` starts below {} where the row before it ends: write the rows from the lowest supply, {SUPPLY_EXAMPLE}",
+                        at.to_source(),
+                        show_volts(before.hi)
+                    ),
+                );
+                return None;
+            }
+            read.push(crate::model::SupplyRow {
+                value: value_e,
+                lo,
+                hi,
+            });
+        }
+        if interpolated && read.len() < 2 {
+            self.error(
+                c.span,
+                format!(
+                    "`interpolated` says that `{path}` is linear in the supply between two rows, and there is one row: state the rows the datasheet gives, as `1.0V at 1.65V, 1.4V at 2.3V interpolated`"
+                ),
+            );
+            return None;
+        }
+        let mut fields = vec![f];
+        for r in &read {
+            r.value.fields(&mut fields);
+        }
+        if !self.physical_gate(&fields, c.span) || !self.module_frame_narrowing(&fields, c.span) {
+            return None;
+        }
+        if let Some(earlier) = self.model.supply_steps.iter().find(|s| s.field == f) {
+            let place = self.place_of(earlier.source, earlier.span);
+            self.error(
+                c.span,
+                format!(
+                    "`{path}` is already stated in rows by the supply (at {place}): a level has one table, so keep one statement"
+                ),
+            );
+            return None;
+        }
+        self.refuse_own_statement(f, "&=", c.span);
+        self.stated.insert(f);
+        let source = self.cur_source();
+        self.model.supply_steps.push(crate::model::SupplySteps {
+            field: f,
+            rows: read,
+            interpolated,
+            source,
+            span: c.span,
+        });
+        Some(f)
+    }
+
+    /// The supply after a row's `at`: a voltage above zero, or a range of them, in volts.
+    fn supply_of_row(&mut self, at: &Expr) -> Option<(f64, f64)> {
+        let t = self.lower(at)?;
+        match (t.ty, t.e) {
+            (VTy::Q(d), RExpr::Const(q)) if d == Dimension::VOLTAGE => {
+                if q.lo() <= 0.0 || !q.hi().is_finite() {
+                    self.error(
+                        at.span(),
+                        format!(
+                            "the supply of a row is a voltage above zero with both ends, such as `3.0V..3.6V`, not {q}"
+                        ),
+                    );
+                    return None;
+                }
+                Some((q.lo(), q.hi()))
+            }
+            (VTy::Q(d), RExpr::Const(_)) if d == Dimension::CURRENT => {
+                self.error(
+                    at.span(),
+                    "an input level is not measured at a load: `at` after `vih` or `vil` takes the supply the level holds at, such as `at 3.0V..3.6V`",
+                );
+                None
+            }
+            (VTy::Q(d), RExpr::Const(_)) => {
+                let word = crate::dc::quantity_word(d);
+                self.error(
+                    at.span(),
+                    format!(
+                        "`at` after an input level takes the supply the row holds at, such as `3.0V..3.6V`, not a {word}"
+                    ),
+                );
+                None
+            }
+            _ => {
+                self.error(
+                    at.span(),
+                    format!(
+                        "the supply of a row is the number the datasheet prints, such as `3.0V..3.6V`, not `{}`",
+                        at.to_source()
+                    ),
+                );
+                None
+            }
+        }
     }
 
     /// One side of a step: a single number of `dim`, in its base unit.
