@@ -58,8 +58,13 @@ pub fn run(args: Args) -> ExitCode {
                     let label = built.label();
                     let mut board = board.clone();
                     let say = |line: String| eprintln!("{label}: {line}");
-                    pcb_picture::put_copper(&mut board, &placed.layout, route.as_ref(), &say)
-                        .map_err(|e| format!("error: {label}: {e}\n"))?;
+                    pcb_picture::put_copper(
+                        &mut board,
+                        &placed.layout_of(built).file,
+                        route.as_ref(),
+                        &say,
+                    )
+                    .map_err(|e| format!("error: {label}: {e}\n"))?;
                     let mut table = netsmith_fabricate::net_table::of_board(&board)
                         .map_err(|e| format!("error: {label}: {e}\n"))?;
                     if args.lengths {

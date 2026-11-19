@@ -415,7 +415,7 @@ fn tidy(args: &TidyArgs) -> ExitCode {
             && args.watching.progress == crate::progress::Print::Text,
     );
     let tidied = common::with_stage_events(|| {
-        with_board(&args.target, |placed, board| {
+        with_board(&args.target, |layout, board| {
             let sink = netsmith_fabricate::layout::tidy_progress(
                 board.name.clone(),
                 crate::progress::tell,
@@ -423,7 +423,7 @@ fn tidy(args: &TidyArgs) -> ExitCode {
             netsmith_core::job::reporting(sink, || {
                 netsmith_fabricate::routes_tidy::tidy_files(
                     board,
-                    &placed.layout,
+                    layout,
                     args.reuse_routes,
                     args.dry_run,
                 )
@@ -494,30 +494,37 @@ fn zone_outline(args: &AddZoneArgs, board: &Board) -> Vec<[f64; 2]> {
     }
 }
 
-/// The routes file of the placed board's source: beside its layout file.
-fn routes_file(placed: &Placed) -> PathBuf {
-    lib::beside_layout(&placed.layout)
+/// The routes file of a board whose layout file is `layout`: beside it.
+fn routes_file(layout: &Path) -> PathBuf {
+    lib::beside_layout(layout)
 }
 
-/// `then` of the placed board (no routes on it) and its routes file. The error is printed.
+/// The placed board (no routes on it) and its layout file ([`Placed::layout_of`]: a board of a
+/// system defined in another file has its own, issue #1327).
+fn board_and_layout(placed: &Placed) -> Result<(Board, PathBuf), String> {
+    placed.with_board(|built, board| (board.clone(), placed.layout_of(built).file))
+}
+
+/// `then` of the placed board (no routes on it) and its layout file, beside which is its routes
+/// file. The error is printed.
 fn with_board<T>(
     target: &Target,
-    then: impl Fn(&Placed, &Board) -> Result<T, String>,
+    then: impl Fn(&Path, &Board) -> Result<T, String>,
 ) -> Result<T, ExitCode> {
     common::with_placed_board(
         target.file.as_deref(),
         target.board.as_deref(),
         None,
         |placed| {
-            let board = placed.with_board(|_, board| board.clone())?;
-            then(placed, &board).map_err(|e| format!("error: {e}\n"))
+            let (board, layout) = board_and_layout(placed)?;
+            then(&layout, &board).map_err(|e| format!("error: {e}\n"))
         },
     )
 }
 
 fn show(args: &ShowArgs) -> ExitCode {
-    let shown = with_board(&args.target, |placed, board| {
-        lib::show(board, &lib::load(&routes_file(placed))?)
+    let shown = with_board(&args.target, |layout, board| {
+        lib::show(board, &lib::load(&routes_file(layout))?)
     });
     match shown {
         Ok(shown) => {
@@ -549,10 +556,10 @@ fn edit_all(target: &Target, changes: impl Fn(&Board) -> Vec<lib::Edit>) -> Exit
         target.board.as_deref(),
         None,
         |placed| {
-            let board = placed.with_board(|_, board| board.clone())?;
+            let (board, layout) = board_and_layout(placed)?;
             Ok(lib::edit_file_all(
                 &board,
-                &routes_file(placed),
+                &routes_file(&layout),
                 &changes(&board),
             ))
         },
@@ -579,8 +586,8 @@ fn edit_all(target: &Target, changes: impl Fn(&Board) -> Vec<lib::Edit>) -> Exit
 /// be tried.
 fn route(args: &RouteArgs) -> ExitCode {
     use netsmith_fabricate::route_net;
-    let done = with_board(&args.target, |placed, board| {
-        let file = routes_file(placed);
+    let done = with_board(&args.target, |layout, board| {
+        let file = routes_file(layout);
         let routes = lib::load(&file)?;
         let ask = match route_net::Ask::of(board, &args.net, &args.rip) {
             Ok(ask) => ask,
@@ -661,10 +668,10 @@ fn import(args: &ImportArgs) -> ExitCode {
         None => None,
     };
     // First the design's board as it is placed now, for its parts, nets and paths.
-    let imported = with_board(&args.target, |placed, board| {
+    let imported = with_board(&args.target, |layout, board| {
         let import = routes_import::import(board, &pcb, parts.as_ref(), !args.unlocked)?;
         if !args.no_places {
-            write_places(&placed.layout, board, &import)?;
+            write_places(layout, board, &import)?;
         }
         Ok(import)
     });
@@ -673,8 +680,8 @@ fn import(args: &ImportArgs) -> ExitCode {
         Err(code) => return code,
     };
     // Then placed again with those places, for each net's pads as they are.
-    let written = with_board(&args.target, |placed, board| {
-        let file = routes_file(placed);
+    let written = with_board(&args.target, |layout, board| {
+        let file = routes_file(layout);
         let mut routes = lib::load(&file).unwrap_or_default();
         routes
             .boards

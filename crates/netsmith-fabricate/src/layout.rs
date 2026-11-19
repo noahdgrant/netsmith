@@ -1,6 +1,7 @@
 //! The layout file beside a source file (ADR 0020 item 7, ADR 0032): `<stem>.pcb.toml`.
 //!
-//! It is optional. `fab` and the editor's PCB view read it when it exists. It tells the placer
+//! It is optional. `fab` and the editor's PCB view read it when it exists. A board of a system
+//! defined in another file reads the one beside that file ([`board_file`], issue #1327). It tells the placer
 //! which face each part is on and what to keep clear of
 //! ([`netsmith_pcb::place_options`]), and then puts what it holds on the placed board with
 //! [`netsmith_pcb::apply_layout`].
@@ -35,6 +36,15 @@ pub fn layout_path(source: &Path) -> PathBuf {
 /// for a board that is gone is found. A file that cannot be read or has a wrong table is an
 /// error naming it.
 pub fn read(file: &Path, boards: &[String]) -> Result<Option<(Layout, String)>, String> {
+    read_checked(file, Some(boards))
+}
+
+/// [`read`], with the tables checked against `boards` when it is given: none for a board's own
+/// layout file read by a build of a system ([`BoardFile::own`]).
+pub fn read_checked(
+    file: &Path,
+    boards: Option<&[String]>,
+) -> Result<Option<(Layout, String)>, String> {
     let name = file.display().to_string();
     let text = match std::fs::read_to_string(file) {
         Ok(text) => text,
@@ -42,11 +52,154 @@ pub fn read(file: &Path, boards: &[String]) -> Result<Option<(Layout, String)>, 
         Err(e) => return Err(format!("{name}: {e}")),
     };
     let layout = Layout::parse(&text, &name).map_err(|e| e.to_string())?;
-    let known: Vec<&str> = boards.iter().map(String::as_str).collect();
-    layout
-        .check_boards(&name, &known)
-        .map_err(|e| e.to_string())?;
+    if let Some(boards) = boards {
+        let known: Vec<&str> = boards.iter().map(String::as_str).collect();
+        layout
+            .check_boards(&name, &known)
+            .map_err(|e| e.to_string())?;
+    }
     Ok(Some((layout, name)))
+}
+
+/// The layout file a board of a build reads its table from and writes it to (issue #1327).
+///
+/// A board built alone, or a board of a system defined in the system's own file, has the
+/// layout file beside the source built. A board of a system defined in another file of the
+/// project has the layout file beside that file, the one it reads when it is built alone: a
+/// board placed by hand once is placed so in every system it is a member of, and the system's
+/// layout file says only what is the system's (the tables of the boards defined in it). A
+/// system's layout file written before this held a table for each member: such a table is
+/// still read, and wins over the member's own file, with a note when that file exists, so that
+/// nothing an older project placed moves (a table of the board in the routes file beside the
+/// system's layout file keeps it there too, so its copper stays with its places). The routes
+/// file is the one beside the layout file the board reads. A board of a dependency keeps the system's file: the
+/// dependency's files are not the project's to write.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BoardFile {
+    /// The layout file the board's table is read from and written to.
+    pub file: PathBuf,
+    /// Whether `file` is the member's own (beside the file its board is defined in), not the
+    /// one beside the source built: its other tables are of the boards of that file, which this
+    /// build does not have, so they are not checked here.
+    pub own: bool,
+    /// What to say: the system's layout file has a table for the board, and the board's own
+    /// layout file exists too.
+    pub note: Option<String>,
+}
+
+/// The [`BoardFile`] of `built`, a board of the build of a source whose layout file is
+/// `layout`, with `loader` the loader it was built with ([`netsmith_check::Loader::path_of`]
+/// says where its files are).
+pub fn board_file(
+    built: &netsmith_pipeline::Built,
+    loader: &netsmith_check::Loader,
+    layout: &Path,
+) -> BoardFile {
+    let beside = || BoardFile {
+        file: layout.to_path_buf(),
+        own: false,
+        note: None,
+    };
+    if built.system.is_none() {
+        return beside();
+    }
+    let Some(source) = defined_in(built, loader) else {
+        return beside();
+    };
+    let own = shown(&layout_path(&source));
+    if same_file(&own, layout) {
+        return beside();
+    }
+    // A table in the system's layout file, or in the routes file beside it, is of an older
+    // project: the board stays with the system's files, both of them, so its copper stays too.
+    let name = &built.design.name;
+    let in_system = std::fs::read_to_string(layout)
+        .ok()
+        .and_then(|text| Layout::parse(&text, "").ok())
+        .is_some_and(|l| l.boards.contains_key(name))
+        || crate::routes::load(&crate::routes::beside_layout(layout))
+            .is_ok_and(|r| r.boards.contains_key(name));
+    if in_system {
+        let note = own.exists().then(|| {
+            format!(
+                "{}: the table `{name}` is read for `{}`, and the layout file beside the source of the board, {}, is not: a board of a system reads its own layout file, so move what the table holds there (and its routes, from the routes file beside it) and remove it from {}",
+                layout.display(),
+                built.label(),
+                own.display(),
+                layout.display(),
+            )
+        });
+        return BoardFile {
+            file: layout.to_path_buf(),
+            own: false,
+            note,
+        };
+    }
+    BoardFile {
+        file: own,
+        own: true,
+        note: None,
+    }
+}
+
+/// The file of the project the board of `built` is defined in, when `loader` knows where it is
+/// ([`netsmith_check::Loader::path_of`]): none for a board of the standard library or of a
+/// dependency, or of a text given with no file.
+pub fn defined_in(
+    built: &netsmith_pipeline::Built,
+    loader: &netsmith_check::Loader,
+) -> Option<PathBuf> {
+    let model = &built.trace.model;
+    let name = &built
+        .trace
+        .sources
+        .get(model.instance(model.root).source)
+        .name;
+    loader.path_of(name).map(Path::to_path_buf)
+}
+
+/// The layout of `built` ([`board_file`]) and where it is: the board's own file read without
+/// checking its other tables, the source's checked against `boards`, the names of all the
+/// boards of the source ([`read`]).
+pub fn read_board(
+    built: &netsmith_pipeline::Built,
+    loader: &netsmith_check::Loader,
+    layout: &Path,
+    boards: &[String],
+) -> Result<(Option<(Layout, String)>, BoardFile), String> {
+    let at = board_file(built, loader, layout);
+    let read = read_checked(&at.file, (!at.own).then_some(boards))?;
+    Ok((read, at))
+}
+
+/// `path` as a person would type it here: from the current folder when it is inside it.
+fn shown(path: &Path) -> PathBuf {
+    std::env::current_dir()
+        .ok()
+        .and_then(|cwd| path.strip_prefix(cwd).ok().map(Path::to_path_buf))
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| path.to_path_buf())
+}
+
+/// Whether two paths name one file, however each was spelled.
+fn same_file(a: &Path, b: &Path) -> bool {
+    let whole = |p: &Path| std::path::absolute(p).ok().map(|p| normal(&p));
+    a == b || matches!((whole(a), whole(b)), (Some(a), Some(b)) if a == b)
+}
+
+/// `path` with its `.` and `..` steps taken out.
+fn normal(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 /// The text to write to the layout file at `file` for `layout`: the file's own text with the

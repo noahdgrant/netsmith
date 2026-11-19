@@ -54,7 +54,7 @@ The files you write, and commit with the source:
 
 The files a command writes, and you commit with the source (look at the diff, do not edit them to make an error go away):
 
-- `<stem>.pcb.toml`: the layout file, where each part is. The editor and the placer write it, and so do `layout set` and `layout capture`.
+- `<stem>.pcb.toml`: the layout file, where each part is. The editor and the placer write it, and so do `layout set` and `layout capture`. A board of a system reads the one beside the file it is defined in.
 - `<stem>.routes.toml`: copper fixed by hand or imported, written by `routes` and the editor.
 - `<stem>.sch.toml`: how the schematic is arranged, written by `schematic` and the editor.
 - `<stem>.pins.toml`: the pins a board's requests got, written by `board build` and `board fab` and held by `board pins`.

@@ -25,7 +25,7 @@ use super::routes::{Target, parse_point};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "The layout file `<stem>.pcb.toml` sits beside the source and holds the solution: where each part is (`at`, `turn`, `side`, `lock`), keyed by the part's path in the design (`stage.output_cap`; the capacitors of a bank are `bank[0]`, `bank[1]`). The requirements on where a part may be are in the board's physical file, never here.\n\nThe frame is the file's: `--at X,Y` is the footprint's origin in mm from the outline's top left corner, x to the right and y down; a turn is in degrees, counterclockwise on screen, any angle from 0 up to 360; a part on the bottom face is the top face's footprint mirrored left to right (about its own y axis), then turned as it is seen from the top. The guide's \"The layout file\" has an example of a part on each face.\n\n`show`, `set` and `check` check and solve the board as `build` does and place nothing; `summary`, `compare` and `fit` place it as `dev board3d` does and write nothing; `regenerate` and `capture` place it as `fab` does; `export`, `import` and `parts` place it as `dev board3d` does. The exit code is 0 when it did what it was asked, 1 when it refused (a part the board does not have, a turn that is not allowed, a file with an error `check` reports), and 2 when it could not run (a usage mistake included)."
+    after_long_help = "The layout file `<stem>.pcb.toml` sits beside the source and holds the solution: where each part is (`at`, `turn`, `side`, `lock`), keyed by the part's path in the design (`stage.output_cap`; the capacitors of a bank are `bank[0]`, `bank[1]`). The requirements on where a part may be are in the board's physical file, never here. A board of a system defined in another file reads and writes the layout file beside that file, unless the system's layout file still has a table for it (issue #1327).\n\nThe frame is the file's: `--at X,Y` is the footprint's origin in mm from the outline's top left corner, x to the right and y down; a turn is in degrees, counterclockwise on screen, any angle from 0 up to 360; a part on the bottom face is the top face's footprint mirrored left to right (about its own y axis), then turned as it is seen from the top. The guide's \"The layout file\" has an example of a part on each face.\n\n`show`, `set` and `check` check and solve the board as `build` does and place nothing; `summary`, `compare` and `fit` place it as `dev board3d` does and write nothing; `regenerate` and `capture` place it as `fab` does; `export`, `import` and `parts` place it as `dev board3d` does. The exit code is 0 when it did what it was asked, 1 when it refused (a part the board does not have, a turn that is not allowed, a file with an error `check` reports), and 2 when it could not run (a usage mistake included)."
 )]
 pub struct Args {
     #[command(subcommand)]
@@ -373,10 +373,10 @@ fn import(args: &ImportArgs) -> ExitCode {
         args.target.board.as_deref(),
         Some(&args.placing),
         |placed| {
-            let file = placed.layout.clone();
-            let layout = lib::read_layout(&file).map_err(|e| format!("error: {e}\n"))?;
             placed
-                .with_board_shown(|_, board, _| {
+                .with_board_shown(|built, board, _| {
+                    let file = placed.layout_of(built).file;
+                    let layout = lib::read_layout(&file)?;
                     lib::import(
                         board,
                         &pcb,
@@ -385,8 +385,8 @@ fn import(args: &ImportArgs) -> ExitCode {
                         &file.display().to_string(),
                         args.lock,
                     )
+                    .map(|(imported, layout)| (imported, layout, file))
                 })?
-                .map(|(imported, layout)| (imported, layout, file))
                 .map_err(|e| format!("error: {e}\n"))
         },
     );
@@ -549,14 +549,15 @@ fn capture(args: &CaptureArgs) -> ExitCode {
         |placed| {
             placed
                 .with_built(|built| {
+                    let file = said_layout_of(placed, built);
                     lib::capture(
                         &built.design,
-                        &placed.layout,
+                        &file,
                         placed.libraries,
                         placed.catalogs.constraints_warn(),
                         placed.seeds,
                     )
-                    .map(|(captured, layout)| (captured, layout, placed.layout.clone()))
+                    .map(|(captured, layout)| (captured, layout, file))
                 })
                 .and_then(|done| done.map_err(|e| format!("error: {e}\n")))
         },
@@ -607,15 +608,16 @@ fn regenerate(args: &RegenerateArgs) -> ExitCode {
         |placed| {
             placed
                 .with_built(|built| {
+                    let file = said_layout_of(placed, built);
                     lib::propose(
                         &built.design,
-                        &placed.layout,
+                        &file,
                         placed.libraries,
                         placed.catalogs.constraints_warn(),
                         placed.seeds,
                         &request,
                     )
-                    .map(|(proposal, layout)| (proposal, layout, placed.layout.clone()))
+                    .map(|(proposal, layout)| (proposal, layout, file))
                 })
                 .and_then(|done| done.map_err(|e| format!("error: {e}\n")))
         },
@@ -720,6 +722,20 @@ fn compare(args: &CompareArgs) -> ExitCode {
     }
 }
 
+/// The layout file `built` reads and writes ([`netsmith_fabricate::board3d::Placed::layout_of`]:
+/// a board of a system defined in another file has its own, issue #1327), with what is said of
+/// it on stderr.
+fn said_layout_of(
+    placed: &netsmith_fabricate::board3d::Placed,
+    built: &netsmith_pipeline::Built,
+) -> std::path::PathBuf {
+    let at = placed.layout_of(built);
+    if let Some(note) = &at.note {
+        eprintln!("note: {note}");
+    }
+    at.file
+}
+
 /// `then` of the board picked, checked and solved but not placed, with the layout file's path
 /// and the libraries. A refusal of `then` is printed and exits 1; a board that does not build is
 /// printed by [`common::with_placed_board`].
@@ -735,7 +751,12 @@ fn with_design<T>(
         target.file.as_deref(),
         target.board.as_deref(),
         None,
-        |placed| placed.with_built(|built| then(&built.design, &placed.layout, placed.libraries)),
+        |placed| {
+            placed.with_built(|built| {
+                let at = said_layout_of(placed, built);
+                then(&built.design, &at, placed.libraries)
+            })
+        },
     )?;
     done.map_err(|e| {
         eprintln!("error: {e}");
