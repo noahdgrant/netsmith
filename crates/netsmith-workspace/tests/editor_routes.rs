@@ -241,10 +241,10 @@ fn a_record_not_used_as_written_is_a_warning_in_the_findings() {
     let scene = editor.pcb_scene(BOARD).unwrap();
     let gnd = scene.routes.iter().find(|n| n.net == "GND").unwrap();
     assert!(!gnd.current);
-    // The locked track is kept and drawn, the unlocked one dropped.
+    // Every shape is kept and drawn, locked or not (issue #1328).
     assert_eq!(
         gnd.tracks.iter().map(|t| t.drawn).collect::<Vec<_>>(),
-        [true, false]
+        [true, true]
     );
     let renamed = scene.routes.iter().find(|n| n.net == "RENAMED").unwrap();
     assert!(renamed.tracks.iter().all(|t| !t.drawn));

@@ -2084,6 +2084,8 @@ board Card {
 
 What reads the contacts is the system scene: it lines the connectors of a mate up, and checks them, on their contacts (chapter _Systems and ports_, _Contacts that are not at the pads' centres_). The copper itself, what the router, the design rules check and the board house see, is the footprint's and does not move. A `pads` block is only in a part's own definition, as a `pins` table is. A row names a pad of the part's pin table (`the part's pin table has no pad "9"`), states each field once, and its point is two lengths; a pad has no other field.
 
+A pin may also say how a pour of its net joins its pads, solid or with spokes of its own width (`.gnd.pour_connection &= PadConnection::Solid`, `.gnd.spoke_width &= 0.3mm..`, issue #1276): see "A pad's own connection", under Pours in _The shape of a board_.
+
 ### Mistakes in a table
 
 A pin has one kind and one datasheet name in every package:

@@ -1451,7 +1451,7 @@ impl Placed<'_> {
         ) -> Result<(Board, Vec<(String, String)>), String>,
         then: impl FnOnce(&Built, &Board, &[(String, String)]) -> T,
     ) -> Result<T, String> {
-        let outcome = netsmith_pipeline::outcome_with(
+        let mut outcome = netsmith_pipeline::outcome_with(
             self.name,
             self.text,
             self.loader,
@@ -1459,6 +1459,14 @@ impl Placed<'_> {
             Some(self.libraries),
         )
         .map_err(|problems| netsmith_pipeline::render_problems(&problems))?;
+        // The areas other members of a system cover (issue 1331), as `fab` adds them.
+        crate::system_areas::add(
+            &mut outcome.boards,
+            &outcome.systems,
+            self.loader,
+            Some(&self.layout),
+            self.libraries,
+        );
         let labels: Vec<String> = outcome.boards.iter().map(Built::label).collect();
         let built = pick_board(&outcome.boards, self.name, self.board, &labels)?;
         let fail = |what: String| format!("error: {}: {what}\n", built.label());
@@ -1494,7 +1502,7 @@ impl Placed<'_> {
         &self,
         then: impl FnOnce(&Built, &[String]) -> T,
     ) -> Result<T, String> {
-        let outcome = netsmith_pipeline::outcome_with(
+        let mut outcome = netsmith_pipeline::outcome_with(
             self.name,
             self.text,
             self.loader,
@@ -1502,6 +1510,14 @@ impl Placed<'_> {
             Some(self.libraries),
         )
         .map_err(|problems| netsmith_pipeline::render_problems(&problems))?;
+        // The areas other members of a system cover (issue 1331), as `fab` adds them.
+        crate::system_areas::add(
+            &mut outcome.boards,
+            &outcome.systems,
+            self.loader,
+            Some(&self.layout),
+            self.libraries,
+        );
         let labels: Vec<String> = outcome.boards.iter().map(Built::label).collect();
         let names: Vec<String> = outcome
             .boards
@@ -1727,6 +1743,14 @@ fn picked<T>(
     let mut outcome =
         netsmith_pipeline::outcome_with(name, text, loader, catalogs, Some(libraries))
             .map_err(|problems| netsmith_pipeline::render_problems(&problems))?;
+    // The areas other members of a system cover (issue 1331), as `fab` adds them.
+    crate::system_areas::add(
+        &mut outcome.boards,
+        &outcome.systems,
+        loader,
+        layout,
+        libraries,
+    );
     // The STEP models the parts are drawn from, found on disk (ADR 0108), by board label.
     let mut found: BTreeMap<String, crate::models::Located> = BTreeMap::new();
     if let Some(places) = models {

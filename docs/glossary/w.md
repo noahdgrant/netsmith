@@ -11,3 +11,7 @@ _Avoid_: autoroute (the router routes a whole board), obstacle avoidance
 **Walled-in pad**:
 A surface-mount pad on a net that reaches another part from which no track of the router leaves 1.5 mm out, and beside which none of its vias fits, because other nets' pads (or the board edge) close it on its copper layer (issue #1313). `fab` warns of it where the parts are placed, before routing, and `layout check` says it as `walled_in`, naming the parts whose pads close it; the router says `walled in by` of a line it could not route.
 _Avoid_: Blocked pad, trapped pad, unreachable pad
+
+**Within statement**:
+`.antenna within 8mm of .radio.ant` in a physical file (issue #1274): a requirement that the nearest pad of a part (on the net of the pin, else any of its pads) is at most the distance from the nearest pad of a pin of another part, centre to centre. The placer holds it as a hard rule and `fab` measures it as the rule `constraint`. The datasheet's `near ... within` of a part's `layout` block is measured alike, and is a guideline.
+_Avoid_: Distance constraint, keep-near, proximity rule

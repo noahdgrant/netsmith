@@ -173,6 +173,19 @@ impl<'a> Router<'a> {
             }
         }
         orders.truncate(MOST_TRIES);
+        // The RF lines first in every order (issue #1274), each in the order it had; an order
+        // of a board with none is as it was.
+        if self.class.contains(&Class::Rf) {
+            for order in &mut orders {
+                order.sort_by_key(|&l| self.class[l] != Class::Rf);
+            }
+            let mut seen: Vec<Vec<usize>> = Vec::new();
+            orders.retain(|o| {
+                let fresh = !seen.contains(o);
+                seen.push(o.clone());
+                fresh
+            });
+        }
         orders
     }
 

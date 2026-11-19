@@ -1357,6 +1357,10 @@ pub struct Model {
     /// The contacts that the parts' `pads` blocks state away from their pads' centres (issue
     /// #1321), one for each instance of a part and pad, in the order they were read.
     pub pad_contacts: Vec<PadContact>,
+    /// The `within` statements of the physical files (issue #1274), in the order they were read.
+    pub pin_distances: Vec<PinDistance>,
+    /// The `route` statements of the physical files (issue #1274), in the order they were read.
+    pub net_routes: Vec<NetRoute>,
     /// The groups of loads of which at most a few draw at once (`shared` in a board or a
     /// module, issue #806), in the order they were read.
     pub(crate) load_groups: Vec<crate::loads::LoadGroup>,
@@ -1493,6 +1497,37 @@ pub struct LayoutGuideline {
     /// number. None for a guideline of the part's own block.
     pub mpn: Option<String>,
     pub rule: GuidelineRule,
+}
+
+/// `.ant within 8mm of .radio.ant` in a physical file (issue #1274): the nearest pad of the
+/// part `subject` (its pads on the net of `pin` when it has any there; only its own pads when
+/// `subject` is a pin) is at most `within` from the nearest pad of `pin`, centre to centre.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PinDistance {
+    /// The part, or the pin of a part, that must be near.
+    pub subject: InstId,
+    /// The part `subject` is or is a pin of.
+    pub subject_part: InstId,
+    /// The pin it must be near, a pin of a part.
+    pub pin: InstId,
+    /// The part `pin` is a pin of.
+    pub pin_part: InstId,
+    /// The most the distance may be, in mm.
+    pub within: f64,
+    pub source: SourceId,
+    pub span: Span,
+}
+
+/// `.radio.ant route one_layer` (or `any_layer`) in a physical file (issue #1274): how the
+/// net of `pin` is routed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetRoute {
+    /// A pin on the net.
+    pub pin: InstId,
+    /// On one copper layer with no via (`one_layer`), or on any (`any_layer`).
+    pub one_layer: bool,
+    pub source: SourceId,
+    pub span: Span,
 }
 
 /// What a [`LayoutGuideline`] says, with the part's pins and the lengths in mm.
@@ -1634,6 +1669,8 @@ impl Model {
             support_sections: Vec::new(),
             layout: Vec::new(),
             pad_contacts: Vec::new(),
+            pin_distances: Vec::new(),
+            net_routes: Vec::new(),
             load_groups: Vec::new(),
             journal: Vec::new(),
             bookmarks: Holders::default(),

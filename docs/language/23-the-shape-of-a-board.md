@@ -58,6 +58,7 @@ physical for Cased {
 - **`case { ... }`** is the section for what the case fixes: the outline, the cutouts, the mounting holes (`MountingHole`), the fiducials (`Fiducial`) and the labels (`Label`) of the board, and the case's own STEP file (`CaseModel`, see _A case model_). It holds the same statements as the rest of the unit, and lifts out unchanged into an `enclosure` that several boards share (_A shared enclosure_, below). These six belong in it; a keepout may be anywhere in the unit.
 - **A path crosses a module boundary here for any statement of physical intent.** `.sensor.j.place.left` names the header inside the `Sensor` module. The circuit source reaches into a module only to narrow a value (ADR 0116); the physical file can also state physical intent about the part. A statement may set or compare only a part's `.place`, a part's `.height` and `.height_growth`, a part's `.standoff`, a part's or the board's `.routing_margin`, a `soft margin` round a part, and what the unit declares itself (the fields of its `.outline`, `.window`, `.rib`). Anything that changes what a part is, or a connection, is refused.
 - **A relation between two parts** is the equation of _Where a part goes_: `.b.place.x - .a.place.x == 17.5mm +/- 0.05mm`. The placer holds it and `fab` measures it (_A relation between two parts_).
+- **A part near a pin** is `.antenna within 8mm of .radio.ant` (_A part near a pin_), and **a net on one layer** is `.radio.ant route one_layer` (_RF lines and a net on one layer_). The placer and the router hold them and `fab` measures them.
 - **`.place.side` on a module** is a requirement on every part of it, at any depth. A module with an exception states the faces of its parts one by one and none for itself; two lines that disagree are an error that names both. `.place.side` with no path, on the board itself, is the same requirement on every part of the board (_A board on one face_).
 - **`.silk` and `.silk_text`** say what the silkscreen prints for a part: nothing, or a text in place of its designator (_Silkscreen text_). `.silk` on a module or on the board reaches every part inside it.
 - The case numbers are the maintainer's file to review: put the source of each (a drawing, a sheet) in a comment above the line, and never invent one.
@@ -419,14 +420,15 @@ error: `soft margin 3mm round .pair` names `.pair`, which is a module; a soft ma
 
 Every connection the router draws has a class, derived from the board with nothing written in the source (issue #416). In the order the router routes them:
 
-1. **Escape**: a connection that must reach a plane, or that ends on a pad deep in a fine-pitch grid of pads, which has the fewest ways out.
-2. **Decoupling**: a decoupling capacitor's pad to the power pin it decouples, the pair the route scorecard measures.
-3. **Pair**: a net of a diff pair (see Diff pairs).
-4. **Clock**: a net on a crystal (a part of the kind `Crystal`, or that provides it), or whose name has `clk`, `xin`, `xout` or `xtal` in it, but not a net with a plane or a pour (a crystal's ground).
-5. **Power**: a net that carries at least 100 mA.
-6. Everything else.
+1. **RF**: a net with a stated impedance of one track (a `TrackImpedance`, issue #1274; see _RF lines and a net on one layer_). It comes first in every order, the first try's too, and from the second try on its copper is not ripped up for a later class.
+2. **Escape**: a connection that must reach a plane, or that ends on a pad deep in a fine-pitch grid of pads, which has the fewest ways out.
+3. **Decoupling**: a decoupling capacitor's pad to the power pin it decouples, the pair the route scorecard measures.
+4. **Pair**: a net of a diff pair (see Diff pairs).
+5. **Clock**: a net on a crystal (a part of the kind `Crystal`, or that provides it), or whose name has `clk`, `xin`, `xout` or `xtal` in it, but not a net with a plane or a pour (a crystal's ground).
+6. **Power**: a net that carries at least 100 mA.
+7. Everything else.
 
-The order is fixed. When the router's first try leaves connections, its second try routes the lines of the first try again with the classes in turn, each class in the order it had, and every later try keeps the classes in turn too. On those tries the copper of a decoupling, pair or clock connection is never ripped up for a connection of a later class: a later connection goes round it or is left, and the pass that takes track off the pours (see Pours) leaves it where it is too. An escape or power connection keeps its place in the order but may be ripped up and routed again (a power net at its full width). The first try is the router's own order with no classes, so a board that routes on its first try is routed exactly as before. This was decided by the agent under the owner's delegation of 2026-11-13: protecting every class left a dense board with a QFN unrouted, and routing the classes in turn on every try made one try of such a board finish less often (issue #431).
+The order is fixed. When the router's first try leaves connections, its second try routes the lines of the first try again with the classes in turn, each class in the order it had, and every later try keeps the classes in turn too. On those tries the copper of a decoupling, pair or clock connection is never ripped up for a connection of a later class: a later connection goes round it or is left, and the pass that takes track off the pours (see Pours) leaves it where it is too. An RF connection is protected as these are. An escape or power connection keeps its place in the order but may be ripped up and routed again (a power net at its full width). The first try is the router's own order with no classes, so a board that routes on its first try is routed exactly as before. This was decided by the agent under the owner's delegation of 2026-11-13: protecting every class left a dense board with a QFN unrouted, and routing the classes in turn on every try made one try of such a board finish less often (issue #431).
 
 ### Connections left: rounds of rip-up
 
@@ -562,6 +564,70 @@ The nets of `canh` and `canl` are a pair to the router, matched to the bus's 2.5
 When a try of the router has routed every connection, and after the passes for diff pairs, pours and decoupling capacitors, it takes vias out (issue #431, as the "remove vias" pass of KiCad's router does): each connection with vias is routed again with a via three times its usual cost, against all the other copper, and the new copper is kept only if it has fewer vias, is at most 2 mm longer for each via it gives up (and at most 10 % longer), and lays at most 5 mm more track for each via on another net's pour. A connection that cannot lose a via so is tried once more with the one connection its way crosses routed again after it, kept only if the two together have fewer vias on the same terms. Vias that join a plane or a pour (every via of a poured or plane net, and a decoupling capacitor's via), vias side by side on a net whose current needs them, and a diff pair's vias are left where they are. No connection is left unrouted, so a board routes as completely as before; the diff pairs' meanders, which match the lengths it leaves, the teardrops and the rounded bends come after. Measured on the three ported boards (2026-11-13, the agent's decision under the owner's delegation): RP2350 142 to 134 vias, Orbit 94 to 85, the Easyduino 105 to 98, with routed length no longer and track on the pours within 4 mm of before.
 
 A pad of a plane net that is not through-hole gets a via of its own beside it, joined by a short track, as its way to the plane. Two such pads can share one (issue #834): after the vias are taken out, two pads of one plane net on the same face, at most 1.5 mm apart and neither a decoupling capacitor's pad, are joined by a track instead, searched for against all the other copper and kept only if it needs no via and is at most 2 mm long; the second pad's via goes, and the first pad's via is the way to the plane of both. A via is shared by two pads at most, the nearest pairs first, and a net whose current needs vias side by side shares none. And a pad in an outer pour of its own net gives its via up once the pours are stitched: the pour joins the pad, and a stitching via the pour reaches joins the pour to the plane. Whether the pour reaches the pad is the ratsnest's, with the pour filled as the Gerbers fill it, less the copper narrower than its minimum width (0.25 mm) and its copper islands, as KiCad's fill has it; a pad the fill leaves on an island with no via keeps its via, and so does a pad the fill joins by fewer than two thermal spokes, counted as KiCad's refill leaves them (issue #1115): KiCad's check would call it a starved thermal relief, and its track and via join it as a second spoke would. KiCad's own check of a board routed so finds every pad joined to its plane.
+
+### RF lines and a net on one layer
+
+A line that carries a radio's signal, from its antenna pin to the connector, must be short, on one layer and without a via: a via is a step in its impedance and a stub (issue #1274, owner decision). A net with a stated impedance of one track, a `TrackImpedance` (chapter _The process of a board_, "Impedance targets"), is an **RF net**, with nothing more written: the placer weighs its length ten times a plain net's of two pads, so its parts are placed first and its line short; the router routes it first (_How the router orders the nets_) and on one copper layer with no via: the outer layer every pad of the net has copper on, the front first. A net of a `PairImpedance` is a diff pair, routed as one (_Diff pairs_), and is no RF net, even with a `TrackImpedance` too.
+
+The physical file says how one net is routed, by a pin on it, as a `TrackImpedance` names its net by its `.line`: `.radio.ant route one_layer` routes any net on one layer with no via, and `.radio.ant route any_layer` lets an RF net change layers as any net does (it is still placed and routed first).
+
+```nsm solve place
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::sources::TrackImpedance
+
+board Feed {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .radio: Header1x2
+    .antenna: Header1x2
+    .sense: Header1x2
+    .antenna.p1 ~ .radio.p1
+    .feed: TrackImpedance { .impedance &= 50ohm }
+    .feed.line ~ .radio.p1
+    .sense.p1 ~ .radio.p2
+}
+```
+
+```nsm-physical
+physical for Feed {
+    // The sense line runs under no other copper: one layer, no via.
+    .sense.p1 route one_layer
+}
+```
+
+A net with no way on its one layer is left unrouted, as any connection the router cannot make, and `fab` says so; it is never given a via. Copper of the routes file, or a board from elsewhere, that puts such a net on two layers or gives it a via is a finding of the rule `constraint`, which stops `fab`:
+
+```text
+error [constraint] constraint sense.p1 route one_layer (feed.physical.nsm:3) is violated: the net `net-radio.p2` has tracks on B.Cu, F.Cu and 1 via, and it is routed on one layer with no via: route it again on one layer (`netsmith routes delete --net net-radio.p2` drops hand-drawn copper), or say `route any_layer` of it in the physical file
+```
+
+An RF net's finding is named after the member that states its impedance, `feed route one_layer (an RF net: ...)`. A net whose pads are on both faces, with no hole, has no one layer: the router routes it as any net, and the check reports it. Two `route` statements that say different things of one net are an error of `build` that names both, and so is a `route` of a pin on no net. Not built: a layer named for the net (`route one_layer` takes the layer its pads are on), and a length limit of the physical file (a datasheet's `route NAME .pin length LENGTH` is one, chapter _Parts_).
+
+Misuse: the net is named by a part.
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+
+board Unnamed {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .radio: Header1x2
+}
+```
+
+```nsm-physical
+physical for Unnamed {
+    .radio route one_layer
+}
+```
+
+```text
+error: `.radio route one_layer` names the net by a pin on it, and `.radio` is a part
+  --> main.physical.nsm:2:5
+  |
+2 |     .radio route one_layer
+  |     ^^^^^^
+```
 
 ### Track widths by rail
 
@@ -1137,6 +1203,63 @@ board Close {
 error: Close: `process.top.clearance` has a bottom of 0.05 mm, under the process's least space between copper (`.min_clearance`) of 0.1 mm: raise the bottom of the range
 ```
 
+#### A pad's own connection
+
+A pin of a part may say how a pour joins its pads, over what the pour says (issue #1276): a module's ground pads beside its antenna pin joined solid, say, or a heavy pin's relief with wider spokes. Every pin has two fields for it. `.pour_connection` is `PadConnection::Solid` or `PadConnection::Thermal`; `.spoke_width` is the width of the spokes of the pad's relief, a length on the range convention read at the bottom of the range, as a pour's is. Either may be stated without the other: a spoke width alone holds wherever a pour makes a relief round the pad. The part states them in its own body, so that every board that uses it gets them, and a board may narrow them on a part it uses (`.radio.gnd.pour_connection &= PadConnection::Solid`), as it narrows any field of a part.
+
+What a pin states holds for each of its pads, in every package, and in every pour, plane and zone of its net, whatever their `.pads` says: `fab` writes it on the pads of the KiCad board, as KiCad's `zone_connect` and `thermal_bridge_width`, and netsmith's fill (the Gerbers, the design rules check, `board fill`) and KiCad's both take a pad's own setting over the zone's. `netsmith board fill` lists such a pad with the pin that states it, `solid (as its pin `radio.gnd` states)`, and `--format json` has the pin's path as `stated_by` and its spoke width as `spoke_width`.
+
+```nsm evaluate
+import std::mfg::jlcpcb::TwoLayer
+import std::mfg::stackup::PadConnection
+import std::parts::connector::Header1x2
+
+/// A radio module whose ground pads beside its antenna pin are joined solid to the pour, and
+/// whose shield's relief has 0.3 mm spokes. Illustrative; not a real part.
+part PouredRadio {
+    .designator &= "U"
+    pins {
+        .ant    passive "ANT" "1"
+        .gnd    passive "GND" "2" "3"
+        .shield passive "SH"  "4"
+    }
+    .gnd.pour_connection &= PadConnection::Solid
+    .shield.spoke_width &= 0.3mm..
+}
+
+board Radioed {
+    .process: TwoLayer { .top.net &= "GND"; .bottom.net &= "GND" }
+    .radio: PouredRadio
+    .feed: Header1x2
+    .radio.ant ~ .feed.p1
+    .radio.gnd ~ .feed.p2
+    .radio.shield ~ .feed.p2
+    .feed.p2.net &= "GND"
+}
+```
+
+A pin states only `Solid` or `Thermal`: a pour joins every pad of its net, and a keepout keeps it off one, while `ThruHoleOnly` chooses by the kind of a pad, which a pin's pads already are. A spoke width beside `Solid`, a bottom of zero or less, or one under the process's `.min_track` is refused too, each naming the pin's field:
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+import std::mfg::stackup::PadConnection
+import std::parts::connector::Header1x2
+
+board Unjoined {
+    .process: TwoLayer { .top.net &= "GND" }
+    .in: Header1x2
+    .out: Header1x2
+    .in.p1 ~ .out.p1
+    .in.p2 ~ .out.p2
+    .in.p2.net &= "GND"
+    .in.p2.pour_connection &= PadConnection::None
+}
+```
+
+```text
+error: Unjoined: `in.p2.pour_connection` is `PadConnection::None`, and a pin states only `Solid` or `Thermal` for its pads: a pour joins every pad of its net, so keep it off this one with a keepout that forbids copper, or join no pad of the pour (its `.pads`)
+```
+
 A pour on a net the board does not have is an error that lists the nets, as for a plane. A pad of the pour's net that is on a plane too gives up the via the router puts beside it where the pour joins it to a stitching via (issue #834; the router's passes over vias are described after Diff pairs); netsmith fills the pour itself, for the Gerbers, the design rules check and the KiCad board `fab` writes, which opens with the pour filled (below, with the zones of the routes file).
 
 Track of other nets on a pour cuts it, and a pour on one side of a two-layer board is the return path of the signals over it. So when a try of the router has routed every connection, and one outer layer is poured on a net while the other is not, the router routes each line with track on that pour again, the most first, with a step on the pour costing twice its length and a via 60 mm of track, and keeps the new copper only where it costs less so counted (issue #431). A track keeps to the other layer where the way round is short, and a board routes exactly as completely as before. The nets of a diff pair (see Diff pairs) are left where the pair's own pass put them. Where both outer layers are poured, as on a board with ground on both, nothing moves. The route scorecard reports how much other nets' track each pour has and how many pieces it falls into.
@@ -1263,7 +1386,7 @@ error: Buried: `under_antenna.parts` is "forbid" and its `.layers` name neither 
 
 ### Height limits
 
-**Height limits (ADR 0045).** A board that fits in plan view can still hit a lid, a bracket or a neighbouring board. A part states how tall its body stands with the built-in member `.height` (one value, from the face of the board it is on to the top of its body; the board's physical file may narrow it for the board), and a `Keepout` in the physical file states the tallest a part may stand where it is with `.max_height`. A keepout that states `.max_height` and none of `.tracks`, `.vias`, `.copper` and `.parts` forbids nothing else: it only limits height. `.layers` says which face it limits (`"top"` for the parts on the top face, `"bottom"` for the parts on the bottom, `"all"` for both), so a part on the back has its own limit: two keepouts over the same area, one for each face.
+**Height limits (ADR 0045).** A board that fits in plan view can still hit a lid, a bracket or a neighbouring board. A part states how tall its body stands with the built-in member `.height` (one value, from the face of the board it is on to the top of its body; the board's physical file may narrow it for the board), and a `Keepout` in the physical file states the tallest a part may stand where it is with `.max_height`. A keepout that states `.max_height` and none of `.tracks`, `.vias`, `.copper` and `.parts` forbids nothing else: it only limits height. `.layers` says which face it limits (`"top"` for the parts on the top face, `"bottom"` for the parts on the bottom, `"all"` for both), so a part on the back has its own limit: two keepouts over the same area, one for each face. A board of a system also gets one from each mate, over the area the board mated on it covers, which nobody writes (_The area another board covers_ in [Systems and ports](17-systems-and-ports.md), issue #1331).
 
 A part that states no `.height` has the `height` cell of the catalog row it was picked as, if the row has one (ADR 0094): a catalog file's `height` is one length that a datasheet or a drawing gives, the greatest it allows (the maximum, or the nominal plus the tolerance), with the document, its revision and the page in the row's `source`. A height that the design states wins, whatever the row says, and the row's height is never an input of the pick: no row is chosen or refused for it. For a board that has a height limit, `fab-notes.txt` says how many parts have a known height and names the row each catalog height was read from. A part with neither may have the _Standard height_ of its footprint (ADR 0106): the greatest height its package's JEDEC outline allows, for the generated footprints a maker's drawing of that outline was read for (`SOIC-8_3.9x4.9mm_P1.27mm` is 1.75 mm, MS-012, `SOT-353_SC-70-5` and `SOT-363_SC-70-6` 1.10 mm, MO-203; the list and the drawings are in `crates/netsmith-pcb/src/standard_height.rs`; chip passives, QFNs, DFNs and SOT-323 have none: no standard prints a maximum for a chip's thickness, a QFN's profile is not in its name, and a drawing that cites SOT-323's registration was not read, so a part in one of these states a `.height` or has a catalog row's `height`, issue #1332). It is never the part's `.height`: where it fits a limit, the part passes and `fab` and `fab-notes.txt` say that the pass rests on the standard (``note: `u1` (U1) fits the 4.00 mm the keepout `lid` allows on the top face by its package standard ...``); where it does not, the part is unchecked, as below, with the standard's figure in the message, because a part in that package may be lower. A part with none of the three has no height: it is not taken as flat and not guessed. Where a limit covers its body, `fab` and the editor print a warning that names it (``height of `r3` (R3) is unchecked ...``), and `fab` writes it in `fab-notes.txt`. With `constraints = "error"` in `netsmith.toml`, or `board fab --constraints error`, it is an error that stops `fab` instead (`--constraints warn` wins over the manifest, and `--allow-drc-violations` does not waive it). A part that does state one is kept out from under a zone it is too tall for by the placer, and the placement check names it, with the numbers, if it stands there anyway. A zone a part carries (a `Keepout` member of a part, in the part's own frame) is kept clear of the same way, wherever the part ends up and however it is turned: the placer keeps the other parts out of it, and the check measures it against every part but the one that carries it. The footprint's 3D model is not read, and a part's own STEP model (`.model`, see _A part's STEP model_) is drawn and never gives a height.
 
@@ -2287,6 +2410,76 @@ error: `row .pads.tp1 .. .pads.tp4` has a gap: `pads` has no member `tp3`, and a
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
+#### A part near a pin
+
+A connector that feeds an antenna, a crystal that drives a pin, a part whose line must be short: a datasheet or an RF layout gives the most distance from a part to one pin of another, and the physical file states it as a requirement (issue #1274): `.antenna within 8mm of .radio.ant`. The first path is a part, or a pin of a part; the path after `of` is a pin of a part; the distance is one length above zero. It may reach into modules by path, as every requirement of the physical file does, and a module's own physical file may state it of its parts.
+
+```nsm solve place
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+
+module Radio {
+    .ant: Pin
+    .row_a: Header1x2
+    .row_a.p1 ~ .ant
+}
+
+board Linked {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .radio: Radio
+    .antenna: Header1x2
+    .antenna.p1 ~ .radio.ant
+}
+```
+
+```nsm-physical
+import std::pcb::Outline
+
+physical for Linked {
+    case {
+        .outline: Outline { .width &= 50mm; .height &= 30mm }
+    }
+
+    // Radio datasheet, antenna layout: the connector within 8 mm of the antenna pin.
+    .antenna within 8mm of .radio.row_a.p1
+}
+```
+
+It is measured as a datasheet's `near ... within` is (chapter _Parts_): pad centre to pad centre, from the nearest pad of the part on the net of the pin (any of its pads when none is on it; the pin's own pads when the statement names a pin of the part) to the nearest pad of the pin. The placer pulls the part to the pin as it pulls a decoupling capacitor, and holds the distance as a hard rule, as it holds a wall: each millimetre past it costs as much as a millimetre into a wall. `fab` and `board drc` measure it on the board, and a part farther than the distance is a finding of the rule `constraint`, which stops `fab` as any requirement does (`constraints = "warn"` makes it a warning):
+
+```text
+error [constraint] constraint antenna within 8 mm of radio.row_a.p1 (linked.physical.nsm:9) is violated: the nearest of pad 1 of J2 is 19.5 mm from pad 1 of J1, centre to centre, and it allows at most 8 mm (11.5 mm over): move J2 nearer J1
+```
+
+`netsmith board fab --format json` has the same as data in `requirements`, with `measure` `distance`, `measured`, `max` and `over`. A part of a bank (a `CapacitorBank`'s path) is no part the board has, and a `within` statement about one is not measured.
+
+Misuse: the end is a part, not a pin.
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+
+board Loose {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .radio: Header1x2
+    .antenna: Header1x2
+}
+```
+
+```nsm-physical
+physical for Loose {
+    .antenna within 8mm of .radio
+}
+```
+
+```text
+error: `.radio` is a part, and `.antenna within 8mm of .radio` measures to a pin of a part, such as `.radio.ant`
+  --> main.physical.nsm:2:28
+  |
+2 |     .antenna within 8mm of .radio
+  |                            ^^^^^^
+```
+
 #### A module's own physical file
 
 A module can carry the geometry that is true wherever it goes: the 17.5 mm between two rows of sockets that a radio's datasheet gives, two parts on one line. It states it in a physical file of its own, and every board that uses the module gets it (ADR 0048, the module layer; owner decision of 2026-11-11). The module names the file in its circuit source with `physical "<stem>.physical.nsm"`, the file beside its source by stem, and the file holds a unit `physical for Module { ... }`. The same file may hold the units of the source's boards too, as below. A module that names a file that is not there, or a file with no unit for it, is an error, and so is a unit for a module that does not name its file: the geometry never goes missing without a message when the module is copied to another project.
@@ -2653,7 +2846,7 @@ netsmith layout regenerate stage --seed 3 --write # keep the arrangement of seed
 netsmith board fab --reuse-routes   # keep the copper of the nets a change left alone
 ```
 
-**Capturing the placement.** `netsmith layout capture` writes where the board's parts are now as the layout file (issue #828), so that a result can be frozen. It places the board as `fab` places it (the layout file and the physical file read; the seeds after the file's tried as for `fab`) and writes an entry for every part, the seed that placed the board as the file's `seed`, and every other table as it was, comments too. A part that already has an entry keeps it (its place, `lock` and `source`: a build puts a part with an entry where the entry says); a part the placer placed gets an entry with `source = "auto"`, unlocked. A build of the file then has every part where it was captured, whatever the placer, a catalog or the circuit around it does later, until `layout set` or `layout regenerate` changes one. The places are rounded to 0.01 mm, as every entry is, so a part the placer placed is up to 0.005 mm from where it was. A keepout or cutout the physical file places is not written (it has no entry); one the file places keeps its entry. A board that no seed places is refused with the placer's report (as `fab` gives it) and the file is not written; a capture holds a board that places. `--dry-run` writes nothing and says what would be written, with `--format json` as one document (`board`, `seed`, `seed_was`, `parts`, `added`, `kept`, `shapes`, `seed_note`, `written`); `--place-seeds` and `--place-budget` are as for `fab`. A record of the routes file whose pads moved by the rounding is dropped, as when any pad moves.
+**Capturing the placement.** `netsmith layout capture` writes where the board's parts are now as the layout file (issue #828), so that a result can be frozen. It places the board as `fab` places it (the layout file and the physical file read; the seeds after the file's tried as for `fab`) and writes an entry for every part, the seed that placed the board as the file's `seed`, and every other table as it was, comments too. A part that already has an entry keeps it (its place, `lock` and `source`: a build puts a part with an entry where the entry says); a part the placer placed gets an entry with `source = "auto"`, unlocked. A build of the file then has every part where it was captured, whatever the placer, a catalog or the circuit around it does later, until `layout set` or `layout regenerate` changes one. The places are rounded to 0.01 mm, as every entry is, so a part the placer placed is up to 0.005 mm from where it was. A keepout or cutout the physical file places is not written (it has no entry); one the file places keeps its entry. A board that no seed places is refused with the placer's report (as `fab` gives it) and the file is not written; a capture holds a board that places. `--dry-run` writes nothing and says what would be written, with `--format json` as one document (`board`, `seed`, `seed_was`, `parts`, `added`, `kept`, `shapes`, `seed_note`, `written`); `--place-seeds` and `--place-budget` are as for `fab`. A record of the routes file whose pads moved by the rounding is kept, open where its copper misses a pad, as when any pad moves.
 
 ```sh
 netsmith layout capture            # an entry for every part, and the seed, in main.pcb.toml
@@ -2750,14 +2943,14 @@ The check also holds the board file to the stackup of its process (`stackup`, ne
 
 `fab` puts every shape of a record on the placed board before the router runs. The router keeps it as copper of its net, never moves or removes it, and routes only the connections it leaves: a track that ends on another track's middle, a track drawn over a pad of its net, two tracks that cross and a via on a track count as joined, as KiCad counts them. The passes after the router (meanders, rounded bends, parallel vias, stitching, teardrops) leave it as it is, and the design rules check checks it with the rest of the copper. In the board files it comes first: a board drawn from a routes file has the copper of the board it was imported from in another order, so compare two boards' copper as sets.
 
-`lock = true` on a net says its copper is the file's alone: the router adds no track, via or teardrop to it, and the ratsnest counts the board's outer pours of the net as joining what of the net they touch, as the design rules check does (a zone joins what its fill reaches on any net, above). A connection a locked net still lacks is left unrouted, and `fab` says so as it says any connection left. `lock = true` on a shape (a track, a via or a zone) keeps the shape when its record no longer matches the board, and `netsmith routes delete` refuses it.
+`lock = true` on a net says its copper is the file's alone: the router adds no track, via or teardrop to it, and the ratsnest counts the board's outer pours of the net as joining what of the net they touch, as the design rules check does (a zone joins what its fill reaches on any net, above). A connection a locked net still lacks is left unrouted, and `fab` says so as it says any connection left. `lock = true` on a shape (a track, a via or a zone) says it is the person's: `netsmith routes delete`, `routes tidy` and a drag in the editor leave it as it is.
 
-A record that no longer matches the board is said, never used silently. `pads` is a hash of the net's pads: each pad's part by its path in the design (a renumbered reference designator does not change it), its number, its centre to 1 µm and its copper layers. When a pad of the net moved, or one joined or left it, `fab` warns, drops the record's unlocked shapes and routes the net again for that run (the net's lock does not hold); its locked shapes are kept. A record for a net the board does not have (a net renamed, say) is a warning and is drawn not at all: `netsmith routes delete --net NAME`, with the name the warning gives, deletes it whole (also a locked one, which `routes unlock` could not reach, and one shape of it cannot be named), and says what it deleted. `netsmith routes lock` writes a record again with the pads as they are, and `netsmith routes delete` removes it.
+A record that no longer matches the board is said, never used silently. `pads` is a hash of the net's pads: each pad's part by its path in the design (a renumbered reference designator does not change it), its number, its centre to 1 µm and its copper layers. When a pad of the net moved, or one joined or left it, `fab` warns and keeps the record's copper, every shape of it (issue #1328): a track end or a via of the record that runs into nothing of its net (no pad, no other track or via, no pour, plane or zone of the net on its layer) is open, and the warning names each by the pad of the net nearest it, `open at J1.2 (track 3's end at 12.5, 4.0)`, the copper that ran to a pad no longer there. The net's lock does not hold for that run, so the router routes the connections the kept copper leaves, as `routes show` and the design rules check list them. Kept copper that a moved pad now lands on is a short, which the design rules check finds as it finds any. A shape that ran to the moved pad is deleted with `routes delete --net NAME --track N`, or the record written again with `routes lock`. A record for a net the board does not have (a net renamed, say) is a warning and is drawn not at all: `netsmith routes delete --net NAME`, with the name the warning gives, deletes it whole (also a locked one, which `routes unlock` could not reach, and one shape of it cannot be named), and says what it deleted. `netsmith routes lock` writes a record again with the pads as they are, and `netsmith routes delete` removes it.
 
 `netsmith routes` keeps the file (`netsmith routes --help` has every flag):
 
 - `import BOARD.kicad_pcb` writes the file from a KiCad board, and the layout file's places of the parts it has (locked, `source = "import"`; not those the physical file pins, and none with `--no-places`). A KiCad net is the design's net that most of its pads are on, the parts paired by the port's parts file (`reference/parts.toml` of the project, or `--parts`) or else by reference designator, as the parity checker pairs them. It takes every track, arc and through via of the outer layers and every zone of copper (on any copper layer, with its outline, holes and settings, written to 0.000001 mm) except the process's own planes and pours (issue #1116: a zone of the net, layer and outline that the process states, with the clearance, minimum width, pad connection and thermal relief it states, which is the zone `fab` writes for it, is left out and said, since taken it would replace the process's with a hand zone that keeps the settings as of the import; a zone that differs in any of these is taken, as a hand zone, so `fab` and then `routes import` of its board leaves a file of tracks and vias), locks every net (`--unlocked` does not), and says what it leaves out: copper on an inner layer, a via that is not a through via, copper of a net on no pad of the design, a rule area (the design's keepouts are its own), a teardrop (`fab` draws its own), a zone filled with hatching (netsmith fills solid zones only). A zone with smoothed corners is taken with its outline's corners as they are, and said. A part with two pads that the KiCad board numbers the other way round from the design's footprint (a resistor drawn turned in one of the two schematics: the pads of the other parts vouch for the KiCad net of its pad 1 being the design's net of its pad 2, and the other way round) is placed turned by half a turn, when the footprint is the same so turned, so that each pad stands where the KiCad board has the pad of its net; the import names it.
-- `add-track`, `add-via` and `add-zone` add a shape to a net, and `delete`, `lock` and `unlock` act on a net's record or on one of its shapes (`--track N`, `--via N`, `--zone N`, numbered from 1 as `show` lists them). An added shape, or a record that `lock` writes again, is refused when it brings an error of the design rules check that the board did not have (a short, a crossing, a clearance), and the file is left as it was; an end that touches nothing yet is not refused, because a route is drawn one shape at a time (`fab`'s check still finds one left so). A locked net or shape is not deleted until it is unlocked.
+- `add-track`, `add-via` and `add-zone` add a shape to a net, and `delete`, `lock` and `unlock` act on a net's record or on one of its shapes (`--track N`, `--via N`, `--zone N`, numbered from 1 as `show` lists them). An added shape is refused when it brings an error of the design rules check that the board did not have (a short, a crossing, a clearance), and the file is left as it was; `lock`, which writes the record again with its pads as they are, is refused only when the check finds an error of that net's own copper in the file (a track or via of a record whose pad moved now crossing another net's pad, say), whatever errors other copper has (issue #1328); an end that touches nothing yet is not refused, because a route is drawn one shape at a time (`fab`'s check still finds one left so). A locked net or shape is not deleted until it is unlocked.
 - `add-via` adds several vias side by side as a group (issue #1114): `--at X,Y` once for each place, or `--count N --pitch MM` with one `--at` for N vias in a row along x, MM between their centres, centred on that place. The group is checked together, as the router's own group is, and is added or refused as a whole. That is what a net whose current needs several vias where it changes layer needs: each of three vias of a 1.2 A net is refused alone by the check `via_current` (a via with fewer vias of its net touching it than the net's current needs), and the three together are accepted when they touch, a pitch of at most the via's diameter. A single via is still checked alone. The editor's PCB view sends several vias as one edit and is checked the same way.
 - `add-zone --net GND --layer bottom --rect 1,1,6,4` draws a zone of a net, without an import. The outline is a polygon (`--outline X,Y` for each corner, in order), a rectangle (`--rect X,Y,W,H`, the top left corner and the size) or the board's own outline (`--board-outline`), in the same places as `add-track`'s; `--layer` is repeated for a zone on several layers. A setting it is not given is the design's own plane's: the clearance the process's planes keep, a minimum width of 0.25 mm, a thermal relief with a gap and spokes of 0.5 mm, priority 0 (`--clearance`, `--min-width`, `--thermal-gap`, `--spoke-width`, `--priority`, `--pads` and `--lock` set them). A zone is no short where it covers another net's pad or track, because its fill keeps its clearance round it, so it is not refused for that. It is refused when a corner is off the board, a setting is wrong or less than the process makes, two zones of different nets with the same priority overlap, or the design rules check finds a new error with it. A zone of the net of the design's pour or plane on its layer restates that pour or plane, which is then not drawn there; a zone of another net cuts it, and the pour is drawn round it. The command says which. A refusal names its places from the outline's top left corner, as the command takes them, not as the KiCad board file has them.
 - `show` prints each record with its shapes numbered, what of the file is not used, and the connections the router would still route.

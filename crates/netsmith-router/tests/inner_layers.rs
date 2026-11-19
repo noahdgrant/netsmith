@@ -73,6 +73,7 @@ pub(crate) fn walled(process: netsmith_core::Process) -> Board {
         copper: false,
         parts: false,
         max_height: None,
+        on_carrier_face: false,
     });
     board
 }

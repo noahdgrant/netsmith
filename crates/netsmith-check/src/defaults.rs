@@ -609,6 +609,8 @@ fn item_span(item: &Item) -> Span {
         Item::Layout(l) => l.span,
         Item::Pads(p) => p.span,
         Item::Row(r) => r.span,
+        Item::Within(w) => w.span,
+        Item::Route(r) => r.span,
         Item::Polygon(p) => p.span,
         Item::PhysicalFile(f) => f.span,
         Item::Anchor(a) => a.span,

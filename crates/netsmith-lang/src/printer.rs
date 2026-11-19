@@ -591,6 +591,18 @@ fn write_block(out: &mut String, inner_docs: &[String], items: &[Item], depth: u
                     a.target.to_source()
                 );
             }
+            Item::Within(w) => {
+                let _ = write!(
+                    out,
+                    "{} within {} of {}",
+                    w.subject.to_source(),
+                    w.distance.to_source(),
+                    w.pin.to_source()
+                );
+            }
+            Item::Route(r) => {
+                let _ = write!(out, "{} route {}", r.pin.to_source(), r.word());
+            }
             Item::SoftMargin(m) => {
                 let _ = write!(
                     out,

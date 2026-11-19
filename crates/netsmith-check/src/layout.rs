@@ -411,7 +411,7 @@ impl Checker<'_> {
     }
 
     /// One length above zero, in mm.
-    fn positive_length(&mut self, e: &Expr, word: &str, what: &str) -> Option<f64> {
+    pub(crate) fn positive_length(&mut self, e: &Expr, word: &str, what: &str) -> Option<f64> {
         match self.constant(e) {
             Some((metres, d)) if d == Dimension::LENGTH && metres > 0.0 => Some(metres * 1000.0),
             _ => {
