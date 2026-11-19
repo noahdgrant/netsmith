@@ -764,6 +764,9 @@ module Buck<Ic: BuckIc> provides BuckConverter {
 ///   "~0.15 V" (bottom) and "~0.3 V" (top) at maximum load (p.16). Beyond either limit the
 ///   part still regulates and lowers the frequency (p.16), so the part refuses the board
 ///   rather than letting the stage compute its ripple at a frequency the part does not hold.
+/// - Dropout: `.high_side_resistance` is not stated (issue #1301). The part does not hold its
+///   top switch on for the whole period: its minimum off-time, 110 ns at most (p.3), bounds
+///   the headroom instead, as above.
 /// - Quiescent current (Electrical Characteristics, p.2, "VIN Quiescent Current", ADR 0096):
 ///   `.iq_max` is 10 uA over temperature, not switching, VEN/UV = 2 V, VSYNC = 0 V (1.7 uA
 ///   typical, 4 uA at 25 C), which is Burst Mode, the mode "SYNC/MODE tied to ground" selects
@@ -1020,6 +1023,8 @@ part Lt8641 provides BuckIc {
 /// - Minimum on-time: 80 ns at 2.1 MHz is in the typical column only ("ensured by design",
 ///   p.5, read off the page image), so `.min_on_time` is not stated: the datasheet gives no
 ///   largest figure. The maximum duty cycle, 97 % typical (p.5), is not stated either.
+/// - Dropout: `.high_side_resistance` is not stated (issue #1301). The duty cycle stops at
+///   97 % typical (p.5) and never reaches 100 %, so the IC has no dropout of a switch held on.
 /// - Inductor: `.min_inductance` is 6.8 uH, the smaller of the two the LMR16006Y's row of
 ///   Table 2 recommends (6.8 uH at 5 V, 10 uH at 12 V; p.14). The datasheet states no
 ///   saturation current the inductor must have beyond the load and its ripple (it suggests a
@@ -1139,6 +1144,11 @@ part Lmr16006y provides BuckIc {
 ///   125 C), so the range is the datasheet's only one and holds at 25 C.
 /// - Switching frequency: 1.2 MHz to 1.8 MHz at IOUT = 100 mA (Electrical Characteristics,
 ///   p.4, fOSC), at 25 C as the table is.
+/// - Dropout: the IC runs at 100 % duty cycle (Max. Duty Cycle, 100 % minimum, Electrical
+///   Characteristics, p.4; "low dropout mode ... by continuously turning on the upper
+///   P-MOSFET", p.1), but `.high_side_resistance` is not stated (issue #1301): the table gives
+///   the P-MOSFET's on-resistance as 0.28 ohm typical at IOUT = 200 mA and 25 C, with no
+///   largest figure and none over temperature.
 /// - Output current: 1 A (front page, p.1).
 /// - Inductor: `.min_inductance` is 1.5 uH, the smallest of Table 1 (p.2: 1.5 uH for 1 V and
 ///   1.2 V, 2.2 uH for 1.8 V to 3.3 V). The datasheet states no saturation current beyond
@@ -1217,6 +1227,11 @@ part Rt8059 provides BuckIc {
 /// - Output current: 2 A (front page, p.1).
 /// - Minimum on-time: 110 ns, typical only and "not production tested" (Timing
 ///   Requirements, p.5, read off the page image), so `.min_on_time` is not stated.
+/// - Dropout: the IC runs at 100 % duty cycle while the BOOT to SW voltage stays above 2.1 V
+///   typical (6.3.10 Bootstrap Voltage, p.11 of the newer SLVSD26C, revised February 2026, read
+///   2026-11-19), but `.high_side_resistance` is not stated (issue #1301): R(HSD) is 148 mohm
+///   typical at TA = 25 C (p.5 of SLVSD26C), with no largest figure, and its curve over the
+///   junction temperature (Figure 5-3) is typical.
 /// - Inductor: `.min_inductance` is 5.6 uH, the smallest of Table 2 (p.17: 5.6 uH at 1.8 V,
 ///   up to 22 uH at 12 V, for VIN = 28 V). The datasheet asks for no saturation current beyond
 ///   the peak of Equation 10 (p.15), the load and half the ripple, which `Buck` checks, and for

@@ -473,6 +473,8 @@ impl Solver<'_> {
             Ok((l?, rr?))
         };
 
+        // A rail with a floor is judged over its window (issue #1301, `floors.rs`).
+        let windows = self.floor_values(r);
         match r.op {
             // The checker turns every `?=` into a `&=` or drops it (ADR 0051), so the solver
             // reads `Default` as the narrowing it became.
@@ -625,7 +627,7 @@ impl Solver<'_> {
                     _ => Verdict::Pass,
                 }
             }
-            CmpOp::Ge | CmpOp::Le => match eval_both() {
+            CmpOp::Ge | CmpOp::Le => match self.eval_bound(r, &windows) {
                 Ok((Val::Q(l), Val::Q(v))) => {
                     let (ok, word, gap) = if r.op == CmpOp::Ge {
                         (l.lo() >= v.hi(), "at least", v.hi() - l.lo())
@@ -667,6 +669,11 @@ impl Solver<'_> {
                                 show(&r.rhs),
                                 if r.op == CmpOp::Ge { "above" } else { "below" },
                             )
+                        };
+                        let message = if windows.is_empty() {
+                            message
+                        } else {
+                            message + &self.floor_clause(&windows)
                         };
                         fail(message, gap / scale)
                     }

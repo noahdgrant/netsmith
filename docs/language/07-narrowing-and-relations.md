@@ -371,7 +371,7 @@ board Pulls {
 ```
 
 ```text
-main.nsm:8:62: lint.redundant: `.neg.net &= "GND"` says what the default at std/sources.nsm:95 already gives; delete it
+main.nsm:8:62: lint.redundant: `.neg.net &= "GND"` says what the default at std/sources.nsm:108 already gives; delete it
 main.nsm:9:53: lint.redundant: `.package &= "0402"` says what the default at main.nsm:6 already gives; delete it
 ```
 

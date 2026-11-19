@@ -272,6 +272,7 @@ mod coupling;
 mod dcpass;
 mod equations;
 mod findings;
+mod floors;
 mod hold;
 mod narrow;
 mod pick;
@@ -910,6 +911,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
     let (corners, corners_refused) = corners::Corners::of(model, model.relations().len());
     let mut s = Solver {
         corners,
+        floors: floors::Floors::of(model),
         corner_curves: Default::default(),
         model: model.clone(),
         catalogs,
@@ -1341,6 +1343,8 @@ struct Solver<'a> {
     model: Model,
     /// The named corners the boards state and what they move (issue #1256).
     corners: corners::Corners,
+    /// The rails that may state a floor, and the floors joined to each (issue #1301).
+    floors: floors::Floors,
     /// The curve each column read off a curve file was given from, with the domain it gave, so
     /// that a corner reads the curve at its own temperature.
     corner_curves: corners::CornerCurves,

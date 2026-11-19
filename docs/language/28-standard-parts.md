@@ -1029,7 +1029,7 @@ A regulator whose input falls toward its output stops regulating: its output fol
 - **`LinearRegulator`**: `.vin.voltage >= min(.vout.voltage) + .dropout`. `.dropout` is the catalog row's figure (the datasheet's maximum at the rated current), or the row's **curve file** (_Curve files_ in the chapter on catalogs) read at the regulator's `.output_current`, the current its output supplies (`-.vout.current`), and the board's temperature: `curves/ldo/<row>.csv` with the axes `temperature` and `output_current` and the column `dropout`. A curve gives a light load the small dropout the datasheet draws for it, where the single figure holds the part to its full-load number.
 - **`Buck`**: `.vin.voltage >= min(.vout.voltage) + .inductor.current * (.ic.high_side_resistance + .inductor.dc_resistance)`, and `.dropout` is the drop on its own. `.high_side_resistance` is an `optional` member of `BuckIc` (ADR 0074): the high-side switch's largest on-resistance over temperature, stated only by an IC whose datasheet says it runs at 100 % duty cycle in dropout. An IC that states none has no such check and `.dropout` has no value (an IC that stops short of 100 % has `.min_off_time`, above, instead). `BuckConverter`'s `.vin.voltage >= .vout.voltage` still holds for every buck.
 
-The minimum is the output rail's, not the set point's top: a regulator of 3.3 V +/- 2 % (3.234 V to 3.366 V) with 0.15 V of dropout at its load needs 3.384 V, and at 3.5 V its output is 3.35 V, inside its rail, whether or not it is in dropout. The loads behind the regulator are judged against that rail as before, and a regulator behind another (an LDO after a buck) has its least input checked against the first one's output rail, so each one in a chain keeps the next one's minimum. The output in dropout is not modelled below the rail's range: a board whose loads accept less than the regulator's own range still holds the regulator to its range.
+The minimum is the output rail's, not the set point's top: a regulator of 3.3 V +/- 2 % (3.234 V to 3.366 V) with 0.15 V of dropout at its load needs 3.384 V, and at 3.5 V its output is 3.35 V, inside its rail, whether or not it is in dropout. The loads behind the regulator are judged against that rail as before, and a regulator behind another (an LDO after a buck) has its least input checked against the first one's output rail, so each one in a chain keeps the next one's minimum. A board whose loads accept less than the rail's range lets the output fall further, with a floor (_An output below its rail's range_, below).
 
 The row and its curve below are invented, a 3.3 V +/- 2 % regulator with 0.6 V at 500 mA as its figure; no standard row has a recorded dropout curve or switch resistance yet (`data/jlcpcb/README.md`).
 
@@ -1060,6 +1060,33 @@ board LowInput {
     .u: LinearRegulator { .vout.voltage &= 3.3V +/- 2% }
     .supply ~ .u.vin
     .load: Rail { .current &= 0mA..100mA; .pos.net &= "V33" }
+    .u.vout ~ .load
+    .environment: Environment { .temperature &= 25degC }
+}
+```
+
+#### An output below its rail's range
+
+A board fed from a falling cell may let the regulator run deeper in dropout than its own range, when the loads behind it work from less: an MCU that runs from 1.8 V on a 3.3 V regulator need not stop at 3.234 V. The board says how far the rail may fall with the rail's `.voltage_floor` (issue #1301), an `optional` member of `std::sources::Rail` that rails joined with `~` share: `.load.voltage_floor &= 2.7V`. The rail then has a _window_, from the floor to the top of its `.voltage`, and the bounds that speak of the least voltage the rail reaches are judged over it:
+
+- a bound that reads `min(.voltage)` of the rail, the dropout check of `LinearRegulator` and `Buck` among them: the least voltage is the floor, so the regulator's least input is the floor plus its dropout;
+- a bound between the rail's voltage and numbers alone, a load's supply range (`.vcc.voltage >= 2.4V`): it must hold over the whole window, so a floor below what a load accepts is an error, and its message names the window and the floor.
+
+`.voltage` itself does not move: the DC analysis holds the rail at it, and the regulator's own checks (its divider, its on-time) and every value a relation works out from the voltage (a logic level, a resistor's current) read it as before. A regulator fed from another one's output is judged from the first one's floor. A floor is below the rail's least voltage (`Rail` states `.voltage_floor <= min(.voltage)`); left unstated, the window is `.voltage` and nothing changes.
+
+The board below is the one above on a cell of 3.0 V to 4.2 V. Without the floor it is refused, since 3.0 V is under 3.384 V; with a floor of 2.7 V the regulator needs 2.7 V + 0.15 V = 2.85 V, which the cell holds, and the board's own load range of 2.5 V and up holds the window of 2.7 V to 3.366 V. A load range of 2.8 V and up would be refused with ``load.voltage must always be at least 2.8V, but 2.7V..3.366V is not always above 2.8V (with `load.voltage` over its window 2.7V..3.366V, from the rail's `.voltage_floor`: the least voltage it may fall to in dropout)``.
+
+```nsm evaluate catalogs=dropout
+import std::env::Environment
+import std::parts::regulator::LinearRegulator
+import std::sources::Rail
+
+board FallingCell {
+    .cell: Rail { .voltage &= 3.0V..4.2V; .pos.net &= "VBAT" }
+    .u: LinearRegulator { .vout.voltage &= 3.3V +/- 2% }
+    .cell ~ .u.vin
+    .load: Rail { .current &= 0mA..100mA; .voltage_floor &= 2.7V; .pos.net &= "V33" }
+    .load.voltage >= 2.5V
     .u.vout ~ .load
     .environment: Environment { .temperature &= 25degC }
 }

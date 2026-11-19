@@ -160,11 +160,11 @@ board Offers {
 ```
 
 ```text
-error: `supply.neg.net` has 2 defaults, at main.nsm:8 and std/sources.nsm:95: a field has one default; keep one `?=`
-   --> std/sources.nsm:95:5
-   |
-95 |     .neg.net ?= "GND"
-   |     ^^^^^^^^^^^^^^^^^
+error: `supply.neg.net` has 2 defaults, at main.nsm:8 and std/sources.nsm:108: a field has one default; keep one `?=`
+    --> std/sources.nsm:108:5
+    |
+108 |     .neg.net ?= "GND"
+    |     ^^^^^^^^^^^^^^^^^
 ```
 
 Misuse: joined rails that state different grounds.
