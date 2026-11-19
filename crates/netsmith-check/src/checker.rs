@@ -1240,7 +1240,13 @@ impl<'a> Checker<'a> {
         self.model.root = root;
         self.apply_default_joins();
         self.apply_board_defaults();
+        self.resolve_keep_apart();
         self.resolve_defaults();
+        // The order code of each part that states `.variants`, from what the design needs of
+        // it (issue 1311): only a design that places the part needs one.
+        if matches!(def.kind, DefKind::Board | DefKind::System | DefKind::Panel) {
+            self.resolve_variants();
+        }
         match def.kind {
             DefKind::Board | DefKind::System => self.assign_pins(&name, true),
             DefKind::Module => self.assign_pins(&name, false),
@@ -1766,6 +1772,10 @@ impl<'a> Checker<'a> {
                 self.declare_support(support);
                 continue;
             }
+            if let Item::Variants(v) = item {
+                self.declare_variants(v);
+                continue;
+            }
             let Item::Decl(d) = item else { continue };
             let cur = self.current();
             let key = (self.cur_source().0, d.span.start);
@@ -2191,6 +2201,7 @@ impl<'a> Checker<'a> {
                 Item::CaseOf(of) => self.case_of(of, false),
                 Item::Defaults(block) => self.defaults_block(block),
                 Item::Layout(block) => self.layout(block),
+                Item::Pads(block) => self.pads(block),
                 Item::Support(support) => {
                     if self.support_allowed() {
                         let items = crate::support::wiring(support);
@@ -2204,6 +2215,9 @@ impl<'a> Checker<'a> {
                 Item::PhysicalFile(f) => self.physical_file_here(f),
                 Item::Anchor(a) => self.anchor_here(a),
                 Item::SoftMargin(m) => self.soft_margin(m),
+                // Read in the first pass (`declare_variants`).
+                Item::Variants(_) => {}
+                Item::KeepApart(k) => self.keep_apart(k),
                 Item::Connect(c) if self.phys.is_none() => self.connect(c),
                 Item::JoinMap(b) if self.phys.is_none() => self.join_map(b),
                 Item::Bridge(b) if self.phys.is_none() => self.bridge(b),
@@ -2211,6 +2225,7 @@ impl<'a> Checker<'a> {
                 Item::Catalog(c) if self.phys.is_none() => self.catalog(c),
                 Item::Pins(p) if self.phys.is_none() => self.pins(p),
                 Item::Tie(t) if self.phys.is_none() => self.tie(t),
+                Item::Direction(d) if self.phys.is_none() => self.direction(d),
                 Item::Unused(u) if self.phys.is_none() => self.unused(u),
                 Item::Sequence(q) if self.phys.is_none() => self.sequence(q),
                 Item::Scenario(q) if self.phys.is_none() => self.scenario(q),
@@ -2224,6 +2239,7 @@ impl<'a> Checker<'a> {
                 Item::Catalog(c) => self.not_physical(c.span, "a `catalog`"),
                 Item::Pins(p) => self.not_physical(p.span, "a `pins` table"),
                 Item::Tie(t) => self.not_physical(t.span, "a `tie`"),
+                Item::Direction(d) => self.not_physical(d.span, "a `direction`"),
                 Item::Unused(u) => self.not_physical(u.span, "an `unused` statement"),
                 Item::Sequence(q) => self.not_physical(q.span, "a `sequence`"),
                 Item::Scenario(q) => self.not_physical(q.span, "a `scenario`"),

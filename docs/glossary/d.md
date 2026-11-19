@@ -63,6 +63,10 @@ _Avoid_: Dielectric (that is a capacitor's class), substrate
 Two nets that the router routes as one object, side by side at one pitch with their vias side by side and their lengths matched: two nets whose names differ only in a pair of suffixes (`dp` and `dm`, `D+` and `D-`, `_P` and `_N`, `.p` and `.n`, and the like: `netsmith_geom::PAIR_SUFFIXES`), the two nets of a `PairImpedance` (an _Impedance target_, issue #1025), which also makes the router keep the pair's spacing; or two nets the design states a pair with no impedance, with a `std::sources::DiffPair` or as the two lines of a `std::bus::Can` or a `std::bus::Usb2`, whatever their names (issue #1193). A net is one track of one pair. When a try of the router has routed every line, it routes each net of a pair again beside the other, then both together, and keeps that copper only where more of it runs coupled at no more length or vias (for both together: the longer net no longer, and no net with more vias than the pair's net with more had, issue #1010); every pair is pulled to its pitch (the stated spacing, or the nets' clearance, issue #1223), and `netsmith board nets` and the route scorecard report each pair's skew and how much of it runs coupled (issue #431). See _Pair pitch_.
 _Avoid_: Differential pair marking, pair class
 
+**Direction (of a pin)**:
+The way a bidirectional pin passes a signal while a control pin of its part is at a level, stated in the part as `direction .a to .b when .dir high`: the pins of `.a` only read and those of `.b` only drive (issue #1306). The levels check judges the direction a strap of the control pin fixes, and both where it cannot tell.
+_Avoid_: port direction, pin mode
+
 **Draw**:
 The current taken from a net: by a rail through its `pos` pin on behalf of whatever is behind it, or by a chain through its first part. Positive when it draws, negative when it supplies. A rail's current comes back at its `neg` pin and a chain's at its end, as a draw of the opposite sign. A design states the draws of loads; a supply's draw follows from the balance at its net. A capacitor draws nothing at DC.
 _Avoid_: Load current (as a field name), sink, source

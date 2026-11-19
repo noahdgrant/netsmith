@@ -31,7 +31,10 @@
 //!   not enforced. And `assembly_size` (issue 1285): the assembly capabilities page's "Single PCB
 //!   Size" of the service that places parts on one face, and of the one that places them on both,
 //!   a limit of the page's, but a board is judged alone and the panel it may be ordered in is not
-//!   known here, so a board under it is told it needs a panel and is not refused.
+//!   known here, so a board under it is told it needs a panel and is not refused. The finding
+//!   quotes where the figure comes from (`.process.assembly_size_source`, issue 1393: the page,
+//!   the service and the day it was read) and names the spelling of a panel; its JSON has the
+//!   source as `source`.
 //!
 //! **The measures.** The fiducial's distance to the edge is from its copper (`Fiducial_1mm_Mask2mm`
 //! centred 3.85 mm from the edge is 3.35 mm of copper, as the panel's rails put theirs, which is
@@ -428,14 +431,19 @@ fn assembly_size(out: &mut Out<'_>, marks: &Marks) {
     if w >= least - EPS && h >= least - EPS {
         return;
     }
-    out.push(
+    let source = marks.assembly_size_source.clone().filter(|s| !s.is_empty());
+    let from = source
+        .as_deref()
+        .map(|s| format!(" (source: {s})"))
+        .unwrap_or_default();
+    out.push_sourced(
         Rule::AssemblySize,
         format!(
-            "the board is {w:.1} x {h:.1} mm and has parts the board house assembles on {faces}; it assembles a single board of that kind at {least:.0} x {least:.0} mm at least, so this board needs a panel (a `panel` of the source, or a larger board)"
+            "the board is {w:.1} x {h:.1} mm and has parts the board house assembles on {faces}; it assembles a single board of that kind at {least:.0} x {least:.0} mm at least{from}, so this board needs a panel or to be larger: a panel is `panel P {{ .cell: Board; .fab: VCutPanel {{ .columns &= 3; .rows &= 2 }} }}` (guide chapter 18), and `fab` then writes the panelised Gerbers, BOM and CPL, with the cell in each designator"
         ),
         Pt::new(b.min.x, b.min.y),
         Some("Edge.Cuts"),
-        Vec::new(),
+        source,
     );
 }
 

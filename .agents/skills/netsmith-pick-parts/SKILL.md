@@ -36,6 +36,7 @@ The solver picks, for each generic part, the first row of its catalog that fits 
 
 - A hand pick is a narrowing in source (ADR 0122): `.r1: Resistor { .lcsc &= "C23151" }`, or `.mpn &=`; inside a module from the board, `.stage.output_cap.lcsc &= "C307331"`. The solver then offers that row only, judges it by every relation, and says when none passes or the catalog lacks the number. A hand pick wins over the lock: build, then `project lock --update` to record it.
 - For a generic part no row stands for (`fab` refuses it), `netsmith board swap R1` lists the nearest rows with what the board's checks say for each and the change that chooses it. `netsmith board swap R1 --apply C25094` (name, LCSC number or list number) writes it, as the editor's Swap does. Ask the user which row.
+- A part that states `.variants` (order codes and their features, issue #1311) takes its `.mpn` from what the design needs: `.u.needs &= GNSS` leaves the codes with that feature, and the build asks for a need or a `.mpn &=` when several are left. To change the code, change the need, not the lock; a code named with `.mpn &=` that lacks a need is refused.
 - To prefer a row for every generic part without changing the design's picks, the project's `preferred.csv` lists `lcsc` or `mpn` (the chapter on projects, "Preferred parts"); it changes resolution only.
 
 ## Add a part the catalogs lack

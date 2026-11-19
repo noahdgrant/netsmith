@@ -1270,7 +1270,7 @@ To see which layers of a board are planes, pours or signal layers, on which net 
 
 A `Keepout` is an area where something is not allowed. Four fields say what, each `"forbid"` or `"allow"`, and one that states none forbids all four (the language has no boolean, so the words stand for one): `.tracks`, `.vias`, `.copper` (the pours are not filled there) and `.parts` (no part's courtyard, and no pad). `.layers` is `"all"` (the default) or `"top"`, `"bottom"`, `"inner1"`, `"inner2"`... (as many as the board has inner layers) separated by commas. For `.parts` it names the faces: `.layers &= "bottom"` keeps out the courtyards of the parts on the bottom face and lets a part on the top face stand over the same area, which is how a board says "nothing on the face opposite this antenna" (issue #767). A part stands on one face, so a keepout whose layers are inner ones only keeps out no part, and one that says `.parts &= "forbid"` with such layers is refused. A part's own keepout names the board's faces the same way (not the part's own face, so a part on the bottom still reads `"bottom"` as the bottom of the board). The router, the stitching vias and the placement check keep to it, and the board file has it as a KiCad rule area, so KiCad's check and fill do too.
 
-A keepout is a member of a board's physical file, with its place in the board's frame, or a member of a part, in the part's own frame (the footprint's, turned with the part), so that a part carries its own no-copper zone. A part states it relative to itself and nothing else; the keepouts a board draws are physical intent and are in its physical file (a keepout in a board's circuit source is an error that says so). A keepout zone that a library's footprint draws (a rule area over its pads) is the same: `fab` writes it to the `.kicad_pcb` in board coordinates, turned and moved with the footprint and mirrored on the back, as KiCad saves it (a `.kicad_mod` has it in the footprint's own frame), and netsmith reads the zone of a footprint in a `.kicad_pcb` as board coordinates too (issue #1237). What it forbids holds as a keepout of the board's does (issue #1291): the router, the stitching of a pour and the vias a pin's `vias` guideline puts in its pads keep out of it (of the box round it, where the part's turn or the zone's shape is not a box), the pour's fill keeps out of it where it forbids pours, and `board drc` and `fab` report a track, a via, a pad (the footprint's own among them, as KiCad's check does) or a part in it as `items_not_allowed`, the finding naming the footprint and what of it forbids the item (`inside the rule area of U1's footprint (no pads)`). Copper that only touches the area's edge is not in it, as in KiCad's check (issue #1372).
+A keepout is a member of a board's physical file, with its place in the board's frame, or a member of a part, in the part's own frame (the footprint's, turned with the part), so that a part carries its own no-copper zone. A part states it relative to itself and nothing else; the keepouts a board draws are physical intent and are in its physical file (a keepout in a board's circuit source is an error that says so). A keepout zone that a library's footprint draws (a rule area over its pads) is the same: `fab` writes it to the `.kicad_pcb` in board coordinates, turned and moved with the footprint and mirrored on the back, as KiCad saves it (a `.kicad_mod` has it in the footprint's own frame), and netsmith reads the zone of a footprint in a `.kicad_pcb` as board coordinates too (issue #1237). The outline of such a zone may hold arcs (a library's keepout round a mounting hole is often one circle drawn as one arc, its start its end): `fab` moves the three points of an arc as it moves the others, and netsmith reads an arc as points no further than 2 µm (`ARC_ERROR`) from it, in the footprint's keepout and in the board file alike (issue #1299). What it forbids holds as a keepout of the board's does (issue #1291): the router, the stitching of a pour and the vias a pin's `vias` guideline puts in its pads keep out of it (of the box round it, where the part's turn or the zone's shape is not a box), the pour's fill keeps out of it where it forbids pours, and `board drc` and `fab` report a track, a via, a pad (the footprint's own among them, as KiCad's check does) or a part in it as `items_not_allowed`, the finding naming the footprint and what of it forbids the item (`inside the rule area of U1's footprint (no pads)`). Copper that only touches the area's edge is not in it, nor is copper in a hole of the area (a cutout round the module's own pads), as in KiCad's check (issues #1372, #1392).
 
 The editor's PCB view draws them there too (ADR 0048, issue #809). A keepout drawn with its rectangle tool (`K`) is written to the board's physical file as a `Keepout` member at the end of the unit, every field a plain `&=` of a literal, with the `import` it needs; the file is made if there is none:
 
@@ -2478,6 +2478,81 @@ error: `.radio` is a part, and `.antenna within 8mm of .radio` measures to a pin
   |
 2 |     .antenna within 8mm of .radio
   |                            ^^^^^^
+```
+
+#### A distance between kinds of parts
+
+Where a datasheet gives no number, a project keeps rules of thumb about which kinds of parts stand apart: a radio module and a switching regulator, a crystal and a buck converter, an antenna connector and a fast clock. The `keep` statement of a board's physical file says one (issue 1277, owner decision): `keep 10mm between BuckIc and Crystal` asks every part of the first kind to stand at least 10 mm from every part of the second. A kind is a part or a generic the physical file imports, as a line of `defaults` names one: the standard library's (`std::parts::regulator::BuckIc`, `std::parts::passive::Crystal`) or the project's own, and a kind reaches every part made from it or providing it, at any depth of the board. The two kinds may be the same: `keep 20mm between Radio and Radio` keeps every two radios apart. The distance is one fixed length of zero or more, and a pair of kinds states one.
+
+```nsm solve place
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::Capacitor
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+board Spaced {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .rail: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
+    .r1: Resistor { .resistance &= 15kohm +/- 1% }
+    .r2: Resistor { .resistance &= 15kohm +/- 1% }
+    .c1: Capacitor { .capacitance &= 100nF +/- 10%; .max_voltage >= .bias * 1.5 }
+    .rail.pos ~> .r1 ~> .rail.neg
+    .rail.pos ~> .r2 ~> .rail.neg
+    .rail.pos ~ .c1.a
+    .rail.neg ~ .c1.b
+}
+```
+
+```nsm-physical
+import std::parts::passive::Capacitor
+import std::parts::passive::Resistor
+import std::pcb::Outline
+
+physical for Spaced {
+    case {
+        .outline: Outline { .width &= 30mm; .height &= 20mm }
+    }
+
+    // Project rule of thumb (no datasheet number): the capacitor stands 6 mm from every resistor.
+    keep 6mm between Resistor and Capacitor
+}
+```
+
+It is a requirement on where parts go, as a `.place` line is. The distance is measured from courtyard to courtyard in the plane of the board, whatever faces the two parts are on (a regulator under a radio is no further from it): the least distance between any two shapes of the courtyards, along one axis where they face each other and corner to corner otherwise. The placer keeps it as hard as an overlap, and a board on which it cannot hold is placed as near as the placer gets. Where the placed board has two parts nearer than the statement asks, `fab` stops after placing and before routing, with both parts, the numbers and the line:
+
+```text
+error: requirement `keep 6mm between Resistor and Capacitor` (main.physical.nsm:11) is violated: `c1` (C1) is 1.5 mm from `r1` (R1), courtyard to courtyard, and it asks for 6 mm (4.5 mm short); move them apart, or change the rule
+```
+
+`board fab --format json` has each pair in `requirements`, with `measure` `distance`, the `measured` distance, the least as `min` and how far short as `over`. `constraints = "warn"` in netsmith.toml (or `board fab --constraints warn`) makes it a warning, and `--for-review` lists it under FOR REVIEW. `layout check` says two parts the layout file places too near as a `requirement` error, at the line of the entry of one of them. A statement that reaches no two parts (the board has none of a kind, or one part of a kind kept from itself) is a note. The statement belongs in a board's physical file, outside `case { }`: in the circuit source and in a module's own physical file it is an error. A module is not a kind here (name the kind of the part inside it), nor is an interface or a value. Not built: a distance by face, and a keepout between two kinds (a band where nothing of either kind goes).
+
+Misuse: an interface is not a kind of part.
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+
+board Apart {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .j: Header1x2
+}
+```
+
+```nsm-physical
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+physical for Apart {
+    keep 3mm between Rail and Header1x2
+}
+```
+
+```text
+error: `Rail` is an interface; `keep` names a part or a generic
+  --> main.physical.nsm:5:22
+  |
+5 |     keep 3mm between Rail and Header1x2
+  |                      ^^^^
 ```
 
 #### A module's own physical file

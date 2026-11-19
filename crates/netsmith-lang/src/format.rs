@@ -410,7 +410,7 @@ fn split_blocks(lines: Vec<Line>) -> Vec<Line> {
 }
 
 /// The words that begin a definition (`board`, `part`, ... and a physical file's `physical`) or
-/// a section of one (`pins`, `lines`, `support`, `layout`, `defaults`, `case`, `sequence`, `scenario`): a block whose
+/// a section of one (`pins`, `pads`, `lines`, `support`, `layout`, `defaults`, `case`, `sequence`, `scenario`): a block whose
 /// statements are always one to a line, as rustfmt lays out the body of a function.
 fn is_item_word(word: &str) -> bool {
     DefKind::from_keyword(word).is_some()
@@ -418,6 +418,7 @@ fn is_item_word(word: &str) -> bool {
             word,
             "physical"
                 | "pins"
+                | "pads"
                 | "lines"
                 | "support"
                 | "layout"
@@ -446,6 +447,14 @@ fn opens_item(head: &[T]) -> bool {
                 }
             }
         }
+    }
+    // `.variants { ... }`, a part's table of order codes (issue 1311): one row to a line.
+    if head.get(k).is_some_and(|t| t.is(&Tok::LeadingDot))
+        && head
+            .get(k + 1)
+            .is_some_and(|t| matches!(&t.tok, Some(Tok::Ident(w)) if w == "variants"))
+    {
+        return true;
     }
     head.get(k)
         .is_some_and(|t| matches!(&t.tok, Some(Tok::Ident(w)) if is_item_word(w)))

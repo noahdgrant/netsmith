@@ -10,6 +10,11 @@
 //! degrees, on the front and on the back; the keepout is off the footprint's origin, so a frame
 //! that is wrong cannot hide behind a symmetry.
 //!
+//! A keepout drawn with an arc (a circle round a mounting hole is one arc) is moved with the
+//! footprint as well, and read as a circle (issue #1299): the same pours, with netsmith's fill and
+//! KiCad's, keep out of a round keepout where the footprint is, at a position, turned and on both
+//! faces.
+//!
 //! Copper keeps out of such a keepout where it forbids it (issue #1291): a footprint whose keepout
 //! is a wall across the straight way between two pads, under two stitched pours, is routed and
 //! stitched with no track or via in it, and netsmith's check and KiCad's find nothing there; the
@@ -42,6 +47,15 @@ const KEEP: &str = r#"(footprint "Keep" (version 20241229) (generator "netsmith"
         (placement (enabled no) (sheetname ""))
         (fill (thermal_gap 0.5) (thermal_bridge_width 0.5))
         (polygon (pts (xy -1 -2) (xy 3 -2) (xy 3 1) (xy -1 1)))))"#;
+
+/// [`KEEP`] with its keepout drawn as one circle of one arc: centre (0.75, 0.25) and radius 1.5 mm
+/// in the footprint's frame, over the two pads (issue #1299).
+fn round_keep() -> String {
+    KEEP.replace(
+        "(polygon (pts (xy -1 -2) (xy 3 -2) (xy 3 1) (xy -1 1)))",
+        "(polygon (pts (arc (start 2.25 0.25) (mid -0.75 0.25) (end 2.25 0.25))))",
+    )
+}
 
 /// Where the part is, and the library's keepout in the footprint's frame.
 const AT: Pt = Pt { x: 15.0, y: 10.0 };
@@ -76,10 +90,15 @@ fn net(name: &str, pins: &[(&str, &str)]) -> Net {
 /// A 30 x 20 mm board, the keeping part K1 at [`AT`] turned by `rotation` on `side`, two
 /// resistors beside it that join a GND pour on that side (the pour is on the part's face).
 fn board(rotation: f64, side: Side) -> Board {
+    board_of(KEEP, rotation, side)
+}
+
+/// [`board`] with the keeping part's footprint `footprint`.
+fn board_of(footprint: &str, rotation: f64, side: Side) -> Board {
     let dir = TempDir::new("footprint-keepout");
     let pretty = dir.path().join("keep.pretty");
     std::fs::create_dir_all(&pretty).unwrap();
-    std::fs::write(pretty.join("Keep.kicad_mod"), KEEP).unwrap();
+    std::fs::write(pretty.join("Keep.kicad_mod"), footprint).unwrap();
     let rows = "[[part]]\nkind = \"Keep\"\npackage = \"P\"\nsymbol = \"keep:Keep\"\nfootprint = \"keep:Keep\"\n";
     let mapping = Mapping::standard()
         .merged(Mapping::parse(rows, "kicad.toml", dir.path()).unwrap())
@@ -258,6 +277,87 @@ fn the_pour_keeps_out_of_a_footprints_keepout_where_the_footprint_is_in_netsmith
             std::fs::write(pcb.with_extension("kicad_pro"), kicad_pro(&board)).unwrap();
             let refilled = cli.refilled(&pcb).unwrap_or_else(|e| panic!("{who}: {e}"));
             assert_pour_keeps_out(&format!("KiCad, {who}"), &fill_points(&refilled), at);
+        }
+    }
+}
+
+/// Checks that a fill keeps out of the circle of `centre` and `radius` and reaches round it.
+fn assert_pour_keeps_out_of_circle(who: &str, points: &[(f64, f64)], centre: Pt, radius: f64) {
+    assert!(!points.is_empty(), "{who}: the pour has no fill");
+    let dist = |p: &(f64, f64)| Pt::new(p.0, p.1).distance(centre);
+    let inside: Vec<_> = points.iter().filter(|p| dist(p) < radius - 0.02).collect();
+    assert!(
+        inside.is_empty(),
+        "{who}: the fill has points inside the keepout round {centre:?}: {inside:?}"
+    );
+    // The fill reaches the circle on each side of it, so that the keepout is round that circle
+    // and not a gap somewhere else. KiCad's fill has a vertex on the circle about every
+    // 0.4 mm (it cuts a curve to 5 µm), so one is near the side, not at it.
+    for (side, dx, dy) in [("left", -1.0, 0.0), ("right", 1.0, 0.0), ("top", 0.0, -1.0), ("bottom", 0.0, 1.0)] {
+        let edge = Pt::new(centre.x + dx * radius, centre.y + dy * radius);
+        assert!(
+            points.iter().any(|p| Pt::new(p.0, p.1).distance(edge) < 0.4),
+            "{who}: the fill does not reach the {side} of the keepout round {centre:?}"
+        );
+    }
+}
+
+#[test]
+fn the_pour_keeps_out_of_a_footprints_round_keepout_drawn_as_an_arc_in_netsmiths_fill_and_in_kicads() {
+    let cli = KicadCliExe::locate_runnable();
+    if cli.is_none() {
+        eprintln!("skipped KiCad's refill: no KiCad");
+    }
+    for side in [Side::Front, Side::Back] {
+        for rotation in [0.0, 90.0] {
+            let who = format!("{rotation} degrees on the {side:?}");
+            let board = board_of(&round_keep(), rotation, side);
+            let k1 = board.parts.iter().find(|p| p.refdes == "K1").unwrap();
+            let centre = k1.to_board(Pt::new(0.75, 0.25));
+            // The board's own reading: the box round the circle.
+            let read = board.footprint_keepouts();
+            assert_eq!(read.len(), 1, "{who}: {read:?}");
+            // The box of the points no further than `ARC_ERROR` (2 µm) inside the circle.
+            let near = |a: Pt, b: Pt| a.distance(b) < 1e-3;
+            let close = |a: Pt, b: Pt| a.distance(b) < 0.003;
+            assert!(
+                close(read[0].rect.min, Pt::new(centre.x - 1.5, centre.y - 1.5))
+                    && close(read[0].rect.max, Pt::new(centre.x + 1.5, centre.y + 1.5)),
+                "{who}: {:?} is not the box round {centre:?}",
+                read[0].rect
+            );
+            // The written arc is the circle round the footprint's centre, in board coordinates.
+            let filled = kicad_pcb_filled(&board).unwrap();
+            let root = Sexp::parse(&filled.text).unwrap();
+            let arc = root
+                .find_all("footprint")
+                .flat_map(|f| f.find_all("zone"))
+                .next()
+                .and_then(|z| z.find("polygon")?.find("pts")?.find("arc").cloned())
+                .unwrap_or_else(|| panic!("{who}: the footprint's arc is written"));
+            let at = |name: &str| {
+                let n = arc.find(name).unwrap();
+                let v = |i: usize| n.items()[i].text().unwrap().parse::<f64>().unwrap();
+                Pt::new(v(1), v(2))
+            };
+            assert!(near(at("start"), at("end")), "{who}");
+            assert!(near(at("start"), k1.to_board(Pt::new(2.25, 0.25))), "{who}");
+            assert!(near(at("mid"), k1.to_board(Pt::new(-0.75, 0.25))), "{who}");
+            // netsmith's fill, the one the file holds, keeps out of it.
+            assert_pour_keeps_out_of_circle(
+                &format!("netsmith, {who}"),
+                &fill_points(&filled.text),
+                centre,
+                1.5,
+            );
+            // KiCad's own refill of the file does too.
+            let Some(cli) = &cli else { continue };
+            let dir = TempDir::new("footprint-keepout-round-kicad");
+            let pcb = dir.join("keepout.kicad_pcb");
+            std::fs::write(&pcb, kicad_pcb(&board)).unwrap();
+            std::fs::write(pcb.with_extension("kicad_pro"), kicad_pro(&board)).unwrap();
+            let refilled = cli.refilled(&pcb).unwrap_or_else(|e| panic!("{who}: {e}"));
+            assert_pour_keeps_out_of_circle(&format!("KiCad, {who}"), &fill_points(&refilled), centre, 1.5);
         }
     }
 }

@@ -9,6 +9,22 @@ impl<'a> Engine<'a> {
         let gap = GAP + if p.pours { POUR_GAP } else { 0.0 };
         let hole_gap = rules.clearance.max(rules.hole_to_hole).max(gap);
         let reach_pad = (hole_gap.max(rules.silk_to_pad)).max(gap + 2.0 * MAX_ESCAPE) / 2.0 + 0.01;
+        let index_of: std::collections::HashMap<&str, usize> = parts
+            .iter()
+            .enumerate()
+            .map(|(i, part)| (part.path.as_str(), i))
+            .collect();
+        // The parts each part keeps a distance from (`keep`, issue 1277), by index.
+        let aparts: Vec<Vec<(usize, f64)>> = parts
+            .iter()
+            .map(|part| {
+                part.apart
+                    .iter()
+                    .filter_map(|a| index_of.get(a.path.as_str()).map(|&j| (j, a.distance)))
+                    .collect()
+            })
+            .collect();
+        drop(index_of);
         let mut models: Vec<Model> = (0..n)
             .map(|i| {
                 let base = parts[i].rotation;
@@ -16,6 +32,9 @@ impl<'a> Engine<'a> {
                 let margin = parts[i].routing_margin;
                 // A soft margin (issue 1310) widens the reach too: a part within it costs.
                 let soft = parts[i].soft_margin;
+                // So does a distance it keeps from other parts (issue 1277): half on each of the
+                // two, so that their reaches meet while they are nearer than it.
+                let apart = aparts[i].iter().map(|&(_, d)| d).fold(0.0, f64::max) / 2.0;
                 let want = p.wants.get(i).and_then(Option::as_ref);
                 // The right angles from the turn it began at, or the eight steps of 45 degrees
                 // for a part whose requirements allow them (issue #1046).
@@ -35,7 +54,7 @@ impl<'a> Engine<'a> {
                         base,
                         side,
                         rules,
-                        reach_pad + margin + soft,
+                        reach_pad + margin + soft + apart,
                     ));
                 } else {
                     for &a in &angles {
@@ -45,7 +64,7 @@ impl<'a> Engine<'a> {
                                 a,
                                 text,
                                 rules,
-                                reach_pad + margin + soft,
+                                reach_pad + margin + soft + apart,
                             ));
                         }
                     }
@@ -80,6 +99,7 @@ impl<'a> Engine<'a> {
                     hand_fitted: parts[i].hand_fitted,
                     margin,
                     soft,
+                    apart: aparts[i].clone(),
                     court_faces: parts[i].footprint.courtyard_faces,
                     role: if crate::place::is_connector(&parts[i]) {
                         Role::Connector

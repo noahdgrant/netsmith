@@ -40,10 +40,13 @@ pub fn scene(system: &SolvedSystem, members: &[(&Built, &Board)]) -> SystemScene
             b_member: m.b_board.clone(),
             a_seat: m.a_seat,
             b_seat: m.b_seat,
+            a_body: m.a_body,
+            b_body: m.b_body,
             mated_height: m.mated_height(),
             unknown: m.unknown(),
             window: m.window,
             keyed: m.keyed,
+            soldered: m.soldered,
         })
         .collect();
     SystemScene::of(&system.name, inputs, mates)

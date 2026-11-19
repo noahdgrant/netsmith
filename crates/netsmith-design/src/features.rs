@@ -7,10 +7,10 @@
 
 use netsmith_check::{Domain, GuidelineRule, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
-    CaseModel, Cutout, Features, ImpedanceTarget, Keepout, Label, LengthGroup, Logo, LogoLayer,
-    NetPair, Offset, OffsetEnd, Outline, PadConnection, PartHeight, PartHeightGrowth, PartKind,
-    PartRoutingMargin, PartSilk, PartSoftMargin, PartStandoff, PinProtrusion, PlaceBound,
-    PlaceField, Placement, Pour, SilkPrint, StepModel,
+    CaseModel, Cutout, Features, ImpedanceTarget, KeepApart, Keepout, Label, LengthGroup, Logo,
+    LogoLayer, NetPair, Offset, OffsetEnd, Outline, PadConnection, PadContactOffset, PartHeight,
+    PartHeightGrowth, PartKind, PartRoutingMargin, PartSilk, PartSoftMargin, PartStandoff,
+    PinProtrusion, PlaceBound, PlaceField, Placement, Pour, SilkPrint, StepModel,
 };
 use netsmith_lang::Span;
 use std::collections::{BTreeMap, BTreeSet};
@@ -648,6 +648,39 @@ fn routing_margins(model: &Model, errors: &mut Vec<String>) -> Vec<PartRoutingMa
     found
 }
 
+/// The contacts the parts' `pads` blocks state away from their pads' centres (issue #1321), by
+/// path and pad: the rows of a block for a package only for a part in that package. A row of a
+/// block for one package wins over a row of the block for every package.
+fn pad_contacts(model: &Model) -> Vec<PadContactOffset> {
+    let mut found: Vec<PadContactOffset> = Vec::new();
+    let mut specific: Vec<(String, String)> = Vec::new();
+    for c in &model.pad_contacts {
+        if let Some(package) = &c.package
+            && text(model, c.part, "package").as_deref() != Some(package.as_str())
+        {
+            continue;
+        }
+        let path = model.path_of(c.part);
+        let key = (path.clone(), c.pad.clone());
+        if let Some(at) = found.iter().position(|f| f.path == key.0 && f.pad == key.1) {
+            if c.package.is_none() || specific.contains(&key) {
+                continue;
+            }
+            found.remove(at);
+        }
+        if c.package.is_some() {
+            specific.push(key);
+        }
+        found.push(PadContactOffset {
+            path,
+            pad: c.pad.clone(),
+            offset: c.offset,
+        });
+    }
+    found.sort_by(|a, b| (&a.path, &a.pad).cmp(&(&b.path, &b.pad)));
+    found
+}
+
 /// The `soft margin` statements of the physical files (issue 1310), by path, and where each is
 /// written, in the same order.
 pub(crate) fn soft_margins(model: &Model) -> (Vec<PartSoftMargin>, Vec<(SourceId, Span)>) {
@@ -671,6 +704,32 @@ pub(crate) fn soft_margins(model: &Model) -> (Vec<PartSoftMargin>, Vec<(SourceId
         }
     }
     (margins, sites)
+}
+
+/// The `keep` statements of the board's physical file (issue 1277), with the paths of the parts
+/// of each kind, and where each is written, in the same order. A distance of 0 asks for nothing.
+pub(crate) fn keep_apart(model: &Model) -> (Vec<KeepApart>, Vec<(SourceId, Span)>) {
+    let mut rules = Vec::new();
+    let mut sites = Vec::new();
+    for k in model.keep_aparts() {
+        if k.distance <= 0.0 {
+            continue;
+        }
+        let paths = |parts: &[InstId]| {
+            let mut paths: Vec<String> = parts.iter().map(|&p| model.path_of(p)).collect();
+            paths.sort();
+            paths
+        };
+        rules.push(KeepApart {
+            rule: k.text.clone(),
+            kinds: k.kinds.clone(),
+            distance: k.distance,
+            parts: [paths(&k.parts[0]), paths(&k.parts[1])],
+            source: String::new(),
+        });
+        sites.push((k.source, k.span));
+    }
+    (rules, sites)
 }
 
 /// The standoffs the design states for its parts (`.standoff`, issue #775), by path: how high
@@ -1538,6 +1597,7 @@ pub(crate) fn features_of(
         labels: labels(model, least_text, errors),
         heights: heights(model, errors),
         standoffs: standoffs(model, errors),
+        pad_contacts: pad_contacts(model),
         height_growths: height_growths(model, errors),
         routing_margins: routing_margins(model, errors),
         silks: silks(model, errors),
@@ -1919,6 +1979,14 @@ pub(crate) fn expand_banks(
             features.standoffs.push(PartStandoff { path, ..s.clone() });
         }
     }
+    let old = std::mem::take(&mut features.pad_contacts);
+    for c in old {
+        for path in members(&c.path, banks) {
+            features
+                .pad_contacts
+                .push(PadContactOffset { path, ..c.clone() });
+        }
+    }
     let old = std::mem::take(&mut features.height_growths);
     for g in old {
         for path in members(&g.path, banks) {
@@ -1945,6 +2013,12 @@ pub(crate) fn expand_banks(
                 .soft_margins
                 .push(PartSoftMargin { path, ..m.clone() });
             soft_margin_sites.push(site);
+        }
+    }
+    // A bank of a kind is each of its capacitors (issue 1277).
+    for rule in &mut features.keep_apart {
+        for side in &mut rule.parts {
+            *side = side.iter().flat_map(|p| members(p, banks)).collect();
         }
     }
     let old = std::mem::take(&mut features.silks);
