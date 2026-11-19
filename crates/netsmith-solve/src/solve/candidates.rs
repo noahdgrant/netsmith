@@ -188,7 +188,7 @@ impl Solver<'_> {
     /// The range of temperatures the board's environment states for a part, in kelvin: the ends
     /// of `.environment.temperature` of the board it is on (ADR 0099). `None` when the board has
     /// no environment or its environment states no temperature.
-    fn environment_range(&self, part: InstId) -> Option<(f64, f64)> {
+    pub(super) fn environment_range(&self, part: InstId) -> Option<(f64, f64)> {
         let field = self.model.environment_temperature_of(part)?;
         match &self.model.field(field).domain {
             Domain::Quantity(q) => Some((q.lo(), q.hi())),
@@ -773,7 +773,7 @@ impl Solver<'_> {
             // A row with no value for a column that the design does not ask about stays
             // unset (`fits` let it through).
             let Some(value) = c.column(key) else { continue };
-            if !self.corners.corners.is_empty() {
+            if self.keep_curves {
                 self.corner_curves.remove(f);
             }
             let value = match value {
@@ -790,7 +790,7 @@ impl Solver<'_> {
                 },
                 Value::Curved(v) => match self.curved(part, v) {
                     Ok(q) => {
-                        if !self.corners.corners.is_empty() {
+                        if self.keep_curves {
                             self.corner_curves
                                 .insert(*f, (std::sync::Arc::clone(&v.curve), Domain::Quantity(q)));
                         }

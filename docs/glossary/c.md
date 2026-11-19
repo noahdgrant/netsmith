@@ -105,6 +105,10 @@ _Avoid_: congestion map, heat map
 The points of one column of one catalog row over the part's operating conditions (a diode's forward voltage at each current and temperature), `curves/<catalog>/<row>.csv` beside the catalog file and named by the row's `lcsc` or `mpn`. The solver reads the column off it, interpolated, at the ranges the design gives the part; the row keeps its single figure for a design that gives none (`netsmith_solve::curve`, issue #1260).
 _Avoid_: bias curve (a capacitor's curve in its `effective_capacitance` cell), lookup table
 
+**Cut-off voltage**:
+The least voltage a storage element of a _Hold-up_ may fall to: the voltage at which the stated peak still keeps the rail at its minimum, the rail's minimum walked back through the chain's drops at the peak (diodes, resistors, a regulator's dropout, a switching regulator's least input) plus the peak across the storage's ESR (issue #1255).
+_Avoid_: Brown-out voltage (a part's own threshold), end voltage, discharge limit
+
 **Cutout**:
 A rectangular hole inside the outline, with an optional corner radius (`std::pcb::Cutout`).
 _Avoid_: Slot, notch, hole (a hole is drilled)
