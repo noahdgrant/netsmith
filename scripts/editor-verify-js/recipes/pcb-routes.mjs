@@ -2,7 +2,8 @@
 // locked net, dashed on one the router may add to, a padlock on a locked shape, a ring round a via),
 // the side panel lists its records, a shape is picked by a click, locked and unlocked with L and the
 // inspector, and deleted with Delete, which is refused with the reason while it is locked. A record
-// whose pads moved is a warning in the findings and in the problems dock. Every change is the routes
+// whose pads moved is a warning in the findings and in the problems dock, and its copper is kept
+// and drawn (issue #1328). Every change is the routes
 // file's, made as `netsmith routes` makes it.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -146,7 +147,7 @@ export async function run(tools) {
   await page.locator('.side-tabs button', { hasText: 'Findings' }).click();
   await page.waitForSelector('[data-testid=finding]');
   const found = await page.locator('[data-testid=finding]').allInnerTexts();
-  expect(found.some((f) => f.includes('routes_pads_moved') && f.includes('the pads of net `GND` are not where')), `the findings say so (${found.join(' | ').replace(/\n/g, ' ')})`);
+  expect(found.some((f) => f.includes('routes_pads_moved') && f.includes('the pads of net `GND` are not where') && f.includes('are kept')), `the findings say so, and that its copper is kept (${found.join(' | ').replace(/\n/g, ' ')})`);
   expect(found.some((f) => f.includes('routes file')), 'with the routes file as its source');
   await page.keyboard.press('Control+j');
   await page.waitForSelector('.dock .problem');
@@ -155,7 +156,8 @@ export async function run(tools) {
   await page.locator('.side-tabs button', { hasText: 'Routes' }).click();
   await page.waitForSelector('[data-route-row="GND"]');
   expect((await page.locator('[data-route-row="GND"]').innerText()).includes('stale'), 'the Routes list marks GND stale');
-  expect((await page.locator('[data-route-row="GND/track/2"].undrawn').count()) === 1, 'its unlocked tracks are not drawn');
+  expect((await page.locator('[data-route-row="GND/track/2"]').count()) === 1, 'its unlocked track is listed');
+  expect((await page.locator('[data-route-row^="GND/"].undrawn').count()) === 0, 'and every shape of it is still drawn');
   await whenIdle(page);
   await shot('stale-record');
 }
