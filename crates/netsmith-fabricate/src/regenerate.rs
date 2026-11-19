@@ -6,8 +6,8 @@
 //! `netsmith_placer::regenerate` (its header has the scope, the region and the seed). The
 //! proposal says which parts moved and where to, which nets lose their copper (the nets of the
 //! parts placed again, which `fab` and the editor route again), which records of the routes file
-//! no longer match their pads (they are dropped as any record whose pads moved is, the shapes
-//! with `lock = true` kept), and the placement's findings and totals before and after
+//! no longer match their pads (kept, open where their copper misses a moved pad, as any record
+//! whose pads moved is, issue #1328), and the placement's findings and totals before and after
 //! (`netsmith_pcb::PlacementComparison`). It writes nothing.
 //!
 //! The layout it gives has an entry for each part placed again, unlocked and with `source =
@@ -75,7 +75,8 @@ pub struct Proposal {
     /// The nets with a pad on a part placed again: their copper is routed again.
     pub nets: Vec<String>,
     /// The nets whose record in the routes file no longer matches its pads once the parts
-    /// moved: its shapes are dropped and the net routed again, except the locked shapes.
+    /// moved: its copper is kept, open where it misses a moved pad, and the router routes what it
+    /// leaves (issue #1328).
     pub routes_dropped: Vec<String>,
     /// The placement's findings and totals before and after.
     pub comparison: PlacementComparison,
@@ -133,7 +134,7 @@ impl Proposal {
         }
         if !self.routes_dropped.is_empty() {
             out.push_str(&format!(
-                "routes file records that no longer match their pads (dropped but for their locked shapes): {}\n",
+                "routes file records that no longer match their pads (their copper kept, open where it misses a moved pad): {}\n",
                 self.routes_dropped.join(", ")
             ));
         }

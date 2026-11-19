@@ -1162,6 +1162,19 @@ impl<'a> Checker<'a> {
         FieldKind::Enum(self.enum_id(m, i))
     }
 
+    /// The enum `PadConnection` of `std::mfg::stackup`, the type of the built-in
+    /// `.pour_connection` of every pin (issue #1276); `None` when the loader has no such module.
+    pub(crate) fn pad_connection_kind(&mut self) -> Option<FieldKind> {
+        let module = self.load_module(&["std".into(), "mfg".into(), "stackup".into()])?;
+        match self.modules[module].scope.get("PadConnection") {
+            Some(Binding::Def(m, i)) => {
+                let (m, i) = (*m, *i);
+                Some(FieldKind::Enum(self.enum_id(m, i)))
+            }
+            _ => None,
+        }
+    }
+
     /// The enum of the prelude that the built-in `.qualification` of a part, and the
     /// `.qualification` of an environment, have the type of (ADR 0099).
     pub(crate) fn qualification_kind(&mut self) -> FieldKind {
@@ -2126,6 +2139,21 @@ impl<'a> Checker<'a> {
             .model
             .add_field(pin, "current", FieldKind::Quantity(Dimension::CURRENT));
         self.model.add_member(pin, "current", Member::Field(f));
+        // How a pour of the pin's net joins its pads (issue #1276): a variant of the std enum
+        // `PadConnection`, `Solid` or `Thermal`, and the width of the spokes of its thermal
+        // relief. Stated on the pin of a part (`.gnd.pour_connection &= PadConnection::Solid`),
+        // it holds for every pad of the pin and overrides the pour's own setting; the fill, the
+        // board file's pads and the fill report read it. A pin that states none is joined as
+        // the pour says.
+        if let Some(kind) = self.pad_connection_kind() {
+            let f = self.model.add_field(pin, "pour_connection", kind);
+            self.model
+                .add_member(pin, "pour_connection", Member::Field(f));
+        }
+        let f = self
+            .model
+            .add_field(pin, "spoke_width", FieldKind::Quantity(Dimension::LENGTH));
+        self.model.add_member(pin, "spoke_width", Member::Field(f));
         pin
     }
 
@@ -2170,6 +2198,8 @@ impl<'a> Checker<'a> {
                     }
                 }
                 Item::Row(r) => self.row(r),
+                Item::Within(w) => self.within(w),
+                Item::Route(r) => self.route_layers(r),
                 Item::Polygon(p) => self.polygon(p),
                 Item::PhysicalFile(f) => self.physical_file_here(f),
                 Item::Anchor(a) => self.anchor_here(a),

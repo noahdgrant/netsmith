@@ -77,10 +77,14 @@
 //! **A record that no longer matches** is said, never used silently. `pads` is a hash of the
 //! net's pads ([`pad_hash`]): each pad's part (by its path in the design, which a renumbered
 //! reference designator does not change), number, centre to 1 µm and copper layers. When a
-//! pad of the net moved, or one joined or left it, the record's shapes are dropped and the
-//! net is routed again, except the shapes with `lock = true`, which are kept; the net's own
-//! lock does not hold for that run. A record for a net the board does not have (a net renamed,
-//! say) is dropped whole. Each is a [`RoutesNote`] that `fab` prints as a warning.
+//! pad of the net moved, or one joined or left it, the record's copper is kept, every shape of
+//! it, and the tracks and vias that ran to a pad no longer there are said to be open at that
+//! pad ([`crate::open_ends`]: an end that runs into nothing of its net, named by the pad of the
+//! net nearest it); the net's own lock does not hold for that run, so the router routes the
+//! connections the kept copper leaves, as the design rules check counts them (issue #1328).
+//! The kept copper may now cross a pad that moved onto it: the design rules check finds that as
+//! it finds any. A record for a net the board does not have (a net renamed, say) is dropped
+//! whole. Each is a [`RoutesNote`] that `fab` prints as a warning.
 //! `netsmith routes show` lists them too, and writing the record again (an import, or `routes
 //! lock`) takes the pads as they are now.
 
@@ -227,13 +231,41 @@ impl std::error::Error for RoutesError {}
 pub enum RoutesNote {
     /// A record for a net the board does not have: nothing of it was drawn.
     NotANet { net: String, shapes: usize },
-    /// The net's pads are not where the record says: its unlocked shapes were dropped and the
-    /// net is routed again; its locked ones were kept.
+    /// The net's pads are not where the record says: its shapes are kept, those that ran to a
+    /// pad no longer there are `open` at it, and the router routes what is left.
     Moved {
         net: String,
-        dropped: usize,
-        kept: usize,
+        shapes: usize,
+        open: Vec<OpenShape>,
     },
+}
+
+/// A shape of a record whose pads moved that runs into nothing of its net at `at` (issue
+/// #1328).
+#[derive(Debug, Clone, PartialEq)]
+pub struct OpenShape {
+    /// `track 2` or `via 1`, numbered from 1 in the record, as `netsmith routes` numbers them.
+    pub shape: String,
+    /// The track's end or the via, in the routes file's places.
+    pub at: [f64; 2],
+    /// The pad of the net nearest to it, `U1.3`: where it ran before the pad moved.
+    pub pad: Option<String>,
+}
+
+impl std::fmt::Display for OpenShape {
+    /// `U1.3 (track 2's end at 10.5, 3.2)`.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let what = if self.shape.starts_with("track") {
+            format!("{}'s end", self.shape)
+        } else {
+            self.shape.clone()
+        };
+        let at = format!("{}, {}", num(self.at[0]), num(self.at[1]));
+        match &self.pad {
+            Some(pad) => write!(f, "{pad} ({what} at {at})"),
+            None => write!(f, "{what} at {at}"),
+        }
+    }
 }
 
 impl std::fmt::Display for RoutesNote {
@@ -243,10 +275,22 @@ impl std::fmt::Display for RoutesNote {
                 f,
                 "the routes file has net `{net}`, which the board does not have: its {shapes} shape(s) are not drawn; rename the record or delete it (`netsmith routes delete`)"
             ),
-            RoutesNote::Moved { net, dropped, kept } => write!(
-                f,
-                "the pads of net `{net}` are not where the routes file's record was written: {dropped} unlocked shape(s) dropped and the net routed again, {kept} locked shape(s) kept; write the record again (`netsmith routes lock`) or delete it"
-            ),
+            RoutesNote::Moved { net, shapes, open } => {
+                write!(
+                    f,
+                    "the pads of net `{net}` are not where the routes file's record was written: its {shapes} shape(s) are kept and the router routes the connections they leave"
+                )?;
+                if open.is_empty() {
+                    f.write_str("; none of them is open")?;
+                } else {
+                    let open: Vec<String> = open.iter().map(ToString::to_string).collect();
+                    write!(f, "; open at {}", open.join(", "))?;
+                }
+                write!(
+                    f,
+                    "; check the copper, then write the record again (`netsmith routes lock --net {net}`) or delete the shapes that ran to the moved pads (`netsmith routes delete`)"
+                )
+            }
         }
     }
 }
@@ -807,6 +851,8 @@ pub fn apply_routes(
     let mut tracks = Vec::new();
     let mut vias = Vec::new();
     let mut zones = Vec::new();
+    // The records whose pads moved: the net, its shapes, and where its tracks and vias start.
+    let mut moved = Vec::new();
     for (net, record) in &table.nets {
         for t in &record.tracks {
             t.check(board).map_err(|why| RoutesError::BadShape {
@@ -837,40 +883,12 @@ pub fn apply_routes(
             continue;
         };
         let current = hash == record.pads;
-        let keep_track = |t: &&RouteTrack| current || t.lock;
-        let keep_via = |v: &&RouteVia| current || v.lock;
-        let keep_zone = |z: &&RouteZone| current || z.lock;
-        let kept = record.tracks.iter().filter(keep_track).count()
-            + record.vias.iter().filter(keep_via).count()
-            + record.zones.iter().filter(keep_zone).count();
         if !current {
-            notes.push(RoutesNote::Moved {
-                net: net.clone(),
-                dropped: record.shapes() - kept,
-                kept,
-            });
+            moved.push((net.clone(), record.shapes(), tracks.len(), vias.len()));
         }
-        tracks.extend(
-            record
-                .tracks
-                .iter()
-                .filter(keep_track)
-                .map(|t| t.on(board, net)),
-        );
-        vias.extend(
-            record
-                .vias
-                .iter()
-                .filter(keep_via)
-                .map(|v| v.on(board, net)),
-        );
-        zones.extend(
-            record
-                .zones
-                .iter()
-                .filter(keep_zone)
-                .map(|z| z.on(board, net)),
-        );
+        tracks.extend(record.tracks.iter().map(|t| t.on(board, net)));
+        vias.extend(record.vias.iter().map(|v| v.on(board, net)));
+        zones.extend(record.zones.iter().map(|z| z.on(board, net)));
         if current && record.lock {
             board.fixed.locked.insert(net.clone());
         }
@@ -880,6 +898,25 @@ pub fn apply_routes(
     board.tracks.splice(0..0, tracks);
     board.vias.splice(0..0, vias);
     board.zones.extend(zones);
+    let origin = board.outline.min;
+    let place = |p: Pt| [p.x - origin.x, p.y - origin.y];
+    for (net, shapes, first_track, first_via) in moved {
+        let record = &table.nets[&net];
+        let track_at: Vec<usize> = (first_track..first_track + record.tracks.len()).collect();
+        let via_at: Vec<usize> = (first_via..first_via + record.vias.len()).collect();
+        let open = crate::open_ends(board, &net, &track_at, &via_at)
+            .into_iter()
+            .map(|o| OpenShape {
+                shape: match o.copper {
+                    crate::OpenCopper::Track(k) => format!("track {}", k + 1),
+                    crate::OpenCopper::Via(k) => format!("via {}", k + 1),
+                },
+                at: place(o.at),
+                pad: o.pad.map(|p| p.to_string()),
+            })
+            .collect();
+        notes.push(RoutesNote::Moved { net, shapes, open });
+    }
     Ok(notes)
 }
 
@@ -1149,7 +1186,7 @@ mod tests {
     }
 
     #[test]
-    fn copper_of_a_current_record_is_fixed_and_a_moved_one_keeps_only_its_locked_shapes() {
+    fn copper_of_a_record_is_fixed_and_a_moved_one_is_kept_open_at_its_moved_pads() {
         let mut board = led_board();
         let net = board.nets[0].name.clone();
         let record = NetRoutes {
@@ -1186,7 +1223,9 @@ mod tests {
         assert_eq!(board.tracks[0].from, board.outline.min + Pt::new(1.0, 1.0));
         assert_eq!(record_of(&board, &net, true).unwrap().tracks, record.tracks);
 
-        // A pad moved: the unlocked track goes, the locked via stays, and the net is not locked.
+        // A pad moved (issue #1328): every shape is kept, the end of the track that runs into
+        // nothing is open at the pad nearest it, and the net is not locked, so that the router
+        // routes what the kept copper leaves.
         let mut board = led_board();
         let refdes = board.nets[0].pads[0].refdes.clone();
         board
@@ -1197,15 +1236,30 @@ mod tests {
             .at
             .x += 0.5;
         let notes = apply_routes(&mut board, &routes, "f").unwrap();
+        let [
+            RoutesNote::Moved {
+                net: moved,
+                shapes,
+                open,
+            },
+        ] = notes.as_slice()
+        else {
+            panic!("{notes:?}");
+        };
+        assert_eq!((moved, *shapes), (&net, 2));
+        assert_eq!(open.len(), 1, "{open:?}");
         assert_eq!(
-            notes,
-            [RoutesNote::Moved {
-                net: net.clone(),
-                dropped: 1,
-                kept: 1
-            }]
+            (open[0].shape.as_str(), open[0].at),
+            ("track 1", [1.0, 1.0])
         );
-        assert_eq!((board.tracks.len(), board.vias.len()), (0, 1));
+        assert!(open[0].pad.is_some());
+        let said = notes[0].to_string();
+        assert!(
+            said.contains("are kept") && said.contains("track 1's end at 1.0, 1.0"),
+            "{said}"
+        );
+        assert_eq!((board.tracks.len(), board.vias.len()), (1, 1));
+        assert_eq!((board.fixed.tracks, board.fixed.vias), (1, 1));
         assert!(!board.fixed.is_locked(&net));
 
         // A net the board does not have is said, and nothing of it drawn.
