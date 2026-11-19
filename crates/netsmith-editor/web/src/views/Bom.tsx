@@ -335,6 +335,11 @@ export function Bom() {
         .includes(q));
   const lines = useMemo(() => (bom ? bom.lines.filter(matches) : []), [bom, q, problemsOnly]);
   const hand = useMemo(() => (bom ? bom.hand.filter(matches) : []), [bom, q, problemsOnly]);
+  // A part that is not fitted (issue 1273) is no problem to show among the problems.
+  const notFitted = useMemo(
+    () => (bom && !problemsOnly ? bom.notFitted.filter((l) => !q || [l.designators.join(' '), l.value, l.kind].join(' ').toLowerCase().includes(q)) : []),
+    [bom, q, problemsOnly],
+  );
   const gone = useMemo(
     () =>
       (bomDelta?.removed ?? []).filter(
@@ -548,6 +553,42 @@ export function Bom() {
                 </tr>
                 {hand.map((l) => (
                   <Row key={`hand/${l.designators.join(',')}`} l={l} cols={cols} lit={lit} staleAfter={bom.staleAfterDays} mark={markOf(l)} marking={marking} onSwap={setSwapping} />
+                ))}
+              </tbody>
+            )}
+            {notFitted.length > 0 && (
+              <tbody class="grouped hand" data-testid="bom-not-fitted">
+                <tr class="grp-row static">
+                  <td colSpan={span}>
+                    <span class="grp-label">
+                      <Icon name="minus" size={13} />
+                      <b>Not fitted</b>
+                      <span class="faint">DNP lines of bom.csv: the footprint is on the board, the value is chosen on the bench</span>
+                    </span>
+                  </td>
+                </tr>
+                {notFitted.map((l) => (
+                  <tr key={`dnp/${l.designators.join(',')}`} class="dr" data-testid="bom-not-fitted-row">
+                    <td class="des">
+                      <div class="des-cell">
+                        {l.designators.map((d) => (
+                          <span key={d} class="dchip">
+                            {d}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    {marking && <td />}
+                    {cols.has('qty') && <td class="num">{l.quantity}</td>}
+                    {cols.has('value') && <td title={l.kind}>{l.value}</td>}
+                    {cols.has('package') && <td title={l.footprint ?? ''}>{l.package ?? l.footprint ?? '-'}</td>}
+                    {cols.has('lcsc') && <td class="mono lcsc">DNP</td>}
+                    {cols.has('library') && <td />}
+                    {cols.has('status') && <td />}
+                    {cols.has('each') && <td />}
+                    {cols.has('stock') && <td />}
+                    {cols.has('checked') && <td />}
+                  </tr>
                 ))}
               </tbody>
             )}

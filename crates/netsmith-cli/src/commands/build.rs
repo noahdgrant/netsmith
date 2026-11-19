@@ -450,6 +450,7 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
                 routes: Default::default(),
                 pair_skews: Vec::new(),
                 group_spreads: Vec::new(),
+                long_paths: Vec::new(),
             });
             if run.emit_solved.is_some() || run.explain.is_some() {
                 solved.push(netsmith_pipeline::solved::to_value(&b));

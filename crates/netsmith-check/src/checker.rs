@@ -993,6 +993,8 @@ impl<'a> Checker<'a> {
     }
 
     /// The variant a bare name stands for in the current file, if the file imports it.
+    /// `true` and `false` are the variants of the prelude's `Bool` in every file (issue #1273),
+    /// unless the file binds the name itself.
     pub(crate) fn imported_variant(&self, name: &str) -> Option<(usize, usize, String)> {
         match self.modules[self.cur_module].scope.get(name) {
             Some(Binding::Variant(m, i, v)) => Some((
@@ -1000,7 +1002,15 @@ impl<'a> Checker<'a> {
                 *i,
                 self.modules[*m].defs[*i].variants[*v].name.name.clone(),
             )),
-            _ => None,
+            Some(_) => None,
+            None if matches!(name, "true" | "false") => {
+                let prelude = *self.cache.get(PRELUDE_MODULE)?;
+                match self.modules[prelude].scope.get("Bool") {
+                    Some(Binding::Def(m, i)) => Some((*m, *i, name.to_string())),
+                    _ => None,
+                }
+            }
+            None => None,
         }
     }
 
@@ -1256,6 +1266,7 @@ impl<'a> Checker<'a> {
         self.join_peripheral_ports();
         self.finalize_nets();
         self.apply_unused();
+        self.leave_tuned_parts_unpicked();
         self.skip_unstated_optional();
         self.model.uses = std::mem::take(&mut self.uses);
         for (insts, d) in std::mem::take(&mut self.provider_conflicts) {
