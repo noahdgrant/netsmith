@@ -210,10 +210,10 @@ fn connected_interfaces_tie_their_values_together() {
         .map(|&(a, b)| (m.path_of_field(a), m.path_of_field(b)))
         .collect();
     // Four joins of rails, each tying a voltage, a peak voltage, a reverse peak (ADR 0091), the
-    // most current the source gives at an instant (issue #750), the floor (issue #1301), a track width, a
+    // most current the source gives at an instant (issue #750), the floor (issue #1301), the charge time limit (issue #1262), a track width, a
     // clearance (issue #758) and the `.isolated` mark (issue #793), the one current a series chain passes, and the swing of the one joined
     // logic line (ADR 0081).
-    assert_eq!(pairs.len(), 34, "{pairs:?}");
+    assert_eq!(pairs.len(), 38, "{pairs:?}");
     assert!(pairs.contains(&(
         "power_3v3.voltage".to_string(),
         "status_indicator.power.voltage".to_string()
@@ -387,9 +387,9 @@ fn rails_connected_through_the_stage_share_their_voltage() {
         .map(|&(a, b)| (m.path_of_field(a), m.path_of_field(b)))
         .collect();
     // Four joins of rails, each tying a voltage, a peak voltage, a reverse peak (ADR 0091), the
-    // most current the source gives at an instant (issue #750), the floor (issue #1301), a track width, a
+    // most current the source gives at an instant (issue #750), the floor (issue #1301), the charge time limit (issue #1262), a track width, a
     // clearance (issue #758) and the `.isolated` mark (issue #793).
-    assert_eq!(pairs.len(), 32, "{pairs:?}");
+    assert_eq!(pairs.len(), 36, "{pairs:?}");
     assert!(pairs.contains(&("input.voltage".to_string(), "stage.vin.voltage".to_string())));
     assert!(pairs.contains(&(
         "stage.regulator.vout.voltage".to_string(),

@@ -5,6 +5,7 @@ mod burst;
 mod busclock;
 mod busfigures;
 mod catalog;
+mod charge;
 pub mod curve;
 mod cycles;
 mod dc;

@@ -131,9 +131,11 @@ fn passive_parts_parse() {
 #[test]
 fn sources_parse() {
     let file = parse(SOURCES).unwrap();
-    // `Rail`, the impedance a design states for tracks (issue #1007) and a pair with none (issue
-    // #1193).
-    assert_eq!(file.definitions.len(), 5);
+    // `Rail`, the impedance a design states for tracks (issue #1007), a pair with none (issue
+    // #1193), and the rechargeable cell with its enum `Chemistry` (issue #1262).
+    assert_eq!(file.definitions.len(), 7);
+    assert_eq!(def(&file, "Cell").kind, DefKind::Generic);
+    assert_eq!(def(&file, "Chemistry").kind, DefKind::Enum);
     assert_eq!(def(&file, "TrackImpedance").items.len(), 2);
     assert_eq!(def(&file, "PairImpedance").items.len(), 6);
     assert_eq!(def(&file, "DiffPair").items.len(), 4);
@@ -141,8 +143,8 @@ fn sources_parse() {
     assert_eq!(rail.kind, DefKind::Interface);
     assert_eq!(
         rail.items.len(),
-        18,
-        "pos, neg, the voltage between them, the current drawn through pos, the peak voltage, the reverse peak, the peak current, the most the source gives at an instant and the check of the one against the other, the length and the duty of a burst and the check of the average against them (issue #1279), the floor and its check against the voltage (issue 1301), the narrowest track, the least clearance, the default ground, and the isolated mark"
+        19,
+        "pos, neg, the voltage between them, the current drawn through pos, the peak voltage, the reverse peak, the peak current, the most the source gives at an instant and the check of the one against the other, the length and the duty of a burst and the check of the average against them (issue #1279), the floor and its check against the voltage (issue 1301), the charge time limit (issue #1262), the narrowest track, the least clearance, the default ground, and the isolated mark"
     );
 }
 
