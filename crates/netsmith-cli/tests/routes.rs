@@ -172,7 +172,8 @@ fn a_locked_shape_or_net_is_not_deleted_until_unlocked() {
 }
 
 #[test]
-fn fab_says_a_record_whose_pads_moved_and_routes_the_net_again() {
+fn a_record_whose_pads_moved_keeps_its_copper_and_says_where_it_is_open() {
+    // Issue #1328: the LED moved down 0.75 mm after its copper was imported.
     let dir = imported("routes-stale");
     let layout = dir.join("led.pcb.toml");
     let text_of = fs::read_to_string(&layout).unwrap();
@@ -180,15 +181,43 @@ fn fab_says_a_record_whose_pads_moved_and_routes_the_net_again() {
     assert_ne!(moved, text_of);
     fs::write(&layout, moved).unwrap();
 
-    let said = ok(&netsmith(&dir, &["board", "fab", "led.nsm", "--locked", "--out", "moved"]));
+    // Every shape is kept; the short track into the LED's old pad is open at it.
+    let shown = ok(&netsmith(&dir, &["routes", "show", "--file", "led.nsm"]));
     assert!(
-        said.contains(
-            "warning: led.routes.toml: the pads of net `GND` are not where the routes file's record was written"
+        shown.contains(
+            "the pads of net `GND` are not where the routes file's record was written: its 4 shape(s) are kept"
         ),
-        "{said}"
+        "{shown}"
     );
+    assert!(shown.contains("open at D1.1 (track 3's end at 9.9, 5.4)"), "{shown}");
+    assert!(shown.contains("net GND: D1.1 to J1.2"), "{shown}");
+
+    // `fab` routes what the kept copper leaves; the corner the kept copper now has outside
+    // the moved pad is the design rules check's to find.
+    let run = netsmith(&dir, &["board", "fab", "led.nsm", "--locked", "--out", "moved"]);
+    let said = text(&run);
+    assert!(said.contains("its 4 shape(s) are kept"), "{said}");
     assert!(said.contains("LedExample: routing: 2 connections"), "{said}");
-    assert!(said.contains("design rules check: passed"), "{said}");
+    assert!(said.contains("[track_angle] two tracks of net GND"), "{said}");
+
+    // Lock is refused for that error of GND's own copper...
+    let file = dir.join("led.routes.toml");
+    let before = fs::read_to_string(&file).unwrap();
+    let run = netsmith(&dir, &["routes", "lock", "--net", "GND", "--file", "led.nsm"]);
+    assert_eq!(run.status.code(), Some(1), "{}", text(&run));
+    assert!(text(&run).contains("of net GND's own copper"), "{}", text(&run));
+    assert_eq!(fs::read_to_string(&file).unwrap(), before);
+    // ...and not for VCC's, though the board has GND's and the anode's errors.
+    ok(&netsmith(&dir, &["routes", "lock", "--net", "VCC", "--file", "led.nsm"]));
+
+    // With the track into the old pad deleted, GND locks.
+    ok(&netsmith(
+        &dir,
+        &["routes", "delete", "--net", "GND", "--track", "3", "--file", "led.nsm"],
+    ));
+    ok(&netsmith(&dir, &["routes", "lock", "--net", "GND", "--file", "led.nsm"]));
+    let shown = ok(&netsmith(&dir, &["routes", "show", "--file", "led.nsm"]));
+    assert!(!shown.contains("pads of net `GND`"), "{shown}");
 }
 
 #[test]

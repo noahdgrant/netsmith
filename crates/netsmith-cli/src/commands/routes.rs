@@ -77,7 +77,7 @@ pub enum Command {
     Delete(ShapeArgs),
     /// Lock a net (the router adds no copper to it) or one shape (kept when the net's pads move).
     #[command(
-        after_long_help = "Lock also writes the net's record again with its pads as they are now, so a record whose pads moved (fab's warning) is current again and all its shapes are drawn as written; it is refused, as an added shape is, when that brings a new error of the design rules check."
+        after_long_help = "Lock also writes the net's record again with its pads as they are now, so a record whose pads moved (fab's warning, which keeps its copper and says where it is open) is current again and its net lock holds; it is refused only when the design rules check finds an error of that net's own copper in the routes file (a track that ran to a moved pad now crossing another net's pad, say), whatever errors other copper has."
     )]
     Lock(ShapeArgs),
     /// Unlock a net or one shape.
