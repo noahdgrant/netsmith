@@ -880,6 +880,11 @@ lines: Array<BomLine>,
  */
 hand: Array<BomLine>, 
 /**
+ * Not fitted (DNP): each `alternate` part of the board (issue 1312), on the designator of
+ * the part whose footprint it may take, one line each. Not in the total.
+ */
+notFitted: Array<BomLine>, 
+/**
  * The sum of the lines that have a price.
  */
 totalUsd: number | null, 

@@ -1370,6 +1370,9 @@ pub struct Model {
     /// The `keep` statements of a board's physical file (issue 1277), in the order they were
     /// read, with the parts of each kind once the board has been read.
     pub(crate) keep_aparts: Vec<KeepApart>,
+    /// The `alternate` statements of the board and its modules (issue 1312), in the order they
+    /// were read: a part that the footprint of another can take in its place.
+    pub alternates: Vec<Alternate>,
     /// The lines of the boards' `defaults` blocks that gave their value to no field (issue
     /// #625), in the order they were read.
     pub default_notes: Vec<DefaultNote>,
@@ -1753,6 +1756,24 @@ pub struct KeepApart {
     pub span: Span,
 }
 
+/// An `alternate .u: ModuleB` statement (issue 1312): a part that may be fitted on the footprint
+/// of `.u` in its place. The board is checked again with it fitted (`check_fitted`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Alternate {
+    /// The path of the member it takes the place of, from the board: `u`, `radio.u`.
+    pub path: String,
+    /// Which alternate of that member it is, from 0, in the order the body writes them: what
+    /// `check_fitted` is given to fit it.
+    pub index: usize,
+    /// The kind of part it is, as written (`ModuleB`).
+    pub kind: String,
+    /// The kind of part the member is (`ModuleA`).
+    pub primary: String,
+    pub source: SourceId,
+    /// The statement.
+    pub span: Span,
+}
+
 /// A corner of an [`OutlinePolygon`], in mm in the board's frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PolygonCorner {
@@ -1818,6 +1839,7 @@ impl Model {
             soft_margins: Vec::new(),
             variants: std::collections::BTreeMap::new(),
             keep_aparts: Vec::new(),
+            alternates: Vec::new(),
             default_notes: Vec::new(),
             support_sections: Vec::new(),
             layout: Vec::new(),

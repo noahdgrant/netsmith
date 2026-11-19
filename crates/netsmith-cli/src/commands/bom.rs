@@ -9,7 +9,7 @@ use super::views::{self, Kind, Printing};
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`board bom` prints the bill of materials the editor's Bill of materials view shows for a board, with each line's price, stock and the day they were read, and the total of the lines that have a price: the lines the board house assembles, grouped as `bom.csv` is, then the parts soldered by hand. It is made by the code the editor's `GET /api/bom` calls, so the two are the same; `--format json` prints that route's answer. It writes nothing and needs no `fab`.\n\nA price and stock come from the project's supply (the catalogs and the providers `netsmith.toml` names, ADR 0047); a line whose price is unknown says why, and a line that no catalog row stands for says what is wanted. With `--offline` no provider that would use the network is asked: an answer kept earlier is used at any age, and the note says that stock and price were not checked.\n\nWith no file it acts on the project's boards; a source with several boards needs `--board`. The exit code is 0 when the bill is printed, 1 when the board does not build, and 2 when the command cannot run."
+    after_long_help = "`board bom` prints the bill of materials the editor's Bill of materials view shows for a board, with each line's price, stock and the day they were read, and the total of the lines that have a price: the lines the board house assembles, grouped as `bom.csv` is, then the parts soldered by hand, then the parts not fitted (DNP): each `alternate` part, on the designator of the part whose footprint it may take. It is made by the code the editor's `GET /api/bom` calls, so the two are the same; `--format json` prints that route's answer. It writes nothing and needs no `fab`.\n\nA price and stock come from the project's supply (the catalogs and the providers `netsmith.toml` names, ADR 0047); a line whose price is unknown says why, and a line that no catalog row stands for says what is wanted. With `--offline` no provider that would use the network is asked: an answer kept earlier is used at any age, and the note says that stock and price were not checked.\n\nWith no file it acts on the project's boards; a source with several boards needs `--board`. The exit code is 0 when the bill is printed, 1 when the board does not build, and 2 when the command cannot run."
 )]
 pub struct Args {
     /// The source file; with none, the project's boards.
@@ -113,6 +113,12 @@ fn text(bom: &Bom) -> String {
     if !bom.hand.is_empty() {
         out.push_str("\nSoldered by hand (the board house does not place these):\n");
         out.push_str(&lines(&bom.hand));
+    }
+    if !bom.not_fitted.is_empty() {
+        out.push_str(
+            "\nNot fitted (DNP): the alternates, each on the footprint of the part it may take the place of:\n",
+        );
+        out.push_str(&lines(&bom.not_fitted));
     }
     out.push('\n');
     match bom.total_usd {

@@ -1,6 +1,7 @@
 //! Checks a parsed netsmith file: resolves imports and names, turns literals into
 //! quantities, checks dimensions, and builds a model for the solver.
 
+mod alternates;
 mod assign;
 mod attrs;
 mod bus_request;
@@ -60,16 +61,16 @@ pub use loads::{LoadGroup, worst_of};
 pub use lower::closest;
 pub use mate::MateKind;
 pub use model::{
-    Balance, Bank, Bookmark, BusAssignment, BusRequest, Catalog, Chain, ChainPin, Checkpoint,
-    Contact, ContactSide, DcElement, DcKind, DefaultFrom, DefaultNote, Direction, Domain, Draw,
-    EnumId, EnumInfo, EventKind, Field, FieldId, FieldKind, GenericUse, GroundGroup, GroundNet,
-    GuidelineRule, InstId, InstKind, Instance, JoinedByName, KeepApart, LayoutGuideline, LevelTest,
-    Mate, Member, Model, NearSelect, Need, Net, NetRoute, OptionalMark, OrderCode, OutlinePolygon,
-    PadContact, PartRules, PartVariants, Peripheral, PeripheralBus, PeripheralFunction,
-    PinAssignment, PinDistance, PinKind, PinRequest, PinRow, PinTable, Pinout, PolygonCorner,
-    Provider, RExpr, RangeEnd, Relation, Requirement, Role, RowLimit, Scenario, ScenarioPath,
-    SequenceEvent, SequenceOrder, SharedMember, SharedRes, Snapshot, SoftMargin, SupplyRow,
-    SupplySteps, Tie, Unused, VoltageSteps, Written,
+    Alternate, Balance, Bank, Bookmark, BusAssignment, BusRequest, Catalog, Chain, ChainPin,
+    Checkpoint, Contact, ContactSide, DcElement, DcKind, DefaultFrom, DefaultNote, Direction,
+    Domain, Draw, EnumId, EnumInfo, EventKind, Field, FieldId, FieldKind, GenericUse, GroundGroup,
+    GroundNet, GuidelineRule, InstId, InstKind, Instance, JoinedByName, KeepApart, LayoutGuideline,
+    LevelTest, Mate, Member, Model, NearSelect, Need, Net, NetRoute, OptionalMark, OrderCode,
+    OutlinePolygon, PadContact, PartRules, PartVariants, Peripheral, PeripheralBus,
+    PeripheralFunction, PinAssignment, PinDistance, PinKind, PinRequest, PinRow, PinTable, Pinout,
+    PolygonCorner, Provider, RExpr, RangeEnd, Relation, Requirement, Role, RowLimit, Scenario,
+    ScenarioPath, SequenceEvent, SequenceOrder, SharedMember, SharedRes, Snapshot, SoftMargin,
+    SupplyRow, SupplySteps, Tie, Unused, VoltageSteps, Written,
 };
 pub use pinedit::edit_entry;
 pub use pinfile::{BusEntry, EntrySource, PinEntry, PinFile, PinFileError};
@@ -195,6 +196,20 @@ pub fn check_one(
     check_inner(name, text, loader, assignment, Some(only))
 }
 
+/// [`check_one`] of the board `board` with alternates fitted (issue 1312): `fitted` maps the
+/// path of a member (`u`, `radio.u`) to which of its `alternate` statements stands in its place
+/// ([`Alternate::index`]).
+pub fn check_fitted(
+    name: &str,
+    text: &str,
+    loader: &Loader,
+    assignment: &Assignment,
+    board: &str,
+    fitted: &BTreeMap<String, usize>,
+) -> Checked {
+    check_inner_fitted(name, text, loader, assignment, Some(board), fitted)
+}
+
 fn check_inner(
     name: &str,
     text: &str,
@@ -202,7 +217,19 @@ fn check_inner(
     assignment: &Assignment,
     only: Option<&str>,
 ) -> Checked {
+    check_inner_fitted(name, text, loader, assignment, only, &BTreeMap::new())
+}
+
+fn check_inner_fitted(
+    name: &str,
+    text: &str,
+    loader: &Loader,
+    assignment: &Assignment,
+    only: Option<&str>,
+    fitted: &BTreeMap<String, usize>,
+) -> Checked {
     let mut checker = Checker::new(loader);
+    checker.fitted = fitted.clone();
     let root = checker.add_root(name, text);
     let mut boards = Vec::new();
     let mut systems = Vec::new();

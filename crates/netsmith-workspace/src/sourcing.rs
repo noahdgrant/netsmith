@@ -140,15 +140,81 @@ pub fn bom(
             if unpriced == 1 { "" } else { "s" }
         ));
     }
+    let not_fitted = not_fitted(data, catalogs, supply, today, &libraries.mapping);
     Ok(Bom {
         board: built.label(),
         lines,
         hand,
+        not_fitted,
         total_usd,
         note,
         stale_after_days: refresh::STALE_DAYS,
         catalogs: own_catalogs,
     })
+}
+
+/// The lines of the parts that are not fitted (DNP): each alternate of the board (issue 1312), on
+/// the designator of the part it may take the place of, with what its sourcing says.
+fn not_fitted(
+    data: &BoardData,
+    catalogs: &Catalogs,
+    supply: &Supply,
+    today: &str,
+    mapping: &netsmith_kicad::Mapping,
+) -> Vec<BomLine> {
+    let built = &data.built;
+    let sourcing: Vec<_> = built
+        .alternates
+        .iter()
+        .map(|a| a.sourcing.clone())
+        .collect();
+    let (sourcing, unresolved) = resolve_generics(&sourcing, catalogs);
+    let mut lines: Vec<BomLine> = built
+        .alternates
+        .iter()
+        .zip(&sourcing)
+        .map(|(alternate, source)| {
+            let footprint = mapping
+                .map_part(&alternate.path, &source.kind, source.package.as_deref())
+                .ok()
+                .map(|m| {
+                    m.footprint
+                        .rsplit(':')
+                        .next()
+                        .unwrap_or(&m.footprint)
+                        .to_string()
+                });
+            let mut line = BomLine {
+                designators: vec![alternate.refdes.clone()],
+                quantity: 1,
+                value: source.value.clone(),
+                kind: source.kind.clone(),
+                package: source.package.clone(),
+                footprint,
+                lcsc: source.lcsc.clone(),
+                mpn: source.mpn.clone(),
+                library: source.library.map(|l| l.to_string()),
+                unit_usd: None,
+                line_usd: None,
+                stock: None,
+                date: None,
+                age_days: None,
+                stale: false,
+                supply: None,
+                unknown: None,
+                unresolved: unresolved
+                    .iter()
+                    .find(|u| u.refdes == source.refdes)
+                    .map(|u| u.checked(&built.rechecks, catalogs)),
+                hand_solder: source.assembly == Assembly::Hand,
+                via: None,
+            };
+            price(&mut line, catalogs, supply, today);
+            line
+        })
+        .collect();
+    lines.sort_by_key(|l| designator_key(&l.designators[0]));
+    lines
 }
 
 /// Fill in a line's price, stock and the day they were read from the provider; if it has

@@ -335,6 +335,8 @@ export function Bom() {
         .includes(q));
   const lines = useMemo(() => (bom ? bom.lines.filter(matches) : []), [bom, q, problemsOnly]);
   const hand = useMemo(() => (bom ? bom.hand.filter(matches) : []), [bom, q, problemsOnly]);
+  // The alternates (issue 1312): each on the footprint of the part it may take the place of.
+  const notFitted = useMemo(() => (bom ? (bom.notFitted ?? []).filter(matches) : []), [bom, q, problemsOnly]);
   const gone = useMemo(
     () =>
       (bomDelta?.removed ?? []).filter(
@@ -548,6 +550,22 @@ export function Bom() {
                 </tr>
                 {hand.map((l) => (
                   <Row key={`hand/${l.designators.join(',')}`} l={l} cols={cols} lit={lit} staleAfter={bom.staleAfterDays} mark={markOf(l)} marking={marking} onSwap={setSwapping} />
+                ))}
+              </tbody>
+            )}
+            {notFitted.length > 0 && (
+              <tbody class="grouped hand" data-testid="bom-not-fitted">
+                <tr class="grp-row static">
+                  <td colSpan={span}>
+                    <span class="grp-label">
+                      <Icon name="minus" size={13} />
+                      <b>Not fitted (DNP)</b>
+                      <span class="faint">alternates, each on the footprint of the part it may take the place of; not in bom.csv</span>
+                    </span>
+                  </td>
+                </tr>
+                {notFitted.map((l) => (
+                  <Row key={`dnp/${l.kind}/${l.designators.join(',')}`} l={l} cols={cols} lit={lit} staleAfter={bom.staleAfterDays} mark={markOf(l)} marking={marking} onSwap={setSwapping} />
                 ))}
               </tbody>
             )}

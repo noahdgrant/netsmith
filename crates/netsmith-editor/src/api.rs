@@ -1202,6 +1202,10 @@ pub struct Bom {
     pub lines: Vec<BomLine>,
     /// Soldered by hand.
     pub hand: Vec<BomLine>,
+    /// Not fitted (DNP): each `alternate` part of the board (issue 1312), on the designator of
+    /// the part whose footprint it may take, one line each. Not in the total.
+    #[serde(default)]
+    pub not_fitted: Vec<BomLine>,
     /// The sum of the lines that have a price.
     pub total_usd: Option<f64>,
     /// Where the prices and stock come from, and how old they are.
