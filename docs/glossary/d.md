@@ -67,6 +67,10 @@ _Avoid_: Differential pair marking, pair class
 The current taken from a net: by a rail through its `pos` pin on behalf of whatever is behind it, or by a chain through its first part. Positive when it draws, negative when it supplies. A rail's current comes back at its `neg` pin and a chain's at its end, as a draw of the opposite sign. A design states the draws of loads; a supply's draw follows from the balance at its net. A capacitor draws nothing at DC.
 _Avoid_: Load current (as a field name), sink, source
 
+**Dropout**:
+The least headroom of a regulator's input over its output at its load, below which the output follows the input: a linear regulator's `.dropout` (its row's figure, or a curve file over `output_current` and temperature), a buck converter's `.dropout`, the inductor's current through the IC's `high_side_resistance` and the inductor's DC resistance. The least input a regulator needs is its output rail's minimum plus its dropout (issue #1259).
+_Avoid_: brown-out (an input below the IC's own minimum), dropout voltage (as a field name)
+
 **DXF import**:
 `netsmith import dxf <file.dxf>`, which reads the outline, the loops inside it and the circles on a holes layer from an enclosure's ASCII DXF and prints an `Outline`, `Cutout`s and `MountingHole`s as source to paste; `--write` puts them in the `case` section of the physical file (ADR 0045, ADR 0048). An outline that is not a rectangle with equal rounded corners is printed as a `polygon`; a cutout of another shape than a rounded rectangle, a slot or a circle is refused.
 _Avoid_: Enclosure read

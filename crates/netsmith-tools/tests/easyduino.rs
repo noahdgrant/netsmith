@@ -2478,7 +2478,7 @@ mod board {
         ));
         // Not evaluated: the dropout and the regulator's power.
         assert!(listed(
-            "not evaluated: regulator.vin.voltage >= (regulator.vout.voltage + regulator.dropout)"
+            "not evaluated: regulator.vin.voltage >= (min(regulator.vout.voltage) + regulator.dropout)"
         ));
         assert!(listed(
             "the balance on net `VBUS` is incomplete: `bridge.vbus`, `bridge.vregin` are not modelled"
