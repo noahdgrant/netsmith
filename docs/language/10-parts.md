@@ -481,6 +481,128 @@ error: `u` is a `Modem`, which is sold as `MDM-100-G` (GNSS, LTE) and `MDM-100` 
    |     ^^^^^^^^^
 ```
 
+### Alternates on one footprint
+
+One footprint can take two parts: two radio modules with the same pads, a regulator sold by two makers. The board declares the part it is drawn with, and beside it, with `alternate`, each other part the footprint may take (issue #1312, owner decision). The build checks, solves and designs the board again with each alternate fitted in the member's place, and says which one fails. The bill of materials lists each alternate on the member's designator, not fitted (DNP), and `fab-notes.txt` names it; `bom.csv` and the placement file have the member only.
+
+```nsm
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+part ModuleA {
+    .vcc: Rail
+    .vcc.voltage <= 3.6V
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+    }
+}
+
+/// Another maker's module on the same pads, for 1.8 V to 5.5 V.
+part ModuleB {
+    .vcc: Rail
+    .vcc.voltage <= 5.5V
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+    }
+}
+
+board Tracker {
+    .input: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .j: Header1x2
+    .input.pos ~ .j.p1
+    .input.neg ~ .j.p2
+    .u: ModuleA { .assembly &= AssemblyMode::Hand }
+    /// Fitted when the first is out of stock.
+    alternate .u: ModuleB { .assembly &= AssemblyMode::Hand }
+    .input ~ .u.vcc
+}
+```
+
+- `alternate` is followed by a declaration of the member as it would be written with the alternate in its place, and its body narrows the alternate as that declaration's would (`.assembly`, `.lcsc`, `.needs`). The member is one part declared in the same body: not a module, a group or a list. The alternate is another kind of part; a different row of the same kind is a hand pick (`.u.lcsc &= "C1234"`, chapter 12).
+- A board or a module states one, never a part or a physical file. A module's alternate is checked in each place the module is used, and a member may have several, each checked alone.
+- With the alternate fitted, the rest of the source is read as written: the connections and narrowings that name `.u` and its pins reach the alternate, so a pin it lacks is refused where it is used, and a supply range or a level it does not meet is refused as it would be for the member.
+- The footprint is the member's: when both parts state a package it must be the same, and each pad of the alternate must be joined to the same pins of the other parts as the member's pad of that number. A pad on no net is on none for both.
+- The pick lock holds the member's row; the alternate's row is picked fresh each build and is not written to the lock.
+
+An alternate that fails one of the board's checks is named with the check's own message:
+
+```nsm fails
+import std::sources::Rail
+
+part ModuleA {
+    .vcc: Rail
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+    }
+}
+
+part ModuleLow {
+    .vcc: Rail
+    .vcc.voltage <= 2V
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+    }
+}
+
+board Tracker {
+    .input: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .u: ModuleA { .assembly &= AssemblyMode::Hand }
+    alternate .u: ModuleLow { .assembly &= AssemblyMode::Hand }
+    .input ~ .u.vcc
+}
+```
+
+```text
+error: with `alternate .u: ModuleLow` (main.nsm:23) fitted in the place of `u`: u.vcc.voltage must always be at most 2V, but 3.135V..3.465V is not always below 2V
+   --> main.nsm:13:5
+   |
+13 |     .vcc.voltage <= 2V
+   |     ^^^^^^^^^^^^^^^^^^
+```
+
+An alternate whose pads carry other nets is refused:
+
+```nsm fails
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+part ModuleA {
+    .vcc: Rail
+    pins {
+        .vcc.pos power "VCC" "1"
+        .vcc.neg power "GND" "2"
+    }
+}
+
+/// The same pins on the other pads.
+part ModuleTurned {
+    .vcc: Rail
+    pins {
+        .vcc.pos power "VCC" "2"
+        .vcc.neg power "GND" "1"
+    }
+}
+
+board Tracker {
+    .input: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .j: Header1x2
+    .input.pos ~ .j.p1
+    .input.neg ~ .j.p2
+    .u: ModuleA { .assembly &= AssemblyMode::Hand }
+    alternate .u: ModuleTurned { .assembly &= AssemblyMode::Hand }
+    .input ~ .u.vcc
+}
+```
+
+```text
+error: with `alternate .u: ModuleTurned` (main.nsm:27) fitted in the place of `u`: pad 1 of `u` is joined to `j.1` with `ModuleA` fitted and to `j.2` with `ModuleTurned`: an alternate's pads carry the nets of the footprint it is fitted on
+error: with `alternate .u: ModuleTurned` (main.nsm:27) fitted in the place of `u`: pad 2 of `u` is joined to `j.2` with `ModuleA` fitted and to `j.1` with `ModuleTurned`: an alternate's pads carry the nets of the footprint it is fitted on
+```
+
 ### What the datasheet says about layout
 
 A datasheet's layout section says where the parts around a part go: "the input capacitor close to the VIN pin", "the inductor next to SW", "the feedback resistors within 2 mm of FB". A part states it once, in a `layout` block, with the document and the section it comes from (ADR 0030, issues #829 and #994). Every board that uses the part gets it.

@@ -1,6 +1,7 @@
 //! The pipeline from source text to a built board: check, solve, design and the KiCad schematic
 //! (`outcome_with`), and what it hands to the stages after it (`Built`, `Outcome`, `Problem`).
 
+pub mod alternates;
 mod bus_roles;
 pub mod constraints;
 pub mod heights;
@@ -15,8 +16,8 @@ pub mod solved;
 use std::path::{Path, PathBuf};
 
 use netsmith_check::{
-    Checked, Domain, FieldId, FieldKind, InstId, InstKind, Loader, Model, SourceId, Sources,
-    check_with,
+    Assignment, Checked, Domain, FieldId, FieldKind, InstId, InstKind, Loader, Model, SourceId,
+    Sources, check_with,
 };
 use netsmith_core::{Cause, Design, PanelSpec, timings};
 use netsmith_design::guidelines::Guideline;
@@ -92,6 +93,9 @@ pub struct Built {
     /// picked them. With `Catalogs::with_explain` each has the rows it passed over and why
     /// (`Pick::passed`, issue #744).
     pub picks: Vec<netsmith_solve::Pick>,
+    /// The `alternate` parts of the board (issue 1312), each of which passed the board's checks
+    /// fitted in the place of its member: the bill of materials lists them as not fitted.
+    pub alternates: Vec<alternates::FittedAlternate>,
     /// What the build knew about the source, for a tool that points back into it.
     pub trace: Trace,
 }
@@ -555,6 +559,32 @@ pub fn outcome_observed(
             power::board_tree(&solution.model, sources).issues
         });
         refuse_power(&board.name, &power_issues, |_| true)?;
+        // The board again with each alternate fitted (issue 1312).
+        let fitted = if board.model.alternates.is_empty() {
+            Vec::new()
+        } else {
+            let assignment = Assignment::from([(
+                board.name.clone(),
+                pick_lock::providers_of(&solution.model)
+                    .into_iter()
+                    .map(|p| (p.path, p.provider))
+                    .collect(),
+            )]);
+            timings::stage("alternates", &board.name, || {
+                alternates::check_each(
+                    &alternates::Source {
+                        name,
+                        text,
+                        loader,
+                        assignment: &assignment,
+                    },
+                    board,
+                    sources,
+                    &designed.design,
+                    catalogs,
+                )
+            })?
+        };
         let provided = providers::notes_for(&solution.model, None, &passed);
         let mut notes = provider_lines(&provided);
         notes.extend(self::notes(solution, None));
@@ -575,6 +605,7 @@ pub fn outcome_observed(
             )
         })?;
         one.providers = provided;
+        one.alternates = fitted;
         one.power = power_issues;
         one.picks = solution.picks.clone();
         one.rechecks = resolve::Rechecks::plan(solution, &one.design.parts, catalogs, || {
@@ -1609,6 +1640,7 @@ fn export(
         environment: designed.environment,
         power: Vec::new(),
         picks: Vec::new(),
+        alternates: Vec::new(),
         trace: Trace {
             model: model.clone(),
             sources: sources.clone(),

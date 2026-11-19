@@ -509,6 +509,7 @@ impl Parser {
             if let Some(first) = attrs.first() {
                 match &mut item {
                     Item::Decl(d) => d.attrs = attrs,
+                    Item::Alternate(a) => a.decl.attrs = attrs,
                     _ => {
                         return Err(ParseError::new(
                             first.span,
@@ -520,6 +521,41 @@ impl Parser {
             items.push(item);
             self.end_statement(true)?;
         }
+    }
+
+    /// `alternate .u: ModuleB { ... }`, after the word (issue 1312): a declaration of one member
+    /// of one part, with no group, list or `optional`.
+    fn alternate(&mut self, start: usize, word: Span, docs: Vec<String>) -> Res<Item> {
+        let decl = match self.item(Docs {
+            lines: docs,
+            first: None,
+        })? {
+            Item::Decl(d) => d,
+            _ => {
+                return Err(ParseError::new(
+                    word,
+                    "`alternate` is followed by a declaration of the part it puts in another's place, such as `alternate .u: ModuleB`",
+                ));
+            }
+        };
+        let modifier = decl
+            .count
+            .map(|c| c.span)
+            .or(decl.list)
+            .or(decl.optional)
+            .or((decl.name.segments.len() != 1).then_some(decl.name.span))
+            .or(decl.ty.of_member.then_some(decl.span));
+        if let Some(at) = modifier {
+            return Err(ParseError::new(
+                at,
+                "an alternate is one part in the place of one member declared beside it, such as `alternate .u: ModuleB`: it has no group, list, `optional` or path",
+            ));
+        }
+        Ok(Item::Alternate(Alternate {
+            decl,
+            word,
+            span: self.span_from(start),
+        }))
     }
 
     /// The token after the next one, without consuming anything.
@@ -593,6 +629,11 @@ impl Parser {
                 "catalog" if starts_name => return only_decls(self.catalog(start)?),
                 "tie" if starts_name => return only_decls(self.tie(start)?),
                 "unused" if starts_name => return only_decls(self.unused(start)?),
+                // `alternate .u: ModuleB`: another part for the footprint of `.u` (issue 1312).
+                "alternate" if matches!(self.peek_second(), Tok::LeadingDot) => {
+                    let word = self.bump().span;
+                    return self.alternate(start, word, docs);
+                }
                 "direction" if matches!(self.peek_second(), Tok::LeadingDot) => {
                     return only_decls(self.direction(start)?);
                 }

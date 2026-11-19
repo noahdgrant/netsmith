@@ -474,6 +474,22 @@ pub enum Item {
     /// A `keep 10mm between BuckIc and Crystal` statement; only a board's physical file may hold
     /// one (issue 1277).
     KeepApart(KeepApart),
+    /// `alternate .u: ModuleB`: another part that the footprint of `.u` can take in its place
+    /// (issue 1312, owner decision). The board's checks run with each fitted, the bill of
+    /// materials lists both and marks the alternate not fitted; only a board or a module may
+    /// hold one.
+    Alternate(Alternate),
+}
+
+/// `alternate .u: ModuleB { .lcsc &= "C1234" }`: a part that may be fitted on the footprint of
+/// the member `.u` declared in the same body in its place (issue 1312). The declaration is
+/// read as `.u`'s would be when the alternate is the one fitted.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Alternate {
+    pub decl: Decl,
+    /// The word `alternate`.
+    pub word: Span,
+    pub span: Span,
 }
 
 /// `.variants { "MOD-100-G" GNSS LTE  "MOD-100" LTE }`: the order codes a part is sold as, one

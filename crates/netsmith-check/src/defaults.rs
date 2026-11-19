@@ -622,5 +622,6 @@ fn item_span(item: &Item) -> Span {
         Item::SoftMargin(m) => m.span,
         Item::Variants(v) => v.span,
         Item::KeepApart(k) => k.span,
+        Item::Alternate(a) => a.span,
     }
 }
