@@ -202,6 +202,23 @@ pub fn gap(a: &Shape, b: &Shape) -> Gap {
     }
 }
 
+/// How far copper must run into other copper of its net to be joined to it (issue #1334): a
+/// millionth of a nanometre, which only absorbs the rounding of the numbers. KiCad joins a track's
+/// end to a pad, a via or a track when the end lies nearer to it than half the track's width,
+/// strictly: a track whose end lies on a pad's edge, or whose round end runs into the pad, is
+/// joined; one whose round end only touches the edge, or misses it, is not.
+pub const JOIN: f64 = 1e-9;
+
+/// Whether the copper of two shapes runs into each other by more than [`JOIN`]: copper that only
+/// touches is not joined, as in KiCad.
+pub(crate) fn joined(a: &Shape, b: &Shape) -> bool {
+    if !a.bounds.overlaps(&b.bounds) {
+        return false;
+    }
+    let g = gap(a, b);
+    g.d == 0.0 && g.depth > JOIN
+}
+
 /// Whether the shape reaches anything of `polygon` (a solid area): used for rule areas and
 /// zones.
 pub(crate) fn touches_area(s: &Shape, polygon: &[Pt]) -> bool {
