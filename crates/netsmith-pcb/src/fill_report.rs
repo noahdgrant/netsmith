@@ -135,6 +135,59 @@ pub struct FillIsland {
     pub outline: Vec<Vec<Pt>>,
 }
 
+/// One piece of a fill: a polygon and its holes (issue #1293).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FillPolygon {
+    /// Its outline, simplified within 2 µm, in the frame of the board file.
+    pub outer: Vec<Pt>,
+    /// Its holes (round the pads, vias and tracks of other nets, the gaps of thermal reliefs),
+    /// simplified so.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub holes: Vec<Vec<Pt>>,
+}
+
+impl FillPolygon {
+    /// Whether `p` is on the copper of the piece: in its outline and in none of its holes.
+    pub fn contains(&self, p: Pt) -> bool {
+        in_ring(&self.outer, p) && !self.holes.iter().any(|h| in_ring(h, p))
+    }
+
+    /// The least distance from `p` to an edge of the piece, its outline's or a hole's.
+    pub fn distance_to_edge(&self, p: Pt) -> f64 {
+        std::iter::once(&self.outer)
+            .chain(&self.holes)
+            .flat_map(|ring| {
+                ring.iter()
+                    .zip(ring.iter().cycle().skip(1))
+                    .map(move |(a, b)| segment_distance(p, *a, *b))
+            })
+            .fold(f64::INFINITY, f64::min)
+    }
+}
+
+/// Whether `p` is inside the ring `ring` (even and odd crossings).
+fn in_ring(ring: &[Pt], p: Pt) -> bool {
+    let mut inside = false;
+    for (a, b) in ring.iter().zip(ring.iter().cycle().skip(1)) {
+        if (a.y > p.y) != (b.y > p.y) && p.x < a.x + (p.y - a.y) / (b.y - a.y) * (b.x - a.x) {
+            inside = !inside;
+        }
+    }
+    inside
+}
+
+/// The distance from `p` to the segment from `a` to `b`.
+fn segment_distance(p: Pt, a: Pt, b: Pt) -> f64 {
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
+    let len2 = dx * dx + dy * dy;
+    let t = if len2 > 0.0 {
+        (((p.x - a.x) * dx + (p.y - a.y) * dy) / len2).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    p.distance(Pt::new(a.x + t * dx, a.y + t * dy))
+}
+
 /// How many pads the fill joins in each way.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JoinCounts {
@@ -207,6 +260,10 @@ pub struct FillArea {
     pub held: bool,
     /// The fill's area, in mm².
     pub area: f64,
+    /// The fill's copper, piece by piece, each with its holes, as the Gerbers hold it (issue
+    /// #1293): where a track from a pad reaches the fill.
+    #[serde(default)]
+    pub outline: Vec<FillPolygon>,
     /// Each pad of its net in its outline, in the board's order of pads.
     pub pads: Vec<FillPad>,
     pub counts: JoinCounts,
@@ -285,6 +342,20 @@ impl FillReport {
                 ..island((at, area))
             }
         };
+        let polygon = |piece: netsmith_geom::PolygonArea| {
+            let piece = crate::copper::area(piece);
+            let ring = |r: &[Pt]| crate::simplify::simplify_ring(r, ISLAND_SIMPLIFY);
+            let outer = ring(&piece.outer);
+            (outer.len() >= 3).then(|| FillPolygon {
+                outer,
+                holes: piece
+                    .holes
+                    .iter()
+                    .map(|h| ring(h))
+                    .filter(|h| h.len() >= 3)
+                    .collect(),
+            })
+        };
         let mut fills = Vec::new();
         // Every layer at once, as the design rules check judges them (issue #1292).
         for (layer, joins) in netsmith_geom::pad_joins(&art, &edge, &rules).map_err(CopperError)? {
@@ -331,6 +402,7 @@ impl FillReport {
                     source,
                     held: z.held,
                     area: z.fill.iter().map(|a| a.size()).sum(),
+                    outline: z.fill.into_iter().filter_map(polygon).collect(),
                     pads,
                     counts,
                     cleared: z

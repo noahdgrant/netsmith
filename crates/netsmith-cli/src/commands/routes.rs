@@ -66,6 +66,13 @@ pub enum Command {
         after_long_help = "The router routes the net (or the connection, `NET:REF.PAD-REF.PAD`: the lines that join those two pads alone) on the board as placed with the routes file's copper, every other net held as it is, and writes its tracks and vias to the net's record, unlocked. A connection joined already is said, and nothing is written. The text says the narrowest place of the new way and the widest track of the net that has room there, with every space of the design rules.\n\nWhen the net has no way round the copper there, it is routed again with the unlocked tracks and vias of the other nets taken away, and the nets whose copper that way crosses are named (exit 1, nothing written); where there is no way even so, what walls it in is said: pads, vias, the copper of locked nets, the edge. With `--rip NET,...` the copper of those nets alone may be taken away: it is removed, the net is routed through the room it left, and each ripped net is routed again after it (it may rip in turn, from the nets named). A locked net or a locked shape is never ripped, nor is a zone. The rounds are bounded by counts, those of the router's rounds of rip-up: 6 rounds, 3 rips of one net, 64 runs of the router. A ripped net left with more connections open than it had, or a result the design rules check finds a new error with, is refused and the file is as it was. `--dry-run` says what it would do and writes nothing."
     )]
     Route(RouteArgs),
+    /// Join a pad the fill leaves unjoined to the fill of its net with a short track, or a track
+    /// and a via, in the direction with room.
+    #[command(
+        name = "join-pad",
+        after_long_help = "The pad (`REF.PAD`) is joined when a fill of its net that covers its centre joins it (by a spoke or a track, and not starved: `board fill` says how) or another fill of its net does, or, when no fill covers it, when the design rules check finds it connected; a joined pad is said and nothing is written. Otherwise a track of the net's own width is drawn from the pad's centre straight out, in each of 16 directions, to the first place (0.025 mm at a time, at most 5 mm out) where its round end lies wholly on the fill of its net on that layer, as `board fill --format json` outlines it; the shortest is tried first, and each is checked as `add-track` checks a track. When no track fits, a track to a through via of the process placed on the fill of its net on another layer, clear of the pad. The first one the design rules check takes and that joins the pad is written to the net's record, unlocked. At most 24 are tried; when none is taken the command is refused (exit 1, nothing written) and says how many were tried and why the shortest was refused. `--dry-run` says what it would add and writes nothing. With `--format json`: `board`, `pad`, `net`, `before` (how the fill had the pad), `already`, `join` (`layer`, `from`, `to`, `width`, `length`, `direction` in degrees counterclockwise from +x, and `via` and `fill_layer` with a via), `tried` (`layer`, `direction`, `length`, `via`, `why`), `refused`, `said`, `dry_run`, `written` and `file`."
+    )]
+    JoinPad(JoinPadArgs),
     /// Delete a net's record, or one of its shapes; a locked one is refused. A record of a net the board no longer has (a net renamed, say: `fab` names it) is deleted whole, even when locked.
     Delete(ShapeArgs),
     /// Lock a net (the router adds no copper to it) or one shape (kept when the net's pads move).
@@ -143,6 +150,21 @@ pub struct RouteArgs {
     #[arg(long, value_name = "NET,...", value_delimiter = ',')]
     pub rip: Vec<String>,
     /// Say what it would do, and write nothing.
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Text for a person, or one JSON document on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: common::Format,
+}
+
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct JoinPadArgs {
+    /// The pad, `REF.PAD` (`C1.2`).
+    #[arg(value_name = "REF.PAD")]
+    pub pad: String,
+    #[command(flatten)]
+    pub target: Target,
+    /// Say what it would add, and write nothing.
     #[arg(long)]
     pub dry_run: bool,
     /// Text for a person, or one JSON document on stdout.
@@ -391,6 +413,7 @@ pub fn run(args: Args) -> ExitCode {
             lock: a.lock,
         }),
         Command::Route(a) => route(&a),
+        Command::JoinPad(a) => join_pad(&a),
         Command::Delete(a) => edit(&a.target, |_| lib::Edit::Delete {
             net: a.net.clone(),
             shape: shape(&a),
@@ -639,6 +662,67 @@ fn route(args: &RouteArgs) -> ExitCode {
         }
     }
     match &routed.refused {
+        Some(e) => {
+            if args.format == common::Format::Text {
+                eprintln!("error: {e}");
+            }
+            ExitCode::FAILURE
+        }
+        None => ExitCode::SUCCESS,
+    }
+}
+
+/// `routes join-pad` (issue #1293, `netsmith_fabricate::join_pad`): exit 0 when the pad is joined
+/// (or would be, with `--dry-run`) or was joined already, 1 when it is refused, 2 when it could
+/// not be tried.
+fn join_pad(args: &JoinPadArgs) -> ExitCode {
+    use netsmith_fabricate::join_pad;
+    let done = with_board(&args.target, |layout, board| {
+        let file = routes_file(layout);
+        let routes = lib::load(&file)?;
+        let joined = match join_pad::join_pad(board, &routes, &args.pad) {
+            Ok(j) => j,
+            Err(lib::Refusal::Refused(e)) => return Ok(Err(e)),
+            Err(lib::Refusal::Failed(e)) => return Err(e),
+        };
+        let written = match (&joined.routes, args.dry_run) {
+            (Some(r), false) => {
+                lib::save(&file, r)?;
+                true
+            }
+            _ => false,
+        };
+        Ok(Ok((joined, file, written)))
+    });
+    let (joined, file, written) = match done {
+        Ok(Ok(done)) => done,
+        Ok(Err(e)) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+        Err(code) => return code,
+    };
+    match args.format {
+        common::Format::Json => {
+            let mut doc = serde_json::to_value(&joined).expect("plain data");
+            doc["dry_run"] = args.dry_run.into();
+            doc["written"] = written.into();
+            doc["file"] = file.display().to_string().into();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&doc).expect("plain data")
+            );
+        }
+        common::Format::Text => {
+            print!("{}", joined.text());
+            if written {
+                println!("wrote {}", file.display());
+            } else if args.dry_run && joined.routes.is_some() {
+                println!("dry run: {} is not written", file.display());
+            }
+        }
+    }
+    match &joined.refused {
         Some(e) => {
             if args.format == common::Format::Text {
                 eprintln!("error: {e}");
@@ -925,6 +1009,21 @@ mod tests {
         }
         assert_eq!(
             kind(&["routes", "add-via", "--net", "GND"]),
+            ErrorKind::MissingRequiredArgument
+        );
+        // `join-pad` (issue #1293).
+        assert!(matches!(
+            parse(&["routes", "join-pad", "C1.2", "--dry-run", "--file", "a.nsm"]),
+            Ok(Leaf::Routes(routes::Args {
+                command: routes::Command::JoinPad(routes::JoinPadArgs {
+                    ref pad,
+                    dry_run: true,
+                    ..
+                })
+            })) if pad == "C1.2"
+        ));
+        assert_eq!(
+            kind(&["routes", "join-pad"]),
             ErrorKind::MissingRequiredArgument
         );
         // `tidy` (issue #1192).
