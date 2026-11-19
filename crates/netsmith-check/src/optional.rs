@@ -27,8 +27,10 @@
 //! catalog row or a pick gives is not a statement either: the fourth rule is about the column,
 //! which the part declares, and not about what a row holds.
 //!
-//! The word has three meanings that do not meet: after a `pins` row the pin may float (ADR
-//! 0016), after a column of a `catalog` statement the column may be empty (ADR 0055, 0078), and
+//! The word has four meanings that do not meet: after a `pins` row the pin may float (ADR
+//! 0016), after a pin of an interface the pin may be left out of a part's table (`.swo: Pin
+//! optional` in `Swd`, issue 1272: `~` leaves the line unjoined when either part gives it no
+//! row), after a column of a `catalog` statement the column may be empty (ADR 0055, 0078), and
 //! after a member's type the checks that read it wait for a statement (this module).
 //!
 //! # Where the skip is made, and why there
@@ -69,7 +71,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use netsmith_lang::ast::{CmpOp, Decl};
+use netsmith_lang::ast::{CmpOp, Decl, DefKind};
 
 use crate::checker::{Checker, Ty};
 use crate::model::{FieldId, Member, OptionalMark, RExpr};
@@ -124,6 +126,12 @@ impl Checker<'_> {
             Ty::Poison | Ty::Bad => return false,
             Ty::Builtin(crate::checker::Builtin::Quantity(_) | crate::checker::Builtin::Text)
             | Ty::Enum(..) => return true,
+            // A pin of an interface may be optional: a part may give it no row (issue 1272).
+            Ty::Builtin(crate::checker::Builtin::Pin)
+                if self.in_kind(DefKind::Interface) && !d.ty.of_member =>
+            {
+                return true;
+            }
             Ty::Builtin(crate::checker::Builtin::Pin) => {
                 "a pin; a pin that need not be connected says so in its `pins` row (`optional`)"
                     .to_string()

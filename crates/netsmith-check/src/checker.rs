@@ -1834,6 +1834,9 @@ impl<'a> Checker<'a> {
                 Ty::Builtin(Builtin::Pin) => {
                     let pin = self.add_pin(cur, &name, d.span, d.docs.clone());
                     self.model.add_member(cur, &name, Member::Inst(pin));
+                    if optional {
+                        self.model.optional_pins.insert(pin);
+                    }
                     if d.ty.of_member {
                         self.record_request(cur, pin, d);
                     }

@@ -487,10 +487,10 @@ impl Checker<'_> {
                 (Member::Inst(x), Some(Member::Inst(y))) => match self.model.instance(x).kind {
                     // Two pins that no part's table describes join nothing: a device without
                     // flow control gives no pin to `rts` and `cts`, and two of them make no
-                    // net with copper on it.
-                    InstKind::Pin if join_pins && !(self.undescribed(x) && self.undescribed(y)) => {
-                        self.union(x, y)
-                    }
+                    // net with copper on it. A pin that the interface marks `optional` (the
+                    // `swo` of `Swd`) joins nothing when either part leaves it out: the other
+                    // part's pin, which it may give a row, stays open (issue 1272).
+                    InstKind::Pin if join_pins && !self.left_out(x, y) => self.union(x, y),
                     // The levels of a bus interface are its part's own, and their reference
                     // rail is that part's supply: joining them would join two supplies.
                     InstKind::Interface if self.model.is_levels(x) => {}
@@ -513,6 +513,15 @@ impl Checker<'_> {
             }
         }
         true
+    }
+
+    /// Whether `~` leaves two pins of the same line unjoined: both parts leave them out, or
+    /// the interface marks the line `optional` and one of them does.
+    fn left_out(&self, x: InstId, y: InstId) -> bool {
+        let (ux, uy) = (self.undescribed(x), self.undescribed(y));
+        (ux && uy)
+            || ((ux || uy)
+                && (self.model.optional_pins.contains(&x) || self.model.optional_pins.contains(&y)))
     }
 
     /// Whether a pin is one that its part leaves out: the part has a pin table, and no table
