@@ -4,6 +4,18 @@ Files in KiCad's formats, compiled into the binary (`crates/netsmith-kicad/src/s
 
 A footprint is added only from a package drawing that was read. Record here the document, the page, what was read from it, what was derived by arithmetic, and what was assumed. A package with a dimension that cannot be read is not added. A wrong pad is a wrong board, and KiCad has no footprint to compare with: the check is the datasheet, so compare the file with the drawing once more before a board is ordered.
 
+## netsmith's own lands: `CP_Radial_D16.0mm_P7.50mm_Tap` and `BatteryCell_Coin_D20.0mm_Tabs_P15.00mm`
+
+These two are the exception to the rule above: **no drawing was read for them**. The owner decided on issue 1399 that netsmith draws its own land for the three-lead can of a two-cell supercapacitor with a balance tap (`std::parts::passive::Supercap`, package `Radial_D16.0mm_P7.50mm_Tap`) and for a coin cell with solder tabs (`std::sources::Cell`, package `Coin_D20.0mm_Tabs_P15.00mm`), so that a board with one builds and exports before any real part has a recorded source. KiCad has no footprint of either name. The files are not written by hand: the generators in `crates/netsmith-pcb/src/generate/radial.rs` and `coin.rs` write them (`netsmith_pcb::own_footprint_files`), and `crates/netsmith-pcb/tests/own_lands.rs` fails when a committed file differs from what its generator writes (`NETSMITH_UPDATE_FIXTURES=1 cargo test -p netsmith-pcb --test main own_lands::` writes them). They live here, not as generated names of a KiCad library, so that a board opened in KiCad finds them in the `netsmith` library beside it.
+
+**What the name gives** (mm): the tapped can is 16.0 across with 7.50 between its outer leads, pad 1 (`+`) and pad 3 (`-`), as KiCad's two-lead `CP_Radial_D16.0mm_P7.50mm` has them; the coin cell is 20.0 across with 15.00 between its two tab pins, pad 1 (`+`) and pad 2 (`-`).
+
+**Assumed, netsmith's own:** the tap, pad 2, is midway between the outer leads on the same line (3.75 from each). Every lead of the can is a 1.2 hole in a 2.4 pad, the two-lead can's land; every tab pin of the cell a 1.0 hole in a 2.0 pad. Pad 1 has rounded square corners, the others are round. The cell lies flat, centred between its two pins. The courtyard is the body's circle 0.25 out; the fabrication layer draws the body and a plus sign at pad 1, the silkscreen the body 0.12 outside its outline. No 3D model.
+
+**Before ordering:** a real part's middle lead, or a real cell's tabs, may stand elsewhere (makers differ). Compare the part's drawing with the file, and give a part whose leads differ a footprint of the project's own (`kicad.toml`).
+
+**The symbols:** the can is drawn with netsmith's own three-pin `Device:C_Polarized_Tap` (`crates/netsmith-kicad/src/passives.rs`: pin 1 `+` above, pin 2 `MID` on the right, pin 3 `-` below), the cell with `Device:Battery_Cell`.
+
 ## `UDC-QFN-18-2EP_3x4mm_P0.5mm_ExpPadAA`, for the LT8641
 
 Source: Analog Devices, LT8641 Rev. C, the LCSC mirror the std part cites (`std/parts/regulator.nsm`, `data/jlcpcb/README.md`: SHA-256 `09763bcb...965a43`). The package description on p.24 (UDC20(18), LTC drawing 05-08-1956 Rev C, Exposed Pad Variation AA: "Recommended solder pad pitch and dimensions", and the bottom view), and the pin configuration on p.2 for the numbering. The drawing says it is not to scale (note 2), so no dimension was taken by measuring the picture: each is a dimension label of the drawing, read at 500 to 1000 dpi to see which extension lines each label belongs to. Numbers are mm. x is to the right and y down in the footprint, the body centre is the origin, and pin 1 is at the top left as in the top view of p.2. The unit test in `crates/netsmith-pcb/src/footprint.rs` holds each number.
