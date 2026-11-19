@@ -23,7 +23,7 @@
 use super::draw::{Drawing, PadSpec};
 use super::outline::quad_frame;
 use super::params::Params;
-use crate::body3d::Package;
+use crate::body3d::{Edge, Lead, NO_LEAD_TERMINAL_EXPOSURE, Package};
 use crate::footprint::{Footprint, Mount};
 use crate::geometry::Pt;
 
@@ -255,11 +255,28 @@ fn land_grid(p: &Lga, library: &str, name: &str) -> Footprint {
         body: p.body,
         lead_width: width,
         lead_length: length,
-        leads: super::leads_of(&ring, p.body),
+        leads: ring_leads(&ring, p.body, length),
         exposed: None,
     };
     let footprint = quad_frame(drawing, &ring, down, across, p.body, COURTYARD);
     super::shaped(footprint, package)
+}
+
+/// The leads of the ring, each reaching as far as its pad: an LGA's land is flat under the body
+/// and does not show past its side, as a QFN's terminal does, unless the pad reaches further.
+fn ring_leads(ring: &[PadSpec], body: (f64, f64), length: f64) -> Vec<Lead> {
+    super::leads_of(ring, body)
+        .into_iter()
+        .zip(ring)
+        .map(|(mut lead, pad)| {
+            let (out, half) = match lead.edge {
+                Edge::Left | Edge::Right => (pad.at.x.abs(), body.0 / 2.0),
+                Edge::Top | Edge::Bottom => (pad.at.y.abs(), body.1 / 2.0),
+            };
+            lead.reach = Some((out + length / 2.0 - half).min(NO_LEAD_TERMINAL_EXPOSURE));
+            lead
+        })
+        .collect()
 }
 
 #[cfg(test)]

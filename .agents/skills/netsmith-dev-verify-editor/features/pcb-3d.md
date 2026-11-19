@@ -47,7 +47,7 @@ The _System scene_ (ADR 0110): `scripts/editor-verify launch --fixture two_board
 
 ## Ways of looking (recipe `pcb-3d-inspect`, fixture `inspect_3d`)
 
-`scripts/editor-verify launch --fixture inspect_3d`, then `drive pcb-3d-inspect`. The fixture has seven parts of several kinds: under the lid (3 mm, the left half) a header too tall (`power_in`, 9 mm), an LED with 0.6 mm to spare (`led`), a capacitor with plenty (`input_cap`), a resistor and a 2x3 header of unknown height (`r1`, `bare`); outside it the regulator and its output capacitor.
+`scripts/editor-verify launch --fixture inspect_3d`, then `drive pcb-3d-inspect`. The fixture has seven parts of several kinds: under the lid (3 mm, the left half) a header too tall (`power_in`, 9 mm), an LED with 0.6 mm to spare (`led`), a capacitor and a resistor with plenty (`input_cap`, and `r1`, whose height is its catalog row's), a 2x3 header of unknown height (`bare`); outside it the regulator and its output capacitor.
 
 The bar at the bottom left (`.v3-inspect`):
 

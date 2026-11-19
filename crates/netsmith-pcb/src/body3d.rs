@@ -192,7 +192,8 @@ pub struct Lead {
     pub edge: Edge,
     pub at: f64,
     pub width: Option<f64>,
-    /// How far the tip is beyond the body's edge, in mm.
+    /// How far the tip is beyond the body's edge, in mm (below 0 when it stops inside the body,
+    /// as an LGA's land does).
     pub reach: Option<f64>,
     /// How far in under the body, from its edge, the lead runs flat on the board, in mm.
     pub under: Option<f64>,
@@ -806,7 +807,10 @@ fn no_lead(
     for lead in leads {
         let be = across(lead.edge, body);
         let width = lead.width.unwrap_or(width);
-        let (inner, outer) = ((be - length).max(0.0), be + NO_LEAD_TERMINAL_EXPOSURE);
+        // A terminal shows past the side unless the lead says how far it reaches (an LGA's
+        // lands stop inside the body).
+        let reach = lead.reach.unwrap_or(NO_LEAD_TERMINAL_EXPOSURE);
+        let (inner, outer) = ((be - length).max(0.0), be + reach);
         let a = edge_point(lead.edge, lead.at - width / 2.0, inner);
         let b = edge_point(lead.edge, lead.at + width / 2.0, outer);
         out.push(solid(
