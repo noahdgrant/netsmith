@@ -233,6 +233,7 @@ fn a_hand_zone_of_another_net_cuts_the_pour_and_leaves_it_joining_its_pads() {
     assert_eq!(gnd_findings(&dir), drc_before);
     let said = String::from_utf8_lossy(&netsmith(&dir, &["board", "copper", "main.nsm"]).stdout).into_owned();
     assert!(said.contains("(cut by 1 hand zone(s) of other nets, drawn round them)"), "{said}");
+}
 
 /// The area of a ring by the shoelace, in mm².
 fn ring_area(ring: &serde_json::Value) -> f64 {
