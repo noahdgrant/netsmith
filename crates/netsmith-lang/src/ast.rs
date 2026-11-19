@@ -411,6 +411,9 @@ pub enum Item {
     Catalog(Catalog),
     Pins(Pins),
     Tie(Tie),
+    /// `direction .a to .b when .dir high`: the way a part's bidirectional pins pass a signal
+    /// while a control pin is at a level (issue #1306); only a part may hold one.
+    Direction(Direction),
     /// `unused .processor.usb`: the board says that nothing on it uses an interface (ADR 0083).
     Unused(Unused),
     /// `sequence { .a.vout; then 6ms; .b.vout; after .e }`: the order in which rails come up and
@@ -442,6 +445,9 @@ pub enum Item {
     /// A `layout { ... }` block: the layout guidelines of a part's datasheet, with their
     /// source (ADR 0030, issue #829); only a part may hold one.
     Layout(Layout),
+    /// A `pads { "1" .contact_offset = (1.175mm, 0mm) }` block: what a part states of its
+    /// footprint's pads (issue #1321); only a part may hold one.
+    Pads(Pads),
     /// A `row .a1 .. .a12 along x pitch 2.54mm` statement; only a physical file may hold one.
     Row(Row),
     /// `.ant within 8mm of .radio.ant`: a part within a distance of a pin (issue #1274); only a
@@ -765,11 +771,64 @@ pub struct Pins {
     pub span: Span,
 }
 
+/// `pads "SMD" { "1" .contact_offset = (-1.175mm, 0mm) }`: what a part states of the pads of
+/// its footprint in one or more packages, or in every package with no name (issue #1321). Each
+/// row is one pad, by its number, and one field of it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Pads {
+    /// The packages of the header, in the order written; empty for every package.
+    pub packages: Vec<(String, Span)>,
+    pub rows: Vec<PadRow>,
+    pub span: Span,
+}
+
+/// `"1" .contact_offset = (-1.175mm, 0mm)`: one row of a [`Pads`] block.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PadRow {
+    /// The pad's number, as the pin table writes it.
+    pub pad: String,
+    pub pad_span: Span,
+    /// The field of the pad (`contact_offset`).
+    pub field: Ident,
+    /// The value, a point `(x, y)`.
+    pub x: Expr,
+    pub y: Expr,
+    pub span: Span,
+}
+
+impl PadRow {
+    /// The row as source text, as it is written.
+    pub fn to_source(&self) -> String {
+        format!(
+            "{} .{} = ({}, {})",
+            crate::printer::quote(&self.pad),
+            self.field.name,
+            self.x.to_source(),
+            self.y.to_source()
+        )
+    }
+}
+
 /// `tie .sense ~ .vout.pos`: the board must put the two pins on one net.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Tie {
     pub a: Path,
     pub b: Path,
+    pub span: Span,
+}
+
+/// `direction .a to .b when .dir high`: while the control pin `.dir` is at the level, the
+/// bidirectional pins of `.a` (a pin, or an interface and all its pins) only read and those of
+/// `.b` only drive (issue #1306). The levels check judges the direction a strap of the control
+/// pin fixes, and both where it cannot tell.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Direction {
+    pub from: Path,
+    pub to: Path,
+    pub control: Path,
+    /// `high` (true) or `low` (false), and the span of the word.
+    pub high: bool,
+    pub level_span: Span,
     pub span: Span,
 }
 

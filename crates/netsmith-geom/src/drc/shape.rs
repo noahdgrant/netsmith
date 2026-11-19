@@ -226,6 +226,12 @@ pub(crate) fn touches_area(s: &Shape, polygon: &[Pt]) -> bool {
     gap(s, &area).d == 0.0
 }
 
+/// Whether `s` lies inside the hole `h` of an area (a cutout of a rule area) without touching
+/// its edge, so that it is not in the area (issue #1392).
+pub(crate) fn within_hole(s: &Shape, h: &[Pt]) -> bool {
+    h.len() >= 3 && touches_area(s, h) && gap(s, &Shape::ring(h.to_vec(), 0.0)).d > 0.0
+}
+
 /// Pairs `(i, j)` with `i < j` whose boxes, each grown by `margin / 2`, overlap: the pairs
 /// that can be less than `margin` apart. A pair is reported once. Linear in the number of
 /// boxes for a board's usual spread of sizes.

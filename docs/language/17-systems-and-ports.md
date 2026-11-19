@@ -838,6 +838,10 @@ system Kit {
 error: Kit: `card.j1.mating.seat` is -1mm, and a connector's partner does not rest below its board's face
 ```
 
+#### Contacts that are not at the pads' centres
+
+The system scene lines two mated connectors up by a least-squares fit that puts each contact of one on its partner's, and checks that each lands within 0.1 mm (`mate_misaligned`, an error that `fab` of a system refuses on, ADR 0110). A contact is the centre of its pad's copper, which is where the pin is for a through-hole header or socket. The feet of a surface-mount pin header alternate either side of its pins, so the centres of its pads zigzag about the pins' axis: fitted on them, the second board would come out turned and the mate misaligned by more than a millimetre, for a connector that fits. Such a part states where each contact is with a `pads` block, `"1" .contact_offset = (-1.175mm, 0mm)` from the pad's centre (chapter _Pins, packages and ties_, _Where a pad's contact is_), and the fit and the check read the contacts and not the copper.
+
 #### The body and the seat
 
 A connector's body is its seat unless it says otherwise (issue #1324): the top of a header's plastic and the top of a socket's body are the surfaces the partner rests on, one surface with one tolerance. So the system scene measures a mated connector's body against the other board of its mate up to its seat, not up to its `.height`: the body moves with the seat across the whole tolerance, and the other board, which rests on the partner at the two seats added, never meets it, whatever the tolerance. The part's `.height`, its tallest point (the contacts that go into the partner), is still its body against every other part and board of the system.

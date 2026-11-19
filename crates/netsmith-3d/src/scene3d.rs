@@ -960,10 +960,13 @@ impl Scene {
     }
 }
 
-/// The centre of each pad of the part at `path` on `board`, in the plan of the board's scene,
+/// The contact of each pad of the part at `path` on `board`, in the plan of the board's scene,
 /// with its number, in the footprint's order: what the system scene lines two mated connectors
-/// up by (ADR 0110). Empty when the board has no part at `path`.
-pub(crate) fn pad_centres(board: &Board, path: &str) -> Vec<(String, Plan)> {
+/// up by (ADR 0110). A pad's contact is the centre of its copper unless the part's `pads` block
+/// states it elsewhere (`.contact_offset`, issue #1321: the feet of a surface-mount header
+/// alternate either side of the pins, and its contacts are on the pins' axis). Empty when the
+/// board has no part at `path`.
+pub(crate) fn pad_contacts(board: &Board, path: &str) -> Vec<(String, Plan)> {
     let frame = Frame::of(board);
     board
         .parts
@@ -973,7 +976,7 @@ pub(crate) fn pad_centres(board: &Board, path: &str) -> Vec<(String, Plan)> {
             p.footprint
                 .pads
                 .iter()
-                .map(|pad| (pad.number.clone(), frame.point(p.to_board(pad.at))))
+                .map(|pad| (pad.number.clone(), frame.point(p.to_board(p.contact(pad)))))
                 .collect()
         })
         .unwrap_or_default()

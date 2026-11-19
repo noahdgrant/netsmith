@@ -8,9 +8,9 @@
 use netsmith_check::{Domain, GuidelineRule, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
     CaseModel, Cutout, Features, ImpedanceTarget, Keepout, Label, LengthGroup, Logo, LogoLayer,
-    NetPair, Offset, OffsetEnd, Outline, PadConnection, PartHeight, PartHeightGrowth, PartKind,
-    PartRoutingMargin, PartSilk, PartSoftMargin, PartStandoff, PinProtrusion, PlaceBound,
-    PlaceField, Placement, Pour, SilkPrint, StepModel,
+    NetPair, Offset, OffsetEnd, Outline, PadConnection, PadContactOffset, PartHeight,
+    PartHeightGrowth, PartKind, PartRoutingMargin, PartSilk, PartSoftMargin, PartStandoff,
+    PinProtrusion, PlaceBound, PlaceField, Placement, Pour, SilkPrint, StepModel,
 };
 use netsmith_lang::Span;
 use std::collections::{BTreeMap, BTreeSet};
@@ -645,6 +645,39 @@ fn routing_margins(model: &Model, errors: &mut Vec<String>) -> Vec<PartRoutingMa
             found.push(PartRoutingMargin { path, margin });
         }
     }
+    found
+}
+
+/// The contacts the parts' `pads` blocks state away from their pads' centres (issue #1321), by
+/// path and pad: the rows of a block for a package only for a part in that package. A row of a
+/// block for one package wins over a row of the block for every package.
+fn pad_contacts(model: &Model) -> Vec<PadContactOffset> {
+    let mut found: Vec<PadContactOffset> = Vec::new();
+    let mut specific: Vec<(String, String)> = Vec::new();
+    for c in &model.pad_contacts {
+        if let Some(package) = &c.package
+            && text(model, c.part, "package").as_deref() != Some(package.as_str())
+        {
+            continue;
+        }
+        let path = model.path_of(c.part);
+        let key = (path.clone(), c.pad.clone());
+        if let Some(at) = found.iter().position(|f| f.path == key.0 && f.pad == key.1) {
+            if c.package.is_none() || specific.contains(&key) {
+                continue;
+            }
+            found.remove(at);
+        }
+        if c.package.is_some() {
+            specific.push(key);
+        }
+        found.push(PadContactOffset {
+            path,
+            pad: c.pad.clone(),
+            offset: c.offset,
+        });
+    }
+    found.sort_by(|a, b| (&a.path, &a.pad).cmp(&(&b.path, &b.pad)));
     found
 }
 
@@ -1538,6 +1571,7 @@ pub(crate) fn features_of(
         labels: labels(model, least_text, errors),
         heights: heights(model, errors),
         standoffs: standoffs(model, errors),
+        pad_contacts: pad_contacts(model),
         height_growths: height_growths(model, errors),
         routing_margins: routing_margins(model, errors),
         silks: silks(model, errors),
@@ -1917,6 +1951,14 @@ pub(crate) fn expand_banks(
     for s in old {
         for path in members(&s.path, banks) {
             features.standoffs.push(PartStandoff { path, ..s.clone() });
+        }
+    }
+    let old = std::mem::take(&mut features.pad_contacts);
+    for c in old {
+        for path in members(&c.path, banks) {
+            features
+                .pad_contacts
+                .push(PadContactOffset { path, ..c.clone() });
         }
     }
     let old = std::mem::take(&mut features.height_growths);
