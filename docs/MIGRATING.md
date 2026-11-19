@@ -13,6 +13,18 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+### `Resistor`, `Capacitor` and `Inductor` gain `.fitted` and `.tune`; `Bool`, `true` and `false` are known everywhere (issue #1273)
+
+A part that provides `std::parts::passive::Resistor`, `Capacitor` or `Inductor` and declared `.fitted` or `.tune` for itself stops at the declaration:
+
+```text
+error: `tune` is declared by `Capacitor`, which this part provides; do not declare it again: narrow it with `.tune &= ...`, or state it with a relation
+```
+
+Delete the declaration. `.fitted` is a `Bool` (`.fitted &= false` marks a position that is not fitted until it is tuned on the bench), and `.tune` is the value's own quantity (`.tune &= 1pF..10pF`). `true` and `false` are written bare; `Bool::true` is refused.
+
+There is no ADR: the owner decided it on the issue.
+
 ### A net with a `TrackImpedance` is routed on one layer with no via (issue #1274)
 
 A net of a `TrackImpedance` is now an RF net: the router routes it first, on the outer layer all its pads are on, with no via. A board whose RF line could only cross other copper through a via now leaves it unrouted, and `fab` stops with `N connections could not be routed`; copper of the routes file that gives such a net a via is a finding of the rule `constraint`:

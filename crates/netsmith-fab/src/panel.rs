@@ -1219,8 +1219,12 @@ pub fn build(spec: &Spec, cell: &CellInput, options: &Options) -> Result<PanelPa
     let fit: BTreeMap<String, Fit> = (1..=cells)
         .flat_map(|k| options.fit.iter().map(move |(d, f)| (suffixed(d, k), *f)))
         .collect();
+    let dnp = (1..=cells)
+        .flat_map(|k| options.dnp.iter().map(move |d| suffixed(d, k)))
+        .collect();
     let panel_options = Options {
         fit,
+        dnp,
         ..options.clone()
     };
     let plan = crate::plan(&board, &entries, &panel_options)?;

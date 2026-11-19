@@ -374,6 +374,7 @@ mod tests {
             assembly_stated: false,
             catalog_height: None,
             resolved_row: None,
+            not_fitted: None,
             generic: Some(Generic {
                 catalog: "resistor".into(),
                 package: "0402".into(),

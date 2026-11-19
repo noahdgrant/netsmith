@@ -120,6 +120,17 @@ impl Checker<'_> {
         };
         let id = self.enum_id(m, i);
         let info = self.model.enum_info(id).clone();
+        // One way to write a yes or a no: `true` and `false` alone (issue #1273).
+        if self.prelude_def("Bool") == Some((m, i)) {
+            self.error(
+                span,
+                format!(
+                    "`Bool::{0}` is written `{0}`: `true` and `false` need no `Bool::`",
+                    variant.name
+                ),
+            );
+            return None;
+        }
         if !info.variants.contains(&variant.name) {
             let listed: Vec<String> = info
                 .variants

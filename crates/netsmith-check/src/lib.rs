@@ -40,6 +40,7 @@ mod sequence;
 mod shared;
 mod soft_margin;
 mod support;
+mod tuning;
 mod unused;
 
 pub use assign::{BusLine, PartSpace, PinsOutcome, RootPins, SpaceRequest, Unserved};

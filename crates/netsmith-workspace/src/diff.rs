@@ -219,6 +219,7 @@ impl BoardDigest {
                 board: String::new(),
                 lines: Vec::new(),
                 hand: Vec::new(),
+                not_fitted: Vec::new(),
                 total_usd: None,
                 note: String::new(),
                 stale_after_days: 0,

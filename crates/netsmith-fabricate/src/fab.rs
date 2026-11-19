@@ -1939,6 +1939,12 @@ fn fab_board(
             process: Some(board.process_note()),
             extras,
             fit: fit_of(&built.sourcing),
+            dnp: built
+                .sourcing
+                .iter()
+                .filter(|s| s.not_fitted.is_some())
+                .map(|s| s.refdes.clone())
+                .collect(),
             revision: options.revision.clone(),
             // The design's requirements on where parts go (ADR 0045): an error that stops
             // the package, or a warning with `constraints = "warn"`.
@@ -3343,7 +3349,11 @@ pub fn bom_entries(
     mapping: &Mapping,
 ) -> Result<Vec<BomEntry>, String> {
     let mut entries: Vec<BomEntry> = Vec::new();
-    for (i, s) in sourcing.iter().enumerate().filter(|(_, s)| s.assembled()) {
+    for (i, s) in sourcing
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.assembled() || s.not_fitted.is_some())
+    {
         let path = paths.get(i).map_or("", String::as_str);
         let footprint = mapping
             .map_part(path, &s.kind, s.package.as_deref())
@@ -3358,20 +3368,27 @@ pub fn bom_entries(
         // The comment of a consigned part is the manufacturer's number: JLCPCB has no column that
         // marks a part as consigned, so the board house reads what the owner shipped from it
         // (ADR 0084).
-        let value = match (s.assembly, &s.mpn) {
-            (Assembly::Consigned, Some(mpn)) => mpn.clone(),
+        let value = match (&s.not_fitted, s.assembly, &s.mpn) {
+            (Some(dnp), _, _) => dnp_comment(&s.value, dnp),
+            (None, Assembly::Consigned, Some(mpn)) => mpn.clone(),
             _ => s.value.clone(),
+        };
+        // A part that is not fitted is a line of its own with no number to buy (issue #1273).
+        let lcsc = if s.not_fitted.is_some() {
+            None
+        } else {
+            s.lcsc.clone()
         };
         match entries
             .iter_mut()
-            .find(|e| e.value == value && e.footprint == footprint && e.lcsc == s.lcsc)
+            .find(|e| e.value == value && e.footprint == footprint && e.lcsc == lcsc)
         {
             Some(entry) => entry.designators.push(s.refdes.clone()),
             None => entries.push(BomEntry {
                 designators: vec![s.refdes.clone()],
                 value,
                 footprint,
-                lcsc: s.lcsc.clone(),
+                lcsc,
             }),
         }
     }
@@ -3380,6 +3397,19 @@ pub fn bom_entries(
     }
     entries.sort_by_key(|e| designator_key(&e.designators[0]));
     Ok(entries)
+}
+
+/// The comment of the `bom.csv` line of a part that is not fitted (issue #1273): `DNP`, the
+/// value it starts from when the design states one, and the range it is tuned in:
+/// `DNP 4.7pF (tune 1pF..10pF)`, or `DNP (tune 1pF..10pF)` for a part that has no value but
+/// its range. The word comes first, so that a person reading the bill, and the board house,
+/// see it before the value.
+pub fn dnp_comment(value: &str, dnp: &netsmith_core::NotFitted) -> String {
+    match &dnp.tune {
+        Some(range) if range == value => format!("DNP (tune {range})"),
+        Some(range) => format!("DNP {value} (tune {range})"),
+        None => format!("DNP {value}"),
+    }
 }
 
 /// `C2` before `C10`: the letters, then the number.
@@ -3961,6 +3991,7 @@ mod tests {
             catalog_height: None,
             generic: None,
             resolved_row: None,
+            not_fitted: None,
         }
     }
 

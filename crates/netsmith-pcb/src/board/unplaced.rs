@@ -119,6 +119,12 @@ impl Unplaced {
             branch_currents: design.features.branch_currents.clone(),
             pin_currents: design.features.pin_currents.clone(),
             pad_pours: design.features.pad_pours.clone(),
+            not_fitted: design
+                .features
+                .not_fitted
+                .iter()
+                .map(|n| n.refdes.clone())
+                .collect(),
             overhang,
             pinned,
             imported: Default::default(),

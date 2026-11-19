@@ -324,6 +324,17 @@ fn footprint(board: &Board, part: &Placed, nets: &NetNumbers) -> Sexp {
                 "fp_line" | "fp_rect" | "fp_circle" | "fp_arc" | "fp_poly" | "fp_curve" | "fp_text"
                 | "fp_text_box" | "zone",
             ) => with_uuid(child, &child_key),
+            // A part that is not fitted (issue #1273) is `dnp` in KiCad, which leaves it off
+            // KiCad's placement file and marks it on the fabrication drawing.
+            Some("attr") if board.not_fitted.contains(&part.refdes) => {
+                let mut attr = child.clone();
+                if let Sexp::List(items) = &mut attr
+                    && !items.iter().any(|i| i.text() == Some("dnp"))
+                {
+                    items.push(Sexp::atom("dnp"));
+                }
+                attr
+            }
             _ => child.clone(),
         };
         // KiCad stores a footprint on the back already flipped: the drawings of the file as
