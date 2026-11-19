@@ -216,7 +216,9 @@ fn check_inner(
         if matches!(def.kind, DefKind::Board | DefKind::System) {
             let (faults, conflicts) = faults::pin_faults_and_conflicts(&model);
             checker.extend(faults);
-            model.provider_conflicts.extend(conflicts);
+            for (insts, d) in conflicts {
+                model.add_provider_conflict(&insts, d);
+            }
         }
         match def.kind {
             DefKind::Board => boards.push(Board {

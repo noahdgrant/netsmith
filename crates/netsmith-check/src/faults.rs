@@ -53,7 +53,9 @@ pub fn pin_faults(model: &Model) -> Vec<Diagnostic> {
 
 /// [`pin_faults`], and those of them that are inside a use with several providers, which
 /// another provider may not have (`Model::provider_conflicts`, ADR 0113).
-pub(crate) fn pin_faults_and_conflicts(model: &Model) -> (Vec<Diagnostic>, Vec<Diagnostic>) {
+pub(crate) fn pin_faults_and_conflicts(
+    model: &Model,
+) -> (Vec<Diagnostic>, Vec<(Vec<InstId>, Diagnostic)>) {
     let deferred = unknown_package(model);
     let bus = crate::busnets::check(model);
     let mut run = Run::new(model, &deferred, Pass::Board, bus.nets);
@@ -100,8 +102,9 @@ struct Run<'a> {
     /// The nets a bus rule has reported (ADR 0064): the rules of a net skip them.
     bus_nets: std::collections::HashSet<String>,
     out: Vec<Diagnostic>,
-    /// The faults among `out` that another provider of a use may not have (ADR 0113).
-    conflicts: Vec<Diagnostic>,
+    /// The faults among `out` that another provider of a use may not have (ADR 0113), each
+    /// with the instances it is about.
+    conflicts: Vec<(Vec<InstId>, Diagnostic)>,
 }
 
 /// Items that are already written for a message, joined.
@@ -296,11 +299,14 @@ impl<'a> Run<'a> {
                 };
                 // Another provider of the use may have a table for it (ADR 0113).
                 if model.in_varied_use(part) {
-                    self.conflicts.push(Diagnostic {
-                        source: at.0,
-                        span: at.1,
-                        message: message.clone(),
-                    });
+                    self.conflicts.push((
+                        vec![part],
+                        Diagnostic {
+                            source: at.0,
+                            span: at.1,
+                            message: message.clone(),
+                        },
+                    ));
                 }
                 self.report(at, message);
             }
@@ -805,11 +811,14 @@ impl<'a> Run<'a> {
             );
             let at = model.instance(sources[1].1).at();
             if sources.iter().any(|(_, p, _)| model.in_varied_use(*p)) {
-                self.conflicts.push(Diagnostic {
-                    source: at.0,
-                    span: at.1,
-                    message: message.clone(),
-                });
+                self.conflicts.push((
+                    sources.iter().map(|(_, p, _)| *p).collect(),
+                    Diagnostic {
+                        source: at.0,
+                        span: at.1,
+                        message: message.clone(),
+                    },
+                ));
             }
             self.report(at, message);
         }
