@@ -1960,8 +1960,10 @@ fn fab_writes_the_system_scene_beside_its_boards_and_the_switches_leave_it_out()
     assert!(!folder.join("TwoBoards.step").exists());
 }
 
-/// A header too tall for the stack reaches into the board mated on it: `system_collision`, an
-/// error that stops `fab` whatever `--allow-drc-violations` says, and no system file is written.
+/// A header whose body is too tall for the stack reaches into the board mated on it:
+/// `system_collision`, an error that stops `fab` whatever `--allow-drc-violations` says, and no
+/// system file is written. A mated connector's body reaches to its seat unless it states
+/// `.mating.body_height` (issue 1324), so the test states that and not `.height`.
 #[test]
 fn a_header_taller_than_the_mated_height_stops_fab_of_the_system() {
     let dir = netsmith_testkit::TempDir::new("system-collision");
@@ -1969,7 +1971,7 @@ fn a_header_taller_than_the_mated_height_stops_fab_of_the_system() {
         .unwrap()
         .replacen(
             "    .power_out: Header1x2\n",
-            "    .power_out: Header1x2 { .height &= 12mm }\n",
+            "    .power_out: Header1x2 { .mating.body_height &= 12mm }\n",
             1,
         );
     std::fs::write(dir.join("c.nsm"), source).unwrap();

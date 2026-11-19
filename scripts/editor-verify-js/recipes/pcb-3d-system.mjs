@@ -3,7 +3,7 @@
 // others by their mates, with a chip that says how many boards and the mated height. A click on a
 // part of another member makes that member the page's board (its 2D board and schematic follow)
 // and selects the part there, while the 3D view stays on the system. A finding across the boards
-// (a header made too tall for the stack) is listed, and a click on it flies the camera to it.
+// (a header whose body is made too tall for the stack) is listed, and a click on it flies the camera to it.
 // The camera stays where it is as the page's board changes. The tools work across the members: a
 // net is its member's (`led/<net>`) and is lit on that board alone; the section cuts every board;
 // the layers come apart board by board, the boards apart with them; and a board can be hidden.
@@ -57,9 +57,8 @@ export async function run({ page, url, project, shot, step, expect, binary }) {
   await systemDrawn(page);
   await whenIdle(page);
   const chip = await page.getByTestId('system-chip').innerText();
-  // The LED board's diode and resistor have no known height and face the power board: two
-  // `system_unchecked` warnings, which are the findings of the board as it is.
-  expect(chip.trim() === 'System TwoBoards: 2 boards, mated at 10.65–11.35 mm · 2 findings', `the chip, with the two warnings only: ${chip}`);
+  // Every part of both boards has a known height (issue 1421) and nothing collides: no finding.
+  expect(chip.trim() === 'System TwoBoards: 2 boards, mated at 10.65–11.35 mm', `the chip, with no finding: ${chip}`);
   const drawn = await ask(page, 'sample');
   expect(drawn.drawn > 0.05, `the canvas is drawn (${(drawn.drawn * 100).toFixed(0)} % not the background)`);
   await shot('system-iso');
@@ -94,8 +93,9 @@ export async function run({ page, url, project, shot, step, expect, binary }) {
   await tools(page, shot, step, expect);
   await agent({ page, url, project, shot, step, expect, binary });
 
-  step('a header too tall for the stack is a finding across the boards; a click flies the camera to it');
-  fs.writeFileSync(file, original.replace('    .power_out: Header1x2\n', '    .power_out: Header1x2 { .height &= 12mm }\n'));
+  // A mated header's body reaches to its seat unless it states `.mating.body_height` (issue 1324).
+  step('a header whose body is too tall for the stack is a finding across the boards; a click flies the camera to it');
+  fs.writeFileSync(file, original.replace('    .power_out: Header1x2\n', '    .power_out: Header1x2 { .mating.body_height &= 12mm }\n'));
   try {
     await finding(page, shot, expect);
   } finally {
@@ -106,7 +106,7 @@ export async function run({ page, url, project, shot, step, expect, binary }) {
 async function finding(page, shot, expect) {
   await page.waitForSelector('[data-testid=system-chip].bad');
   const bad = await page.getByTestId('system-chip').innerText();
-  expect(bad.includes('3 findings'), `the chip: ${bad}`);
+  expect(bad.includes('1 finding'), `the chip: ${bad}`);
   await page.getByTestId('system-chip').click();
   const row = page.locator('[data-testid=system-findings] [data-code=system_collision]');
   await row.waitFor();

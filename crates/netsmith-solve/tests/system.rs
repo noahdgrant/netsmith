@@ -49,6 +49,12 @@ fn close(a: (f64, f64), b: (f64, f64)) -> bool {
     near(a.0, b.0) && near(a.1, b.1)
 }
 
+/// `a` and `b` within a millionth of each other: for what the DC analysis solves numerically.
+fn near(a: (f64, f64), b: (f64, f64)) -> bool {
+    let near = |x: f64, y: f64| (x - y).abs() <= 1e-6 * x.abs().max(y.abs()).max(1e-30);
+    near(a.0, b.0) && near(a.1, b.1)
+}
+
 /// The example with the LED board's LED run at `current` whatever its resistor says: a pin of
 /// the board on the LED's anode could take current from the chain, so the chain no longer
 /// ties the current to the resistor (ADR 0113), and the board draws what is stated and the
@@ -113,8 +119,14 @@ fn what_the_led_board_draws_is_within_what_the_regulator_board_is_built_to_give(
         (-0.016818181818181822, -0.007277227722772274)
     ));
     assert!(close(range(&s, "power.output.current"), (0.0, 0.05)));
-    // ...and the regulator behind the output is checked against it as before.
-    assert!(close(range(&s, "power.input.current"), (-0.05, 0.0)));
+    // ...and the regulator behind the output draws from the board's input what the DC
+    // analysis finds across the mate: the LED board's draw (issue 1427).
+    // The analysis solves numerically, so its ends are near the chain's, not equal to them.
+    let input = range(&s, "power.input.current");
+    assert!(
+        near(input, (-0.016818181818181822, -0.007277227722772274)),
+        "{input:?}"
+    );
 }
 
 #[test]
@@ -270,8 +282,10 @@ fn the_led_boards_input_current_is_the_current_of_its_led_chain() {
     assert!(close(led, (0.007277227722772274, 0.016818181818181822)));
     assert!(close(range(&s, "led.r1.current"), led));
     assert!(close(range(&s, "led.input.current"), (-led.1, -led.0)));
-    // Through the join it reaches the regulator board, which is checked against it.
-    assert!(close(range(&s, "power.input.current"), (-0.05, 0.0)));
+    // Through the mate the DC analysis finds the same draw on the regulator board's input
+    // (issue 1427).
+    let input = range(&s, "power.input.current");
+    assert!(near(input, (-led.1, -led.0)), "{input:?}");
 }
 
 #[test]
