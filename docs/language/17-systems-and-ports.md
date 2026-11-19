@@ -57,6 +57,7 @@ Rules.
 - A system narrows a board through the board's ports and declared values: `.power.output.voltage &= 3.3V +/- 5%`.
 - A system names no nets.
 - `build` and `fab` write each board of a system to `<out>/<System>/<member>/`.
+- Each board of a system has its own process: two boards may state the same generic process differently (`FourLayer` at 1.6 mm on one and 1.2 mm on the other), and a contradiction about a process is reported at the board that states it (issue #1326; chapter _The process of a board_).
 - A board of a system defined in another file reads the layout file beside that file, as it does when it is built alone, and the system's layout file holds only the tables of the boards defined in the system's file (issue #1327; chapter _The shape of a board_, _The layout file_). Its physical file is the one beside the file it is defined in too.
 
 Misuse.

@@ -64,6 +64,7 @@ board Name {
 - A board names the corners it must still work at, `.eol_cold: Corner { .temperature &= -20degC; .life &= Life::End }` (`import std::env::{Corner, Life}`, one temperature inside the environment; guide chapter 22, _Named corners_): every bound that reads a capacitor's effective capacitance or ESR (ripple, a bank's total, a regulator's minimum capacitance) is judged again there, with the row's `capacitance_at_end_of_life` and `esr_growth` at `Life::End` and its ESR curve file at the corner's temperature; what a row does not state is listed as not evaluated at that corner.
 - A storage element that must hold a rail up after the supply goes is a `std::checks::HoldUp` (guide chapter 19, _Holding a rail up_): `.hold.storage ~ .sc.p`, `.hold.rail ~ .out.pos`, and `.average_power`, `.peak_current` and `.duration`; the solver walks the diodes and regulators between them and compares the energy down to the cut-off with the need, at each corner.
 - A system joins ports of boards with `~` and nothing else.
+- Each board of a system has its own `.process`: two boards may write the same generic differently (`FourLayer { .stackup.thickness &= 1.6mm }` and `&= 1.2mm`) without naming a provider (issue #1326).
 - Statement order does not matter. Separate statements with a newline or `;`.
 - Comments: `//`, `///` for the next declaration, `//!` for the file or definition.
 - Use `&=` for constants and `==` for equations. Do not write `.x = 5V`: there is no `=`.
