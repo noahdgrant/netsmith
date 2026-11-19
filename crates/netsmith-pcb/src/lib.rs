@@ -127,7 +127,7 @@ pub use footprint::{
 };
 pub use generate::{
     HOLE_DRILL, generate as generated_footprint, generate_spec as generate_footprint_spec,
-    names as generated_footprint_names,
+    names as generated_footprint_names, own_files as own_footprint_files,
 };
 pub use geometry::{Pt, Rect, TURNED_STRIP, TURNED_STRIPS, is_right_angle};
 pub use impedance::{

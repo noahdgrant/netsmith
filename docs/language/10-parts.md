@@ -382,8 +382,51 @@ board Tracker {
 - Each `.needs &= F` leaves the codes that have `F`, so two statements need both features. A module that places the part may state a need of its own, and the board one from outside (`.tracker.u.needs &= GNSS`, ADR 0116: only `&=` reaches inside a module).
 - The design must leave one code. With no need stated and several codes, or with needs that several codes meet, the board names the code with `.mpn &=`, and the message lists the codes with their features. A part with one code needs neither.
 - A code the board names with `.mpn &=` must be a row of the table and have every feature the design needs: a code without one is refused, at the `.mpn`, with the need and the codes that have it.
-- The `.needs` member is a part's only when the part states `.variants`; a part that states the table may not declare a `.needs` of its own. A part has one table, and a code is in it once.
+- The `.needs` member is a part's only when the part states `.variants`, or a generic it provides declares it (below); a part that states the table may not declare a `.needs` of its own. A part has one table, and a code is in it once.
 - The code is the part's `.mpn`, so a part that also has a catalog keyed by `.mpn` (`catalog modem by .mpn { .mpn, .package }`, chapter 12) is held to the row of that code, as a hand pick holds it, and takes its supplier's number from the row. A part with no catalog has no supplier's number: the bill of materials shows the code, and the board house does not assemble it unless it is `Hand` or `Consigned` (Who assembles a part, above).
+
+A board that uses a generic (`.u: Radio`, chapter 14) reaches only the members the generic declares, so a generic whose providers are sold as order codes declares `.needs` as an optional member, `.needs: String optional`, and a provider with a `.variants` table fills it (issue #1402, owner decision). The board states the need through the use, and the solver picks a provider that has a code with it:
+
+```nsm evaluate picks
+/// A radio, whichever module it is.
+generic Radio {
+    pins {
+        .a passive
+    }
+    /// What the design needs of the module's order code.
+    .needs: String optional
+}
+
+/// Sold as one part, with no feature to need.
+part BasicRadio provides Radio {
+    pins {
+        .a passive "A" "1"
+    }
+}
+
+part Modem provides Radio {
+    .variants {
+        "MDM-100-G" GNSS LTE
+        "MDM-100" LTE
+    }
+    pins {
+        .a passive "A" "1"
+    }
+}
+
+board Tracker {
+    .u: Radio { .assembly &= AssemblyMode::Hand }
+    .u.needs &= GNSS
+}
+```
+
+```text
+u is a Radio: picked Modem; passed over BasicRadio (`u` is a `BasicRadio`, which states no `.variants`: it is one order code with no feature, and the design needs `GNSS` of it; name a part whose `.variants` table has the feature, or remove the need)
+```
+
+- A provider with no `.variants` table has `.needs` too, from the generic, and no feature: a need passes it over, as above, and so does a provider whose table has no code with every need. A board that states no need picks such a provider as any other.
+- A provider with a table takes the generic's `.needs` as its own. The generic declares it `.needs: String optional` and nothing else; a provider with a table refuses any other declaration of it.
+- The standard `LoadSwitch` (`std::parts::switch`) declares `.needs`, for an IC sold with and without a feature such as a quick output discharge.
 
 A code that lacks a feature the board needs is refused:
 
@@ -482,6 +525,30 @@ board Tracker {
 - With the alternate fitted, the rest of the source is read as written: the connections and narrowings that name `.u` and its pins reach the alternate, so a pin it lacks is refused where it is used, and a supply range or a level it does not meet is refused as it would be for the member.
 - The footprint is the member's: when both parts state a package it must be the same, and each pad of the alternate must be joined to the same pins of the other parts as the member's pad of that number. A pad on no net is on none for both.
 - The pick lock holds the member's row; the alternate's row is picked fresh each build and is not written to the lock.
+- A board that a system places is checked with the alternate fitted as the system uses it (issue #1414): the system is checked and solved again, its mates are seated again, and the power tree is read across its boards, so a supply that another board gives reaches the alternate.
+- The guideline findings (an unconstrained pick, an unstated value, an open circle, a bus role, a track width) are made for the board with the alternate fitted too. Each one the board as written does not have is a warning of the board, said under the alternate's statement as the re-check's errors are (below); with `--strict` or `guidelines = "error"` it stops the build. A finding the board as written has is said once.
+
+A finding that only the board with the alternate fitted has is said under the alternate's statement. Here nothing limits the capacitor's value:
+
+```nsm solve warns
+import std::parts::connector::Header1x2
+import std::parts::passive::Capacitor
+import std::parts::passive::Resistor
+
+board Filter {
+    .j: Header1x2
+    .r: Resistor { .resistance &= 10kohm +/- 5%; .package &= "0402" }
+    alternate .r: Capacitor { .package &= "0402" }
+    .j.p1 ~ .r.a
+    .j.p2 ~ .r.b
+}
+```
+
+```text
+Filter: unconstrained pick guideline: with `alternate .r: Capacitor` (main.nsm:8) fitted in the place of `r`: `r` (Capacitor) was chosen with nothing limiting its capacitance, so the solver took the first row that fits, 18pF 5% 50V C0G 0402 C1549: state it, `.r.capacitance &= 100nF +/- 10%`, or bound a value that it decides (a current or a voltage the design checks), or say that any value will do, `.r.capacitance &= 10nF..10uF`
+```
+
+A value of the alternate alone is stated in the alternate's body, `alternate .r: Capacitor { .package &= "0402"; .capacitance &= 100nF +/- 10% }`, as the member's own body would state it.
 
 An alternate that fails one of the board's checks is named with the check's own message:
 

@@ -46,6 +46,31 @@ type Pin = (&'static str, &'static str, &'static str, f64, f64, f64, f64);
 /// (`share/kicad/symbols`, 9.0): the geometry the layout engine and the exporter depend on.
 /// `generated_symbols_agree_with_the_installed_kicad_symbols` proves the table against the install.
 const KICAD_PINS: &[(&str, &[Pin])] = &[
+    // netsmith's own (issue 1399): KiCad has no symbol of this id, so the numbers are the
+    // spec's, and `generated_symbols_agree_with_the_installed_kicad_symbols` skips it while the
+    // install has none (`NETSMITH_OWN`).
+    (
+        "Device:C_Polarized_Tap",
+        &[
+            ("1", "+", "passive", 0.0, 7.62, 270.0, 4.064),
+            ("2", "MID", "passive", 5.08, 0.0, 180.0, 5.08),
+            ("3", "-", "passive", 0.0, -7.62, 90.0, 4.064),
+        ],
+    ),
+    (
+        "Device:C_Polarized",
+        &[
+            ("1", "~", "passive", 0.0, 3.81, 270.0, 2.794),
+            ("2", "~", "passive", 0.0, -3.81, 90.0, 2.794),
+        ],
+    ),
+    (
+        "Device:Battery_Cell",
+        &[
+            ("1", "+", "passive", 0.0, 5.08, 270.0, 2.54),
+            ("2", "-", "passive", 0.0, -2.54, 90.0, 2.54),
+        ],
+    ),
     (
         "Device:R",
         &[
@@ -482,6 +507,11 @@ fn body_tolerance(id: &str) -> f64 {
         .map_or(BODY_TOLERANCE, |(_, tolerance, _)| *tolerance)
 }
 
+/// The ids netsmith draws that KiCad's stock libraries have no symbol of (issue 1399): their
+/// geometry is netsmith's own, written in [`KICAD_PINS`]. Should a KiCad library ever have one, it
+/// is compared like the others.
+const NETSMITH_OWN: &[&str] = &["Device:C_Polarized_Tap"];
+
 #[test]
 fn generated_symbols_agree_with_the_installed_kicad_symbols() {
     if netsmith_kicad::skip_without_kicad_libraries() {
@@ -491,7 +521,11 @@ fn generated_symbols_agree_with_the_installed_kicad_symbols() {
     let kicad = SymbolLib::at(&root);
     let ours = SymbolLib::at("/nonexistent/symbols").with_generators();
     for id in passive_symbol_ids() {
-        let theirs = kicad.symbol(id).unwrap_or_else(|e| panic!("{id}: {e}"));
+        let theirs = match kicad.symbol(id) {
+            Ok(theirs) => theirs,
+            Err(_) if NETSMITH_OWN.contains(&id) => continue,
+            Err(e) => panic!("{id}: {e}"),
+        };
         let mine = ours.symbol(id).unwrap();
         // The pins: number, name, type, position, direction, length, in KiCad's order.
         let (a, b) = (measured(&theirs), measured(&mine));

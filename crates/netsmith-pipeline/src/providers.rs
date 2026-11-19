@@ -23,7 +23,9 @@
 //! and the providers that contradict what is stated inside the use are passed over for it
 //! whatever the others take (`Search::refuse_at_check`, a check each and no solve). A use left
 //! with one provider is held to it; a use left with none is the failure, at the board that holds
-//! it. So each board of a system has its own process (issue #1326): four boards that state
+//! it: one error that lists each provider and its contradiction, or, when every provider has the
+//! same one (a thickness outside the generic's own range), that contradiction as the check said
+//! it, at the narrowing. So each board of a system has its own process (issue #1326): four boards that state
 //! `FourLayer` at four thicknesses are settled board by board, where a search over the product of
 //! their providers gave up at the bound, and a thickness no build-up has is reported at its own
 //! board, not at the first board of the system.
@@ -417,7 +419,26 @@ impl Search<'_> {
         let sources = &checked.sources;
         Err(none_left
             .iter()
-            .map(|(u, refused)| {
+            .flat_map(|(u, refused)| {
+                // Every provider refused with one and the same contradiction: it is the design's
+                // own whatever the provider (a thickness outside the range the generic itself
+                // states), so it is said as the check said it, at the narrowing, as on a board
+                // with one provider.
+                let mut whys = refused.values();
+                let first = whys.next();
+                if whys.all(|w| Some(w) == first) {
+                    return model
+                        .provider_conflicts_by_use
+                        .get(&u.path)
+                        .into_iter()
+                        .flatten()
+                        .map(|d| {
+                            let mut problem = Problem::of(Stage::Check, d, sources);
+                            problem.board = crate::board_of_diagnostic(checked, d);
+                            problem
+                        })
+                        .collect::<Vec<_>>();
+                }
                 let at = model.instance(u.inst).at();
                 let place = crate::locate(sources, at.0, at.1);
                 let entries: Vec<(String, Option<String>)> = u
@@ -439,7 +460,7 @@ impl Search<'_> {
                 };
                 let mut problem = Problem::of(Stage::Solve, &diagnostic, sources);
                 problem.board = Some(self.board_of(checked, model, &diagnostic));
-                problem
+                vec![problem]
             })
             .collect())
     }

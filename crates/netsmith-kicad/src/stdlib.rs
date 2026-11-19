@@ -30,6 +30,16 @@ pub const FOOTPRINT_FOLDER: &str = "netsmith.pretty";
 /// `std/libs/netsmith.pretty/` is listed here (a test fails until it is).
 const FOOTPRINTS: &[(&str, &str)] = &[
     (
+        "BatteryCell_Coin_D20.0mm_Tabs_P15.00mm",
+        include_str!(
+            "../../../std/libs/netsmith.pretty/BatteryCell_Coin_D20.0mm_Tabs_P15.00mm.kicad_mod"
+        ),
+    ),
+    (
+        "CP_Radial_D16.0mm_P7.50mm_Tap",
+        include_str!("../../../std/libs/netsmith.pretty/CP_Radial_D16.0mm_P7.50mm_Tap.kicad_mod"),
+    ),
+    (
         "SMA_Amphenol_132134_Vertical",
         include_str!("../../../std/libs/netsmith.pretty/SMA_Amphenol_132134_Vertical.kicad_mod"),
     ),

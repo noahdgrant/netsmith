@@ -30,8 +30,13 @@
 //! (TO-252), D2PAK (TO-263), SOT-89, SMD crystals, shielded power inductors of one maker's series (`inductor.rs`: the TDK SLF7045 and the Changjiang FNR4020S, 5040S, 6028S and 8040S), BGA on a full regular grid, pin headers
 //! and sockets (1 or 2 rows, 1 to 40 per row, pad 0.7 of the pitch, drill 1.0 mm or 0.8 mm at
 //! 2.0 mm, pin 1 square), the polarized radial cans of a supercapacitor (`radial.rs`, six
-//! diameters from 5 mm to 16 mm) and the two-pin JST PH side-entry header of a pouch cell's lead
-//! (`jst.rs`). The QFN family is a list of named packages, because the lead and
+//! diameters from 5 mm to 16 mm, and the tapped 16 mm can of a two-cell part), the two-pin JST PH
+//! side-entry header of a pouch cell's lead (`jst.rs`) and a coin cell with solder tabs (`coin.rs`).
+//! The tapped can and the coin cell are **netsmith's own land patterns** (issue 1399): KiCad has no
+//! footprint of their names and no maker's drawing was read, so they are not generated names of a
+//! KiCad library (a board opened in KiCad would name a footprint its library lacks) but files of
+//! netsmith's own library, `std/libs/netsmith.pretty/`, which [`own_files`] writes and
+//! `tests/own_lands.rs` holds the committed files to. The QFN family is a list of named packages, because the lead and
 //! exposed pad dimensions of a QFN of a given outline differ from one maker to the next (KiCad has
 //! one footprint per datasheet); a package not in the list needs a library file. The same holds
 //! for the QFPs: KiCad's other QFPs are from one maker's drawing each, and only those that are the
@@ -191,6 +196,7 @@
 
 mod bga;
 mod chip;
+mod coin;
 mod crystal;
 mod diode;
 mod draw;
@@ -348,6 +354,14 @@ pub fn names() -> &'static [String] {
         all.dedup();
         all
     })
+}
+
+/// The files of netsmith's own library (`std/libs/netsmith.pretty/`) that a generator writes, the
+/// lands of issue 1399 that KiCad has no footprint of: each name and the text of its
+/// `.kicad_mod`. `tests/own_lands.rs` holds the committed files to these
+/// (`NETSMITH_UPDATE_FIXTURES=1` writes them).
+pub fn own_files() -> Vec<(String, String)> {
+    vec![radial::tapped_file(), coin::file()]
 }
 
 /// Whether some generated name belongs to the library `library`.
