@@ -48,7 +48,13 @@ fn main() {
 /// `curves/<catalog>/<row>.csv` under `dir`, in name order.
 fn curves(data: &Path, dir: &Path, constant: &str) -> String {
     let root = dir.join("curves");
-    println!("cargo:rerun-if-changed={}", root.display());
+    // A path that does not exist is out of date to cargo on every build, so the folder is
+    // watched only where it is; `dir` itself is watched, and a new `curves/` changes it
+    // (issue #1352: watching a missing folder rebuilt this crate and all above it on every
+    // `cargo` call).
+    if root.is_dir() {
+        println!("cargo:rerun-if-changed={}", root.display());
+    }
     let mut found: Vec<(String, String, std::path::PathBuf)> = Vec::new();
     if let Ok(folders) = fs::read_dir(&root) {
         for folder in folders.map(|e| e.expect("a directory entry").path()) {

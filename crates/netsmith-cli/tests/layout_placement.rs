@@ -356,3 +356,33 @@ fn layout_fit_as_laid_out_offers_only_places_layout_check_and_fab_accept() {
     );
     assert!(every_offered_place_is_accepted(&dir, &["--as-laid-out"]) > 0);
 }
+
+#[test]
+fn fab_stops_on_the_faults_among_the_parts_the_file_places_before_it_places_anything() {
+    // `r1` over the module's left row and `r2` over its right row: two faults among entries,
+    // which no seed of the placer changes (issue 1309).
+    let both = format!(
+        "{OVER}\n[Widget.parts.r2]\nat = [30.5, 16.0]\nrotation = 0.0\nside = \"top\"\nlock = true\nsource = \"hand\"\n"
+    );
+    let dir = project("one-check-before-placing", &both);
+    let (_, placement) = check(&dir);
+    assert_eq!(placement.len(), 2, "{placement:?}");
+    let (code, said) = fab(&dir);
+    assert_eq!(code, 1, "{said}");
+    // One list, the sentences of `layout check`, and the placer never started.
+    for finding in &placement {
+        let message = finding["message"].as_str().unwrap();
+        assert!(said.contains(&format!("error: Widget: {message}")), "{said}");
+    }
+    assert!(!said.contains("placing"), "{said}");
+    // With the fault gone, `fab` places the rest.
+    let set = netsmith(&dir, &["layout", "set", "r2", "--at", "14,24", "--lock"]);
+    assert!(set.status.success(), "{}", String::from_utf8_lossy(&set.stderr));
+    let set = netsmith(&dir, &["layout", "set", "r1", "--at", "14,10", "--lock"]);
+    assert!(set.status.success(), "{}", String::from_utf8_lossy(&set.stderr));
+    let (ok, placement) = check(&dir);
+    assert!(ok && placement.is_empty(), "{placement:?}");
+    let (code, said) = fab(&dir);
+    assert_eq!(code, 0, "{said}");
+    assert!(said.contains("placing"), "{said}");
+}

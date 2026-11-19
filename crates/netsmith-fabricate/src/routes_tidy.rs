@@ -20,6 +20,14 @@
 //!   and bend after it (the check's own advice, "make it a right angle"). The bend after is cut
 //!   as a corner is when it would bend by more than 45 degrees.
 //!
+//! With `widen` (`routes tidy --widen`, issue #1294) a fifth: **narrow tracks**. A straight
+//! track narrower than the width its net wants on its layer ([`wanted_width`]: the width the
+//! router draws the net at there, for its current, its class or its impedance target) is
+//! widened to it. A widening refused by the rule of every change (the wider track comes too
+//! near the copper of another net) is tried narrower, at [`WIDENINGS`] of the way from its
+//! width to the wanted one, so that each track is made as wide as its neighbours' clearance
+//! allows; a track is never made narrower, and one widened part of the way is not tried again.
+//!
 //! **The rule of every change.** A change is made only when the design rules check of the board
 //! with it (the check `routes add-track` makes, [`crate::routes::drc_errors`], with its warnings
 //! too) finds nothing it did not find before, and the connections left to route (the ratsnest)
@@ -104,6 +112,10 @@ pub const CHAMFERS: [f64; 3] = [4.0, 2.0, 1.0];
 /// change in its next form.
 const PASSES: usize = 8;
 
+/// How far from its width to the width its net wants a narrow track is widened, as a share of
+/// the way, the most first: each is tried when the one before it is refused (issue #1294).
+pub const WIDENINGS: [f64; 4] = [1.0, 0.75, 0.5, 0.25];
+
 /// Two places nearer than this (mm) are one: where the check's findings are matched to copper.
 const NEAR: f64 = 1e-3;
 
@@ -121,6 +133,8 @@ pub enum Kind {
     Stub,
     /// An acid trap removed.
     AcidTrap,
+    /// A track narrower than its net wants widened (`--widen`).
+    Widen,
 }
 
 impl Kind {
@@ -131,6 +145,7 @@ impl Kind {
             Kind::Via => "dangling via",
             Kind::Stub => "stub",
             Kind::AcidTrap => "acid trap",
+            Kind::Widen => "narrow track",
         }
     }
 }
@@ -171,6 +186,8 @@ pub struct Counts {
     pub vias: usize,
     pub stubs: usize,
     pub acid_traps: usize,
+    /// Narrow tracks widened (`--widen`).
+    pub widened: usize,
 }
 
 /// What [`tidy`] did, or with `dry_run` would do.
@@ -178,6 +195,8 @@ pub struct Counts {
 pub struct Tidied {
     pub board: String,
     pub dry_run: bool,
+    /// Whether narrow tracks were widened too (`--widen`).
+    pub widen: bool,
     pub counts: Counts,
     /// The changes made, in the order they were made.
     pub changes: Vec<Change>,
@@ -211,7 +230,7 @@ impl Tidied {
         use std::fmt::Write as _;
         let mut s = String::new();
         let c = &self.counts;
-        let _ = writeln!(
+        let _ = write!(
             s,
             "{}: {} {} corner(s), {} collinear pair(s), {} dangling via(s), {} stub(s), {} acid trap(s)",
             self.board,
@@ -222,6 +241,15 @@ impl Tidied {
             c.stubs,
             c.acid_traps
         );
+        if self.widen {
+            let _ = write!(
+                s,
+                ", {} narrow track(s) {}",
+                c.widened,
+                if self.dry_run { "to widen" } else { "widened" }
+            );
+        }
+        let _ = writeln!(s);
         let line = |s: &mut String, c: &Change| {
             let layer = c
                 .layer
@@ -293,6 +321,7 @@ pub fn tidy_files(
     board: &Board,
     layout: &Path,
     reuse_routes: bool,
+    widen: bool,
     dry_run: bool,
 ) -> Result<Tidied, String> {
     let file = beside_layout(layout);
@@ -318,11 +347,13 @@ pub fn tidy_files(
             Err(why) => notes.push(format!("{why}; the routes file is tidied alone")),
         }
     }
-    let mut tidied = tidy(
+    let mut tidied = tidy_passes(
         board,
         &routes,
         kept.as_ref()
             .map(|(k, stale)| KeptCopper { kept: k, stale }),
+        Checking::Near,
+        widen,
     )?;
     tidied.dry_run = dry_run;
     tidied.notes.splice(0..0, notes);
@@ -369,7 +400,19 @@ pub fn tidy_with(
     kept: Option<KeptCopper<'_>>,
     checking: Checking,
 ) -> Result<Tidied, String> {
+    tidy_passes(board, routes, kept, checking, false)
+}
+
+/// [`tidy_with`], and with `widen` the narrow tracks widened too (the module's header).
+pub fn tidy_passes(
+    board: &Board,
+    routes: &Routes,
+    kept: Option<KeptCopper<'_>>,
+    checking: Checking,
+    widen: bool,
+) -> Result<Tidied, String> {
     let mut work = Work::new(board, routes, kept.as_ref())?;
+    work.widen = widen;
     let first = work.look(&work.copper.clone())?;
     let mut look = first.clone();
     let mut made: Vec<Change> = Vec::new();
@@ -410,6 +453,7 @@ pub fn tidy_with(
             Kind::Via => counts.vias += 1,
             Kind::Stub => counts.stubs += 1,
             Kind::AcidTrap => counts.acid_traps += 1,
+            Kind::Widen => counts.widened += 1,
         }
     }
     let new_routes = work.routes_of(&work.copper);
@@ -421,6 +465,7 @@ pub fn tidy_with(
     Ok(Tidied {
         board: board.name.clone(),
         dry_run: false,
+        widen,
         counts,
         changes: made,
         refused: refused.into_values().collect(),
@@ -449,6 +494,8 @@ struct Wire {
     /// Locked, or of a locked net: never changed.
     fixed: bool,
     alive: bool,
+    /// Made by a widening: not widened again.
+    widened: bool,
     /// Where it is written: the place of the track it replaced, then the order it was made in.
     rank: (usize, usize),
 }
@@ -519,6 +566,8 @@ struct Work<'a> {
     reach: f64,
     /// The connections left to route of the copper as it is now, sorted.
     lines: Vec<String>,
+    /// Whether narrow tracks are widened too.
+    widen: bool,
     checks: usize,
     items: usize,
 }
@@ -552,6 +601,7 @@ impl<'a> Work<'a> {
                     was: Some(t.clone()),
                     fixed: record.lock || t.lock || !current,
                     alive: true,
+                    widened: false,
                     rank: (n, 0),
                 });
             }
@@ -592,6 +642,7 @@ impl<'a> Work<'a> {
                         was: None,
                         fixed,
                         alive: true,
+                        widened: false,
                         rank: (n, 0),
                     });
                 }
@@ -628,12 +679,18 @@ impl<'a> Work<'a> {
         }
         let mut whole = shell.clone();
         whole.parts = parts.clone();
+        // The zones are raised above the pours drawn under them, as the board file has them
+        // (`Board::zone_lift`, issue #1314).
+        let lift = shell.zone_lift();
         let mut zones = shell.zones.clone();
+        for z in &mut zones {
+            z.priority = z.priority.saturating_add(lift);
+        }
         zones.extend(
             netsmith_pcb::process_zones(&whole)
                 .into_iter()
                 .map(|(net, z)| z.on(&whole, &net))
-                .filter(|z| !z.layers.iter().any(|l| shell.zoned(l))),
+                .filter(|z| !z.layers.iter().any(|l| shell.replaced(l, &z.net))),
         );
         Ok(Work {
             board,
@@ -649,6 +706,7 @@ impl<'a> Work<'a> {
             grid,
             reach,
             lines: Vec::new(),
+            widen: false,
             checks: 0,
             items: 0,
         })
@@ -1158,7 +1216,59 @@ impl<'a> Work<'a> {
                 push(Some(c), &mut out);
             }
         }
+        if self.widen {
+            for i in 0..self.copper.wires.len() {
+                push(self.widening(i, &attempt), &mut out);
+            }
+        }
         out
+    }
+
+    /// The narrow track `i` widened, in the form after those refused: none when it is as wide
+    /// as its net wants, was widened already, or cannot be changed.
+    fn widening(&self, i: usize, attempt: &dyn Fn(&Key) -> usize) -> Option<Candidate> {
+        if !self.editable(i) || self.copper.wires[i].widened {
+            return None;
+        }
+        let w = &self.copper.wires[i];
+        let t = &w.track;
+        let wanted = wanted_width(self.board, &t.net, t.layer);
+        if t.width >= wanted - 1e-6 {
+            return None;
+        }
+        let at = Pt::new((t.from.x + t.to.x) / 2.0, (t.from.y + t.to.y) / 2.0);
+        let key = self.key(Kind::Widen, &t.net, Some(t.layer), at);
+        let tried = attempt(&key);
+        let share = *WIDENINGS.get(tried)?;
+        let width = if tried == 0 {
+            wanted
+        } else {
+            // Part of the way, to the 0.01 mm below.
+            ((t.width + share * (wanted - t.width)) * 100.0 + 1e-9).floor() / 100.0
+        };
+        if width <= t.width + 1e-6 {
+            return None;
+        }
+        let mut wider = t.clone();
+        wider.width = width;
+        let said = if tried == 0 {
+            format!(
+                "widened from {:.3} mm to the {:.3} mm its net wants",
+                t.width, wanted
+            )
+        } else {
+            format!(
+                "widened from {:.3} mm to {:.3} mm, of the {:.3} mm its net wants: the clearance to its neighbours allows no more",
+                t.width, width, wanted
+            )
+        };
+        Some(Candidate {
+            key,
+            change: self.change(Kind::Widen, &t.net, Some(t.layer), at, w.owner, said),
+            remove_wires: vec![i],
+            remove_holes: Vec::new(),
+            add: vec![wider],
+        })
     }
 
     fn key(&self, kind: Kind, net: &str, layer: Option<CopperLayer>, at: Pt) -> Key {
@@ -1614,9 +1724,36 @@ fn apply(board: &Board, copper: &mut Copper, c: &Candidate) {
             was: None,
             fixed: false,
             alive: true,
+            widened: c.change.kind == Kind::Widen,
             rank: (rank.0, rank.1 + n + 1),
         });
     }
+}
+
+/// The width a track of `net` on `layer` is widened to by `--widen` (issue #1294): the width the
+/// router draws the net at there ([`Board::track_width_on`]: its rails' width, never less than
+/// the rules' track width, the width an inner layer needs for its current, or the width of its
+/// impedance target). A net with pins that state the current of their branch (issue #1113) has
+/// lines drawn at the branch's width as well as at the net's, and a track is not told which
+/// line it is of: it is widened to the narrowest of those, so that no branch is made wider
+/// than the router would draw it.
+pub fn wanted_width(board: &Board, net: &str, layer: CopperLayer) -> f64 {
+    let width = board.track_width_on(net, layer);
+    if board.impedance_widths.iter().any(|w| w.net == net) {
+        return width;
+    }
+    board
+        .branch_currents
+        .iter()
+        .filter(|b| b.net == net)
+        .map(|b| {
+            let w = b.width.max(board.rules.track_width);
+            match b.inner_least_width.filter(|_| !layer.is_outer()) {
+                Some(least) => w.max((least * 100.0 - 1e-9).ceil() / 100.0),
+                None => w,
+            }
+        })
+        .fold(width, f64::min)
 }
 
 /// Why the board `after` is refused against `before`: its first new finding, or the connections
@@ -1967,7 +2104,8 @@ mod tests {
                 merges: 1,
                 vias: 1,
                 stubs: 0,
-                acid_traps: 1
+                acid_traps: 1,
+                widened: 0,
             },
             "{said}"
         );
@@ -2048,7 +2186,7 @@ mod tests {
         save(&file, &routes).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
         let _ = tidied(&board, &routes, None);
-        let tidied = tidy_files(&board, &layout, false, false).unwrap();
+        let tidied = tidy_files(&board, &layout, false, false, false).unwrap();
         let said = tidied.text();
         assert_eq!(tidied.changes, Vec::new(), "{said}");
         assert_eq!(tidied.refused.len(), 1, "{said}");
@@ -2158,18 +2296,19 @@ mod tests {
         save(&file, &routes).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
         let token = job::Cancel::new();
-        let whole = job::scope(&token, || tidy_files(&board, &layout, false, true)).unwrap();
+        let whole = job::scope(&token, || tidy_files(&board, &layout, false, false, true)).unwrap();
         let reached = token.checkpoints();
         assert!(reached > 2, "{reached} checkpoint(s): {}", whole.text());
         for at in [1, reached / 2, reached] {
             let token = job::Cancel::at_checkpoint(at);
-            let ended =
-                job::catch(|| job::scope(&token, || tidy_files(&board, &layout, false, false)));
+            let ended = job::catch(|| {
+                job::scope(&token, || tidy_files(&board, &layout, false, false, false))
+            });
             assert!(ended.is_err(), "cancelled at checkpoint {at} of {reached}");
             assert_eq!(token.checkpoints(), at, "no work after the cancel");
             assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
         }
-        let done = tidy_files(&board, &layout, false, false).unwrap();
+        let done = tidy_files(&board, &layout, false, false, false).unwrap();
         assert_eq!(done.counts.corners, 1, "{}", done.text());
         assert_ne!(std::fs::read_to_string(&file).unwrap(), text);
     }
