@@ -3859,6 +3859,7 @@
       "max_temperature_rise": null,
       "min_single_sided_assembly_size": 10.0,
       "min_double_sided_assembly_size": 70.0,
+      "assembly_size_source": "https://jlcpcb.com/capabilities/pcb-assembly-capabilities, Economic PCBA (one face) and Standard PCBA (both faces), read 2026-11-19",
       "track_width_tolerance": 0.2,
       "hole_plating": 0.018,
       "finish": "ENIG",
