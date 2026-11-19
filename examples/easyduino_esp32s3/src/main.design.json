@@ -3509,6 +3509,10 @@
           "height": 0.55
         },
         {
+          "path": "bridge_reset_pullup.resistor",
+          "height": 0.4
+        },
+        {
           "path": "bridge_vdd_cap",
           "height": 0.55
         },
@@ -3525,7 +3529,19 @@
           "height": 0.4
         },
         {
+          "path": "power_led_resistor",
+          "height": 0.4
+        },
+        {
           "path": "suspend_pulldown.resistor",
+          "height": 0.4
+        },
+        {
+          "path": "usb_native.cc1_rd",
+          "height": 0.4
+        },
+        {
+          "path": "usb_native.cc2_rd",
           "height": 0.4
         },
         {
@@ -3533,8 +3549,20 @@
           "height": 0.23
         },
         {
+          "path": "usb_uart.cc1_rd",
+          "height": 0.4
+        },
+        {
+          "path": "usb_uart.cc2_rd",
+          "height": 0.4
+        },
+        {
           "path": "usb_uart_diode",
           "height": 0.23
+        },
+        {
+          "path": "user_led_resistor",
+          "height": 0.4
         },
         {
           "path": "v3v3_100n",

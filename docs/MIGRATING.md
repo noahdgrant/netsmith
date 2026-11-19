@@ -13,6 +13,18 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+### `TrackPath` gains `.frequency`, `Stackup` gains `.loss_tangent` (issue #1405)
+
+`std::sources::TrackPath` declares `.frequency`, the frequency its tracks' loss is worked out at, and `std::mfg::stackup::Stackup` declares `.loss_tangent`, the build-up's dissipation factor. A use's block or a provider of yours that declared either member stops at the declaration:
+
+```text
+error: `frequency` is declared by `TrackPath`; do not declare it again in a use of it: narrow it with `.frequency &= ...`, or state it with a relation
+```
+
+Delete the declaration and keep the narrowing (`.rf.frequency &= 2.4GHz`, `.process.stackup.loss_tangent &= 0.02`). `.budget_loss` is now judged when `.frequency` is stated and the build-up has a loss tangent; no build-up of the standard library states one, so a board that states neither builds as before.
+
+There is no ADR: the owner decided it on the issue.
+
 ### `LoadSwitch` gains `.needs` (issue #1402)
 
 `std::parts::switch::LoadSwitch` declares `.needs: String optional`, what a board needs of a load switch's order code, so that a board that uses the generic reaches it (`.sw: LoadSwitch`, then `.sw.needs &= QuickDischarge`) and a provider with a `.variants` table fills it. A provider of yours that declared a member `.needs` for itself stops at the declaration:

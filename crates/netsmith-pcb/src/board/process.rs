@@ -625,9 +625,26 @@ impl Board {
             .sum()
     }
 
+    /// The loss of the tracks of all the nets of a `TrackPath` together, in dB, at its
+    /// `.frequency` (issue #1405): each track's length times the loss per mm of its width on its
+    /// layer ([`crate::loss_per_mm`]). `None` when the path states no frequency; an error that
+    /// says why when a track has no figure (no build-up, no loss tangent recorded for it, a
+    /// width outside a formula's domain). The parts in series are not counted.
+    pub fn track_path_loss(&self, path: &netsmith_core::TrackPath) -> Option<Result<f64, String>> {
+        let f = path.frequency?;
+        let mut total = 0.0;
+        for t in self.tracks.iter().filter(|t| path.nets.contains(&t.net)) {
+            match crate::loss_per_mm(&self.process.stackup, t.layer.name(), t.width, f) {
+                Ok(l) => total += l.total() * t.length(),
+                Err(e) => return Some(Err(e.to_string())),
+            }
+        }
+        Some(Ok(total))
+    }
+
     /// One line of `fab-notes.txt` for each `TrackPath` of the design (issue #1275): its chain,
-    /// its routed length against its budget, its loss budget (listed, not measured), its
-    /// corners and its fence.
+    /// its routed length against its budget, its loss at its frequency against its loss budget
+    /// (issue #1405), its corners and its fence.
     pub fn track_path_lines(&self) -> Vec<String> {
         self.track_paths
             .iter()
@@ -644,11 +661,31 @@ impl Board {
                     Some(b) => format!("{length:.2} mm of track, within its length budget of {b} mm"),
                     None => format!("{length:.2} mm of track"),
                 };
-                let loss = match p.budget_loss {
-                    Some(l) => format!(
-                        "; its loss budget of {l} dB is not measured (netsmith has no loss model of a track, issue 1405)"
+                let loss = match (self.track_path_loss(p), p.budget_loss) {
+                    (None, Some(l)) => format!(
+                        "; its loss budget of {l} dB is not judged: the path states no `.frequency` to work the loss out at"
                     ),
-                    None => String::new(),
+                    (None, None) => String::new(),
+                    (Some(Err(e)), Some(l)) => format!(
+                        "; its loss budget of {l} dB is not judged: no loss at {}: {e}",
+                        crate::hertz(p.frequency.unwrap_or(0.0))
+                    ),
+                    (Some(Err(e)), None) => format!(
+                        "; no loss at {}: {e}",
+                        crate::hertz(p.frequency.unwrap_or(0.0))
+                    ),
+                    (Some(Ok(got)), budget) => {
+                        let at = crate::hertz(p.frequency.unwrap_or(0.0));
+                        match budget {
+                            Some(l) if got > l + 1e-9 => format!(
+                                "; {got:.3} dB of track loss at {at}, OVER its loss budget of {l} dB: shorten the path or widen its tracks on a thicker dielectric"
+                            ),
+                            Some(l) => format!(
+                                "; {got:.3} dB of track loss at {at}, within its loss budget of {l} dB"
+                            ),
+                            None => format!("; {got:.3} dB of track loss at {at}"),
+                        }
+                    }
                 };
                 let corner = match p.corner {
                     netsmith_core::TrackCorner::Rounded => "",

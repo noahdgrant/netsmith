@@ -2348,6 +2348,10 @@
           "height": 0.8
         },
         {
+          "path": "lights.led_c",
+          "height": 0.9
+        },
+        {
           "path": "lights.r_a",
           "height": 0.5
         },
@@ -2416,6 +2420,14 @@
           "height": 9.2
         },
         {
+          "path": "pullups.scl_pullup",
+          "height": 0.4
+        },
+        {
+          "path": "pullups.sda_pullup",
+          "height": 0.4
+        },
+        {
           "path": "radio.bypass",
           "height": 0.55
         },
@@ -2428,8 +2440,20 @@
           "height": 8.5
         },
         {
+          "path": "rd1",
+          "height": 0.55
+        },
+        {
+          "path": "rd2",
+          "height": 0.55
+        },
+        {
           "path": "usb",
           "height": 3.2
+        },
+        {
+          "path": "wp_pullup",
+          "height": 0.55
         },
         {
           "path": "wp_switch",
