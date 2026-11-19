@@ -124,6 +124,12 @@ fn fit(
     })
 }
 
+/// An area carried over a connector: its corner nearest the origin, its size and its corners.
+pub type Carried = ((f64, f64), (f64, f64), Vec<(f64, f64)>);
+
+/// A connector's pads, by number, in its own footprint's frame.
+type Pads = Vec<(String, Pt)>;
+
 /// The other connector's `.underside_keepout` (issue #1335) carried over `host`'s connector:
 /// `keepout` is in the other connector's own frame (`partner`, its pads there, as on the top
 /// face), and the result in the host connector's frame, a polygon when the keepout is one or
@@ -133,7 +139,7 @@ pub fn carried_underside(
     partner: &[(String, Pt)],
     keepout: &Keepout,
     pairs: &[(String, String)],
-) -> Result<((f64, f64), (f64, f64), Vec<(f64, f64)>), String> {
+) -> Result<Carried, String> {
     // In its own frame the other connector is as on the top face, so its board faces back.
     let moved = fit(host, partner, Side::Front, pairs)?;
     let (x, y) = keepout.at.unwrap_or((0.0, 0.0));
@@ -437,7 +443,7 @@ fn local_pads(
     host_part: &str,
     partner: &Member,
     partner_part: &str,
-) -> Option<(Vec<(String, Pt)>, Vec<(String, Pt)>)> {
+) -> Option<(Pads, Pads)> {
     let pads = |m: &Member, path: &str| {
         let p = m.unplaced.parts.iter().find(|x| x.path == path)?;
         Some(
