@@ -2,7 +2,7 @@
 //! on (issue 1269).
 
 import std::parts::transistor::PMosfet
-import std::sources::Rail
+import std::sources::{Rail, Reverse}
 
 /// A load switch IC: a switch between two rails that shares their ground, on when its enable is
 /// high. A concrete IC is a `part X provides LoadSwitch` that writes its pin table, against the
@@ -28,8 +28,10 @@ import std::sources::Rail
 /// active low is not this generic.
 ///
 /// Not checked: the switch's own heat (the drop times the load), its turn-on time and inrush
-/// current, its reverse-current blocking, and an output that a switch which is off pulls down
-/// (a quick output discharge).
+/// current, and an output that a switch which is off pulls down (a quick output discharge). Its
+/// reverse behaviour is data, `.reverse` (issue #1258): a board's `scenario` reads it, through
+/// the on resistance while the switch is on and the body diode while it is off, unless it
+/// blocks.
 #[kind(ic)]
 generic LoadSwitch {
     .designator &= "U"
@@ -56,6 +58,10 @@ generic LoadSwitch {
     /// states nothing has the default, none.
     .quiescent_current: Current
     .quiescent_current ?= 0A
+    /// What the switch does with current from its output back to its input (issue #1258). The
+    /// default is a body diode (`std::sources::Reverse`); an IC with reverse-current blocking
+    /// states `.reverse.path &= ReversePath::Blocking`.
+    .reverse: Reverse
 
     // What the input draws is what the output supplies and the quiescent current, and the
     // output is the input less the drop across the switch.

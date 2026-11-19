@@ -35,6 +35,7 @@ mod polygon;
 mod providers;
 mod rf;
 mod row;
+mod scenario;
 mod sequence;
 mod shared;
 mod support;
@@ -61,8 +62,8 @@ pub use model::{
     Member, Model, NearSelect, Net, NetRoute, OptionalMark, OutlinePolygon, PartRules, Peripheral,
     PeripheralBus, PeripheralFunction, PinAssignment, PinDistance, PinKind, PinRequest, PinRow,
     PinTable, Pinout, PolygonCorner, Provider, RExpr, RangeEnd, Relation, Requirement, Role,
-    RowLimit, SequenceEvent, SequenceOrder, SharedMember, SharedRes, Snapshot, SupplyRow,
-    SupplySteps, Tie, Unused, VoltageSteps, Written,
+    RowLimit, Scenario, ScenarioPath, SequenceEvent, SequenceOrder, SharedMember, SharedRes,
+    Snapshot, SupplyRow, SupplySteps, Tie, Unused, VoltageSteps, Written,
 };
 pub use pinedit::edit_entry;
 pub use pinfile::{BusEntry, EntrySource, PinEntry, PinFile, PinFileError};

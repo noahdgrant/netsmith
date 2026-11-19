@@ -410,13 +410,21 @@ fn split_blocks(lines: Vec<Line>) -> Vec<Line> {
 }
 
 /// The words that begin a definition (`board`, `part`, ... and a physical file's `physical`) or
-/// a section of one (`pins`, `lines`, `support`, `layout`, `defaults`, `case`, `sequence`): a block whose
+/// a section of one (`pins`, `lines`, `support`, `layout`, `defaults`, `case`, `sequence`, `scenario`): a block whose
 /// statements are always one to a line, as rustfmt lays out the body of a function.
 fn is_item_word(word: &str) -> bool {
     DefKind::from_keyword(word).is_some()
         || matches!(
             word,
-            "physical" | "pins" | "lines" | "support" | "layout" | "defaults" | "case" | "sequence"
+            "physical"
+                | "pins"
+                | "lines"
+                | "support"
+                | "layout"
+                | "defaults"
+                | "case"
+                | "sequence"
+                | "scenario"
         )
 }
 
