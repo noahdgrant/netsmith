@@ -803,6 +803,188 @@ fn spanning_tree(
     lines
 }
 
+/// A track end or a via of a net that runs into nothing of its net: [`open_ends`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct OpenEnd {
+    /// The track or via, as the index of the list [`open_ends`] was given.
+    pub copper: OpenCopper,
+    /// The track's end, or the via's centre, on the sheet.
+    pub at: Pt,
+    /// The pad of the net nearest to it: where the copper most likely ran before the pad moved.
+    pub pad: Option<PadRef>,
+}
+
+/// What an [`OpenEnd`] is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpenCopper {
+    Track(usize),
+    Via(usize),
+}
+
+/// The ends of `tracks` and the `vias` (indices into [`Board::tracks`] and [`Board::vias`], all
+/// of `net`) that run into nothing of the net on the board: no pad, no other track or via, no
+/// pour, plane or zone of the net on their layer. A routes file's record whose pads moved keeps
+/// its copper, and these are where it is open (issue #1328): the copper that ran to a pad that
+/// is no longer there. Copper joins as the ratsnest joins it (the module's header); a pour or a
+/// plane of the net on the layer joins anything (its fill is not computed), a zone what its
+/// outline holds.
+pub fn open_ends(board: &Board, net: &str, tracks: &[usize], vias: &[usize]) -> Vec<OpenEnd> {
+    let layers = board.copper_count();
+    let Some(board_net) = board.nets.iter().find(|n| n.name == net) else {
+        return Vec::new();
+    };
+    let nodes = nodes_of(&board.parts, board_net);
+    let all_tracks: Vec<(usize, &Track)> = board
+        .tracks
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| t.net == net)
+        .collect();
+    let all_vias: Vec<(usize, &Via)> = board
+        .vias
+        .iter()
+        .enumerate()
+        .filter(|(_, v)| v.net == net)
+        .collect();
+    let poured = |layer: CopperLayer, at: Pt| {
+        board.pours.iter().any(|p| p.net == net && p.layer == layer)
+            || board
+                .planes
+                .iter()
+                .any(|p| p.net == net && CopperLayer::of_name(&p.layer) == Some(layer))
+            || board.zones.iter().any(|z| {
+                z.net == net && z.layers.iter().any(|l| l == layer.name()) && inside(&z.outline, at)
+            })
+    };
+    let nearest = |at: Pt| {
+        nodes
+            .iter()
+            .min_by(|a, b| a.centre.distance(at).total_cmp(&b.centre.distance(at)))
+            .map(|n| n.pad.clone())
+    };
+    let mut out = Vec::new();
+    for (k, &i) in tracks.iter().enumerate() {
+        let track = &board.tracks[i];
+        for end in [track.from, track.to] {
+            let reach = track.width / 2.0;
+            let joined = nodes
+                .iter()
+                .any(|n| on_pad(n, end, reach, Some(track.layer)))
+                || all_tracks.iter().any(|&(j, other)| {
+                    j != i
+                        && other.layer == track.layer
+                        && (near(end, other.from)
+                            || near(end, other.to)
+                            || runs_into(other.distance_to(end), reach + other.width / 2.0))
+                })
+                || all_vias.iter().any(|&(_, via)| {
+                    via.on(track.layer, layers)
+                        && (near(via.at, end)
+                            || runs_into(via.at.distance(end), reach + via.diameter / 2.0))
+                })
+                || poured(track.layer, end);
+            if !joined {
+                out.push(OpenEnd {
+                    copper: OpenCopper::Track(k),
+                    at: end,
+                    pad: nearest(end),
+                });
+            }
+        }
+    }
+    for (k, &i) in vias.iter().enumerate() {
+        let via = &board.vias[i];
+        let reach = via.diameter / 2.0;
+        let on_layers = |l: CopperLayer| via.on(l, layers);
+        let joined = nodes.iter().any(|n| {
+            let shares = (n.front && on_layers(CopperLayer::Front))
+                || (n.back && on_layers(CopperLayer::Back))
+                || (n.front && n.back);
+            shares && on_pad(n, via.at, reach, None)
+        }) || all_tracks.iter().any(|&(_, t)| {
+            on_layers(t.layer)
+                && (near(via.at, t.from)
+                    || near(via.at, t.to)
+                    || runs_into(t.distance_to(via.at), reach + t.width / 2.0))
+        }) || all_vias.iter().any(|&(j, other)| {
+            j != i && runs_into(other.at.distance(via.at), reach + other.diameter / 2.0)
+        }) || [CopperLayer::Front, CopperLayer::Back]
+            .into_iter()
+            .chain((1..layers.saturating_sub(1)).map(|n| CopperLayer::Inner(n as u8)))
+            .any(|l| on_layers(l) && poured(l, via.at));
+        if !joined {
+            out.push(OpenEnd {
+                copper: OpenCopper::Via(k),
+                at: via.at,
+                pad: nearest(via.at),
+            });
+        }
+    }
+    // A piece of the copper that reaches one pad or none ran to a pad no longer there, even
+    // where each of its ends lies on its own copper (a short track into a pad, beside the
+    // track it leaves): it is open at its end farthest from the pad it reaches, named by the
+    // nearest pad of the net that none of the copper reaches. A net a pour, a plane or a zone
+    // joins is left to the ends above, as the fill may join the piece.
+    if !crate::net_is_poured(board, net) && !nodes.is_empty() {
+        let ts: Vec<&Track> = tracks.iter().map(|&i| &board.tracks[i]).collect();
+        let vs: Vec<&Via> = vias.iter().map(|&i| &board.vias[i]).collect();
+        let (n, t) = (nodes.len(), ts.len());
+        let mut sets = Sets::new(n + t + vs.len());
+        for (a, b) in copper_joins(layers, &nodes, &ts, &vs) {
+            sets.join(a, b);
+        }
+        let roots: Vec<usize> = (0..n + t + vs.len()).map(|i| sets.find(i)).collect();
+        let reached: Vec<bool> = (0..n).map(|i| roots[n..].contains(&roots[i])).collect();
+        let mut done: Vec<usize> = Vec::new();
+        for first in n..n + t + vs.len() {
+            let root = roots[first];
+            if done.contains(&root) {
+                continue;
+            }
+            done.push(root);
+            let pads: Vec<usize> = (0..n).filter(|&i| roots[i] == root).collect();
+            if pads.len() > 1 {
+                continue;
+            }
+            let ends: Vec<(OpenCopper, Pt)> = (n..n + t + vs.len())
+                .filter(|&i| roots[i] == root)
+                .flat_map(|i| {
+                    if i < n + t {
+                        let tr = ts[i - n];
+                        vec![
+                            (OpenCopper::Track(i - n), tr.from),
+                            (OpenCopper::Track(i - n), tr.to),
+                        ]
+                    } else {
+                        vec![(OpenCopper::Via(i - n - t), vs[i - n - t].at)]
+                    }
+                })
+                .collect();
+            if ends
+                .iter()
+                .any(|(c, _)| out.iter().any(|o: &OpenEnd| o.copper == *c))
+            {
+                continue;
+            }
+            let from = pads.first().map(|&i| nodes[i].centre);
+            let far = ends.iter().max_by(|a, b| {
+                let d = |p: Pt| from.map_or(0.0, |f| f.distance(p));
+                d(a.1).total_cmp(&d(b.1))
+            });
+            let Some(&(copper, at)) = far else { continue };
+            let pad = nodes
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| !reached[*i])
+                .min_by(|a, b| a.1.centre.distance(at).total_cmp(&b.1.centre.distance(at)))
+                .map(|(_, node)| node.pad.clone())
+                .or_else(|| nearest(at));
+            out.push(OpenEnd { copper, at, pad });
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use netsmith_core::{Design, Net, Part, PinRef};
@@ -834,6 +1016,53 @@ mod tests {
             .sum();
         assert!((rats.total_length() - direct).abs() < 1e-9);
         assert!(rats.total_length() > 0.0);
+    }
+
+    #[test]
+    fn a_track_whose_pad_moved_is_open_at_that_pad_and_one_on_its_pads_is_not() {
+        // Issue #1328: a track from pad to pad of a net, then one part moved.
+        let mut board = crate::board::tests::led_board();
+        let net = board.nets[0].clone();
+        let centre = |board: &Board, p: &PadRef| {
+            let part = board.part(&p.refdes).unwrap();
+            part.pad_centre(part.footprint.pads_numbered(&p.number).next().unwrap())
+        };
+        let (a, b) = (centre(&board, &net.pads[0]), centre(&board, &net.pads[1]));
+        board.tracks.clear();
+        board.vias.clear();
+        board
+            .tracks
+            .push(Track::straight(&net.name, CopperLayer::Front, a, b, 0.25));
+        assert_eq!(open_ends(&board, &net.name, &[0], &[]), []);
+
+        let moved = net.pads[1].clone();
+        let part = board
+            .parts
+            .iter_mut()
+            .find(|p| p.refdes == moved.refdes)
+            .unwrap();
+        // Across the track, so that the pad does not land on its line.
+        let len = a.distance(b);
+        part.at = part.at + Pt::new(-(b.y - a.y) / len * 3.0, (b.x - a.x) / len * 3.0);
+        let open = open_ends(&board, &net.name, &[0], &[]);
+        assert_eq!(
+            open,
+            [OpenEnd {
+                copper: OpenCopper::Track(0),
+                at: b,
+                pad: Some(moved),
+            }]
+        );
+
+        // A via at the open end joins it; the via, joined by the track, is not open itself.
+        board.vias.push(Via {
+            net: net.name.clone(),
+            at: b,
+            diameter: 0.6,
+            drill: 0.3,
+            span: None,
+        });
+        assert_eq!(open_ends(&board, &net.name, &[0], &[0]), []);
     }
 
     #[test]
