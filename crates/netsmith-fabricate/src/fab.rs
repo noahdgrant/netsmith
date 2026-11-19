@@ -1479,6 +1479,17 @@ fn fab_board(
                 Err(e) => say(format!("{}: warning: {e}", built.label())),
             }
         }
+        // A diff pair routed as two separate lines says so (issue #1295).
+        if let Some(sep) = &routing.separate {
+            for (p, n) in &sep.pairs {
+                say(format!(
+                    "{}: diff pair {p}/{n} routed as two separate lines: routed as pairs, the board left {} connections, as two lines {}; its lines do not run side by side, and on a board routed completely the meander matches its lengths",
+                    built.label(),
+                    sep.left_as_pairs,
+                    sep.left
+                ));
+            }
+        }
         // A diff pair whose meanders could not match it says the skew it keeps (issue #431, S11).
         for p in &routing.pairs {
             if p.after > p.limit {

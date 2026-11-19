@@ -149,6 +149,32 @@ fn a_decoupling_line_is_not_ripped_up_for_a_line_of_a_later_class() {
 }
 
 #[test]
+fn a_pair_routed_as_two_lines_is_ripped_up_as_any_line_is() {
+    // Issue #1295: the try that routes a board's pairs as two lines takes away what sets a
+    // pair's lines apart before the pairs' pass, its class and its partner.
+    let board = led_board();
+    let mut router = Router::new(&board, &RouteOptions::default());
+    let (a, b) = (0..router.lines.len())
+        .flat_map(|a| (0..router.lines.len()).map(move |b| (a, b)))
+        .find(|&(a, b)| {
+            router.nets[a] != router.nets[b]
+                && !router.lines[a].to_plane
+                && !router.lines[b].to_plane
+        })
+        .unwrap();
+    let state = across(&router, a, b);
+    router.class[a] = Class::Pair;
+    router.class[b] = Class::Rest;
+    router.partners[router.nets[a]] = Some(router.nets[b]);
+    router.classed.set(true);
+    assert_eq!(router.protected(b, &state), [a]);
+    router.unpair();
+    assert!(router.partners.iter().all(Option::is_none));
+    assert_ne!(router.class[a], Class::Pair);
+    assert!(router.protected(b, &state).is_empty());
+}
+
+#[test]
 fn a_board_that_routes_on_its_first_try_has_the_same_copper_with_or_without_classes() {
     for design in [crate::testlib::led_design(), four_layer_design()] {
         let route_once = |classes| {
