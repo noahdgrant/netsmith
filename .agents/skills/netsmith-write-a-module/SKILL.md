@@ -38,7 +38,7 @@ When several parts or modules can do one job (two connectors, two regulator ICs)
 
 ## Boards that plug into each other
 
-A module is a circuit on one board; a connector between boards is not a module. Wire a connector on the board and mate it in a `system` (`.carrier.slot.mating ~ .card.j1.mating`): a system reaches a connector's `.mating` and nothing else of the board, so a module cannot offer its connector's pins to a system. Put the connector on the board, and expose to it the rail or bus the module has (`.stage.vout ~ .out`, then `.out.pos ~ .j1.p2`). Share the card's circuit between boards as a module, and the connector on each board.
+A module is a circuit on one board; a connector between boards is not a module. Mate a connector in a `system` (`.carrier.slot.mating ~ .card.j1.mating`): a system reaches a connector's `.mating` and nothing else of the board. A connector may sit inside a module (a bay with its socket, used once for each card); the system then names it by its path, `.carrier.bay.sock.mating`, and reaches nothing else of the module, so its ports are not the system's: the board joins the module's rail to a rail of its own, and the mate joins the board's rails behind the contacts. Share the card's circuit between boards as a module.
 
 ## Check
 

@@ -31,9 +31,10 @@
 //! name, ten lines per connector); a `harness` or `connection` definition with an explicit pin map
 //! (the general answer for adapters, cables that swap order and wire to board; heavier than the kit
 //! needs, and the mate is its N-to-N special case, so it can come later without replacing the
-//! mate). **The reach rule:** a system reaches the `.mating` of a connector a board declares
-//! directly, never its pins and never any other part: the connector's declared interface, ADR
-//! 0004's rule applied to a part. Rejected: the board declares a port `.deck: Mating` and ties it
+//! mate). **The reach rule:** a system reaches the `.mating` of a connector of a board, never its
+//! pins and never any other part: the connector's declared interface, ADR 0004's rule applied to
+//! a part. A connector inside a module is named by its path through the modules
+//! (`.carrier.bay.sock.mating`, issue #1325), and the system reaches nothing else of a module. Rejected: the board declares a port `.deck: Mating` and ties it
 //! to the connector, which changes no rule but costs two lines per connector and a second
 //! description of the connector that can disagree with the part.
 //!
