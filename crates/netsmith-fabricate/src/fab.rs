@@ -1348,6 +1348,23 @@ fn fab_board(
         for walled in board.walled_pads() {
             say(format!("{}: warning: {walled}", built.label()));
         }
+        // A part nearer a part with a `soft margin` than the margin asks (issue 1310): the placer
+        // kept it out where it could. A warning, and an error when the run is strict.
+        let broken = board.soft_margins_broken();
+        if catalogs.strict_guidelines() && !broken.is_empty() {
+            return Err(broken
+                .iter()
+                .map(|b| {
+                    fail(format!(
+                        "{b}; this is an error because the run is strict (`--strict` or `guidelines = \"error\"`)"
+                    ))
+                })
+                .collect::<String>()
+                .into());
+        }
+        for b in &broken {
+            say(format!("{}: warning: {b}", built.label()));
+        }
         // Two parts where an imported KiCad board has them may share courtyard area: that
         // board was made with its own footprints (`Board::imported`).
         for overlap in board.imported_overlaps() {

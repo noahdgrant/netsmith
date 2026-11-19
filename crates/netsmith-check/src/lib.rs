@@ -36,6 +36,7 @@ mod providers;
 mod row;
 mod sequence;
 mod shared;
+mod soft_margin;
 mod support;
 mod unused;
 
@@ -60,8 +61,8 @@ pub use model::{
     Member, Model, NearSelect, Net, OptionalMark, OutlinePolygon, PartRules, Peripheral,
     PeripheralBus, PeripheralFunction, PinAssignment, PinKind, PinRequest, PinRow, PinTable,
     Pinout, PolygonCorner, Provider, RExpr, RangeEnd, Relation, Requirement, Role, RowLimit,
-    SequenceEvent, SequenceOrder, SharedMember, SharedRes, Snapshot, SupplyRow, SupplySteps, Tie,
-    Unused, VoltageSteps, Written,
+    SequenceEvent, SequenceOrder, SharedMember, SharedRes, Snapshot, SoftMargin, SupplyRow,
+    SupplySteps, Tie, Unused, VoltageSteps, Written,
 };
 pub use pinedit::edit_entry;
 pub use pinfile::{BusEntry, EntrySource, PinEntry, PinFile, PinFileError};

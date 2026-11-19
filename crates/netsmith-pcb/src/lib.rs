@@ -71,6 +71,7 @@ mod routes;
 mod rules;
 mod shape;
 mod simplify;
+mod soft_margin;
 mod stackup;
 mod standard_height;
 mod summary;
@@ -185,6 +186,7 @@ pub use routes::{
 pub use rules::{HDI_SIX_BUILD_UP, NetClass, Rules};
 pub use shape::{Edge as ShapeEdge, RoundRect};
 pub use simplify::{distance_to_segment, simplify_ring};
+pub use soft_margin::SoftMarginBroken;
 pub use stackup::{
     LayerKind, StackLayer, layers as stackup_layers, round as round_nm, thickness_tolerance,
 };

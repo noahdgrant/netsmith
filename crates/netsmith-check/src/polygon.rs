@@ -25,7 +25,7 @@ use crate::model::{OutlinePolygon, PolygonCorner, RExpr};
 use netsmith_quantity::{Dimension, Quantity};
 
 /// What a value of a point is, when it is not one fixed length.
-enum NotFixed {
+pub(crate) enum NotFixed {
     /// It reads a field: a relation.
     Relation,
     /// A range or a tolerance.
@@ -37,7 +37,7 @@ enum NotFixed {
 }
 
 /// The value of an expression of constants, in metres, or why it is not one.
-fn fixed(e: &RExpr) -> Result<Quantity, NotFixed> {
+pub(crate) fn fixed(e: &RExpr) -> Result<Quantity, NotFixed> {
     match e {
         RExpr::Const(q) => Ok(*q),
         RExpr::Neg(a) => Ok(fixed(a)?.neg()),
