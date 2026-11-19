@@ -1,6 +1,6 @@
 //! `netsmith import footprint` (issue #1424): a land pattern from a vendor's KiCad board or
-//! footprint file, written into a library of the project, and a board built with it on a machine
-//! with no KiCad.
+//! footprint file or an Eagle library or board (issue #1430), written into a library of the
+//! project, and a board built with it on a machine with no KiCad.
 
 use std::fs;
 use std::path::Path;
@@ -246,7 +246,7 @@ fn what_cannot_be_imported_says_why() {
         ),
         (
             &["src/main.nsm"],
-            "error: src/main.nsm: not a KiCad board (`.kicad_pcb`), footprint (`.kicad_mod`) or `.pretty` folder\n",
+            "error: src/main.nsm: not a KiCad board (`.kicad_pcb`), footprint (`.kicad_mod`) or `.pretty` folder, nor an Eagle board (`.brd`) or library (`.lbr`)\n",
         ),
     ];
     for (args, want) in cases {
@@ -271,4 +271,134 @@ fn what_cannot_be_imported_says_why() {
         "{}",
         text(&run.stderr)
     );
+}
+
+/// An Eagle library of the sensor's one package (issue #1430), written for the test: Eagle's y
+/// grows up, the body is on tDocu, the courtyard on a user layer of that name, and a keepout on a
+/// layer a KiCad footprint has none for.
+const EAGLE_LIBRARY: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE eagle SYSTEM "eagle.dtd">
+<eagle version="9.6.2">
+<drawing>
+<layers>
+<layer number="1" name="Top" color="4" fill="1" visible="yes" active="yes"/>
+<layer number="21" name="tPlace" color="7" fill="1" visible="yes" active="yes"/>
+<layer number="39" name="tKeepout" color="4" fill="11" visible="yes" active="yes"/>
+<layer number="51" name="tDocu" color="7" fill="1" visible="yes" active="yes"/>
+<layer number="200" name="tCourtyard" color="3" fill="1" visible="yes" active="yes"/>
+</layers>
+<library name="probe-parts">
+<packages>
+<package name="SOT-3-SENSOR">
+<smd name="1" x="-0.95" y="-1.1" dx="0.6" dy="0.9" layer="1"/>
+<smd name="2" x="0.95" y="-1.1" dx="0.6" dy="0.9" layer="1"/>
+<smd name="3" x="0" y="1.1" dx="0.6" dy="0.9" layer="1"/>
+<wire x1="-1.45" y1="-0.65" x2="1.45" y2="-0.65" width="0.1" layer="51"/>
+<wire x1="1.45" y1="-0.65" x2="1.45" y2="0.65" width="0.1" layer="51"/>
+<wire x1="1.45" y1="0.65" x2="-1.45" y2="0.65" width="0.1" layer="51"/>
+<wire x1="-1.45" y1="0.65" x2="-1.45" y2="-0.65" width="0.1" layer="51"/>
+<wire x1="-1.6" y1="1.6" x2="-0.5" y2="1.6" width="0.15" layer="21"/>
+<rectangle x1="-1.7" y1="-1.9" x2="1.7" y2="1.9" layer="200"/>
+<rectangle x1="-2" y1="-0.2" x2="2" y2="0.2" layer="39"/>
+<text x="-1.5" y="2" size="0.8" layer="25">&gt;NAME</text>
+<text x="-1.5" y="-2.8" size="0.8" layer="27">&gt;VALUE</text>
+</package>
+</packages>
+</library>
+</drawing>
+</eagle>
+"#;
+
+/// A vendor's Eagle board with the package's part `U3` on the bottom face, turned.
+fn eagle_board() -> String {
+    // The board lists the same layers, its courtyard layer among them.
+    let layers = EAGLE_LIBRARY.find("<layers>").unwrap();
+    let start = EAGLE_LIBRARY.find("<library").unwrap();
+    let end = EAGLE_LIBRARY.find("</library>").unwrap() + "</library>".len();
+    format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<eagle version=\"9.6.2\">\n<drawing>\n{}<board>\n<libraries>\n{}\n</libraries>\n<elements>\n<element name=\"U3\" library=\"probe-parts\" package=\"SOT-3-SENSOR\" value=\"SENSOR-1\" x=\"20\" y=\"30\" rot=\"MR90\"/>\n</elements>\n</board>\n</drawing>\n</eagle>\n",
+        &EAGLE_LIBRARY[layers..start],
+        &EAGLE_LIBRARY[start..end]
+    )
+}
+
+#[test]
+fn an_eagle_librarys_package_becomes_a_footprint_a_board_builds_with() {
+    let dir = TempDir::new("import-footprint-eagle");
+    let dir = dir.path();
+    project(dir, "");
+    fs::write(dir.join("vendor/sensor.lbr"), EAGLE_LIBRARY).unwrap();
+    let run = netsmith(
+        dir,
+        &["import", "footprint", "vendor/sensor.lbr", "--name", "own:Sensor"],
+    );
+    let out = text(&run.stdout);
+    assert!(run.status.success(), "{}{out}", text(&run.stderr));
+    assert!(
+        out.starts_with(
+            "wrote libs/own.pretty/Sensor.kicad_mod (3 pads)\nthe file names it `SOT-3-SENSOR`; it is `Sensor` here\nnote: left out 1 drawing on Eagle's layer tKeepout, which a KiCad footprint has no layer for\n"
+        ),
+        "{out}"
+    );
+    let written = fs::read_to_string(dir.join("libs/own.pretty/Sensor.kicad_mod")).unwrap();
+    for line in [
+        "(footprint \"Sensor\"",
+        "(pad \"1\" smd rect\n\t\t(at -0.95 1.1)",
+        "(pad \"3\" smd rect\n\t\t(at 0 -1.1)",
+        "(layer \"F.CrtYd\")",
+        "(layer \"F.Fab\")",
+        "(layer \"F.SilkS\")",
+        "\"REF**\"",
+    ] {
+        assert!(written.contains(line), "{line}:\n{written}");
+    }
+
+    // The printed rows, with the datasheet's numbers, build the board, the footprint measured
+    // against the table.
+    let start = out.find("[[library]]").unwrap();
+    let end = out.find("\nfill `table`").unwrap();
+    let rows = out[start..end]
+        .replace("kind = \"TODO\"", "kind = \"Sensor\"")
+        .replace("package = \"TODO\"", "package = \"SOT-23\"")
+        .replace("pitch=TODO, body=TODO", "pitch=1.9mm, body=2.9x1.3mm");
+    fs::write(dir.join("kicad.toml"), &rows).unwrap();
+    let build = netsmith(dir, &["board", "build", "--out", "out"]);
+    assert!(build.status.success(), "{rows}\n{}", text(&build.stderr));
+
+    // A board's part gives the same package, drawn from the top though the part is on the bottom.
+    fs::write(dir.join("vendor/eval.brd"), eagle_board()).unwrap();
+    let board = netsmith(
+        dir,
+        &["import", "footprint", "vendor/eval.brd", "--ref", "U3", "--name", "own:FromBoard"],
+    );
+    let out = text(&board.stdout);
+    assert!(board.status.success(), "{}{out}", text(&board.stderr));
+    assert!(
+        out.contains("note: the part is on the bottom face of the board; Eagle keeps its package drawn from the top\n"),
+        "{out}"
+    );
+    let from_board = fs::read_to_string(dir.join("libs/own.pretty/FromBoard.kicad_mod")).unwrap();
+    assert_eq!(
+        from_board.replace("FromBoard", "Sensor"),
+        written,
+        "the board's copy of the package is the library's"
+    );
+
+    let cases: [(&[&str], &str); 2] = [
+        (
+            &["vendor/eval.brd", "--name", "own:X"],
+            "error: vendor/eval.brd: a board holds many footprints: name the part with `--ref REF`\n",
+        ),
+        (
+            &["vendor/sensor.lbr", "--ref", "U3", "--name", "own:X"],
+            "error: vendor/sensor.lbr: `--ref` names a part of a board, and a library the command reads has one footprint\n",
+        ),
+    ];
+    for (args, want) in cases {
+        let mut all = vec!["import", "footprint"];
+        all.extend(args);
+        let run = netsmith(dir, &all);
+        assert_eq!(run.status.code(), Some(2), "{args:?}");
+        assert_eq!(text(&run.stderr), want, "{args:?}");
+    }
 }
