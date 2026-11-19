@@ -250,6 +250,11 @@ fn visit<'a>(
                 path(p, inside);
             }
         }
+        Item::Within(w) => {
+            path(&w.subject, inside);
+            path(&w.pin, inside);
+        }
+        Item::Route(r) => path(&r.pin, inside),
         Item::Bridge(b) => {
             path(&b.from, inside);
             path(&b.to, inside);
@@ -262,6 +267,11 @@ fn visit<'a>(
         Item::Tie(t) => {
             path(&t.a, inside);
             path(&t.b, inside);
+        }
+        Item::Direction(d) => {
+            path(&d.from, inside);
+            path(&d.to, inside);
+            path(&d.control, inside);
         }
         Item::Unused(u) => path(&u.path, inside),
         Item::Sequence(q) => {
@@ -296,6 +306,8 @@ fn visit<'a>(
         Item::Peripheral(_) => {}
         // A part's `.variants` names order codes and features, not members (issue 1311).
         Item::Variants(_) => {}
+        // A part's `pads` block names pads by their numbers, which are text, not members.
+        Item::Pads(_) => {}
         // A polygon's corners are numbers; a path in one is refused by the checker.
         Item::Polygon(_) => {}
         // A module's `physical "..."` names a file, not a member.

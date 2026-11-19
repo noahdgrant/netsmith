@@ -133,6 +133,14 @@ pub fn with_routes(board: &Board, routes: &Routes) -> Result<(Board, Vec<String>
 /// the routes file's frame (mm from the outline's top left corner, y down), the frame the
 /// commands that edit the file take their places in, not KiCad's page.
 pub fn drc_errors(board: &Board) -> Result<Vec<String>, String> {
+    Ok(drc_findings(board)?
+        .iter()
+        .map(ToString::to_string)
+        .collect())
+}
+
+/// [`drc_errors`] as findings, each with its place in the routes file's frame.
+fn drc_findings(board: &Board) -> Result<Vec<netsmith_geom::DrcFinding>, String> {
     let report = netsmith_geom::drc_check(
         &netsmith_pcb::kicad_pcb(board),
         Some(&netsmith_pcb::kicad_pro(board)),
@@ -155,8 +163,26 @@ pub fn drc_errors(board: &Board) -> Result<Vec<String>, String> {
                 x: f.at.x - board.outline.min.x,
                 y: f.at.y - board.outline.min.y,
             };
-            f.to_string()
+            f
         })
+        .collect())
+}
+
+/// The errors of [`drc_errors`] of `board` (placed, with the routes file's copper and no
+/// router's) that name a track, a via or a zone of `net`: the findings of the net's record's
+/// own copper, which `routes lock` refuses for (issue #1328).
+fn own_copper_errors(board: &Board, net: &str) -> Result<Vec<String>, String> {
+    let own = |i: &netsmith_geom::DrcItem| {
+        i.part.is_none()
+            && i.net.as_deref() == Some(net)
+            && ["Track", "Via", "Zone"]
+                .iter()
+                .any(|k| i.what.starts_with(k))
+    };
+    Ok(drc_findings(board)?
+        .iter()
+        .filter(|f| f.items.iter().any(own))
+        .map(ToString::to_string)
         .collect())
 }
 
@@ -330,9 +356,10 @@ impl std::fmt::Display for Refusal {
 }
 
 /// Make `change` to `routes` for `board` (placed, with no routes on it), or refuse it and leave
-/// `routes` as it was. An added or moved shape, a record put back, and a net locked again (which
-/// can draw shapes a record whose pads moved had dropped), is refused when the board with it has
-/// an error of the design rules check that it did not have before. Says what it did.
+/// `routes` as it was. An added or moved shape and a record put back are refused when the board
+/// with it has an error of the design rules check that it did not have before; a lock (which
+/// writes the record again with its pads as they are) when the board has an error of that net's
+/// own copper, whatever other copper's errors the board has (issue #1328). Says what it did.
 pub fn edit(board: &Board, routes: &mut Routes, change: &Edit) -> Result<String, Refusal> {
     edit_all(board, routes, std::slice::from_ref(change))
 }
@@ -393,9 +420,18 @@ pub fn edit_all(board: &Board, routes: &mut Routes, changes: &[Edit]) -> Result<
                 | Edit::MoveTrack { .. }
                 | Edit::MoveVia { .. }
                 | Edit::Restore { .. }
-                | Edit::Lock { on: true, .. }
         )
     });
+    // The nets a lock writes again: refused only for errors of their records' own copper, which
+    // the board has whether or not they are locked (issue #1328).
+    let mut locking: Vec<&str> = changes
+        .iter()
+        .filter_map(|c| match c {
+            Edit::Lock { net, on: true, .. } => Some(net.as_str()),
+            _ => None,
+        })
+        .collect();
+    locking.dedup();
     let mut next = routes.clone();
     let zoned = next
         .boards
@@ -457,7 +493,7 @@ pub fn edit_all(board: &Board, routes: &mut Routes, changes: &[Edit]) -> Result<
     if table.nets.is_empty() {
         next.boards.remove(&board.name);
     }
-    if check {
+    if check || !locking.is_empty() {
         let before = with_routes(board, routes)?.0;
         let after = with_routes(board, &next)?.0;
         if let Some(e) = new_zone_error(&before, &after) {
@@ -465,13 +501,25 @@ pub fn edit_all(board: &Board, routes: &mut Routes, changes: &[Edit]) -> Result<
                 "refused: {e}, and the routes file is not changed"
             )));
         }
-        let new = new_errors(&before, &after)?;
-        if !new.is_empty() {
-            return Err(Refusal::Refused(format!(
-                "refused: the design rules check finds {} new error(s) with it, and the routes file is not changed:\n  {}",
-                new.len(),
-                new.join("\n  ")
-            )));
+        if check {
+            let new = new_errors(&before, &after)?;
+            if !new.is_empty() {
+                return Err(Refusal::Refused(format!(
+                    "refused: the design rules check finds {} new error(s) with it, and the routes file is not changed:\n  {}",
+                    new.len(),
+                    new.join("\n  ")
+                )));
+            }
+        }
+        for net in locking {
+            let own = own_copper_errors(&after, net)?;
+            if !own.is_empty() {
+                return Err(Refusal::Refused(format!(
+                    "refused: the design rules check finds {} error(s) of net {net}'s own copper in the routes file; move or delete those shapes (`netsmith routes delete --net {net} --track N`) and lock again, and the routes file is not changed:\n  {}",
+                    own.len(),
+                    own.join("\n  ")
+                )));
+            }
         }
     }
     *routes = next;
@@ -1294,6 +1342,76 @@ mod tests {
         // Delete of the record takes its zones, and the board's table with it.
         edit(&board, &mut routes, &whole).unwrap();
         assert!(routes.boards.is_empty(), "{routes:?}");
+    }
+
+    #[test]
+    fn lock_is_refused_only_for_errors_of_the_records_own_copper() {
+        // Issue #1328: two records whose pads moved since they were written. GND's track runs
+        // over a pad of VCC, a short of GND's own copper; VCC's track lies inside its other pad.
+        let mut board = led();
+        board.tracks.clear();
+        board.vias.clear();
+        let o = board.outline.min;
+        let pad = |net: &str, k: usize| {
+            let r = &board.nets.iter().find(|n| n.name == net).unwrap().pads[k];
+            let part = board.part(&r.refdes).unwrap();
+            let c = part.pad_centre(part.footprint.pads_numbered(&r.number).next().unwrap());
+            [c.x - o.x, c.y - o.y]
+        };
+        let (vcc, other, layer) = (
+            pad("VCC", 0),
+            pad("VCC", 1),
+            netsmith_pcb::CopperLayer::Front,
+        );
+        let track = |from: [f64; 2], to: [f64; 2]| netsmith_pcb::RouteTrack {
+            layer,
+            width: 0.2,
+            from,
+            mid: None,
+            to,
+            lock: false,
+        };
+        let stale = |t| NetRoutes {
+            pads: "0000000000000000".into(),
+            tracks: vec![t],
+            ..NetRoutes::default()
+        };
+        let mut routes = Routes::default();
+        let table = routes.boards.entry(board.name.clone()).or_default();
+        table.nets.insert(
+            "GND".into(),
+            stale(track([vcc[0] - 1.0, vcc[1]], [vcc[0] + 1.0, vcc[1]])),
+        );
+        table.nets.insert(
+            "VCC".into(),
+            stale(track(other, [other[0], other[1] + 0.05])),
+        );
+        let lock = |net: &str| Edit::Lock {
+            net: net.into(),
+            shape: None,
+            on: true,
+        };
+
+        // GND's own copper shorts: refused, and the error listed.
+        let before = routes.clone();
+        let said = refusal(edit(&board, &mut routes, &lock("GND")));
+        assert!(said.contains("of net GND's own copper"), "{said}");
+        assert_eq!(routes, before);
+
+        // VCC is locked although the board has GND's error, which names a pad of VCC.
+        let said = edit(&board, &mut routes, &lock("VCC")).unwrap();
+        assert!(said.contains("VCC"), "{said}");
+        let record = &routes.boards[&board.name].nets["VCC"];
+        assert!(record.lock);
+        assert_eq!(
+            Some(&record.pads),
+            netsmith_pcb::pad_hash(&board, "VCC").as_ref()
+        );
+        assert!(
+            !drc_errors(&with_routes(&board, &routes).unwrap().0)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

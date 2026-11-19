@@ -274,7 +274,7 @@ fn zone_clearance(z: &Zone, rules: &Rules) -> f64 {
 }
 
 /// A zone's outline less its holes.
-fn outline_area(z: &Zone) -> Vec<Area> {
+pub(crate) fn outline_area(z: &Zone) -> Vec<Area> {
     let mut p = Polygons::new();
     for o in z.outlines.iter().filter(|o| o.len() >= 3) {
         p.region(Contour::polygon(o), None, &[]);
@@ -781,7 +781,14 @@ pub enum Unjoinable {
     /// The relief has no spokes: KiCad's filler makes no spoke narrower than the zone's minimum
     /// thickness, and the spoke is as wide as the zone's spoke width but no wider than the pad's
     /// narrower side (`by_pad` when the pad's side made it too narrow).
-    Narrow { width: f64, min: f64, by_pad: bool },
+    /// `own` when the spoke width is the pad's own (`thermal_bridge_width`, a pin's
+    /// `.spoke_width`, issue #1276) and not the zone's.
+    Narrow {
+        width: f64,
+        min: f64,
+        by_pad: bool,
+        own: bool,
+    },
     /// Each spoke ends where the fill does not reach: what keeps the fill off the end of each, in
     /// the order of the spokes.
     Blocked(Vec<Blocker>),
@@ -831,9 +838,16 @@ impl std::fmt::Display for Blocker {
 impl std::fmt::Display for Unjoinable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Unjoinable::Narrow { width, min, by_pad } => {
+            Unjoinable::Narrow {
+                width,
+                min,
+                by_pad,
+                own,
+            } => {
                 let what = if *by_pad {
                     "the pad's narrower side"
+                } else if *own {
+                    "the pad's own spoke width"
                 } else {
                     "the zone's spoke width"
                 };
@@ -1229,11 +1243,13 @@ pub(crate) fn judge(
             let unjoinable = (reach == 0).then(|| {
                 if spokes.is_empty() {
                     let side = pad.size.0.min(pad.size.1);
-                    let by_pad = side < z.thermal_bridge;
+                    let bridge = thermal_bridge(pad, z);
+                    let by_pad = side < bridge;
                     Unjoinable::Narrow {
-                        width: if by_pad { side } else { z.thermal_bridge },
+                        width: if by_pad { side } else { bridge },
                         min: z.min_thickness,
                         by_pad,
+                        own: pad.thermal_bridge.is_some(),
                     }
                 } else {
                     let higher: Vec<(&Zone, &[Area])> = fills
@@ -2031,8 +2047,15 @@ fn thermal(
 /// `None` (no spokes, the whole gap cleared) when that is narrower than the zone's minimum
 /// thickness, since KiCad makes no spoke the fill's trimming would take out.
 fn spoke_width(pad: &Pad, z: &Zone) -> Option<f64> {
-    let width = z.thermal_bridge.min(pad.size.0.min(pad.size.1));
+    let width = thermal_bridge(pad, z).min(pad.size.0.min(pad.size.1));
     (width > 0.0 && width >= z.min_thickness).then_some(width)
+}
+
+/// The spoke width a pad's thermal relief asks for in a zone: the pad's own
+/// `thermal_bridge_width` (a pin's `.spoke_width`, issue #1276), else the zone's, as KiCad's
+/// rules engine resolves it (the pad's local override first).
+fn thermal_bridge(pad: &Pad, z: &Zone) -> f64 {
+    pad.thermal_bridge.unwrap_or(z.thermal_bridge)
 }
 
 /// How far KiCad's spoke test point lies beyond the thermal gap, besides half the zone's
@@ -2547,6 +2570,38 @@ mod tests {
         assert_eq!(reaching(&art(&pad(0.2))), [("U1".to_string(), 0, 0)]);
     }
 
+    #[test]
+    fn a_pads_own_spoke_width_and_connection_hold_over_the_zones() {
+        // The zone's spokes are 0.5 mm; the pad's own `thermal_bridge_width` (a pin's
+        // `.spoke_width`, issue #1276) makes them 0.3 mm, as KiCad's filler does.
+        let pad = |own: &str| {
+            format!(
+                r#"{GND_VIA} (footprint "L:R" (layer "F.Cu") (at 10 10) (property "Reference" "U1")
+                (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 1 "GND") {own}))"#
+            )
+        };
+        let zone = fill_by_net(&art(&pad("")));
+        assert!(copper(&zone, "GND", 10.75, 10.2));
+        let own = art(&pad("(thermal_bridge_width 0.3)"));
+        assert_eq!(own.pads[0].thermal_bridge, Some(0.3));
+        let f = fill_by_net(&own);
+        assert!(copper(&f, "GND", 10.75, 10.1) && !copper(&f, "GND", 10.75, 10.2));
+        assert_eq!(reaching(&own), [("U1".to_string(), 4, 4)]);
+        // Under the zone's minimum thickness the pad has no spoke, and the reason names the
+        // pad's own width.
+        let narrow = art(&pad("(thermal_bridge_width 0.2)"));
+        let edge = crate::edge::outline(&narrow).unwrap();
+        let joins = layer_joins(&narrow, &edge);
+        assert_eq!(
+            joins[0].pads[0].1.unjoinable().unwrap().to_string(),
+            "the pad's own spoke width, 0.2 mm, is under the zone's minimum thickness, 0.25 mm, so the fill makes no spoke"
+        );
+        // A pad's own solid connection fills the gap the relief would leave.
+        let solid = fill_by_net(&art(&pad("(zone_connect 2)")));
+        assert!(copper(&solid, "GND", 10.75, 10.4));
+        assert!(!copper(&zone, "GND", 10.75, 10.4));
+    }
+
     /// `a` with its first zone's spoke width, thermal gap and minimum thickness set.
     fn with_relief(mut a: Artwork, spoke: f64, gap: f64, min: f64) -> Artwork {
         a.zones[0].thermal_bridge = spoke;
@@ -2584,7 +2639,8 @@ mod tests {
             Some(&Unjoinable::Narrow {
                 width: 0.2,
                 min: 0.25,
-                by_pad: false
+                by_pad: false,
+                own: false
             })
         );
         assert_eq!(

@@ -31,9 +31,8 @@
 //!   width of 0.25 mm, a thermal relief), so the summary never claims a number the process did
 //!   not state.
 //! - **The routes file's zones as written.** A zone of a net whose pads moved since the record
-//!   was written is dropped when the board is built ([`crate::apply_routes`], which needs the
-//!   placed pads); that cannot be told from the source, so [`AreaZone::locked`] is shown: a
-//!   locked zone is kept whatever the pads do.
+//!   was written is kept as any of the record's copper is ([`crate::apply_routes`], issue
+//!   #1328); [`AreaZone::locked`] is shown as the file has it.
 
 use netsmith_core::{Design, InnerUse};
 use serde::{Deserialize, Serialize};

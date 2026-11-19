@@ -119,6 +119,7 @@ impl Board {
                     hand_fitted: true,
                     symbol,
                     layout: Vec::new(),
+                    contacts: Vec::new(),
                 });
                 continue;
             }
@@ -218,6 +219,21 @@ impl Board {
                 hand_fitted: design.features.hand_fitted.contains(&part.path),
                 symbol,
                 layout: crate::part_layout::PartGuideline::of_part(part, &design.features.layout),
+                contacts: design
+                    .features
+                    .pad_contacts
+                    .iter()
+                    .filter(|c| c.path == part.path)
+                    .map(|c| {
+                        (
+                            c.pad.clone(),
+                            Pt {
+                                x: c.offset.0,
+                                y: c.offset.1,
+                            },
+                        )
+                    })
+                    .collect(),
             });
         }
         // The body of a part that stands off the board limits the height of the parts under it.
@@ -288,6 +304,8 @@ impl Board {
         placement.fixed.extend(plan.fixed);
         placement.wants = plan.wants;
         placement.offsets = plan.offsets;
+        placement.pin_distances = crate::PinNear::of_design(design);
+        placement.rf_nets = design.features.rf_nets();
         for part in &mut parts {
             if let Some(&side) = plan.sides.get(&part.refdes) {
                 part.side = side;

@@ -8,9 +8,9 @@
 use netsmith_check::{Domain, GuidelineRule, InstId, InstKind, Member, Model, SourceId};
 use netsmith_core::{
     CaseModel, Cutout, Features, ImpedanceTarget, Keepout, Label, LengthGroup, Logo, LogoLayer,
-    NetPair, Offset, OffsetEnd, Outline, PadConnection, PartHeight, PartHeightGrowth, PartKind,
-    PartRoutingMargin, PartSilk, PartSoftMargin, PartStandoff, PinProtrusion, PlaceBound,
-    PlaceField, Placement, Pour, SilkPrint, StepModel,
+    NetPair, Offset, OffsetEnd, Outline, PadConnection, PadContactOffset, PartHeight,
+    PartHeightGrowth, PartKind, PartRoutingMargin, PartSilk, PartSoftMargin, PartStandoff,
+    PinProtrusion, PlaceBound, PlaceField, Placement, Pour, SilkPrint, StepModel,
 };
 use netsmith_lang::Span;
 use std::collections::{BTreeMap, BTreeSet};
@@ -645,6 +645,39 @@ fn routing_margins(model: &Model, errors: &mut Vec<String>) -> Vec<PartRoutingMa
             found.push(PartRoutingMargin { path, margin });
         }
     }
+    found
+}
+
+/// The contacts the parts' `pads` blocks state away from their pads' centres (issue #1321), by
+/// path and pad: the rows of a block for a package only for a part in that package. A row of a
+/// block for one package wins over a row of the block for every package.
+fn pad_contacts(model: &Model) -> Vec<PadContactOffset> {
+    let mut found: Vec<PadContactOffset> = Vec::new();
+    let mut specific: Vec<(String, String)> = Vec::new();
+    for c in &model.pad_contacts {
+        if let Some(package) = &c.package
+            && text(model, c.part, "package").as_deref() != Some(package.as_str())
+        {
+            continue;
+        }
+        let path = model.path_of(c.part);
+        let key = (path.clone(), c.pad.clone());
+        if let Some(at) = found.iter().position(|f| f.path == key.0 && f.pad == key.1) {
+            if c.package.is_none() || specific.contains(&key) {
+                continue;
+            }
+            found.remove(at);
+        }
+        if c.package.is_some() {
+            specific.push(key);
+        }
+        found.push(PadContactOffset {
+            path,
+            pad: c.pad.clone(),
+            offset: c.offset,
+        });
+    }
+    found.sort_by(|a, b| (&a.path, &a.pad).cmp(&(&b.path, &b.pad)));
     found
 }
 
@@ -1538,6 +1571,7 @@ pub(crate) fn features_of(
         labels: labels(model, least_text, errors),
         heights: heights(model, errors),
         standoffs: standoffs(model, errors),
+        pad_contacts: pad_contacts(model),
         height_growths: height_growths(model, errors),
         routing_margins: routing_margins(model, errors),
         silks: silks(model, errors),
@@ -1919,6 +1953,14 @@ pub(crate) fn expand_banks(
             features.standoffs.push(PartStandoff { path, ..s.clone() });
         }
     }
+    let old = std::mem::take(&mut features.pad_contacts);
+    for c in old {
+        for path in members(&c.path, banks) {
+            features
+                .pad_contacts
+                .push(PadContactOffset { path, ..c.clone() });
+        }
+    }
     let old = std::mem::take(&mut features.height_growths);
     for g in old {
         for path in members(&g.path, banks) {
@@ -2171,5 +2213,149 @@ pub(crate) fn layout(
         .sort_by(|a, b| (&a.part, &a.name).cmp(&(&b.part, &b.name)));
     found.keepouts.sort_by(|a, b| a.name.cmp(&b.name));
     found.widths.sort_by(|a, b| a.0.cmp(&b.0));
+    found
+}
+
+/// Where the design states each of a list of features, in the same order.
+pub(crate) type Stated = Vec<(SourceId, Span)>;
+
+/// The `within` and `route` statements of the physical files (issue #1274), with where each
+/// is stated. A `route` of a pin on no net names no net, and two that say different things of
+/// one net are an error that names both pins.
+pub(crate) fn rf_statements(
+    model: &Model,
+    errors: &mut Vec<String>,
+) -> (
+    (Vec<netsmith_core::PinDistance>, Stated),
+    (Vec<netsmith_core::NetRoute>, Stated),
+) {
+    let mut distances = (Vec::new(), Vec::new());
+    for d in &model.pin_distances {
+        let pin =
+            (d.subject != d.subject_part).then(|| model.path_below(d.subject, d.subject_part));
+        distances.0.push(netsmith_core::PinDistance {
+            part: model.path_of(d.subject_part),
+            pin,
+            to_part: model.path_of(d.pin_part),
+            to_pin: model.path_below(d.pin, d.pin_part),
+            within: d.within,
+            source: String::new(),
+        });
+        distances.1.push((d.source, d.span));
+    }
+    let mut routes: (Vec<netsmith_core::NetRoute>, Stated) = (Vec::new(), Vec::new());
+    for r in &model.net_routes {
+        let pin = model.path_of(r.pin);
+        let word = if r.one_layer {
+            "one_layer"
+        } else {
+            "any_layer"
+        };
+        let Some(net) = model
+            .nets()
+            .iter()
+            .find(|n| n.pins.contains(&r.pin))
+            .map(|n| n.name.clone())
+        else {
+            errors.push(format!(
+                "`.{pin} route {word}` names the net by `{pin}`, which is on no net: join it with `~`, or name a pin that is on the net"
+            ));
+            continue;
+        };
+        if let Some(other) = routes
+            .0
+            .iter()
+            .find(|o| o.net == net && o.one_layer != r.one_layer)
+        {
+            errors.push(format!(
+                "`.{pin} route {word}` and `.{} route {}` say different things of the net `{net}`: keep one",
+                other.pin,
+                if other.one_layer { "one_layer" } else { "any_layer" }
+            ));
+            continue;
+        }
+        routes.0.push(netsmith_core::NetRoute {
+            net,
+            pin,
+            one_layer: r.one_layer,
+            source: String::new(),
+        });
+        routes.1.push((r.source, r.span));
+    }
+    (distances, routes)
+}
+
+/// The pins that state how a pour joins their pads (issue #1276), each with its pads (`pads`,
+/// the pads of each pin on a net): `.pour_connection`, `Solid` or `Thermal`, and the width of
+/// the spokes of a thermal relief, `.spoke_width`, the bottom of the range stated. A pin may not
+/// leave its pads unjoined (`None`: the router would have to join them itself, so a pin that
+/// must not touch the pour is a keepout's or a zone's), nor state `ThruHoleOnly`, which a pour
+/// states for pads of either kind and a pin's pads are of one; a width of spokes beside `Solid`,
+/// or not positive, or under the process's narrowest track `least_track`, is refused too.
+pub(crate) fn pad_pours(
+    model: &Model,
+    pads: &std::collections::HashMap<InstId, Vec<netsmith_core::PinRef>>,
+    least_track: f64,
+    errors: &mut Vec<String>,
+) -> Vec<netsmith_core::PadPour> {
+    let mut found = Vec::new();
+    for (&pin, pins) in pads {
+        let connection = match domain(model, pin, "pour_connection") {
+            Some(Domain::Text(variant)) => PadConnection::of_variant(&variant),
+            _ => None,
+        };
+        let spoke_width = range(model, pin, "spoke_width")
+            .map(|(lo, _)| lo)
+            .filter(|lo| lo.is_finite());
+        if connection.is_none() && spoke_width.is_none() {
+            continue;
+        }
+        let path = model.path_of(pin);
+        match connection {
+            Some(PadConnection::None) => {
+                errors.push(format!(
+                    "`{path}.pour_connection` is `PadConnection::None`, and a pin states only `Solid` or `Thermal` for its pads: a pour joins every pad of its net, so keep it off this one with a keepout that forbids copper, or join no pad of the pour (its `.pads`)"
+                ));
+                continue;
+            }
+            Some(PadConnection::ThruHoleOnly) => {
+                errors.push(format!(
+                    "`{path}.pour_connection` is `PadConnection::ThruHoleOnly`, and a pin states only `Solid` or `Thermal` for its pads: `ThruHoleOnly` chooses by the kind of a pad, and a pin's pads are of the kind they are"
+                ));
+                continue;
+            }
+            _ => {}
+        }
+        if let Some(w) = spoke_width {
+            if connection == Some(PadConnection::Solid) {
+                errors.push(format!(
+                    "`{path}.spoke_width` is {w} mm, but `{path}.pour_connection` is `PadConnection::Solid`, which has no spokes: state one of the two"
+                ));
+                continue;
+            }
+            if w <= 0.0 {
+                errors.push(format!(
+                    "`{path}.spoke_width` has a bottom of {w} mm, and the spoke width of a thermal relief must be positive"
+                ));
+                continue;
+            }
+            if w < least_track - 1e-9 {
+                errors.push(format!(
+                    "`{path}.spoke_width` has a bottom of {w} mm, under the process's narrowest track (`.min_track`) of {least_track} mm: raise the bottom of the range"
+                ));
+                continue;
+            }
+        }
+        let mut pins = pins.clone();
+        pins.sort_by(|a, b| (&a.refdes, &a.pin).cmp(&(&b.refdes, &b.pin)));
+        pins.dedup();
+        found.push(netsmith_core::PadPour {
+            path,
+            pins,
+            connection,
+            spoke_width,
+        });
+    }
+    found.sort_by(|a, b| a.path.cmp(&b.path));
     found
 }

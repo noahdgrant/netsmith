@@ -3499,6 +3499,112 @@ error: net `1V8`: rail `core` holds the line at 1.71V..1.89V but `u.levels.vih` 
    |     ^^^^^^^^^
 ```
 
+#### A pin whose direction a strapped control pin fixes
+
+A bidirectional pin is judged both ways: as a driver of every receiver on its net, and as a receiver of every driver. A translator whose direction pin the board straps passes a signal one way only, so the way back was judged for nothing. A part that states `direction .a to .b when .dir high` (chapter 11, "A direction a control pin fixes") has its pins judged as the strap of `.dir` fixes them (#1306): the pins of `.a` as inputs and those of `.b` as outputs while `.dir` is on a net that holds the `pos` of a rail, and the direction stated for `low` while it is on a ground, as for a strapped input above. A control pin that something drives or pulls, a strap at a level for which the part states no direction, and a control pin left open leave the pins `bidirectional`, judged both ways, as before.
+
+Below, the A side of an invented translator drives a weak high, half its supply, which the host's pin does not read as a high. Strapped high, `DIR` sends the signal from A to B, so A only reads and nothing is refused; strap it to ground and the A side drives the host, and the board is refused with the numbers of both.
+
+```nsm module=src::zdir
+import std::logic::Logic
+import std::sources::Rail
+
+/// Invented: a one-bit translator whose A side drives half its supply.
+part Zdir {
+    .vcca: Rail
+    .vccb: Rail
+    .vccb.neg ~ .vcca.neg
+    .a: Logic
+    .a.reference ~ .vcca
+    .a.voh &= 0.5 * .vcca.voltage
+    .a.vol &= 0.1V
+    .a.vih &= 0.7 * .vcca.voltage
+    .a.vil &= 0.3 * .vcca.voltage
+    .b: Logic
+    .b.reference ~ .vccb
+    .b.voh &= .vccb.voltage - 0.1V
+    .b.vol &= 0.1V
+    .b.vih &= 0.7 * .vccb.voltage
+    .b.vil &= 0.3 * .vccb.voltage
+    direction .a to .b when .dir high
+    direction .b to .a when .dir low
+    pins {
+        .vcca.pos power         "VCCA" "1"
+        .vccb.pos power         "VCCB" "2"
+        .vcca.neg power         "GND"  "3"
+        .a.line   bidirectional "A"    "4"
+        .b.line   bidirectional "B"    "5"
+        .dir      input         "DIR"  "6"
+    }
+}
+
+/// Invented: a host's general-purpose pin.
+part Zgpio {
+    .vdd: Rail
+    .io: Logic
+    .io.reference ~ .vdd
+    .io.voh &= .vdd.voltage - 0.1V
+    .io.vol &= 0.1V
+    .io.vih &= 0.7 * .vdd.voltage
+    .io.vil &= 0.3 * .vdd.voltage
+    pins {
+        .vdd.pos power         "VDD" "1"
+        .vdd.neg power         "GND" "2"
+        .io.line bidirectional "IO"  "3"
+    }
+}
+```
+
+```nsm evaluate
+import std::sources::Rail
+
+import src::zdir::{Zdir, Zgpio}
+
+board OneWay {
+    .s18: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8" }
+    .s3: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .host: Zgpio
+    .x: Zdir
+    .far: Zgpio
+    .s18 ~ .host.vdd
+    .s18 ~ .x.vcca
+    .s3 ~ .x.vccb
+    .s3 ~ .far.vdd
+    .host.io.line ~ .x.a.line
+    .x.b.line ~ .far.io.line
+    .x.dir ~ .s18.pos
+}
+```
+
+```nsm fails
+import std::sources::Rail
+
+import src::zdir::{Zdir, Zgpio}
+
+board OtherWay {
+    .s18: Rail { .voltage &= 1.8V +/- 5%; .pos.net &= "1V8" }
+    .s3: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "3V3" }
+    .host: Zgpio
+    .x: Zdir
+    .far: Zgpio
+    .s18 ~ .host.vdd
+    .s18 ~ .x.vcca
+    .s3 ~ .x.vccb
+    .s3 ~ .far.vdd
+    .host.io.line ~ .x.a.line
+    .x.b.line ~ .far.io.line
+    .x.dir ~ .s18.neg
+}
+```
+
+```text
+error: net `net-host.io.line`: `x.a.voh` is 0.5 x `x.vcca.voltage` but `host.io.vih` needs 0.7 x `host.vdd.voltage`, the same supply voltage: a high of 0.5 x the supply is not always read as a high, which takes 0.7 x the supply
+  --> main.nsm:9:5
+  |
+9 |     .x: Zdir
+  |     ^^^^^^^^
+```
+
 #### Levels that are fractions of one supply
 
 A datasheet often states a level as a fraction of the supply: a digital microphone's output is high at 0.7 of its supply, and the processor's input reads a high from 0.7 of its supply. When both parts are on one rail, at any actual supply voltage the output's high is exactly the input's threshold. Compared as two independent ranges (3.3 V +/- 5 % gives 2.194 V..2.426 V on both sides), the output's lowest high would be below the input's highest threshold, and the pair would be refused for a margin that does not exist.

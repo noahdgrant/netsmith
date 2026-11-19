@@ -17,6 +17,7 @@ impl<'a> Router<'a> {
             .enumerate()
             .map(|(i, n)| (n.name.as_str(), i))
             .collect();
+        let one_layer = one_layer_of(board);
         // A net a routes file locks gets no copper (`netsmith_pcb::Routes`).
         let open = |l: &Ratline| !board.fixed.is_locked(&l.net);
         // Every pad of a plane net gets its own way to the plane first, whatever a pour of its
@@ -52,7 +53,15 @@ impl<'a> Router<'a> {
                 } else {
                     pad_spots(board, &l.to, l.to_at, &grid, layers)
                 };
-                (pad_spots(board, &l.from, l.from_at, &grid, layers), to)
+                let from = pad_spots(board, &l.from, l.from_at, &grid, layers);
+                // A net on one layer starts and ends on that layer only (issue #1274).
+                match one_layer[net_index[l.net.as_str()]] {
+                    Some(k) => {
+                        let on = |s: Vec<Spot>| s.into_iter().filter(|s| s.2 == k).collect();
+                        (on(from), on(to))
+                    }
+                    None => (from, to),
+                }
             })
             .collect();
         // A net whose current one via does not carry changes layer only where its cluster fits
@@ -61,7 +70,8 @@ impl<'a> Router<'a> {
         let in_pads = lines
             .iter()
             .map(|l| {
-                if board.line_vias(l) > 1 {
+                // A net on one layer has no via, in a pad or anywhere (issue #1274).
+                if board.line_vias(l) > 1 || one_layer[net_index[l.net.as_str()]].is_some() {
                     return (None, None);
                 }
                 // A via in a pad leads to the far outer layer and to every signal layer the
@@ -159,6 +169,7 @@ impl<'a> Router<'a> {
             history: RefCell::new(vec![Vec::new(); stack.len()]),
             stack,
             outer_only,
+            one_layer,
             fine: Cell::new(true),
             deadline: options.time_limit.map(|t| Instant::now() + t),
             stopped: Cell::new(false),
@@ -247,6 +258,23 @@ impl<'a> Router<'a> {
                     .map(|c| counts.via[c] > 0 && !m.via[c])
                     .collect(),
             });
+        }
+        // A net on one layer (issue #1274): no via, and no track on any other layer.
+        if let Some(k) = self.one_layer[net] {
+            m.via.fill(true);
+            for (l, track) in m.track.iter_mut().enumerate() {
+                if l != k {
+                    track.fill(true);
+                }
+            }
+            if let Some(soft) = &mut m.soft {
+                soft.via.fill(false);
+                for (l, track) in soft.track.iter_mut().enumerate() {
+                    if l != k {
+                        track.fill(false);
+                    }
+                }
+            }
         }
         m
     }
@@ -701,4 +729,36 @@ impl<'a> Router<'a> {
         }
         (list, keepouts)
     }
+}
+
+/// For each net of the board, the one layer of the stack it is routed on with no via (issue
+/// #1274, [`Board::one_layer_nets`]): the front when every pad of the net has copper there,
+/// else the back when every pad has copper there, else `None` (a net with pads on both faces
+/// and no hole has no one layer, and is routed as any net; the check reports it).
+fn one_layer_of(board: &Board) -> Vec<Option<usize>> {
+    let wanted = board.one_layer_nets();
+    board
+        .nets
+        .iter()
+        .map(|net| {
+            if !wanted.contains(&net.name) {
+                return None;
+            }
+            let mut faces = (true, true);
+            for pad in &net.pads {
+                let Some(part) = board.part(&pad.refdes) else {
+                    continue;
+                };
+                for found in part.footprint.pads_numbered(&pad.number) {
+                    let (front, back) = part.pad_layers(found);
+                    faces = (faces.0 && front, faces.1 && back);
+                }
+            }
+            match faces {
+                (true, _) => Some(FRONT),
+                (false, true) => Some(BACK),
+                (false, false) => None,
+            }
+        })
+        .collect()
 }

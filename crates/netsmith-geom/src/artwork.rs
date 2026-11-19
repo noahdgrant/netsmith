@@ -149,6 +149,10 @@ pub struct Pad {
     /// pad's own axes. `None` when the file says nothing, which KiCad reads as 45 for a circle
     /// and 90 (along the axes) for any other shape ([`Pad::spoke_angle`]).
     pub thermal_angle: Option<f64>,
+    /// `thermal_bridge_width` of the pad: the width of its thermal spokes, in mm, which KiCad's
+    /// filler takes over the zone's (issue #1276, a pin's `.spoke_width`). `None` when the file
+    /// says nothing: the zone's.
+    pub thermal_bridge: Option<f64>,
     pub remove_unused_layers: bool,
     /// The pad's own clearance, which a zone keeps if it is larger than its own.
     pub clearance: Option<f64>,
@@ -1419,6 +1423,7 @@ impl<'a> Reader<'a> {
             paste_ratio: child_num(item, "solder_paste_margin_ratio").or(frame.paste_ratio),
             zone_connect: connect,
             thermal_angle: child_num(item, "thermal_bridge_angle"),
+            thermal_bridge: child_num(item, "thermal_bridge_width").filter(|w| *w > 0.0),
             remove_unused_layers: flag(item, "remove_unused_layers").unwrap_or(false),
             clearance: child_num(item, "clearance").or(frame.clearance),
         };

@@ -9,7 +9,7 @@ The text identifier of a pin that its symbol and footprint share, such as `1`, `
 _Avoid_: Number, pin number
 
 **Pad connection**:
-How a _Pour_ or a _Zone_ joins the pads of its net: a thermal relief (the default), solid copper, not at all, or a relief round a through-hole pad and solid copper up to a surface pad. A pour states it as a variant of the std enum `PadConnection` (`.process.top.pads &= PadConnection::Solid`), a zone of the routes file as `pads = "solid"`; KiCad's zone writes it as `connect_pads` (issue #1084).
+How a _Pour_ or a _Zone_ joins the pads of its net: a thermal relief (the default), solid copper, not at all, or a relief round a through-hole pad and solid copper up to a surface pad. A pour states it as a variant of the std enum `PadConnection` (`.process.top.pads &= PadConnection::Solid`), a zone of the routes file as `pads = "solid"`; KiCad's zone writes it as `connect_pads` (issue #1084). A pin of a part may state its own for its pads, solid or a relief with spokes of its own width (`.gnd.pour_connection &= PadConnection::Solid`, `.gnd.spoke_width &= 0.3mm..`), which every pour, plane and zone of its net takes over its own; KiCad's pad writes it as `zone_connect` and `thermal_bridge_width` (issue #1276).
 _Avoid_: pad connect mode, zone connection
 
 **Pair pitch**:

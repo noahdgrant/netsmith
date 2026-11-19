@@ -27,9 +27,11 @@ pub struct RequirementMiss {
     pub parts: Vec<String>,
     /// What is measured: `x` or `y` (the centre of the body), `left`, `right`, `top`,
     /// `bottom` (an edge of the body), `rotation`, `side` (the face), or `relation_x` or
-    /// `relation_y` (the distance between two parts along that axis).
+    /// `relation_y` (the distance between two parts along that axis), `distance` (a part's
+    /// nearest pad from a pin's, issue #1274) or `one_layer` (the vias of a net routed on one
+    /// layer, issue #1274).
     pub measure: &'static str,
-    /// `mm` or `degrees`; none for a face.
+    /// `mm`, `degrees`, or `vias` for `one_layer`; none for a face.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unit: Option<&'static str>,
     /// The value measured; none for a face, and where the part is not on the board.
@@ -133,10 +135,11 @@ impl RequirementMiss {
                 o.message.clone(),
             );
         }
-        let unit = if o.measure == "rotation" {
-            "degrees"
-        } else {
-            "mm"
+        // A net on one layer is measured in vias (issue #1274).
+        let unit = match o.measure {
+            "rotation" => "degrees",
+            "one_layer" => "vias",
+            _ => "mm",
         };
         RequirementMiss::numeric(
             &o.id,

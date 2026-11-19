@@ -1253,8 +1253,9 @@ export type PcbRouteNet = { net: string,
  */
 lock: boolean, 
 /**
- * The net's pads are where the record was written: every shape is drawn. When not, only
- * the locked shapes are, and the findings say so; a net the board does not have draws none.
+ * The net's pads are where the record was written. When not, every shape is still drawn
+ * and the findings say where it is open (issue 1328); a net the board does not have draws
+ * none.
  */
 current: boolean, tracks: Array<PcbRouteTrack>, vias: Array<PcbRouteVia>, };
 
@@ -1268,11 +1269,11 @@ layer: string, width: number, from: PcbPoint,
  */
 mid: PcbPoint | null, to: PcbPoint, 
 /**
- * Kept when the net's pads move; not deleted until unlocked.
+ * Not deleted, moved or tidied until unlocked.
  */
 lock: boolean, 
 /**
- * Whether it is on the board (see [`PcbRouteNet::current`]).
+ * Whether it is on the board: false only for a net the board does not have.
  */
 drawn: boolean, };
 

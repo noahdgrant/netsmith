@@ -513,6 +513,94 @@ fn a_pours_clearance_min_width_and_pads_are_in_its_zone_and_the_planes_keep_the_
     );
 }
 
+/// The pad `number` of the footprint of the part at `path`, as the board file writes it.
+fn written_pad(pcb: &str, b: &Board, path: &str, number: &str) -> String {
+    let refdes = &b.parts.iter().find(|p| p.path == path).unwrap().refdes;
+    let footprint = pcb
+        .split("\n\t(footprint")
+        .skip(1)
+        .find(|f| f.contains(&format!("\"Reference\" \"{refdes}\"")))
+        .unwrap();
+    let start = footprint.find(&format!("(pad \"{number}\"")).unwrap();
+    let pad = &footprint[start..];
+    let end = pad.find("(uuid").unwrap();
+    pad[..end].split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[test]
+fn a_pins_own_pour_connection_is_on_its_pads_in_the_board_file_and_the_fill() {
+    // Issue #1276: one ground pad joined solid, another with spokes of its own width, in pours
+    // whose reliefs are KiCad's default.
+    let mut b = four_layer_importing(
+        "import std::mfg::stackup::PadConnection\n",
+        POURS,
+        "    .power_in.p2.pour_connection &= PadConnection::Solid\n    .power_out.p2.spoke_width &= 0.3mm..\n",
+    );
+    let pcb = kicad_pcb(&b);
+    let solid = written_pad(&pcb, &b, "power_in", "2");
+    assert!(solid.contains("(zone_connect 2)"), "{solid}");
+    assert!(!solid.contains("thermal_bridge_width"), "{solid}");
+    let spokes = written_pad(&pcb, &b, "power_out", "2");
+    assert!(spokes.contains("(thermal_bridge_width 0.3)"), "{spokes}");
+    assert!(!spokes.contains("zone_connect"), "{spokes}");
+    // A pad whose pin states nothing keeps the pour's setting.
+    let plain = written_pad(&pcb, &b, "power_in", "1");
+    assert!(!plain.contains("zone_connect") && !plain.contains("thermal_bridge_width"));
+
+    // The fill joins them so, and the fill report names the pin that says it.
+    assert!(route(&mut b).is_empty());
+    let report = netsmith_pcb::FillReport::of(&b).unwrap();
+    let refdes = |path: &str| b.parts.iter().find(|p| p.path == path).unwrap().refdes.clone();
+    let top = report.fills.iter().find(|f| f.layer_name == "F.Cu").unwrap();
+    let pad = |path: &str| {
+        let r = refdes(path);
+        top.pads
+            .iter()
+            .find(|p| p.part == r && p.pad == "2")
+            .unwrap()
+    };
+    let solid = pad("power_in");
+    assert_eq!(
+        (solid.join, solid.stated_by.as_deref(), solid.joined),
+        (
+            netsmith_pcb::JoinKind::Solid,
+            Some("power_in.p2"),
+            true
+        )
+    );
+    let spokes = pad("power_out");
+    assert_eq!(
+        (
+            spokes.join,
+            spokes.stated_by.as_deref(),
+            spokes.spoke_width
+        ),
+        (
+            netsmith_pcb::JoinKind::Thermal,
+            Some("power_out.p2"),
+            Some(0.3)
+        )
+    );
+    let text = report.text();
+    assert!(
+        text.contains(&format!(
+            "{}.2 at", refdes("power_in")
+        )) && text.contains("solid (as its pin `power_in.p2` states)"),
+        "{text}"
+    );
+    assert!(
+        text.contains("(as its pin `power_out.p2` states, 0.3 mm spokes)"),
+        "{text}"
+    );
+
+    // KiCad reads the pads' settings and its check of the filled board passes.
+    let Some(counts) = plane_drc("pad-pour", &b) else {
+        eprintln!("skipped: no KiCad");
+        return;
+    };
+    assert_eq!(counts, Default::default(), "violations, unconnected pads");
+}
+
 #[test]
 fn stitching_vias_join_the_pours_to_the_ground_plane_on_a_grid() {
     let mut b = four_layer_with(POURS, "");

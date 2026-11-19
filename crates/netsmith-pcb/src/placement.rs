@@ -67,6 +67,12 @@ pub struct PlaceOptions {
     /// The relations between two parts that the design requires (ADR 0045, section 3). The
     /// annealer keeps each inside its window; the two parts move together.
     pub offsets: Vec<crate::constraints::PlanOffset>,
+    /// The parts the design requires within a distance of a pin (issue #1274): the annealer
+    /// pulls each to the pin and holds it within the distance as a hard rule.
+    pub pin_distances: Vec<crate::PinNear>,
+    /// The RF nets (issue #1274, [`netsmith_core::rf_nets`]): the annealer weighs their length
+    /// above every other net's, so their parts are placed first and their lines short.
+    pub rf_nets: Vec<String>,
     /// The parts the person said may hang over the board edge, by reference designator
     /// (ADR 0045, "Built: overhang"): a part that stays in `fixed` is counted in the fit test
     /// as its courtyard clipped to the outline, and the others keep their copper inside.
@@ -120,6 +126,8 @@ impl Default for PlaceOptions {
             seed: 0,
             wants: BTreeMap::new(),
             offsets: Vec::new(),
+            pin_distances: Vec::new(),
+            rf_nets: Vec::new(),
             overhang: BTreeMap::new(),
             wall: None,
             height_zones: Vec::new(),

@@ -265,6 +265,31 @@ impl Model {
         row.map(|r| self.kind_with(part, r, self.function_of(pin).as_deref()))
     }
 
+    /// The control pin that fixes the direction of a pin (issue #1306), and the kind the pin
+    /// takes while the control is high and while it is low: `input` on the `from` side of a
+    /// `direction` of its part, `output` on the `to` side, and none at a level no statement
+    /// names. None for a pin no `direction` names.
+    pub fn direction_of(&self, pin: InstId) -> Option<(InstId, Option<PinKind>, Option<PinKind>)> {
+        let part = self.owner_of(pin)?;
+        let mut out: Option<(InstId, Option<PinKind>, Option<PinKind>)> = None;
+        for d in &self.instance(part).rules.directions {
+            let kind = if d.from.contains(&pin) {
+                PinKind::Input
+            } else if d.to.contains(&pin) {
+                PinKind::Output
+            } else {
+                continue;
+            };
+            let entry = out.get_or_insert((d.control, None, None));
+            if d.high {
+                entry.1 = Some(kind);
+            } else {
+                entry.2 = Some(kind);
+            }
+        }
+        out
+    }
+
     /// The kind of a pin for the rules of a net, given the function the board chose for it:
     /// the function's own kind if it has one, else the pin's (ADR 0046). A function that a
     /// peripheral of the part lists takes its kind from the peripheral (ADR 0071).

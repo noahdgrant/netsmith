@@ -939,3 +939,143 @@ fn a_diff_pair_on_one_net_or_on_a_net_of_another_pair_is_an_error() {
         "{two}"
     );
 }
+
+#[test]
+fn a_parts_pads_block_gives_the_contacts_of_its_package_and_a_package_row_wins() {
+    // Issue 1321: the rows of `pads "SMD"` are kept only for a part in that package, and win over
+    // the block for every package.
+    let part = "part Row4 {\n    pins \"SMD\" \"THT\" {\n        .p1 passive \"P1\" \"1\"\n        .p2 passive \"P2\" \"2\"\n    }\n    .package: Package\n    pads {\n        \"2\" .contact_offset = (0mm, 0.5mm)\n    }\n    pads \"SMD\" {\n        \"1\" .contact_offset = (-1.175mm, 0mm)\n        \"2\" .contact_offset = (1.175mm, 0mm)\n    }\n}\n";
+    let src = board(
+        "    .smd: Row4 { .package &= \"SMD\" }\n    .tht: Row4 { .package &= \"THT\" }\n",
+    )
+    .replace("board B {", &format!("{part}board B {{"));
+    let d = designed(&src).unwrap();
+    let found: Vec<(&str, &str, (f64, f64))> = d
+        .features
+        .pad_contacts
+        .iter()
+        .map(|c| (c.path.as_str(), c.pad.as_str(), c.offset))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            ("smd", "1", (-1.175, 0.0)),
+            ("smd", "2", (1.175, 0.0)),
+            ("tht", "2", (0.0, 0.5)),
+        ]
+    );
+}
+
+// ---- a pin's own pour connection (issue #1276) ----------------------------------------------
+
+/// The board of [`board`], with a part of its own whose two ground pins state `ground` and
+/// `shield` inside the part, and `extra` members on the board.
+fn pad_pour_board(ground: &str, shield: &str, extra: &str) -> String {
+    let part = format!(
+        "/// A module with an antenna pin and its grounds. Illustrative; not a real part.\npart Radio {{\n    .designator &= \"U\"\n    pins {{\n        .rf passive \"RF\" \"1\"\n        .gnd passive \"GND\" \"2\" \"4\"\n        .shield passive \"SH\" \"3\"\n    }}\n{ground}{shield}}}\n"
+    );
+    let text = board(&format!(
+        "    .u: Radio\n    .u.gnd.net &= \"GND\"\n    .u.shield.net &= \"GND\"\n    .u.rf.net &= \"VIN\"\n{extra}"
+    ));
+    let text = text.replacen("board B", &format!("{part}board B"), 1);
+    text.replacen("import ", "import std::mfg::stackup::PadConnection\nimport ", 1)
+}
+
+#[test]
+fn a_pin_states_how_a_pour_joins_each_of_its_pads() {
+    let d = designed(&pad_pour_board(
+        "    .gnd.pour_connection &= PadConnection::Solid\n",
+        "    .shield.spoke_width &= 0.3mm..\n",
+        "",
+    ))
+    .unwrap();
+    let pours: Vec<_> = d
+        .features
+        .pad_pours
+        .iter()
+        .map(|p| {
+            (
+                p.path.as_str(),
+                p.pins
+                    .iter()
+                    .map(|r| format!("{}.{}", r.refdes, r.pin))
+                    .collect::<Vec<_>>(),
+                p.connection,
+                p.spoke_width,
+            )
+        })
+        .collect();
+    let refdes = &d.parts.iter().find(|p| p.path == "u").unwrap().refdes;
+    assert_eq!(
+        pours,
+        vec![
+            (
+                "u.gnd",
+                vec![format!("{refdes}.2"), format!("{refdes}.4")],
+                Some(netsmith_core::PadConnection::Solid),
+                None
+            ),
+            ("u.shield", vec![format!("{refdes}.3")], None, Some(0.3)),
+        ]
+    );
+}
+
+#[test]
+fn a_board_narrows_the_pour_connection_of_a_pin_of_its_part() {
+    let d = designed(&pad_pour_board(
+        "",
+        "",
+        "    .u.shield.pour_connection &= PadConnection::Thermal\n    .u.shield.spoke_width &= 0.2mm\n",
+    ))
+    .unwrap();
+    assert_eq!(d.features.pad_pours.len(), 1);
+    let p = &d.features.pad_pours[0];
+    assert_eq!(
+        (p.path.as_str(), p.connection, p.spoke_width),
+        (
+            "u.shield",
+            Some(netsmith_core::PadConnection::Thermal),
+            Some(0.2)
+        )
+    );
+}
+
+#[test]
+fn a_pin_with_no_pour_connection_states_none() {
+    let d = designed(&pad_pour_board("", "", "")).unwrap();
+    assert!(d.features.pad_pours.is_empty());
+}
+
+#[test]
+fn a_pins_pour_connection_none_or_thru_hole_only_is_refused_with_the_pin() {
+    for variant in ["None", "ThruHoleOnly"] {
+        let text = errors_of(&pad_pour_board(
+            &format!("    .gnd.pour_connection &= PadConnection::{variant}\n"),
+            "",
+            "",
+        ));
+        assert!(
+            text.contains(&format!(
+                "`u.gnd.pour_connection` is `PadConnection::{variant}`, and a pin states only `Solid` or `Thermal` for its pads"
+            )),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn a_spoke_width_of_a_solid_pin_or_under_the_least_track_is_refused_with_the_numbers() {
+    let text = errors_of(&pad_pour_board(
+        "    .gnd.pour_connection &= PadConnection::Solid\n    .gnd.spoke_width &= 0.3mm\n",
+        "    .shield.spoke_width &= 0.05mm..\n",
+        "",
+    ));
+    assert!(
+        text.contains("`u.gnd.spoke_width` is 0.3 mm, but `u.gnd.pour_connection` is `PadConnection::Solid`, which has no spokes"),
+        "{text}"
+    );
+    assert!(
+        text.contains("`u.shield.spoke_width` has a bottom of 0.05 mm, under the process's narrowest track (`.min_track`) of"),
+        "{text}"
+    );
+}
