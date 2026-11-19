@@ -1091,6 +1091,105 @@ board Switched {
 
 `netsmith board power` shows `3V3 -> 3V3_A (converts: sw (Zsw))`, the sensor's 5 mA to 150 mA as the load `sw.in` of `3V3` (with the switch's own 10 uA), and `3V3_A` at 3.189 V to 3.399 V: the supply's least, 3.201 V, less 80 mohm times 150 mA.
 
+### A rechargeable cell and its charger
+
+`std::sources::Cell` is one rechargeable cell (issue #1262). Its terminals are the rail `.terminals`, which the cell gives: the DC analysis takes it as a source (`dc source`), held over the range the board states for `.terminals.voltage`. Its values are the datasheet's, from a row of the catalog `cell`: `.chemistry` (a `Chemistry`: `LiIon`, `LiPolymer`, `LiFePO4` or `NiMH`), `.capacity` (a charge, in coulombs: 1 mAh is 3.6 C, so 1000 mAh is `3.6kC`), `.internal_resistance` (the datasheet's largest), `.charge_temperature` and `.discharge_temperature` (the ranges it may be charged and discharged in), `.float_voltage` (the voltage it is charged to and held at, as the datasheet's range) and `.max_charge_current`. Its pins are `+` and `-` in the package the row names. The standard catalog `cell` has no row: no cell has a recorded source yet, so a project brings its own rows, and a cell has no KiCad symbol yet, so a board with one is solved and checked but not exported (issue #1366).
+
+`std::parts::regulator::Charger` is a charger IC, a generic with the rails `.vin`, where its power comes from, and `.out`, which charges the cell, on one ground. A concrete IC is a part that provides it and states, from its datasheet, `.float_voltage` (its regulation voltage, as a range), `.charge_current` (the fast charge current, as its programming pin sets it: the datasheet's equation over the resistor on the pin, so it carries the resistor's tolerance) and, for an IC with a thermistor input, `.thermistor_window`, the cell temperatures it charges between (optional, ADR 0074). When the charger's `.out` is joined with `~` to a cell's `.terminals` (directly, or through a module's rail), the check after the solve holds the two against each other: the charger's float voltage must lie within the cell's, both ends; its thermistor window within the cell's charge window, both ends; and the most of its charge current at most the cell's `.max_charge_current`. A value of either side that has none is listed as not evaluated. A charger that states no thermistor window is not judged on it, and a charger joined to no cell is not judged at all.
+
+The rail between them carries `.charge_time_limit`, the longest a charge may take: it is a field of the connection, so the charger's `.out` and the cell's `.terminals` share it, and either side may state it (`.bat.terminals.charge_time_limit &= ..10.8ks`, three hours). The time a charge takes is checked against it by issue #1264; until then nothing reads it.
+
+Here an invented cell and an invented charger, whose 2.2 kohm programming resistor sets 1000 V / 2.2 kohm, 455 mA, within the cell's 500 mA:
+
+```csv file=catalogs/cell.csv set=cells
+mpn,chemistry,capacity,internal_resistance,charge_temperature,discharge_temperature,float_voltage,max_charge_current,package,library,source
+ZZC-1000,LiIon,3.6kC,150mohm,0degC..45degC,-20degC..60degC,4.2V +/- 50mV,500mA,JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal,Extended,invented for the guide
+```
+
+```nsm evaluate catalogs=cells
+import std::parts::passive::Resistor
+import std::parts::regulator::Charger
+import std::sources::{Cell, Rail}
+
+/// Invented: a charger IC whose fast charge current is 1000 V over the resistor on `PROG`.
+part Zchg provides Charger {
+    .package: Package
+    .package &= "SOT-23-5"
+    pins "SOT-23-5" {
+        .out.pos power "VBAT" "3"
+        .vin.neg power "VSS"  "2"
+        .vin.pos power "VDD"  "4"
+        .prog    input "PROG" "5"
+    }
+    /// The resistor from `PROG` to `VSS`.
+    .rprog: Resistance
+    .charge_current == 1000V / .rprog
+    .float_voltage &= 4.168V..4.232V
+    .thermistor_window &= 0degC..45degC
+}
+
+board Pack {
+    .usb: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VBUS" }
+    .charger: Zchg
+    .usb ~ .charger.vin
+    .rprog: Resistor { .resistance &= 2.2kohm +/- 1% }
+    .charger.rprog == .rprog.resistance
+    .charger.prog ~> .rprog ~> .usb.neg
+    .bat: Cell
+    .bat.terminals.voltage &= 3V..4.2V
+    .bat.terminals.pos.net &= "VBAT"
+    .charger.out ~ .bat.terminals
+}
+```
+
+A 1 kohm resistor sets up to 1.01 A, twice what the cell allows:
+
+```nsm fails catalogs=cells
+import std::parts::passive::Resistor
+import std::parts::regulator::Charger
+import std::sources::{Cell, Rail}
+
+/// Invented: a charger IC whose fast charge current is 1000 V over the resistor on `PROG`.
+part Zchg provides Charger {
+    .package: Package
+    .package &= "SOT-23-5"
+    pins "SOT-23-5" {
+        .out.pos power "VBAT" "3"
+        .vin.neg power "VSS"  "2"
+        .vin.pos power "VDD"  "4"
+        .prog    input "PROG" "5"
+    }
+    /// The resistor from `PROG` to `VSS`.
+    .rprog: Resistance
+    .charge_current == 1000V / .rprog
+    .float_voltage &= 4.168V..4.232V
+    .thermistor_window &= 0degC..45degC
+}
+
+board Pack {
+    .usb: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VBUS" }
+    .charger: Zchg
+    .usb ~ .charger.vin
+    .rprog: Resistor { .resistance &= 1kohm +/- 1% }
+    .charger.rprog == .rprog.resistance
+    .charger.prog ~> .rprog ~> .usb.neg
+    .bat: Cell
+    .bat.terminals.voltage &= 3V..4.2V
+    .bat.terminals.pos.net &= "VBAT"
+    .charger.out ~ .bat.terminals
+}
+```
+
+```text
+error: `charger` charges the cell `bat` at up to 1.01A (`charger.charge_current`, 990.1mA to 1.01A), above the 500mA the cell allows (`bat.max_charge_current`); lower the charge current its programming pin sets, or use a cell rated for it
+   --> main.nsm:24:5
+   |
+24 |     .charger: Zchg
+   |     ^^^^^^^^^^^^^^
+```
+
+Not modelled: the cell's voltage over its state of charge, its self-discharge and ageing, the current the charger draws and its heat, and the time a charge takes (issue #1264).
+
 ### Dropout
 
 A regulator whose input falls toward its output stops regulating: its output follows the input, less a drop that grows with the load (issue #1259). A linear regulator's output is then the input less its `.dropout`, and a buck converter's, with its high-side switch held on for the whole period, the input less the load's drop across that switch and the inductor's winding. The output is the lower of the set point and that, so it still reaches the least voltage of its rail while the input is at least that voltage plus the drop: that is the least input the regulator needs, and it is what the two check.

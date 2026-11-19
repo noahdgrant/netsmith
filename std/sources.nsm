@@ -85,6 +85,14 @@ interface Rail {
     /// `~` share it. Left unstated, the window is `.voltage` and nothing changes (ADR 0074).
     .voltage_floor: Voltage optional
     .voltage_floor <= min(.voltage)
+    /// The longest a charge of the storage on this rail may take: the time a charger whose
+    /// output is joined with `~` to a cell (`std::sources::Cell`) or that holds a storage
+    /// capacitor up may take to charge it (issue #1262). It is a field of the connection, so the
+    /// charger's output and the cell's terminals, joined with `~`, share it, and either side may
+    /// state it (`.cell.terminals.charge_time_limit &= ..10.8ks`, three hours). The check of
+    /// the time a charge takes against it is issue #1264; until then nothing reads it. Left
+    /// unstated, nothing is checked (ADR 0074).
+    .charge_time_limit: Time optional
     /// The narrowest track the nets of this rail are routed with: a lower bound, written as
     /// a range (`.min_track &= 0.5mm..`). Both pins get it, since the return current is the
     /// same current. A net takes the widest of the rails on it, so `GND` is as wide as the
@@ -232,4 +240,84 @@ interface LengthGroup {
     /// limit (`.lane.tolerance &= 0mm..0.5mm`). It has no default: what a bus allows depends on
     /// its clock and its interface's timing, which the board knows and the library does not.
     .tolerance: Length
+}
+
+/// What a rechargeable cell is made of (issue #1262): the type of `Cell`'s `.chemistry` and of the
+/// `chemistry` column of the catalog `cell`. A row states the variant's name as it is (`LiIon`).
+enum Chemistry {
+    /// Lithium-ion, in a metal can (an 18650, a coin cell such as the LIR2032).
+    LiIon,
+    /// Lithium-ion polymer, in a pouch.
+    LiPolymer,
+    /// Lithium iron phosphate.
+    LiFePO4,
+    /// Nickel-metal hydride.
+    NiMH,
+}
+
+/// A rechargeable cell (issue #1262): one cell whose terminals are the rail `.terminals`, which
+/// the cell gives (the DC analysis takes it as a source: its net is held over the range the
+/// design states for `.terminals.voltage`). A charger charges it through the same rail: a
+/// `std::parts::regulator::Charger` whose `.out` is joined with `~` to `.terminals` is checked
+/// against the cell after the solve:
+///
+/// - the charger's `.float_voltage` must lie within the cell's `.float_voltage`, both ends;
+/// - the charger's `.thermistor_window` must lie within the cell's `.charge_temperature`, both
+///   ends (a charger that states no window is not judged on it);
+/// - the most of the charger's `.charge_current` must be at most the cell's
+///   `.max_charge_current`.
+///
+/// Every value is the cell's datasheet's, as a row of the catalog `cell` states it:
+///
+/// - `.chemistry` is what the cell is made of (`Chemistry`).
+/// - `.capacity` is the rated capacity as a charge, in coulombs: 1 mAh is 3.6 C, so a cell of
+///   1000 mAh states `3.6kC`. The language has no ampere-hour.
+/// - `.internal_resistance` is the datasheet's largest internal resistance (AC at 1 kHz on most
+///   datasheets; the row's `notes` say which).
+/// - `.charge_temperature` is the range of temperatures the cell may be charged in, and
+///   `.discharge_temperature` the range it may be discharged in (narrower when charging: a
+///   lithium cell is charged from 0 degC, and discharged from -20 degC).
+/// - `.float_voltage` is the voltage the cell is charged to and held at, as the datasheet's
+///   range (`4.2V +/- 50mV`): a charger's regulation voltage must lie within it.
+/// - `.max_charge_current` is the largest charge current the datasheet allows (its standard or
+///   its fastest charge, as the datasheet gives it, the row's `notes` say which).
+///
+/// The standard catalog `cell` has no row yet: no cell has a recorded source
+/// (`data/jlcpcb/README.md`). A project adds rows in a file of its own catalog `cell`. The
+/// pins are `+` (pad 1) and `-` (pad 2) in whatever package the row names.
+///
+/// Not modelled: the cell's voltage over its state of charge, the self-discharge, ageing and
+/// the time a charge takes (issue #1264, which reads the rail's `.charge_time_limit`).
+generic Cell {
+    .designator &= "BT"
+
+    .terminals: Rail
+    dc source .terminals
+
+    pins {
+        //  pin        kind  name pad
+        .terminals.pos power "+" "1"
+        .terminals.neg power "-" "2"
+    }
+
+    /// What the cell is made of.
+    .chemistry: Chemistry
+    /// The rated capacity, in coulombs (1 mAh is 3.6 C).
+    .capacity: Charge
+    /// The largest internal resistance the datasheet gives.
+    .internal_resistance: Resistance
+    /// The temperatures the cell may be charged in.
+    .charge_temperature: Temperature
+    /// The temperatures the cell may be discharged in.
+    .discharge_temperature: Temperature
+    /// The voltage the cell is charged to and held at, as the datasheet's range.
+    .float_voltage: Voltage
+    /// The largest charge current the datasheet allows.
+    .max_charge_current: Current
+
+    .package: Package
+    catalog cell {
+        .chemistry, .capacity, .internal_resistance, .charge_temperature, .discharge_temperature,
+        .float_voltage, .max_charge_current, .package
+    }
 }
