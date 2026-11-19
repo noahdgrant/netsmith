@@ -2173,3 +2173,78 @@ pub(crate) fn layout(
     found.widths.sort_by(|a, b| a.0.cmp(&b.0));
     found
 }
+
+/// The pins that state how a pour joins their pads (issue #1276), each with its pads (`pads`,
+/// the pads of each pin on a net): `.pour_connection`, `Solid` or `Thermal`, and the width of
+/// the spokes of a thermal relief, `.spoke_width`, the bottom of the range stated. A pin may not
+/// leave its pads unjoined (`None`: the router would have to join them itself, so a pin that
+/// must not touch the pour is a keepout's or a zone's), nor state `ThruHoleOnly`, which a pour
+/// states for pads of either kind and a pin's pads are of one; a width of spokes beside `Solid`,
+/// or not positive, or under the process's narrowest track `least_track`, is refused too.
+pub(crate) fn pad_pours(
+    model: &Model,
+    pads: &std::collections::HashMap<InstId, Vec<netsmith_core::PinRef>>,
+    least_track: f64,
+    errors: &mut Vec<String>,
+) -> Vec<netsmith_core::PadPour> {
+    let mut found = Vec::new();
+    for (&pin, pins) in pads {
+        let connection = match domain(model, pin, "pour_connection") {
+            Some(Domain::Text(variant)) => PadConnection::of_variant(&variant),
+            _ => None,
+        };
+        let spoke_width = range(model, pin, "spoke_width")
+            .map(|(lo, _)| lo)
+            .filter(|lo| lo.is_finite());
+        if connection.is_none() && spoke_width.is_none() {
+            continue;
+        }
+        let path = model.path_of(pin);
+        match connection {
+            Some(PadConnection::None) => {
+                errors.push(format!(
+                    "`{path}.pour_connection` is `PadConnection::None`, and a pin states only `Solid` or `Thermal` for its pads: a pour joins every pad of its net, so keep it off this one with a keepout that forbids copper, or join no pad of the pour (its `.pads`)"
+                ));
+                continue;
+            }
+            Some(PadConnection::ThruHoleOnly) => {
+                errors.push(format!(
+                    "`{path}.pour_connection` is `PadConnection::ThruHoleOnly`, and a pin states only `Solid` or `Thermal` for its pads: `ThruHoleOnly` chooses by the kind of a pad, and a pin's pads are of the kind they are"
+                ));
+                continue;
+            }
+            _ => {}
+        }
+        if let Some(w) = spoke_width {
+            if connection == Some(PadConnection::Solid) {
+                errors.push(format!(
+                    "`{path}.spoke_width` is {w} mm, but `{path}.pour_connection` is `PadConnection::Solid`, which has no spokes: state one of the two"
+                ));
+                continue;
+            }
+            if w <= 0.0 {
+                errors.push(format!(
+                    "`{path}.spoke_width` has a bottom of {w} mm, and the spoke width of a thermal relief must be positive"
+                ));
+                continue;
+            }
+            if w < least_track - 1e-9 {
+                errors.push(format!(
+                    "`{path}.spoke_width` has a bottom of {w} mm, under the process's narrowest track (`.min_track`) of {least_track} mm: raise the bottom of the range"
+                ));
+                continue;
+            }
+        }
+        let mut pins = pins.clone();
+        pins.sort_by(|a, b| (&a.refdes, &a.pin).cmp(&(&b.refdes, &b.pin)));
+        pins.dedup();
+        found.push(netsmith_core::PadPour {
+            path,
+            pins,
+            connection,
+            spoke_width,
+        });
+    }
+    found.sort_by(|a, b| a.path.cmp(&b.path));
+    found
+}

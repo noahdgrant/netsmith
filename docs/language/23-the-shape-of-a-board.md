@@ -1137,6 +1137,63 @@ board Close {
 error: Close: `process.top.clearance` has a bottom of 0.05 mm, under the process's least space between copper (`.min_clearance`) of 0.1 mm: raise the bottom of the range
 ```
 
+#### A pad's own connection
+
+A pin of a part may say how a pour joins its pads, over what the pour says (issue #1276): a module's ground pads beside its antenna pin joined solid, say, or a heavy pin's relief with wider spokes. Every pin has two fields for it. `.pour_connection` is `PadConnection::Solid` or `PadConnection::Thermal`; `.spoke_width` is the width of the spokes of the pad's relief, a length on the range convention read at the bottom of the range, as a pour's is. Either may be stated without the other: a spoke width alone holds wherever a pour makes a relief round the pad. The part states them in its own body, so that every board that uses it gets them, and a board may narrow them on a part it uses (`.radio.gnd.pour_connection &= PadConnection::Solid`), as it narrows any field of a part.
+
+What a pin states holds for each of its pads, in every package, and in every pour, plane and zone of its net, whatever their `.pads` says: `fab` writes it on the pads of the KiCad board, as KiCad's `zone_connect` and `thermal_bridge_width`, and netsmith's fill (the Gerbers, the design rules check, `board fill`) and KiCad's both take a pad's own setting over the zone's. `netsmith board fill` lists such a pad with the pin that states it, `solid (as its pin `radio.gnd` states)`, and `--format json` has the pin's path as `stated_by` and its spoke width as `spoke_width`.
+
+```nsm evaluate
+import std::mfg::jlcpcb::TwoLayer
+import std::mfg::stackup::PadConnection
+import std::parts::connector::Header1x2
+
+/// A radio module whose ground pads beside its antenna pin are joined solid to the pour, and
+/// whose shield's relief has 0.3 mm spokes. Illustrative; not a real part.
+part PouredRadio {
+    .designator &= "U"
+    pins {
+        .ant    passive "ANT" "1"
+        .gnd    passive "GND" "2" "3"
+        .shield passive "SH"  "4"
+    }
+    .gnd.pour_connection &= PadConnection::Solid
+    .shield.spoke_width &= 0.3mm..
+}
+
+board Radioed {
+    .process: TwoLayer { .top.net &= "GND"; .bottom.net &= "GND" }
+    .radio: PouredRadio
+    .feed: Header1x2
+    .radio.ant ~ .feed.p1
+    .radio.gnd ~ .feed.p2
+    .radio.shield ~ .feed.p2
+    .feed.p2.net &= "GND"
+}
+```
+
+A pin states only `Solid` or `Thermal`: a pour joins every pad of its net, and a keepout keeps it off one, while `ThruHoleOnly` chooses by the kind of a pad, which a pin's pads already are. A spoke width beside `Solid`, a bottom of zero or less, or one under the process's `.min_track` is refused too, each naming the pin's field:
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+import std::mfg::stackup::PadConnection
+import std::parts::connector::Header1x2
+
+board Unjoined {
+    .process: TwoLayer { .top.net &= "GND" }
+    .in: Header1x2
+    .out: Header1x2
+    .in.p1 ~ .out.p1
+    .in.p2 ~ .out.p2
+    .in.p2.net &= "GND"
+    .in.p2.pour_connection &= PadConnection::None
+}
+```
+
+```text
+error: Unjoined: `in.p2.pour_connection` is `PadConnection::None`, and a pin states only `Solid` or `Thermal` for its pads: a pour joins every pad of its net, so keep it off this one with a keepout that forbids copper, or join no pad of the pour (its `.pads`)
+```
+
 A pour on a net the board does not have is an error that lists the nets, as for a plane. A pad of the pour's net that is on a plane too gives up the via the router puts beside it where the pour joins it to a stitching via (issue #834; the router's passes over vias are described after Diff pairs); netsmith fills the pour itself, for the Gerbers, the design rules check and the KiCad board `fab` writes, which opens with the pour filled (below, with the zones of the routes file).
 
 Track of other nets on a pour cuts it, and a pour on one side of a two-layer board is the return path of the signals over it. So when a try of the router has routed every connection, and one outer layer is poured on a net while the other is not, the router routes each line with track on that pour again, the most first, with a step on the pour costing twice its length and a via 60 mm of track, and keeps the new copper only where it costs less so counted (issue #431). A track keeps to the other layer where the way round is short, and a board routes exactly as completely as before. The nets of a diff pair (see Diff pairs) are left where the pair's own pass put them. Where both outer layers are poured, as on a board with ground on both, nothing moves. The route scorecard reports how much other nets' track each pour has and how many pieces it falls into.

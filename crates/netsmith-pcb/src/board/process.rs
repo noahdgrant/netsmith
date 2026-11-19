@@ -64,6 +64,16 @@ impl Board {
         })
     }
 
+    /// How a pour joins the pad `number` of the part `refdes`, as its pin states it (issue
+    /// #1276), if it does.
+    pub fn pad_pour(&self, refdes: &str, number: &str) -> Option<&netsmith_core::PadPour> {
+        self.pad_pours.iter().find(|p| {
+            p.pins
+                .iter()
+                .any(|pin| pin.refdes == refdes && pin.pin == number)
+        })
+    }
+
     /// The branch a line carries the current of (issue #1113): a line with one end at a pad of a
     /// branch and the other at a pad of no branch, or a pad's line to its plane. The ratsnest
     /// joins a branch's pad to the rest of its net by one such line

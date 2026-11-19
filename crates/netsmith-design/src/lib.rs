@@ -1507,7 +1507,8 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     let mut nets = Vec::new();
     // Pins with no pad, gathered per part so each part is reported once.
     let mut padless: BTreeMap<InstId, Vec<String>> = BTreeMap::new();
-    // The pads of each part's pin, for the pins that state the current of their branch.
+    // The pads of each part's pin, for the pins that state the current of their branch or
+    // how a pour joins them.
     let mut pads_of: HashMap<InstId, Vec<PinRef>> = HashMap::new();
     for net in model.nets() {
         netsmith_core::job::checkpoint();
@@ -1642,6 +1643,8 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     features.net_widths.sort_by(|a, b| a.0.cmp(&b.0));
     features.net_currents = plan.currents;
     features.net_currents.sort_by(|a, b| a.net.cmp(&b.net));
+    // The pins that state how a pour joins their pads (issue #1276).
+    features.pad_pours = features::pad_pours(model, &pads_of, least_track, &mut errors);
     // The branches whose pins state their current (issue #1113), never narrower than a `route`
     // statement of a part's `layout` block asks of their net.
     for b in plan.branches {
