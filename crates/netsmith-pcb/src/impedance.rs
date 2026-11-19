@@ -987,3 +987,187 @@ pub fn target_notes(
     }
     lines
 }
+
+/// The conductivity of the copper of a track, in S/m: annealed copper, 58.0 MS/m (IEC 60028,
+/// the International Annealed Copper Standard). A fabricator's electrodeposited copper and its
+/// roughness are not counted: both raise the loss above the figure (issue #1405).
+pub const COPPER_CONDUCTIVITY: f64 = 58.0e6;
+
+/// The permeability of free space, in H/m (CODATA 2018, 1.256 637 062 12e-6).
+const MU0: f64 = 1.256_637_062_12e-6;
+
+/// The speed of light in vacuum, in m/s.
+const C0: f64 = 299_792_458.0;
+
+/// The loss of a track's copper and of its dielectric, each in dB per mm, at a frequency
+/// ([`loss_per_mm`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TrackLoss {
+    /// The copper's, by the skin effect.
+    pub conductor: f64,
+    /// The dielectric's, by its loss tangent.
+    pub dielectric: f64,
+}
+
+impl TrackLoss {
+    /// The two together, in dB per mm.
+    pub fn total(&self) -> f64 {
+        self.conductor + self.dielectric
+    }
+}
+
+/// The skin depth of copper at `frequency` (Hz), in mm.
+pub fn skin_depth(frequency: f64) -> f64 {
+    1e3 / (PI * frequency * MU0 * COPPER_CONDUCTIVITY).sqrt()
+}
+
+/// The loss per mm of a single track of `width` mm on the layer named `layer` of a board with a
+/// build-up, at `frequency` Hz, with the build-up's loss tangent (issue #1405). Low-loss
+/// closed forms, from D. M. Pozar, *Microwave Engineering*, 4th ed., Wiley 2012, section 3.7
+/// and 3.8, with the line's impedance and effective permittivity from this module:
+///
+/// - On an outer layer, a microstrip: the copper loses `8.686 Rs / (Z0 W)` dB per length (Pozar
+///   3.199, the strip and its reference plane together) and the dielectric `27.3 (er / sqrt(eeff))
+///   ((eeff - 1) / (er - 1)) tan(d) / lambda0` (Pozar 3.198, there in nepers). The line is the
+///   uncovered one: the solder mask's own loss is not counted.
+/// - On an inner layer, a stripline: the copper loses Pozar's 3.199 for a stripline (from
+///   Wheeler's incremental inductance rule, the two branches for `sqrt(er) Z0` below and above
+///   120 ohm), with `b` the space between the planes, and the dielectric `27.3 sqrt(eeff) tan(d)
+///   / lambda0` (Pozar 3.30). Pozar gives the strip centred in one dielectric; an off-centre
+///   strip between two dielectric layers is taken with its effective permittivity, an
+///   approximation of unstated error, as its impedance is.
+///
+/// `Rs = sqrt(pi f mu0 / sigma)` is the copper's surface resistance, which holds where the skin
+/// depth is below the copper's thickness: a frequency where it is not is refused (a few MHz
+/// for 1 oz copper, where any track's loss is far below a budget). Refused where the layer is
+/// not one a track may be on, the build-up records no loss tangent, or the geometry is outside
+/// a formula's domain.
+pub fn loss_per_mm(
+    stackup: &Stackup,
+    layer: &str,
+    width: f64,
+    frequency: f64,
+) -> Result<TrackLoss, OutOfRange> {
+    let layers = track_layers(stackup).ok_or_else(|| {
+        OutOfRange(
+            "the board records no build-up (a two-layer board), so its tracks have no loss figure"
+                .to_string(),
+        )
+    })?;
+    let inner = stackup.inner.as_ref().expect("a build-up");
+    let tan_d = inner.loss_tangent.ok_or_else(|| {
+        OutOfRange(format!(
+            "build-up {} records no loss tangent: state the laminate's, `.process.stackup.loss_tangent &= 0.02`, from its datasheet",
+            inner.build
+        ))
+    })?;
+    let layer = layers.iter().find(|l| l.name == layer).ok_or_else(|| {
+        OutOfRange(format!(
+            "`{layer}` is not a layer a track may be on in this build-up"
+        ))
+    })?;
+    if !(frequency > 0.0) {
+        return Err(OutOfRange(format!(
+            "a loss is worked out at a frequency above 0, not {frequency} Hz"
+        )));
+    }
+    let delta = skin_depth(frequency);
+    if delta >= layer.copper {
+        return Err(OutOfRange(format!(
+            "at {} the skin depth of copper is {delta:.4} mm, not below the track's {} mm, and the skin-effect formula needs it below",
+            hertz(frequency),
+            layer.copper
+        )));
+    }
+    match (layer.outer, layer.inner) {
+        (Some(below), _) => microstrip_loss(width, layer.copper, below, frequency, tan_d),
+        (_, Some((above, below))) => {
+            stripline_loss(width, layer.copper, above, below, frequency, tan_d)
+        }
+        _ => unreachable!("a layer is an outer or an inner one"),
+    }
+}
+
+/// The surface resistance of copper at `frequency` (Hz), in ohms: `sqrt(pi f mu0 / sigma)`.
+pub fn surface_resistance(frequency: f64) -> f64 {
+    (PI * frequency * MU0 / COPPER_CONDUCTIVITY).sqrt()
+}
+
+/// Decibels in a neper.
+const DB_PER_NEPER: f64 = 20.0 / std::f64::consts::LN_10;
+
+/// The loss per mm of an uncovered microstrip `width` mm wide and `thickness` mm thick on the
+/// dielectric `below`, at `frequency` Hz with the loss tangent `tan_d` ([`loss_per_mm`]).
+pub fn microstrip_loss(
+    width: f64,
+    thickness: f64,
+    below: TrackDielectric,
+    frequency: f64,
+    tan_d: f64,
+) -> Result<TrackLoss, OutOfRange> {
+    let line = microstrip(width, thickness, below)?;
+    let (z0, eeff, er) = (line.impedance, line.epsilon_eff, below.epsilon);
+    let lambda0 = C0 / frequency * 1e3;
+    let fill = if er > 1.0 {
+        (eeff - 1.0) / (er - 1.0)
+    } else {
+        1.0
+    };
+    Ok(TrackLoss {
+        conductor: DB_PER_NEPER * surface_resistance(frequency) / (z0 * width * 1e-3) * 1e-3,
+        dielectric: DB_PER_NEPER * PI * er / eeff.sqrt() * fill * tan_d / lambda0,
+    })
+}
+
+/// The loss per mm of a stripline `width` mm wide and `thickness` mm thick between the
+/// dielectric layers `above` and `below`, at `frequency` Hz with the loss tangent `tan_d`
+/// ([`loss_per_mm`]).
+pub fn stripline_loss(
+    width: f64,
+    thickness: f64,
+    above: TrackDielectric,
+    below: TrackDielectric,
+    frequency: f64,
+    tan_d: f64,
+) -> Result<TrackLoss, OutOfRange> {
+    let line = stripline(width, thickness, above, below)?;
+    let (z0, eeff) = (line.impedance, line.epsilon_eff);
+    let rs = surface_resistance(frequency);
+    let lambda0 = C0 / frequency * 1e3;
+    let (w, t) = (width * 1e-3, thickness * 1e-3);
+    let b = (above.thickness + below.thickness) * 1e-3 + t;
+    if t <= 0.0 {
+        return Err(OutOfRange(
+            "the stripline's copper loss needs a copper thickness above 0".to_string(),
+        ));
+    }
+    let nepers = if eeff.sqrt() * z0 < 120.0 {
+        let a = 1.0 + 2.0 * w / (b - t) + (b + t) / (b - t) / PI * ((2.0 * b - t) / t).ln();
+        2.7e-3 * rs * eeff * z0 / (30.0 * PI * (b - t)) * a
+    } else {
+        let bb = 1.0
+            + b / (0.5 * w + 0.7 * t)
+                * (0.5 + 0.414 * t / w + (4.0 * PI * w / t).ln() / (2.0 * PI));
+        0.16 * rs / (z0 * b) * bb
+    };
+    Ok(TrackLoss {
+        conductor: DB_PER_NEPER * nepers * 1e-3,
+        dielectric: DB_PER_NEPER * PI * eeff.sqrt() * tan_d / lambda0,
+    })
+}
+
+/// A frequency for a message: `2.4 GHz`, `100 MHz`.
+pub fn hertz(f: f64) -> String {
+    let (v, unit) = if f >= 1e9 {
+        (f / 1e9, "GHz")
+    } else if f >= 1e6 {
+        (f / 1e6, "MHz")
+    } else if f >= 1e3 {
+        (f / 1e3, "kHz")
+    } else {
+        (f, "Hz")
+    };
+    let s = format!("{v:.3}");
+    let s = s.trim_end_matches('0').trim_end_matches('.');
+    format!("{s} {unit}")
+}

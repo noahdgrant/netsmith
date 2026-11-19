@@ -13,6 +13,18 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+### `TrackPath` gains `.frequency`, `Stackup` gains `.loss_tangent` (issue #1405)
+
+`std::sources::TrackPath` declares `.frequency`, the frequency its tracks' loss is worked out at, and `std::mfg::stackup::Stackup` declares `.loss_tangent`, the build-up's dissipation factor. A use's block or a provider of yours that declared either member stops at the declaration:
+
+```text
+error: `frequency` is declared by `TrackPath`, which this interface provides; do not declare it again: narrow it with `.frequency &= ...`, or state it with a relation
+```
+
+Delete the declaration and keep the narrowing (`.rf.frequency &= 2.4GHz`, `.process.stackup.loss_tangent &= 0.02`). `.budget_loss` is now judged when `.frequency` is stated and the build-up has a loss tangent; no build-up of the standard library states one, so a board that states neither builds as before.
+
+There is no ADR: the owner decided it on the issue.
+
 ### `Resistor`, `Capacitor` and `Inductor` gain `.fitted` and `.tune`; `Bool`, `true` and `false` are known everywhere (issue #1273)
 
 A part that provides `std::parts::passive::Resistor`, `Capacitor` or `Inductor` and declared `.fitted` or `.tune` for itself stops at the declaration:

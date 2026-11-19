@@ -1084,6 +1084,7 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
             hole_clearance: mm("min_plane_hole_clearance"),
             mask,
             outer_copper: stated("stackup.impedance_outer_copper").map(round),
+            loss_tangent: stated("stackup.loss_tangent"),
         });
     }
     // An HDI process (issue #1015) states its order; no other process has the field.

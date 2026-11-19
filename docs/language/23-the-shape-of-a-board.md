@@ -657,9 +657,43 @@ board Antenna {
 }
 ```
 
-The budget is over the chain: `.budget_length`, the top of its range, is the most the tracks of all its nets may be long together. `netsmith board nets` lists each path's nets, their lengths and the sum against it (`path rf: ...`), `board drc` notes a path over it (`track path: rf: ...`), and `fab-notes.txt` has a `track path:` line for each path with its chain, its length and its budget. `.budget_loss` is the most the line may lose, in decibels; netsmith has no model of a track's loss (it needs the frequency and the loss tangent of the build-up), so the notes list it as not measured (issue #1405). `.corner` is `TrackCorner::Rounded`, the default, which rounds the bends with arcs as every net's are, or `TrackCorner::Mitered`, which keeps their 45 degree corners. `.fence` puts ground vias along both sides of the path's tracks at that distance from each other, each as near the track as the rules' space allows, joined to the net of the pour on the track's layer, else to an inner plane of a rail's net; a place no via fits, or with a ground via within half the distance already, is left without one, and a path with no such ground gets no fence and the notes say so.
+The budget is over the chain: `.budget_length`, the top of its range, is the most the tracks of all its nets may be long together. `netsmith board nets` lists each path's nets, their lengths and the sum against it (`path rf: ...`), `board drc` notes a path over it (`track path: rf: ...`), and `fab-notes.txt` has a `track path:` line for each path with its chain, its length and its budget. `.corner` is `TrackCorner::Rounded`, the default, which rounds the bends with arcs as every net's are, or `TrackCorner::Mitered`, which keeps their 45 degree corners. `.fence` puts ground vias along both sides of the path's tracks at that distance from each other, each as near the track as the rules' space allows, joined to the net of the pour on the track's layer, else to an inner plane of a rail's net; a place no via fits, or with a ground via within half the distance already, is left without one, and a path with no such ground gets no fence and the notes say so.
 
 A chain that is not one is an error of `build`: `.first` and `.last` joined by no chain of parts in series, or by two of the same length (two capacitors side by side), and `.first` or `.last` on no net or on a rail's net. A budget with no top, or a top of 0, is an error too.
+
+The loss is judged as the length is (issue #1405, owner decision). `.frequency` is the frequency the line carries, one value (`.rf.frequency &= 2.4GHz`), and `.budget_loss` the most the tracks of the chain may lose together, in decibels, the top of its range (`&= 0..0.5`). Each track's loss per mm is worked out on the routed board from its width, its layer and the build-up, by the low-loss closed forms of Pozar's *Microwave Engineering* (4th ed., sections 3.7 and 3.8): on an outer layer a microstrip, whose copper loses `8.686 Rs / (Z0 W)` dB per length and whose dielectric loses `27.3 (er / sqrt(eeff)) ((eeff - 1) / (er - 1)) tan(d) / lambda0`; on an inner layer a stripline, by Pozar's stripline forms. `Rs` is the copper's surface resistance at the frequency (annealed copper, 58 MS/m), `Z0` and `eeff` the line's impedance and effective permittivity from the same formulas as its width, and `tan(d)` the loss tangent of the build-up, `.stackup.loss_tangent`. The loss is the sum over the tracks of all the nets, each its length times its loss per mm; the parts in series are not counted, nor the roughness of the copper or the solder mask's own loss, and each makes the real line lose more. `netsmith board nets` adds the loss to the path's line (`; 0.123 dB at 2.4 GHz (within the 0.5 dB budget)`), `board drc` notes a path over its loss budget, and the `track path:` line of `fab-notes.txt` says the loss against the budget.
+
+A loss tangent is a number of the laminate, and a build-up states one only from a source that gives it for that build-up. No build-up of the standard library does: JLCPCB's impedance page gives each prepreg's permittivity and no loss tangent, and names no laminate, so its build-ups leave `.stackup.loss_tangent` unset. A board whose laminate's datasheet gives one states it (`.process.stackup.loss_tangent &= 0.02`). Without one, or without `.frequency`, or on a two-layer board, which records no build-up, the loss is not worked out and the notes say why (`no loss at 2.4 GHz: build-up JLC04161H-7628 records no loss tangent ...`). The skin-effect formula holds where the skin depth is below the copper's thickness, so a frequency of a few MHz or less has no figure either; such a line loses far less than any budget.
+
+```nsm solve
+import std::mfg::jlcpcb::FourLayer
+import std::parts::connector::Header1x2
+import std::parts::passive::Capacitor
+import std::sources::TrackPath
+
+board Lossy {
+    .process: FourLayer {
+        .stackup.thickness &= 1.6mm
+        .stackup.loss_tangent &= 0.02
+        .inner1.use &= "signal"
+        .inner2.use &= "signal"
+    }
+    .radio: Header1x2
+    .connector: Header1x2
+    .block: Capacitor { .capacitance &= 100pF +/- 5% }
+    .radio.p1 ~ .block.a
+    .block.b ~ .connector.p1
+    .rf: TrackPath {
+        .impedance &= 50ohm
+        .frequency &= 2.4GHz
+        .budget_loss &= 0..0.5
+    }
+    .rf.first ~ .radio.p1
+    .rf.last ~ .connector.p1
+}
+```
+
+A frequency that is a range, or not above 0, is an error of `build`.
 
 ### Track widths by rail
 
