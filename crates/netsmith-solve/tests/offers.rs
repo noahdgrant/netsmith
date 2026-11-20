@@ -55,8 +55,9 @@ fn standard_files() -> Vec<(String, String)> {
 }
 
 /// The standard offers and the standard rows are one set of parts (ADR 0143): every offer is of
-/// a row, and every row is offered by both suppliers by one number, which is what the rows held
-/// in their `lcsc` column before it went. The catalogs say of that number what its row says.
+/// a row, and every row has one `lcsc` offer, with the number the row held in its `lcsc` column
+/// before it went, and the `class` its `library` held. The catalogs say of that number what its
+/// row says.
 #[test]
 fn the_standard_offers_and_the_standard_rows_are_the_same_parts() {
     let catalogs = Catalogs::jlcpcb();
@@ -73,37 +74,23 @@ fn the_standard_offers_and_the_standard_rows_are_the_same_parts() {
             let mpn = &row["mpn"];
             let manufacturer = row.get("manufacturer").filter(|m| !m.is_empty());
             parts += 1;
-            let skus: Vec<String> = ["jlcpcb", "lcsc"]
-                .into_iter()
-                .filter_map(|supplier| match offers.of(supplier, manufacturer.map(String::as_str), mpn) {
-                    Ok(Some(offer)) => Some(offer.sku.clone()),
-                    Ok(None) => {
-                        found.push(format!("{at}: `{mpn}` has no {supplier} offer"));
-                        None
-                    }
-                    Err(e) => {
-                        found.push(format!("{at}: {e}"));
-                        None
-                    }
-                })
-                .collect();
-            if let [jlcpcb, lcsc] = skus.as_slice() {
-                if jlcpcb != lcsc {
-                    found.push(format!(
-                        "{at}: `{mpn}` is {jlcpcb} at jlcpcb and {lcsc} at lcsc; JLCPCB assembles by the LCSC number"
-                    ));
+            match offers.of("lcsc", manufacturer.map(String::as_str), mpn) {
+                Ok(Some(offer)) => {
+                    let supplier = catalogs.supplier(&offer.sku).expect("a standard row");
+                    assert_eq!(&supplier.mpn, mpn, "{at}");
+                    assert_eq!(supplier.library, offer.class, "{at}");
                 }
-                let supplier = catalogs.supplier(jlcpcb).expect("a standard row");
-                assert_eq!(&supplier.mpn, mpn, "{at}");
+                Ok(None) => found.push(format!("{at}: `{mpn}` has no lcsc offer")),
+                Err(e) => found.push(format!("{at}: {e}")),
             }
         }
     }
     assert!(found.is_empty(), "{}", found.join("\n"));
-    // No standard offer is of a part that no standard row has.
-    for supplier in ["jlcpcb", "lcsc"] {
-        let count = offers.iter().filter(|o| o.supplier == supplier).count();
-        assert_eq!(count, parts, "{supplier}");
-    }
+    // No standard offer is of a part that no standard row has, and every standard row is one
+    // that JLCPCB's assembly library lists.
+    assert_eq!(offers.iter().filter(|o| o.supplier == "lcsc").count(), parts);
+    assert_eq!(offers.len(), parts);
+    assert!(offers.iter().all(|o| o.class.is_some()));
     assert!(offers.iter().all(|o| o.built_in));
     assert!(catalogs.offer_notes().is_empty());
 }
@@ -119,7 +106,7 @@ fn a_catalog_with_an_lcsc_or_a_library_column_is_refused_with_how_to_move_them()
         .unwrap_err();
     assert_eq!(
         e,
-        "catalogs/zz9.csv:1: the columns `lcsc` and `library` have gone from catalog files (ADR 0143): a catalog row is the part, its `manufacturer` and `mpn`, and what a supplier calls it is an offer, a row of `offers/jlcpcb.csv` and `offers/lcsc.csv` (the `lcsc` number is the offer's `sku`, and the `library` the `class` of the jlcpcb offer); `netsmith project migrate-offers` moves them into the project's offers files and removes them here (docs/MIGRATING.md)"
+        "catalogs/zz9.csv:1: the columns `lcsc` and `library` have gone from catalog files (ADR 0143): a catalog row is the part, its `manufacturer` and `mpn`, and what a supplier calls it is an offer, a row of `offers/<supplier>.csv` (the `lcsc` number is the `sku` of the offer in `offers/lcsc.csv`, and the `library` its `class`); `netsmith project migrate-offers` moves them into the project's offers files and removes them here (docs/MIGRATING.md)"
     );
     let e = Catalogs::jlcpcb()
         .add_file("zz9", "catalogs/zz9.csv", "mpn,package,library,source\n")
@@ -202,7 +189,7 @@ fn a_project_offer_gives_its_row_the_number_and_the_class() {
     assert_eq!(without.picks[0].lcsc, None);
     assert_eq!(without.picks[0].library, None);
 
-    let with = project(&[("jlcpcb", ",ZZ9-33,C900001,Basic,https://example.invalid/jlc,,\n")])
+    let with = project(&[("lcsc", ",ZZ9-33,C900001,Basic,https://example.invalid/jlc,,\n")])
         .unwrap();
     let s = solved(&with);
     assert_eq!(s.picks[0].mpn.as_deref(), Some("ZZ9-33"));
@@ -242,22 +229,22 @@ fn an_offer_of_a_part_in_no_catalog_is_a_note() {
 
 #[test]
 fn an_offer_with_no_source_is_refused() {
-    let e = project(&[("jlcpcb", ",ZZ9-33,C900001,Basic,,,\n")]).unwrap_err();
+    let e = project(&[("lcsc", ",ZZ9-33,C900001,Basic,,,\n")]).unwrap_err();
     assert_eq!(
         e,
-        "offers/jlcpcb.csv:2: the offer of `ZZ9-33` (sku `C900001`) has no source; every offer needs the URL or text its number was read from in its `source` column, as a catalog row does: no number comes from memory"
+        "offers/lcsc.csv:2: the offer of `ZZ9-33` (sku `C900001`) has no source; every offer needs the URL or text its number was read from in its `source` column, as a catalog row does: no number comes from memory"
     );
 }
 
 #[test]
 fn a_project_cannot_offer_a_standard_part_again() {
     let e = project(&[(
-        "jlcpcb",
+        "lcsc",
         ",0402WGF3300TCE,C900004,Extended,https://example.invalid/jlc,,\n",
     )])
     .unwrap_err();
     assert!(
-        e.starts_with("offers/jlcpcb.csv:2: `0402WGF3300TCE` already has an offer of jlcpcb at data/offers/jlcpcb.csv:"),
+        e.starts_with("offers/lcsc.csv:2: `0402WGF3300TCE` already has an offer of lcsc at data/offers/lcsc.csv:"),
         "{e}"
     );
     assert!(e.ends_with("; a supplier offers a part once"), "{e}");
@@ -271,7 +258,7 @@ fn a_project_cannot_offer_a_standard_part_again() {
 #[test]
 fn a_row_with_no_manufacturer_between_two_offers_of_its_mpn_is_refused() {
     let c = project(&[(
-        "jlcpcb",
+        "lcsc",
         "Acme,ZZ9-33,C900005,Basic,https://example.invalid/a,,\nWidget Co,ZZ9-33,C900006,Basic,https://example.invalid/w,,\n",
     )])
     .unwrap();
@@ -282,6 +269,6 @@ fn a_row_with_no_manufacturer_between_two_offers_of_its_mpn_is_refused() {
     let e = c.identity("zz9", &columns, &[]).unwrap().unwrap_err();
     assert_eq!(
         e,
-        "catalogs/zz9.csv:2: the mpn `ZZ9-33` names no manufacturer, and jlcpcb offers two parts of it (`ZZ9-33` of `Acme` at offers/jlcpcb.csv:2 and `ZZ9-33` of `Widget Co` at offers/jlcpcb.csv:3): give the row its manufacturer, as the offer it is bought by has it"
+        "catalogs/zz9.csv:2: the mpn `ZZ9-33` names no manufacturer, and lcsc offers two parts of it (`ZZ9-33` of `Acme` at offers/lcsc.csv:2 and `ZZ9-33` of `Widget Co` at offers/lcsc.csv:3): give the row its manufacturer, as the offer it is bought by has it"
     );
 }

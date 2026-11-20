@@ -6,8 +6,8 @@
 //! - **The `lcsc` and `library` columns of the project's own catalog files** (its `catalog_dirs`
 //!   folders and its `catalogs` list) go, every other cell as it was written
 //!   ([`netsmith_solve::migrate::catalog`]), and each row with an `lcsc` makes an offer of
-//!   `lcsc` and, with a `library`, one of `jlcpcb`, appended to the project's offers files of
-//!   those suppliers (in its `offer_dirs` folders; the first folder, `offers/` by default, when
+//!   `lcsc`, with the row's `library` as its `class`, appended to the project's offers file of
+//!   that supplier (in its `offer_dirs` folders; the first folder, `offers/` by default, when
 //!   the file is new). An offer the file already has, of the same part and sku, is not written
 //!   again, so a second run changes nothing.
 //! - **Each `.lcsc &= "C..."` in the project's sources** (the top-level files, the modules

@@ -181,7 +181,7 @@ fn loader(blocks: &[Block]) -> Loader {
 
 /// The catalogs the `nsm` blocks of each `set=` use: the standard ones and the rows of the
 /// set's `csv` blocks, which are files named by `file=` (`catalogs/resistor.csv` adds to
-/// the `resistor` catalog, `offers/jlcpcb.csv` to JLCPCB's offers). A set whose files do not
+/// the `resistor` catalog, `offers/lcsc.csv` to LCSC's offers). A set whose files do not
 /// load holds the problem.
 fn catalog_sets(blocks: &[Block]) -> HashMap<String, Result<Catalogs, String>> {
     let mut sets: HashMap<String, Result<Catalogs, String>> = HashMap::new();

@@ -89,8 +89,8 @@ pub struct Manifest {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub catalogs: Vec<String>,
     /// The folders whose `*.csv` files are the project's offers (ADR 0143), relative to the
-    /// project root (`..` is allowed): each file is named for its supplier (`offers/jlcpcb.csv`
-    /// is JLCPCB's), and its offers come after the standard ones. The default is `["offers"]`,
+    /// project root (`..` is allowed): each file is named for its supplier (`offers/lcsc.csv`
+    /// is LCSC's), and its offers come after the standard ones. The default is `["offers"]`,
     /// which is not written out; `[]` reads no folder. Sub-folders are not read, and a folder
     /// may not also be a `catalog_dirs` folder.
     #[serde(
@@ -1240,6 +1240,9 @@ impl Project {
             self.csvs_in("offer_dirs", &self.manifest.offer_dirs)?
         {
             let supplier = file_name.strip_suffix(".csv").expect("a .csv");
+            if supplier == netsmith_solve::offers::MERGED_INTO_LCSC {
+                return Err(netsmith_solve::offers::merge_into_lcsc(&file));
+            }
             if !netsmith_solve::offers::is_supplier(supplier) {
                 return Err(format!(
                     "{MANIFEST}: {file} in the offer_dirs folder {folder:?} is not an offers file: an offers file is named for its supplier, {}. Rename it, or move it out of the folder (a folder's sub-folders are not read)",

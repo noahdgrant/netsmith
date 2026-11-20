@@ -4,10 +4,10 @@
 //! (`library`). Both are now an offer, a row of `offers/<supplier>.csv` ([`crate::offers`]), and a
 //! catalog file that still has either column is refused ([`crate::table`]). [`catalog`] turns
 //! one such file into the same file without the two columns, every other cell as it was written,
-//! and the offers its rows made: for a row with an `lcsc`, an offer of `lcsc` of that number, and
-//! one of `jlcpcb` of that number with the row's `library` as its `class` when the row names one
-//! (JLCPCB sorts every part it assembles in a library, so a row with none was not one JLCPCB
-//! listed). Each offer is of the row's `manufacturer` and `mpn`, has the row's `source` (where its
+//! and the offers its rows made: for a row with an `lcsc`, an offer of `lcsc` of that number, with
+//! the row's `library` as its `class` when the row names one (the sorting JLCPCB gives a part its
+//! parts library lists, which reads LCSC's numbers; a row with none was not one JLCPCB listed, and
+//! its offer's `class` is empty). Each offer is of the row's `manufacturer` and `mpn`, has the row's `source` (where its
 //! number was read) and `checked`, and its `notes` name the row it came from.
 //!
 //! `netsmith project migrate-offers` runs it over a project's catalogs, and nothing else writes
@@ -20,12 +20,12 @@ pub const OFFERS_HEADER: &str = "manufacturer,mpn,sku,class,source,checked,notes
 /// One offer a catalog row made.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MovedOffer {
-    /// `jlcpcb` or `lcsc`.
+    /// `lcsc`: the supplier whose numbers the old `lcsc` column held.
     pub supplier: String,
     pub manufacturer: Option<String>,
     pub mpn: String,
     pub sku: String,
-    /// The row's `library` for a `jlcpcb` offer; empty for `lcsc`.
+    /// The row's `library`, when it names one.
     pub class: Option<String>,
     pub source: String,
     pub checked: Option<String>,
@@ -38,7 +38,7 @@ pub struct MovedOffer {
 pub struct Migrated {
     /// The file's text without the `lcsc` and `library` columns.
     pub catalog: String,
-    /// The offers its rows made, in the order of the rows, each row's `jlcpcb` offer first.
+    /// The offers its rows made, in the order of the rows.
     pub offers: Vec<MovedOffer>,
     /// What was dropped, one line each: a `library` of a row with no `lcsc`.
     pub notes: Vec<String>,
@@ -116,24 +116,12 @@ pub fn catalog(file: &str, text: &str) -> Result<Option<Migrated>, String> {
         };
         let manufacturer = cell("manufacturer");
         let checked = cell("checked");
-        if let Some(class) = library {
-            offers.push(MovedOffer {
-                supplier: "jlcpcb".into(),
-                manufacturer: manufacturer.clone(),
-                mpn: mpn.clone(),
-                sku: sku.clone(),
-                class: Some(class),
-                source: source.clone(),
-                checked: checked.clone(),
-                from: here.clone(),
-            });
-        }
         offers.push(MovedOffer {
             supplier: "lcsc".into(),
             manufacturer,
             mpn,
             sku,
-            class: None,
+            class: library,
             source,
             checked,
             from: here,
@@ -357,17 +345,17 @@ mod tests {
             m.catalog,
             "mpn,name,source,checked\nZZ-1,\"One, the first\",\"the record, read 2026-11-01\",2026-11-02\nZZ-2,Two,the record,\n,Made up,,\n"
         );
-        assert_eq!(m.offers.len(), 3);
+        assert_eq!(m.offers.len(), 2);
         assert_eq!(
             (m.offers[0].supplier.as_str(), m.offers[0].class.as_deref()),
-            ("jlcpcb", Some("Basic"))
+            ("lcsc", Some("Basic"))
         );
         assert_eq!(
-            offer_lines(&m.offers[..2]),
-            ",ZZ-1,C1,Basic,\"the record, read 2026-11-01\",2026-11-02,moved from the lcsc and library columns of catalogs/zz.csv:2 by netsmith project migrate-offers\n,ZZ-1,C1,,\"the record, read 2026-11-01\",2026-11-02,moved from the lcsc column of catalogs/zz.csv:2 by netsmith project migrate-offers\n"
+            offer_lines(&m.offers),
+            ",ZZ-1,C1,Basic,\"the record, read 2026-11-01\",2026-11-02,moved from the lcsc and library columns of catalogs/zz.csv:2 by netsmith project migrate-offers\n,ZZ-2,C2,,the record,,moved from the lcsc column of catalogs/zz.csv:3 by netsmith project migrate-offers\n"
         );
-        assert_eq!(m.offers[2].supplier, "lcsc");
-        assert_eq!(m.offers[2].from, "catalogs/zz.csv:3");
+        assert_eq!(m.offers[1].supplier, "lcsc");
+        assert_eq!(m.offers[1].from, "catalogs/zz.csv:3");
         assert!(m.notes.is_empty());
     }
 

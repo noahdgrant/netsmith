@@ -545,7 +545,7 @@ impl Table {
         let number = |n: &String| (!n.is_empty()).then(|| n.clone());
         Some(LockedRow {
             row: row.name.clone(),
-            skus: crate::lock::channel_skus(&row.bought(offers).unwrap_or_default().skus),
+            skus: row.bought(offers).unwrap_or_default().skus,
             manufacturer: number(&row.manufacturer),
             mpn: number(&row.mpn),
             ..locked.clone()
@@ -717,7 +717,7 @@ fn retired_columns(file: &str, line: usize, retired: &[&str]) -> String {
         ("the columns", "have")
     };
     format!(
-        "{file}:{line}: {them} {named} {has} gone from catalog files (ADR 0143): a catalog row is the part, its `manufacturer` and `mpn`, and what a supplier calls it is an offer, a row of `offers/jlcpcb.csv` and `offers/lcsc.csv` (the `lcsc` number is the offer's `sku`, and the `library` the `class` of the jlcpcb offer); `netsmith project migrate-offers` moves them into the project's offers files and removes them here (docs/MIGRATING.md)"
+        "{file}:{line}: {them} {named} {has} gone from catalog files (ADR 0143): a catalog row is the part, its `manufacturer` and `mpn`, and what a supplier calls it is an offer, a row of `offers/<supplier>.csv` (the `lcsc` number is the `sku` of the offer in `offers/lcsc.csv`, and the `library` its `class`); `netsmith project migrate-offers` moves them into the project's offers files and removes them here (docs/MIGRATING.md)"
     )
 }
 

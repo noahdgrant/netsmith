@@ -143,7 +143,7 @@ Wire or dot in the editor's schematic that serves nothing: an end that touches n
 _Avoid_: Dangling wire, spur, stub (a stub is the short wire straight out of a pin)
 
 **Supplier**:
-A seller of parts, named by the file of its **offers** and by the **supply channel** that buys from it: `jlcpcb` and `lcsc`, the two netsmith reads offers files of; another (`digikey`, `mouser`) comes with its own file and provider, and until then an offers file named for it is refused. It is not a **supply provider** (the code that asks it for a quote) and not the board house that assembles (ADR 0143, proposed).
+A seller of parts, named by the file of its **offers** and by the **supply channel** that buys from it: `lcsc`, the one netsmith reads offers files of (JLCPCB's assembly stock is a channel of the `lcsc` supplier's numbers, since JLCPCB's parts library uses them); another (`digikey`, `mouser`) comes with its own file and provider, and until then an offers file named for it is refused. It is not a **supply provider** (the code that asks it for a quote) and not the board house that assembles (ADR 0143, proposed).
 _Avoid_: Vendor, distributor (for the same thing), source (a `source` cell is where a number was read)
 
 **Supply budget**:

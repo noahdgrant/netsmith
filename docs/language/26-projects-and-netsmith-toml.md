@@ -27,7 +27,7 @@ Only `name` is required.
 | `kicad` | The KiCad version of the files. Only 9 is accepted. |
 | `catalog_dirs` | The folders whose `*.csv` files are the project's own catalogs, each named by its file name (`catalogs/acme_ldo.csv` is the catalog `acme_ldo`), in addition to the standard ones. Default `["catalogs"]`; `init` writes it out. See Catalog files. |
 | `catalogs` | Optional. Single catalog files to add that are not in a `catalog_dirs` folder, each named by its catalog. See Catalog files. |
-| `offer_dirs` | The folders whose `*.csv` files are the project's offers, each named for its supplier (`offers/jlcpcb.csv`, `offers/lcsc.csv`), read after the standard offers (ADR 0143). Default `["offers"]`, which is not written out; `[]` reads no folder. A folder may not also be a `catalog_dirs` folder. See Offers files. |
+| `offer_dirs` | The folders whose `*.csv` files are the project's offers, each named for its supplier (`offers/lcsc.csv`), read after the standard offers (ADR 0143). Default `["offers"]`, which is not written out; `[]` reads no folder. A folder may not also be a `catalog_dirs` folder. See Offers files. |
 | `assembly` | Optional. Who assembles a part nothing else speaks for: `"fab"`, `"hand"`, `"none"` or `"consigned"`. See Who assembles a part. |
 | `environment` | Optional. The environment every board has when it declares none: `"std::env::Environment"`, a definition of the project's own, `"src/vehicle.nsm::Automotive"`, or one of a dependency by its module, `"shared::env::Lab"` (_Dependencies_, below). See The environment of a board. |
 | `guidelines` | Optional. What a design that goes against a guideline gets: `"warn"` (the default) reports it and builds, `"error"` refuses to build. `--strict` asks for `"error"` for one run. See Track width against current, and The voltage a power track drops (a guideline of `fab`, which then stops before it writes the package). |
@@ -85,7 +85,7 @@ Rules.
 - Paths in the manifest stay inside the project, and a catalog file is named for its catalog. An unknown key is refused with its line.
 - A file name that cannot be written in an import is refused, naming the file.
 - A `.csv` file in a `catalog_dirs` folder that is not named like a catalog is refused, naming the file.
-- A `.csv` file in an `offer_dirs` folder that is not named for a supplier (`jlcpcb.csv`, `lcsc.csv`) is refused, naming the file.
+- A `.csv` file in an `offer_dirs` folder that is not named for a supplier (`lcsc.csv`) is refused, naming the file; a `jlcpcb.csv` is refused with how to merge it into `lcsc.csv` (its classes are the `class` of the `lcsc` offers, ADR 0143).
 
 Misuse.
 

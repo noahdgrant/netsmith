@@ -44,20 +44,20 @@ fn bought(project: &Project, sku: &str) -> Option<Option<Library>> {
 
 #[test]
 fn the_offers_folder_is_read_by_default() {
-    let jlcpcb = offer("C900101", "Extended");
+    let lcsc = offer("C900101", "Extended");
     let (_root, p) = project(
         "",
         &[
             ("catalogs/resistor.csv", ROWS),
-            ("offers/jlcpcb.csv", &jlcpcb),
+            ("offers/lcsc.csv", &lcsc),
         ],
     );
     let p = p.unwrap();
     assert_eq!(p.manifest.offer_dirs, ["offers"]);
     let files = p.all_offer_files().unwrap();
     assert_eq!(files.len(), 1);
-    assert_eq!(files[0].supplier, "jlcpcb");
-    assert_eq!(files[0].file, "offers/jlcpcb.csv");
+    assert_eq!(files[0].supplier, "lcsc");
+    assert_eq!(files[0].file, "offers/lcsc.csv");
     assert_eq!(bought(&p, "C900101"), Some(Some(Library::Extended)));
     assert!(p.catalogs().unwrap().offer_notes().is_empty());
 }
@@ -84,7 +84,17 @@ fn a_file_not_named_for_a_supplier_is_refused() {
     let e = p.unwrap().catalogs().unwrap_err();
     assert_eq!(
         e,
-        "netsmith.toml: offers/digikey.csv in the offer_dirs folder \"offers\" is not an offers file: an offers file is named for its supplier, jlcpcb.csv or lcsc.csv. Rename it, or move it out of the folder (a folder's sub-folders are not read)"
+        "netsmith.toml: offers/digikey.csv in the offer_dirs folder \"offers\" is not an offers file: an offers file is named for its supplier, lcsc.csv. Rename it, or move it out of the folder (a folder's sub-folders are not read)"
+    );
+}
+
+#[test]
+fn a_jlcpcb_offers_file_is_refused_with_how_to_merge_it() {
+    let (_root, p) = project("", &[("offers/jlcpcb.csv", HEAD)]);
+    let e = p.unwrap().catalogs().unwrap_err();
+    assert_eq!(
+        e,
+        "offers/jlcpcb.csv: JLCPCB's parts library uses LCSC's numbers, so its offers are the `lcsc` offers now (ADR 0143): merge the file into `lcsc.csv` beside it, the `class` of each of its offers into the `class` of the `lcsc` offer of that part (an `lcsc` offer whose `class` is empty is a part JLCPCB's library does not list), and remove it"
     );
 }
 
@@ -93,13 +103,13 @@ fn a_problem_in_an_offers_file_names_its_line() {
     let (_root, p) = project(
         "",
         &[(
-            "offers/jlcpcb.csv",
+            "offers/lcsc.csv",
             &format!("{HEAD},ZZR-316,C900103,Basic,,,\n"),
         )],
     );
     let e = p.unwrap().catalogs().unwrap_err();
     assert!(
-        e.starts_with("offers/jlcpcb.csv:2: the offer of `ZZR-316` (sku `C900103`) has no source"),
+        e.starts_with("offers/lcsc.csv:2: the offer of `ZZR-316` (sku `C900103`) has no source"),
         "{e}"
     );
 }
@@ -153,20 +163,20 @@ fn a_dependencys_offers_are_read_and_a_supplier_is_one_file() {
         "[project]\nname = \"shared\"\ntop_level = []\n",
     );
     write("shared/catalogs/resistor.csv", ROWS);
-    write("shared/offers/jlcpcb.csv", &offer("C900105", "Basic"));
+    write("shared/offers/lcsc.csv", &offer("C900105", "Basic"));
     write(
         "app/netsmith.toml",
         "[project]\nname = \"app\"\ntop_level = []\n\n[dependencies]\nshared = { path = \"../shared\" }\n",
     );
     let app = Project::load(&root.join("app")).unwrap();
     let files = app.all_offer_files().unwrap();
-    assert_eq!(files[0].file, "../shared/offers/jlcpcb.csv");
+    assert_eq!(files[0].file, "../shared/offers/lcsc.csv");
     assert_eq!(bought(&app, "C900105"), Some(Some(Library::Basic)));
 
-    write("app/offers/jlcpcb.csv", HEAD);
+    write("app/offers/lcsc.csv", HEAD);
     let e = app.catalogs().unwrap_err();
     assert_eq!(
         e,
-        "netsmith.toml: the offers of `jlcpcb` are in two files, offers/jlcpcb.csv and ../shared/offers/jlcpcb.csv; a supplier's offers are one file. Move the offers into one, and remove the other"
+        "netsmith.toml: the offers of `lcsc` are in two files, offers/lcsc.csv and ../shared/offers/lcsc.csv; a supplier's offers are one file. Move the offers into one, and remove the other"
     );
 }

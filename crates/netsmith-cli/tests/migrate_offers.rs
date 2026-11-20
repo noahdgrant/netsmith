@@ -77,7 +77,6 @@ fn the_columns_go_into_the_offers_files_and_the_hand_pick_becomes_an_mpn() {
         out.contains("catalogs/resistor.csv\n  removed the lcsc and library columns; 1 row has its number in the offers files now\n"),
         "{out}"
     );
-    assert!(out.contains("offers/jlcpcb.csv\n  added 1 offer\n"), "{out}");
     assert!(out.contains("offers/lcsc.csv\n  added 1 offer\n"), "{out}");
     assert!(
         out.contains("src/main.nsm\n  line 14: `.lcsc &= \"C9900316\"` -> `.mpn &= \"ZZR-316\"`\n"),
@@ -101,16 +100,14 @@ fn the_columns_go_into_the_offers_files_and_the_hand_pick_becomes_an_mpn() {
 ZZR-316,ZZR-316,316ohm +/- 1%,62.5mW,0402,\"https://example.invalid/zzr, page 1\",\"a note, kept\"\n\
 ,made up 1 ohm,1ohm,62.5mW,0402,,made up\n"
     );
-    assert_eq!(
-        read(&root, "offers/jlcpcb.csv"),
-        "manufacturer,mpn,sku,class,source,checked,notes\n\
-,ZZR-316,C9900316,Extended,\"https://example.invalid/zzr, page 1\",,moved from the lcsc and library columns of catalogs/resistor.csv:2 by netsmith project migrate-offers\n"
-    );
+    // One offer of the LCSC number, the row's library its class (ADR 0143), and no file of
+    // JLCPCB's: its assembly channel reads the `lcsc` offers that have a class.
     assert_eq!(
         read(&root, "offers/lcsc.csv"),
         "manufacturer,mpn,sku,class,source,checked,notes\n\
-,ZZR-316,C9900316,,\"https://example.invalid/zzr, page 1\",,moved from the lcsc column of catalogs/resistor.csv:2 by netsmith project migrate-offers\n"
+,ZZR-316,C9900316,Extended,\"https://example.invalid/zzr, page 1\",,moved from the lcsc and library columns of catalogs/resistor.csv:2 by netsmith project migrate-offers\n"
     );
+    assert!(!root.join("offers/jlcpcb.csv").exists());
     assert_eq!(
         read(&root, "src/main.nsm"),
         LED.replace(".r1: Resistor {}", ".r1: Resistor { .mpn &= \"ZZR-316\" }")

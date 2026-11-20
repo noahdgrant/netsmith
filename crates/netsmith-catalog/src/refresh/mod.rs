@@ -6,7 +6,8 @@
 //! and the package with the `package` of the catalog row of the part. An offer that agrees is
 //! VERIFIED, and the day is written in its `checked` cell: the one cell a refresh ever writes. An
 //! offer whose record disagrees is a CONFLICT and one LCSC no longer lists is MISSING; neither is
-//! changed and none is deleted. JLCPCB's offers are never checked: JLCPCB is not asked. A catalog
+//! changed and none is deleted. An offer's `class`, the sorting JLCPCB gives the part, is never
+//! checked or written: JLCPCB is not asked. A catalog
 //! row holds no supplier's number (ADR 0143), so the catalog files are read and never written.
 //!
 //! The board is assembled from JLCPCB's parts library, and LCSC's price and stock are not
@@ -69,8 +70,7 @@
 //!   if it is `C` and digits. `NETSMITH_LCSC_URL` points the command at another address (a mirror,
 //!   a proxy of your own, the tests' fake server).
 //! - **`netsmith catalog age [--days N]`** (default 90, `STALE_DAYS`) lists the rows whose price
-//!   and stock (`date`) are older or missing, each by the sku of its offer (the `jlcpcb` offer,
-//!   else the `lcsc` one); a row with no offer has no price to age. A refresh never changes `date`, so it never makes a
+//!   and stock (`date`) are older or missing, each by the sku of its offer (its `lcsc` offer); a row with no offer has no price to age. A refresh never changes `date`, so it never makes a
 //!   row less stale. ADR 0047 ages a provider's quotes, and the standard catalogs ship none.
 //! - **The editor** shows the date of each bill line's price and stock under the price, with the
 //!   age in a tooltip, and marks a line older than 90 days in amber with a dot in front of its

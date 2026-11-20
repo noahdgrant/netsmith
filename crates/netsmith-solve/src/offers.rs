@@ -10,12 +10,15 @@
 //!
 //! | supplier | `sku` | `class` |
 //! |---|---|---|
-//! | `jlcpcb` | the LCSC number JLCPCB assembles the part by (`C25104`) | `Basic`, `Extended` or `Preferred`, as `library` is written: required |
-//! | `lcsc` | LCSC's number for the part (`C25104`) | empty: LCSC sorts its parts in no classes |
+//! | `lcsc` | LCSC's number for the part (`C25104`), which JLCPCB's parts library assembles by too | `Basic`, `Extended` or `Preferred`, the sorting JLCPCB gives the part; empty when JLCPCB's library does not list it |
 //!
-//! The suppliers are these two: a file named for another (`digikey.csv`) is an error, as a
-//! catalog file whose name is not a catalog's is (ADR 0022). A new supplier is a new offers file
-//! and a new provider (ADR 0143), added here with its rule for `class`.
+//! One file holds a supplier's numbers, and a channel reads the file of its supplier: JLCPCB's
+//! assembly stock and LCSC's retail stock are two channels of the `lcsc` numbers (ADR 0039, ADR
+//! 0047), so `jlcpcb-assembly` takes the `lcsc` offers that have a `class` and `lcsc-retail`
+//! takes all of them. A file named for another supplier is an error, as a catalog file whose name
+//! is not a catalog's is (ADR 0022), and `jlcpcb.csv`, the file JLCPCB's classes were once in, is
+//! one whose message says to merge it into `lcsc.csv`. A new supplier is a new offers file and a
+//! new provider (ADR 0143), added here with its rule for `class`.
 //!
 //! **What the loader refuses**, each with the `file:line`: a column that is not one of the seven
 //! or a missing one, an offer with no `mpn` or no `sku`, an offer with no `source` (no number
@@ -35,9 +38,8 @@
 //!
 //! **What reads them.** A catalog row has no supplier's number and no supplier's class (ADR 0143,
 //! stage 3): [`bought_by`] is the one place a row's number and class are read, for the solver,
-//! for resolving a generic part and for the pick lock, from the part's offers: the `jlcpcb` offer,
-//! then the `lcsc` offer. A row with no offer is a part that cannot be bought from either, and a
-//! bill of materials says so.
+//! for resolving a generic part and for the pick lock, from the part's offers. A row with no offer
+//! is a part that cannot be bought, and a bill of materials says so.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -45,9 +47,19 @@ use std::sync::Arc;
 use crate::catalog::Library;
 use crate::table::{is_date, parse_csv};
 
-/// The suppliers an offers file may be named for, in the order their offers are read for a
-/// row's supplier number ([`bought_by`]).
-pub const SUPPLIERS: [&str; 2] = ["jlcpcb", "lcsc"];
+/// The suppliers an offers file may be named for.
+pub const SUPPLIERS: [&str; 1] = ["lcsc"];
+
+/// The name of the file JLCPCB's classes were in before they were the `class` of the `lcsc`
+/// offers (ADR 0143): an offers file of that name is refused with what to do.
+pub const MERGED_INTO_LCSC: &str = "jlcpcb";
+
+/// The message for an offers file `file` named `jlcpcb.csv`.
+pub fn merge_into_lcsc(file: &str) -> String {
+    format!(
+        "{file}: JLCPCB's parts library uses LCSC's numbers, so its offers are the `lcsc` offers now (ADR 0143): merge the file into `lcsc.csv` beside it, the `class` of each of its offers into the `class` of the `lcsc` offer of that part (an `lcsc` offer whose `class` is empty is a part JLCPCB's library does not list), and remove it"
+    )
+}
 
 /// The folder of a project's offers files when its manifest says nothing, and of the standard
 /// ones under `data/`.
@@ -69,7 +81,7 @@ pub fn is_supplier(name: &str) -> bool {
     SUPPLIERS.contains(&name)
 }
 
-/// The suppliers as a message lists them: `jlcpcb.csv or lcsc.csv`.
+/// The suppliers as a message lists them: `lcsc.csv`.
 pub fn supplier_files() -> String {
     SUPPLIERS
         .iter()
@@ -81,7 +93,7 @@ pub fn supplier_files() -> String {
 /// One row of an offers file.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Offer {
-    /// The supplier the file is named for (`jlcpcb`).
+    /// The supplier the file is named for (`lcsc`).
     pub supplier: String,
     /// The part's manufacturer, as the datasheet spells it; `None` when the offer names none,
     /// and then the offer is of the `mpn` whoever makes it.
@@ -89,13 +101,14 @@ pub struct Offer {
     pub mpn: String,
     /// The supplier's own number for the part.
     pub sku: String,
-    /// JLCPCB's library of the part: `Some` for every offer of `jlcpcb`, `None` for `lcsc`.
+    /// The supplier's sorting of the part: for `lcsc`, the library JLCPCB's parts library lists
+    /// the part in, `None` when it does not list it.
     pub class: Option<Library>,
     pub source: String,
     /// The day a person or `catalog refresh` last found the offer right, `2026-11-02`.
     pub checked: Option<String>,
     pub notes: Option<String>,
-    /// The file and line, as a message names it (`offers/jlcpcb.csv:3`).
+    /// The file and line, as a message names it (`offers/lcsc.csv:3`).
     pub at: String,
     /// Whether the offer is from a file that ships in the binary (`data/offers/`).
     pub built_in: bool,
@@ -141,7 +154,7 @@ impl Offers {
 
     /// Read an offers file of `supplier` (the file's name without `.csv`, one of
     /// [`SUPPLIERS`]) and add its offers after these. `file` is what a message calls it
-    /// (`offers/jlcpcb.csv`). A problem names the file and line.
+    /// (`offers/lcsc.csv`). A problem names the file and line.
     pub fn add_file(&mut self, supplier: &str, file: &str, text: &str) -> Result<(), String> {
         let offers = parse(supplier, file, text, false)?;
         self.add(offers)
@@ -256,6 +269,9 @@ impl Offers {
 
 /// Read one offers file of `supplier`. `built_in` marks the files of `data/offers/`.
 fn parse(supplier: &str, file: &str, text: &str, built_in: bool) -> Result<Vec<Offer>, String> {
+    if supplier == MERGED_INTO_LCSC {
+        return Err(merge_into_lcsc(file));
+    }
     if !is_supplier(supplier) {
         return Err(format!(
             "{file}: `{supplier}` is not a supplier netsmith knows: an offers file is {}",
@@ -353,21 +369,18 @@ fn parse(supplier: &str, file: &str, text: &str, built_in: bool) -> Result<Vec<O
     Ok(offers)
 }
 
-/// The `class` cell of an offer of `supplier`, as the supplier sorts its parts: JLCPCB's
-/// library, written as a catalog row's `library` is and required, and nothing for LCSC.
+/// The `class` cell of an offer of `supplier`, as the supplier sorts its parts: for `lcsc`, the
+/// library JLCPCB's parts library lists the part in, written as a catalog row's `library` once
+/// was, and empty when it does not list it.
 fn class(supplier: &str, cell: Option<&str>) -> Result<Option<Library>, String> {
     match (supplier, cell) {
-        ("jlcpcb", Some("Basic")) => Ok(Some(Library::Basic)),
-        ("jlcpcb", Some("Extended")) => Ok(Some(Library::Extended)),
-        ("jlcpcb", Some("Preferred")) => Ok(Some(Library::Preferred)),
-        ("jlcpcb", Some(other)) => Err(format!(
-            "class `{other}` is not Basic, Extended or Preferred, the libraries JLCPCB sorts its parts in"
-        )),
-        ("jlcpcb", None) => Err(
-            "the offer has no class; JLCPCB sorts every part it assembles in its Basic, Extended or Preferred library: write which"
-                .to_string(),
-        ),
         (_, None) => Ok(None),
+        ("lcsc", Some("Basic")) => Ok(Some(Library::Basic)),
+        ("lcsc", Some("Extended")) => Ok(Some(Library::Extended)),
+        ("lcsc", Some("Preferred")) => Ok(Some(Library::Preferred)),
+        ("lcsc", Some(other)) => Err(format!(
+            "class `{other}` is not Basic, Extended or Preferred, the libraries JLCPCB sorts the parts of its assembly library in (empty when JLCPCB's library does not list the part)"
+        )),
         (_, Some(other)) => Err(format!(
             "class `{other}`: {supplier} sorts its parts in no classes, so the cell is empty"
         )),
@@ -375,7 +388,8 @@ fn class(supplier: &str, cell: Option<&str>) -> Result<Option<Library>, String> 
 }
 
 /// What a catalog row is bought by: its supplier number and JLCPCB's library of it, and the sku
-/// of each supplier that offers it, in the order of [`SUPPLIERS`].
+/// for each channel that has an offer of it, by the channel's word, in the order of
+/// [`crate::lock::CHANNELS`].
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct Bought {
     pub lcsc: Option<String>,
@@ -385,9 +399,10 @@ pub(crate) struct Bought {
 
 /// The supplier number and the class of the part `manufacturer` and `mpn`, read from its offers
 /// (ADR 0143): the one function the solver's, a generic's resolution's and the pick lock's
-/// reading of them goes through ([`crate::table`]). The number is the `sku` of the part's
-/// `jlcpcb` offer, else of its `lcsc` offer; the class is the `class` of its `jlcpcb` offer. A
-/// part with no offer, or a row with no `mpn` (a made-up part), is bought by nothing.
+/// reading of them goes through ([`crate::table`]). The number is the `sku` of the part's `lcsc`
+/// offer and the class its `class`; `jlcpcb-assembly` has the offer when it has a class, and
+/// `lcsc-retail` always. A part with no offer, or a row with no `mpn` (a made-up part), is bought
+/// by nothing.
 pub(crate) fn bought_by(
     offers: &Offers,
     manufacturer: Option<&str>,
@@ -396,19 +411,17 @@ pub(crate) fn bought_by(
     if mpn.is_empty() {
         return Ok(Bought::default());
     }
+    let Some(offer) = offers.of("lcsc", manufacturer, mpn)? else {
+        return Ok(Bought::default());
+    };
     let mut skus = Vec::new();
-    let mut found = Vec::new();
-    for supplier in SUPPLIERS {
-        let offer = offers.of(supplier, manufacturer, mpn)?;
-        if let Some(o) = offer {
-            skus.push((supplier.to_string(), o.sku.clone()));
-        }
-        found.push(offer);
+    if offer.class.is_some() {
+        skus.push(("jlcpcb-assembly".to_string(), offer.sku.clone()));
     }
-    let (jlcpcb, lcsc) = (found[0], found[1]);
+    skus.push(("lcsc-retail".to_string(), offer.sku.clone()));
     Ok(Bought {
-        lcsc: jlcpcb.or(lcsc).map(|o| o.sku.clone()),
-        library: jlcpcb.and_then(|o| o.class),
+        lcsc: Some(offer.sku.clone()),
+        library: offer.class,
         skus,
     })
 }
@@ -443,13 +456,13 @@ mod tests {
 
     #[test]
     fn an_offer_is_read_with_its_class() {
-        let offers = load("jlcpcb", ",ZZ1,C1,Basic,the record,2026-11-02,\n").unwrap();
-        let offer = offers.of("jlcpcb", None, "ZZ1").unwrap().unwrap();
+        let offers = load("lcsc", ",ZZ1,C1,Basic,the record,2026-11-02,\n").unwrap();
+        let offer = offers.of("lcsc", None, "ZZ1").unwrap().unwrap();
         assert_eq!(offer.sku, "C1");
         assert_eq!(offer.class, Some(Library::Basic));
-        assert_eq!(offer.at, "offers/jlcpcb.csv:2");
+        assert_eq!(offer.at, "offers/lcsc.csv:2");
         assert_eq!(offer.checked.as_deref(), Some("2026-11-02"));
-        assert!(offers.of("lcsc", None, "ZZ1").unwrap().is_none());
+        assert!(offers.of("lcsc", None, "ZZ2").unwrap().is_none());
     }
 
     #[test]
@@ -485,15 +498,14 @@ mod tests {
 
     #[test]
     fn the_class_is_the_suppliers_own() {
-        let e = load("jlcpcb", ",ZZ1,C1,basic,x,,\n").unwrap_err();
+        let e = load("lcsc", ",ZZ1,C1,basic,x,,\n").unwrap_err();
         assert!(
-            e.starts_with("offers/jlcpcb.csv:2: class `basic` is not Basic"),
+            e.starts_with("offers/lcsc.csv:2: class `basic` is not Basic"),
             "{e}"
         );
-        let e = load("jlcpcb", ",ZZ1,C1,,x,,\n").unwrap_err();
-        assert!(e.contains("the offer has no class"), "{e}");
-        let e = load("lcsc", ",ZZ1,C1,Basic,x,,\n").unwrap_err();
-        assert!(e.contains("lcsc sorts its parts in no classes"), "{e}");
+        // An empty class is a part JLCPCB's library does not list.
+        let offers = load("lcsc", ",ZZ1,C1,,x,,\n").unwrap();
+        assert_eq!(offers.of("lcsc", None, "ZZ1").unwrap().unwrap().class, None);
     }
 
     #[test]
@@ -512,7 +524,15 @@ mod tests {
             .unwrap_err();
         assert_eq!(
             e,
-            "offers/digikey.csv: `digikey` is not a supplier netsmith knows: an offers file is jlcpcb.csv or lcsc.csv"
+            "offers/digikey.csv: `digikey` is not a supplier netsmith knows: an offers file is lcsc.csv"
+        );
+        let e = Offers::empty()
+            .add_file("jlcpcb", "offers/jlcpcb.csv", HEAD)
+            .unwrap_err();
+        assert!(
+            e.starts_with("offers/jlcpcb.csv: JLCPCB's parts library uses LCSC's numbers")
+                && e.contains("merge the file into `lcsc.csv`"),
+            "{e}"
         );
     }
 
@@ -529,38 +549,30 @@ mod tests {
 
     #[test]
     fn bought_by_reads_the_offers_only() {
-        let mut offers = load("jlcpcb", ",ZZ1,C1,Extended,x,,\n").unwrap();
-        offers
-            .add_file(
-                "lcsc",
-                "offers/lcsc.csv",
-                &format!("{HEAD},ZZ1,C1,,x,,\n,ZZ2,C2,,x,,\n"),
-            )
-            .unwrap();
+        let offers = load("lcsc", ",ZZ1,C1,Extended,x,,\n,ZZ2,C2,,x,,\n").unwrap();
         assert_eq!(
             bought_by(&offers, None, "ZZ1").unwrap(),
             Bought {
                 lcsc: Some("C1".into()),
                 library: Some(Library::Extended),
-                skus: vec![("jlcpcb".into(), "C1".into()), ("lcsc".into(), "C1".into())],
+                skus: vec![
+                    ("jlcpcb-assembly".into(), "C1".into()),
+                    ("lcsc-retail".into(), "C1".into())
+                ],
             }
         );
-        // The LCSC offer gives the number, and no JLCPCB offer no class.
+        // An offer with no class is not in JLCPCB's assembly library.
         assert_eq!(
             bought_by(&offers, None, "ZZ2").unwrap(),
             Bought {
                 lcsc: Some("C2".into()),
                 library: None,
-                skus: vec![("lcsc".into(), "C2".into())],
+                skus: vec![("lcsc-retail".into(), "C2".into())],
             }
         );
         assert_eq!(bought_by(&offers, None, "ZZ3").unwrap(), Bought::default());
         assert_eq!(bought_by(&offers, None, "").unwrap(), Bought::default());
         assert_eq!(offers.by_sku("C2").map(|o| o.mpn.as_str()), Some("ZZ2"));
-        assert_eq!(
-            offers.by_sku("C1").map(|o| o.supplier.as_str()),
-            Some("jlcpcb")
-        );
         assert!(offers.by_sku("C3").is_none());
     }
 }

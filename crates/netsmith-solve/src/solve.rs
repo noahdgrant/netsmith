@@ -429,13 +429,13 @@ pub struct Pick {
     pub label: String,
     /// The supplier's part number, the manufacturer and its part number, and JLCPCB's
     /// library, if the candidate is a real part and its row names them. The number and the
-    /// library are read from the part's offers (ADR 0143): the `jlcpcb` offer, else the `lcsc`.
+    /// library are read from the part's offers (ADR 0143).
     pub lcsc: Option<String>,
     pub manufacturer: Option<String>,
     pub mpn: Option<String>,
     pub library: Option<Library>,
-    /// The sku of each supplier that offers the part ([`crate::offers::SUPPLIERS`]), by the
-    /// supplier's name, in that order: what the pick lock records for each channel.
+    /// The sku of the part for each supply channel that has an offer of it, by the channel's
+    /// word, in the order of [`crate::lock::CHANNELS`]: what the pick lock records.
     pub skus: Vec<(String, String)>,
     /// The row's default for who assembles the part (ADR 0024).
     pub assembly: Option<String>,

@@ -228,7 +228,7 @@ fn parse(text: &str, name: &str) -> Result<PickLock, String> {
                 None => Vec::new(),
                 Some(toml::Value::Table(t)) => {
                     let mut skus = Vec::new();
-                    for (channel, _) in CHANNELS {
+                    for channel in CHANNELS {
                         match t.get(channel) {
                             None => {}
                             Some(toml::Value::String(sku)) => {
@@ -241,12 +241,12 @@ fn parse(text: &str, name: &str) -> Result<PickLock, String> {
                             }
                         }
                     }
-                    if let Some(other) = t.keys().find(|k| !CHANNELS.iter().any(|(c, _)| c == k)) {
+                    if let Some(other) = t.keys().find(|k| !CHANNELS.contains(&k.as_str())) {
                         return Err(wrong(format!(
                             "{at} `sku` has `{other}`, which is not a supply channel: it names {}",
                             CHANNELS
                                 .iter()
-                                .map(|(c, _)| format!("`{c}`"))
+                                .map(|c| format!("`{c}`"))
                                 .collect::<Vec<_>>()
                                 .join(" and ")
                         )));

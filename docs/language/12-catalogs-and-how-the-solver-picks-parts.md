@@ -213,7 +213,7 @@ mpn,resistance,max_power,package,stock,source
 ACME-R316,316ohm +/- 1%,62.5mW,0402,0,https://example.invalid/acme-r316.pdf
 ```
 
-```csv file=offers/jlcpcb.csv set=sold_out
+```csv file=offers/lcsc.csv set=sold_out
 manufacturer,mpn,sku,class,source,checked,notes
 ,ACME-R316,C900001,Extended,https://example.invalid/acme-r316.pdf,,an invented number
 ```
@@ -355,16 +355,16 @@ board NarrowedMcu {
 
 #### Offers files
 
-What a supplier says about a part is an **offer** (ADR 0143): the supplier's own number for it and its own sorting of it, with where they were read. Each supplier's offers are one file, `offers/<supplier>.csv`, and the part is named in it as its row names it, by its `mpn` and its `manufacturer`. The standard offers are `data/offers/jlcpcb.csv` and `data/offers/lcsc.csv` in netsmith's source and ship inside the program; they hold one offer of each standard row from each supplier. A project adds its own in the folders of the manifest's `offer_dirs`, whose default is `["offers"]` (it is not written out), after the standard ones:
+What a supplier says about a part is an **offer** (ADR 0143): the supplier's own number for it and its own sorting of it, with where they were read. Each supplier's offers are one file, `offers/<supplier>.csv`, and the part is named in it as its row names it, by its `mpn` and its `manufacturer`. The standard offers are `data/offers/lcsc.csv` in netsmith's source and ship inside the program; it holds one offer of each standard row. A project adds its own in the folders of the manifest's `offer_dirs`, whose default is `["offers"]` (it is not written out), after the standard ones:
 
 ```csv file=catalogs/resistor.csv set=offered
 mpn,resistance,max_power,package,source
 ACME-R316,316ohm +/- 1%,62.5mW,0402,https://example.invalid/acme-r316.pdf
 ```
 
-```csv file=offers/jlcpcb.csv set=offered
+```csv file=offers/lcsc.csv set=offered
 manufacturer,mpn,sku,class,source,checked,notes
-,ACME-R316,C000316,Basic,https://example.invalid/jlcpcb-acme-r316,2026-11-20,an invented number
+,ACME-R316,C000316,Basic,https://example.invalid/lcsc-acme-r316,2026-11-20,an invented number
 ```
 
 ```nsm solve report catalogs=offered
@@ -381,19 +381,19 @@ board OfferedPart
 ```
 
 - **The columns** are `manufacturer`, `mpn`, `sku`, `class`, `source`, `checked` and `notes`, all seven, in any order, and no other: a price and a stock are a supply provider's quote (ADR 0047), not an offer. `mpn` and `sku` are required, and an empty `manufacturer` is the `mpn` whoever makes it, as in a catalog row. `checked` is a day, `2026-11-02`, or empty.
-- **The suppliers** are `jlcpcb` and `lcsc`. In `jlcpcb.csv` the `sku` is the LCSC number JLCPCB assembles the part by, and `class` is its library, `Basic`, `Extended` or `Preferred`, and required. In `lcsc.csv` the `sku` is LCSC's number for the part and `class` is empty. A `.csv` in an `offer_dirs` folder that is named for no supplier (`digikey.csv`) is an error that names the file, and so are two files of one supplier, in the project or in a dependency, whose offers are read with the project's; a folder cannot be both an `offer_dirs` and a `catalog_dirs` folder.
+- **The supplier** is `lcsc`. In `lcsc.csv` the `sku` is LCSC's number for the part, which JLCPCB's parts library assembles by too, and `class` is the sorting JLCPCB gives the part, `Basic`, `Extended` or `Preferred`, empty when JLCPCB's library does not list it. JLCPCB's assembly stock and LCSC's retail stock are two channels of these numbers: `jlcpcb-assembly` takes the offers that have a `class`, and `lcsc-retail` all of them. A `.csv` in an `offer_dirs` folder that is named for no supplier (`digikey.csv`) is an error that names the file, `jlcpcb.csv` (the file JLCPCB's classes were in before) is one whose message says to merge it into `lcsc.csv`, and so are two files of one supplier, in the project or in a dependency, whose offers are read with the project's; a folder cannot be both an `offer_dirs` and a `catalog_dirs` folder.
 - **An offer needs a `source`**, as a row does: no number comes from memory, and the loader refuses an offer without one, with its file and line. A supplier offers a part once and a number is one part: a second offer of the same part from one supplier, across the standard file and a project's too, and a second part with the same `sku`, are refused with both places named.
 - **An offer of a part that no catalog has** is not an error. The build says so in a note that names the offer's file and line, and nothing reads it.
-- **What reads them.** A row holds no supplier's number, so the solver, the resolution of a generic part, the bill of materials, `order.txt` and the pick lock read a part's number and class from its offers: the number from the `jlcpcb` offer, else from the `lcsc` offer, and the class from the `jlcpcb` offer. A part with no offer is bought by no number (the bill of materials says so), and a part that names no manufacturer, of whose `mpn` a supplier offers two parts of two manufacturers, is refused where a board reads its catalog. The pick lock records the `sku` of each channel's offer (_The pick lock_ in the chapter on the shape of a board). `netsmith catalog refresh` checks the offers of LCSC, the supplier whose record it reads, and writes the day in their `checked`; JLCPCB's are not asked about.
+- **What reads them.** A row holds no supplier's number, so the solver, the resolution of a generic part, the bill of materials, `order.txt` and the pick lock read a part's number and class from its `lcsc` offer. A part with no offer is bought by no number (the bill of materials says so), and a part that names no manufacturer, of whose `mpn` a supplier offers two parts of two manufacturers, is refused where a board reads its catalog. The pick lock records the `sku` of each channel's offer (_The pick lock_ in the chapter on the shape of a board). `netsmith catalog refresh` checks the offers of LCSC, the supplier whose record it reads, and writes the day in their `checked`; it never writes a `class`, which is JLCPCB's, and JLCPCB is not asked.
 - **Moving a project's old columns.** `netsmith project migrate-offers` moves the `lcsc` and `library` columns of a project's catalogs into its offers files, and its `.lcsc &=` hand picks to `.mpn &=` (`docs/MIGRATING.md`).
 
-```csv fails file=offers/jlcpcb.csv
+```csv fails file=offers/lcsc.csv
 manufacturer,mpn,sku,class,source,checked,notes
 ,ACME-R316,C000316,Basic,,,
 ```
 
 ```text
-offers/jlcpcb.csv:2: the offer of `ACME-R316` (sku `C000316`) has no source; every offer needs the URL or text its number was read from in its `source` column, as a catalog row does: no number comes from memory
+offers/lcsc.csv:2: the offer of `ACME-R316` (sku `C000316`) has no source; every offer needs the URL or text its number was read from in its `source` column, as a catalog row does: no number comes from memory
 ```
 
 #### Curve files

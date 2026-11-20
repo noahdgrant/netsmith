@@ -105,20 +105,20 @@ fn a_row_gets_the_records_number_package_and_source_and_its_offer_the_number() {
     assert_eq!(added.written, Some(("catalogs/zled.csv".to_string(), 3)));
     assert_eq!(added.offer, Some((OFFERS.to_string(), 3)));
     assert_eq!(added.filled, ["mpn", "package", "source", "notes"]);
-    // The columns a person fills: the ratings and the JLCPCB offer, not price, stock or name.
+    // The columns a person fills: the ratings and the offer's class, not price, stock or name.
     assert_eq!(
         added.to_fill,
         [
             "forward_voltage",
             "color",
-            "a JLCPCB offer (offers/jlcpcb.csv, with its class from JLCPCB's page) for a part JLCPCB assembles"
+            "the class of the offer (offers/lcsc.csv, the library from JLCPCB's page) for a part JLCPCB assembles"
         ]
     );
     let said = render_added(&added);
     assert!(
         said.contains("added KT-0603R to catalogs/zled.csv:3")
             && said.contains("added the offer of C2286 to offers/lcsc.csv:3")
-            && said.contains("fill from the datasheet (with its source) or JLCPCB's page: forward_voltage, color, a JLCPCB offer"),
+            && said.contains("fill from the datasheet (with its source) or JLCPCB's page: forward_voltage, color, the class of the offer"),
         "{said}"
     );
     // The offers read as a build reads them (the fixture's parts are standard ones, so with no

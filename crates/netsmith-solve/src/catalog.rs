@@ -531,7 +531,7 @@ impl Catalogs {
         }
     }
 
-    /// Read an offers file of `supplier` (`offers/jlcpcb.csv`, [`crate::offers`]): its offers come
+    /// Read an offers file of `supplier` (`offers/lcsc.csv`, [`crate::offers`]): its offers come
     /// after those that are here. `file` is what a message calls it. A problem names the file and
     /// line. An offer whose part is in no catalog is not refused: [`Self::offer_notes`] names it.
     pub fn add_offers_file(
@@ -558,11 +558,11 @@ impl Catalogs {
         &self.offers
     }
 
-    /// The sku of each supplier that offers the part of `c`, by the supplier's name, in the
-    /// order of [`crate::offers::SUPPLIERS`]: what a pick of it records in the lock. A row of a
-    /// file is bought by its offers alone; a candidate made in code that carries its number in
-    /// `lcsc` and has no offer is bought by that number from JLCPCB, which is how such a
-    /// candidate was always read.
+    /// The sku of the part of `c` for each supply channel that has an offer of it, by the
+    /// channel's word, in the order of [`crate::lock::CHANNELS`]: what a pick of it records in
+    /// the lock. A row of a file is bought by its offers alone; a candidate made in code that
+    /// carries its number in `lcsc` and has no offer is bought by that number in JLCPCB's
+    /// assembly, which is how such a candidate was always read.
     pub fn skus_of(&self, c: &Candidate) -> Vec<(String, String)> {
         let skus = c
             .mpn
@@ -573,7 +573,7 @@ impl Catalogs {
             .map(|b| b.skus)
             .unwrap_or_default();
         match (&c.lcsc, skus.is_empty()) {
-            (Some(lcsc), true) => vec![("jlcpcb".to_string(), lcsc.clone())],
+            (Some(lcsc), true) => vec![("jlcpcb-assembly".to_string(), lcsc.clone())],
             _ => skus,
         }
     }

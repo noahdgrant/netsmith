@@ -10,9 +10,9 @@
 //! the datasheet. The LCSC number is not a cell of the row: it is an offer (ADR 0143), appended to
 //! the project's LCSC offers file (`offers/lcsc.csv`, made with its header when there is none)
 //! with the same `source` and the day in `checked`. Every other cell stays empty, and the command
-//! lists the columns that need the datasheet (ratings, curves, heights), and the offer of JLCPCB
-//! (`offers/jlcpcb.csv`, with its library from JLCPCB's page) that a part assembled by JLCPCB
-//! needs. A row with an empty column that a part needs is
+//! lists the columns that need the datasheet (ratings, curves, heights), and the offer's `class`
+//! (the library from JLCPCB's page) that a part assembled by JLCPCB needs: an offer with no
+//! `class` is not in the `jlcpcb-assembly` channel. A row with an empty column that a part needs is
 //! refused where the part reads it, so the command cannot make a row that passes with a guess in
 //! it: a person or an agent fills those cells from the datasheet, with its source, as
 //! `data/jlcpcb/README.md` says.
@@ -202,7 +202,7 @@ pub fn add(lcsc: &str, to: Option<Files<'_>>, network: Network) -> Result<Added,
             "package" => product.package.clone(),
             "source" => Some(source.clone()),
             "notes" => Some(format!(
-                "Written by `netsmith catalog add` from LCSC's record alone: fill the empty columns from the datasheet (with its source in `source`), add the part's JLCPCB offer with its library from JLCPCB's page, and check the package against std/kicad.toml{}",
+                "Written by `netsmith catalog add` from LCSC's record alone: fill the empty columns from the datasheet (with its source in `source`), write the `class` of its offer in offers/lcsc.csv from JLCPCB's page for a part JLCPCB assembles, and check the package against std/kicad.toml{}",
                 if maker_written {
                     ", and the manufacturer's name against the datasheet's spelling"
                 } else {
@@ -250,7 +250,7 @@ pub fn add(lcsc: &str, to: Option<Files<'_>>, network: Network) -> Result<Added,
     added.written = Some((shown.to_string(), line));
     added.offer = Some((offers_shown.to_string(), offer_line));
     added.to_fill.push(
-        "a JLCPCB offer (offers/jlcpcb.csv, with its class from JLCPCB's page) for a part JLCPCB assembles"
+        "the class of the offer (offers/lcsc.csv, the library from JLCPCB's page) for a part JLCPCB assembles"
             .to_string(),
     );
     Ok(added)
