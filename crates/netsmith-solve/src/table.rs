@@ -19,6 +19,7 @@
 //! | fixed column | meaning |
 //! |---|---|
 //! | `lcsc` | the supplier's part number (`C25104`) |
+//! | `manufacturer` | the part's manufacturer, as its datasheet spells it (`Texas Instruments`); with the `mpn` it is the row's identity (ADR 0143). Empty means the row does not say, and the `mpn` alone is the identity, the same part whoever makes it |
 //! | `mpn` | the manufacturer's part number; also a field of the part if its catalog lists `.mpn` |
 //! | `library` | JLCPCB's `Basic`, `Extended` or `Preferred` |
 //! | `assembly` | who assembles the part when the design does not say: `fab`, `hand`, `none` or `consigned` (ADR 0024, ADR 0084) |
@@ -87,11 +88,16 @@
 //!   catalog name is an error that names the file: a forgotten or misnamed catalog would
 //!   otherwise be a silent "no catalog" at the part that needs it. A file named like a standard
 //!   catalog adds its rows after the standard ones. A part is in a catalog once: the same `lcsc`
-//!   or `mpn` twice, in one file or across the standard file and a project's, is an error that
-//!   names both places ("one answer"). `build`, `fab`, `view` and `compare` read the files on
-//!   each run; the running editor reads the folders again with each build and the manifest
-//!   once. Every mistake names `file:line` and says what to change; one found when a board uses
-//!   the catalog is an error at the part that uses it.
+//!   twice, or the same part by its identity (ADR 0143: the same `mpn`, and the same
+//!   `manufacturer` when both rows name one; a row with no manufacturer is its `mpn` whoever
+//!   makes it), in one file or across the standard file and a project's, is an error that
+//!   names both places ("one answer"). Two rows of one `mpn` from two named manufacturers are
+//!   two parts; their names default to the `mpn` and may be the same, and the pick lock's
+//!   `manufacturer` says which of them it holds. A row that names a manufacturer and no `mpn`
+//!   is refused: a manufacturer names a part only with its number. `build`, `fab`, `view` and
+//!   `compare` read the files on each run; the running editor reads the folders again with each
+//!   build and the manifest once. Every mistake names `file:line` and says what to change; one
+//!   found when a board uses the catalog is an error at the part that uses it.
 //! - **The API.** `Catalogs::jlcpcb()` and `Catalogs::sample()` return the embedded catalogs,
 //!   `Catalogs::add_file` adds a file, `Catalogs::resolve` gives a catalog typed for a part's
 //!   columns, and `Catalogs::insert` takes a catalog built in code, which tests use. The move
@@ -119,11 +125,13 @@ use std::sync::Arc;
 
 use crate::catalog::{Candidate, Curved, Derating, Library, Value};
 use crate::curve::Curve;
+use crate::lock::LockedRow;
 use crate::standard::Standard;
 
 /// The columns that are about the row, not about the part.
-const FIXED: [&str; 17] = [
+const FIXED: [&str; 18] = [
     "lcsc",
+    "manufacturer",
     "mpn",
     "library",
     "assembly",
@@ -272,6 +280,8 @@ struct Row {
     header: Rc<Header>,
     cells: Vec<String>,
     lcsc: String,
+    /// The `manufacturer` cell, empty when the row says none.
+    manufacturer: String,
     mpn: String,
     library: Option<Library>,
     name: String,
@@ -283,6 +293,40 @@ struct Row {
 impl Row {
     fn at(&self) -> String {
         format!("{}:{}", self.file, self.line)
+    }
+
+    /// Whether this row and `other` are one part by their identity (ADR 0143): the same `mpn`,
+    /// and the same `manufacturer` when both rows name one. A row that names no manufacturer is
+    /// its `mpn` whoever makes it, so it is the same part as any row of that `mpn`. The names
+    /// are compared as written: the ADR leaves open whether a table of a manufacturer's other
+    /// spellings is needed.
+    fn same_part(&self, other: &Row) -> bool {
+        !self.mpn.is_empty()
+            && self.mpn == other.mpn
+            && (self.manufacturer.is_empty()
+                || other.manufacturer.is_empty()
+                || self.manufacturer == other.manufacturer)
+    }
+
+    /// What a message calls the identity this row (the earlier one) shares with `later`:
+    /// `the mpn `X``, with the manufacturer when both name it, or why a row with none is the
+    /// same part.
+    fn identity_with(&self, later: &Row) -> String {
+        let mpn = &self.mpn;
+        match (self.manufacturer.as_str(), later.manufacturer.as_str()) {
+            ("", "") => format!("the mpn `{mpn}`"),
+            (a, b) if a == b => format!("the manufacturer `{a}` and the mpn `{mpn}`"),
+            (a, b) => {
+                let (named, at) = if a.is_empty() {
+                    (b, self.at())
+                } else {
+                    (a, later.at())
+                };
+                format!(
+                    "the mpn `{mpn}` (of `{named}`; the row at {at} names no manufacturer, which is that mpn whoever makes it: give it its manufacturer to make the two rows two parts)"
+                )
+            }
+        }
     }
 
     fn cell(&self, column: &str) -> Option<&str> {
@@ -363,6 +407,7 @@ impl Table {
                 header: header.clone(),
                 cells: fields.clone(),
                 lcsc: String::new(),
+                manufacturer: String::new(),
                 mpn: String::new(),
                 library: None,
                 name: String::new(),
@@ -381,47 +426,49 @@ impl Table {
     }
 
     /// Add the rows of another file after these. A part may be in a catalog once, whichever
-    /// file it is in: the same `lcsc` or the same `mpn` twice is an error naming both lines. When
-    /// the first is a row of the built-in catalog and the second a project's (a release added the
-    /// part that the project's catalog already had, issue #1119), the error says what differs
-    /// between the two and how to fix the project: remove its row, and set the `row` of the pick
-    /// lock to the built-in row's name, which `netsmith project lock --update` does.
+    /// file it is in: the same `lcsc` twice, or two rows of the same identity (ADR 0143: the same
+    /// `mpn`, and the same `manufacturer` when both rows name one, [`Row::same_part`]), is an
+    /// error naming both lines. Two rows of one `mpn` from two named manufacturers are two parts.
+    /// When the first is a row of the built-in catalog and the second a project's (a release
+    /// added the part that the project's catalog already had, issue #1119), the error says what
+    /// differs between the two and how to fix the project: remove its row, and set the `row` of
+    /// the pick lock to the built-in row's name, which `netsmith project lock --update` does.
     pub fn append(&mut self, other: Table) -> Result<(), String> {
         let mut by_lcsc: BTreeMap<&str, &Row> = BTreeMap::new();
-        let mut by_mpn: BTreeMap<&str, &Row> = BTreeMap::new();
+        let mut by_mpn: BTreeMap<&str, Vec<&Row>> = BTreeMap::new();
         for row in &self.rows {
             if !row.lcsc.is_empty() {
                 by_lcsc.entry(&row.lcsc).or_insert(row);
             }
             if !row.mpn.is_empty() {
-                by_mpn.entry(&row.mpn).or_insert(row);
+                by_mpn.entry(&row.mpn).or_default().push(row);
             }
         }
-        let mut added: Vec<&Row> = Vec::new();
         for row in &other.rows {
-            let twin = |key: &str, what: &str, by: &BTreeMap<&str, &Row>| {
-                if key.is_empty() {
-                    return Ok(());
-                }
-                let earlier = by
-                    .get(key)
-                    .copied()
-                    .or_else(|| added.iter().copied().find(|r| field_of(r, what) == key));
-                match earlier {
-                    Some(first) if first.built_in && !row.built_in => {
-                        Err(built_in_twin(row, first, what, key))
-                    }
-                    Some(first) => Err(format!(
-                        "{}: the {what} `{key}` is already a row at {}; a part is in a catalog once",
+            let twin = |first: &Row, said: String| {
+                if first.built_in && !row.built_in {
+                    built_in_twin(row, first, &said)
+                } else {
+                    format!(
+                        "{}: {said} is already a row at {}; a part is in a catalog once",
                         row.at(),
                         first.at()
-                    )),
-                    None => Ok(()),
+                    )
                 }
             };
-            twin(&row.lcsc, "lcsc", &by_lcsc)?;
-            twin(&row.mpn, "mpn", &by_mpn)?;
-            added.push(row);
+            if !row.lcsc.is_empty() {
+                if let Some(first) = by_lcsc.get(row.lcsc.as_str()) {
+                    return Err(twin(first, format!("the lcsc `{}`", row.lcsc)));
+                }
+                by_lcsc.insert(&row.lcsc, row);
+            }
+            if !row.mpn.is_empty() {
+                let same = by_mpn.entry(&row.mpn).or_default();
+                if let Some(first) = same.iter().find(|r| r.same_part(row)) {
+                    return Err(twin(first, first.identity_with(row)));
+                }
+                same.push(row);
+            }
         }
         self.rows.extend(other.rows);
         for (row, curve) in other.curves {
@@ -454,24 +501,33 @@ impl Table {
         self.rows.iter().any(|r| r.name == name)
     }
 
-    /// The built-in row that has the LCSC number `lcsc`, or (when the lock has none) the
-    /// manufacturer part number `mpn`: its name and its two numbers. What a pick lock's row is
-    /// rewritten to when the project's row of the part was removed for it (issue #1119).
-    pub fn built_in_row_with(
-        &self,
-        lcsc: Option<&str>,
-        mpn: Option<&str>,
-    ) -> Option<(String, Option<String>, Option<String>)> {
-        let row = self
-            .rows
-            .iter()
-            .filter(|r| r.built_in)
-            .find(|r| match lcsc {
-                Some(l) => r.lcsc == l,
-                None => mpn.is_some_and(|m| !r.mpn.is_empty() && r.mpn == m),
-            })?;
+    /// The built-in row that has the LCSC number of `locked`, or (when the lock has none) its
+    /// manufacturer part number, and its manufacturer when both name one: `locked` with that
+    /// row's name and numbers. What a pick lock's row is rewritten to when the project's row of
+    /// the part was removed for it (issue #1119).
+    pub fn built_in_row_with(&self, locked: &LockedRow) -> Option<LockedRow> {
+        let row = self.rows.iter().filter(|r| r.built_in).find(|r| {
+            match (&locked.lcsc, &locked.mpn) {
+                (Some(l), _) => r.lcsc == *l,
+                (None, Some(m)) => {
+                    !r.mpn.is_empty()
+                        && r.mpn == *m
+                        && locked
+                            .manufacturer
+                            .as_ref()
+                            .is_none_or(|w| r.manufacturer.is_empty() || r.manufacturer == *w)
+                }
+                (None, None) => false,
+            }
+        })?;
         let number = |n: &String| (!n.is_empty()).then(|| n.clone());
-        Some((row.name.clone(), number(&row.lcsc), number(&row.mpn)))
+        Some(LockedRow {
+            row: row.name.clone(),
+            lcsc: number(&row.lcsc),
+            manufacturer: number(&row.manufacturer),
+            mpn: number(&row.mpn),
+            ..locked.clone()
+        })
     }
 
     /// The curve of a row's column, if a curve file is named by the row.
@@ -602,6 +658,7 @@ impl Table {
                 label: row.label.clone(),
                 columns: values,
                 lcsc: (!row.lcsc.is_empty()).then(|| row.lcsc.clone()),
+                manufacturer: (!row.manufacturer.is_empty()).then(|| row.manufacturer.clone()),
                 mpn: (!row.mpn.is_empty()).then(|| row.mpn.clone()),
                 library: row.library,
                 assembly: row.cell("assembly").map(str::to_string),
@@ -627,10 +684,6 @@ impl Table {
     }
 }
 
-fn field_of<'a>(row: &'a Row, what: &str) -> &'a str {
-    if what == "lcsc" { &row.lcsc } else { &row.mpn }
-}
-
 /// The columns that say where and when a row was read, not what the part is: a project's row
 /// and the built-in one differ in them without the parts differing.
 const RECORD_ONLY: [&str; 7] = [
@@ -645,7 +698,7 @@ const RECORD_ONLY: [&str; 7] = [
 
 /// The error for a project's row that repeats a part of the built-in catalog (issue #1119):
 /// which built-in row, what differs between the two, and how to fix the project.
-fn built_in_twin(project: &Row, built_in: &Row, what: &str, key: &str) -> String {
+fn built_in_twin(project: &Row, built_in: &Row, said: &str) -> String {
     let mut differs: Vec<String> = Vec::new();
     if project.name != built_in.name {
         differs.push(format!(
@@ -680,7 +733,7 @@ fn built_in_twin(project: &Row, built_in: &Row, what: &str, key: &str) -> String
         ));
     }
     format!(
-        "{}: the {what} `{key}` is already a row at {}, a row of the built-in catalog (`{}`); {differs}; a part is in a catalog once: {fix}",
+        "{}: {said} is already a row at {}, a row of the built-in catalog (`{}`); {differs}; a part is in a catalog once: {fix}",
         project.at(),
         built_in.at(),
         built_in.name
@@ -692,7 +745,14 @@ impl Row {
     fn read_fixed_columns(&mut self) -> Result<(), String> {
         let at = self.at();
         self.lcsc = self.cell("lcsc").unwrap_or_default().to_string();
+        self.manufacturer = self.cell("manufacturer").unwrap_or_default().to_string();
         self.mpn = self.cell("mpn").unwrap_or_default().to_string();
+        if !self.manufacturer.is_empty() && self.mpn.is_empty() {
+            return Err(format!(
+                "{at}: the row names the manufacturer `{}` and no `mpn`; a part is its manufacturer and its part number (ADR 0143): write the datasheet's part number in `mpn`, or leave `manufacturer` empty",
+                self.manufacturer
+            ));
+        }
         self.library = match self.cell("library") {
             None => None,
             Some("Basic") => Some(Library::Basic),

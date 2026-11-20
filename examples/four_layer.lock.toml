@@ -1,8 +1,9 @@
 # The catalog row each part of each board was picked as, written by `netsmith board build` and
 # `netsmith board fab` when this file does not exist. Commit it: a change to a catalog or to the
 # solver that would move a pick shows here and not only in the bill of materials. Refresh it
-# with `netsmith project lock --update`. Nothing in it is edited by hand.
-version = 1
+# with `netsmith project lock --update`. Nothing in it is edited by hand but `held = "reason"`,
+# which a person adds to a part's entry to keep the part on its row.
+version = 2
 
 [FourLayerExample.providers."process"]
 generic = "FourLayer"

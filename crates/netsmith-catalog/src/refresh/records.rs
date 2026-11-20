@@ -14,6 +14,9 @@ use serde_json::Value;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Product {
     pub lcsc: String,
+    /// The manufacturer as LCSC spells it (`brandNameEn`), if the answer names one. It is LCSC's
+    /// spelling, which may not be the datasheet's (`muRata`, `MDD(Microdiode Semiconductor)`).
+    pub manufacturer: Option<String>,
     pub mpn: String,
     pub package: Option<String>,
     /// LCSC's own stock, `stockNumber`. This is not JLCPCB's stock.
@@ -47,6 +50,8 @@ pub fn parse_product(body: &str, lcsc: &str) -> Result<Option<Product>, String> 
     }
     Ok(Some(Product {
         lcsc: code,
+        // A manufacturer that is absent is not an error: the row's cell is then left empty.
+        manufacturer: text("brandNameEn").filter(|m| !m.is_empty()),
         mpn: text("productModel")
             .ok_or_else(|| shape(&format!("{WHAT} for {lcsc}"), "productModel"))?,
         package: text("encapStandard"),

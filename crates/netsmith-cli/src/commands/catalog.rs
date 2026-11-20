@@ -64,7 +64,7 @@ pub struct RefreshArgs {
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "`catalog add --lcsc <C123> --to <catalog.csv>` asks LCSC's record of the number (never JLCPCB's) and appends a row with `lcsc`, `mpn`, `package` and a `source` that names the record and the day, leaving every other cell empty and listing the columns that need the datasheet or JLCPCB's page; without `--to` it prints the record and writes nothing."
+    after_long_help = "`catalog add --lcsc <C123> --to <catalog.csv>` asks LCSC's record of the number (never JLCPCB's) and appends a row with `lcsc`, `mpn`, `package` and a `source` that names the record and the day, and `manufacturer` as LCSC spells it when the file has that column (check it against the datasheet), leaving every other cell empty and listing the columns that need the datasheet or JLCPCB's page; without `--to` it prints the record and writes nothing."
 )]
 #[command(args_override_self = true)]
 pub struct AddArgs {
@@ -82,7 +82,7 @@ pub struct AddArgs {
     pub no_cache: bool,
     /// Text for a person, or one JSON document on stdout.
     ///
-    /// `json` prints one JSON document on stdout and nothing else there: `command` (`catalog add`), `ok`, the `lcsc` number, the `mpn`, the `package` (null when LCSC lists none), the day it was `read`, `written` (the `file` and `line` of the row added, null with no `--to`), the columns `filled`, and the columns `to_fill`, which need the datasheet or JLCPCB's page. A number LCSC has no record of, or one the file already has, is `ok` false with a `findings` list of one error (the code `catalog`) and exit code 1; a run that could not be made is an error on stderr with exit code 2 and nothing on stdout.
+    /// `json` prints one JSON document on stdout and nothing else there: `command` (`catalog add`), `ok`, the `lcsc` number, the `manufacturer` as LCSC spells it (null when the record names none), the `mpn`, the `package` (null when LCSC lists none), the day it was `read`, `written` (the `file` and `line` of the row added, null with no `--to`), the columns `filled`, and the columns `to_fill`, which need the datasheet or JLCPCB's page. A number LCSC has no record of, or one the file already has, is `ok` false with a `findings` list of one error (the code `catalog`) and exit code 1; a run that could not be made is an error on stderr with exit code 2 and nothing on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: Format,
 }

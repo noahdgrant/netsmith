@@ -30,6 +30,7 @@ fn resistor(ohms: f64) -> Candidate {
             ),
         ],
         lcsc: None,
+        manufacturer: None,
         mpn: None,
         library: None,
         assembly: None,

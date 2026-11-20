@@ -4,7 +4,10 @@
 //! record, the manufacturer's number, the package and the datasheet's ratings are copied into the
 //! CSV by hand. This command does the part a record can do. It asks LCSC's product record, as
 //! `catalog refresh` does (never JLCPCB, ADR 0039), and appends a row with `lcsc`, `mpn`,
-//! `package` and `source` filled in, the `source` naming the record and the day it was read. Every
+//! `package` and `source` filled in, the `source` naming the record and the day it was read, and
+//! `manufacturer` when the file has the column (ADR 0143), from the same record as LCSC spells it
+//! (`brandNameEn`), which the `source` then says and the `notes` ask a person to check against
+//! the datasheet. Every
 //! other cell stays empty, and the command lists the columns that need the datasheet (ratings,
 //! curves, heights) or JLCPCB's page (`library`). A row with an empty column that a part needs is
 //! refused where the part reads it, so the command cannot make a row that passes with a guess in
@@ -128,16 +131,29 @@ pub fn add(lcsc: &str, to: Option<(&Path, &str)>, network: Network) -> Result<Ad
     };
     let header = file.header();
     let mut cells = Vec::new();
+    let maker_written =
+        header.iter().any(|h| h.trim() == "manufacturer") && product.manufacturer.is_some();
     for column in header.iter().map(|h| h.trim()) {
         let value = match column {
             "lcsc" => Some(product.lcsc.clone()),
+            "manufacturer" => product.manufacturer.clone(),
             "mpn" => Some(product.mpn.clone()),
             "package" => product.package.clone(),
-            "source" => Some(source_of(&product, &endpoint, &read)),
-            "notes" => Some(
-                "Written by `netsmith catalog add` from LCSC's record alone: fill the empty columns from the datasheet (with its source in `source`) and the library type from JLCPCB's page, and check the package against std/kicad.toml"
-                    .to_string(),
-            ),
+            "source" => Some(match (&product.manufacturer, maker_written) {
+                (Some(maker), true) => format!(
+                    "{}; manufacturer: `{maker}`, the record's `brandNameEn`, as LCSC spells it",
+                    source_of(&product, &endpoint, &read)
+                ),
+                _ => source_of(&product, &endpoint, &read),
+            }),
+            "notes" => Some(format!(
+                "Written by `netsmith catalog add` from LCSC's record alone: fill the empty columns from the datasheet (with its source in `source`) and the library type from JLCPCB's page, and check the package against std/kicad.toml{}",
+                if maker_written {
+                    ", and the manufacturer's name against the datasheet's spelling"
+                } else {
+                    ""
+                }
+            )),
             _ => None,
         };
         match &value {
@@ -172,11 +188,15 @@ fn csv_cell(value: &str) -> String {
 pub fn render_added(added: &Added) -> String {
     let p = &added.product;
     let mut out = format!(
-        "LCSC's record of {} (read {}): mpn {}, package {}\n",
+        "LCSC's record of {} (read {}): mpn {}, package {}{}\n",
         p.lcsc,
         added.read,
         p.mpn,
-        p.package.as_deref().unwrap_or("not listed")
+        p.package.as_deref().unwrap_or("not listed"),
+        p.manufacturer
+            .as_deref()
+            .map(|m| format!(", manufacturer {m}"))
+            .unwrap_or_default()
     );
     match &added.written {
         None => out.push_str(
@@ -209,6 +229,7 @@ pub fn json_added(added: &Added) -> serde_json::Value {
         "command": "catalog add",
         "ok": true,
         "lcsc": p.lcsc,
+        "manufacturer": p.manufacturer,
         "mpn": p.mpn,
         "package": p.package,
         "read": added.read,
@@ -233,6 +254,7 @@ mod tests {
     fn the_source_names_the_record_the_endpoint_and_the_day() {
         let p = Product {
             lcsc: "C25104".into(),
+            manufacturer: Some("UNI-ROYAL".into()),
             mpn: "0402WGF3300TCE".into(),
             package: Some("0402".into()),
             stock: None,

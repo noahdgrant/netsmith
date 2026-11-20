@@ -21,9 +21,12 @@ pub struct LockedRow {
     pub catalog: String,
     /// The row's name, as a message calls it (`Candidate::name`).
     pub row: String,
-    /// The row's LCSC number and manufacturer part number when it is a real part, so that a
-    /// row that was renamed or changed in place is found and not taken for the locked one.
+    /// The row's LCSC number, manufacturer and manufacturer part number when it is a real part
+    /// and the row names them, so that a row that was renamed or changed in place is found and
+    /// not taken for the locked one. The manufacturer and the part number are the part's
+    /// identity (ADR 0143); a lock of version 1 has no manufacturer.
     pub lcsc: Option<String>,
+    pub manufacturer: Option<String>,
     pub mpn: Option<String>,
     /// Why a person holds the part to this row (`held = "reason"` in the lock file, issue
     /// #1197): `project lock --check` does not call the row not current, and `--update` keeps it
@@ -39,6 +42,7 @@ impl LockedRow {
             catalog: pick.catalog.clone(),
             row: pick.candidate.clone(),
             lcsc: pick.lcsc.clone(),
+            manufacturer: pick.manufacturer.clone(),
             mpn: pick.mpn.clone(),
             held: None,
         }
@@ -66,6 +70,11 @@ pub struct LockedProvider {
 pub struct PickLock {
     /// What a message calls the file the lock is kept in.
     pub file: String,
+    /// The version of the file's format when it is older than the one this netsmith writes
+    /// (`Some(1)` for a lock that records no manufacturer, ADR 0143): the lock is read and holds
+    /// its parts as before, and `project lock --check` calls it not current. `None` for a lock
+    /// of the current version and for one a run makes.
+    pub outdated: Option<i64>,
     units: BTreeMap<String, Vec<LockedRow>>,
     providers: BTreeMap<String, Vec<LockedProvider>>,
 }
@@ -74,6 +83,7 @@ impl PickLock {
     pub fn new(file: &str) -> PickLock {
         PickLock {
             file: file.to_string(),
+            outdated: None,
             providers: BTreeMap::new(),
             units: BTreeMap::new(),
         }

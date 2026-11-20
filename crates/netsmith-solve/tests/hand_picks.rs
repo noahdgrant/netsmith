@@ -78,6 +78,7 @@ fn a_hand_pick_comes_before_the_lock() {
             catalog: "resistor".into(),
             row: "330Ω 1% 0402 C25104".into(),
             lcsc: Some(SOLVER_ROW.into()),
+            manufacturer: None,
             mpn: Some("0402WGF3300TCE".into()),
             held: None,
         }],
@@ -89,6 +90,61 @@ fn a_hand_pick_comes_before_the_lock() {
     let s = run(&format!(".lcsc &= \"{OTHER_ROW}\""), &held);
     assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
     assert_eq!(lcsc_of_r1(&s).as_deref(), Some(OTHER_ROW));
+}
+
+#[test]
+fn a_lock_holds_the_row_of_its_manufacturer_when_two_rows_share_a_name() {
+    // Two makers of one number: the rows' default name is the mpn, so the two share it, and the
+    // lock's manufacturer says which row it holds (ADR 0143).
+    let mut catalogs = Catalogs::jlcpcb();
+    catalogs
+        .add_file(
+            "resistor",
+            "catalogs/resistor.csv",
+            "manufacturer,mpn,resistance,max_power,package,source\n\
+Acme Passives,ZZR-330,330ohm +/- 1%,62.5mW,0402,https://example.invalid/acme\n\
+Zenith Passives,ZZR-330,330ohm +/- 1%,62.5mW,0402,https://example.invalid/zenith\n",
+        )
+        .unwrap();
+    let held = |maker: Option<&str>| {
+        let mut lock = PickLock::new("main.lock.toml");
+        lock.set(
+            "LedExample",
+            vec![LockedRow {
+                path: "r1".into(),
+                catalog: "resistor".into(),
+                row: "ZZR-330".into(),
+                lcsc: None,
+                manufacturer: maker.map(str::to_string),
+                mpn: Some("ZZR-330".into()),
+                held: None,
+            }],
+        );
+        catalogs.clone().with_pick_lock(lock)
+    };
+    let maker_of_r1 = |s: &Solution| {
+        s.picks
+            .iter()
+            .find(|p| s.model.path_of(p.part) == "r1")
+            .and_then(|p| p.manufacturer.clone())
+    };
+    for maker in ["Acme Passives", "Zenith Passives"] {
+        let s = run("", &held(Some(maker)));
+        assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
+        assert_eq!(maker_of_r1(&s).as_deref(), Some(maker));
+    }
+    // A lock of version 1 has no manufacturer: either row is the locked one, and the first that
+    // fits is taken, as the solver takes it with no lock.
+    let s = run("", &held(None));
+    assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
+    assert_eq!(maker_of_r1(&s).as_deref(), Some("Acme Passives"));
+    // A manufacturer no row of the name has is a changed row, and the message names both.
+    let s = run("", &held(Some("Other Maker")));
+    let said = messages(&s).join("\n");
+    assert!(
+        said.contains("the row `ZZR-330` of the `resistor` catalog now has the LCSC number none and the manufacturer part number ZZR-330, and the lock has none and ZZR-330 (the manufacturer Acme Passives, and the lock has Other Maker)"),
+        "{said}"
+    );
 }
 
 #[test]

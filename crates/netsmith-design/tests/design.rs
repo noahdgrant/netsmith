@@ -498,6 +498,7 @@ fn a_catalog_row_may_state_who_assembles_its_part_and_the_design_overrides_it() 
                     ("package".into(), Value::Text("0402".into())),
                 ],
                 lcsc: Some("C1".into()),
+                manufacturer: None,
                 mpn: None,
                 library: None,
                 assembly: assembly.map(str::to_string),

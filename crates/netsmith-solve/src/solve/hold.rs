@@ -58,6 +58,10 @@ impl Solver<'_> {
                     .mpn
                     .as_ref()
                     .is_none_or(|m| c.mpn.as_ref() == Some(m))
+                && locked
+                    .manufacturer
+                    .as_ref()
+                    .is_none_or(|m| c.manufacturer.as_ref() == Some(m))
         };
         let named: Vec<Candidate> = cat
             .candidates
@@ -89,22 +93,39 @@ impl Solver<'_> {
                 "the `{}` catalog has no row `{}` now{renamed}",
                 cat.name, locked.row
             ))
-        } else if let Some(changed) = named.iter().find(|c| !same_number(c)) {
-            Some(format!(
-                "the row `{}` of the `{}` catalog now has the LCSC number {} and the manufacturer part number {}, and the lock has {} and {}",
-                locked.row,
-                cat.name,
-                changed.lcsc.as_deref().unwrap_or("none"),
-                changed.mpn.as_deref().unwrap_or("none"),
-                locked.lcsc.as_deref().unwrap_or("none"),
-                locked.mpn.as_deref().unwrap_or("none"),
-            ))
+        } else if let Some(changed) = named.first().filter(|_| !named.iter().any(&same_number)) {
+            // The manufacturer is named only when one of the two has one, so a lock and a row
+            // that name none read as before.
+            let maker = |m: &Option<String>| m.as_deref().unwrap_or("none").to_string();
+            let makers = if changed.manufacturer.is_some() || locked.manufacturer.is_some() {
+                format!(
+                    " (the manufacturer {}, and the lock has {})",
+                    maker(&changed.manufacturer),
+                    maker(&locked.manufacturer)
+                )
+            } else {
+                String::new()
+            };
+            Some(
+                format!(
+                    "the row `{}` of the `{}` catalog now has the LCSC number {} and the manufacturer part number {}, and the lock has {} and {}",
+                    locked.row,
+                    cat.name,
+                    changed.lcsc.as_deref().unwrap_or("none"),
+                    changed.mpn.as_deref().unwrap_or("none"),
+                    locked.lcsc.as_deref().unwrap_or("none"),
+                    locked.mpn.as_deref().unwrap_or("none"),
+                ) + &makers,
+            )
         } else {
             None
         };
         match reason {
             None => {
-                cat.candidates.retain(|c| c.name == locked.row);
+                // Two rows of one `mpn` from two manufacturers may share a name (the default is
+                // the `mpn`): the lock's numbers say which of them it holds.
+                cat.candidates
+                    .retain(|c| c.name == locked.row && same_number(c));
                 true
             }
             Some(reason) => {

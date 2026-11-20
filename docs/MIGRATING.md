@@ -13,6 +13,16 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+### The pick lock is version 2 (issue #1456, ADR 0143)
+
+Not a break: nothing that built is an error. `<stem>.lock.toml` now records each part's `manufacturer` beside its `lcsc` and `mpn`, and says `version = 2`. A lock of version 1 is still read and holds its parts as before, also with `--locked` (the build says so in a note), but `netsmith project lock --check`, as a CI job runs it, calls it not current and exits 1:
+
+```text
+version 1 -> 2: the file is of version 1 of the lock, and version 2 records each part's manufacturer beside its lcsc and mpn (ADR 0143)
+```
+
+Run `netsmith project lock --update` once and commit the lock. Its diff is the `version` line and the header's comment, and a `manufacturer` line for a part whose catalog row names one (the new optional `manufacturer` column of a catalog file).
+
 ## 0.7.0: changes since 0.6.0
 
 ### A provider or a use does not declare a member std now declares (issues #1258, #1324, #1405)

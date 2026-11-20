@@ -8,7 +8,8 @@
 //! ```
 //!
 //! `fetched` is Unix seconds; `price_breaks` is `from:price` pairs; an empty `stock` is
-//! unknown. It is plain text so a person can read it and delete it. It is a cache, not
+//! unknown. A row names no manufacturer: it is found by its `mpn` whoever makes the part
+//! ([`PartKey::matches`]). It is plain text so a person can read it and delete it. It is a cache, not
 //! design data: a row that cannot be read is ignored, and a file that cannot be written is
 //! not an error, since the answer in hand is still good.
 
@@ -60,7 +61,7 @@ impl Cache {
     pub fn get(&self, provider: &str, part: &PartKey) -> Vec<Quote> {
         self.rows(provider)
             .into_iter()
-            .filter(|(lcsc, mpn, _)| part.matches(lcsc, mpn))
+            .filter(|(lcsc, mpn, _)| part.matches(lcsc, "", mpn))
             .map(|(_, _, q)| q)
             .collect()
     }
@@ -70,7 +71,7 @@ impl Cache {
         let mut rows: Vec<(String, String, Quote)> = self
             .rows(provider)
             .into_iter()
-            .filter(|(lcsc, mpn, _)| !part.matches(lcsc, mpn))
+            .filter(|(lcsc, mpn, _)| !part.matches(lcsc, "", mpn))
             .collect();
         let lcsc = part.lcsc.clone().unwrap_or_default();
         let mpn = part.mpn.clone().unwrap_or_default();

@@ -92,6 +92,52 @@ fn a_row_gets_the_records_number_package_and_source_and_nothing_else() {
 }
 
 #[test]
+fn a_file_with_a_manufacturer_column_gets_the_records_manufacturer_with_its_source() {
+    let root = TempDir::new("catalog-add-manufacturer");
+    let path = root.join("catalogs/zled.csv");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(
+        &path,
+        "lcsc,manufacturer,mpn,forward_voltage,color,package,library,source,notes\n",
+    )
+    .unwrap();
+    let fake = Fake::fixtures();
+    let added = add(
+        "C2286",
+        Some((&path, "catalogs/zled.csv")),
+        fake.network(None, NOW),
+    )
+    .unwrap();
+    let row = rows(&fs::read_to_string(&path).unwrap()).pop().unwrap();
+    // The record already fetched names the maker, as LCSC spells it (ADR 0143).
+    assert_eq!(row["manufacturer"], "Hubei KENTO Elec");
+    assert_eq!(row["mpn"], "KT-0603R");
+    assert!(
+        row["source"].ends_with(
+            "; manufacturer: `Hubei KENTO Elec`, the record's `brandNameEn`, as LCSC spells it"
+        ),
+        "{}",
+        row["source"]
+    );
+    assert!(
+        row["notes"].ends_with("and the manufacturer's name against the datasheet's spelling"),
+        "{}",
+        row["notes"]
+    );
+    assert_eq!(
+        added.filled,
+        ["lcsc", "manufacturer", "mpn", "package", "source", "notes"]
+    );
+    assert!(
+        render_added(&added).contains("mpn KT-0603R, package 0603, manufacturer Hubei KENTO Elec"),
+        "{}",
+        render_added(&added)
+    );
+    // LCSC was asked once, for the number: nothing else was fetched for the maker.
+    assert!(fake.seen().iter().all(|s| s.lcsc() == "C2286"));
+}
+
+#[test]
 fn a_number_the_file_has_or_lcsc_does_not_is_refused_and_nothing_is_written() {
     let root = TempDir::new("catalog-add-refused");
     let path = catalog(&root);
