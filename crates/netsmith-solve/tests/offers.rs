@@ -8,7 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use netsmith_check::{FieldKind, Loader, check};
-use netsmith_solve::{Catalogs, Library, Solution, parse_csv, solve};
+use netsmith_solve::{Catalogs, Channel, Library, Solution, parse_csv, solve};
 
 fn data(path: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -199,6 +199,30 @@ fn a_project_offer_gives_its_row_the_number_and_the_class() {
     let supplier = with.supplier("C900001").expect("the offer's number");
     assert_eq!(supplier.library, Some(Library::Basic));
     assert!(with.offer_notes().is_empty());
+}
+
+#[test]
+fn the_pick_records_the_skus_of_the_projects_channels_and_no_others() {
+    let offers = [
+        ("lcsc", ",ZZ9-33,C900001,Basic,https://example.invalid/lcsc,,\n"),
+        ("digikey", ",ZZ9-33,ZZ9-33-ND,,https://example.invalid/digikey,,\n"),
+    ];
+    let skus = |c: Catalogs| solved(&c).picks[0].skus.clone();
+    let word = |channel: &str, sku: &str| (channel.to_string(), sku.to_string());
+    // With no list, the project's channels are the default two: a Digi-Key offer, which the
+    // project does not buy from, moves nothing in its lock.
+    assert_eq!(
+        skus(project(&offers).unwrap()),
+        [word("jlcpcb-assembly", "C900001"), word("lcsc-retail", "C900001")]
+    );
+    // Listing the channel adds its sku, and drops the one of a channel that is no longer listed.
+    let listed = project(&offers)
+        .unwrap()
+        .with_channels(vec![Channel::DIGIKEY_RETAIL, Channel::JLCPCB_ASSEMBLY]);
+    assert_eq!(
+        skus(listed),
+        [word("jlcpcb-assembly", "C900001"), word("digikey-retail", "ZZ9-33-ND")]
+    );
 }
 
 #[test]

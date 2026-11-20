@@ -590,9 +590,12 @@ impl Catalogs {
         &self.offers
     }
 
-    /// The sku of the part of `c` for each supply channel that has an offer of it, by the
-    /// channel's word, in the order of [`crate::lock::CHANNELS`]: what a pick of it records in
-    /// the lock. A row of a file is bought by its offers alone; a candidate made in code that
+    /// The sku of the part of `c` for each of the project's supply channels
+    /// ([`Catalogs::channels`]) that has an offer of it, by the channel's word, in the order of
+    /// [`crate::lock::CHANNELS`]: what a pick of it records in the lock (ADR 0143 item 6). A
+    /// channel the project does not list is not recorded, so an offer added for a supplier the
+    /// project does not buy from never moves its lock, and adding a channel to the list shows
+    /// its sku in a reviewed diff. A row of a file is bought by its offers alone; a candidate made in code that
     /// carries its number in `lcsc` and has no offer is bought by that number in JLCPCB's
     /// assembly, which is how such a candidate was always read.
     pub fn skus_of(&self, c: &Candidate) -> Vec<(String, String)> {
@@ -604,6 +607,11 @@ impl Catalogs {
             })
             .map(|b| b.skus)
             .unwrap_or_default();
+        let listed: Vec<&str> = self.channels().iter().map(|ch| ch.word).collect();
+        let skus: Vec<(String, String)> = skus
+            .into_iter()
+            .filter(|(channel, _)| listed.contains(&channel.as_str()))
+            .collect();
         match (&c.lcsc, skus.is_empty()) {
             (Some(lcsc), true) => vec![("jlcpcb-assembly".to_string(), lcsc.clone())],
             _ => skus,

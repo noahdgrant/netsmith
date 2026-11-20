@@ -424,7 +424,7 @@ file = "supply/quotes.csv"
 - **A part no channel has an offer of** has no supplier part number. A part the board house is to assemble is then refused by `fab`, with the channels it tried: `2 part(s) have no offer in any of the project's supply channels (tried: jlcpcb-assembly, lcsc-retail), ...`, and what to write.
 - **`provider` is optional.** Without one nothing is quoted (every price and stock is unknown) and the channels still say which offers the project buys; `file` without `provider = "file"` is refused. The parser refuses a key the table does not have, so a credential cannot be written there by mistake: a credential will be the name of an environment variable (ADR 0047).
 - **The channel is not `.assembly`.** Who places a part (the board house, a person, or the board house with parts you send it, `AssemblyMode::Consigned`, ADR 0084) is the design's; which channel buys it is the project's list. A consigned part is bought by you and resolved by no channel.
-- **The pick lock** records the sku of every channel that has an offer of a part, whatever the list (_The pick lock_ in the chapter on the shape of a board), so changing the list does not make a lock stale.
+- **The pick lock** records the sku of each channel of the list that has an offer of a part (_The pick lock_ in the chapter on the shape of a board). An offer added for a supplier the project does not list never moves its lock; adding a channel to the list makes the lock not current until `netsmith project lock --update`, and the new skus are in the diff to review.
 
 #### Curve files
 

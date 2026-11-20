@@ -617,7 +617,8 @@ mod tests {
         assert_eq!(bought("ZZ2").channel, Some(Channel::DIGIKEY_RETAIL));
         assert_eq!(bought("ZZ2").lcsc.as_deref(), Some("ZZ2-ND"));
         assert_eq!(bought("ZZ2").library, None);
-        // The lock's record is every channel's, whatever the list.
+        // `bought_by` lists the sku of every channel that has an offer; the lock keeps the
+        // project's own (`Catalogs::skus_of`).
         assert_eq!(
             bought("ZZ2").skus,
             [("digikey-retail".to_string(), "ZZ2-ND".to_string())]
