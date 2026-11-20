@@ -1,5 +1,9 @@
 # Glossary: O
 
+**Offer**:
+What a **supplier** says about a part that a person can record: a row of `offers/<supplier>.csv` with the part's `manufacturer` and `mpn`, the supplier's own number for it (`sku`), the supplier's own sorting of it (`class`: JLCPCB's Basic or Extended), a `source` and the day it was `checked` (ADR 0143, proposed). The part's row says what it is and holds none of this. An offer has no price and no stock: those are a **supply provider**'s quote (ADR 0047). A part with no offer from a supplier cannot be bought there.
+_Avoid_: Listing, SKU row, supplier column (a column on the part's row, which ADR 0143 rejected)
+
 **Ohm bound**:
 The largest size of the current through a resistor that Ohm's law allows when the voltage at each of its two ends lies in a range the solver knows: the largest difference between the ends over the least resistance (ADR 0026, amendment). It is used only to prove a check that waits on a current that nothing states: a relation it satisfies is made and its note goes, one it does not satisfy stays not evaluated and says nothing. It is not the part's current: the model never holds it as a value, and a pick, a range or a track width reads no current from it, except that the track note goes when the width already drawn carries the known current and every Ohm bound together (ADR 0036, amendment 4).
 _Avoid_: Estimated current, assumed current, worst-case current (a current is worked out or stated; this is neither)
