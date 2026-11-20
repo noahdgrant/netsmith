@@ -395,7 +395,7 @@ pub struct EditCounts {
 }
 
 impl EditCounts {
-    fn count(&mut self, board: &Board) {
+    pub(crate) fn count(&mut self, board: &Board) {
         self.checks += 1;
         self.items += board.tracks.len()
             + board.vias.len()

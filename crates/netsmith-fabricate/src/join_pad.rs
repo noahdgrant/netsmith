@@ -4,10 +4,20 @@
 //! `routes` commands write it.
 //!
 //! **Which pad needs it.** The fill is the one `board fill` reports ([`FillReport`], with the
-//! routes file's copper on the board): a pad a fill of its net lists is joined when the fill
-//! joins it (a spoke or a track, not starved) or another fill of its net does; a pad no fill
-//! lists is joined when the design rules check finds it connected (no `unconnected_items`
-//! names it). A joined pad is said, and nothing is written.
+//! routes file's copper on the board), made of the board cut to the pad's neighbourhood
+//! ([`neighbourhood`]): a pad a fill of its net lists is joined when the fill joins it (a spoke or
+//! a track, not starved) or another fill of its net does; a pad no fill lists is joined when the
+//! copper of its net joins it to a pour, plane or zone of its net, as the design rules check's
+//! connectivity joins copper ([`netsmith_geom::drc_pad_reaches_pour`], of the board cut to the
+//! pad's net). A joined pad is said, and nothing is written.
+//!
+//! **Where it looks** (issue #1474). A spoke, a track's end or a via joins the pad where the pad
+//! is, so the fill made is that of the box round the pad grown by [`MOST_REACH`] and twice the
+//! board's largest space, with the zones, planes and pours cut to it as the check of an edit cuts
+//! them (`routes::near`), and none of the copper outside it. A piece of a fill cut so is kept
+//! even when it touches no copper of its net in the box (the board's fill takes such a piece out
+//! only when nothing of its net touches it anywhere): which pieces of a fill are islands is the
+//! whole board's, and `board drc` and `fab` judge it, as they judge the ends an edit leaves open.
 //!
 //! **Where it goes.** A track on a layer of the pad that a fill of its net is on, from the pad's
 //! centre straight out in one of [`DIRECTIONS`] directions, to the first place, a step of
@@ -22,11 +32,15 @@
 //! clearance to another net's copper, a short). A try the check takes is kept only when the pad
 //! is joined after it, by the rule above (with a via, when the check finds the pad connected).
 //! At most [`MOST_TRIES`] tries are made, and when none is kept the refusal says how many were
-//! tried and why the shortest was refused. The track and via are unlocked.
+//! tried and why the shortest was refused. The track and via are unlocked. No step checks or
+//! fills the whole board, so a join costs what the pad's neighbourhood and net hold, not the
+//! board ([`Joined::counts`]).
 
 use netsmith_pcb::{Board, CopperLayer, FillPad, FillReport, PadRef, Pt, Routes};
 
-use crate::routes::{Edit, Refusal, edit_all, via_offer, with_routes};
+use netsmith_pcb::{BoardZone, Rect, ZoneIslands};
+
+use crate::routes::{Edit, EditCounts, Refusal, edit_all_counted, near, via_offer, with_routes};
 
 /// How many directions a track is tried in: every 22.5 degrees.
 pub const DIRECTIONS: usize = 16;
@@ -86,6 +100,10 @@ pub struct Joined {
     /// The routes file with the join, when there is one.
     #[serde(skip)]
     pub routes: Option<Routes>,
+    /// The work done: the fills, the connectivity and the design rules checks made, and the
+    /// items (tracks, vias, zones and pads) of the boards they were made of.
+    #[serde(skip)]
+    pub counts: EditCounts,
 }
 
 impl Joined {
@@ -154,15 +172,17 @@ pub fn join_pad(board: &Board, routes: &Routes, name: &str) -> Result<Joined, Re
         .ok_or_else(|| refuse(format!("pad {name} is on no net: no fill joins it")))?;
 
     let (routed, _) = with_routes(board, routes)?;
-    let report = FillReport::of(&routed).map_err(|e| Refusal::Failed(e.to_string()))?;
-    let fills: Vec<&netsmith_pcb::FillArea> =
-        report.fills.iter().filter(|f| f.net == net).collect();
-    if fills.is_empty() {
+    if !near::zones_of(&routed).iter().any(|z| z.net == net) {
         return Err(refuse(format!(
             "net {net} has no pour, plane or zone: there is no fill to join {name} to (`netsmith routes route {net}` routes it)"
         )));
     }
-    let before = state(&report, &routed, &net, refdes, number)?;
+    let mut counts = EditCounts::default();
+    let hood = neighbourhood(&routed, part.pad_bounds(pad));
+    let report = local_fill(&routed, hood, &mut counts)?;
+    let fills: Vec<&netsmith_pcb::FillArea> =
+        report.fills.iter().filter(|f| f.net == net).collect();
+    let before = state(&report, &routed, &net, refdes, number, &mut counts)?;
     let mut joined = Joined {
         board: board.name.clone(),
         pad: name.to_string(),
@@ -174,8 +194,10 @@ pub fn join_pad(board: &Board, routes: &Routes, name: &str) -> Result<Joined, Re
         refused: None,
         said: None,
         routes: None,
+        counts: EditCounts::default(),
     };
     if before.joined {
+        joined.counts = counts;
         return Ok(joined);
     }
 
@@ -288,33 +310,33 @@ pub fn join_pad(board: &Board, routes: &Routes, name: &str) -> Result<Joined, Re
             via: fill_layer.is_some(),
             why,
         };
-        match edit_all(board, &mut next, &edits) {
+        let (result, checked) = edit_all_counted(board, &mut next, &edits);
+        counts.checks += checked.checks;
+        counts.items += checked.items;
+        match result {
             Err(Refusal::Refused(e)) => {
                 joined.tried.push(tried(e));
                 continue;
             }
             Err(e) => return Err(e),
             Ok(said) => {
-                // A via joins the pad when the check finds it connected, a track when the fill
-                // joins it: each asks only what it needs (issue #1471: the fill and the check
-                // of a dense board each take seconds).
+                // A via joins the pad when its net's copper joins it to a fill, a track when
+                // the fill joins it: each asks only what it needs (issues #1471, #1474).
                 let (after, _) = with_routes(board, &next)?;
-                let fill =
-                    |b: &Board| FillReport::of(b).map_err(|e| Refusal::Failed(e.to_string()));
                 let report = match fill_layer {
                     Some(_) => None,
-                    None => Some(fill(&after)?),
+                    None => Some(local_fill(&after, hood, &mut counts)?),
                 };
                 let done = match &report {
-                    None => !unconnected(&after, refdes, number)?,
-                    Some(r) => state(r, &after, &net, refdes, number)?.joined,
+                    None => reaches(&after, &net, refdes, number, &mut counts)?,
+                    Some(r) => state(r, &after, &net, refdes, number, &mut counts)?.joined,
                 };
                 if !done {
                     let report = match report {
                         Some(r) => r,
-                        None => fill(&after)?,
+                        None => local_fill(&after, hood, &mut counts)?,
                     };
-                    let now = state(&report, &after, &net, refdes, number)?;
+                    let now = state(&report, &after, &net, refdes, number, &mut counts)?;
                     joined.tried.push(tried(format!(
                         "the pad is still not joined with it: {}",
                         now.text
@@ -333,6 +355,7 @@ pub fn join_pad(board: &Board, routes: &Routes, name: &str) -> Result<Joined, Re
                 });
                 joined.said = Some(said);
                 joined.routes = Some(next);
+                joined.counts = counts;
                 return Ok(joined);
             }
         }
@@ -352,7 +375,57 @@ pub fn join_pad(board: &Board, routes: &Routes, name: &str) -> Result<Joined, Re
         "no track of net {net} from {name} reaches the fill of its net within {MOST_REACH} mm, nor a track and a via: {} tried{nearest}; move the part, give it room, or join it by hand (`netsmith routes add-track`)",
         joined.tried.len()
     ));
+    joined.counts = counts;
     Ok(joined)
+}
+
+/// The box whose fill [`join_pad`] makes for a pad whose copper is `pad` ([module](self)): the
+/// pad grown by [`MOST_REACH`], so that it holds every track and via tried, and by the board's
+/// largest space twice, so that the copper that shapes the fill there is in it, and a little
+/// more, so that the fill near the box's sides, cut by them, lies outside the reach.
+fn neighbourhood(board: &Board, pad: Rect) -> Rect {
+    pad.expanded(MOST_REACH + 2.0 * near::reach(board) + 0.5)
+}
+
+/// The fill of `board` cut to `hood` ([module](self)), with every piece of its zones kept.
+fn local_fill(board: &Board, hood: Rect, counts: &mut EditCounts) -> Result<FillReport, Refusal> {
+    let zones: Vec<BoardZone> = near::zones_of(board)
+        .into_iter()
+        .map(|mut z| {
+            z.islands = ZoneIslands::Keep;
+            z
+        })
+        .collect();
+    let local = near::local(board, &zones, &[hood]);
+    counts.count(&local);
+    FillReport::of(&local).map_err(|e| Refusal::Failed(e.to_string()))
+}
+
+/// Whether the copper of `net` joins the pad `part`.`pad` of `board` to a pour, plane or zone of
+/// the net, from the board cut to the net: its tracks, vias and zones and the parts with a pad
+/// on it ([`netsmith_geom::drc_pad_reaches_pour`]).
+fn reaches(
+    board: &Board,
+    net: &str,
+    part: &str,
+    pad: &str,
+    counts: &mut EditCounts,
+) -> Result<bool, Refusal> {
+    let mut own = board.clone();
+    own.zones = near::zones_of(board)
+        .into_iter()
+        .filter(|z| z.net == net)
+        .collect();
+    own.planes.clear();
+    own.pours.clear();
+    own.tracks.retain(|t| t.net == net);
+    own.vias.retain(|v| v.net == net);
+    let pads = board.nets.iter().find(|n| n.name == net).map(|n| &n.pads);
+    own.parts
+        .retain(|p| pads.is_some_and(|pads| pads.iter().any(|r| r.refdes == p.refdes)));
+    counts.count(&own);
+    let art = netsmith_pcb::copper_artwork(&own).map_err(|e| Refusal::Failed(e.to_string()))?;
+    Ok(netsmith_geom::drc_pad_reaches_pour(&art, part, pad).unwrap_or(false))
 }
 
 /// How the fill has the pad.
@@ -361,28 +434,13 @@ struct State {
     text: String,
 }
 
-/// Whether the design rules check of `board` finds the pad `part`.`pad` unconnected.
-fn unconnected(board: &Board, part: &str, pad: &str) -> Result<bool, Refusal> {
-    let checked = netsmith_geom::drc_check(
-        &netsmith_pcb::kicad_pcb(board),
-        Some(&netsmith_pcb::kicad_pro(board)),
-        &crate::fab::drc_extras(board),
-    )
-    .map_err(|e| Refusal::Failed(format!("the design rules check: {e}")))?;
-    Ok(checked.findings.iter().any(|f| {
-        f.rule == netsmith_geom::DrcRule::UnconnectedItems
-            && f.items
-                .iter()
-                .any(|i| i.part.as_deref() == Some(part) && i.pad.as_deref() == Some(pad))
-    }))
-}
-
 fn state(
     report: &FillReport,
     board: &Board,
     net: &str,
     part: &str,
     pad: &str,
+    counts: &mut EditCounts,
 ) -> Result<State, Refusal> {
     let listed: Vec<(&str, &FillPad)> = report
         .fills
@@ -395,8 +453,8 @@ fn state(
                 .map(move |p| (f.layer.as_str(), p))
         })
         .collect();
-    // The check of the whole board is made only for a pad no fill lists (issue #1471).
-    let unconnected = listed.is_empty() && unconnected(board, part, pad)?;
+    // The connectivity of the pad's net is asked only for a pad no fill lists (issue #1471).
+    let unconnected = listed.is_empty() && !reaches(board, net, part, pad, counts)?;
     let good = |p: &FillPad| (p.joined && !p.starved) || p.joined_elsewhere;
     if let Some((layer, _)) = listed.iter().find(|(_, p)| good(p)) {
         return Ok(State {
@@ -416,12 +474,11 @@ fn state(
             (None, false) => format!("the fill on {layer} does not reach it"),
         },
         None if unconnected => {
-            "no fill of its net covers its centre, and the design rules check finds it unconnected"
+            "no fill of its net covers its centre, and no copper of its net joins it to a fill"
                 .to_string()
         }
-        None => {
-            "no fill of its net covers its centre, and its copper joins it to its net".to_string()
-        }
+        None => "no fill of its net covers its centre, and its net's copper joins it to a fill"
+            .to_string(),
     };
     Ok(State {
         joined: listed.is_empty() && !unconnected,

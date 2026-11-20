@@ -1066,6 +1066,18 @@ pub fn check_artwork(
     report
 }
 
+/// Whether the copper of its net joins the pad `number` of `part` in `art` to a pour of its net,
+/// as the check's connectivity joins copper ([`connect`]: a pour by its outline, not its fill),
+/// or `None` when the board has no such pad on a net. It is the connectivity alone, none of the
+/// other rules, so it costs what the pad's net holds: `routes join-pad` asks it of a board cut
+/// to the pad's net (issue 1474).
+pub fn pad_reaches_pour(art: &Artwork, part: &str, number: &str) -> Option<bool> {
+    let rules = Rules::default();
+    let extras = Extras::default();
+    let model = model::Model::new(art, &rules, &extras, false);
+    connect::pad_reaches_pour(&model, part, number)
+}
+
 /// The `.kicad_pro` beside a board file, if there is one.
 pub fn project_of(pcb: &std::path::Path) -> Option<String> {
     std::fs::read_to_string(pcb.with_extension("kicad_pro")).ok()
