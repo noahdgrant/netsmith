@@ -1192,6 +1192,7 @@ fn fab_board(
                 errors.push_str(&fail(crate::no_supplier::message(
                     &built.board,
                     &unnumbered,
+                    catalogs.channels(),
                 )));
             }
             return Err(errors.into());

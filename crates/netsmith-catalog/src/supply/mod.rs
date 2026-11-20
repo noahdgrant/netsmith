@@ -22,8 +22,9 @@
 //!
 //! - *The answer says which stock it is.* JLCPCB assembly stock and LCSC retail stock differ for
 //!   the same number (ADR 0039 recorded 1,085,700 against 2,059,008). A bill for a JLCPCB order
-//!   shows `JlcpcbAssembly`; if a provider has only `LcscRetail` that is shown, labelled, and is
-//!   never presented as assembly stock. The manifest's `channel` says which a project means.
+//!   shows `jlcpcb-assembly`; if a provider has only `lcsc-retail` that is shown, labelled, and is
+//!   never presented as assembly stock. The manifest's `channels` say which a project means, in
+//!   order (ADR 0143): the first channel with an offer of a part buys it.
 //! - *A price is a ladder.* A line is priced at the highest break at or below the quantity it
 //!   needs; below the first break the first break's price is shown, marked "from N pieces". No
 //!   currency is converted. The bill of materials of the editor is for one board, so its
@@ -44,8 +45,9 @@
 //!   lines and says how many have no price; nothing guesses a price from a neighbouring row. A
 //!   made-up part (no `lcsc`) has nothing to look up. A line with a quote says "<provider>,
 //!   <channel>, read <date>, <age>".
-//! - *Configuration.* The `[supply]` table of `netsmith.toml` has `provider` (only `"file"` is
-//!   built), `file` (relative to the project), `channel` (`jlcpcb-assembly` or `lcsc-retail`) and
+//! - *Configuration.* The `[supply]` table of `netsmith.toml` has `channels` (the project's
+//!   supply channels in order, ADR 0143; `channel = "..."` is a list of one), `provider` (only
+//!   `"file"` is built; without it nothing is quoted), `file` (relative to the project) and
 //!   `cache_hours`. The manifest's parser refuses an unknown key, so a secret cannot be committed
 //!   by mistake; a credential is given by the name of an environment variable and never by its
 //!   value (owner, 2026-11-03), and the value is never stored in the manifest, a project file or
@@ -71,9 +73,11 @@
 //!   keeps every design as it is. The end state, in which the solver picks generic parts only
 //!   and resolution picks the row, would change which part existing designs get, and is not
 //!   planned.
-//! - "JLCPCB Basic, then Preferred, then Extended, then file order" is the preferred-parts rule
-//!   of resolution. A project's `preferred.csv` beside the manifest (issue #802,
-//!   `netsmith_solve::Preferred`) puts the rows it names first, in its order.
+//! - "JLCPCB Basic, then Preferred, then Extended, then file order" was the preferred-parts rule
+//!   of resolution; it is the rule of the `jlcpcb-assembly` channel now, and a retail channel
+//!   goes by stock, then price (ADR 0143, `netsmith_solve::Rule`). A project's `preferred.csv`
+//!   beside the manifest (issue #802, `netsmith_solve::Preferred`) still puts the rows it names
+//!   first, in its order.
 //! - `fab` refuses an unresolved part, by name, with the three nearest rows and the result of the
 //!   checks with each.
 //! - The `price`, `stock` and `date` columns stay in the format, as the `catalog` answer that is
@@ -105,40 +109,12 @@ use netsmith_solve::Availability;
 pub use cache::Cache;
 pub use file::FileProvider;
 
-/// Which stock a quote is about. JLCPCB's assembly stock (the pieces it holds for its
-/// assembly service, which a board ordered with assembly uses) is not LCSC's retail stock
-/// (the pieces LCSC sells to a buyer): the same number has different counts in the two.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Channel {
-    JlcpcbAssembly,
-    LcscRetail,
-}
-
-impl Channel {
-    /// The word a file and the manifest use.
-    pub fn word(self) -> &'static str {
-        match self {
-            Channel::JlcpcbAssembly => "jlcpcb-assembly",
-            Channel::LcscRetail => "lcsc-retail",
-        }
-    }
-
-    pub fn parse(word: &str) -> Option<Channel> {
-        match word.trim() {
-            "jlcpcb-assembly" => Some(Channel::JlcpcbAssembly),
-            "lcsc-retail" => Some(Channel::LcscRetail),
-            _ => None,
-        }
-    }
-
-    /// What a person reads: `JLCPCB assembly stock`.
-    pub fn describe(self) -> &'static str {
-        match self {
-            Channel::JlcpcbAssembly => "JLCPCB assembly stock",
-            Channel::LcscRetail => "LCSC retail stock",
-        }
-    }
-}
+/// Which stock a quote is about: a supply channel (ADR 0047, ADR 0143), defined with the offers
+/// file it reads and its rule in [`netsmith_solve::channel`]. JLCPCB's assembly stock (the
+/// pieces it holds for its assembly service, which a board ordered with assembly uses) is not
+/// LCSC's retail stock (the pieces LCSC sells to a buyer): the same number has different counts
+/// in the two.
+pub use netsmith_solve::Channel;
 
 /// How a part is asked for: by its identity (ADR 0143), the manufacturer's part number and the
 /// manufacturer, and by the LCSC number where a side has no manufacturer's number.
@@ -283,11 +259,12 @@ impl Lookup {
 }
 
 /// The providers a project configured, the cache in front of the cacheable ones, and the
-/// channel whose stock the bill of materials shows.
+/// project's channels, in order: the first is the one whose stock the bill of materials shows
+/// when a provider quotes several.
 pub struct Supply {
     providers: Vec<Box<dyn SupplyProvider>>,
     cache: Option<Cache>,
-    channel: Channel,
+    channels: Vec<Channel>,
     cache_secs: u64,
     offline: bool,
     now: u64,
@@ -300,7 +277,7 @@ impl fmt::Debug for Supply {
                 "providers",
                 &self.providers.iter().map(|p| p.name()).collect::<Vec<_>>(),
             )
-            .field("channel", &self.channel)
+            .field("channels", &self.channels)
             .finish()
     }
 }
@@ -314,7 +291,7 @@ impl Supply {
         Supply {
             providers: Vec::new(),
             cache: None,
-            channel: Channel::JlcpcbAssembly,
+            channels: Channel::DEFAULT.to_vec(),
             cache_secs: CACHE_HOURS * 3600,
             offline: false,
             now: crate::refresh::now_secs(),
@@ -332,8 +309,18 @@ impl Supply {
         self
     }
 
-    pub fn with_channel(mut self, channel: Channel) -> Supply {
-        self.channel = channel;
+    /// Only `channel`: a list of one.
+    pub fn with_channel(self, channel: Channel) -> Supply {
+        self.with_channels(vec![channel])
+    }
+
+    /// The project's channels, in the order of its manifest (empty is [`Channel::DEFAULT`]).
+    pub fn with_channels(mut self, channels: Vec<Channel>) -> Supply {
+        self.channels = if channels.is_empty() {
+            Channel::DEFAULT.to_vec()
+        } else {
+            channels
+        };
         self
     }
 
@@ -359,8 +346,14 @@ impl Supply {
         self
     }
 
+    /// The first of the project's channels.
     pub fn channel(&self) -> Channel {
-        self.channel
+        self.channels[0]
+    }
+
+    /// The project's channels, in order.
+    pub fn channels(&self) -> &[Channel] {
+        &self.channels
     }
 
     /// Whether any provider is configured.
@@ -370,17 +363,33 @@ impl Supply {
 
     /// The quote for a part from the first provider that has one: fresh from the cache, else
     /// from the provider (which then fills the cache), else an older cached answer if the
-    /// provider cannot answer or the run is offline. The quote of the project's channel is
-    /// preferred; if the provider has only the other channel, that is the answer and it
-    /// says which it is.
+    /// provider cannot answer or the run is offline. The quote of the first of the project's
+    /// channels that the provider quotes is preferred; if the provider has only a channel the
+    /// project does not list, that is the answer and it says which it is.
     pub fn lookup(&self, part: &PartKey) -> Lookup {
+        match self.quotes(part) {
+            Ok(quotes) => Lookup::Quoted(self.choose(quotes)),
+            Err(why) => Lookup::Unknown(why),
+        }
+    }
+
+    /// The quote of `part` in `channel`, if the first provider that answers has one for it: what
+    /// a channel's stock and price are read from when a generic part is resolved.
+    pub fn quote_in(&self, part: &PartKey, channel: Channel) -> Option<Quote> {
+        self.quotes(part)
+            .ok()?
+            .into_iter()
+            .find(|q| q.channel == channel)
+    }
+
+    /// Every quote of the first provider that has an answer for `part`, as [`Self::lookup`]
+    /// reads them; the error says why there is none.
+    fn quotes(&self, part: &PartKey) -> Result<Vec<Quote>, String> {
         if self.providers.is_empty() {
-            return Lookup::Unknown(
-                "no supply provider is configured ([supply] in netsmith.toml)".to_string(),
-            );
+            return Err("no supply provider is configured ([supply] in netsmith.toml)".to_string());
         }
         if part.is_empty() {
-            return Lookup::Unknown("the part has no LCSC or manufacturer's number".to_string());
+            return Err("the part has no LCSC or manufacturer's number".to_string());
         }
         let mut why: Vec<String> = Vec::new();
         for provider in &self.providers {
@@ -397,7 +406,7 @@ impl Supply {
                     .unwrap_or(u64::MAX)
             };
             if !kept.is_empty() && age(&kept) <= self.cache_secs {
-                return Lookup::Quoted(self.choose(kept));
+                return Ok(kept);
             }
             let asked = if self.offline && provider.cacheable() {
                 Err(SupplyError::Offline)
@@ -409,41 +418,50 @@ impl Supply {
                     if let (Some(cache), true) = (&self.cache, provider.cacheable()) {
                         cache.put(name, part, &quotes);
                     }
-                    return Lookup::Quoted(self.choose(quotes));
+                    return Ok(quotes);
                 }
                 Ok(_) => why.push(format!("{name} does not list the part")),
                 Err(e) => {
                     if kept.is_empty() {
                         why.push(format!("{name}: {e}"));
                     } else {
-                        return Lookup::Quoted(self.choose(kept));
+                        return Ok(kept);
                     }
                 }
             }
         }
-        Lookup::Unknown(why.join("; "))
+        Err(why.join("; "))
     }
 
     fn choose(&self, quotes: Vec<Quote>) -> Quote {
         let mut quotes = quotes;
-        let i = quotes
+        let i = self
+            .channels
             .iter()
-            .position(|q| q.channel == self.channel)
+            .find_map(|c| quotes.iter().position(|q| q.channel == *c))
             .unwrap_or(0);
         quotes.swap_remove(i)
     }
 }
 
-/// The stock of the project's channel, for the step that resolves generic parts to rows.
+/// The stock and the price of a part in the channel that buys it, for the step that resolves
+/// generic parts to rows.
 #[derive(Debug)]
 pub struct StockOf(pub Supply);
 
 impl Availability for StockOf {
-    fn stock(&self, lcsc: &str) -> Option<u64> {
-        self.0.lookup(&PartKey::lcsc(lcsc)).quote().and_then(|q| {
-            // Only the stock a project means counts: the other channel's is not its stock.
-            (q.channel == self.0.channel).then_some(q.stock).flatten()
-        })
+    fn stock(&self, channel: Channel, sku: &str) -> Option<u64> {
+        // Only the stock of the channel that buys the part counts: another's is not its stock.
+        self.0
+            .quote_in(&PartKey::lcsc(sku), channel)
+            .and_then(|q| q.stock)
+    }
+
+    fn price(&self, channel: Channel, sku: &str) -> Option<f64> {
+        self.0
+            .quote_in(&PartKey::lcsc(sku), channel)
+            .and_then(|q| q.price_for(1))
+            .map(|(price, _)| price)
     }
 }
 

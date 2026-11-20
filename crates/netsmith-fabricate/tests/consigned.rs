@@ -231,7 +231,7 @@ fn fab_places_a_consigned_part_lists_it_in_bom_and_cpl_and_asks_for_no_number() 
     };
     let err = run(&hand_b(""), &dir).expect_err("a part to assemble needs a number");
     assert!(
-        err.contains("no LCSC part number") && err.contains("R1"),
+        err.contains("no offer in any of the project's supply channels") && err.contains("R1"),
         "{err}"
     );
 

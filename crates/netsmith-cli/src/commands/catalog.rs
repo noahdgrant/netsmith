@@ -89,7 +89,7 @@ pub struct AddArgs {
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "`catalog age` prints the rows whose price and stock were read more than `--days` days ago (the supply provider's answer, else the row's `date`) and, apart, the rows whose price and stock are unknown because no provider has them and the row has no `date` (unknown is not old and not 0); each row is named and asked for by the sku of its offer (its LCSC offer, ADR 0143), and a row with no offer has no price to age. It reads the `[supply]` table of the project that contains the directory."
+    after_long_help = "`catalog age` prints the rows whose price and stock were read more than `--days` days ago (the supply provider's answer, else the row's `date`) and, apart, the rows whose price and stock are unknown because no provider has them and the row has no `date` (unknown is not old and not 0); each row is named and asked for by the sku of its offer (LCSC's, else Digi-Key's, else Mouser's, ADR 0143), and a row with no offer has no price to age. It reads the `[supply]` table of the project that contains the directory."
 )]
 #[command(args_override_self = true)]
 pub struct AgeArgs {

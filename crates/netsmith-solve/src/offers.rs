@@ -11,11 +11,14 @@
 //! | supplier | `sku` | `class` |
 //! |---|---|---|
 //! | `lcsc` | LCSC's number for the part (`C25104`), which JLCPCB's parts library assembles by too | `Basic`, `Extended` or `Preferred`, the sorting JLCPCB gives the part; empty when JLCPCB's library does not list it |
+//! | `digikey` | Digi-Key's number for the part | empty |
+//! | `mouser` | Mouser's number for the part | empty |
 //!
 //! One file holds a supplier's numbers, and a channel reads the file of its supplier: JLCPCB's
 //! assembly stock and LCSC's retail stock are two channels of the `lcsc` numbers (ADR 0039, ADR
 //! 0047), so `jlcpcb-assembly` takes the `lcsc` offers that have a `class` and `lcsc-retail`
-//! takes all of them. A file named for another supplier is an error, as a catalog file whose name
+//! takes all of them; `digikey-retail` and `mouser-retail` read `digikey.csv` and `mouser.csv`
+//! ([`crate::Channel`]). A file named for another supplier is an error, as a catalog file whose name
 //! is not a catalog's is (ADR 0022), and `jlcpcb.csv`, the file JLCPCB's classes were once in, is
 //! one whose message says to merge it into `lcsc.csv`. A new supplier is a new offers file and a
 //! new provider (ADR 0143), added here with its rule for `class`.
@@ -38,17 +41,19 @@
 //!
 //! **What reads them.** A catalog row has no supplier's number and no supplier's class (ADR 0143,
 //! stage 3): [`bought_by`] is the one place a row's number and class are read, for the solver,
-//! for resolving a generic part and for the pick lock, from the part's offers. A row with no offer
-//! is a part that cannot be bought, and a bill of materials says so.
+//! for resolving a generic part and for the pick lock, from the part's offers: the first channel
+//! of the project's list with an offer of the part buys it. A row with no offer in any of them is
+//! a part that cannot be bought, and a bill of materials and `fab` say so.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::catalog::Library;
+use crate::channel::Channel;
 use crate::table::{is_date, parse_csv};
 
-/// The suppliers an offers file may be named for.
-pub const SUPPLIERS: [&str; 1] = ["lcsc"];
+/// The suppliers an offers file may be named for: the ones a channel reads ([`Channel::ALL`]).
+pub const SUPPLIERS: [&str; 3] = ["lcsc", "digikey", "mouser"];
 
 /// The name of the file JLCPCB's classes were in before they were the `class` of the `lcsc`
 /// offers (ADR 0143): an offers file of that name is refused with what to do.
@@ -81,13 +86,13 @@ pub fn is_supplier(name: &str) -> bool {
     SUPPLIERS.contains(&name)
 }
 
-/// The suppliers as a message lists them: `lcsc.csv`.
+/// The suppliers as a message lists them: `lcsc.csv, digikey.csv or mouser.csv`.
 pub fn supplier_files() -> String {
-    SUPPLIERS
-        .iter()
-        .map(|s| format!("{s}.csv"))
-        .collect::<Vec<_>>()
-        .join(" or ")
+    let files: Vec<String> = SUPPLIERS.iter().map(|s| format!("{s}.csv")).collect();
+    match files.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{} or {last}", rest.join(", ")),
+        _ => files.join(""),
+    }
 }
 
 /// One row of an offers file.
@@ -387,43 +392,58 @@ fn class(supplier: &str, cell: Option<&str>) -> Result<Option<Library>, String> 
     }
 }
 
-/// What a catalog row is bought by: its supplier number and JLCPCB's library of it, and the sku
-/// for each channel that has an offer of it, by the channel's word, in the order of
-/// [`crate::lock::CHANNELS`].
+/// What a catalog row is bought by: the channel that buys it, its sku there and the class of
+/// that offer, and the sku for every channel that has an offer of it, by the channel's word, in
+/// the order of [`Channel::ALL`] (what a pick lock records).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct Bought {
     pub lcsc: Option<String>,
     pub library: Option<Library>,
+    pub channel: Option<Channel>,
     pub skus: Vec<(String, String)>,
 }
 
-/// The supplier number and the class of the part `manufacturer` and `mpn`, read from its offers
-/// (ADR 0143): the one function the solver's, a generic's resolution's and the pick lock's
-/// reading of them goes through ([`crate::table`]). The number is the `sku` of the part's `lcsc`
-/// offer and the class its `class`; `jlcpcb-assembly` has the offer when it has a class, and
-/// `lcsc-retail` always. A part with no offer, or a row with no `mpn` (a made-up part), is bought
-/// by nothing.
+/// What the part `manufacturer` and `mpn` is bought by, read from its offers (ADR 0143): the one
+/// function the solver's, a generic's resolution's and the pick lock's reading of them goes
+/// through ([`crate::table`]). The first of `channels` (the project's, in its order) that takes
+/// an offer of the part ([`Channel::takes`]) buys it: the number is that offer's `sku` and the
+/// class its `class`. A part no channel has an offer of, or a row with no `mpn` (a made-up part),
+/// is bought by nothing.
 pub(crate) fn bought_by(
     offers: &Offers,
+    channels: &[Channel],
     manufacturer: Option<&str>,
     mpn: &str,
 ) -> Result<Bought, String> {
     if mpn.is_empty() {
         return Ok(Bought::default());
     }
-    let Some(offer) = offers.of("lcsc", manufacturer, mpn)? else {
-        return Ok(Bought::default());
+    let mut of_supplier: Vec<(&str, Option<&Offer>)> = Vec::new();
+    let mut offer_of = |supplier: &'static str| -> Result<Option<&Offer>, String> {
+        if let Some((_, o)) = of_supplier.iter().find(|(s, _)| *s == supplier) {
+            return Ok(*o);
+        }
+        let o = offers.of(supplier, manufacturer, mpn)?;
+        of_supplier.push((supplier, o));
+        Ok(o)
     };
-    let mut skus = Vec::new();
-    if offer.class.is_some() {
-        skus.push(("jlcpcb-assembly".to_string(), offer.sku.clone()));
+    let mut bought = Bought::default();
+    for channel in Channel::ALL {
+        if let Some(o) = offer_of(channel.supplier())?.filter(|o| channel.takes(o)) {
+            bought
+                .skus
+                .push((channel.word().to_string(), o.sku.clone()));
+        }
     }
-    skus.push(("lcsc-retail".to_string(), offer.sku.clone()));
-    Ok(Bought {
-        lcsc: Some(offer.sku.clone()),
-        library: offer.class,
-        skus,
-    })
+    for &channel in channels {
+        if let Some(o) = offer_of(channel.supplier())?.filter(|o| channel.takes(o)) {
+            bought.lcsc = Some(o.sku.clone());
+            bought.library = o.class;
+            bought.channel = Some(channel);
+            break;
+        }
+    }
+    Ok(bought)
 }
 
 impl Offers {
@@ -520,11 +540,11 @@ mod tests {
     #[test]
     fn a_file_not_named_for_a_supplier_is_refused() {
         let e = Offers::empty()
-            .add_file("digikey", "offers/digikey.csv", HEAD)
+            .add_file("acme", "offers/acme.csv", HEAD)
             .unwrap_err();
         assert_eq!(
             e,
-            "offers/digikey.csv: `digikey` is not a supplier netsmith knows: an offers file is lcsc.csv"
+            "offers/acme.csv: `acme` is not a supplier netsmith knows: an offers file is lcsc.csv, digikey.csv or mouser.csv"
         );
         let e = Offers::empty()
             .add_file("jlcpcb", "offers/jlcpcb.csv", HEAD)
@@ -550,29 +570,64 @@ mod tests {
     #[test]
     fn bought_by_reads_the_offers_only() {
         let offers = load("lcsc", ",ZZ1,C1,Extended,x,,\n,ZZ2,C2,,x,,\n").unwrap();
+        let bought = |mpn| bought_by(&offers, &Channel::DEFAULT, None, mpn).unwrap();
         assert_eq!(
-            bought_by(&offers, None, "ZZ1").unwrap(),
+            bought("ZZ1"),
             Bought {
                 lcsc: Some("C1".into()),
                 library: Some(Library::Extended),
+                channel: Some(Channel::JLCPCB_ASSEMBLY),
                 skus: vec![
                     ("jlcpcb-assembly".into(), "C1".into()),
                     ("lcsc-retail".into(), "C1".into())
                 ],
             }
         );
-        // An offer with no class is not in JLCPCB's assembly library.
+        // An offer with no class is not in JLCPCB's assembly library: LCSC's retail buys it.
         assert_eq!(
-            bought_by(&offers, None, "ZZ2").unwrap(),
+            bought("ZZ2"),
             Bought {
                 lcsc: Some("C2".into()),
                 library: None,
+                channel: Some(Channel::LCSC_RETAIL),
                 skus: vec![("lcsc-retail".into(), "C2".into())],
             }
         );
-        assert_eq!(bought_by(&offers, None, "ZZ3").unwrap(), Bought::default());
-        assert_eq!(bought_by(&offers, None, "").unwrap(), Bought::default());
+        assert_eq!(bought("ZZ3"), Bought::default());
+        assert_eq!(bought(""), Bought::default());
         assert_eq!(offers.by_sku("C2").map(|o| o.mpn.as_str()), Some("ZZ2"));
         assert!(offers.by_sku("C3").is_none());
+    }
+
+    #[test]
+    fn the_first_channel_of_the_list_with_an_offer_buys_the_part() {
+        let mut offers = load("lcsc", ",ZZ1,C1,Basic,x,,\n").unwrap();
+        offers
+            .add_file(
+                "digikey",
+                "offers/digikey.csv",
+                &format!("{HEAD},ZZ2,ZZ2-ND,,x,,\n"),
+            )
+            .unwrap();
+        let channels = [Channel::DIGIKEY_RETAIL, Channel::JLCPCB_ASSEMBLY];
+        let bought = |mpn| bought_by(&offers, &channels, None, mpn).unwrap();
+        // Digi-Key has no offer of ZZ1, so the second channel buys it.
+        assert_eq!(bought("ZZ1").channel, Some(Channel::JLCPCB_ASSEMBLY));
+        assert_eq!(bought("ZZ1").lcsc.as_deref(), Some("C1"));
+        assert_eq!(bought("ZZ2").channel, Some(Channel::DIGIKEY_RETAIL));
+        assert_eq!(bought("ZZ2").lcsc.as_deref(), Some("ZZ2-ND"));
+        assert_eq!(bought("ZZ2").library, None);
+        // The lock's record is every channel's, whatever the list.
+        assert_eq!(
+            bought("ZZ2").skus,
+            [("digikey-retail".to_string(), "ZZ2-ND".to_string())]
+        );
+        // A list with no channel that has an offer buys nothing, and records the skus still.
+        let only = bought_by(&offers, &[Channel::MOUSER_RETAIL], None, "ZZ1").unwrap();
+        assert_eq!((only.lcsc, only.channel), (None, None));
+        assert_eq!(only.skus.len(), 2);
+        // Digi-Key sorts its parts in no classes.
+        let e = load("digikey", ",ZZ1,X,Basic,x,,\n").unwrap_err();
+        assert!(e.contains("digikey sorts its parts in no classes"), "{e}");
     }
 }

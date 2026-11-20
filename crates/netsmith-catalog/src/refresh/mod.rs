@@ -70,7 +70,7 @@
 //!   if it is `C` and digits. `NETSMITH_LCSC_URL` points the command at another address (a mirror,
 //!   a proxy of your own, the tests' fake server).
 //! - **`netsmith catalog age [--days N]`** (default 90, `STALE_DAYS`) lists the rows whose price
-//!   and stock (`date`) are older or missing, each by the sku of its offer (its `lcsc` offer); a row with no offer has no price to age. A refresh never changes `date`, so it never makes a
+//!   and stock (`date`) are older or missing, each by the sku of its offer (LCSC's, else another supplier's); a row with no offer has no price to age. A refresh never changes `date`, so it never makes a
 //!   row less stale. ADR 0047 ages a provider's quotes, and the standard catalogs ship none.
 //! - **The editor** shows the date of each bill line's price and stock under the price, with the
 //!   age in a tooltip, and marks a line older than 90 days in amber with a dot in front of its
@@ -829,8 +829,9 @@ pub struct AgeReport {
 /// The rows of `targets.catalogs` whose price and stock were read more than `days` days before
 /// `today`, and the rows whose price and stock are unknown. What is known comes from `supply`
 /// (ADR 0047) and, for a row it has no answer for, from the row's own `date` cell. A row is asked
-/// for by the sku of its offer in `targets.offers` (the `jlcpcb` offer, else the `lcsc` one,
-/// ADR 0143), and a row with no offer has no price to age.
+/// for by the sku of its offer in `targets.offers` (of the first supplier of
+/// [`netsmith_solve::offers::SUPPLIERS`] that offers it, ADR 0143), and a row with no offer has
+/// no price to age.
 pub fn age(
     targets: &Targets,
     only: &[String],

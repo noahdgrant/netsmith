@@ -84,19 +84,12 @@ fn project(root: &Path, name: &str, text: &str) -> (PathBuf, PathBuf) {
     let file = format!("catalogs/{name}.csv");
     let m = migrate::catalog(&file, text).unwrap().unwrap();
     let catalog = write(root, &file, &m.catalog);
-    for supplier in netsmith_solve::offers::SUPPLIERS {
-        let path = root.join(format!("offers/{supplier}.csv"));
-        let mut offers =
-            fs::read_to_string(&path).unwrap_or_else(|_| migrate::OFFERS_HEADER.to_string());
-        let mine: Vec<_> = m
-            .offers
-            .iter()
-            .filter(|o| o.supplier == supplier)
-            .cloned()
-            .collect();
-        offers.push_str(&migrate::offer_lines(&mine));
-        write(root, &format!("offers/{supplier}.csv"), &offers);
-    }
+    // The old columns make offers of LCSC only.
+    let path = root.join("offers/lcsc.csv");
+    let mut offers =
+        fs::read_to_string(&path).unwrap_or_else(|_| migrate::OFFERS_HEADER.to_string());
+    offers.push_str(&migrate::offer_lines(&m.offers));
+    write(root, "offers/lcsc.csv", &offers);
     (catalog, root.join("offers/lcsc.csv"))
 }
 

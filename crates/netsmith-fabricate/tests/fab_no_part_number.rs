@@ -99,7 +99,7 @@ fn every_part_with_no_part_number_is_named_together_with_what_to_write() {
         "`first`",
         "`second`",
         "ZZR-1234",
-        "no LCSC part number",
+        "no offer in any of the project's supply channels (tried: jlcpcb-assembly, lcsc-retail)",
     ] {
         assert!(err.contains(want), "{want}: {err}");
     }

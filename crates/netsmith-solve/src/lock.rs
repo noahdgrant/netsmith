@@ -52,10 +52,14 @@ impl LockedRow {
     }
 }
 
-/// The supply channels of ADR 0047, by the words a manifest's `[supply]` and a lock use for
-/// them, in the order a lock lists them. Both read the offers of `lcsc` (ADR 0143):
-/// `jlcpcb-assembly` the ones with a `class`, `lcsc-retail` all of them.
-pub const CHANNELS: [&str; 2] = ["jlcpcb-assembly", "lcsc-retail"];
+/// The supply channels a lock may record a sku for, by their words, in the order a lock lists
+/// them: every channel netsmith knows ([`crate::Channel::ALL`]).
+pub const CHANNELS: [&str; 4] = [
+    crate::Channel::ALL[0].word,
+    crate::Channel::ALL[1].word,
+    crate::Channel::ALL[2].word,
+    crate::Channel::ALL[3].word,
+];
 
 /// The provider one use of a generic was picked as (ADR 0068, ADR 0113): a use with more than
 /// one provider in scope, such as a board's `.process: TwoLayer`, whose copper weight picks

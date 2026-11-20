@@ -27,6 +27,7 @@ fn resistor(ohms: f64) -> Candidate {
             ),
         ],
         lcsc: None,
+        channel: None,
         manufacturer: None,
         mpn: None,
         library: None,

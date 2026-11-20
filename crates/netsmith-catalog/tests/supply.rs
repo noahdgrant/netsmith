@@ -71,7 +71,7 @@ fn part() -> PartKey {
 
 #[test]
 fn the_price_is_the_highest_break_at_or_below_the_quantity() {
-    let q = quote("t", Channel::JlcpcbAssembly, Some(5), NOW);
+    let q = quote("t", Channel::JLCPCB_ASSEMBLY, Some(5), NOW);
     assert_eq!(q.price_for(1), Some((0.01, None)));
     assert_eq!(q.price_for(99), Some((0.01, None)));
     assert_eq!(q.price_for(100), Some((0.005, None)));
@@ -82,7 +82,7 @@ fn the_price_is_the_highest_break_at_or_below_the_quantity() {
 
 #[test]
 fn below_the_first_break_the_first_price_is_given_with_where_it_starts() {
-    let mut q = quote("t", Channel::JlcpcbAssembly, None, NOW);
+    let mut q = quote("t", Channel::JLCPCB_ASSEMBLY, None, NOW);
     q.price_breaks.remove(0);
     assert_eq!(q.price_for(3), Some((0.005, Some(100))));
     q.price_breaks.clear();
@@ -123,7 +123,7 @@ fn a_fresh_cached_answer_is_used_without_asking_again() {
     let dir = TempDir::new("supply-cache-fresh");
     let (provider, asked) = fake(Ok(vec![quote(
         "fake",
-        Channel::JlcpcbAssembly,
+        Channel::JLCPCB_ASSEMBLY,
         Some(7),
         NOW,
     )]));
@@ -148,8 +148,8 @@ fn a_fresh_cached_answer_is_used_without_asking_again() {
 #[test]
 fn an_answer_older_than_the_cache_time_is_asked_for_again_and_replaced() {
     let dir = TempDir::new("supply-cache-old");
-    let old = quote("fake", Channel::JlcpcbAssembly, Some(1), NOW - 25 * HOUR);
-    let new = quote("fake", Channel::JlcpcbAssembly, Some(2), NOW);
+    let old = quote("fake", Channel::JLCPCB_ASSEMBLY, Some(1), NOW - 25 * HOUR);
+    let new = quote("fake", Channel::JLCPCB_ASSEMBLY, Some(2), NOW);
     Cache::new(dir.path().to_path_buf()).put("fake", &part(), &[old]);
     let (provider, asked) = fake(Ok(vec![new]));
     let supply = Supply::none()
@@ -169,11 +169,11 @@ fn an_answer_older_than_the_cache_time_is_asked_for_again_and_replaced() {
 #[test]
 fn the_cache_time_is_the_manifests() {
     let dir = TempDir::new("supply-cache-hours");
-    let kept = quote("fake", Channel::JlcpcbAssembly, Some(1), NOW - 3 * HOUR);
+    let kept = quote("fake", Channel::JLCPCB_ASSEMBLY, Some(1), NOW - 3 * HOUR);
     Cache::new(dir.path().to_path_buf()).put("fake", &part(), &[kept]);
     let (provider, asked) = fake(Ok(vec![quote(
         "fake",
-        Channel::JlcpcbAssembly,
+        Channel::JLCPCB_ASSEMBLY,
         Some(2),
         NOW,
     )]));
@@ -192,7 +192,7 @@ fn the_cache_time_is_the_manifests() {
 #[test]
 fn offline_an_old_cached_answer_is_used_with_its_age_and_nothing_is_asked() {
     let dir = TempDir::new("supply-cache-offline");
-    let old = quote("fake", Channel::JlcpcbAssembly, Some(4), NOW - 40 * DAY);
+    let old = quote("fake", Channel::JLCPCB_ASSEMBLY, Some(4), NOW - 40 * DAY);
     Cache::new(dir.path().to_path_buf()).put("fake", &part(), &[old]);
     let (provider, asked) = fake(Err(SupplyError::Offline));
     let supply = Supply::none()
@@ -209,7 +209,7 @@ fn offline_an_old_cached_answer_is_used_with_its_age_and_nothing_is_asked() {
 #[test]
 fn when_the_provider_fails_the_old_answer_is_used_and_with_none_the_part_is_unknown() {
     let dir = TempDir::new("supply-cache-fails");
-    let old = quote("fake", Channel::JlcpcbAssembly, Some(4), NOW - 3 * DAY);
+    let old = quote("fake", Channel::JLCPCB_ASSEMBLY, Some(4), NOW - 3 * DAY);
     Cache::new(dir.path().to_path_buf()).put("fake", &part(), &[old]);
     let make = |dir: &TempDir| {
         let (provider, _) = fake(Err(SupplyError::Unavailable("refused".into())));
@@ -267,30 +267,33 @@ fn an_unreadable_cache_row_is_ignored() {
 #[test]
 fn the_projects_channel_is_preferred_and_the_other_says_which_it_is() {
     let both = vec![
-        quote("fake", Channel::LcscRetail, Some(900), NOW),
-        quote("fake", Channel::JlcpcbAssembly, Some(100), NOW),
+        quote("fake", Channel::LCSC_RETAIL, Some(900), NOW),
+        quote("fake", Channel::JLCPCB_ASSEMBLY, Some(100), NOW),
     ];
     let (provider, _) = fake(Ok(both.clone()));
     let got = Supply::none().with_provider(provider).lookup(&part());
     assert_eq!(
         got.quote().map(|q| (q.channel, q.stock)),
-        Some((Channel::JlcpcbAssembly, Some(100)))
+        Some((Channel::JLCPCB_ASSEMBLY, Some(100)))
     );
 
     let (provider, _) = fake(Ok(both));
     let got = Supply::none()
         .with_provider(provider)
-        .with_channel(Channel::LcscRetail)
+        .with_channel(Channel::LCSC_RETAIL)
         .lookup(&part());
     assert_eq!(got.quote().map(|q| q.stock), Some(Some(900)));
 
     // Only the other channel is known: it is the answer, labelled, and not the stock of
     // the channel the project means.
-    let (provider, _) = fake(Ok(vec![quote("fake", Channel::LcscRetail, Some(900), NOW)]));
+    let (provider, _) = fake(Ok(vec![quote("fake", Channel::LCSC_RETAIL, Some(900), NOW)]));
     let supply = Supply::none().with_provider(provider);
     let got = supply.lookup(&part());
-    assert_eq!(got.quote().map(|q| q.channel), Some(Channel::LcscRetail));
-    assert_eq!(StockOf(supply).stock("C900001"), None);
+    assert_eq!(got.quote().map(|q| q.channel), Some(Channel::LCSC_RETAIL));
+    let stock = StockOf(supply);
+    assert_eq!(stock.stock(Channel::JLCPCB_ASSEMBLY, "C900001"), None);
+    assert_eq!(stock.stock(Channel::LCSC_RETAIL, "C900001"), Some(900));
+    assert_eq!(stock.price(Channel::LCSC_RETAIL, "C900001"), Some(0.01));
 }
 
 // ---- the file provider -----------------------------------------------------------------
@@ -305,10 +308,10 @@ fn the_file_provider_answers_a_quote_for_each_channel_and_dates_it_from_the_file
     let file = FileProvider::parse("quotes.csv", FILE).unwrap();
     let quotes = file.lookup(&part()).unwrap();
     assert_eq!(quotes.len(), 2);
-    assert_eq!(quotes[0].channel, Channel::JlcpcbAssembly);
+    assert_eq!(quotes[0].channel, Channel::JLCPCB_ASSEMBLY);
     assert_eq!(quotes[0].stock, Some(5000));
     assert_eq!(quotes[0].fetched, 1_793_491_200);
-    assert_eq!(quotes[1].channel, Channel::LcscRetail);
+    assert_eq!(quotes[1].channel, Channel::LCSC_RETAIL);
     // By manufacturer's number when the key has no LCSC number.
     let by_mpn = file
         .lookup(&PartKey {

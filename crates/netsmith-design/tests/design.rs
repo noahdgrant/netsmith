@@ -501,6 +501,7 @@ fn a_catalog_row_may_state_who_assembles_its_part_and_the_design_overrides_it() 
                 manufacturer: None,
                 mpn: None,
                 library: None,
+                channel: None,
                 assembly: assembly.map(str::to_string),
                 height: None,
                 temp_min: None,

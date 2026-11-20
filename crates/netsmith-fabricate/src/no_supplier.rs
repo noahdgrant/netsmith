@@ -1,12 +1,14 @@
-//! Parts that the board house is to assemble but that have no supplier part number (an `lcsc`),
-//! as `fab` reports them: all together, before anything is placed or routed, each with its
-//! reference designator, its path, what its catalog row says, and what to write, and where,
-//! to say that the board house is not to assemble it (ADR 0024, `.assembly`).
+//! Parts that the board house is to assemble but that have no supplier part number: no offer in
+//! any of the project's supply channels (ADR 0143), as `fab` reports them: all together, before
+//! anything is placed or routed, each with its reference designator, its path, what its catalog
+//! row says, the channels that were tried, and what to write, and where, to say that the board
+//! house is not to assemble it (ADR 0024, `.assembly`).
 
 use netsmith_check::Sources;
 use netsmith_design::Sourced;
 
 use netsmith_pipeline::Built;
+use netsmith_pipeline::supply::Channel;
 
 /// One part to assemble with no supplier part number.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,14 +49,17 @@ fn place(sources: &Sources, source: netsmith_check::SourceId, span: netsmith_lan
     format!("{}:{line}", s.name)
 }
 
-/// The parts of `built` that the board house is to assemble and that have no `lcsc` in
-/// `sourcing` (the sourcing after generic parts were resolved), in the design's order.
+/// The parts of `built` that the board house is to assemble and that have no supplier number in
+/// `sourcing` (the sourcing after generic parts were resolved), in the design's order. A generic
+/// part that resolved to a row no channel has an offer of is one; a generic part that resolved
+/// to no row is not, as `fab` refuses it as unresolved, with the nearest rows.
 pub fn find(built: &Built, sourcing: &[Sourced]) -> Vec<Unnumbered> {
     let trace = &built.trace;
     let model = &trace.model;
     let mut found = Vec::new();
     for (i, s) in sourcing.iter().enumerate() {
-        if !s.needs_part_number() || s.lcsc.is_some() || s.generic.is_some() {
+        let unresolved = s.generic.is_some() && s.resolved_row.is_none();
+        if !s.needs_part_number() || s.lcsc.is_some() || unresolved {
             continue;
         }
         let (Some(part), Some(origin)) = (built.design.parts.get(i), trace.origins.get(i)) else {
@@ -114,17 +119,19 @@ fn describe(u: &Unnumbered) -> String {
     format!("{} `{}`: {what}, {at} {}", u.refdes, u.path, u.declared)
 }
 
-/// The error `fab` prints for `parts`. It says what to write for each, and where.
-pub fn message(board: &str, parts: &[Unnumbered]) -> String {
+/// The error `fab` prints for `parts`, the project's supply channels being `channels` (the ones
+/// tried). It says what to write for each, and where.
+pub fn message(board: &str, parts: &[Unnumbered], channels: &[Channel]) -> String {
     let mut out = format!(
-        "{} part(s) have no LCSC part number, so JLCPCB cannot assemble them, and `fab` does not package a board that says it will:\n",
-        parts.len()
+        "{} part(s) have no offer in any of the project's supply channels (tried: {}), so there is no supplier part number to assemble them by, and `fab` does not package a board that says it will:\n",
+        parts.len(),
+        Channel::list(channels)
     );
     for u in parts {
         out.push_str(&format!("  {}\n", describe(u)));
     }
     out.push_str(
-        "To get past it, say that the board house is not to assemble these parts (they stay out of bom.csv and cpl.csv, and `fab-notes.txt` lists them as `hand-solder:` and as having no part number), or give the row a supplier part number. `fab` has no flag for this; the design says it (`.assembly`, \"Who assembles a part\" in docs/LANGUAGE.md):\n",
+        "To get past it, say that the board house is not to assemble these parts (they stay out of bom.csv and cpl.csv, and `fab-notes.txt` lists them as `hand-solder:` and as having no part number), or give the part an offer that a channel of the project buys. `fab` has no flag for this; the design says it (`.assembly`, \"Who assembles a part\" in docs/LANGUAGE.md):\n",
     );
     let mut offered_row = false;
     for u in parts {
@@ -157,7 +164,7 @@ pub fn message(board: &str, parts: &[Unnumbered]) -> String {
     }
     if offered_row {
         out.push_str(
-            "For every part that a catalog row stands for, you can instead put `hand` in the row's `assembly` column in your own catalog file (ADR 0024), or fill its `lcsc` column with a number that has a recorded source (data/jlcpcb/README.md).\n",
+            "For every part that a catalog row stands for, you can instead put `hand` in the row's `assembly` column in your own catalog file (ADR 0024), or add an offer of its `mpn` to the project's offers (`offers/lcsc.csv`, with a `class` for `jlcpcb-assembly`, which buys only the parts JLCPCB's library lists; ADR 0143) with a number that has a recorded source (data/jlcpcb/README.md).\n",
         );
     }
     out.push_str(

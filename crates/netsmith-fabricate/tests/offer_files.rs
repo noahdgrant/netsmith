@@ -80,11 +80,11 @@ fn offer_dirs_names_other_folders_and_an_empty_list_reads_none() {
 
 #[test]
 fn a_file_not_named_for_a_supplier_is_refused() {
-    let (_root, p) = project("", &[("offers/digikey.csv", HEAD)]);
+    let (_root, p) = project("", &[("offers/acme.csv", HEAD)]);
     let e = p.unwrap().catalogs().unwrap_err();
     assert_eq!(
         e,
-        "netsmith.toml: offers/digikey.csv in the offer_dirs folder \"offers\" is not an offers file: an offers file is named for its supplier, lcsc.csv. Rename it, or move it out of the folder (a folder's sub-folders are not read)"
+        "netsmith.toml: offers/acme.csv in the offer_dirs folder \"offers\" is not an offers file: an offers file is named for its supplier, lcsc.csv, digikey.csv or mouser.csv. Rename it, or move it out of the folder (a folder's sub-folders are not read)"
     );
 }
 

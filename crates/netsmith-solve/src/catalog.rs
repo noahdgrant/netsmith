@@ -13,6 +13,7 @@ use std::sync::Arc;
 use netsmith_check::FieldKind;
 use netsmith_quantity::Quantity;
 
+use crate::channel::Channel;
 use crate::curve::Curve;
 use crate::generic::{Generic, Sense, Series};
 use crate::lock::{LockedRow, PickLock};
@@ -24,9 +25,17 @@ use crate::table::Table;
 /// step that resolves a generic part to an orderable one does, so that a part with no stock
 /// is passed over there and not silently dropped from the catalog.
 pub trait Availability: std::fmt::Debug + Send + Sync {
-    /// Pieces in stock for the stock that matters to the project, or `None` if nobody
-    /// knows. `None` is not 0: an unknown stock never excludes a part.
-    fn stock(&self, lcsc: &str) -> Option<u64>;
+    /// Pieces in stock of the part `sku` in `channel` (the channel that buys it), or `None` if
+    /// nobody knows. `None` is not 0: an unknown stock never excludes a part.
+    fn stock(&self, channel: Channel, sku: &str) -> Option<u64>;
+
+    /// The price of one piece of the part `sku` in `channel`, in the provider's currency, or
+    /// `None` if nobody knows: what a channel that goes by stock, then price, orders the rows
+    /// that fit a generic part by ([`crate::Rule::StockThenPrice`]). Nothing converts a currency.
+    fn price(&self, channel: Channel, sku: &str) -> Option<f64> {
+        let _ = (channel, sku);
+        None
+    }
 }
 
 /// Why a part is thought to be out of stock (see [`Catalogs::sold_out`]).
@@ -181,6 +190,10 @@ pub struct Candidate {
     /// The manufacturer's part number.
     pub mpn: Option<String>,
     pub library: Option<Library>,
+    /// The supply channel that buys the part: the first of the project's channels with an offer
+    /// of it ([`Catalogs::channels`], ADR 0143). `None` for a part no channel has an offer of, a
+    /// made-up part, a generic one and a candidate made in code.
+    pub channel: Option<Channel>,
     /// Who assembles the part when the design does not say: `fab`, `hand`, `none` or `consigned`
     /// (ADR 0024, ADR 0084). The row's `assembly` cell, if it has one.
     pub assembly: Option<String>,
@@ -277,6 +290,8 @@ pub struct Catalogs {
     series: Option<Series>,
     availability: Option<Arc<dyn Availability>>,
     preferred: Option<Arc<Preferred>>,
+    /// The project's supply channels in order; empty is [`Channel::DEFAULT`].
+    channels: Vec<Channel>,
     pins: Vec<(String, String)>,
     pick_lock: Option<Arc<PickLock>>,
     search_budget: SearchBudget,
@@ -425,6 +440,23 @@ impl Catalogs {
         self.preferred.as_deref()
     }
 
+    /// The project's supply channels, in the order its manifest lists them (`[supply]`, ADR
+    /// 0143): the first with an offer for a part buys it, and its rule orders the rows that fit
+    /// a generic part ([`crate::resolve`]). An empty list is [`Channel::DEFAULT`]. Like the
+    /// project's other policies it travels with the catalogs.
+    pub fn with_channels(mut self, channels: Vec<Channel>) -> Self {
+        self.channels = channels;
+        self
+    }
+
+    pub fn channels(&self) -> &[Channel] {
+        if self.channels.is_empty() {
+            &Channel::DEFAULT
+        } else {
+            &self.channels
+        }
+    }
+
     /// These catalogs, but the part at `path` (`r1`, as the solver and its messages name it) may only be the
     /// row called `row`. That is how a build asks "would the design still work with this
     /// alternative?": the whole design is solved again with the one part held to the row, so
@@ -568,7 +600,7 @@ impl Catalogs {
             .mpn
             .as_deref()
             .and_then(|mpn| {
-                crate::offers::bought_by(&self.offers, c.manufacturer.as_deref(), mpn).ok()
+                crate::offers::bought_by(&self.offers, &[], c.manufacturer.as_deref(), mpn).ok()
             })
             .map(|b| b.skus)
             .unwrap_or_default();
@@ -672,7 +704,7 @@ impl Catalogs {
         let table = self.tables.get(name)?;
         Some(
             table
-                .candidates(name, columns, optional, &self.offers)
+                .candidates(name, columns, optional, &self.offers, self.channels())
                 .map(|candidates| Catalog {
                     name: name.to_string(),
                     candidates,
@@ -680,12 +712,15 @@ impl Catalogs {
         )
     }
 
-    /// What the catalog files say about an LCSC number, the standard ones and a project's
-    /// own alike. `None` for a part that no file lists.
+    /// What the catalog files say about a supplier's number (the sku of an offer of any
+    /// channel, ADR 0143), the standard ones and a project's own alike. `None` for a part that
+    /// no file lists.
     pub fn supplier(&self, lcsc: &str) -> Option<crate::table::Supplier> {
-        self.tables
-            .values()
-            .find_map(|t| t.supplier(lcsc, &self.offers))
+        Channel::ALL.iter().find_map(|c| {
+            self.tables
+                .values()
+                .find_map(|t| t.supplier(lcsc, &self.offers, std::slice::from_ref(c)))
+        })
     }
 
     /// Whether the files give a reason to think the part with this LCSC number is out of stock

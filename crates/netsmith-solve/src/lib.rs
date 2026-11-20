@@ -5,6 +5,7 @@ mod burst;
 mod busclock;
 mod busfigures;
 mod catalog;
+pub mod channel;
 mod charge;
 mod charging;
 pub mod curve;
@@ -35,6 +36,7 @@ pub use catalog::{
     Availability, Candidate, Catalog, Catalogs, Curved, Derating, DeratingError, Library,
     SearchBudget, SoldOut, Value,
 };
+pub use channel::{Channel, Rule};
 pub use eval::{EvalError, Val, eval};
 pub use generic::{
     Alternative, CHANGE_THE_VALUE, Generic, Need, Orderable, Sense, Series, Spec, alternatives,

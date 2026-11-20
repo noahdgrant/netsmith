@@ -3,7 +3,9 @@
 //!
 //! The solver picks a generic resistor by value alone (`netsmith_solve::Generic`). Here each
 //! one becomes the row of a catalog that stands for it: the rows the project's `preferred.csv`
-//! names first (issue #802), then Basic first, a row a provider says has no stock passed over. A part no row stands for is **unresolved**, with the nearest
+//! names first (issue #802), then each of the project's supply channels' rows in the order of its
+//! list, by the channel's rule (ADR 0143: Basic first in `jlcpcb-assembly`, in stock and then the
+//! lowest price in a retail channel), a row a provider says has no stock passed over. A part no row stands for is **unresolved**, with the nearest
 //! rows, and `fab` refuses it by name.
 //!
 //! **Checking the alternatives** (ADR 0047, issue #31). When the build finds an
@@ -22,7 +24,7 @@ use netsmith_check::InstId;
 use netsmith_core::Part;
 use netsmith_design::Sourced;
 use netsmith_design::guidelines::Guideline;
-use netsmith_solve::{CHANGE_THE_VALUE, Catalogs, Solution, alternatives, resolve};
+use netsmith_solve::{CHANGE_THE_VALUE, Catalogs, Channel, Solution, alternatives, resolve};
 use std::sync::{Arc, OnceLock};
 
 /// The most times the board is solved again to check alternatives. Each unresolved part
@@ -102,7 +104,9 @@ impl Rechecks {
         catalogs: &Catalogs,
         again: impl FnOnce() -> Box<dyn Fn(&Catalogs) -> Solution + Send + Sync>,
     ) -> Self {
-        let stock = |lcsc: &str| catalogs.availability().and_then(|a| a.stock(lcsc));
+        let stock = |channel: Channel, sku: &str| {
+            catalogs.availability().and_then(|a| a.stock(channel, sku))
+        };
         let mut jobs = Vec::new();
         'picks: for pick in &solution.picks {
             let Some(generic) = pick.generic.as_ref().filter(|_| pick.lcsc.is_none()) else {
@@ -228,7 +232,8 @@ pub fn resolve_generics(
     sourcing: &[Sourced],
     catalogs: &Catalogs,
 ) -> (Vec<Sourced>, Vec<Unresolved>) {
-    let stock = |lcsc: &str| catalogs.availability().and_then(|a| a.stock(lcsc));
+    let stock =
+        |channel: Channel, sku: &str| catalogs.availability().and_then(|a| a.stock(channel, sku));
     let mut unresolved = Vec::new();
     let resolved = sourcing
         .iter()
@@ -346,7 +351,7 @@ mod tests {
     struct Stock(Vec<(&'static str, u64)>);
 
     impl Availability for Stock {
-        fn stock(&self, lcsc: &str) -> Option<u64> {
+        fn stock(&self, _: Channel, lcsc: &str) -> Option<u64> {
             self.0.iter().find(|(n, _)| *n == lcsc).map(|(_, s)| *s)
         }
     }
@@ -427,7 +432,7 @@ mod tests {
     #[test]
     fn the_projects_preferred_list_puts_the_row_it_names_first() {
         // The project prefers the Extended row (issue #802): the part takes it, and its height.
-        let list = netsmith_solve::Preferred::parse("preferred.csv", "lcsc\nC900002\n").unwrap();
+        let list = netsmith_solve::Preferred::parse("preferred.csv", "mpn\nZZR-B\n").unwrap();
         let (resolved, _) =
             resolve_generics(&[generic_part("R1")], &catalogs(None).with_preferred(list));
         assert_eq!(resolved[0].lcsc.as_deref(), Some("C900002"));

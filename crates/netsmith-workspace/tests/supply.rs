@@ -456,6 +456,56 @@ fn the_manifest_has_no_field_for_a_credential_and_names_only_the_provider_that_i
 }
 
 #[test]
+fn the_manifest_lists_the_channels_in_order_and_one_channel_is_a_list_of_one() {
+    use netsmith_pipeline::supply::Channel;
+    let parse =
+        |supply: &str| Manifest::parse(&format!("[project]\nname = \"a\"\n[supply]\n{supply}\n"));
+    let list = |supply: &str| parse(supply).unwrap().supply.unwrap().channel_list();
+    assert_eq!(
+        list("channels = [\"digikey-retail\", \"lcsc-retail\"]"),
+        [Channel::DIGIKEY_RETAIL, Channel::LCSC_RETAIL]
+    );
+    assert_eq!(list("channel = \"lcsc-retail\""), [Channel::LCSC_RETAIL]);
+    // Channels need no provider: then nothing is quoted, and the channels still buy.
+    let ok = parse("channels = [\"mouser-retail\", \"jlcpcb-assembly\"]").unwrap();
+    assert_eq!(Manifest::parse(&ok.render()).unwrap(), ok);
+    for (wrong, said) in [
+        (
+            "channel = \"lcsc-retail\"\nchannels = [\"lcsc-retail\"]",
+            "has both `channel` and `channels`",
+        ),
+        (
+            "channels = [\"lcsc-retail\", \"lcsc-retail\"]",
+            "lists \"lcsc-retail\" twice",
+        ),
+        (
+            "channels = [\"farnell-retail\"]",
+            "\"farnell-retail\", which is not a supply channel netsmith knows: `jlcpcb-assembly`, `lcsc-retail`, `digikey-retail` or `mouser-retail`",
+        ),
+        ("channels = []", "names no channel"),
+        ("file = \"supply/q.csv\"", "write `provider = \"file\"` beside it"),
+        // A credential is the name of an environment variable, and there is no field for one.
+        ("channels = [\"digikey-retail\"]\nkey = \"x\"", "unknown field `key`"),
+    ] {
+        let e = parse(wrong).unwrap_err();
+        assert!(e.contains(said), "{wrong}: {e}");
+    }
+}
+
+#[test]
+fn the_first_channel_of_the_list_is_the_stock_the_bom_shows() {
+    let mut setup = priced("channels");
+    setup.supply = Some(
+        "channels = [\"lcsc-retail\", \"jlcpcb-assembly\"]\nprovider = \"file\"\nfile = \"supply/quotes.csv\"",
+    );
+    let (_root, editor) = open(&setup);
+    let bom = bom_of(&editor);
+    let r = bom.lines.iter().find(|l| l.kind == "Resistor").unwrap();
+    assert_eq!((r.unit_usd, r.stock), (Some(0.03), Some(9000)));
+    assert_eq!(r.supply.as_deref(), Some("file, LCSC retail stock"));
+}
+
+#[test]
 fn a_supply_file_that_is_wrong_stops_the_project_with_its_line() {
     let mut bad = priced("bad-file");
     bad.quotes = Some("lcsc,channel,stock,date\nC1,warehouse,5,2026-11-01\n");
