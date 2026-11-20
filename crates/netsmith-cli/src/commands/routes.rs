@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Args as ClapArgs, Subcommand};
+use netsmith_core::timings;
 use netsmith_fabricate::board3d::Placed;
 use netsmith_fabricate::routes as lib;
 use netsmith_pcb::{Board, CopperLayer, Layout, ZonePads};
@@ -586,11 +587,9 @@ fn edit_all(target: &Target, changes: impl Fn(&Board) -> Vec<lib::Edit>) -> Exit
         None,
         |placed| {
             let (board, layout) = board_and_layout(placed)?;
-            Ok(lib::edit_file_all(
-                &board,
-                &routes_file(&layout),
-                &changes(&board),
-            ))
+            Ok(timings::stage("routes edit", &board.name, || {
+                lib::edit_file_all(&board, &routes_file(&layout), &changes(&board))
+            }))
         },
     );
     match outcome {

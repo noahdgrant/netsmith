@@ -57,7 +57,13 @@ fn via(at: [f64; 2]) -> RouteVia {
 /// A board of `columns` by `rows` cells and its routes file (places in the routes file's frame,
 /// mm from the outline's top left corner).
 fn grid(columns: usize, rows: usize) -> (Board, Routes) {
-    let led = led();
+    grid_on(led(), columns, rows)
+}
+
+/// [`grid`] on `led`, the LED board or one like it (its process, rules and planes are the
+/// grid's; its resistor `R1` is the part of each cell, its parts and nets are dropped): what
+/// `routes_edit` builds its four-layer board on.
+pub fn grid_on(led: Board, columns: usize, rows: usize) -> (Board, Routes) {
     let resistor = led
         .parts
         .iter()

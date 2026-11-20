@@ -1795,13 +1795,15 @@ fn picked<T>(
     let place = |built: &Built, layout: Option<&(netsmith_pcb::Layout, String)>| {
         let fail = |what: String| format!("error: {}: {what}\n", built.label());
         let placing = || {
-            crate::layout::place(
-                &built.design,
-                layout,
-                libraries,
-                catalogs.constraints_warn(),
-                seeds,
-            )
+            netsmith_core::timings::stage("place", &built.label(), || {
+                crate::layout::place(
+                    &built.design,
+                    layout,
+                    libraries,
+                    catalogs.constraints_warn(),
+                    seeds,
+                )
+            })
         };
         match seeds.progress {
             Some(say) => netsmith_core::job::reporting(

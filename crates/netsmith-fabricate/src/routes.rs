@@ -7,6 +7,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+pub(crate) mod near;
+
 use netsmith_pcb::{
     Board, NetRoutes, Pt, RouteTrack, RouteVia, RouteZone, Routes, ZonePads, apply_routes,
 };
@@ -141,12 +143,22 @@ pub fn drc_errors(board: &Board) -> Result<Vec<String>, String> {
 
 /// [`drc_errors`] as findings, each with its place in the routes file's frame.
 fn drc_findings(board: &Board) -> Result<Vec<netsmith_geom::DrcFinding>, String> {
-    let report = netsmith_geom::drc_check(
-        &netsmith_pcb::kicad_pcb(board),
-        Some(&netsmith_pcb::kicad_pro(board)),
+    drc_findings_with(
+        board,
+        &netsmith_pcb::kicad_pro(board),
         &crate::fab::drc_extras(board),
     )
-    .map_err(|e| format!("the design rules check: {e}"))?;
+}
+
+/// [`drc_findings`] of `board` to the rules of `project` and `extras` (the whole board's, for a
+/// board cut to a neighbourhood).
+fn drc_findings_with(
+    board: &Board,
+    project: &str,
+    extras: &netsmith_geom::DrcExtras,
+) -> Result<Vec<netsmith_geom::DrcFinding>, String> {
+    let report = netsmith_geom::drc_check(&netsmith_pcb::kicad_pcb(board), Some(project), extras)
+        .map_err(|e| format!("the design rules check: {e}"))?;
     Ok(report
         .errors()
         .filter(|f| {
@@ -357,7 +369,8 @@ impl std::fmt::Display for Refusal {
 
 /// Make `change` to `routes` for `board` (placed, with no routes on it), or refuse it and leave
 /// `routes` as it was. An added or moved shape and a record put back are refused when the board
-/// with it has an error of the design rules check that it did not have before; a lock (which
+/// with it has an error of the design rules check that it did not have before, checked where the
+/// board changes ([`new_errors_near`], issue #1471); a lock (which
 /// writes the record again with its pads as they are) when the board has an error of that net's
 /// own copper, whatever other copper's errors the board has (issue #1328). Says what it did.
 pub fn edit(board: &Board, routes: &mut Routes, change: &Edit) -> Result<String, Refusal> {
@@ -368,8 +381,50 @@ pub fn edit(board: &Board, routes: &mut Routes, change: &Edit) -> Result<String,
 /// at a corner moved together, a track drawn with the copper of other nets shoved out of its way
 /// in the editor): all are made, or none. The changes may be of several nets, each made to its
 /// own net's record in the order given. The design rules check is made once, on the board with
-/// all of them.
+/// all of them, in the neighbourhoods of what they change.
 pub fn edit_all(board: &Board, routes: &mut Routes, changes: &[Edit]) -> Result<String, Refusal> {
+    edit_all_counted(board, routes, changes).0
+}
+
+/// The work of the check of an edit ([`edit_all_counted`]): the design rules checks it made and
+/// the items they looked at (tracks, vias, zones and pads).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct EditCounts {
+    pub checks: usize,
+    pub items: usize,
+}
+
+impl EditCounts {
+    fn count(&mut self, board: &Board) {
+        self.checks += 1;
+        self.items += board.tracks.len()
+            + board.vias.len()
+            + board.zones.len()
+            + board
+                .parts
+                .iter()
+                .map(|p| p.footprint.pads.len())
+                .sum::<usize>();
+    }
+}
+
+/// [`edit_all`], and the work its check did.
+pub fn edit_all_counted(
+    board: &Board,
+    routes: &mut Routes,
+    changes: &[Edit],
+) -> (Result<String, Refusal>, EditCounts) {
+    let mut counts = EditCounts::default();
+    let result = edit_all_with(board, routes, changes, &mut counts);
+    (result, counts)
+}
+
+fn edit_all_with(
+    board: &Board,
+    routes: &mut Routes,
+    changes: &[Edit],
+    counts: &mut EditCounts,
+) -> Result<String, Refusal> {
     if changes.is_empty() {
         return Err(Refusal::Refused("no change to make".to_string()));
     }
@@ -502,7 +557,7 @@ pub fn edit_all(board: &Board, routes: &mut Routes, changes: &[Edit]) -> Result<
             )));
         }
         if check {
-            let new = new_errors(&before, &after)?;
+            let new = new_errors_near(&before, &after, counts)?;
             if !new.is_empty() {
                 return Err(Refusal::Refused(format!(
                     "refused: the design rules check finds {} new error(s) with it, and the routes file is not changed:\n  {}",
@@ -526,10 +581,90 @@ pub fn edit_all(board: &Board, routes: &mut Routes, changes: &[Edit]) -> Result<
     Ok(summary(&said))
 }
 
+/// The errors of the design rules check that `after` has and `before` does not, as
+/// [`new_errors`] finds them, checked where the boards differ (issue #1471, [`near`]): the
+/// tracks, vias and zones one has and the other does not, their boxes grown by the board's
+/// largest space, and the findings with a place there, of the check of each board cut to those
+/// boxes grown once more. The rest of the board is the same on both and is not looked at, so an
+/// edit costs what its neighbourhood holds, not the board. A rule whose finding can lie far from
+/// the copper that makes it (a fill's island, the current of a branch of a net) is left to the
+/// check of the whole board, `board drc` and `fab`, as the ends left open are ([`drc_errors`]).
+fn new_errors_near(
+    before: &Board,
+    after: &Board,
+    counts: &mut EditCounts,
+) -> Result<Vec<String>, String> {
+    let mut changed: Vec<netsmith_pcb::Rect> = Vec::new();
+    changed.extend(differ(&before.tracks, &after.tracks).map(near::track_box));
+    changed.extend(differ(&before.vias, &after.vias).map(near::via_box));
+    changed.extend(
+        differ(&before.zones, &after.zones)
+            .filter_map(|z| netsmith_pcb::Rect::around(z.outline.iter().copied())),
+    );
+    if changed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let reach = near::reach(before).max(near::reach(after));
+    let hoods: Vec<netsmith_pcb::Rect> = changed.iter().map(|r| r.expanded(reach)).collect();
+    let wides = near::clusters(hoods.iter().map(|h| h.expanded(reach)).collect());
+    let in_hood = |f: &netsmith_geom::DrcFinding| {
+        // A finding's place is in the routes file's frame ([`drc_findings`]).
+        let at = Pt::new(f.at.x, f.at.y) + before.outline.min;
+        hoods.iter().any(|h| near::holds(h, at))
+    };
+    let errors = |whole: &Board, counts: &mut EditCounts| -> Result<Vec<String>, String> {
+        let local = near::local(whole, &near::zones_of(whole), &wides);
+        counts.count(&local);
+        Ok(drc_findings_with(
+            &local,
+            &netsmith_pcb::kicad_pro(whole),
+            &crate::fab::drc_extras(whole),
+        )?
+        .iter()
+        .filter(|f| in_hood(f))
+        .map(ToString::to_string)
+        .collect())
+    };
+    let mut old = errors(before, counts)?;
+    let mut new = Vec::new();
+    for e in errors(after, counts)? {
+        match old.iter().position(|o| *o == e) {
+            Some(k) => {
+                old.swap_remove(k);
+            }
+            None => new.push(e),
+        }
+    }
+    Ok(new)
+}
+
+/// The items of `a` that `b` does not have and of `b` that `a` does not have, each as many
+/// times as it is missing.
+fn differ<'a, T: std::fmt::Debug>(a: &'a [T], b: &'a [T]) -> impl Iterator<Item = &'a T> {
+    // An item is the same item when everything it holds is (its text, as the routes file
+    // keeps places to 0.000001 mm).
+    let mut left: HashMap<String, Vec<&'a T>> = HashMap::new();
+    for t in a {
+        left.entry(format!("{t:?}")).or_default().push(t);
+    }
+    let mut added = Vec::new();
+    for t in b {
+        match left.get_mut(&format!("{t:?}")).and_then(Vec::pop) {
+            Some(_) => {}
+            None => added.push(t),
+        }
+    }
+    left.into_values().flatten().chain(added)
+}
+
 /// What stops the zones of `after` being filled (two zones of different nets with the same
 /// priority that overlap, say), when it did not stop those of `before`: the design rules check
-/// does not fill them, and `fab` stops on it.
+/// does not fill them, and `fab` stops on it. What stops a fill is the zones alone (their
+/// outlines, nets and priorities), so boards with the same zones are not filled (issue #1471).
 fn new_zone_error(before: &Board, after: &Board) -> Option<String> {
+    if before.zones == after.zones {
+        return None;
+    }
     let error = |b: &Board| {
         if b.zones.is_empty() {
             return None;

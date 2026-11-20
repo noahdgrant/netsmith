@@ -1,26 +1,29 @@
-//! Where a change of `routes tidy` can be seen by the design rules check (issue #1225): a grid of
-//! the board's items built once, and the neighbourhood of a change, out of which the check of a
-//! group of changes takes the items it checks.
+//! Where a change to the copper can be seen by the design rules check: a grid of the board's
+//! items, and the neighbourhood of a change, out of which the check of a change takes the items
+//! it checks. `routes tidy` checks its groups of changes so (issue #1225), and every edit of the
+//! routes file, `routes add-track`, `add-via`, `add-zone` and what is made with them, is checked
+//! so too ([`super::edit_all`], issue #1471).
 //!
 //! **The neighbourhood.** Every rule of the check that a track or a via takes part in judges it
 //! against copper, holes, mask openings or pads no further from it than the board's largest
 //! space ([`reach`]): a clearance of copper, of a hole or of a net class, the space between
 //! pads, mask and holes, a zone's clearance, and how near a pad a track may neck down. The
 //! neighbourhood of a change is the box round the copper it removes and adds, grown by that
-//! space; a finding the change makes or takes away has its place in it. The check of a group
+//! space; a finding the change makes or takes away has its place in it. The check of a change
 //! takes every item whose box meets the neighbourhood of one of its changes grown by the space
 //! once more (so that what touches an item of the neighbourhood is there too), and compares the
 //! findings with a place in a neighbourhood, with and without the changes. What lies further
 //! off is the same on both boards, and is not looked at.
 //!
 //! **Zones.** Each zone, the planes and the pours too (as the zones the routes file would hold
-//! for them, `netsmith_pcb::process_zones`), is cut to the boxes of the items the check takes
-//! ([`clusters`], [`clip`]), so that a check fills the zones of its neighbourhoods and not of the
-//! board: the fill near a change is kept from the same copper as the whole board's.
+//! for them, `netsmith_pcb::process_zones`, [`zones_of`]), is cut to the boxes of the items the
+//! check takes ([`clusters`], [`clip`]), so that a check fills the zones of its neighbourhoods
+//! and not of the board: the fill near a change is kept from the same copper as the whole
+//! board's.
 //!
 //! A rule whose finding can be far from the copper that makes it (a net's pieces, a fill's
-//! islands, the current a branch of a net carries) is the whole board's: the check of the
-//! whole board after each pass ([`super`]) sees what the check of a neighbourhood cannot.
+//! islands, the current a branch of a net carries) is the whole board's: `routes tidy` checks
+//! the whole board after each pass, and for an edit `board drc` and `fab` check it.
 
 use netsmith_pcb::{Board, Pt, Rect, Track, Via};
 
@@ -52,6 +55,40 @@ pub fn reach(board: &Board) -> f64 {
     .filter(|v| v.is_finite())
     .fold(0.0, f64::max)
         + 0.01
+}
+
+/// The zones of `board` (placed, with the routes file's copper) as the check of a neighbourhood
+/// fills them ([`clipped`]): the routes file's zones raised above the pours drawn under them, as
+/// the board file has them (`Board::zone_lift`, issue #1314), and the planes and pours as the
+/// zones the routes file would hold for them, but those a zone of the file replaces.
+pub fn zones_of(board: &Board) -> Vec<netsmith_pcb::BoardZone> {
+    let lift = board.zone_lift();
+    let mut zones = board.zones.clone();
+    for z in &mut zones {
+        z.priority = z.priority.saturating_add(lift);
+    }
+    zones.extend(
+        netsmith_pcb::process_zones(board)
+            .into_iter()
+            .map(|(net, z)| z.on(board, &net))
+            .filter(|z| !z.layers.iter().any(|l| board.replaced(l, &z.net))),
+    );
+    zones
+}
+
+/// `board` cut to `wides` (boxes that do not meet, [`clusters`]): the tracks, vias and parts
+/// whose boxes meet one, and `zones` ([`zones_of`] the board) cut to them, with no plane or pour
+/// of its own. What the check of a neighbourhood checks.
+pub fn local(board: &Board, zones: &[netsmith_pcb::BoardZone], wides: &[Rect]) -> Board {
+    let near = |r: &Rect| wides.iter().any(|w| meets(r, w));
+    let mut out = board.clone();
+    out.tracks.retain(|t| near(&track_box(t)));
+    out.vias.retain(|v| near(&via_box(v)));
+    out.parts.retain(|p| near(&part_box(p)));
+    out.zones = clipped(zones, wides);
+    out.planes.clear();
+    out.pours.clear();
+    out
 }
 
 /// The box round a track's copper.
