@@ -1,7 +1,7 @@
 # Glossary: O
 
 **Offer**:
-What a **supplier** says about a part that a person can record: a row of `offers/<supplier>.csv` with the part's `manufacturer` and `mpn`, the supplier's own number for it (`sku`), the supplier's own sorting of it (`class`: JLCPCB's Basic or Extended), a `source` and the day it was `checked` (ADR 0143, proposed). The part's row says what it is and holds none of this. An offer has no price and no stock: those are a **supply provider**'s quote (ADR 0047). A part with no offer from a supplier cannot be bought there.
+What a **supplier** says about a part that a person can record: a row of `offers/<supplier>.csv` with the part's `manufacturer` and `mpn`, the supplier's own number for it (`sku`), the supplier's own sorting of it (`class`: JLCPCB's Basic, Extended or Preferred; empty for LCSC), a `source` and the day it was `checked` (ADR 0143, proposed). The standard offers are `data/offers/jlcpcb.csv` and `data/offers/lcsc.csv`, in the binary; a project's are in the folders of its manifest's `offer_dirs` (default `["offers"]`) and come after them. An offer with no `source` is refused, a supplier offers a part once, and an offer of a part that no catalog has is a note. Until the row's `lcsc` and `library` columns go, a part's number and class are read from its offer where it has one and from those columns where it has none. An offer has no price and no stock: those are a **supply provider**'s quote (ADR 0047). A part with no offer from a supplier cannot be bought there, once the columns are gone.
 _Avoid_: Listing, SKU row, supplier column (a column on the part's row, which ADR 0143 rejected)
 
 **Ohm bound**:

@@ -1,5 +1,6 @@
 //! The catalogs that ship in the binary: `data/jlcpcb/catalog/*.csv`, real parts that JLCPCB
-//! assembles, and `data/sample/*.csv`, made-up parts for the solver's tests.
+//! assembles, with their offers, `data/offers/<supplier>.csv` ([`crate::offers`]), and
+//! `data/sample/*.csv`, made-up parts for the solver's tests, which have none.
 //!
 //! This file only loads them. Each CSV is one catalog, named by the file (`resistor.csv` is
 //! the `resistor` catalog), and its format is described in [`crate::table`]. Adding a part
@@ -23,6 +24,7 @@ include!(concat!(env!("OUT_DIR"), "/catalogs.rs"));
 pub(crate) fn embedded(
     files: &[(&str, &str, &str)],
     curves: &[(&str, &str, &str, &str)],
+    offers: &[(&str, &str, &str)],
 ) -> Catalogs {
     let mut catalogs = Catalogs::empty();
     for (name, file, text) in files {
@@ -32,6 +34,11 @@ pub(crate) fn embedded(
     }
     for (name, row, file, text) in curves {
         if let Err(e) = catalogs.add_curve(name, row, file, text) {
+            panic!("{e}");
+        }
+    }
+    for (supplier, file, text) in offers {
+        if let Err(e) = catalogs.add_built_in_offers_file(supplier, file, text) {
             panic!("{e}");
         }
     }

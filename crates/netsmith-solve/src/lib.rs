@@ -17,6 +17,7 @@ mod jlcpcb;
 mod levels;
 mod lock;
 mod mated;
+pub mod offers;
 mod ohm;
 mod place;
 mod preferred;
