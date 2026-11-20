@@ -176,7 +176,11 @@ board PowerManifoldCharger {
     // ---- The capacitors ----
 
     /// C1
-    .v3v3_4u7: Capacitor { .capacitance &= 4.7uF +/- 10%; .package &= "0603"; .mpn &= "0603B475K100NT" }
+    .v3v3_4u7: Capacitor {
+        .capacitance &= 4.7uF +/- 10%
+        .package &= "0603"
+        .mpn &= "0603B475K100NT"
+    }
     /// C2
     .v3v3_100n_a: Capacitor { .capacitance &= 100nF +/- 10%; .mpn &= "CL05B104KB54PNC" }
     /// C3
@@ -188,7 +192,11 @@ board PowerManifoldCharger {
     /// C6
     .emi_vin_100u: Capacitor { .capacitance &= 100uF +/- 20%; .package &= "SMD,D6.3xL7.7mm" }
     /// C7
-    .v5_4u7: Capacitor { .capacitance &= 4.7uF +/- 10%; .package &= "0603"; .mpn &= "0603B475K100NT" }
+    .v5_4u7: Capacitor {
+        .capacitance &= 4.7uF +/- 10%
+        .package &= "0603"
+        .mpn &= "0603B475K100NT"
+    }
     /// C8
     .emi_vin_10u_a: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "1206" }
     /// C9
@@ -204,7 +212,11 @@ board PowerManifoldCharger {
     /// C14
     .ntc_converter_100n: Capacitor { .capacitance &= 100nF +/- 10%; .mpn &= "CL05B104KB54PNC" }
     /// C15
-    .emi_vin_1u: Capacitor { .capacitance &= 1uF +/- 10%; .package &= "0603"; .mpn &= "CL10B105KB8NQNC" }
+    .emi_vin_1u: Capacitor {
+        .capacitance &= 1uF +/- 10%
+        .package &= "0603"
+        .mpn &= "CL10B105KB8NQNC"
+    }
     /// C16
     .ntc_plug_100n: Capacitor { .capacitance &= 100nF +/- 10%; .mpn &= "CL05B104KB54PNC" }
     /// C18
@@ -218,7 +230,11 @@ board PowerManifoldCharger {
     /// C22
     .cc1_330p: Capacitor { .capacitance &= 330pF +/- 10% }
     /// C23
-    .vcc_10u: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "0805"; .mpn &= "CL21A106KOQNNNE" }
+    .vcc_10u: Capacitor {
+        .capacitance &= 10uF +/- 10%
+        .package &= "0805"
+        .mpn &= "CL21A106KOQNNNE"
+    }
     /// C24
     .cc2_330p: Capacitor { .capacitance &= 330pF +/- 10% }
     /// C25
@@ -248,7 +264,11 @@ board PowerManifoldCharger {
     /// C37
     .vout_conv_10u_d: Capacitor { .capacitance &= 10uF +/- 10%; .package &= "1206" }
     /// C38
-    .vbus_2u2: Capacitor { .capacitance &= 2.2uF +/- 10%; .package &= "1206"; .mpn &= "CL31B225KBHNNNE" }
+    .vbus_2u2: Capacitor {
+        .capacitance &= 2.2uF +/- 10%
+        .package &= "1206"
+        .mpn &= "CL31B225KBHNNNE"
+    }
     /// C39
     .vout_conv_220u: Capacitor { .capacitance &= 220uF +/- 20%; .package &= "SMD,D8xL9mm" }
 
