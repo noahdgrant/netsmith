@@ -793,8 +793,13 @@ fn a_part_with_no_part_number_is_refused_and_nothing_is_written() {
         &Libraries::standard(),
         Some(&cli),
     )
-    .expect_err("a part with no LCSC number must stop the package");
-    assert!(err.contains("LCSC"), "{err}");
+    .expect_err("a part with no offer in any channel must stop the package");
+    assert!(
+        err.contains("have no offer in any of the project's supply channels")
+            && err.contains("D1")
+            && err.contains("R1"),
+        "{err}"
+    );
     assert!(
         !dir.join("LedExample")
             .join("LedExample-gerbers.zip")

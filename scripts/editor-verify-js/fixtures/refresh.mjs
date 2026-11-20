@@ -10,14 +10,11 @@ ZZR-316,316ohm +/- 1%,250mW,0402,0.0123,42,2026-06-01,,https://example.invalid/z
 ZZR-317,317ohm +/- 1%,250mW,0402,0.0124,40,2026-06-01,,https://example.invalid/zzr
 `;
 
-// The parts' numbers are offers (ADR 0143): JLCPCB's with the library, LCSC's, which the check
-// reads and writes the day in.
+// The parts' numbers are offers of LCSC (ADR 0143), with JLCPCB's library as their class, which
+// the check reads and writes the day in.
 const HEAD = 'manufacturer,mpn,sku,class,source,checked,notes\n';
-const JLCPCB = `${HEAD},ZZR-316,C9999999,Extended,https://example.invalid/zzr,,
+const LCSC = `${HEAD},ZZR-316,C9999999,Extended,https://example.invalid/zzr,,
 ,ZZR-317,C9999998,Extended,https://example.invalid/zzr,,
-`;
-const LCSC = `${HEAD},ZZR-316,C9999999,,https://example.invalid/zzr,,
-,ZZR-317,C9999998,,https://example.invalid/zzr,,
 `;
 
 /** Write the project: the LED example with a resistor only the project's catalog has. */
@@ -25,7 +22,6 @@ export function writeRefresh(project, ledSource) {
   fs.mkdirSync(path.join(project, 'catalogs'), { recursive: true });
   fs.writeFileSync(path.join(project, 'catalogs/resistor.csv'), CATALOG);
   fs.mkdirSync(path.join(project, 'offers'), { recursive: true });
-  fs.writeFileSync(path.join(project, 'offers/jlcpcb.csv'), JLCPCB);
   fs.writeFileSync(path.join(project, 'offers/lcsc.csv'), LCSC);
   fs.writeFileSync(
     path.join(project, 'src/main.nsm'),

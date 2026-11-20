@@ -77,26 +77,19 @@ fn small_catalog() -> String {
 
 /// Write the catalog `catalogs/<name>.csv` of `root` from `text`, a catalog with the old `lcsc`
 /// and `library` columns, as the migration moves it: the file without the two columns, and its
-/// offers in `offers/lcsc.csv` and `offers/jlcpcb.csv` (added to the ones there). The path of
+/// offers in `offers/lcsc.csv` (added to the ones there). The path of
 /// the catalog file and of LCSC's offers file.
 fn project(root: &Path, name: &str, text: &str) -> (PathBuf, PathBuf) {
     use netsmith_solve::migrate;
     let file = format!("catalogs/{name}.csv");
     let m = migrate::catalog(&file, text).unwrap().unwrap();
     let catalog = write(root, &file, &m.catalog);
-    for supplier in ["jlcpcb", "lcsc"] {
-        let path = root.join(format!("offers/{supplier}.csv"));
-        let mut offers =
-            fs::read_to_string(&path).unwrap_or_else(|_| migrate::OFFERS_HEADER.to_string());
-        let mine: Vec<_> = m
-            .offers
-            .iter()
-            .filter(|o| o.supplier == supplier)
-            .cloned()
-            .collect();
-        offers.push_str(&migrate::offer_lines(&mine));
-        write(root, &format!("offers/{supplier}.csv"), &offers);
-    }
+    // The old columns make offers of LCSC only.
+    let path = root.join("offers/lcsc.csv");
+    let mut offers =
+        fs::read_to_string(&path).unwrap_or_else(|_| migrate::OFFERS_HEADER.to_string());
+    offers.push_str(&migrate::offer_lines(&m.offers));
+    write(root, "offers/lcsc.csv", &offers);
     (catalog, root.join("offers/lcsc.csv"))
 }
 
@@ -340,27 +333,23 @@ fn lcsc_listing_no_stock_is_reported_as_information_and_the_row_keeps_its_stock(
 }
 
 #[test]
-fn a_catalog_file_and_the_offers_of_jlcpcb_are_never_written() {
+fn a_catalog_file_and_the_class_of_an_offer_are_never_written() {
     let root = dir("never");
     // LCSC's record has a price ladder, a stock and no library; the row has other numbers in
     // every one of those cells, as a hand-entered JLCPCB snapshot would.
     let text = "lcsc,mpn,package,library,price,price_breaks,stock,date,checked,source\n\
                 C5446,XC6206P332MR-G,SOT-23,Extended,0.1,1:0.1 100:0.08,7,2026-10-31,,s\n";
     let (catalog, path) = project(&root, "ldo", text);
-    let (rows_before, jlcpcb) = (
-        fs::read_to_string(&catalog).unwrap(),
-        fs::read_to_string(root.join("offers/jlcpcb.csv")).unwrap(),
-    );
+    let rows_before = fs::read_to_string(&catalog).unwrap();
     let fake = Fake::fixtures();
     let report = run(&target(&root), &options(&fake, None), &quiet).unwrap();
     assert_eq!(report.files.len(), 1, "only LCSC's offers are checked");
     assert_eq!(report.files[0].rows[0].changes.len(), 1);
     assert_eq!(fs::read_to_string(&catalog).unwrap(), rows_before);
-    assert_eq!(
-        fs::read_to_string(root.join("offers/jlcpcb.csv")).unwrap(),
-        jlcpcb
-    );
-    assert_eq!(rows(&fs::read_to_string(&path).unwrap())[0]["checked"], TODAY);
+    let after = rows(&fs::read_to_string(&path).unwrap());
+    assert_eq!(after[0]["checked"], TODAY);
+    // The class is the sorting JLCPCB gives the part, which LCSC's record does not say.
+    assert_eq!(after[0]["class"], "Extended");
 }
 
 #[test]
@@ -391,7 +380,7 @@ fn only_and_lcsc_choose_what_is_looked_up() {
     );
     let targets = target(&root);
     assert_eq!(targets.catalogs.len(), 2);
-    assert_eq!(targets.offers.len(), 2);
+    assert_eq!(targets.offers.len(), 1);
     let fake = Fake::fixtures();
 
     let mut opts = options(&fake, None);
@@ -653,7 +642,7 @@ fn the_standard_offers_refresh_with_the_saved_responses_and_change_only_checked(
         .map(str::to_string)
         .collect();
     let targets = resolve_targets(&root, &[PathBuf::from("catalog")]).unwrap();
-    assert_eq!(targets.offers.len(), 2, "the offers beside the catalogs");
+    assert_eq!(targets.offers.len(), 1, "the offers beside the catalogs");
     let report = run(&targets, &opts, &quiet).unwrap();
     let looked: usize = report.files.iter().map(|f| f.rows.len()).sum();
     assert_eq!(looked, 10);
@@ -676,12 +665,8 @@ fn the_standard_offers_refresh_with_the_saved_responses_and_change_only_checked(
         }
     }
     assert_eq!(changed, 10);
-    // The catalogs, and JLCPCB's offers, are read and never written.
+    // The catalogs are read and never written, and of the offers only `checked` (above).
     assert_eq!(catalog_texts(&root, &names), catalogs);
-    assert_eq!(
-        fs::read_to_string(root.join("offers/jlcpcb.csv")).unwrap(),
-        fs::read_to_string(Path::new(STD_OFFERS).join("jlcpcb.csv")).unwrap()
-    );
 }
 
 #[test]
@@ -878,7 +863,7 @@ fn a_projects_own_offers_are_refreshed_with_no_argument_and_the_standard_ones_ar
     assert_eq!(targets.catalogs[0].shown, "catalogs/acme_res.csv");
     assert_eq!(targets.catalogs[0].catalog, "acme_res");
     let offers: Vec<&str> = targets.offers.iter().map(|t| t.shown.as_str()).collect();
-    assert_eq!(offers, ["offers/jlcpcb.csv", "offers/lcsc.csv"]);
+    assert_eq!(offers, ["offers/lcsc.csv"]);
     // From a directory below the project root, too.
     let below = resolve_targets(&root.join("src"), &[]).unwrap();
     assert_eq!(below.catalogs[0].path, targets.catalogs[0].path);
@@ -941,7 +926,7 @@ fn with_no_argument_outside_a_project_and_the_repository_there_is_nothing_to_act
         format!("data/jlcpcb/catalog/{}", names[0])
     );
     let offers: Vec<&str> = targets.offers.iter().map(|t| t.shown.as_str()).collect();
-    assert_eq!(offers, ["data/offers/jlcpcb.csv", "data/offers/lcsc.csv"]);
+    assert_eq!(offers, ["data/offers/lcsc.csv"]);
 }
 
 // ---- age -------------------------------------------------------------------------------

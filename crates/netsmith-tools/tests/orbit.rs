@@ -31,18 +31,17 @@ fn read(path: &str) -> String {
 }
 
 /// The offer of the project's part `mpn` (ADR 0143: a catalog row holds no supplier's number):
-/// the sku and class of its JLCPCB offer, else the sku of its LCSC offer with no class.
+/// the sku and class of its LCSC offer (the class empty when JLCPCB's library does not list it).
 fn offer(mpn: &str) -> (String, String) {
-    for supplier in ["jlcpcb", "lcsc"] {
-        let text = read(&format!("offers/{supplier}.csv"));
-        let records = netsmith_solve::parse_csv(&text).unwrap();
-        let header = &records[0].1;
-        let at = |name: &str| header.iter().position(|h| h == name).unwrap();
-        if let Some((_, r)) = records[1..].iter().find(|(_, r)| r[at("mpn")] == mpn) {
-            return (r[at("sku")].clone(), r[at("class")].clone());
-        }
-    }
-    panic!("no offer of {mpn}")
+    let text = read("offers/lcsc.csv");
+    let records = netsmith_solve::parse_csv(&text).unwrap();
+    let header = &records[0].1;
+    let at = |name: &str| header.iter().position(|h| h == name).unwrap();
+    let (_, r) = records[1..]
+        .iter()
+        .find(|(_, r)| r[at("mpn")] == mpn)
+        .unwrap_or_else(|| panic!("no offer of {mpn}"));
+    (r[at("sku")].clone(), r[at("class")].clone())
 }
 
 /// A board of KiCad 7's spelling (format 20221018): a `(net N "name")` table, the reference in

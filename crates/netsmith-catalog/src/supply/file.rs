@@ -5,7 +5,8 @@
 //! C900001,TESTRES-10K,jlcpcb-assembly,5000,1:0.0100 100:0.0050,USD,2026-11-01
 //! ```
 //!
-//! A row is a part and a channel (`jlcpcb-assembly` or `lcsc-retail`). `lcsc` or `mpn` (one
+//! A row is a part and a supply channel (`jlcpcb-assembly`, `lcsc-retail`, `digikey-retail` or
+//! `mouser-retail`). `lcsc` or `mpn` (one
 //! is enough) names the part, and an optional `manufacturer` column says whose `mpn` it is (a
 //! row is found as [`PartKey::matches`] says, by the `mpn` first, ADR 0143); `stock` empty is unknown; `price_breaks` is `from:price`
 //! pairs, empty if the file has no price; `currency` defaults to `USD`; `date` is the day
@@ -105,7 +106,10 @@ impl FileProvider {
             }
             let word = cell("channel").unwrap_or("");
             let channel = Channel::parse(word).ok_or_else(|| {
-                format!("{at}: channel `{word}` is not jlcpcb-assembly or lcsc-retail")
+                format!(
+                    "{at}: channel `{word}` is not a supply channel netsmith knows: {}",
+                    Channel::words()
+                )
             })?;
             let stock = match cell("stock") {
                 None => None,

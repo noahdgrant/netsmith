@@ -44,7 +44,7 @@ impl LockedRow {
             path,
             catalog: pick.catalog.clone(),
             row: pick.candidate.clone(),
-            skus: channel_skus(&pick.skus),
+            skus: pick.skus.clone(),
             manufacturer: pick.manufacturer.clone(),
             mpn: pick.mpn.clone(),
             held: None,
@@ -52,24 +52,14 @@ impl LockedRow {
     }
 }
 
-/// The supply channels of ADR 0047 and the supplier whose offers each buys by (ADR 0143), by the
-/// words a manifest's `[supply]` and a lock use for them, in the order a lock lists them. Until
-/// a project lists its channels (issue #1459) these are the two a project may buy through.
-pub const CHANNELS: [(&str, &str); 2] = [("jlcpcb-assembly", "jlcpcb"), ("lcsc-retail", "lcsc")];
-
-/// The skus of a part's offers by supplier ([`crate::offers::SUPPLIERS`]) as a lock records them:
-/// by the channel that buys from each supplier, in the order of [`CHANNELS`].
-pub fn channel_skus(by_supplier: &[(String, String)]) -> Vec<(String, String)> {
-    CHANNELS
-        .iter()
-        .filter_map(|(channel, supplier)| {
-            by_supplier
-                .iter()
-                .find(|(s, _)| s == supplier)
-                .map(|(_, sku)| (channel.to_string(), sku.clone()))
-        })
-        .collect()
-}
+/// The supply channels a lock may record a sku for, by their words, in the order a lock lists
+/// them: every channel netsmith knows ([`crate::Channel::ALL`]).
+pub const CHANNELS: [&str; 4] = [
+    crate::Channel::ALL[0].word,
+    crate::Channel::ALL[1].word,
+    crate::Channel::ALL[2].word,
+    crate::Channel::ALL[3].word,
+];
 
 /// The provider one use of a generic was picked as (ADR 0068, ADR 0113): a use with more than
 /// one provider in scope, such as a board's `.process: TwoLayer`, whose copper weight picks

@@ -12,7 +12,7 @@ fn solved(source: &str, catalogs: &Catalogs) -> Solution {
     solve(&c.boards[0], catalogs)
 }
 
-fn never(_: &str) -> Option<u64> {
+fn never(_: netsmith_solve::Channel, _: &str) -> Option<u64> {
     None
 }
 

@@ -89,8 +89,8 @@ pub struct Manifest {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub catalogs: Vec<String>,
     /// The folders whose `*.csv` files are the project's offers (ADR 0143), relative to the
-    /// project root (`..` is allowed): each file is named for its supplier (`offers/jlcpcb.csv`
-    /// is JLCPCB's), and its offers come after the standard ones. The default is `["offers"]`,
+    /// project root (`..` is allowed): each file is named for its supplier (`offers/lcsc.csv`
+    /// is LCSC's), and its offers come after the standard ones. The default is `["offers"]`,
     /// which is not written out; `[]` reads no folder. Sub-folders are not read, and a folder
     /// may not also be a `catalog_dirs` folder.
     #[serde(
@@ -336,16 +336,23 @@ fn check_git_url(name: &str, git: &str) -> Result<(), String> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SupplyConfig {
+    /// The project's supply channels, in order (ADR 0143): `["jlcpcb-assembly", "lcsc-retail"]`
+    /// when the table names none. The first with an offer of a part buys it, and its rule
+    /// orders the rows that fit a generic part.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channels: Option<Vec<String>>,
+    /// One channel, the list of one that `channels` would be; the spelling of a manifest from
+    /// before the list. Not with `channels`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
     /// `"file"`: prices and stock from a CSV file (`netsmith_pipeline::supply::file`). Providers that
-    /// ask a supplier are not built.
-    pub provider: String,
+    /// ask a supplier are not built. Without one, nothing is quoted: every price and stock is
+    /// unknown, and the channels still say which offers the project buys.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
     /// The file of the `file` provider, relative to the project root.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file: Option<String>,
-    /// The stock the bill of materials shows: `"jlcpcb-assembly"` (the default) or
-    /// `"lcsc-retail"`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub channel: Option<String>,
     /// How many hours a cached answer is used without asking again (default 24).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_hours: Option<u64>,
@@ -353,28 +360,69 @@ pub struct SupplyConfig {
 
 impl SupplyConfig {
     fn validate(&self) -> Result<(), String> {
-        if self.provider != "file" {
-            return Err(format!(
-                "{MANIFEST}: [supply] provider = {:?} is not one netsmith has: only \"file\" is built (providers that ask a supplier need the supplier's terms of use read first, ADR 0047)",
-                self.provider
-            ));
-        }
-        match &self.file {
-            None => {
+        match (self.provider.as_deref(), &self.file) {
+            (Some("file"), None) => {
                 return Err(format!(
                     "{MANIFEST}: [supply] provider = \"file\" needs `file = \"supply/quotes.csv\"`, the CSV of prices and stock"
                 ));
             }
-            Some(file) => check_relative("[supply] file", file)?,
+            (Some("file"), Some(file)) => check_relative("[supply] file", file)?,
+            (Some(other), _) => {
+                return Err(format!(
+                    "{MANIFEST}: [supply] provider = {other:?} is not one netsmith has: only \"file\" is built (providers that ask a supplier need the supplier's terms of use read first, ADR 0047)"
+                ));
+            }
+            (None, Some(file)) => {
+                return Err(format!(
+                    "{MANIFEST}: [supply] file = {file:?} is the file of a provider, and the table names none: write `provider = \"file\"` beside it"
+                ));
+            }
+            (None, None) => {}
         }
-        if let Some(word) = &self.channel
-            && Channel::parse(word).is_none()
-        {
+        if let (Some(_), Some(_)) = (&self.channel, &self.channels) {
             return Err(format!(
-                "{MANIFEST}: [supply] channel = {word:?} is not \"jlcpcb-assembly\" or \"lcsc-retail\""
+                "{MANIFEST}: [supply] has both `channel` and `channels`; `channel = \"...\"` is a list of one: write the channels in one `channels = [...]`, in the order the project buys from them"
             ));
         }
+        let words: Vec<&String> = self
+            .channel
+            .iter()
+            .chain(self.channels.iter().flatten())
+            .collect();
+        if self.channels.as_ref().is_some_and(|c| c.is_empty()) {
+            return Err(format!(
+                "{MANIFEST}: [supply] channels = [] names no channel; leave the key out for the default, [\"jlcpcb-assembly\", \"lcsc-retail\"]"
+            ));
+        }
+        for (i, word) in words.iter().enumerate() {
+            let key = if self.channel.is_some() {
+                "channel"
+            } else {
+                "channels"
+            };
+            if Channel::parse(word).is_none() {
+                return Err(format!(
+                    "{MANIFEST}: [supply] {key} names {word:?}, which is not a supply channel netsmith knows: {}",
+                    Channel::words()
+                ));
+            }
+            if words[..i].iter().any(|w| w.trim() == word.trim()) {
+                return Err(format!(
+                    "{MANIFEST}: [supply] channels lists {word:?} twice; a channel is listed once"
+                ));
+            }
+        }
         Ok(())
+    }
+
+    /// The channels the table names, in order: `channels`, or `channel` as a list of one; empty
+    /// when it names none, which is [`Channel::DEFAULT`].
+    pub fn channel_list(&self) -> Vec<Channel> {
+        self.channel
+            .iter()
+            .chain(self.channels.iter().flatten())
+            .map(|w| Channel::parse(w).expect("the manifest was validated"))
+            .collect()
     }
 }
 
@@ -1240,6 +1288,9 @@ impl Project {
             self.csvs_in("offer_dirs", &self.manifest.offer_dirs)?
         {
             let supplier = file_name.strip_suffix(".csv").expect("a .csv");
+            if supplier == netsmith_solve::offers::MERGED_INTO_LCSC {
+                return Err(netsmith_solve::offers::merge_into_lcsc(&file));
+            }
             if !netsmith_solve::offers::is_supplier(supplier) {
                 return Err(format!(
                     "{MANIFEST}: {file} in the offer_dirs folder {folder:?} is not an offers file: an offers file is named for its supplier, {}. Rename it, or move it out of the folder (a folder's sub-folders are not read)",
@@ -1450,11 +1501,14 @@ impl Project {
             let text = fs::read_to_string(&path).map_err(|e| format!("{MANIFEST}: {file}: {e}"))?;
             catalogs.add_offers_file(&supplier, &file, &text)?;
         }
-        if let Some(preferred) = self.preferred()? {
+        if let Some(preferred) = self.preferred_with(Some(catalogs.offers()))? {
             catalogs = catalogs.with_preferred(preferred);
         }
-        if self.manifest.supply.is_some() {
-            catalogs = catalogs.with_availability(self.supply()?.into_availability());
+        if let Some(config) = &self.manifest.supply {
+            catalogs = catalogs.with_channels(config.channel_list());
+            if config.provider.is_some() {
+                catalogs = catalogs.with_availability(self.supply()?.into_availability());
+            }
         }
         Ok(catalogs)
     }
@@ -1462,12 +1516,21 @@ impl Project {
     /// The project's preferred parts, `preferred.csv` beside the manifest (issue #802), or
     /// `None` when the project has no such file. A problem names the file and line.
     pub fn preferred(&self) -> Result<Option<Preferred>, String> {
+        self.preferred_with(None)
+    }
+
+    /// [`Self::preferred`], with the offers that name the `mpn` of each number of a file that
+    /// still has an `lcsc` column, in the message that refuses it (ADR 0143).
+    fn preferred_with(
+        &self,
+        offers: Option<&netsmith_solve::offers::Offers>,
+    ) -> Result<Option<Preferred>, String> {
         let path = self.root.join(PREFERRED);
         if !path.is_file() {
             return Ok(None);
         }
         let text = fs::read_to_string(&path).map_err(|e| format!("{PREFERRED}: {e}"))?;
-        Preferred::parse(PREFERRED, &text).map(Some)
+        Preferred::parse_with(PREFERRED, &text, offers).map(Some)
     }
 
     /// The providers of the `[supply]` table, with the cache in front of them, read again on
@@ -1478,13 +1541,13 @@ impl Project {
         let Some(config) = &self.manifest.supply else {
             return Ok(Supply::none());
         };
-        let file = config.file.as_deref().expect("the manifest was validated");
-        let provider = FileProvider::open(&self.root.join(file), file)?;
         let mut supply = Supply::none()
-            .with_provider(Box::new(provider))
-            .with_offline(self.offline);
-        if let Some(word) = &config.channel {
-            supply = supply.with_channel(Channel::parse(word).expect("the manifest was validated"));
+            .with_offline(self.offline)
+            .with_channels(config.channel_list());
+        if config.provider.is_some() {
+            let file = config.file.as_deref().expect("the manifest was validated");
+            let provider = FileProvider::open(&self.root.join(file), file)?;
+            supply = supply.with_provider(Box::new(provider));
         }
         if let Some(hours) = config.cache_hours {
             supply = supply.with_cache_hours(hours);

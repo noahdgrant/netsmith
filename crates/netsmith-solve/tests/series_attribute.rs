@@ -79,7 +79,7 @@ fn a_row_comes_first_and_a_generated_value_resolves_to_a_row_that_fits() {
         &catalogs(Some(Series::E24), false),
     );
     let generic = s.picks[0].generic.clone().expect("generated");
-    let found = resolve(&generic, &catalogs(Some(Series::E24), true), &|_| None);
+    let found = resolve(&generic, &catalogs(Some(Series::E24), true), &|_, _| None);
     assert_eq!(found.unwrap().lcsc.as_deref(), Some("C990001"));
 }
 

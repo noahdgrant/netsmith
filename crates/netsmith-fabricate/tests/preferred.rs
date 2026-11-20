@@ -27,16 +27,44 @@ fn a_project_with_no_preferred_file_has_no_list() {
 
 #[test]
 fn the_preferred_file_travels_with_the_projects_catalogs() {
-    let (_root, p) = project(MANIFEST, Some("lcsc,note\nC900001,on the shelf\nC900002,\n"));
+    let (_root, p) = project(
+        MANIFEST,
+        Some("mpn,note\nZZR-1,on the shelf\nZZR-2,\n"),
+    );
     let catalogs = p.catalogs().unwrap();
     assert_eq!(catalogs.preferred().map(|l| l.len()), Some(2));
 }
 
 #[test]
 fn a_preferred_file_that_is_not_well_formed_stops_the_catalogs_with_its_line() {
-    let (_root, p) = project(MANIFEST, Some("lcsc\nC900001\nC900001\n"));
+    let (_root, p) = project(MANIFEST, Some("mpn\nZZR-1\nZZR-1\n"));
     assert_eq!(
         p.catalogs().unwrap_err(),
-        "preferred.csv:3: `C900001` is listed twice; a part is listed once"
+        "preferred.csv:3: `ZZR-1` is listed twice; a part is listed once"
     );
+}
+
+#[test]
+fn a_preferred_file_that_names_parts_by_lcsc_is_refused_with_the_mpn_of_each_number() {
+    // The number is the sku of a standard offer: the message says its part, and where.
+    let (_root, p) = project(MANIFEST, Some("lcsc\nC25104\n"));
+    let e = p.catalogs().unwrap_err();
+    assert!(
+        e.starts_with("preferred.csv:1: the column `lcsc` has gone from a preferred-parts file (ADR 0143)"),
+        "{e}"
+    );
+    assert!(
+        e.ends_with("; line 2: `C25104` is `0402WGF3300TCE` (data/offers/lcsc.csv:LINE)".replace("LINE", &line_of("C25104")).as_str()),
+        "{e}"
+    );
+}
+
+/// The line of the standard offer of `sku`.
+fn line_of(sku: &str) -> String {
+    let text = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/offers/lcsc.csv")).unwrap();
+    let at = text
+        .lines()
+        .position(|l| l.contains(&format!(",{sku},")))
+        .expect("a standard offer");
+    (at + 1).to_string()
 }

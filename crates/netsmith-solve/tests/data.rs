@@ -17,7 +17,7 @@ fn data(path: &str) -> PathBuf {
 }
 
 /// The records of a file, as header name to cell. A row of a standard catalog also has `lcsc`
-/// and `library`, the `sku` and `class` of its standard `jlcpcb` offer (ADR 0143: the row holds
+/// and `library`, the `sku` and `class` of its standard `lcsc` offer (ADR 0143: the row holds
 /// neither), which the checks below name a row by and sort it by; a row with no such offer has
 /// them empty.
 fn records(path: &str) -> Vec<std::collections::BTreeMap<String, String>> {
@@ -34,7 +34,7 @@ fn records(path: &str) -> Vec<std::collections::BTreeMap<String, String>> {
                 let manufacturer = row.get("manufacturer").filter(|m| !m.is_empty()).cloned();
                 let offer = c
                     .offers()
-                    .of("jlcpcb", manufacturer.as_deref(), &row["mpn"])
+                    .of("lcsc", manufacturer.as_deref(), &row["mpn"])
                     .unwrap();
                 row.insert(
                     "lcsc".into(),

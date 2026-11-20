@@ -5,7 +5,8 @@
 //! and a power rating, and no supplier. The solver sees it as one more candidate, so it is
 //! never stuck on a value that no row of the catalog has. [`resolve`] runs afterwards, when
 //! the bill of materials or the fab package is made: it finds the row of the catalog that is
-//! at least as good (Basic first), or says which rows are nearest.
+//! at least as good (by the rule of the supply channel that buys it, ADR 0143), or says which
+//! rows are nearest.
 //!
 //! Capacitors, inductors and LEDs are generic too (ADR 0047), with one
 //! difference: a rating a generic part cannot know is left **open**. The solver fills it in
@@ -27,10 +28,13 @@
 //! **Resolution order.** For a generic part, a row of the same catalog with the same package, a
 //! nominal equal to the generic value, a tolerance no wider and a power rating no lower (the
 //! row must be at least as good as what the solver checked). Among those, the preferred-parts
-//! order: the rows a project's `preferred.csv` names, in its order (issue #802), then JLCPCB
-//! Basic, then Preferred, then Extended, and inside a class the file's order, so a project's own
-//! rows that its list does not name are tried last. A row a provider says has stock 0 is passed over and
-//! noted; unknown stock does not exclude. The row's `lcsc`, `mpn` and `library` go to the part;
+//! order: the rows a project's `preferred.csv` names, in its order (issue #802), then the rows of
+//! each of the project's supply channels in the order of its list (the first channel with an
+//! offer of a row buys it, ADR 0143), each channel's by its own rule ([`crate::Rule`]: JLCPCB's
+//! Basic, then Preferred, then Extended for `jlcpcb-assembly`; in stock, then the lowest price
+//! for a retail channel), then the rows no channel has an offer of, and inside those the file's
+//! order. A row a provider says has stock 0 in its channel is passed over and noted; unknown
+//! stock does not exclude. The row's `lcsc`, `mpn` and `library` go to the part;
 //! its value label is unchanged. A part no row fits is unresolved, `fab` refuses by name, and
 //! the message gives up to three nearest rows (in the same package first, then others) and ends
 //! with "Change the value in the design and build again": the build then checks every relation
@@ -78,6 +82,7 @@ use netsmith_check::FieldKind;
 use netsmith_quantity::{Dimension, Quantity};
 
 use crate::catalog::{Candidate, Catalogs, Derating, Library, Value};
+use crate::channel::{Channel, Rule};
 use crate::standard::{Fill, Standard};
 
 /// An E-series: the values of one decade that a tolerance class is built on.
@@ -914,13 +919,9 @@ pub struct Orderable {
     pub passed_over: Vec<String>,
 }
 
+/// JLCPCB's order of its classes, the rule of `jlcpcb-assembly` ([`Rule::Class`]).
 fn rank(library: Option<Library>) -> u8 {
-    match library {
-        Some(Library::Basic) => 0,
-        Some(Library::Preferred) => 1,
-        Some(Library::Extended) => 2,
-        None => 3,
-    }
+    Rule::class_rank(library)
 }
 
 fn quantity_of(c: &Candidate, key: &str) -> Option<Quantity> {
@@ -1076,15 +1077,19 @@ fn shortfall(generic: &Generic, row: &Candidate) -> f64 {
 /// capacitor's voltage and (always) a recorded DC-bias curve, an inductor's saturation
 /// current and DC resistance, an LED's colour, forward voltage and maximum current. Among the rows that fit
 /// the order is the preferred-parts list: the rows the project's `preferred.csv` names, in its
-/// order ([`Catalogs::preferred`]), then Basic, then Preferred, then Extended, and inside a
-/// class the order of the file. `stock` is asked about each fitting row's LCSC number: a row
-/// it answers `0` for is passed over, and a row it knows nothing about (`None`) is kept.
+/// order ([`Catalogs::preferred`]), then the rows of each supply channel of the project in the
+/// order of its list ([`Catalogs::channels`]: the channel that buys a row is the first with an
+/// offer of it), each channel's rows by the channel's rule ([`Rule`]), then the rows that no
+/// channel buys, and the order of the file decides the rest. `stock` is asked about each fitting
+/// row's sku in the channel that buys it: a row it answers `0` for is passed over, and a row it
+/// knows nothing about (`None`) is kept. The price a retail channel goes by is the catalogs'
+/// availability's ([`crate::Availability::price`]).
 ///
 /// The error is the message for the part: what was asked for, and the nearest rows.
 pub fn resolve(
     generic: &Generic,
     catalogs: &Catalogs,
-    stock: &dyn Fn(&str) -> Option<u64>,
+    stock: &dyn Fn(Channel, &str) -> Option<u64>,
 ) -> Result<Orderable, String> {
     let Some(Ok(catalog)) = catalogs.identity(&generic.catalog, &generic.kinds(), &[]) else {
         return Err(format!(
@@ -1103,20 +1108,58 @@ pub fn resolve(
         .copied()
         .filter(|c| misses(generic, c).is_empty())
         .collect();
-    // The project's preferred parts first, in the order of its file; then Basic, Preferred,
-    // Extended; the sort is stable, so the file order of the catalog decides the rest.
+    // The project's preferred parts first, in the order of its file; then each channel's rows,
+    // in the order of the project's list and by the channel's rule; the sort is stable, so the
+    // file order of the catalog decides the rest.
     let preferred = catalogs.preferred();
-    fits.sort_by_key(|c| {
+    let channels = catalogs.channels();
+    fn quoted(c: &Candidate) -> Option<(Channel, &str)> {
+        c.channel.zip(c.lcsc.as_deref())
+    }
+    let stock_of = |c: &Candidate| quoted(c).and_then(|(ch, sku)| stock(ch, sku));
+    let price_of = |c: &Candidate| {
+        quoted(c).and_then(|(ch, sku)| catalogs.availability().and_then(|a| a.price(ch, sku)))
+    };
+    let key = |c: &Candidate| {
+        let channel = c
+            .channel
+            .and_then(|ch| channels.iter().position(|x| *x == ch))
+            .unwrap_or(usize::MAX);
+        let (first, price) = match c.channel.map(Channel::rule) {
+            Some(Rule::Class) => (rank(c.library), None),
+            Some(Rule::StockThenPrice) => (
+                match stock_of(c) {
+                    Some(n) if n > 0 => 0,
+                    None => 1,
+                    Some(_) => 2,
+                },
+                price_of(c),
+            ),
+            None => (0, None),
+        };
         (
             preferred.and_then(|p| p.position(c)).unwrap_or(usize::MAX),
-            rank(c.library),
+            channel,
+            first,
+            price,
         )
+    };
+    fits.sort_by(|a, b| {
+        let (ka, kb) = (key(a), key(b));
+        (ka.0, ka.1, ka.2)
+            .cmp(&(kb.0, kb.1, kb.2))
+            .then(match (ka.3, kb.3) {
+                (Some(x), Some(y)) => x.total_cmp(&y),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            })
     });
     let mut passed_over = Vec::new();
     for c in fits.iter().copied() {
-        let in_stock = c.lcsc.as_deref().and_then(stock);
-        if in_stock == Some(0) {
-            passed_over.push(format!("{} has no stock", c.name));
+        if stock_of(c) == Some(0) {
+            let channel = c.channel.map_or(String::new(), |ch| format!(" in {ch}"));
+            passed_over.push(format!("{} has no stock{channel}", c.name));
             continue;
         }
         return Ok(Orderable {

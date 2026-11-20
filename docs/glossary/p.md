@@ -143,7 +143,7 @@ The view of a board's rails as cards: the voltage of each net a rail draws from,
 _Avoid_: Power diagram, rail map
 
 **Preferred parts file**:
-`preferred.csv` beside `netsmith.toml`: the parts, by `mpn` (with an optional `manufacturer`) or `lcsc`, matched as a _Part identity_ is, that a project takes first when a _Generic part_ is resolved to a catalog row, in the order of the file, before the rule of the code (JLCPCB Basic, then Preferred, then Extended, then file order). A listed row a provider says has no stock is passed over. It does not change what the solver picks from rows (issue #802, ADR 0047).
+`preferred.csv` beside `netsmith.toml`: the parts, by `mpn` (with an optional `manufacturer`), matched as a _Part identity_ is, that a project takes first when a _Generic part_ is resolved to a catalog row, in the order of the file, before the **supply channels** and their rules (JLCPCB's Basic, then Preferred, then Extended in `jlcpcb-assembly`; stock, then price in a retail channel), then file order. An `lcsc` column is refused, with the `mpn` of each number (ADR 0143). A listed row a provider says has no stock is passed over. It does not change what the solver picks from rows (issue #802, ADR 0047).
 _Avoid_: Approved vendor list, AVL, house parts (for this file), favourites
 
 **Process**:

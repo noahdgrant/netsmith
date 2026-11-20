@@ -331,7 +331,7 @@ fn add_prints_the_record_and_the_row_written_as_json() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|c| c.as_str().unwrap().starts_with("a JLCPCB offer"))
+            .any(|c| c.as_str().unwrap().starts_with("the class of the offer"))
     );
     // The row names the part, and its number is an offer of LCSC's beside it (no project here,
     // so `offers/lcsc.csv` in the folder the command ran in).

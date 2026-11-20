@@ -228,7 +228,7 @@ fn parse(text: &str, name: &str) -> Result<PickLock, String> {
                 None => Vec::new(),
                 Some(toml::Value::Table(t)) => {
                     let mut skus = Vec::new();
-                    for (channel, _) in CHANNELS {
+                    for channel in CHANNELS {
                         match t.get(channel) {
                             None => {}
                             Some(toml::Value::String(sku)) => {
@@ -241,14 +241,10 @@ fn parse(text: &str, name: &str) -> Result<PickLock, String> {
                             }
                         }
                     }
-                    if let Some(other) = t.keys().find(|k| !CHANNELS.iter().any(|(c, _)| c == k)) {
+                    if let Some(other) = t.keys().find(|k| !CHANNELS.contains(&k.as_str())) {
                         return Err(wrong(format!(
-                            "{at} `sku` has `{other}`, which is not a supply channel: it names {}",
-                            CHANNELS
-                                .iter()
-                                .map(|(c, _)| format!("`{c}`"))
-                                .collect::<Vec<_>>()
-                                .join(" and ")
+                            "{at} `sku` has `{other}`, which is not a supply channel netsmith knows: {}",
+                            netsmith_solve::Channel::words()
                         )));
                     }
                     skus
@@ -1162,11 +1158,21 @@ mod tests {
 
     #[test]
     fn a_sku_of_a_channel_that_is_not_one_is_refused() {
-        let text = "version = 2\n[Board.parts.\"r1\"]\ncatalog = \"resistor\"\nrow = \"330Ω\"\nsku = { digikey-retail = \"311-330\" }\n";
+        let text = "version = 2\n[Board.parts.\"r1\"]\ncatalog = \"resistor\"\nrow = \"330Ω\"\nsku = { farnell-retail = \"311-330\" }\n";
         let e = parse(text, "a.lock.toml").unwrap_err();
         assert_eq!(
             e,
-            "error: a.lock.toml: [Board.parts.\"r1\"] `sku` has `digikey-retail`, which is not a supply channel: it names `jlcpcb-assembly` and `lcsc-retail`"
+            "error: a.lock.toml: [Board.parts.\"r1\"] `sku` has `farnell-retail`, which is not a supply channel netsmith knows: `jlcpcb-assembly`, `lcsc-retail`, `digikey-retail` or `mouser-retail`"
+        );
+        // Every channel netsmith knows is one, in the order of the lock.
+        let text = "version = 2\n[Board.parts.\"r1\"]\ncatalog = \"resistor\"\nrow = \"330Ω\"\nsku = { mouser-retail = \"71-330\", digikey-retail = \"311-330\" }\n";
+        let lock = parse(text, "a.lock.toml").unwrap();
+        assert_eq!(
+            lock.rows("Board")[0].skus,
+            [
+                ("digikey-retail".to_string(), "311-330".to_string()),
+                ("mouser-retail".to_string(), "71-330".to_string())
+            ]
         );
     }
 

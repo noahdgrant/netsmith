@@ -181,7 +181,7 @@ fn loader(blocks: &[Block]) -> Loader {
 
 /// The catalogs the `nsm` blocks of each `set=` use: the standard ones and the rows of the
 /// set's `csv` blocks, which are files named by `file=` (`catalogs/resistor.csv` adds to
-/// the `resistor` catalog, `offers/jlcpcb.csv` to JLCPCB's offers). A set whose files do not
+/// the `resistor` catalog, `offers/lcsc.csv` to LCSC's offers). A set whose files do not
 /// load holds the problem.
 fn catalog_sets(blocks: &[Block]) -> HashMap<String, Result<Catalogs, String>> {
     let mut sets: HashMap<String, Result<Catalogs, String>> = HashMap::new();
@@ -320,7 +320,7 @@ fn is_preferred(b: &Block) -> bool {
 }
 
 /// The preferred-parts file the guide shows (issue #802) is one that netsmith reads, and the
-/// parts it names are real rows: a standard catalog has each `lcsc`.
+/// parts it names are real rows: a standard part has each `mpn` (an offer of it is of a row).
 #[test]
 fn the_preferred_parts_file_in_the_guide_is_one() {
     let blocks = guide_blocks();
@@ -331,12 +331,12 @@ fn the_preferred_parts_file_in_the_guide_is_one() {
         netsmith_solve::Preferred::parse("preferred.csv", &b.text)
             .unwrap_or_else(|e| panic!("{}: {e}", b.at()));
         let records = netsmith_solve::parse_csv(&b.text).unwrap();
-        let column = records[0].1.iter().position(|h| h == "lcsc").unwrap();
+        let column = records[0].1.iter().position(|h| h == "mpn").unwrap();
         for (_, fields) in &records[1..] {
-            let lcsc = fields[column].trim();
+            let mpn = fields[column].trim();
             assert!(
-                lcsc.is_empty() || standard.supplier(lcsc).is_some(),
-                "{}: no standard catalog has `{lcsc}`",
+                standard.offers().iter().any(|o| o.mpn == mpn),
+                "{}: no standard catalog has `{mpn}`",
                 b.at()
             );
         }

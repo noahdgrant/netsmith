@@ -128,6 +128,7 @@ use netsmith_quantity::{Dimension, Quantity, is_offset_unit, parse_unit};
 use std::sync::Arc;
 
 use crate::catalog::{Candidate, Curved, Derating, Library, Value};
+use crate::channel::Channel;
 use crate::curve::Curve;
 use crate::lock::LockedRow;
 use crate::offers::{Bought, Offers, bought_by};
@@ -334,10 +335,11 @@ impl Row {
         }
     }
 
-    /// What the row is bought by: its offers ([`bought_by`]). An error names the row.
-    fn bought(&self, offers: &Offers) -> Result<Bought, String> {
+    /// What the row is bought by in `channels`: its offers ([`bought_by`]). An error names the
+    /// row.
+    fn bought(&self, offers: &Offers, channels: &[Channel]) -> Result<Bought, String> {
         let manufacturer = (!self.manufacturer.is_empty()).then_some(self.manufacturer.as_str());
-        bought_by(offers, manufacturer, &self.mpn).map_err(|e| {
+        bought_by(offers, channels, manufacturer, &self.mpn).map_err(|e| {
             format!(
                 "{}: {e}: give the row its manufacturer, as the offer it is bought by has it",
                 self.at()
@@ -363,13 +365,13 @@ pub struct Table {
 }
 
 impl Table {
-    /// What the rows say about one supplier number: the first row that is bought by it
-    /// ([`bought_by`]).
-    pub fn supplier(&self, lcsc: &str, offers: &Offers) -> Option<Supplier> {
+    /// What the rows say about one supplier number: the first row that a channel of
+    /// `channels` buys by it ([`bought_by`]), with the class of that offer.
+    pub fn supplier(&self, lcsc: &str, offers: &Offers, channels: &[Channel]) -> Option<Supplier> {
         let (row, bought) = self.rows.iter().find_map(|r| {
             // A row whose offers are ambiguous is refused where a part reads the catalog; here
             // it is bought by nothing.
-            let bought = r.bought(offers).unwrap_or_default();
+            let bought = r.bought(offers, channels).unwrap_or_default();
             (bought.lcsc.as_deref() == Some(lcsc)).then_some((r, bought))
         })?;
         Some(Supplier {
@@ -545,7 +547,7 @@ impl Table {
         let number = |n: &String| (!n.is_empty()).then(|| n.clone());
         Some(LockedRow {
             row: row.name.clone(),
-            skus: crate::lock::channel_skus(&row.bought(offers).unwrap_or_default().skus),
+            skus: row.bought(offers, &[]).unwrap_or_default().skus,
             manufacturer: number(&row.manufacturer),
             mpn: number(&row.mpn),
             ..locked.clone()
@@ -577,14 +579,15 @@ impl Table {
     /// the line and the cell. `optional` names the columns the statement marks `optional`
     /// (ADR 0078): a file may leave one out, and a row may leave its cell empty.
     ///
-    /// A row's supplier number and JLCPCB's library of it are read from its offers
-    /// ([`bought_by`]).
+    /// A row's supplier number, the class of its offer and the channel that buys it are read
+    /// from its offers, by the first of `channels` that has one ([`bought_by`]).
     pub fn candidates(
         &self,
         name: &str,
         columns: &[(String, FieldKind)],
         optional: &[String],
         offers: &Offers,
+        channels: &[Channel],
     ) -> Result<Vec<Candidate>, String> {
         let listed = || {
             columns
@@ -671,7 +674,7 @@ impl Table {
                     (None, None) => {}
                 }
             }
-            let bought = row.bought(offers)?;
+            let bought = row.bought(offers, channels)?;
             out.push(Candidate {
                 name: row.name.clone(),
                 label: row.label.clone(),
@@ -680,6 +683,7 @@ impl Table {
                 manufacturer: (!row.manufacturer.is_empty()).then(|| row.manufacturer.clone()),
                 mpn: (!row.mpn.is_empty()).then(|| row.mpn.clone()),
                 library: bought.library,
+                channel: bought.channel,
                 assembly: row.cell("assembly").map(str::to_string),
                 height: if columns.iter().any(|(c, _)| c == "height") {
                     None
@@ -717,7 +721,7 @@ fn retired_columns(file: &str, line: usize, retired: &[&str]) -> String {
         ("the columns", "have")
     };
     format!(
-        "{file}:{line}: {them} {named} {has} gone from catalog files (ADR 0143): a catalog row is the part, its `manufacturer` and `mpn`, and what a supplier calls it is an offer, a row of `offers/jlcpcb.csv` and `offers/lcsc.csv` (the `lcsc` number is the offer's `sku`, and the `library` the `class` of the jlcpcb offer); `netsmith project migrate-offers` moves them into the project's offers files and removes them here (docs/MIGRATING.md)"
+        "{file}:{line}: {them} {named} {has} gone from catalog files (ADR 0143): a catalog row is the part, its `manufacturer` and `mpn`, and what a supplier calls it is an offer, a row of `offers/<supplier>.csv` (the `lcsc` number is the `sku` of the offer in `offers/lcsc.csv`, and the `library` its `class`); `netsmith project migrate-offers` moves them into the project's offers files and removes them here (docs/MIGRATING.md)"
     )
 }
 

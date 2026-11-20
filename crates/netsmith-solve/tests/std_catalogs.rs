@@ -164,7 +164,7 @@ fn record(name: &str, source: &str, catalogs: &Catalogs) -> Vec<String> {
                 .iter()
                 .map(|p| {
                     let found = p.generic.as_ref().map(|g| {
-                        let order = match resolve(g, catalogs, &|_| None) {
+                        let order = match resolve(g, catalogs, &|_, _| None) {
                             Ok(o) => format!("ok {}", o.name),
                             Err(e) => format!("err {}", hash(&e)),
                         };

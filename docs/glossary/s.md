@@ -143,7 +143,7 @@ Wire or dot in the editor's schematic that serves nothing: an end that touches n
 _Avoid_: Dangling wire, spur, stub (a stub is the short wire straight out of a pin)
 
 **Supplier**:
-A seller of parts, named by the file of its **offers** and by the **supply channel** that buys from it: `jlcpcb` and `lcsc`, the two netsmith reads offers files of; another (`digikey`, `mouser`) comes with its own file and provider, and until then an offers file named for it is refused. It is not a **supply provider** (the code that asks it for a quote) and not the board house that assembles (ADR 0143, proposed).
+A seller of parts, named by the file of its **offers** and by the **supply channels** that buy from it: `lcsc`, `digikey` and `mouser`, the three netsmith reads offers files of (JLCPCB's assembly stock is a channel of the `lcsc` supplier's numbers, since JLCPCB's parts library uses them); another comes with its own file and channel, and until then an offers file named for it is refused. It is not a **supply provider** (the code that asks it for a quote) and not the board house that assembles (ADR 0143, proposed).
 _Avoid_: Vendor, distributor (for the same thing), source (a `source` cell is where a number was read)
 
 **Supply budget**:
@@ -151,7 +151,7 @@ What a source rail that states its own `.current` gives at most, the magnitude o
 _Avoid_: Current limit (a part's own relation), Load rating
 
 **Supply channel**:
-Where a project buys a part and how the stock and price are read: `jlcpcb-assembly` (the stock JLCPCB holds for its assembly), `lcsc-retail`, `digikey-retail` and the like (ADR 0047, ADR 0143, proposed). The `[supply]` table of `netsmith.toml` lists them in order and the first with an **offer** for a part buys it; each has its own rule for choosing among the rows that fit (JLCPCB's: Basic, Preferred, Extended). It is independent of `.assembly`, which says who places the part. Not a pin's **channel** of a class.
+Where a project buys a part and how the stock and price are read: `jlcpcb-assembly` (the stock JLCPCB holds for its assembly), `lcsc-retail`, `digikey-retail` and `mouser-retail` (ADR 0047, ADR 0143, proposed). Each reads the **offers** file of one **supplier** (`jlcpcb-assembly` only the `lcsc` offers that have a class) and has its own rule for choosing among the rows that fit a _Generic part_: JLCPCB's Basic, Preferred, Extended for `jlcpcb-assembly`, stock and then price for a retail one. The `channels` of the `[supply]` table of `netsmith.toml` list them in order (default `jlcpcb-assembly`, then `lcsc-retail`) and the first with an offer for a part buys it. It is independent of `.assembly`, which says who places the part. Not a pin's **channel** of a class.
 _Avoid_: Source of supply, route (for a channel), store
 
 **Supply peak**:
@@ -159,7 +159,7 @@ The `.supply_peak` of a part in a `~>` chain, a `Fuse`: the `.peak` of the rail 
 _Avoid_: Chain voltage, input peak
 
 **Supply provider**:
-A source of price and stock for a part number, behind one trait: given a part's number it answers with quotes, each saying its **supply channel** (JLCPCB assembly stock or LCSC retail stock), stock, price breaks and when it was read. ADR 0143 (proposed) has it asked by the **offer**'s `sku` and not by an LCSC number. Asked when the bill of materials or `fab` is made, cached with a timestamp, and when it has no answer price and stock are **unknown**, never guessed and never 0. Configured in the `[supply]` table of `netsmith.toml`; credentials never go there (ADR 0047).
+A source of price and stock for a part number, behind one trait: given a part's number it answers with quotes, each saying its **supply channel** (JLCPCB assembly stock, LCSC retail stock), stock, price breaks and when it was read. ADR 0143 (proposed) has it asked by the **offer**'s `sku` and not by an LCSC number. Asked when the bill of materials or `fab` is made, cached with a timestamp, and when it has no answer price and stock are **unknown**, never guessed and never 0. Configured in the `[supply]` table of `netsmith.toml`; credentials never go there (ADR 0047).
 _Avoid_: Supplier feed, price list (a file provider reads one)
 
 **Supply row**:

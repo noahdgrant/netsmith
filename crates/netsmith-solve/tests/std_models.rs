@@ -1033,7 +1033,7 @@ fn the_half_ripple_reaches_the_row_a_generic_inductor_has_to_become() {
         .find(|p| s.model.path_of(p.part) == "stage.inductor")
         .unwrap();
     let generic = pick.generic.as_ref().unwrap();
-    let e = resolve(generic, &Catalogs::jlcpcb(), &|_| None).unwrap_err();
+    let e = resolve(generic, &Catalogs::jlcpcb(), &|_, _| None).unwrap_err();
     assert!(
         e.starts_with("unresolved: no row of the `inductor` catalog"),
         "{e}"

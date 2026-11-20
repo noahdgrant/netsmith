@@ -27,7 +27,7 @@ Only `name` is required.
 | `kicad` | The KiCad version of the files. Only 9 is accepted. |
 | `catalog_dirs` | The folders whose `*.csv` files are the project's own catalogs, each named by its file name (`catalogs/acme_ldo.csv` is the catalog `acme_ldo`), in addition to the standard ones. Default `["catalogs"]`; `init` writes it out. See Catalog files. |
 | `catalogs` | Optional. Single catalog files to add that are not in a `catalog_dirs` folder, each named by its catalog. See Catalog files. |
-| `offer_dirs` | The folders whose `*.csv` files are the project's offers, each named for its supplier (`offers/jlcpcb.csv`, `offers/lcsc.csv`), read after the standard offers (ADR 0143). Default `["offers"]`, which is not written out; `[]` reads no folder. A folder may not also be a `catalog_dirs` folder. See Offers files. |
+| `offer_dirs` | The folders whose `*.csv` files are the project's offers, each named for its supplier (`offers/lcsc.csv`, `offers/digikey.csv`, `offers/mouser.csv`), read after the standard offers (ADR 0143). Default `["offers"]`, which is not written out; `[]` reads no folder. A folder may not also be a `catalog_dirs` folder. See Offers files. |
 | `assembly` | Optional. Who assembles a part nothing else speaks for: `"fab"`, `"hand"`, `"none"` or `"consigned"`. See Who assembles a part. |
 | `environment` | Optional. The environment every board has when it declares none: `"std::env::Environment"`, a definition of the project's own, `"src/vehicle.nsm::Automotive"`, or one of a dependency by its module, `"shared::env::Lab"` (_Dependencies_, below). See The environment of a board. |
 | `guidelines` | Optional. What a design that goes against a guideline gets: `"warn"` (the default) reports it and builds, `"error"` refuses to build. `--strict` asks for `"error"` for one run. See Track width against current, and The voltage a power track drops (a guideline of `fab`, which then stops before it writes the package). |
@@ -40,7 +40,7 @@ Only `name` is required.
 | `glb` | Optional. Whether `fab` writes the board's 3D scene as `<board>.glb` into the fab package: `true`, the default, writes it; `glb = false` leaves it out, and removes the one of an earlier run. `board fab --no-glb` leaves it out for one run. See `docs/BOARD3D.md`, "In the fab package". |
 | `pdf` | Optional. Whether `fab` writes the board's schematic as `<board>-schematic.pdf` into the fab package, a page for each sheet: `true`, the default, writes it; `pdf = false` leaves it out, and removes the one of an earlier run. `board fab --no-pdf` leaves it out for one run. See chapter 27, "The schematic as a document". |
 
-Beside `[project]`, the file may have `[order.<name>.boards]` tables, with `via_in_pad` in an order's own `[order.<name>]` table (_Orders_, below), a `[supply]` table (_Catalog files_), a `[dependencies]` table (_Dependencies_, below), a `[lint]` table (the rules of `netsmith project lint` turned off for the project, `off = ["naming"]`, and `findings = "warn"` or `"error"`, which `--strict` asks for one run: _The linter_, in the chapter on commands), and a model table: a `[models]` table with `folder`, and `[[model]]` rows with `footprint`, `file`, `offset` and `rotation`, the STEP model a part is drawn from when it states none (_A model table_ in the chapter on the shape of a board). Any other table is refused.
+Beside `[project]`, the file may have `[order.<name>.boards]` tables, with `via_in_pad` in an order's own `[order.<name>]` table (_Orders_, below), a `[supply]` table (the project's supply channels and its supply provider: _Supply channels_ in the chapter on catalogs), a `[dependencies]` table (_Dependencies_, below), a `[lint]` table (the rules of `netsmith project lint` turned off for the project, `off = ["naming"]`, and `findings = "warn"` or `"error"`, which `--strict` asks for one run: _The linter_, in the chapter on commands), and a model table: a `[models]` table with `folder`, and `[[model]]` rows with `footprint`, `file`, `offset` and `rotation`, the STEP model a part is drawn from when it states none (_A model table_ in the chapter on the shape of a board). Any other table is refused.
 
 ### Orders
 
@@ -85,7 +85,7 @@ Rules.
 - Paths in the manifest stay inside the project, and a catalog file is named for its catalog. An unknown key is refused with its line.
 - A file name that cannot be written in an import is refused, naming the file.
 - A `.csv` file in a `catalog_dirs` folder that is not named like a catalog is refused, naming the file.
-- A `.csv` file in an `offer_dirs` folder that is not named for a supplier (`jlcpcb.csv`, `lcsc.csv`) is refused, naming the file.
+- A `.csv` file in an `offer_dirs` folder that is not named for a supplier (`lcsc.csv`, `digikey.csv`, `mouser.csv`) is refused, naming the file; a `jlcpcb.csv` is refused with how to merge it into `lcsc.csv` (its classes are the `class` of the `lcsc` offers, ADR 0143).
 
 Misuse.
 
@@ -175,19 +175,20 @@ commit = "0123456789abcdef0123456789abcdef01234567"
 
 ### Preferred parts
 
-A project says which rows it takes first for a generic part in `preferred.csv`, beside `netsmith.toml` (ADR 0047, issue #802). Each line names a part by its `lcsc` number (the sku of its offer, ADR 0143), its `mpn` (with its `manufacturer`, if the line says whose), or both; `note` is free text, for why. The file is optional, and a project without one resolves as before.
+A project says which rows it takes first for a generic part in `preferred.csv`, beside `netsmith.toml` (ADR 0047, issue #802). Each line names a part by its `mpn`, with its `manufacturer` when two parts share the number (ADR 0143); `note` is free text, for why. The file is optional, and a project without one resolves as before.
 
 ```csv file=preferred.csv
-lcsc,mpn,note
-C25744,,the 10k 0402 reel on our shelf
-C25804,,
+mpn,manufacturer,note
+0402WGF1002TCE,,the 10k 0402 reel on our shelf
+0603WAF1002T5E,,
 ```
 
-When the bill of materials or `fab` resolves a generic part to a row of its catalog (_Generic parts_ in the chapter on catalogs), the rows that fit and that the file names come first, in the order of the file; the other rows that fit follow as without it, JLCPCB Basic before Preferred before Extended, then the order of the catalog file. A listed row that a supply provider says has no stock is passed over, as any row is. A line names a row as a part's identity does (ADR 0143): by its `mpn` when the line and the row have one, and its `manufacturer` when both name one; by its `lcsc` when either has no `mpn`. A line with both `lcsc` and `mpn` therefore names the row of that `mpn`. A part is listed once: two lines of one `mpn` from two manufacturers are two parts, and a line that names a manufacturer must have an `mpn`.
+When the bill of materials or `fab` resolves a generic part to a row of its catalog (_Generic parts_ in the chapter on catalogs), the rows that fit and that the file names come first, in the order of the file; the other rows that fit follow as without it, in the order of the project's supply channels, each channel's by its own rule (_Supply channels_ in the chapter on catalogs: JLCPCB Basic before Preferred before Extended in `jlcpcb-assembly`), then the order of the catalog file. A listed row that a supply provider says has no stock is passed over, as any row is. A line names a row as a part's identity does: by its `mpn`, and its `manufacturer` when the line and the row both name one. A part is listed once: two lines of one `mpn` from two manufacturers are two parts, and a line that names a manufacturer must have an `mpn`.
 
 - The file changes only resolution. The solver picks from a catalog's rows in the order of the file as before, so a design's picks and its pick lock are the same with or without it.
 - A part the file names that no catalog has is not an error: it never fits, so it changes nothing.
-- A column other than `lcsc`, `mpn` and `note`, a header with neither `lcsc` nor `mpn`, a line that names no part and a part named twice are refused, with the file and line: `` preferred.csv:3: `C25744` is listed twice; a part is listed once ``.
+- A column other than `mpn`, `manufacturer` and `note`, a header with no `mpn`, a line that names no part and a part named twice are refused, with the file and line: `` preferred.csv:3: `0402WGF1002TCE` is listed twice; a part is listed once ``.
+- An `lcsc` column, which named a part by a supplier's number before the number was an offer, is refused at the header, and the message gives the `mpn` of each number an offer has: `` preferred.csv:1: the column `lcsc` has gone from a preferred-parts file (ADR 0143): ...; line 2: `C25744` is `0402WGF1002TCE` (data/offers/lcsc.csv:234) ``.
 - The editor builds again when the file is written or changed.
 
 ### A part of your own, with no KiCad installed

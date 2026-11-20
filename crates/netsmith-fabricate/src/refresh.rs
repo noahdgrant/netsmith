@@ -11,7 +11,7 @@ use crate::project::{MANIFEST, Project};
 pub const STD_OFFERS_DIR: &str = "data/offers";
 
 /// The files to act on: catalog files, and offers files (a `.csv` named for a supplier,
-/// `lcsc.csv` or `jlcpcb.csv`, ADR 0143). With `paths`, each is a catalog or offers file or a
+/// `lcsc.csv`, ADR 0143). With `paths`, each is a catalog or offers file or a
 /// directory of them; when none of them is an offers file, the offers are the project's (that
 /// contains `cwd`), else those of an `offers` folder beside or above a catalog folder named. With
 /// none: the catalog and offers files of the project that contains `cwd` (its `catalog_dirs`
@@ -67,7 +67,10 @@ pub fn resolve_targets(cwd: &Path, paths: &[PathBuf]) -> Result<Targets, String>
             return Err(format!("{}: no such file or directory", path.display()));
         };
         for target in found {
-            if netsmith_solve::offers::is_supplier(&target.catalog) {
+            // `jlcpcb.csv` is an offers file, refused with what to do when it is read.
+            if netsmith_solve::offers::is_supplier(&target.catalog)
+                || target.catalog == netsmith_solve::offers::MERGED_INTO_LCSC
+            {
                 targets.offers.push(target);
             } else {
                 targets.catalogs.push(target);

@@ -68,7 +68,7 @@ fn an_lcsc_number_is_refused_with_the_mpn_to_write() {
     assert_eq!(
         said,
         vec![format!(
-            "`.lcsc &= \"{OTHER_ROW}\"` on `r1`: a hand pick is by the manufacturer's part number now, and a supplier's number is an offer (ADR 0143): write `.mpn &= \"{OTHER_MPN}\"` in its place, the part the jlcpcb offer {OTHER_ROW} is of ({line}); `netsmith project migrate-offers` rewrites these narrowings in a project's sources"
+            "`.lcsc &= \"{OTHER_ROW}\"` on `r1`: a hand pick is by the manufacturer's part number now, and a supplier's number is an offer (ADR 0143): write `.mpn &= \"{OTHER_MPN}\"` in its place, the part the lcsc offer {OTHER_ROW} is of ({line}); `netsmith project migrate-offers` rewrites these narrowings in a project's sources"
         )]
     );
     let d = &s.diagnostics[0];

@@ -28,6 +28,7 @@ fn resistor(ohms: f64) -> Candidate {
         manufacturer: None,
         mpn: None,
         library: None,
+        channel: None,
         assembly: None,
         height: None,
         temp_min: None,
