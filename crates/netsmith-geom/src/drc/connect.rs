@@ -183,6 +183,32 @@ pub(crate) fn net_graph(m: &Model<'_>, net: &str) -> NetGraph {
     NetGraph { items, adj }
 }
 
+/// Whether the copper of its net joins the pad `number` of `part` (any pad of that number) to a
+/// pour of its net, by the graph of [`net_graph`]; `None` when there is no such pad on a net.
+pub(crate) fn pad_reaches_pour(m: &Model<'_>, part: &str, number: &str) -> Option<bool> {
+    let is_pad = |c: &Copper| {
+        matches!(c.kind, Kind::Pad(_))
+            && c.item.part.as_deref() == Some(part)
+            && c.item.pad.as_deref() == Some(number)
+    };
+    let net = m.items.iter().find(|c| is_pad(c))?.net.clone()?;
+    let graph = net_graph(m, &net);
+    let mut seen = vec![false; graph.adj.len()];
+    let mut stack: Vec<usize> = (0..graph.items.len())
+        .filter(|&k| is_pad(&m.items[graph.items[k]]))
+        .collect();
+    while let Some(k) = stack.pop() {
+        if std::mem::replace(&mut seen[k], true) {
+            continue;
+        }
+        if k >= graph.items.len() {
+            return Some(true);
+        }
+        stack.extend(graph.adj[k].iter().copied().filter(|&j| !seen[j]));
+    }
+    Some(false)
+}
+
 fn polygons_touch(a: &super::model::Pour, b: &super::model::Pour) -> bool {
     a.polygons.iter().any(|pa| {
         b.polygons.iter().any(|pb| {
