@@ -598,6 +598,12 @@ pub fn outcome_observed(
                 .into_iter()
                 .map(|n| (n, Cause::Pick)),
         );
+        notes.extend(
+            catalogs
+                .offer_notes()
+                .into_iter()
+                .map(|n| (n, Cause::Other)),
+        );
         let mut one = timings::stage("export", &board.name, || {
             export(
                 None,
@@ -811,6 +817,12 @@ pub fn outcome_observed(
                 stock::notes(&designed, catalogs)
                     .into_iter()
                     .map(|n| (n, Cause::Pick)),
+            );
+            notes.extend(
+                catalogs
+                    .offer_notes()
+                    .into_iter()
+                    .map(|n| (n, Cause::Other)),
             );
             let mut one = timings::stage("export", &label, || {
                 export(

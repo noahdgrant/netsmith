@@ -88,6 +88,16 @@ pub struct Manifest {
     /// and the standard JLCPCB catalogs (ADR 0022).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub catalogs: Vec<String>,
+    /// The folders whose `*.csv` files are the project's offers (ADR 0143), relative to the
+    /// project root (`..` is allowed): each file is named for its supplier (`offers/jlcpcb.csv`
+    /// is JLCPCB's), and its offers come after the standard ones. The default is `["offers"]`,
+    /// which is not written out; `[]` reads no folder. Sub-folders are not read, and a folder
+    /// may not also be a `catalog_dirs` folder.
+    #[serde(
+        default = "default_offer_dirs",
+        skip_serializing_if = "is_default_offer_dirs"
+    )]
+    pub offer_dirs: Vec<String>,
     /// Who assembles a part that nothing else speaks for: `"fab"`, `"hand"`, `"none"` or `"consigned"`
     /// (ADR 0028, ADR 0084). Without it a part is the board house's if it is surface mount and
     /// soldered by hand if it is through hole.
@@ -379,6 +389,14 @@ fn default_catalog_dirs() -> Vec<String> {
     vec![CATALOG_DIR.to_string()]
 }
 
+fn default_offer_dirs() -> Vec<String> {
+    vec![netsmith_solve::offers::FOLDER.to_string()]
+}
+
+fn is_default_offer_dirs(dirs: &[String]) -> bool {
+    dirs == default_offer_dirs().as_slice()
+}
+
 fn default_out() -> String {
     "out".to_string()
 }
@@ -441,6 +459,7 @@ impl Manifest {
             kicad: default_kicad(),
             catalog_dirs: default_catalog_dirs(),
             catalogs: Vec::new(),
+            offer_dirs: default_offer_dirs(),
             assembly: None,
             glb: None,
             step: None,
@@ -644,6 +663,22 @@ impl Manifest {
             {
                 return Err(format!(
                     "{MANIFEST}: catalog_dirs lists the folder {dir:?} twice"
+                ));
+            }
+        }
+        for (index, dir) in self.offer_dirs.iter().enumerate() {
+            check_folder("offer_dirs", dir)?;
+            if self.offer_dirs[..index]
+                .iter()
+                .any(|earlier| same_folder(earlier, dir))
+            {
+                return Err(format!(
+                    "{MANIFEST}: offer_dirs lists the folder {dir:?} twice"
+                ));
+            }
+            if let Some(catalogs) = self.catalog_dirs.iter().find(|c| same_folder(c, dir)) {
+                return Err(format!(
+                    "{MANIFEST}: the folder {dir:?} is in offer_dirs and in catalog_dirs ({catalogs:?}); a folder holds catalogs or offers, not both: put the offers files in a folder of their own"
                 ));
             }
         }
@@ -1018,16 +1053,25 @@ impl Project {
     /// name)`. A folder that does not exist holds none: the default `catalogs` is
     /// there for a project that has no catalogs of its own yet.
     fn folder_csvs(&self) -> Result<Vec<(String, String, PathBuf, String)>, String> {
+        self.csvs_in("catalog_dirs", &self.manifest.catalog_dirs)
+    }
+
+    /// [`Project::folder_csvs`] of the folders `dirs`, which the manifest's `key` lists.
+    fn csvs_in(
+        &self,
+        key: &str,
+        dirs: &[String],
+    ) -> Result<Vec<(String, String, PathBuf, String)>, String> {
         let mut found = Vec::new();
-        for dir in &self.manifest.catalog_dirs {
+        for dir in dirs {
             let path = self.root.join(dir);
             if !path.exists() {
                 continue;
             }
-            let io = |e: io::Error| format!("{MANIFEST}: catalog_dirs {dir:?}: {e}");
+            let io = |e: io::Error| format!("{MANIFEST}: {key} {dir:?}: {e}");
             if !path.is_dir() {
                 return Err(format!(
-                    "{MANIFEST}: catalog_dirs {dir:?} is not a folder ({})",
+                    "{MANIFEST}: {key} {dir:?} is not a folder ({})",
                     path.display()
                 ));
             }
@@ -1130,6 +1174,62 @@ fn one_file_each(found: &[CatalogFile]) -> Result<(), String> {
         });
     }
     Ok(())
+}
+
+/// One offers file of a project (ADR 0143): `<supplier>.csv` in an `offer_dirs` folder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OfferFile {
+    /// The supplier it is named for: the file's name without `.csv` (`jlcpcb`).
+    pub supplier: String,
+    /// The file as messages name it: relative to the project root, with `/`.
+    pub file: String,
+    pub path: PathBuf,
+}
+
+impl Project {
+    /// The offers files a build reads: the `*.csv` files of the project's `offer_dirs` folders
+    /// (folders in the order the manifest lists them, files in file-name order) and then those
+    /// of each dependency, named from this project's root. A `.csv` whose name is not a
+    /// supplier's, and two files of one supplier, are errors that name the files.
+    pub fn all_offer_files(&self) -> Result<Vec<OfferFile>, String> {
+        let mut found = self.own_offer_files()?;
+        for dependency in self.dependencies()? {
+            for mut file in dependency.project.own_offer_files()? {
+                file.file = format!("{}/{}", dependency.folder, file.file);
+                found.push(file);
+            }
+        }
+        for (index, later) in found.iter().enumerate() {
+            if let Some(earlier) = found[..index].iter().find(|f| f.supplier == later.supplier) {
+                return Err(format!(
+                    "{MANIFEST}: the offers of `{}` are in two files, {} and {}; a supplier's offers are one file. Move the offers into one, and remove the other",
+                    later.supplier, earlier.file, later.file
+                ));
+            }
+        }
+        Ok(found)
+    }
+
+    fn own_offer_files(&self) -> Result<Vec<OfferFile>, String> {
+        let mut found = Vec::new();
+        for (folder, file, path, file_name) in
+            self.csvs_in("offer_dirs", &self.manifest.offer_dirs)?
+        {
+            let supplier = file_name.strip_suffix(".csv").expect("a .csv");
+            if !netsmith_solve::offers::is_supplier(supplier) {
+                return Err(format!(
+                    "{MANIFEST}: {file} in the offer_dirs folder {folder:?} is not an offers file: an offers file is named for its supplier, {}. Rename it, or move it out of the folder (a folder's sub-folders are not read)",
+                    netsmith_solve::offers::supplier_files()
+                ));
+            }
+            found.push(OfferFile {
+                supplier: supplier.to_string(),
+                file,
+                path,
+            });
+        }
+        Ok(found)
+    }
 }
 
 /// One curve file of a project (`netsmith_solve::curve`, issue #1260):
@@ -1274,6 +1374,13 @@ impl Project {
                 .into_iter()
                 .map(|c| c.path),
         );
+        // The offers files as they are now: a new or a removed one changes the list.
+        paths.extend(
+            self.csvs_in("offer_dirs", &self.manifest.offer_dirs)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(_, _, path, _)| path),
+        );
         // Watched only when it is there (a missing file would read as changed on every look);
         // its first write lengthens the list, which is a change too.
         let preferred = self.root.join(PREFERRED);
@@ -1284,7 +1391,8 @@ impl Project {
     }
 
     /// The standard JLCPCB catalogs and the project's own catalog files
-    /// ([`Project::catalog_files`]), read again on each call. A problem names the file and
+    /// ([`Project::catalog_files`]), with the standard offers and the project's
+    /// ([`Project::all_offer_files`]), read again on each call. A problem names the file and
     /// line.
     pub fn catalogs(&self) -> Result<Catalogs, String> {
         let mut catalogs = Catalogs::jlcpcb()
@@ -1308,6 +1416,15 @@ impl Project {
         {
             let text = fs::read_to_string(&path).map_err(|e| format!("{MANIFEST}: {file}: {e}"))?;
             catalogs.add_curve(&catalog, &row, &file, &text)?;
+        }
+        for OfferFile {
+            supplier,
+            file,
+            path,
+        } in self.all_offer_files()?
+        {
+            let text = fs::read_to_string(&path).map_err(|e| format!("{MANIFEST}: {file}: {e}"))?;
+            catalogs.add_offers_file(&supplier, &file, &text)?;
         }
         if let Some(preferred) = self.preferred()? {
             catalogs = catalogs.with_preferred(preferred);

@@ -18,10 +18,10 @@
 //!
 //! | fixed column | meaning |
 //! |---|---|
-//! | `lcsc` | the supplier's part number (`C25104`) |
+//! | `lcsc` | the supplier's part number (`C25104`). Where the part has an offer ([`crate::offers`], ADR 0143) the offer's `sku` is read instead, and this column where it has none; for a standard row the two are equal (a test holds them so) |
 //! | `manufacturer` | the part's manufacturer, as its datasheet spells it (`Texas Instruments`); with the `mpn` it is the row's identity (ADR 0143). Empty means the row does not say, and the `mpn` alone is the identity, the same part whoever makes it |
 //! | `mpn` | the manufacturer's part number; also a field of the part if its catalog lists `.mpn` |
-//! | `library` | JLCPCB's `Basic`, `Extended` or `Preferred` |
+//! | `library` | JLCPCB's `Basic`, `Extended` or `Preferred`. Where the part has a `jlcpcb` offer its `class` is read instead, as for `lcsc` |
 //! | `assembly` | who assembles the part when the design does not say: `fab`, `hand`, `none` or `consigned` (ADR 0024, ADR 0084) |
 //! | `height` | how tall the part's body stands above the face of the board it is on, a length of one value (`2.4mm`), read from the datasheet or the manufacturer's drawing, with the document, its revision and the page or table in the `source` cell (ADR 0094). The part's `.height` is this when nothing in the design states one; empty means the height is unknown. A part whose `catalog` lists `.height` as a column of its own reads it as that column instead |
 //! | `temp_min`, `temp_max` | the least and the greatest temperature the part works at, each one temperature as the datasheet prints it (`-40degC`, or `233.15K`, which is the same temperature), with the datasheet or record and which temperature it is (ambient, junction or operating) in `source` and `notes` (ADR 0099). A figure that is a junction range (`TJ`) is accepted as the part's range and the part is judged by it: a junction range that covers the environment is a pass, and the part's own heating is not computed, which is the limit of the check. A design whose board states an `.environment` is checked against them: a row whose range does not cover it is not offered, and a row with an empty cell is offered and named in a guideline finding. A project's own part that states `.temp_min` or `.temp_max` in its source states it for every row |
@@ -126,6 +126,7 @@ use std::sync::Arc;
 use crate::catalog::{Candidate, Curved, Derating, Library, Value};
 use crate::curve::Curve;
 use crate::lock::LockedRow;
+use crate::offers::{Bought, Offers, bought_by};
 use crate::standard::Standard;
 
 /// The columns that are about the row, not about the part.
@@ -329,6 +330,26 @@ impl Row {
         }
     }
 
+    /// The row's own `lcsc` and `library` columns.
+    fn columns(&self) -> Bought {
+        Bought {
+            lcsc: (!self.lcsc.is_empty()).then(|| self.lcsc.clone()),
+            library: self.library,
+        }
+    }
+
+    /// What the row is bought by: its offers, and its columns where it has none
+    /// ([`bought_by`]). An error names the row.
+    fn bought(&self, offers: &Offers) -> Result<Bought, String> {
+        let manufacturer = (!self.manufacturer.is_empty()).then_some(self.manufacturer.as_str());
+        bought_by(offers, manufacturer, &self.mpn, self.columns()).map_err(|e| {
+            format!(
+                "{}: {e}: give the row its manufacturer, as the offer it is bought by has it",
+                self.at()
+            )
+        })
+    }
+
     fn cell(&self, column: &str) -> Option<&str> {
         let i = self.header.names.iter().position(|n| n == column)?;
         let cell = self.cells[i].trim();
@@ -347,13 +368,19 @@ pub struct Table {
 }
 
 impl Table {
-    /// What the rows say about one LCSC number: the first row that has it.
-    pub fn supplier(&self, lcsc: &str) -> Option<Supplier> {
-        let row = self.rows.iter().find(|r| r.lcsc == lcsc)?;
+    /// What the rows say about one LCSC number: the first row that is bought by it, its own
+    /// column or its offer ([`bought_by`]).
+    pub fn supplier(&self, lcsc: &str, offers: &Offers) -> Option<Supplier> {
+        let (row, bought) = self.rows.iter().find_map(|r| {
+            // A row whose offers are ambiguous is refused where a part reads the catalog; here
+            // it is its columns.
+            let bought = r.bought(offers).unwrap_or_else(|_| r.columns());
+            (bought.lcsc.as_deref() == Some(lcsc)).then_some((r, bought))
+        })?;
         Some(Supplier {
-            lcsc: row.lcsc.clone(),
+            lcsc: lcsc.to_string(),
             mpn: row.mpn.clone(),
-            library: row.library,
+            library: bought.library,
             stock: row.cell("stock").and_then(|s| s.parse().ok()),
             unit_price_usd: row.cell("price").and_then(|s| s.parse().ok()),
             date: row.cell("date").map(str::to_string),
@@ -496,6 +523,16 @@ impl Table {
         Ok(())
     }
 
+    /// Whether a row of this catalog is the part named by `manufacturer` and `mpn`, by the
+    /// identity of an offer ([`crate::offers::Offer::is_of`]).
+    pub fn has_part(&self, manufacturer: Option<&str>, mpn: &str) -> bool {
+        self.rows.iter().any(|r| {
+            !mpn.is_empty()
+                && r.mpn == mpn
+                && (r.manufacturer.is_empty() || manufacturer.is_none_or(|m| m == r.manufacturer))
+        })
+    }
+
     /// Whether a row of this catalog is called `name` (what a pick lock's `row` says).
     pub fn has_row_named(&self, name: &str) -> bool {
         self.rows.iter().any(|r| r.name == name)
@@ -558,11 +595,15 @@ impl Table {
     /// of the rows. Every cell is read as its column's kind, and a problem names the file,
     /// the line and the cell. `optional` names the columns the statement marks `optional`
     /// (ADR 0078): a file may leave one out, and a row may leave its cell empty.
+    ///
+    /// A row's `lcsc` and `library` are read through its offers ([`bought_by`]), and are its
+    /// own columns where it has none.
     pub fn candidates(
         &self,
         name: &str,
         columns: &[(String, FieldKind)],
         optional: &[String],
+        offers: &Offers,
     ) -> Result<Vec<Candidate>, String> {
         let listed = || {
             columns
@@ -653,14 +694,15 @@ impl Table {
                     (None, None) => {}
                 }
             }
+            let bought = row.bought(offers)?;
             out.push(Candidate {
                 name: row.name.clone(),
                 label: row.label.clone(),
                 columns: values,
-                lcsc: (!row.lcsc.is_empty()).then(|| row.lcsc.clone()),
+                lcsc: bought.lcsc,
                 manufacturer: (!row.manufacturer.is_empty()).then(|| row.manufacturer.clone()),
                 mpn: (!row.mpn.is_empty()).then(|| row.mpn.clone()),
-                library: row.library,
+                library: bought.library,
                 assembly: row.cell("assembly").map(str::to_string),
                 height: if columns.iter().any(|(c, _)| c == "height") {
                     None
@@ -1146,7 +1188,7 @@ fn constant(e: &Expr) -> Result<Quantity, String> {
 }
 
 /// `2026-10-31`.
-fn is_date(text: &str) -> bool {
+pub(crate) fn is_date(text: &str) -> bool {
     let parts: Vec<&str> = text.split('-').collect();
     matches!(parts[..], [y, m, d]
         if y.len() == 4 && m.len() == 2 && d.len() == 2

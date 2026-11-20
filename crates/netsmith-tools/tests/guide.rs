@@ -181,7 +181,8 @@ fn loader(blocks: &[Block]) -> Loader {
 
 /// The catalogs the `nsm` blocks of each `set=` use: the standard ones and the rows of the
 /// set's `csv` blocks, which are files named by `file=` (`catalogs/resistor.csv` adds to
-/// the `resistor` catalog). A set whose files do not load holds the problem.
+/// the `resistor` catalog, `offers/jlcpcb.csv` to JLCPCB's offers). A set whose files do not
+/// load holds the problem.
 fn catalog_sets(blocks: &[Block]) -> HashMap<String, Result<Catalogs, String>> {
     let mut sets: HashMap<String, Result<Catalogs, String>> = HashMap::new();
     let csv: Vec<(&Block, &str)> = blocks
@@ -204,19 +205,26 @@ fn catalog_sets(blocks: &[Block]) -> HashMap<String, Result<Catalogs, String>> {
             (catalog, row)
         })
     };
-    // The catalogs first, then the curves of their rows.
-    for curves in [false, true] {
+    // The catalogs first, then the curves of their rows, then the offers files.
+    for pass in 0..3 {
         for (b, file) in &csv {
             let of = curve(file);
-            if of.is_some() != curves {
+            let offers = offers_file(file);
+            let this = match (&of, offers) {
+                (Some(_), _) => 1,
+                (None, Some(_)) => 2,
+                (None, None) => 0,
+            };
+            if this != pass {
                 continue;
             }
             let set = b.value("set").unwrap_or("").to_string();
             let entry = sets.entry(set).or_insert_with(|| Ok(Catalogs::jlcpcb()));
             let Ok(catalogs) = entry else { continue };
-            let added = match &of {
-                Some((catalog, row)) => catalogs.add_curve(catalog, row, file, &b.text),
-                None => {
+            let added = match (&of, offers) {
+                (Some((catalog, row)), _) => catalogs.add_curve(catalog, row, file, &b.text),
+                (None, Some(supplier)) => catalogs.add_offers_file(supplier, file, &b.text),
+                (None, None) => {
                     let name = Path::new(file).file_stem().unwrap().to_str().unwrap();
                     catalogs.add_file(name, file, &b.text)
                 }
@@ -295,6 +303,15 @@ fn every_manifest_in_the_guide_is_a_manifest() {
             .unwrap_or_else(|e| panic!("{}: {e}", b.at()));
     }
     assert!(found >= 3, "found only {found} manifests");
+}
+
+/// The supplier of a `csv` block that is an offers file, `offers/<supplier>.csv` (ADR 0143),
+/// and not a catalog.
+fn offers_file(file: &str) -> Option<&str> {
+    let path = Path::new(file);
+    (path.parent()?.file_name()? == netsmith_solve::offers::FOLDER)
+        .then(|| path.file_stem()?.to_str())
+        .flatten()
 }
 
 /// Whether a `csv` block is a project's preferred-parts file and not a catalog.
@@ -442,7 +459,11 @@ fn every_complete_example_checks_solves_and_fails_as_the_guide_says() {
             let at = b.at();
             let file = b.value("file").expect("a csv block needs file=");
             let name = Path::new(file).file_stem().unwrap().to_str().unwrap();
-            let message = match Catalogs::jlcpcb().add_file(name, file, &b.text) {
+            let added = match offers_file(file) {
+                Some(supplier) => Catalogs::jlcpcb().add_offers_file(supplier, file, &b.text),
+                None => Catalogs::jlcpcb().add_file(name, file, &b.text),
+            };
+            let message = match added {
                 Ok(()) => panic!("{at}: this file should not load and it does"),
                 Err(message) => message,
             };

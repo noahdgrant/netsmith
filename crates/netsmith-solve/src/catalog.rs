@@ -16,6 +16,7 @@ use netsmith_quantity::Quantity;
 use crate::curve::Curve;
 use crate::generic::{Generic, Sense, Series};
 use crate::lock::{LockedRow, PickLock};
+use crate::offers::Offers;
 use crate::preferred::Preferred;
 use crate::table::Table;
 
@@ -268,6 +269,8 @@ impl Default for SearchBudget {
 pub struct Catalogs {
     map: BTreeMap<String, Catalog>,
     tables: BTreeMap<String, Table>,
+    /// The offers of every supplier (ADR 0143): the standard ones, then a project's.
+    offers: Arc<Offers>,
     default_assembly: Option<String>,
     strict_guidelines: bool,
     constraints_warn: bool,
@@ -528,6 +531,66 @@ impl Catalogs {
         }
     }
 
+    /// Read an offers file of `supplier` (`offers/jlcpcb.csv`, [`crate::offers`]): its offers come
+    /// after those that are here. `file` is what a message calls it. A problem names the file and
+    /// line. An offer whose part is in no catalog is not refused: [`Self::offer_notes`] names it.
+    pub fn add_offers_file(
+        &mut self,
+        supplier: &str,
+        file: &str,
+        text: &str,
+    ) -> Result<(), String> {
+        Arc::make_mut(&mut self.offers).add_file(supplier, file, text)
+    }
+
+    /// [`Self::add_offers_file`] for a file that ships in the binary (`data/offers/`).
+    pub(crate) fn add_built_in_offers_file(
+        &mut self,
+        supplier: &str,
+        file: &str,
+        text: &str,
+    ) -> Result<(), String> {
+        Arc::make_mut(&mut self.offers).add_built_in_file(supplier, file, text)
+    }
+
+    /// The offers of every supplier, the standard ones first.
+    pub fn offers(&self) -> &Offers {
+        &self.offers
+    }
+
+    /// The notes of a project's offers whose part is in no catalog, one line each in the order
+    /// of the files: the offer is not an error (the part may be a row the project removed, or of
+    /// a catalog it reads later), but nothing reads it. The standard offers are held to the
+    /// standard rows by a test and are not named here.
+    pub fn offer_notes(&self) -> Vec<String> {
+        self.offers
+            .iter()
+            .filter(|o| !o.built_in)
+            .filter(|o| {
+                let manufacturer = o.manufacturer.as_deref();
+                let in_table = self.tables.values().any(|t| t.has_part(manufacturer, &o.mpn));
+                let in_code = self.map.values().flat_map(|c| &c.candidates).any(|c| {
+                    c.mpn.as_deref() == Some(o.mpn.as_str())
+                        && match (&c.manufacturer, manufacturer) {
+                            (Some(a), Some(b)) => a == b,
+                            _ => true,
+                        }
+                });
+                !in_table && !in_code
+            })
+            .map(|o| {
+                let part = match &o.manufacturer {
+                    Some(m) => format!("`{}` of `{m}`", o.mpn),
+                    None => format!("`{}`", o.mpn),
+                };
+                format!(
+                    "{}: the {} offer of {part} (sku `{}`) is of a part that no catalog has a row of, so nothing reads it: add the part's row to a catalog file, or remove the offer",
+                    o.at, o.supplier, o.sku
+                )
+            })
+            .collect()
+    }
+
     /// The row of the built-in catalog that a pick lock's `row` is now called, when a project's
     /// row of that part was removed because a release added the part (issue #1119): `None` when
     /// the catalog still has a row of the locked name, or no built-in row has the locked LCSC
@@ -589,7 +652,7 @@ impl Catalogs {
         let table = self.tables.get(name)?;
         Some(
             table
-                .candidates(name, columns, optional)
+                .candidates(name, columns, optional, &self.offers)
                 .map(|candidates| Catalog {
                     name: name.to_string(),
                     candidates,
@@ -600,7 +663,9 @@ impl Catalogs {
     /// What the catalog files say about an LCSC number, the standard ones and a project's
     /// own alike. `None` for a part that no file lists.
     pub fn supplier(&self, lcsc: &str) -> Option<crate::table::Supplier> {
-        self.tables.values().find_map(|t| t.supplier(lcsc))
+        self.tables
+            .values()
+            .find_map(|t| t.supplier(lcsc, &self.offers))
     }
 
     /// Whether the files give a reason to think the part with this LCSC number is out of stock
@@ -621,13 +686,18 @@ impl Catalogs {
     /// `data/sample/`. There is none for LEDs, so an LED stays unresolved. The parts in
     /// them are made up for the solver's tests and have no supplier numbers.
     pub fn sample() -> Self {
-        crate::jlcpcb::embedded(crate::jlcpcb::SAMPLE, crate::jlcpcb::SAMPLE_CURVES)
+        crate::jlcpcb::embedded(crate::jlcpcb::SAMPLE, crate::jlcpcb::SAMPLE_CURVES, &[])
     }
 
-    /// Real parts for JLCPCB assembly, from `data/jlcpcb/catalog/`. See [`crate::jlcpcb`]
-    /// for the files and `data/jlcpcb/README.md` for where each row comes from.
+    /// Real parts for JLCPCB assembly, from `data/jlcpcb/catalog/`, with the standard offers of
+    /// `data/offers/` (ADR 0143). See [`crate::jlcpcb`] for the files and `data/jlcpcb/README.md`
+    /// for where each row comes from.
     pub fn jlcpcb() -> Self {
-        crate::jlcpcb::embedded(crate::jlcpcb::JLCPCB, crate::jlcpcb::JLCPCB_CURVES)
+        crate::jlcpcb::embedded(
+            crate::jlcpcb::JLCPCB,
+            crate::jlcpcb::JLCPCB_CURVES,
+            crate::jlcpcb::OFFERS,
+        )
     }
 }
 
