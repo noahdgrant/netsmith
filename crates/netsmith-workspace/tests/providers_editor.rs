@@ -52,7 +52,7 @@ fn project(name: &str) -> (TempDir, Workspace) {
         fs::write(
             root.join(format!("catalogs/{name}.csv")),
             format!(
-                "mpn,package,library,source\n{mpn},PKG,Extended,https://example.invalid/{mpn}\n"
+                "mpn,package,source\n{mpn},PKG,https://example.invalid/{mpn}\n"
             ),
         )
         .unwrap();
@@ -205,7 +205,7 @@ board Bulk {
     .supply.pos ~> .bulk ~> .supply.neg
 }
 ";
-    let csv = "mpn,name,capacitance,max_voltage,package,library,source\nPC-100U,PC 100uF 10V,100uF +/- 20%,10V,CASE_B,Extended,https://example.invalid/pc-100u\n";
+    let csv = "mpn,name,capacitance,max_voltage,package,source\nPC-100U,PC 100uF 10V,100uF +/- 20%,10V,CASE_B,https://example.invalid/pc-100u\n";
     let (_root, editor) = project_of(
         "bank-via",
         &[("src/poly.nsm", poly), ("src/main.nsm", main)],

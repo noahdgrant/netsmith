@@ -15,7 +15,7 @@ fn led(statements: &str, rows: &str) -> (Checked, Solution) {
     let c = check("t.nsm", &source, &Loader::std());
     assert!(c.is_ok(), "{}", c.render());
     let mut catalogs = Catalogs::empty();
-    catalogs.add_file("led", "catalogs/led.csv", rows).unwrap();
+    crate::offered::add(&mut catalogs, "led", "catalogs/led.csv", rows).unwrap();
     let s = solve(&c.boards[0], &catalogs);
     (c, s)
 }
@@ -79,7 +79,7 @@ fn a_package_no_row_is_in_from_the_boards_defaults_is_refused_once_at_the_line()
     let c = check("t.nsm", source, &Loader::std());
     assert!(c.is_ok(), "{}", c.render());
     let mut catalogs = Catalogs::empty();
-    catalogs.add_file("led", "catalogs/led.csv", LEDS).unwrap();
+    crate::offered::add(&mut catalogs, "led", "catalogs/led.csv", LEDS).unwrap();
     let s = solve(&c.boards[0], &catalogs);
     assert_eq!(
         messages(&s),

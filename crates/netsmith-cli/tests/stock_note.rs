@@ -54,7 +54,7 @@ fn netsmith_build_prints_the_note_and_still_builds() {
     )
     .unwrap();
     fs::write(root.join("src/main.nsm"), BOARD).unwrap();
-    fs::write(root.join("catalogs/resistor.csv"), rows("C900001", "0")).unwrap();
+    netsmith_solve::migrate::write_to(&root, "catalogs/resistor.csv", &rows("C900001", "0")).unwrap();
     let run = Command::new(env!("CARGO_BIN_EXE_netsmith"))
         .args(["board", "build"])
         .current_dir(&*root)

@@ -316,8 +316,8 @@ part PrecisionThinFilm provides Resistor {
 ";
 
 const THIN_FILM_CSV: &str = "\
-mpn,name,resistance,max_power,package,library,source
-PTF-10K,PTF 10k 0.1% 0402,10kohm +/- 0.1%,125mW,0402,Extended,https://example.invalid/ptf-10k
+mpn,name,resistance,max_power,package,source
+PTF-10K,PTF 10k 0.1% 0402,10kohm +/- 0.1%,125mW,0402,https://example.invalid/ptf-10k
 ";
 
 const POLY_CAP: &str = "\
@@ -334,8 +334,8 @@ part PolyCap provides CapacitorBank {
 ";
 
 const POLY_CAP_CSV: &str = "\
-mpn,name,capacitance,max_voltage,package,library,source
-PC-100U,PC 100uF 10V,100uF +/- 20%,10V,CASE_B,Extended,https://example.invalid/pc-100u
+mpn,name,capacitance,max_voltage,package,source
+PC-100U,PC 100uF 10V,100uF +/- 20%,10V,CASE_B,https://example.invalid/pc-100u
 ";
 
 const BIG_LDO: &str = "\
@@ -353,8 +353,8 @@ part BigLdo provides LinearRegulator {
 ";
 
 const BIG_LDO_CSV: &str = "\
-mpn,name,vout.voltage,dropout,max_current,max_power,package,library,source
-BL-33,BL 3.3V 1A LDO,3.3V +/- 3%,0.5V,1A,2W,SOT-223,Extended,https://example.invalid/bl-33
+mpn,name,vout.voltage,dropout,max_current,max_power,package,source
+BL-33,BL 3.3V 1A LDO,3.3V +/- 3%,0.5V,1A,2W,SOT-223,https://example.invalid/bl-33
 ";
 
 struct World {
@@ -372,8 +372,7 @@ fn world(files: &[(&str, &str, &str, &str)]) -> World {
             &format!("{}.nsm", module.replace("::", "/")),
             source,
         );
-        catalogs
-            .add_file(catalog, &format!("catalogs/{catalog}.csv"), rows)
+        netsmith_solve::migrate::add_to(&mut catalogs, catalog, &format!("catalogs/{catalog}.csv"), rows)
             .unwrap();
     }
     World { loader, catalogs }

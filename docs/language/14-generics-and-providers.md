@@ -32,7 +32,7 @@ Rules.
 - Its `pins` table has rows of a kind and no datasheet name and no pads: `.signal passive required`. The kind is what every provider's row must say, because the kind decides what the checker asks of the board. `required` and `optional` hold for the provider's row too, and a provider may leave the word out.
 - A row may also end with the pin's limits, `.in input abs_max 6V` (`abs_min`, `abs_max` and `from`, as in "Several packages, and the absolute limits in the row"). They are a contract of the providers (ADR 0126): a provider whose row for the pin states no `abs_max` has the generic's, and likewise `abs_min`, written into its row. A provider that states its own must be at least as strict, `abs_max` no higher and `abs_min` no lower. A value that waits for a pick, `abs_max .in_max`, is the provider's own member.
 - A relation or a narrowing in a generic holds for every provider and for every use. The solver judges it with the values of whichever provider is tried.
-- A generic does not declare `.mpn` or `.lcsc`: every part has both, as text, and the checker refuses a declaration with an error. A provider whose catalog lists `.mpn` as a column has the number in its row, and a board that states `.mpn &=` finds that provider.
+- A generic does not declare `.mpn`, `.manufacturer` or `.lcsc`: every part has them, as text, and the checker refuses a declaration with an error. A provider whose catalog lists `.mpn` as a column has the number in its row, and a board that states `.mpn &=` finds that provider.
 - A doc comment (`///`) goes before a declaration, not before a statement; use `//` there.
 
 ### A provider
@@ -57,8 +57,8 @@ part AcmeMicroCoax provides CoaxReceptacle {
 ```
 
 ```csv file=catalogs/acme_micro_coax.csv set=coax
-mpn,package,library,source
-ACME-MC-1,ACME_MC_1,Extended,https://example.invalid/acme-mc-1.pdf
+mpn,package,source
+ACME-MC-1,ACME_MC_1,https://example.invalid/acme-mc-1.pdf
 ```
 
 A second provider, a plainer part that stops at 1 GHz:
@@ -80,8 +80,8 @@ part AcmeBasicCoax provides CoaxReceptacle {
 ```
 
 ```csv file=catalogs/acme_basic_coax.csv set=coax
-mpn,package,library,source
-ACME-BC-1,ACME_BC_1,Extended,https://example.invalid/acme-bc-1.pdf
+mpn,package,source
+ACME-BC-1,ACME_BC_1,https://example.invalid/acme-bc-1.pdf
 ```
 
 The project has both catalog files in its `catalogs/` folder and lists both parts in `kicad.toml`, as for any hand-written part. A provider whose own names differ from the generic's states the generic's names with the aliases and equations the language already has, and says nothing more:
@@ -665,8 +665,8 @@ part PrecisionThinFilm provides Resistor {
 ```
 
 ```csv file=catalogs/precision_thin_film.csv set=thin
-mpn,resistance,max_power,package,library,source
-PTF-10K,10kohm +/- 0.1%,125mW,0402,Extended,https://example.invalid/ptf-10k.pdf
+mpn,resistance,max_power,package,source
+PTF-10K,10kohm +/- 0.1%,125mW,0402,https://example.invalid/ptf-10k.pdf
 ```
 
 The standard rows and series come first, because the generic is first in the order. A design that they serve never reaches the provider, and one that they cannot serve, here a resistor good to 0.1 %, is tried with it:

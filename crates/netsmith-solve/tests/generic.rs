@@ -28,7 +28,7 @@ C900004,ZZR-330-6,330Ω 0603,330,330ohm +/- 1%,100mW,0603,Basic,https://example.
 
 fn catalogs(series: Option<Series>) -> Catalogs {
     let mut c = Catalogs::empty().with_series(series);
-    c.add_file("resistor", "catalogs/resistor.csv", ROWS)
+    crate::offered::add(&mut c, "resistor", "catalogs/resistor.csv", ROWS)
         .unwrap();
     c
 }
@@ -87,7 +87,7 @@ fn a_catalog_that_has_no_generic_parts_gets_none() {
     use netsmith_check::FieldKind;
     use netsmith_quantity::Dimension;
     let mut c = Catalogs::empty().with_series(Some(Series::E24));
-    c.add_file("fuse", "catalogs/fuse.csv", "name,rated_current\nzz,1A\n")
+    crate::offered::add(&mut c, "fuse", "catalogs/fuse.csv", "name,rated_current\nzz,1A\n")
         .unwrap();
     let kinds = [(
         "rated_current".to_string(),

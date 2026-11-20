@@ -28,16 +28,16 @@ const STANDARD_CATALOG: &str = include_str!("../../../data/jlcpcb/catalog/lt8641
 
 /// A project's rows for the `lt8641` catalog: the ordering code of the datasheet's table.
 const ROWS: &str = "\
-mpn,package,library,source
-LT8641IUDC#WPBF,UDC20(18),Extended,\"datasheet Rev. C, Order Information p.2 (automotive products)\"
+mpn,package,source
+LT8641IUDC#WPBF,UDC20(18),\"datasheet Rev. C, Order Information p.2 (automotive products)\"
 ";
 
 /// A project's own inductor, invented: the four of the standard catalog all have a DC
 /// resistance over the 0.04 ohm that the datasheet asks for (p.16), so no converter around the
 /// IC can be solved with them alone.
 const INDUCTORS: &str = "\
-mpn,name,inductance,saturation_current,dc_resistance,package,library,source
-ZL-3R3,ZL-3R3 3.3uH 4.5A inductor 1210,3.3uH +/- 20%,4.5A,0.03ohm,1210,Extended,https://example.invalid/zl-3r3
+mpn,name,inductance,saturation_current,dc_resistance,package,source
+ZL-3R3,ZL-3R3 3.3uH 4.5A inductor 1210,3.3uH +/- 20%,4.5A,0.03ohm,1210,https://example.invalid/zl-3r3
 ";
 
 fn solved(src: &str) -> (Solution, String) {
@@ -45,11 +45,9 @@ fn solved(src: &str) -> (Solution, String) {
     assert!(checked.is_ok(), "{}", checked.render());
     let board = checked.standalone_boards().next().expect("one board");
     let mut catalogs = Catalogs::jlcpcb();
-    catalogs
-        .add_file("lt8641", "catalogs/lt8641.csv", ROWS)
+    netsmith_solve::migrate::add_to(&mut catalogs, "lt8641", "catalogs/lt8641.csv", ROWS)
         .unwrap();
-    catalogs
-        .add_file("inductor", "catalogs/inductor.csv", INDUCTORS)
+    netsmith_solve::migrate::add_to(&mut catalogs, "inductor", "catalogs/inductor.csv", INDUCTORS)
         .unwrap();
     let solution = solve(board, &catalogs);
     let text = solution
@@ -175,7 +173,7 @@ fn the_pin_table_is_the_datasheets_pin_function_table() {
 fn the_standard_catalog_has_a_header_and_no_row() {
     // No row of it has a stock above zero on a record that was read (data/jlcpcb/README.md).
     assert_eq!(STANDARD_CATALOG.lines().count(), 1, "{STANDARD_CATALOG}");
-    assert!(STANDARD_CATALOG.starts_with("lcsc,mpn,name,label,package,library,"));
+    assert!(STANDARD_CATALOG.starts_with("mpn,name,label,package,"));
 }
 
 #[test]
@@ -557,11 +555,9 @@ pub(crate) fn all_sheets(b: &netsmith_pipeline::Built) -> Vec<&str> {
 
 pub(crate) fn built(libraries: &Libraries) -> netsmith_pipeline::Built {
     let mut catalogs = Catalogs::jlcpcb();
-    catalogs
-        .add_file("lt8641", "catalogs/lt8641.csv", ROWS)
+    netsmith_solve::migrate::add_to(&mut catalogs, "lt8641", "catalogs/lt8641.csv", ROWS)
         .unwrap();
-    catalogs
-        .add_file("inductor", "catalogs/inductor.csv", INDUCTORS)
+    netsmith_solve::migrate::add_to(&mut catalogs, "inductor", "catalogs/inductor.csv", INDUCTORS)
         .unwrap();
     build_with(
         "converter.nsm",

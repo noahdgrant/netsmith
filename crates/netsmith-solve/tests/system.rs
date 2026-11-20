@@ -21,8 +21,7 @@ fn run_with_unrated_led(src: &str) -> (Checked, Solution) {
     let c = check("two_boards.nsm", src, &Loader::std());
     assert!(c.is_ok(), "the source should check clean:\n{}", c.render());
     let mut catalogs = Catalogs::jlcpcb();
-    catalogs
-        .add_file(
+    crate::offered::add(&mut catalogs, 
             "led",
             "catalogs/led.csv",
             "lcsc,mpn,name,label,color,forward_voltage,package,library,source\n\

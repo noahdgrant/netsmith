@@ -3192,30 +3192,30 @@ version = 2
 [LedExample.parts."r1"]
 catalog = "resistor"
 row = "330Ω 1% 0402 C25104"
-lcsc = "C25104"
 mpn = "0402WGF3300TCE"
+sku = { jlcpcb-assembly = "C25104", lcsc-retail = "C25104" }
 ```
 
 A use of a generic with more than one provider in scope is locked too, at the provider it was picked as (ADR 0113): `[LedExample.providers."process"]` with `generic = "TwoLayer"` and `provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"`, written before the board's parts, because the provider decides which parts there are. The use is made with that provider and no other is tried: a board that now asks for what another provider has (another copper weight) stops on the contradiction with a note that names the lock, and `project lock --update` picks again and prints the change (`` LedExample: `process`: provider `...JlcTwoLayer1oz` -> `...JlcTwoLayer2oz` ``). A locked provider that is no longer in scope is an error, as a row that is gone is.
 
-There is one table for each board (or system) of the file, keyed by its name, and one for each part, keyed by its path (`r1`, `stage.output_cap`; a bank of capacitors is one entry, its path without an index). `catalog` and `row` say which row. `lcsc`, `manufacturer` and `mpn` are the row's numbers, written when the row has them (`manufacturer` when its catalog row names one, ADR 0143): they find a row that was renamed or changed in place, tell apart two rows of one `mpn` from two manufacturers, and may be left out. A lock of `version = 1`, which an older netsmith wrote and which records no manufacturer, is still read and holds its parts as before (a build says so in a note, and `--locked` does not refuse it); `project lock --check` calls it not current, with the line `version 1 -> 2: ...`, and `project lock --update` writes it as version 2. The file holds no stock, no price and no solved value; a generic part is locked at the row the solver gave it (`generic 22uF 10% 0603 ...`), and `fab` still resolves it to an orderable row against the stock of the day (ADR 0047).
+There is one table for each board (or system) of the file, keyed by its name, and one for each part, keyed by its path (`r1`, `stage.output_cap`; a bank of capacitors is one entry, its path without an index). `catalog` and `row` say which row. `manufacturer` and `mpn` are the part's identity, written when the row has them (`manufacturer` when its catalog row names one, ADR 0143): they find a row that was renamed or changed in place, tell apart two rows of one `mpn` from two manufacturers, and may be left out. `sku` is what the part resolved to for each supply channel that has an offer of it (`jlcpcb-assembly` from the JLCPCB offer, `lcsc-retail` from the LCSC one, _Offers files_ in the chapter on catalogs): a record, so that an offer whose number changes is a line of the diff, and the solver does not read it. A lock of `version = 1`, which an older netsmith wrote and which records no manufacturer, and one that records a part's `lcsc` in place of its `sku` (as locks did before ADR 0143 moved the number into the offers), is still read and holds its parts as before (a build says so in a note, and `--locked` does not refuse it); `project lock --check` calls it not current, with the line `version 1 -> 2: ...` or `lcsc -> sku: ...`, and `project lock --update` writes it again. The file holds no stock, no price and no solved value; a generic part is locked at the row the solver gave it (`generic 22uF 10% 0603 ...`), and `fab` still resolves it to an orderable row against the stock of the day (ADR 0047).
 
 With a lock, the solver offers each part the lock names only its locked row, and judges that row by everything the design states and every relation, as it judges any pick. What happens next is told for each part:
 
 - **The row still passes.** It is the pick. Nothing is printed.
-- **The row no longer passes, or is no longer in the catalog.** The run stops with the relation that fails and its numbers, and a second message says that the row is the lock's and that no other row was tried (`` `r1` is locked to the row `2.2kΩ 1% 0402 C25879` of the `resistor` catalog by led.lock.toml, and no other row was tried for it ``). Change the design or the catalog so the row fits, or delete the lock to pick again. A row whose `lcsc`, `manufacturer` or `mpn` is no longer the lock's is the same case.
+- **The row no longer passes, or is no longer in the catalog.** The run stops with the relation that fails and its numbers, and a second message says that the row is the lock's and that no other row was tried (`` `r1` is locked to the row `2.2kΩ 1% 0402 C25879` of the `resistor` catalog by led.lock.toml, and no other row was tried for it ``). Change the design or the catalog so the row fits, or delete the lock to pick again. A row whose `manufacturer` or `mpn` is no longer the lock's is the same case.
 - **A part has no entry, or an entry belongs to a part the board no longer has.** The run goes on and prints a note that names the part. The lock is not rewritten: an existing lock is never changed by `build` or `fab`.
 
 `--locked` (on `build` and `fab`, as Cargo's, and so on `project order`) turns the last case, and a missing file, into an error, before anything is written. A CI job that builds with `--locked` fails a pull request that changes the picks without changing the lock.
 
 #### Refreshing the lock
 
-A lock that is old is refreshed on purpose, with `netsmith project lock --update [file.nsm]` (every top-level file of the project when no file is named). It solves each board of the file again as if there were no lock, so every part is free to take the row the solver picks now, and writes the lock with those rows. It prints what changed, a line for each part in the order board, part path, with the row's LCSC and manufacturer part numbers, and nothing at all when the lock is already as it would write it (then the file is not touched):
+A lock that is old is refreshed on purpose, with `netsmith project lock --update [file.nsm]` (every top-level file of the project when no file is named). It solves each board of the file again as if there were no lock, so every part is free to take the row the solver picks now, and writes the lock with those rows. It prints what changed, a line for each part in the order board, part path, with the row's manufacturer part number and the sku of each channel, and nothing at all when the lock is already as it would write it (then the file is not touched):
 
 ```sh
 $ netsmith project lock --update
 updated src/main.lock.toml
-  Zz9Board: `u`: `ZZ9-33-S` (lcsc C9001, mpn ZZ9-33-S) -> `ZZ9-33-A` (lcsc C9002, mpn ZZ9-33-A)
+  Zz9Board: `u`: `ZZ9-33-S` (mpn ZZ9-33-S, jlcpcb-assembly C9001) -> `ZZ9-33-A` (mpn ZZ9-33-A, jlcpcb-assembly C9002)
 ```
 
 Each case of the list above ends in a line of that diff:
@@ -3223,7 +3223,7 @@ Each case of the list above ends in a line of that diff:
 - **A part the lock has no entry for** is added (`LedExample: `r2`: added as ...`), and the entries of the other parts are as they were unless their own pick moved. With no lock file, every part is added and the file is written.
 - **An entry for a part that is gone** is dropped (`LedExample: `r2`: dropped (it was ..., and is no longer a part of the board)`).
 - **A row that no longer passes, or that no catalog has**, is not replaced silently. `lock` first solves the board held to the rows of the file, as `build` does, and prints what the solver said about them, in its own words, to stderr after `note:` (the relation that fails and its numbers, or that the catalog has no such row); `--update` then replaces the row with the one the solver picks now, and the diff says which.
-- **A row whose part a release added to a built-in catalog under another name** (issue #1119) is rewritten to the built-in row and kept on it, with no other change. A project's own catalog may have a part that a later release adds to the built-in one; the build then stops with "a part is in a catalog once" (_Catalogs and how the solver picks parts_), and the project's row is removed by hand. The lock's `row` still names that row, which no catalog has now, so `build` says so, and names the built-in row with the same LCSC number (or manufacturer part number when the lock has no LCSC number) and `project lock --update`. `--update` sets the `row`, the LCSC number and the manufacturer part number of the entry to that row's and does not take a new pick for the part, also with `--part` or `--except` (a part `--part` names takes a new pick); if the built-in row no longer passes, the part takes a new pick and the `note:` says why. `--check` prints the change and exits 1.
+- **A row whose part a release added to a built-in catalog under another name** (issue #1119) is rewritten to the built-in row and kept on it, with no other change. A project's own catalog may have a part that a later release adds to the built-in one; the build then stops with "a part is in a catalog once" (_Catalogs and how the solver picks parts_), and the project's row is removed by hand. The lock's `row` still names that row, which no catalog has now, so `build` says so, and names the built-in row with the same manufacturer part number and `project lock --update`. `--update` sets the `row`, the manufacturer, the manufacturer part number and the skus of the entry to that row's and does not take a new pick for the part, also with `--part` or `--except` (a part `--part` names takes a new pick); if the built-in row no longer passes, the part takes a new pick and the `note:` says why. `--check` prints the change and exits 1.
 - **A row that still passes but is no longer the first that fits** (a catalog gained an earlier row, or the solver changed) is replaced too: that is what a refresh is for, and the diff is how the change is reviewed.
 
 To take new picks for some parts and keep the rest, name them: `netsmith project lock --update --part r1,stage.cap` refreshes those parts only, and `--except r1` every part but those (a comma-separated list of part paths; the two are not said together, and `--part` is not said with `--check`). The parts that do not take a new pick stay on the row the lock has for them, which is judged by everything the design says, as `build` judges it, and so are the locked providers. A row held this way that no longer passes stops the run, with the solver's words and a line that says to name it, and nothing is written. A part with no entry in the lock takes the solver's pick whether it is named or not, and an entry for a part that is gone is dropped. A path is looked for in every board of the file (or, with no file, of the project's top-level files), and one that no board has is an error that lists the parts there are, with nothing written. This is how a design keeps one part on an earlier row while the rest take the catalog's new ones, with no hand pick in the source and no edit of the lock:
@@ -3231,7 +3231,7 @@ To take new picks for some parts and keep the rest, name them: `netsmith project
 ```sh
 $ netsmith project lock --update --except u1
 updated src/main.lock.toml
-  Zz9Board: `u2`: `ZZ9-33-S` (lcsc C9001, mpn ZZ9-33-S) -> `ZZ9-33-A` (lcsc C9002, mpn ZZ9-33-A)
+  Zz9Board: `u2`: `ZZ9-33-S` (mpn ZZ9-33-S, jlcpcb-assembly C9001) -> `ZZ9-33-A` (mpn ZZ9-33-A, jlcpcb-assembly C9002)
 ```
 
 The part is held only until the next `project lock --update` that does not name it; a decision that must outlive refreshes is a held row (below) or a hand pick in the source (below that). A part that was renamed has no entry under its new name, so it is added at the solver's pick, and the entry of the old name is dropped; carrying its row to the new name is not something `lock` does.
@@ -3246,8 +3246,8 @@ A person may keep a part on its row on purpose, for a reason the solver does not
 [LedExample.parts."r1"]
 catalog = "resistor"
 row = "330Ω 1% 0402 C25104"
-lcsc = "C25104"
 mpn = "0402WGF3300TCE"
+sku = { jlcpcb-assembly = "C25104", lcsc-retail = "C25104" }
 held = "the row the first article was built with"
 ```
 
@@ -3265,7 +3265,7 @@ The editor holds the parts to the lock as `build` does, so its views (the schema
 
 ### A hand pick
 
-A generic part is picked as the first row that fits, and a port of an existing design, or a bill of materials someone else wrote, often names another row that fits as well: a 50 V capacitor where the solver would take a 16 V one. The design then states the row's number on the part, and the part is held to that row (a hand pick, ADR 0122). Every part has two members for it, as it has `.designator`: `.lcsc`, the supplier's part number, and `.mpn`, the manufacturer's. Both are text, and a narrowing of either is the hand pick:
+A generic part is picked as the first row that fits, and a port of an existing design, or a bill of materials someone else wrote, often names another row that fits as well: a 50 V capacitor where the solver would take a 16 V one. The design then states the part's number on it, and the part is held to that row (a hand pick, ADR 0122). Every part has two members for it, as it has `.designator`: `.mpn`, the manufacturer's part number, and `.manufacturer`, who makes it (ADR 0143). Both are text. A narrowing of `.mpn` is the hand pick, and `.manufacturer` beside it says which of two parts of one number it is:
 
 ```nsm evaluate
 import std::parts::passive::{Led, Resistor}
@@ -3275,17 +3275,17 @@ board HandPicked {
     .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
     .led: Led { .current &= 5mA..15mA }
     // The solver would take a 330 ohm 0402 resistor; the bill of materials names this one.
-    .r1: Resistor { .lcsc &= "C23151" }
+    .r1: Resistor { .mpn &= "0603WAF3900T5E" }
     .supply.pos ~> .r1 ~> .led ~> .supply.neg
 }
 ```
 
-The solver offers the part only the row with that number (and, with both, the row that has both), and judges it by everything the design states and every relation, as it judges a locked row. A hand pick comes before the pick lock: the lock records what the solver picked, and a hand pick is a requirement. A board whose hand pick differs from its lock builds with the hand-picked row and says that the lock differs (`--locked` makes that an error), and `project lock --update` records the new row. A part inside a module is picked from the board as any member inside it is narrowed (`.stage.output_cap.lcsc &= "C307331"`, ADR 0116). A part whose catalog has a column `mpn` and lists `.mpn` in its `catalog` statement (`catalog mcu by .mpn`, above) names its row the same way; its `.mpn: String` declares the member every part has, and may be left out.
+The solver offers the part only the row of that part (with a `.manufacturer` too, the row of that maker's part; with none, every row of the number, and the first that fits is taken), and judges it by everything the design states and every relation, as it judges a locked row. A hand pick comes before the pick lock: the lock records what the solver picked, and a hand pick is a requirement. A board whose hand pick differs from its lock builds with the hand-picked row and says that the lock differs (`--locked` makes that an error), and `project lock --update` records the new row. A part inside a module is picked from the board as any member inside it is narrowed (`.stage.output_cap.mpn &= "CL05B104KB54PNC"`, ADR 0116). A part whose catalog has a column `mpn` and lists `.mpn` in its `catalog` statement (`catalog mcu by .mpn`, above) names its row the same way; its `.mpn: String` declares the member every part has, and may be left out.
 
 What happens next is told for each part:
 
 - **The row passes.** It is the pick.
-- **The row fails a relation.** The run stops with the relation and its numbers, and a second message at the narrowing says that no other row was tried (`` `r1` is held by `.lcsc &= "C25879"` to one row of the `resistor` catalog, and no other row was tried for it ``).
+- **The row fails a relation.** The run stops with the relation and its numbers, and a second message at the narrowing says that no other row was tried (`` `r1` is held by `.mpn &= "0402WGF2201TCE"` to one row of the `resistor` catalog, and no other row was tried for it ``).
 - **The catalog has no row with the number.** The run stops at the narrowing:
 
 ```nsm fails
@@ -3295,19 +3295,41 @@ import std::sources::Rail
 board NoSuchRow {
     .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
     .led: Led { .current &= 5mA..15mA }
-    .r1: Resistor { .lcsc &= "C0000000" }
+    .r1: Resistor { .mpn &= "ZZ-0000" }
     .supply.pos ~> .r1 ~> .led ~> .supply.neg
 }
 ```
 
 ```text
-error: `r1` is held by `.lcsc &= "C0000000"` to a row of the `resistor` catalog, and the catalog has no row with the LCSC number C0000000: no other row was tried for it; change the narrowing to a number the catalog has, or remove it to let the solver pick
+error: `r1` is held by `.mpn &= "ZZ-0000"` to a row of the `resistor` catalog, and the catalog has no row with the manufacturer part number ZZ-0000: no other row was tried for it; change the narrowing to a number the catalog has, or remove it to let the solver pick
   --> main.nsm:7:21
   |
-7 |     .r1: Resistor { .lcsc &= "C0000000" }
-  |                     ^^^^^^^^^^^^^^^^^^^
+7 |     .r1: Resistor { .mpn &= "ZZ-0000" }
+  |                     ^^^^^^^^^^^^^^^^^
 ```
 
-Two narrowings of one part's `.lcsc` that differ are a `contradiction`, as any two narrowings of one text are, and `.lcsc` on a part that picks from no catalog (a `Switch`) is an error at the narrowing. The editor solves with the hand picks too, since they are the source.
+Two narrowings of one part's `.mpn` that differ are a `contradiction`, as any two narrowings of one text are. A `.manufacturer` on a part that picks from no catalog (a `Switch`), or with no `.mpn` beside it, is an error at the narrowing. The editor solves with the hand picks too, since they are the source.
 
-netsmith once read hand picks from a file beside the source, `<stem>.picks.toml`. It no longer does: a source with that file beside it stops `build`, `fab`, `lock` and the editor with an error that lists the narrowing to write for each entry, by board (`.boot1_cap.lcsc &= "C307331"` in `board PowerManifoldCharger`); write them, and delete the file.
+A hand pick was once written with the supplier's number, `.lcsc &= "C23151"`. A part is its manufacturer's number now, and a supplier's number is an offer (ADR 0143), so that narrowing is an error at it that gives the `.mpn` to write, read from the offers; `netsmith project migrate-offers` rewrites every such narrowing of a project (`docs/MIGRATING.md`):
+
+```nsm fails
+import std::parts::passive::{Led, Resistor}
+import std::sources::Rail
+
+board OldHandPick {
+    .supply: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC"; .neg.net &= "GND" }
+    .led: Led { .current &= 5mA..15mA }
+    .r1: Resistor { .lcsc &= "C23151" }
+    .supply.pos ~> .r1 ~> .led ~> .supply.neg
+}
+```
+
+```text
+error: `.lcsc &= "C23151"` on `r1`: a hand pick is by the manufacturer's part number now, and a supplier's number is an offer (ADR 0143): write `.mpn &= "0603WAF3900T5E"` in its place, the part the jlcpcb offer C23151 is of (data/offers/jlcpcb.csv:177); `netsmith project migrate-offers` rewrites these narrowings in a project's sources
+  --> main.nsm:7:21
+  |
+7 |     .r1: Resistor { .lcsc &= "C23151" }
+  |                     ^^^^^^^^^^^^^^^^^
+```
+
+netsmith once read hand picks from a file beside the source, `<stem>.picks.toml`. It no longer does: a source with that file beside it stops `build`, `fab`, `lock` and the editor with an error that lists the narrowing to write for each entry, by board (`.boot1_cap.mpn &= "CL05B104KB54PNC"` in `board PowerManifoldCharger`); write them, and delete the file.

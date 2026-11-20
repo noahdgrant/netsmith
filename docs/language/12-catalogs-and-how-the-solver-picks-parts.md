@@ -170,11 +170,12 @@ catalog_dirs = ["catalogs"]
 The first line of a file names the columns. Two kinds of column can be there, in any order.
 
 - The columns of the part: the paths of the fields in its `catalog X { ... }` declaration, without the leading dot (`resistance`, `package`, `vout.voltage`, `mpn`). A cell of a quantity column is a value as the language writes it, with its unit: `10kohm +/- 1%`, `1.8V..5.5V`, `0.3V`. It must be in the dimension of the field. A cell of a text column is its text as it is, without quotes: `0402`, `SOT-23-5`. An empty cell means the row has no value there: the row fits no design that asks for one, and, for any column a design needs (the package, the resistance, a rating), the row is never offered at all. Only a column that the part's `catalog` statement marks `optional` (ADR 0078, below) may be empty in a row that is offered. The standard parts mark the four that were added after the files were written: `temperature_coefficient` of `resistor`, `rms_current` of `inductor`, `dielectric` of `capacitor` and `breakdown_voltage` of `tvs`. Such a row is offered to a design that says nothing about the field, and a design says something by narrowing it, by a relation that names it, by a `~` that joins it or by a balance of currents that sums it.
-- The fixed columns, all optional except as noted: `lcsc` (the supplier's number), `manufacturer` (who makes the part, as its datasheet spells it, `Texas Instruments`; with the `mpn` it is the row's identity, below, ADR 0143; an empty cell means the row does not say, and a row that names a manufacturer must have an `mpn`), `mpn` (the manufacturer's part number; also a column of the part if its catalog lists `.mpn`), `library` (`Basic`, `Extended` or `Preferred`), `height` (how tall the part's body stands above the board, one length such as `2.62mm`, the greatest the manufacturer's document allows; the part's `.height` is it when the design states none, ADR 0094, and an empty cell means the height is unknown; see Height limits), `temp_min` and `temp_max` (the lowest and the highest temperature the part works at, each one temperature as the datasheet prints it, `85degC` or `358.15K`; a junction range stands for the part's range and the part is judged by it, which is the limit of the check; a board with an `.environment` is checked against them and an empty cell is offered and named, ADR 0099; see The environment of a board), `qualification` (`Aec` where the part's datasheet says its ordering code is AEC qualified, `None` where it says it is not, empty where it says nothing; the part's `.qualification` is it when the design states none; a board that requires `Qualification::Aec` of its `.environment` is checked against it, ADR 0099; see Qualification, under The environment of a board), `price` and `stock` (JLCPCB's snapshot, entered by hand; the solver does not read them, so a row is offered whatever its `stock` says, and the build notes a pick whose `stock` is 0; the bill of materials shows them only when no supply provider has the part, ADR 0047), `price_breaks` (`1:0.0019 1000:0.0015`, the price for one piece from each quantity; entered by hand and read by nothing), `date` (`2026-10-31`, the day the `price` and `stock` were read), `checked` (`2026-11-02`, the day `catalog refresh` last found the row's `mpn` and `package` equal to LCSC's record; empty if never, read by nothing), `name` and `label` (what a message calls the row, and what the schematic's value field shows; both default to the `mpn`, then the `lcsc`), `notes`, and `source`. **A row with an `lcsc` or an `mpn` must have a `source`**: the URL or text that says where its numbers were read. A row with neither is a made-up part and needs a `name`.
+- The fixed columns, all optional except as noted: `manufacturer` (who makes the part, as its datasheet spells it, `Texas Instruments`; with the `mpn` it is the row's identity, below, ADR 0143; an empty cell means the row does not say, and a row that names a manufacturer must have an `mpn`), `mpn` (the manufacturer's part number; also a column of the part if its catalog lists `.mpn`), `height` (how tall the part's body stands above the board, one length such as `2.62mm`, the greatest the manufacturer's document allows; the part's `.height` is it when the design states none, ADR 0094, and an empty cell means the height is unknown; see Height limits), `temp_min` and `temp_max` (the lowest and the highest temperature the part works at, each one temperature as the datasheet prints it, `85degC` or `358.15K`; a junction range stands for the part's range and the part is judged by it, which is the limit of the check; a board with an `.environment` is checked against them and an empty cell is offered and named, ADR 0099; see The environment of a board), `qualification` (`Aec` where the part's datasheet says its ordering code is AEC qualified, `None` where it says it is not, empty where it says nothing; the part's `.qualification` is it when the design states none; a board that requires `Qualification::Aec` of its `.environment` is checked against it, ADR 0099; see Qualification, under The environment of a board), `price` and `stock` (JLCPCB's snapshot, entered by hand; the solver does not read them, so a row is offered whatever its `stock` says, and the build notes a pick whose `stock` is 0; the bill of materials shows them only when no supply provider has the part, ADR 0047), `price_breaks` (`1:0.0019 1000:0.0015`, the price for one piece from each quantity; entered by hand and read by nothing), `date` (`2026-10-31`, the day the `price` and `stock` were read), `checked` (`2026-11-02`, the day a person last found the row right; empty if never, read by nothing; `catalog refresh` records its check in the offer's own `checked`), `name` and `label` (what a message calls the row, and what the schematic's value field shows; both default to the `mpn`), `notes`, and `source`. **A row with an `mpn` must have a `source`**: the URL or text that says where its numbers were read. A row with none is a made-up part and needs a `name`.
+- **No supplier's number.** A row is the part; what a supplier calls it, and how the supplier sorts it (JLCPCB's Basic, Extended or Preferred library), is an offer, a row of `offers/<supplier>.csv` (_Offers files_, below; ADR 0143). A file whose first line still has the `lcsc` or the `library` column, as catalog files had before ADR 0143, is refused with how to move them: `netsmith project migrate-offers` moves them into the project's offers files (`docs/MIGRATING.md`).
 
-`price`, `stock` and `library` are JLCPCB's numbers and `date` is the day they were read: they are a hand-entered snapshot (the standard catalogs that ship in netsmith leave `price`, `stock`, `date` and `checked` empty: read a part's price and stock from the supplier before ordering), and `netsmith catalog refresh` never writes them (it asks LCSC, never JLCPCB, and only verifies the row and records the day in `checked`; see `netsmith catalog refresh --help`). `netsmith catalog age` lists the rows whose price and stock were read long ago and those whose price and stock are unknown. The price and stock of a part come from a supply provider (the `[supply]` table of `netsmith.toml`, ADR 0047, provisional): `provider = "file"` with `file = "supply/quotes.csv"`, a CSV with the columns `lcsc` or `mpn`, `channel` (`jlcpcb-assembly` or `lcsc-retail`: the two stocks differ, and the answer says which it is), `stock`, `price_breaks` (`1:0.0100 100:0.0050`), `currency` and `date`, and an optional `manufacturer` that says whose `mpn` a line is (a line is found by its `mpn` when it and the part have one, with the manufacturer when both name one, and by its `lcsc` otherwise); `channel` and `cache_hours` choose the stock shown and how long a cached answer is used. With no provider, or one that does not list the part, price and stock are unknown in the bill of materials, never guessed and never 0. The price of a line is the highest break at or below the quantity the line needs (below the first break, the first break's price, marked "from N pieces"): the editor's bill of materials is for one board, so its quantity is one board's; an order's `order.txt` prices each line at the quantity of the whole order (the copies of every board, and of a panel with all its cells), see _Orders_ in the chapter on projects. The manifest has no field for a key or a password. The solver never asks; it reads the rows and no price or stock.
+`price` and `stock` are JLCPCB's numbers and `date` is the day they were read: they are a hand-entered snapshot (the standard catalogs that ship in netsmith leave `price`, `stock`, `date` and `checked` empty: read a part's price and stock from the supplier before ordering), and `netsmith catalog refresh` never writes them (it asks LCSC, never JLCPCB, and only verifies LCSC's offers, `offers/lcsc.csv`, recording the day in their `checked`; see `netsmith catalog refresh --help`). `netsmith catalog age` lists the rows whose price and stock were read long ago and those whose price and stock are unknown. The price and stock of a part come from a supply provider (the `[supply]` table of `netsmith.toml`, ADR 0047, provisional): `provider = "file"` with `file = "supply/quotes.csv"`, a CSV with the columns `lcsc` or `mpn`, `channel` (`jlcpcb-assembly` or `lcsc-retail`: the two stocks differ, and the answer says which it is), `stock`, `price_breaks` (`1:0.0100 100:0.0050`), `currency` and `date`, and an optional `manufacturer` that says whose `mpn` a line is (a line is found by its `mpn` when it and the part have one, with the manufacturer when both name one, and by its `lcsc` otherwise); `channel` and `cache_hours` choose the stock shown and how long a cached answer is used. With no provider, or one that does not list the part, price and stock are unknown in the bill of materials, never guessed and never 0. The price of a line is the highest break at or below the quantity the line needs (below the first break, the first break's price, marked "from N pieces"): the editor's bill of materials is for one board, so its quantity is one board's; an order's `order.txt` prices each line at the quantity of the whole order (the copies of every board, and of a panel with all its cells), see _Orders_ in the chapter on projects. The manifest has no field for a key or a password. The solver never asks; it reads the rows and no price or stock.
 
-A file named like a standard catalog adds its rows after the standard ones, so the standard parts are tried first. A part is in a catalog once, in one file or across a standard file and a project's, and a row that repeats one is refused with the file and line of both. A part is its **manufacturer and `mpn`** (ADR 0143): two rows of one `mpn` from two manufacturers are two parts, and two rows of the same manufacturer and `mpn` are one part twice. A row with an empty `manufacturer` is its `mpn` whoever makes it, so it is the same part as any row of that `mpn`; give it its manufacturer to keep both. The names are compared as they are written, so write them as the datasheet does. The same `lcsc` twice is refused too. The pick lock records the manufacturer of the row it holds, so it holds the right one of two rows of one `mpn`, which share a name when neither gives one (the default is the `mpn`). Nothing fills the column of the standard rows yet: it is filled by hand from the datasheet, with its source, and `netsmith catalog add` writes the manufacturer of LCSC's record, as LCSC spells it, into a file that has the column. A release can add to a standard catalog a part that a project's file already has, and the project then stops building. The error names the standard row, says in which cells the two rows differ (the name and every value both files have, not their sources or prices) and how to fix it: remove the project's row from its file, and set the `row` of a pick lock that names it to the standard row's name, which `netsmith project lock --update` does (_Refreshing the lock_ in the chapter on the shape of a board). The notes of a release list the rows it adds to the standard catalogs. A capacitor's `effective_capacitance` cell is its curve of bias (ADR 0013): `derate capacitance by bias: 0:1 5:0.5` is the `capacitance` of the row after the part keeps 1 at 0 V and 0.5 at 5 V, and nothing after the colon means that no curve is published for the part.
+A file named like a standard catalog adds its rows after the standard ones, so the standard parts are tried first. A part is in a catalog once, in one file or across a standard file and a project's, and a row that repeats one is refused with the file and line of both. A part is its **manufacturer and `mpn`** (ADR 0143): two rows of one `mpn` from two manufacturers are two parts, and two rows of the same manufacturer and `mpn` are one part twice. A row with an empty `manufacturer` is its `mpn` whoever makes it, so it is the same part as any row of that `mpn`; give it its manufacturer to keep both. The names are compared as they are written, so write them as the datasheet does. The pick lock records the manufacturer of the row it holds, so it holds the right one of two rows of one `mpn`, which share a name when neither gives one (the default is the `mpn`). Nothing fills the column of the standard rows yet: it is filled by hand from the datasheet, with its source, and `netsmith catalog add` writes the manufacturer of LCSC's record, as LCSC spells it, into a file that has the column. A release can add to a standard catalog a part that a project's file already has, and the project then stops building. The error names the standard row, says in which cells the two rows differ (the name and every value both files have, not their sources or prices) and how to fix it: remove the project's row from its file, and set the `row` of a pick lock that names it to the standard row's name, which `netsmith project lock --update` does (_Refreshing the lock_ in the chapter on the shape of a board). The notes of a release list the rows it adds to the standard catalogs. A capacitor's `effective_capacitance` cell is its curve of bias (ADR 0013): `derate capacitance by bias: 0:1 5:0.5` is the `capacitance` of the row after the part keeps 1 at 0 V and 0.5 at 5 V, and nothing after the colon means that no curve is published for the part.
 
 **Generic parts** (ADR 0047). If no row of a catalog works, the solver may pick a generic part, which has no supplier or part number. The rows are tried first, so a design that built keeps its parts. The series is `series = "E24"` (the default), `"E12"`, `"E96"` or `"none"` in the `[project]` table of `netsmith.toml`; capacitors and inductors use it too, except that E96 becomes E24 for them.
 
@@ -188,8 +189,8 @@ When the bill of materials or `fab` is made, each generic part is resolved to th
 A project's file, `catalogs/resistor.csv`, adds a 316 ohm resistor to the standard resistors, and a board asks for it:
 
 ```csv file=catalogs/resistor.csv set=own
-mpn,resistance,max_power,package,library,price,stock,date,source
-ACME-R316,316ohm +/- 1%,62.5mW,0402,Basic,0.0011,5000,2026-10-31,https://example.invalid/acme-r316.pdf
+mpn,resistance,max_power,package,price,stock,date,source
+ACME-R316,316ohm +/- 1%,62.5mW,0402,0.0011,5000,2026-10-31,https://example.invalid/acme-r316.pdf
 ```
 
 ```nsm solve report catalogs=own
@@ -208,8 +209,13 @@ board OwnPart
 The solver does not read `stock`, so a row that states a stock of 0 is still picked when it is the first that fits. The build says so in a note, and the editor shows the same line among its problems: the part's designator and path, the row's LCSC number and manufacturer's number, the file and line of the row, and what to do (choose another row, or state a different value). A part that the standard `data/jlcpcb/considered.csv` records as out of stock when it was read gets the same note when a project's row offers it and states no stock. An empty `stock` cell states nothing and gets no note, and a positive stock gets none. The note is not a guideline and never stops a build, and the pick is the same with or without it.
 
 ```csv file=catalogs/resistor.csv set=sold_out
-lcsc,mpn,resistance,max_power,package,library,stock,source
-C900001,ACME-R316,316ohm +/- 1%,62.5mW,0402,Extended,0,https://example.invalid/acme-r316.pdf
+mpn,resistance,max_power,package,stock,source
+ACME-R316,316ohm +/- 1%,62.5mW,0402,0,https://example.invalid/acme-r316.pdf
+```
+
+```csv file=offers/jlcpcb.csv set=sold_out
+manufacturer,mpn,sku,class,source,checked,notes
+,ACME-R316,C900001,Extended,https://example.invalid/acme-r316.pdf,,an invented number
 ```
 
 ```nsm solve stock catalogs=sold_out
@@ -227,8 +233,8 @@ R1 (`r1`) is C900001 (ACME-R316), and its catalog row (catalogs/resistor.csv:2) 
 A resistor's `temperature_coefficient` is a column too: how far the resistance moves per kelvin, as a fraction (`0.00005` is 50 ppm/K; take the datasheet's largest figure). The standard rows leave it empty, because no value goes into a standard catalog without a recorded source. A design that does not mention the field picks rows as before. A design that limits it, `.r1.temperature_coefficient <= 0.0001`, is offered only the rows that state it, so it needs a row of a project's file (a file that leaves the column out of its first line is read as empty there, which is why the file above needs nothing new):
 
 ```csv file=catalogs/resistor.csv set=tempco
-mpn,resistance,max_power,package,temperature_coefficient,library,source
-ACME-R100T,100ohm +/- 1%,62.5mW,0402,0.00005,Basic,https://example.invalid/acme-r100t.pdf
+mpn,resistance,max_power,package,temperature_coefficient,source
+ACME-R100T,100ohm +/- 1%,62.5mW,0402,0.00005,https://example.invalid/acme-r100t.pdf
 ```
 
 ```nsm solve report catalogs=tempco
@@ -265,9 +271,9 @@ error: the `resistor` catalog has nothing for `r1`, which needs resistance withi
 A part that is an IC is named by its key. The catalog of the `Mcu32` above is `catalogs/mcu.csv`:
 
 ```csv file=catalogs/mcu.csv set=ic
-mpn,package,library,price,stock,date,source
-MCU32-A,QFN-32,Extended,1.20,300,2026-10-31,https://example.invalid/mcu32-a.pdf
-MCU32-B,QFN-32,Extended,1.45,120,2026-10-31,https://example.invalid/mcu32-b.pdf
+mpn,package,price,stock,date,source
+MCU32-A,QFN-32,1.20,300,2026-10-31,https://example.invalid/mcu32-a.pdf
+MCU32-B,QFN-32,1.45,120,2026-10-31,https://example.invalid/mcu32-b.pdf
 ```
 
 ```nsm fails catalogs=ic
@@ -291,7 +297,7 @@ error: `u` is an `Mcu32`; name the part with .mpn: MCU32-A, MCU32-B
   |     ^^^^^^^^^
 ```
 
-A name is needed only when the board must choose. `.mpn &= "MCU32-B"` picks that row (a hand pick, _A hand pick_ below; `.lcsc &=` would too):
+A name is needed only when the board must choose. `.mpn &= "MCU32-B"` picks that row (a hand pick, _A hand pick_ in the chapter on the shape of a board):
 
 ```nsm evaluate catalogs=ic
 import std::sources::Rail
@@ -309,8 +315,8 @@ board NamedMcu {
 A catalog with one row has nothing to choose, so the board does not name it. The same board, with `catalogs/mcu.csv` holding only `MCU32-A`, builds with no `.mpn`:
 
 ```csv file=catalogs/mcu.csv set=ic_one
-mpn,package,library,price,stock,date,source
-MCU32-A,QFN-32,Extended,1.20,300,2026-10-31,https://example.invalid/mcu32-a.pdf
+mpn,package,price,stock,date,source
+MCU32-A,QFN-32,1.20,300,2026-10-31,https://example.invalid/mcu32-a.pdf
 ```
 
 ```nsm evaluate catalogs=ic_one
@@ -329,9 +335,9 @@ board OnlyMcu {
 Two rows that differ in a column the board narrows leave one row for that board, and it is taken as well. A file with `MCU32-A` in `QFN-32` and `MCU32-B` in `QFN-48` (a package the part has no pin table for, so no board that connects its pins can use it):
 
 ```csv file=catalogs/mcu.csv set=ic_pair
-mpn,package,library,price,stock,date,source
-MCU32-A,QFN-32,Extended,1.20,300,2026-10-31,https://example.invalid/mcu32-a.pdf
-MCU32-B,QFN-48,Extended,1.45,120,2026-10-31,https://example.invalid/mcu32-b.pdf
+mpn,package,price,stock,date,source
+MCU32-A,QFN-32,1.20,300,2026-10-31,https://example.invalid/mcu32-a.pdf
+MCU32-B,QFN-48,1.45,120,2026-10-31,https://example.invalid/mcu32-b.pdf
 ```
 
 ```nsm evaluate catalogs=ic_pair
@@ -375,10 +381,11 @@ board OfferedPart
 ```
 
 - **The columns** are `manufacturer`, `mpn`, `sku`, `class`, `source`, `checked` and `notes`, all seven, in any order, and no other: a price and a stock are a supply provider's quote (ADR 0047), not an offer. `mpn` and `sku` are required, and an empty `manufacturer` is the `mpn` whoever makes it, as in a catalog row. `checked` is a day, `2026-11-02`, or empty.
-- **The suppliers** are `jlcpcb` and `lcsc`. In `jlcpcb.csv` the `sku` is the LCSC number JLCPCB assembles the part by, and `class` is its library, `Basic`, `Extended` or `Preferred`, written as a row's `library` is, and required. In `lcsc.csv` the `sku` is LCSC's number for the part and `class` is empty. A `.csv` in an `offer_dirs` folder that is named for no supplier (`digikey.csv`) is an error that names the file, and so are two files of one supplier, in the project or in a dependency, whose offers are read with the project's; a folder cannot be both an `offer_dirs` and a `catalog_dirs` folder.
+- **The suppliers** are `jlcpcb` and `lcsc`. In `jlcpcb.csv` the `sku` is the LCSC number JLCPCB assembles the part by, and `class` is its library, `Basic`, `Extended` or `Preferred`, and required. In `lcsc.csv` the `sku` is LCSC's number for the part and `class` is empty. A `.csv` in an `offer_dirs` folder that is named for no supplier (`digikey.csv`) is an error that names the file, and so are two files of one supplier, in the project or in a dependency, whose offers are read with the project's; a folder cannot be both an `offer_dirs` and a `catalog_dirs` folder.
 - **An offer needs a `source`**, as a row does: no number comes from memory, and the loader refuses an offer without one, with its file and line. A supplier offers a part once and a number is one part: a second offer of the same part from one supplier, across the standard file and a project's too, and a second part with the same `sku`, are refused with both places named.
 - **An offer of a part that no catalog has** is not an error. The build says so in a note that names the offer's file and line, and nothing reads it.
-- **What reads them.** The row's `lcsc` and `library` columns stay, and the two agree for every standard row (a test holds them equal). Where a part has an offer, the solver and the resolution of a generic part read its number and its class from the offer: the number from the `jlcpcb` offer, else from the `lcsc` offer, and the class from the `jlcpcb` offer; where it has none, from the row's own columns. A part that names no manufacturer, of whose `mpn` a supplier offers two parts of two manufacturers, is refused where a board reads its catalog. Later stages of ADR 0143 move the numbers out of the rows, and say so in `docs/MIGRATING.md`.
+- **What reads them.** A row holds no supplier's number, so the solver, the resolution of a generic part, the bill of materials, `order.txt` and the pick lock read a part's number and class from its offers: the number from the `jlcpcb` offer, else from the `lcsc` offer, and the class from the `jlcpcb` offer. A part with no offer is bought by no number (the bill of materials says so), and a part that names no manufacturer, of whose `mpn` a supplier offers two parts of two manufacturers, is refused where a board reads its catalog. The pick lock records the `sku` of each channel's offer (_The pick lock_ in the chapter on the shape of a board). `netsmith catalog refresh` checks the offers of LCSC, the supplier whose record it reads, and writes the day in their `checked`; JLCPCB's are not asked about.
+- **Moving a project's old columns.** `netsmith project migrate-offers` moves the `lcsc` and `library` columns of a project's catalogs into its offers files, and its `.lcsc &=` hand picks to `.mpn &=` (`docs/MIGRATING.md`).
 
 ```csv fails file=offers/jlcpcb.csv
 manufacturer,mpn,sku,class,source,checked,notes
@@ -393,7 +400,7 @@ offers/jlcpcb.csv:2: the offer of `ACME-R316` (sku `C000316`) has no source; eve
 
 A row holds one figure for each column: a diode's `forward_voltage` is the datasheet's maximum at the rated current. A datasheet also draws how the figure moves with the current and the temperature, and a check that reads a diode's drop at a small current, or at a cold corner, needs that. A **curve file** gives it (issue #1260): the points of one column of one row, beside the catalog, which the solver reads at the current and the temperature the design gives the part. The row keeps its single figure, and the column is that figure wherever the design gives the part no current.
 
-- **Where.** `curves/<catalog>/<row>.csv` in the folder of the catalog's file: `data/jlcpcb/catalog/curves/schottky/C2480.csv` for a standard row, `catalogs/curves/schottky/ZZD1.csv` in a project (in any `catalog_dirs` folder, or beside a file that `catalogs` lists). The file is named by its row: the row's `lcsc`, or its `mpn` where it has none. A project's curve may be for a row of a standard catalog. A file whose name is no row's, a `.csv` in `curves/` outside a catalog's folder, and a second curve of the same row and column are errors that name the file.
+- **Where.** `curves/<catalog>/<row>.csv` in the folder of the catalog's file: `data/jlcpcb/catalog/curves/schottky/SS14.csv` for a standard row, `catalogs/curves/schottky/ZZD1.csv` in a project (in any `catalog_dirs` folder, or beside a file that `catalogs` lists). The file is named by its row's `mpn`. A project's curve may be for a row of a standard catalog. A file whose name is no row's, a `.csv` in `curves/` outside a catalog's folder, and a second curve of the same row and column are errors that name the file.
 - **The columns.** The first line names the axes and then, last, the column the points give, which is a quantity column of the catalog (`forward_voltage`). An axis is a field of the part by its path without the dot (`current`), or `temperature`, the temperature of the board's `.environment`. Each cell is a value in the language's syntax with its unit; a cell of an axis is one value, and a value may be a range (`0.40V..0.45V`), so a file can give a typical curve or its bounds.
 - **The points.** The lines with the same first axis are one curve over the next, as a datasheet draws one line for each temperature, and each line may have currents of its own. The lines may come in any order.
 
@@ -433,16 +440,16 @@ part Zfuse {
 The file leaves the cell empty for the row that does not record it, and a file written before the column existed may leave the whole column out:
 
 ```csv file=catalogs/zfuse.csv set=surge
-mpn,rated_current,surge_current,package,library,source
-ZF-1,1A,,0805,Extended,https://example.invalid/zf-1.pdf
-ZF-2,1A,8A,0805,Extended,https://example.invalid/zf-2.pdf
+mpn,rated_current,surge_current,package,source
+ZF-1,1A,,0805,https://example.invalid/zf-1.pdf
+ZF-2,1A,8A,0805,https://example.invalid/zf-2.pdf
 ```
 
 A design that says nothing about the column is offered every row, the empty one too. This file has only that row, and the design builds:
 
 ```csv file=catalogs/zfuse.csv set=unrated
-mpn,rated_current,package,library,source
-ZF-1,1A,0805,Extended,https://example.invalid/zf-1.pdf
+mpn,rated_current,package,source
+ZF-1,1A,0805,https://example.invalid/zf-1.pdf
 ```
 
 ```nsm evaluate catalogs=unrated

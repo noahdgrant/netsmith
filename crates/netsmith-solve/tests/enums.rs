@@ -109,17 +109,17 @@ board B {
 // ---- the dielectric column -------------------------------------------------------
 
 const CAPACITOR_HEADER: &str =
-    "mpn,capacitance,effective_capacitance,max_voltage,package,dielectric,library,source\n";
+    "mpn,capacitance,effective_capacitance,max_voltage,package,dielectric,source\n";
 
 /// Two invented 100 nF rows, X7R first.
 fn capacitors(second_class: &str) -> Catalogs {
     let text = format!(
         "{CAPACITOR_HEADER}\
-ZZC-100N-A,100nF +/- 10%,derate capacitance by bias:,16V,0402,X7R,Basic,https://example.invalid/zzc-a.pdf\n\
-ZZC-100N-B,100nF +/- 10%,derate capacitance by bias:,16V,0402,{second_class},Basic,https://example.invalid/zzc-b.pdf\n"
+ZZC-100N-A,100nF +/- 10%,derate capacitance by bias:,16V,0402,X7R,https://example.invalid/zzc-a.pdf\n\
+ZZC-100N-B,100nF +/- 10%,derate capacitance by bias:,16V,0402,{second_class},https://example.invalid/zzc-b.pdf\n"
     );
     let mut c = Catalogs::empty();
-    c.add_file("capacitor", "catalogs/capacitor.csv", &text)
+    crate::offered::add(&mut c, "capacitor", "catalogs/capacitor.csv", &text)
         .unwrap();
     c
 }
@@ -207,10 +207,10 @@ fn a_cell_that_is_not_a_variant_is_refused_naming_the_row_and_the_variants() {
 
 #[test]
 fn a_file_that_leaves_the_column_out_is_read_as_empty_there() {
-    let text = "mpn,capacitance,effective_capacitance,max_voltage,package,library,source\n\
-ZZC-100N-A,100nF +/- 10%,derate capacitance by bias:,16V,0402,Basic,https://example.invalid/zzc-a.pdf\n";
+    let text = "mpn,capacitance,effective_capacitance,max_voltage,package,source\n\
+ZZC-100N-A,100nF +/- 10%,derate capacitance by bias:,16V,0402,https://example.invalid/zzc-a.pdf\n";
     let mut c = Catalogs::empty();
-    c.add_file("capacitor", "catalogs/capacitor.csv", text)
+    crate::offered::add(&mut c, "capacitor", "catalogs/capacitor.csv", text)
         .unwrap();
     let s = solved_with(&bypass(""), &c);
     assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
@@ -278,11 +278,11 @@ fn the_standard_inductors_have_no_heating_current_so_a_design_that_needs_one_get
 
 #[test]
 fn a_project_row_that_records_a_heating_current_meets_the_requirement() {
-    let text = "mpn,inductance,saturation_current,dc_resistance,rms_current,package,library,source\n\
-ZZL-2R2-A,2.2uH +/- 20%,3A,0.1ohm,1.5A,1210,Basic,https://example.invalid/zzl-a.pdf\n\
-ZZL-2R2-B,2.2uH +/- 20%,3A,0.1ohm,2.5A,1210,Basic,https://example.invalid/zzl-b.pdf\n";
+    let text = "mpn,inductance,saturation_current,dc_resistance,rms_current,package,source\n\
+ZZL-2R2-A,2.2uH +/- 20%,3A,0.1ohm,1.5A,1210,https://example.invalid/zzl-a.pdf\n\
+ZZL-2R2-B,2.2uH +/- 20%,3A,0.1ohm,2.5A,1210,https://example.invalid/zzl-b.pdf\n";
     let mut c = Catalogs::empty();
-    c.add_file("inductor", "catalogs/inductor.csv", text)
+    crate::offered::add(&mut c, "inductor", "catalogs/inductor.csv", text)
         .unwrap();
     let s = solved_with(&inductor("        .rms_current >= 2A\n"), &c);
     assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
@@ -317,20 +317,20 @@ const MARGIN: &str = "    .tvs.breakdown_voltage >= .input.peak * 1.1\n";
 
 /// Two project rows of the `tvs` catalog that record a minimum breakdown voltage: 16.0 V
 /// peak with 10% margin needs 17.6 V, which the first (17.2 V) lacks and the second has.
-const TVS_ROWS: &str = "mpn,standoff_voltage,clamping_voltage,peak_pulse_current,package,breakdown_voltage,library,source
-ZZT-17-A,17V,27V,10A,SMA,17.2V,Extended,https://example.invalid/zzt-a.pdf
-ZZT-17-B,17V,27V,10A,SMA,18.9V,Extended,https://example.invalid/zzt-b.pdf
+const TVS_ROWS: &str = "mpn,standoff_voltage,clamping_voltage,peak_pulse_current,package,breakdown_voltage,source
+ZZT-17-A,17V,27V,10A,SMA,17.2V,https://example.invalid/zzt-a.pdf
+ZZT-17-B,17V,27V,10A,SMA,18.9V,https://example.invalid/zzt-b.pdf
 ";
 
 /// Only the first row: its breakdown voltage is under the margin.
-const TVS_ROWS_ONLY_A: &str = "mpn,standoff_voltage,clamping_voltage,peak_pulse_current,package,breakdown_voltage,library,source
-ZZT-17-A,17V,27V,10A,SMA,17.2V,Extended,https://example.invalid/zzt-a.pdf
+const TVS_ROWS_ONLY_A: &str = "mpn,standoff_voltage,clamping_voltage,peak_pulse_current,package,breakdown_voltage,source
+ZZT-17-A,17V,27V,10A,SMA,17.2V,https://example.invalid/zzt-a.pdf
 ";
 
 /// The same rows from a file written before the column existed.
 const TVS_ROWS_WITHOUT_THE_COLUMN: &str =
-    "mpn,standoff_voltage,clamping_voltage,peak_pulse_current,package,library,source
-ZZT-17-A,17V,27V,10A,SMA,Extended,https://example.invalid/zzt-a.pdf
+    "mpn,standoff_voltage,clamping_voltage,peak_pulse_current,package,source
+ZZT-17-A,17V,27V,10A,SMA,https://example.invalid/zzt-a.pdf
 ";
 
 #[test]
@@ -376,7 +376,7 @@ fn a_narrowed_breakdown_voltage_is_refused_with_the_standard_rows_too() {
 #[test]
 fn a_project_row_that_records_a_breakdown_voltage_meets_the_margin() {
     let mut c = Catalogs::empty();
-    c.add_file("tvs", "catalogs/tvs.csv", TVS_ROWS).unwrap();
+    crate::offered::add(&mut c, "tvs", "catalogs/tvs.csv", TVS_ROWS).unwrap();
     let s = solved_with(&tvs(MARGIN), &c);
     assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
     assert_eq!(s.picks[0].candidate, "ZZT-17-B");
@@ -385,7 +385,7 @@ fn a_project_row_that_records_a_breakdown_voltage_meets_the_margin() {
 #[test]
 fn a_project_row_with_too_little_breakdown_voltage_fails_the_margin_naming_the_numbers() {
     let mut c = Catalogs::empty();
-    c.add_file("tvs", "catalogs/tvs.csv", TVS_ROWS_ONLY_A)
+    crate::offered::add(&mut c, "tvs", "catalogs/tvs.csv", TVS_ROWS_ONLY_A)
         .unwrap();
     let s = solved_with(&tvs(MARGIN), &c);
     let m = messages(&s);
@@ -402,7 +402,7 @@ fn a_project_row_with_too_little_breakdown_voltage_fails_the_margin_naming_the_n
 #[test]
 fn a_tvs_file_written_before_the_column_stays_valid_and_fits_a_design_that_does_not_state_it() {
     let mut c = Catalogs::empty();
-    c.add_file("tvs", "catalogs/tvs.csv", TVS_ROWS_WITHOUT_THE_COLUMN)
+    crate::offered::add(&mut c, "tvs", "catalogs/tvs.csv", TVS_ROWS_WITHOUT_THE_COLUMN)
         .unwrap();
     let s = solved_with(&tvs(""), &c);
     assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));

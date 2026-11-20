@@ -1,6 +1,7 @@
-//! `.lcsc` and `.mpn` are members of every part (ADR 0122): a board narrows them to hold a part to
-//! a catalog row, and a part that declares either declares what it already has: the checker
-//! refuses it (issue #696).
+//! `.mpn` and `.manufacturer` are members of every part (ADR 0122, ADR 0143): a board narrows them
+//! to hold a part to a catalog row, and a part that declares either declares what it already has:
+//! the checker refuses it (issue #696). `.lcsc` is a member too, so that a source that still
+//! narrows it reaches the solver, which refuses it with the `.mpn` to write (ADR 0143).
 
 use netsmith_check::{Domain, Loader, check};
 
@@ -21,10 +22,13 @@ fn source(decl: &str, narrow: &str) -> String {
 }
 
 #[test]
-fn every_part_has_lcsc_and_mpn_as_text() {
+fn every_part_has_mpn_manufacturer_and_lcsc_as_text() {
     let checked = check(
         "main.nsm",
-        &source("", ".lcsc &= \"C307331\"; .mpn &= \"ZZ-1\""),
+        &source(
+            "",
+            ".lcsc &= \"C307331\"; .mpn &= \"ZZ-1\"; .manufacturer &= \"Acme\"",
+        ),
         &Loader::std(),
     );
     assert!(checked.is_ok(), "{}", checked.render());
@@ -37,11 +41,15 @@ fn every_part_has_lcsc_and_mpn_as_text() {
         board.model.domain_at("u.mpn"),
         Some(&Domain::Text("ZZ-1".into()))
     );
+    assert_eq!(
+        board.model.domain_at("u.manufacturer"),
+        Some(&Domain::Text("Acme".into()))
+    );
 }
 
 #[test]
 fn a_part_may_not_declare_them_at_all() {
-    for name in ["mpn", "lcsc"] {
+    for name in ["mpn", "manufacturer", "lcsc"] {
         for ty in ["String", "Voltage"] {
             let checked = check(
                 "main.nsm",
@@ -50,7 +58,7 @@ fn a_part_may_not_declare_them_at_all() {
             );
             assert!(
                 checked.render().contains(&format!(
-                    "`{name}` is a member every part has, as text: the number of the catalog row it is (ADR 0122); do not declare it, and narrow it with `.{name} &= \"...\"`"
+                    "`{name}` is a member every part has, as text: the catalog row it is (ADR 0122, ADR 0143); do not declare it, and narrow it with `.{name} &= \"...\"`"
                 )),
                 ".{name}: {ty}: {}",
                 checked.render()
@@ -87,14 +95,14 @@ fn narrowing_them_stays_fine() {
 fn two_hand_picks_of_one_part_that_differ_contradict() {
     let checked = check(
         "main.nsm",
-        &source("", ".lcsc &= \"C1\"")
-            .replace("    .u: Zz {", "    .u.lcsc &= \"C2\"\n    .u: Zz {"),
+        &source("", ".mpn &= \"ZZ-1\"")
+            .replace("    .u: Zz {", "    .u.mpn &= \"ZZ-2\"\n    .u: Zz {"),
         &Loader::std(),
     );
     assert!(
         checked
             .render()
-            .contains("contradiction on `u.lcsc`: it is already \"C"),
+            .contains("contradiction on `u.mpn`: it is already \"ZZ-"),
         "{}",
         checked.render()
     );

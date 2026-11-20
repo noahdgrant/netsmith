@@ -18,7 +18,7 @@ fn never(_: &str) -> Option<u64> {
 
 fn catalogs(name: &str, rows: &str) -> Catalogs {
     let mut c = Catalogs::empty().with_series(Some(Series::E24));
-    c.add_file(name, "catalogs/rows.csv", rows).unwrap();
+    crate::offered::add(&mut c, name, "catalogs/rows.csv", rows).unwrap();
     c
 }
 

@@ -195,8 +195,8 @@ board Repro {
 
     // Hold `r` to the 4.7k row: the comparison follows the lock, as `build` does.
     let held = text.replacen(
-        "row = \"2.2kΩ 1% 0402 C25879\"\nlcsc = \"C25879\"\nmpn = \"0402WGF2201TCE\"",
-        "row = \"4.7kΩ 1% 0402 C25900\"\nlcsc = \"C25900\"\nmpn = \"0402WGF4701TCE\"",
+        "row = \"2.2kΩ 1% 0402 C25879\"\nmpn = \"0402WGF2201TCE\"\nsku = { jlcpcb-assembly = \"C25879\", lcsc-retail = \"C25879\" }",
+        "row = \"4.7kΩ 1% 0402 C25900\"\nmpn = \"0402WGF4701TCE\"\nsku = { jlcpcb-assembly = \"C25900\", lcsc-retail = \"C25900\" }",
         1,
     );
     assert_ne!(held, text, "the lock was not edited:\n{text}");

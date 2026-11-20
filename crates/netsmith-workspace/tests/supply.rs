@@ -54,7 +54,7 @@ fn open(s: &Setup) -> (TempDir, Workspace) {
     fs::write(root.join("netsmith.toml"), manifest).unwrap();
     if let Some(catalog) = s.catalog {
         fs::create_dir_all(root.join("catalogs")).unwrap();
-        fs::write(root.join("catalogs/resistor.csv"), catalog).unwrap();
+        netsmith_solve::migrate::write_to(&root, "catalogs/resistor.csv", catalog).unwrap();
     }
     if let Some(quotes) = s.quotes {
         fs::create_dir_all(root.join("supply")).unwrap();

@@ -13,12 +13,12 @@
 use netsmith_check::{Loader, check};
 use netsmith_solve::{Catalogs, Solution, solve};
 
-const SUPERCAP: &str = "mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,capacitance_at_end_of_life,esr_growth,library,source
-ZZS-1F,1F +/- 20%,60mohm,100mohm,5uA,5.5V,2,Hand,Radial_D16.0mm_P7.50mm,0.7,2,Extended,https://example.invalid/zzs-1f.pdf
+const SUPERCAP: &str = "mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,capacitance_at_end_of_life,esr_growth,source
+ZZS-1F,1F +/- 20%,60mohm,100mohm,5uA,5.5V,2,Hand,Radial_D16.0mm_P7.50mm,0.7,2,https://example.invalid/zzs-1f.pdf
 ";
 
-const SCHOTTKY: &str = "mpn,forward_voltage,max_reverse_voltage,max_forward_current,package,library,source
-ZZD-1,0.5V,40V,2A,SOD-323,Extended,https://example.invalid/zzd-1.pdf
+const SCHOTTKY: &str = "mpn,forward_voltage,max_reverse_voltage,max_forward_current,package,source
+ZZD-1,0.5V,40V,2A,SOD-323,https://example.invalid/zzd-1.pdf
 ";
 
 /// Its forward voltage over the current at two temperatures.
@@ -37,11 +37,11 @@ ZZL-33,3.3V +/- 2%,0.6V,1A,3W,SOT-223,https://example.invalid/zzl
 
 fn catalogs(curve: bool) -> Catalogs {
     let mut c = Catalogs::empty();
-    c.add_file("supercap", "catalogs/supercap.csv", SUPERCAP)
+    crate::offered::add(&mut c, "supercap", "catalogs/supercap.csv", SUPERCAP)
         .unwrap();
-    c.add_file("schottky", "catalogs/schottky.csv", SCHOTTKY)
+    crate::offered::add(&mut c, "schottky", "catalogs/schottky.csv", SCHOTTKY)
         .unwrap();
-    c.add_file("ldo", "catalogs/ldo.csv", LDO).unwrap();
+    crate::offered::add(&mut c, "ldo", "catalogs/ldo.csv", LDO).unwrap();
     if curve {
         c.add_curve(
             "schottky",
@@ -339,7 +339,7 @@ fn buck_catalogs() -> Catalogs {
         ("capacitor", "mpn,capacitance,effective_capacitance,max_voltage,package,dielectric,source\nC47U6,47uF +/- 20%,derate capacitance by bias: 0:1 3:0.8 6.3:0.5,6.3V,0805,X5R,invented\nC4U35,4.7uF +/- 10%,derate capacitance by bias: 0:1 10:0.8 35:0.3,35V,1206,X7R,invented\n"),
         ("supercap", SUPERCAP),
     ] {
-        c.add_file(name, &format!("catalogs/{name}.csv"), text).unwrap();
+        crate::offered::add(&mut c, name, &format!("catalogs/{name}.csv"), text).unwrap();
     }
     c
 }

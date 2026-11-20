@@ -981,8 +981,8 @@ board Zz9Board {
 }
 "#;
 
-const ZZ9_CSV: &str = "mpn,package,vout.voltage,dropout,max_current,library,price,stock,date,source\n\
-ZZ9-33-S,SOT-23-5,3.3V +/- 2%,0.3V,0.5A,Basic,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n";
+const ZZ9_CSV: &str = "mpn,package,vout.voltage,dropout,max_current,price,stock,date,source\n\
+ZZ9-33-S,SOT-23-5,3.3V +/- 2%,0.3V,0.5A,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n";
 
 /// A project whose `netsmith.toml` has the `manifest_lines` (about its catalogs), with the
 /// regulator module and board, and `catalogs/zz9.csv`.

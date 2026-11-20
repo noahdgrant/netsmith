@@ -154,8 +154,8 @@ board Repro {
 ";
 
 const LDO3_CSV: &str = "\
-mpn,name,package,library,source
-LDO3-33,LDO3 3.3V,SOT-6,Extended,https://example.invalid/ldo3
+mpn,name,package,source
+LDO3-33,LDO3 3.3V,SOT-6,https://example.invalid/ldo3
 ";
 
 /// Build `LDO3` with `Ldo3` drawn with a library symbol whose output pin (pad 3) has the
@@ -179,8 +179,7 @@ fn build_ldo3(source: &str) -> Result<(), String> {
     libraries.mapping =
         netsmith_kicad::Mapping::for_project(Some(dir.path())).unwrap_or_else(|e| panic!("{e}"));
     let mut catalogs = Catalogs::jlcpcb();
-    catalogs
-        .add_file("ldo3", "catalogs/ldo3.csv", LDO3_CSV)
+    netsmith_solve::migrate::add_to(&mut catalogs, "ldo3", "catalogs/ldo3.csv", LDO3_CSV)
         .unwrap();
     build_with("t.nsm", source, &Loader::std(), &catalogs, &libraries).map(|_| ())
 }

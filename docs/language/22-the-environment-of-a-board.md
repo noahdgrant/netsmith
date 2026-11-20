@@ -123,8 +123,8 @@ error: Warm: `led` works up to 348.15 K (75degC) only (the design states `.led.t
 - **A row that names a dielectric class and states no range is judged by the class's range.** A capacitor row with a `dielectric` cell (`X5R`, `X7R`, `C0G`) and no `temp_min` or `temp_max` of its own takes the operating temperature range that makers print for that class code (X5R -55degC to 85degC, X7R and C0G -55degC to 125degC; the documents are cited in the doc comment of `ClassRange` in `crates/netsmith-check/src/environment.rs`), at the end its cells leave empty. A class range is a property of the class code and not of a particular part, which may be rated narrower, so the row's own cell, or the design's statement, always wins at its end, and every message that rests on a class range says "from the class X5R, per ..." and not that the datasheet states it. A class with no cited range (none in the standard rows) leaves the row unjudged and named, as a row with no class does. A project's own row can use it: the cell is read from any catalog that has a `dielectric` column of the class names. Here the row states a class and nothing else, and 85degC is inside X5R's range while 125degC is not:
 
 ```csv file=catalogs/capacitor.csv set=class_only
-mpn,capacitance,effective_capacitance,max_voltage,package,dielectric,library,source
-ACME-C33N3,33.3nF +/- 10%,derate capacitance by bias:,16V,0402,X5R,Basic,https://example.invalid/acme-c33n3.pdf
+mpn,capacitance,effective_capacitance,max_voltage,package,dielectric,source
+ACME-C33N3,33.3nF +/- 10%,derate capacitance by bias:,16V,0402,X5R,https://example.invalid/acme-c33n3.pdf
 ```
 
 ```nsm fails catalogs=class_only
@@ -320,8 +320,8 @@ temperature,esr
 No standard row states any of them yet, because none has a recorded source (`data/jlcpcb/README.md`); a project adds them to its own rows. This file is invented, like the file of the catalogs chapter: a 100 uF capacitor that keeps half of its capacitance and has three times its ESR at the end of its life.
 
 ```csv file=catalogs/capacitor.csv set=life
-mpn,capacitance,effective_capacitance,max_voltage,package,esr,capacitance_at_end_of_life,esr_growth,library,source
-ACME-C100U,100uF +/- 20%,derate capacitance by bias: 0:1 16:1,16V,1210,20mohm,0.5,3,Basic,https://example.invalid/acme-c100u.pdf page 4
+mpn,capacitance,effective_capacitance,max_voltage,package,esr,capacitance_at_end_of_life,esr_growth,source
+ACME-C100U,100uF +/- 20%,derate capacitance by bias: 0:1 16:1,16V,1210,20mohm,0.5,3,https://example.invalid/acme-c100u.pdf page 4
 ```
 
 A bank that must keep 66 uF is one capacitor for the row's own figures (80 uF at the least) and two at the end of its life (40 uF each at the least), and the solver picks two, because the trial of each candidate judges the bounds at every corner too:
@@ -422,8 +422,8 @@ catalogs/resistor.csv:2: `temp_max`: `85` is a plain number, but a part's highes
 A `max_voltage` cell may be written in steps over temperature, as a design writes them after `&=` (see A rating that falls with temperature), quoted for the commas. The column holds the greatest step, and a row whose steps do not hold the voltage across the part at a temperature the board reaches is not offered. Here the one row of 1 F holds 5.5 V only up to 70 C, and the board reaches 85 C on a rail of 5 V:
 
 ```csv file=catalogs/capacitor.csv set=supercap
-mpn,capacitance,effective_capacitance,max_voltage,package,library,source
-ACME-SC1F,1F +/- 20%,derate capacitance by bias:,"5.5V to 70degC, 4.2V to 85degC",1210,Extended,https://example.invalid/acme-sc1f.pdf page 2
+mpn,capacitance,effective_capacitance,max_voltage,package,source
+ACME-SC1F,1F +/- 20%,derate capacitance by bias:,"5.5V to 70degC, 4.2V to 85degC",1210,https://example.invalid/acme-sc1f.pdf page 2
 ```
 
 ```nsm fails catalogs=supercap

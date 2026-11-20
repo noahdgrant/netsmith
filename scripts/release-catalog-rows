@@ -6,9 +6,12 @@
 # (docs/RELEASING.md).
 #
 # Usage: scripts/release-catalog-rows <from-ref> [<to-ref>]
-# `to-ref` defaults to HEAD. One line for each LCSC number that is in `data/jlcpcb/catalog/` at
-# `to-ref` and was not at `from-ref`: `- resistor: C25104 (0402WGF3300TCE)`, in catalog and number
-# order. Prints nothing when no row was added. Reads git only; changes nothing.
+# `to-ref` defaults to HEAD. One line for each part (its `mpn`, the part's identity, ADR 0143) that
+# is in `data/jlcpcb/catalog/` at `to-ref` and was not at `from-ref`, with the LCSC number of its
+# offer in `data/offers/lcsc.csv` when it has one: `- resistor: 0402WGF3300TCE (C25104)`, in
+# catalog and part order. The `mpn` column is found by the header, so a ref from before the
+# catalogs lost their `lcsc` column reads too. Prints nothing when no row was added. Reads git
+# only; changes nothing.
 set -euo pipefail
 
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
@@ -24,22 +27,31 @@ cd "$repo"
 git rev-parse --verify --quiet "$from^{commit}" >/dev/null || { echo "error: $from is not a commit" >&2; exit 2; }
 git rev-parse --verify --quiet "$to^{commit}" >/dev/null || { echo "error: $to is not a commit" >&2; exit 2; }
 
-# The rows of one catalog file at a ref as `lcsc<TAB>mpn`, nothing when the file is not there.
-rows() {
-    git show "$1:$2" 2>/dev/null | awk -F, 'NR > 1 && $1 != "" { print $1 "\t" $2 }' || true
+# The part numbers of one catalog file at a ref, one a line, nothing when the file is not there.
+# The cells before `mpn` hold no comma in these files, so a line splits on its commas there.
+mpns() {
+    git show "$1:$2" 2>/dev/null |
+        awk -F, 'NR == 1 { for (i = 1; i <= NF; i++) if ($i == "mpn") m = i; next }
+                 m && $m != "" { print $m }' || true
+}
+
+# The LCSC number of the offer of the part `mpn` at `to-ref`, if there is one.
+sku_of() {
+    git show "$to:data/offers/lcsc.csv" 2>/dev/null |
+        awk -F, -v n="$1" 'NR > 1 && $2 == n { print $3; exit }' || true
 }
 
 for file in $(git ls-tree --name-only "$to" "$dir/" | sort); do
     case "$file" in *.csv) ;; *) continue ;; esac
     catalog="$(basename "$file" .csv)"
     [ "$catalog" = considered ] && continue
-    comm -13 <(rows "$from" "$file" | cut -f1 | sort -u) <(rows "$to" "$file" | cut -f1 | sort -u) |
-        while read -r lcsc; do
-            mpn="$(rows "$to" "$file" | awk -F'\t' -v n="$lcsc" '$1 == n { print $2; exit }')"
-            if [ -n "$mpn" ]; then
-                echo "- $catalog: $lcsc ($mpn)"
+    comm -13 <(mpns "$from" "$file" | sort -u) <(mpns "$to" "$file" | sort -u) |
+        while read -r mpn; do
+            sku="$(sku_of "$mpn")"
+            if [ -n "$sku" ]; then
+                echo "- $catalog: $mpn ($sku)"
             else
-                echo "- $catalog: $lcsc"
+                echo "- $catalog: $mpn"
             fi
         done
 done

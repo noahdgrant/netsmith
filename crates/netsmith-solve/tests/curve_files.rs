@@ -6,8 +6,8 @@ use netsmith_check::{Domain, Loader, check};
 use netsmith_solve::{Catalogs, Solution, solve};
 
 /// One invented Schottky row: 0.6 V at its rated 1 A is the single figure.
-const ROW: &str = "mpn,forward_voltage,max_reverse_voltage,max_forward_current,package,library,source
-ZZD-CURVE,0.6V,40V,1A,SOD-323,Extended,https://example.invalid/zzd
+const ROW: &str = "mpn,forward_voltage,max_reverse_voltage,max_forward_current,package,source
+ZZD-CURVE,0.6V,40V,1A,SOD-323,https://example.invalid/zzd
 ";
 
 /// Its forward voltage at three temperatures; the 125 C line has currents of its own.
@@ -25,7 +25,7 @@ const FILE: &str = "catalogs/curves/schottky/ZZD-CURVE.csv";
 
 fn catalogs(curve: Option<&str>) -> Catalogs {
     let mut c = Catalogs::empty();
-    c.add_file("schottky", "catalogs/schottky.csv", ROW).unwrap();
+    crate::offered::add(&mut c, "schottky", "catalogs/schottky.csv", ROW).unwrap();
     if let Some(text) = curve {
         c.add_curve("schottky", "ZZD-CURVE", FILE, text).unwrap();
     }
@@ -147,7 +147,7 @@ fn a_cold_environment_past_the_points_is_refused() {
 
 fn resolve_error(curve: &str, row: &str, catalog_rows: &str) -> String {
     let mut c = Catalogs::empty();
-    c.add_file("schottky", "catalogs/schottky.csv", catalog_rows)
+    crate::offered::add(&mut c, "schottky", "catalogs/schottky.csv", catalog_rows)
         .unwrap();
     c.add_curve("schottky", row, FILE, curve).unwrap();
     let s = solved(&board(".current &= 100mA", ""), &c);
@@ -158,7 +158,7 @@ fn resolve_error(curve: &str, row: &str, catalog_rows: &str) -> String {
 fn a_curve_that_fits_no_row_or_column_is_an_error_naming_its_file() {
     let e = resolve_error(CURVE, "ZZD-OTHER", ROW);
     assert!(
-        e.contains(FILE) && e.contains("a curve file is named by the row it is for"),
+        e.contains(FILE) && e.contains("a curve file is named by the mpn of the row it is for"),
         "{e}"
     );
     let e = resolve_error("current,max_power\n1mA,1W\n", "ZZD-CURVE", ROW);

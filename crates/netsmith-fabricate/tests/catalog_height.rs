@@ -36,10 +36,10 @@ board Widget {
 
 /// The project's file: `r1`'s row is 0.55 mm tall, `r2`'s states no height and `r3`'s is 2.0 mm.
 const ROWS: &str = "\
-mpn,resistance,max_power,package,height,library,source
-ACME-R316,31.6kohm +/- 1%,62.5mW,0402,0.55mm,Basic,https://example.invalid/acme.pdf height: page 2
-ACME-R317,31.7kohm +/- 1%,62.5mW,0402,,Basic,https://example.invalid/acme.pdf
-ACME-R318,31.8kohm +/- 1%,62.5mW,0402,2.0mm,Basic,https://example.invalid/acme.pdf height: page 2
+mpn,resistance,max_power,package,height,source
+ACME-R316,31.6kohm +/- 1%,62.5mW,0402,0.55mm,https://example.invalid/acme.pdf height: page 2
+ACME-R317,31.7kohm +/- 1%,62.5mW,0402,,https://example.invalid/acme.pdf
+ACME-R318,31.8kohm +/- 1%,62.5mW,0402,2.0mm,https://example.invalid/acme.pdf height: page 2
 ";
 
 /// The outline, a lid of 3 mm over the top 18 mm, and `extra`.
@@ -69,7 +69,7 @@ physical for Widget {{
 
 fn catalogs() -> Catalogs {
     let mut c = Catalogs::jlcpcb();
-    c.add_file("resistor", "catalogs/resistor.csv", ROWS)
+    netsmith_solve::migrate::add_to(&mut c, "resistor", "catalogs/resistor.csv", ROWS)
         .unwrap();
     c
 }

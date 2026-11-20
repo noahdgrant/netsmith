@@ -10,7 +10,7 @@ use netsmith_solve::Catalogs;
 /// these tests are about. Every chip row of the shipped catalogs has a height (issue #1421).
 fn catalogs() -> Catalogs {
     let mut c = Catalogs::jlcpcb();
-    c.add_file("resistor", "catalogs/resistor.csv", NO_HEIGHT_ROW)
+    netsmith_solve::migrate::add_to(&mut c, "resistor", "catalogs/resistor.csv", NO_HEIGHT_ROW)
         .unwrap();
     c
 }

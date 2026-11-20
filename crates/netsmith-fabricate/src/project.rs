@@ -1210,6 +1210,30 @@ impl Project {
         Ok(found)
     }
 
+    /// The project's own offers files ([`Project::all_offer_files`] without its dependencies'):
+    /// the ones a command that writes offers (`catalog refresh`, `catalog add`, `project
+    /// migrate-offers`) acts on.
+    pub fn offer_files(&self) -> Result<Vec<OfferFile>, String> {
+        self.own_offer_files()
+    }
+
+    /// Where the project's offers file of `supplier` is, or would be made: the file in its
+    /// `offer_dirs` folders when there is one, else `<first offer_dirs folder>/<supplier>.csv`
+    /// (`offers/lcsc.csv`). `None` when the manifest lists no offers folder.
+    pub fn offer_file_of(&self, supplier: &str) -> Result<Option<(PathBuf, String)>, String> {
+        if let Some(f) = self
+            .own_offer_files()?
+            .into_iter()
+            .find(|f| f.supplier == supplier)
+        {
+            return Ok(Some((f.path, f.file)));
+        }
+        Ok(self.manifest.offer_dirs.first().map(|dir| {
+            let file = format!("{}/{supplier}.csv", dir.trim_end_matches('/'));
+            (self.root.join(&file), file)
+        }))
+    }
+
     fn own_offer_files(&self) -> Result<Vec<OfferFile>, String> {
         let mut found = Vec::new();
         for (folder, file, path, file_name) in

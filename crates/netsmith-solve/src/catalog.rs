@@ -558,6 +558,26 @@ impl Catalogs {
         &self.offers
     }
 
+    /// The sku of each supplier that offers the part of `c`, by the supplier's name, in the
+    /// order of [`crate::offers::SUPPLIERS`]: what a pick of it records in the lock. A row of a
+    /// file is bought by its offers alone; a candidate made in code that carries its number in
+    /// `lcsc` and has no offer is bought by that number from JLCPCB, which is how such a
+    /// candidate was always read.
+    pub fn skus_of(&self, c: &Candidate) -> Vec<(String, String)> {
+        let skus = c
+            .mpn
+            .as_deref()
+            .and_then(|mpn| {
+                crate::offers::bought_by(&self.offers, c.manufacturer.as_deref(), mpn).ok()
+            })
+            .map(|b| b.skus)
+            .unwrap_or_default();
+        match (&c.lcsc, skus.is_empty()) {
+            (Some(lcsc), true) => vec![("jlcpcb".to_string(), lcsc.clone())],
+            _ => skus,
+        }
+    }
+
     /// The notes of a project's offers whose part is in no catalog, one line each in the order
     /// of the files: the offer is not an error (the part may be a row the project removed, or of
     /// a catalog it reads later), but nothing reads it. The standard offers are held to the
@@ -601,7 +621,7 @@ impl Catalogs {
         if table.has_row_named(&locked.row) {
             return None;
         }
-        table.built_in_row_with(locked)
+        table.built_in_row_with(locked, &self.offers)
     }
 
     /// The catalog `name` for a part whose `catalog name { ... }` lists `columns`, with every

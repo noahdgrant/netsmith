@@ -16,14 +16,40 @@ fn data(path: &str) -> PathBuf {
         .join(path)
 }
 
-/// The records of a file, as header name to cell.
+/// The records of a file, as header name to cell. A row of a standard catalog also has `lcsc`
+/// and `library`, the `sku` and `class` of its standard `jlcpcb` offer (ADR 0143: the row holds
+/// neither), which the checks below name a row by and sort it by; a row with no such offer has
+/// them empty.
 fn records(path: &str) -> Vec<std::collections::BTreeMap<String, String>> {
     let text = fs::read_to_string(data(path)).unwrap_or_else(|e| panic!("{path}: {e}"));
     let rows = parse_csv(&text).unwrap();
     let (_, header) = &rows[0];
+    let offers = path.starts_with("jlcpcb/catalog/").then(Catalogs::jlcpcb);
     rows[1..]
         .iter()
-        .map(|(_, r)| header.iter().cloned().zip(r.iter().cloned()).collect())
+        .map(|(_, r)| {
+            let mut row: std::collections::BTreeMap<String, String> =
+                header.iter().cloned().zip(r.iter().cloned()).collect();
+            if let Some(c) = &offers {
+                let manufacturer = row.get("manufacturer").filter(|m| !m.is_empty()).cloned();
+                let offer = c
+                    .offers()
+                    .of("jlcpcb", manufacturer.as_deref(), &row["mpn"])
+                    .unwrap();
+                row.insert(
+                    "lcsc".into(),
+                    offer.map(|o| o.sku.clone()).unwrap_or_default(),
+                );
+                row.insert(
+                    "library".into(),
+                    offer
+                        .and_then(|o| o.class)
+                        .map(|l| l.to_string())
+                        .unwrap_or_default(),
+                );
+            }
+            row
+        })
         .collect()
 }
 

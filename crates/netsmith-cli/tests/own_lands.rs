@@ -24,8 +24,8 @@ board Balanced {
 }
 "#;
 
-const SUPERCAP: &str = "mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,height_growth,library,source
-ZZS-0F5-T,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,Reflow,Radial_D16.0mm_P7.50mm_Tap,1mm,Extended,invented for a test
+const SUPERCAP: &str = "mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,height_growth,source
+ZZS-0F5-T,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,Reflow,Radial_D16.0mm_P7.50mm_Tap,1mm,invented for a test
 ";
 
 const COIN: &str = r#"
@@ -41,8 +41,8 @@ board Coin {
 }
 "#;
 
-const CELL: &str = "mpn,chemistry,capacity,internal_resistance,charge_temperature,discharge_temperature,float_voltage,max_charge_current,package,library,source
-ZZC-40,LiIon,144C,1ohm,0degC..45degC,-20degC..60degC,4.2V +/- 50mV,40mA,Coin_D20.0mm_Tabs_P15.00mm,Extended,invented for a test
+const CELL: &str = "mpn,chemistry,capacity,internal_resistance,charge_temperature,discharge_temperature,float_voltage,max_charge_current,package,source
+ZZC-40,LiIon,144C,1ohm,0degC..45degC,-20degC..60degC,4.2V +/- 50mV,40mA,Coin_D20.0mm_Tabs_P15.00mm,invented for a test
 ";
 
 /// `netsmith board build` of `source` with the catalog file `catalog` (`<name>.csv`), with no

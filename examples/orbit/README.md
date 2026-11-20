@@ -430,8 +430,9 @@ here is what it says.
 
 #### The catalog rows (`catalogs/`)
 
-One row for each part, `lcsc`, `mpn`, `package` and `library`, with the JLCPCB parts page and the
-LCSC page and the day (2026-11-10) in `source`; all five are Extended. Price and stock are not
+One row for each part, `mpn` and `package`, with the JLCPCB parts page and the LCSC page and the
+day (2026-11-10) in `source`, and its LCSC number and library in `offers/` (ADR 0143); all five
+are Extended. Price and stock are not
 recorded. A first look at JLCPCB's pages with WebFetch gave part data for all five (none was a
 JavaScript shell, and the library type was read from the page's label). The `vreg` of the charger's
 row is the datasheet's range, with the page.

@@ -1,7 +1,7 @@
 # Glossary: H
 
 **Hand pick**:
-A narrowing of a part's `.lcsc` or `.mpn` in the source (`.c1.lcsc &= "C307331"`), members every part has: the part is held to the catalog row with that number, before the _Pick lock_, and the row is judged by everything the design says; a row that fails, or a number no row has, stops the run at the narrowing (ADR 0122). The lock then records the row.
+A narrowing of a part's `.mpn` in the source (`.c1.mpn &= "CL05B104KB54PNC"`), with its `.manufacturer` when two parts share the number, members every part has: the part is held to the catalog row of that part (ADR 0143), before the _Pick lock_, and the row is judged by everything the design says; a row that fails, or a number no row has, stops the run at the narrowing (ADR 0122). The lock then records the row. A narrowing of `.lcsc`, the supplier's number a hand pick was once written with, is an error that gives the `.mpn` to write.
 _Avoid_: picks file (`<stem>.picks.toml`, which held them once and is now refused), override, pinned (a _Pin_ is a part's lead)
 
 **HDI process**:

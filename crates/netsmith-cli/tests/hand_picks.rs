@@ -1,4 +1,4 @@
-//! A hand pick end to end (ADR 0122): `.lcsc &= "..."` in the source holds a part to that row,
+//! A hand pick end to end (ADR 0122, ADR 0143): `.mpn &= "..."` in the source holds a part to that row,
 //! before the pick lock, and the lock records it; a picks file beside the source, which netsmith
 //! no longer reads, stops every command that solves with how to move its entries into the source.
 
@@ -47,17 +47,21 @@ fn lock(root: &Path) -> String {
     fs::read_to_string(root.join("src/main.lock.toml")).unwrap()
 }
 
-/// The LED board with `r1` held to the row with the LCSC number `lcsc`.
-fn hand_picked(lcsc: &str) -> String {
+/// The LED board with `r1` held to the row with the manufacturer part number `mpn`.
+fn hand_picked(mpn: &str) -> String {
     LED.replace(
         ".r1: Resistor {}",
-        &format!(".r1: Resistor {{ .lcsc &= \"{lcsc}\" }}"),
+        &format!(".r1: Resistor {{ .mpn &= \"{mpn}\" }}"),
     )
 }
 
+/// The manufacturer part numbers of the rows of `OTHER_ROW` and of a 2.2 kohm 0402 resistor.
+const OTHER_MPN: &str = "0603WAF3900T5E";
+const HOT_MPN: &str = "0402WGF2201TCE";
+
 #[test]
 fn a_hand_pick_is_the_pick_and_the_lock_records_it() {
-    let root = project("hand-pick", &hand_picked("C23151"));
+    let root = project("hand-pick", &hand_picked(OTHER_MPN));
     let run = netsmith(&root, &["board", "build"]);
     assert!(run.status.success(), "{}", stderr(&run));
     assert!(stdout(&run).contains("R_0603"), "{}", stdout(&run));
@@ -74,7 +78,7 @@ fn a_hand_pick_comes_before_the_lock_and_lock_update_records_it() {
     let root = project("hand-pick-over-lock", LED);
     assert!(netsmith(&root, &["board", "build"]).status.success());
     assert!(lock(&root).contains(SOLVER_ROW));
-    fs::write(root.join("src/main.nsm"), hand_picked("C23151")).unwrap();
+    fs::write(root.join("src/main.nsm"), hand_picked(OTHER_MPN)).unwrap();
     // The build takes the hand pick and says that the lock differs, which it leaves alone.
     let run = netsmith(&root, &["board", "build"]);
     assert!(run.status.success(), "{}", stderr(&run));
@@ -100,7 +104,7 @@ fn a_hand_pick_comes_before_the_lock_and_lock_update_records_it() {
 #[test]
 fn a_hand_picked_row_that_fails_stops_the_build_at_the_narrowing() {
     // 2.2 kohm in 0402 overheats at the LED's current.
-    let source = hand_picked("C25879");
+    let source = hand_picked(HOT_MPN);
     let root = project("hand-pick-fails", &source);
     let run = netsmith(&root, &["board", "build"]);
     assert!(!run.status.success());
@@ -110,11 +114,11 @@ fn a_hand_picked_row_that_fails_stops_the_build_at_the_narrowing() {
     let (line, text) = source
         .lines()
         .enumerate()
-        .find(|(_, l)| l.contains(".lcsc &="))
+        .find(|(_, l)| l.contains(".mpn &="))
         .unwrap();
-    let at = format!("main.nsm:{}:{}", line + 1, text.find(".lcsc").unwrap() + 1);
+    let at = format!("main.nsm:{}:{}", line + 1, text.find(".mpn").unwrap() + 1);
     assert!(
-        said.contains(&format!("`r1` is held by `.lcsc &= \"C25879\"` to one row of the `resistor` catalog, and no other row was tried for it: if the failure above is about it, change the design so that the row fits, or change the narrowing\n   --> src/{at}")),
+        said.contains(&format!("`r1` is held by `.mpn &= \"{HOT_MPN}\"` to one row of the `resistor` catalog, and no other row was tried for it: if the failure above is about it, change the design so that the row fits, or change the narrowing\n   --> src/{at}")),
         "{said}"
     );
     // `project lock --check` cannot tell, and says why in the solver's words.
@@ -136,16 +140,50 @@ fn a_picks_file_is_refused_with_the_narrowings_to_write() {
         assert_eq!(run.status.code(), Some(2), "{args:?}: {}", stderr(&run));
         assert!(
             stderr(&run).contains("main.picks.toml: netsmith no longer reads a picks file (ADR 0122)")
-                && stderr(&run).contains("  in `board LedExample`:\n    .r1.lcsc &= \"C23151\""),
+                && stderr(&run).contains(&format!("  in `board LedExample`:\n    .r1.mpn &= \"{OTHER_MPN}\"")),
             "{args:?}: {}",
             stderr(&run)
         );
     }
     assert!(!root.join("src/main.lock.toml").exists());
     // Moved into the source and deleted, the entry is the same pick.
-    fs::write(root.join("src/main.nsm"), hand_picked("C23151")).unwrap();
+    fs::write(root.join("src/main.nsm"), hand_picked(OTHER_MPN)).unwrap();
     fs::remove_file(root.join("src/main.picks.toml")).unwrap();
     let run = netsmith(&root, &["board", "build"]);
     assert!(run.status.success(), "{}", stderr(&run));
     assert!(lock(&root).contains(OTHER_ROW), "{}", lock(&root));
+}
+
+#[test]
+fn a_hand_pick_by_the_lcsc_number_stops_the_build_with_the_mpn_and_migrate_offers_rewrites_it() {
+    let source = LED.replace(".r1: Resistor {}", ".r1: Resistor { .lcsc &= \"C23151\" }");
+    let root = project("hand-pick-lcsc", &source);
+    let run = netsmith(&root, &["board", "build"]);
+    assert!(!run.status.success());
+    assert!(
+        stderr(&run).contains(&format!("`.lcsc &= \"C23151\"` on `r1`: a hand pick is by the manufacturer's part number now, and a supplier's number is an offer (ADR 0143): write `.mpn &= \"{OTHER_MPN}\"` in its place")),
+        "{}",
+        stderr(&run)
+    );
+    // The command rewrites it, and then the build takes the row it named.
+    let check = netsmith(&root, &["project", "migrate-offers", "--check"]);
+    assert_eq!(check.status.code(), Some(1), "{}", stderr(&check));
+    assert_eq!(fs::read_to_string(root.join("src/main.nsm")).unwrap(), source);
+    let moved = netsmith(&root, &["project", "migrate-offers"]);
+    assert!(moved.status.success(), "{}", stderr(&moved));
+    assert!(
+        stdout(&moved).contains("src/main.nsm\n  line ") && stdout(&moved).contains(&format!("-> `.mpn &= \"{OTHER_MPN}\"`")),
+        "{}",
+        stdout(&moved)
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("src/main.nsm")).unwrap(),
+        hand_picked(OTHER_MPN)
+    );
+    let run = netsmith(&root, &["board", "build"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    assert!(lock(&root).contains(OTHER_ROW), "{}", lock(&root));
+    // A second run has nothing to move.
+    let again = netsmith(&root, &["project", "migrate-offers", "--check"]);
+    assert_eq!(again.status.code(), Some(0), "{}", stderr(&again));
 }

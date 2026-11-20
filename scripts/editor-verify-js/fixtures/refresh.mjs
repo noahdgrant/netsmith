@@ -5,15 +5,28 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 
-const CATALOG = `lcsc,mpn,resistance,max_power,package,library,price,stock,date,checked,source
-C9999999,ZZR-316,316ohm +/- 1%,250mW,0402,Extended,0.0123,42,2026-06-01,,https://example.invalid/zzr
-C9999998,ZZR-317,317ohm +/- 1%,250mW,0402,Extended,0.0124,40,2026-06-01,,https://example.invalid/zzr
+const CATALOG = `mpn,resistance,max_power,package,price,stock,date,checked,source
+ZZR-316,316ohm +/- 1%,250mW,0402,0.0123,42,2026-06-01,,https://example.invalid/zzr
+ZZR-317,317ohm +/- 1%,250mW,0402,0.0124,40,2026-06-01,,https://example.invalid/zzr
+`;
+
+// The parts' numbers are offers (ADR 0143): JLCPCB's with the library, LCSC's, which the check
+// reads and writes the day in.
+const HEAD = 'manufacturer,mpn,sku,class,source,checked,notes\n';
+const JLCPCB = `${HEAD},ZZR-316,C9999999,Extended,https://example.invalid/zzr,,
+,ZZR-317,C9999998,Extended,https://example.invalid/zzr,,
+`;
+const LCSC = `${HEAD},ZZR-316,C9999999,,https://example.invalid/zzr,,
+,ZZR-317,C9999998,,https://example.invalid/zzr,,
 `;
 
 /** Write the project: the LED example with a resistor only the project's catalog has. */
 export function writeRefresh(project, ledSource) {
   fs.mkdirSync(path.join(project, 'catalogs'), { recursive: true });
   fs.writeFileSync(path.join(project, 'catalogs/resistor.csv'), CATALOG);
+  fs.mkdirSync(path.join(project, 'offers'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'offers/jlcpcb.csv'), JLCPCB);
+  fs.writeFileSync(path.join(project, 'offers/lcsc.csv'), LCSC);
   fs.writeFileSync(
     path.join(project, 'src/main.nsm'),
     ledSource.replace('.r1: Resistor {}', '.r1: Resistor { .resistance &= 316ohm +/- 1% }'),

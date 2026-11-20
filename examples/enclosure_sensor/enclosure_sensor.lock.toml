@@ -12,107 +12,107 @@ provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
 [EnclosureSensor.parts."ldo.input_cap"]
 catalog = "capacitor"
 row = "10uF 20% 10V X5R 0402 C315248"
-lcsc = "C315248"
 mpn = "CL05A106MP5NUNC"
+sku = { jlcpcb-assembly = "C315248", lcsc-retail = "C315248" }
 
 [EnclosureSensor.parts."ldo.output_cap"]
 catalog = "capacitor"
 row = "22uF 20% 6.3V X5R 0603 C59461"
-lcsc = "C59461"
 mpn = "CL10A226MQ8NRNC"
+sku = { jlcpcb-assembly = "C59461", lcsc-retail = "C59461" }
 
 [EnclosureSensor.parts."ldo.regulator"]
 catalog = "ldo"
 row = "XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446"
-lcsc = "C5446"
 mpn = "XC6206P332MR-G"
+sku = { jlcpcb-assembly = "C5446", lcsc-retail = "C5446" }
 
 [EnclosureSensor.parts."lights.led_a"]
 catalog = "led"
 row = "LTST-C190KGKT GREEN LED 0603 C125094"
-lcsc = "C125094"
 mpn = "LTST-C190KGKT"
+sku = { jlcpcb-assembly = "C125094", lcsc-retail = "C125094" }
 
 [EnclosureSensor.parts."lights.led_b"]
 catalog = "led"
 row = "LTST-C190KGKT GREEN LED 0603 C125094"
-lcsc = "C125094"
 mpn = "LTST-C190KGKT"
+sku = { jlcpcb-assembly = "C125094", lcsc-retail = "C125094" }
 
 [EnclosureSensor.parts."lights.led_c"]
 catalog = "led"
 row = "LTST-C190KGKT GREEN LED 0603 C125094"
-lcsc = "C125094"
 mpn = "LTST-C190KGKT"
+sku = { jlcpcb-assembly = "C125094", lcsc-retail = "C125094" }
 
 [EnclosureSensor.parts."lights.r_a"]
 catalog = "resistor"
 row = "330Ω 1% 0402 C25104"
-lcsc = "C25104"
 mpn = "0402WGF3300TCE"
+sku = { jlcpcb-assembly = "C25104", lcsc-retail = "C25104" }
 
 [EnclosureSensor.parts."lights.r_b"]
 catalog = "resistor"
 row = "330Ω 1% 0402 C25104"
-lcsc = "C25104"
 mpn = "0402WGF3300TCE"
+sku = { jlcpcb-assembly = "C25104", lcsc-retail = "C25104" }
 
 [EnclosureSensor.parts."lights.r_c"]
 catalog = "resistor"
 row = "330Ω 1% 0402 C25104"
-lcsc = "C25104"
 mpn = "0402WGF3300TCE"
+sku = { jlcpcb-assembly = "C25104", lcsc-retail = "C25104" }
 
 [EnclosureSensor.parts."mcu_bypass"]
 catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"
-lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
+sku = { jlcpcb-assembly = "C1525", lcsc-retail = "C1525" }
 
 [EnclosureSensor.parts."pullups.scl_pullup"]
 catalog = "resistor"
 row = "4.7kΩ 1% 0402 C25900"
-lcsc = "C25900"
 mpn = "0402WGF4701TCE"
+sku = { jlcpcb-assembly = "C25900", lcsc-retail = "C25900" }
 
 [EnclosureSensor.parts."pullups.sda_pullup"]
 catalog = "resistor"
 row = "4.7kΩ 1% 0402 C25900"
-lcsc = "C25900"
 mpn = "0402WGF4701TCE"
+sku = { jlcpcb-assembly = "C25900", lcsc-retail = "C25900" }
 
 [EnclosureSensor.parts."radio.bypass"]
 catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"
-lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
+sku = { jlcpcb-assembly = "C1525", lcsc-retail = "C1525" }
 
 [EnclosureSensor.parts."radio.row_a"]
 catalog = "header"
 row = "PM2.54-1X10P-H85 10-pin 2.54mm socket C42431852"
-lcsc = "C42431852"
 mpn = "PM2.54-1X10P-H85"
+sku = { jlcpcb-assembly = "C42431852", lcsc-retail = "C42431852" }
 
 [EnclosureSensor.parts."radio.row_b"]
 catalog = "header"
 row = "PM2.54-1X10P-H85 10-pin 2.54mm socket C42431852"
-lcsc = "C42431852"
 mpn = "PM2.54-1X10P-H85"
+sku = { jlcpcb-assembly = "C42431852", lcsc-retail = "C42431852" }
 
 [EnclosureSensor.parts."rd1"]
 catalog = "resistor"
 row = "5.1kΩ 1% 0603 C23186"
-lcsc = "C23186"
 mpn = "0603WAF5101T5E"
+sku = { jlcpcb-assembly = "C23186", lcsc-retail = "C23186" }
 
 [EnclosureSensor.parts."rd2"]
 catalog = "resistor"
 row = "5.1kΩ 1% 0603 C23186"
-lcsc = "C23186"
 mpn = "0603WAF5101T5E"
+sku = { jlcpcb-assembly = "C23186", lcsc-retail = "C23186" }
 
 [EnclosureSensor.parts."wp_pullup"]
 catalog = "resistor"
 row = "10kΩ 1% 0603 C25804"
-lcsc = "C25804"
 mpn = "0603WAF1002T5E"
+sku = { jlcpcb-assembly = "C25804", lcsc-retail = "C25804" }

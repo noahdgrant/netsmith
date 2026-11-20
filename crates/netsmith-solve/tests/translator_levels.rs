@@ -8,9 +8,9 @@ use netsmith_solve::{Catalogs, Solution, solve};
 /// Two invented translators as a project's rows of the standard catalog: a 3.3 V one that
 /// reads a high from 1.1 V, and a 1.8 V one that survives 2.3 V on its input.
 const ROWS: &str = "\
-mpn,name,vcc_min,vcc_max,vcc_abs_max,a_abs_max,vt_plus_max,vt_minus_min,max_output_current,max_supply_current,package,library,source
-ZT-17,ZT-17 translator,2.5V,3.6V,4.2V,4.2V,1.1V,0.45V,3mA,750nA,SOT-23-5,Extended,https://example.invalid/zt-17
-ZT-18,ZT-18 translator,1.65V,1.95V,2.5V,2.3V,0.9V,0.3V,2mA,400nA,SOT-23-5,Extended,https://example.invalid/zt-18
+mpn,name,vcc_min,vcc_max,vcc_abs_max,a_abs_max,vt_plus_max,vt_minus_min,max_output_current,max_supply_current,package,source
+ZT-17,ZT-17 translator,2.5V,3.6V,4.2V,4.2V,1.1V,0.45V,3mA,750nA,SOT-23-5,https://example.invalid/zt-17
+ZT-18,ZT-18 translator,1.65V,1.95V,2.5V,2.3V,0.9V,0.3V,2mA,400nA,SOT-23-5,https://example.invalid/zt-18
 ";
 
 /// An invented driver that drives within `drop` of its supply and to 0.1 V at the bottom.
@@ -57,8 +57,7 @@ fn run(src: &str) -> Solution {
     let checked = check("test.nsm", src, &Loader::std());
     assert!(checked.is_ok(), "{}", checked.render());
     let mut catalogs = Catalogs::jlcpcb();
-    catalogs
-        .add_file("level_translator", "catalogs/level_translator.csv", ROWS)
+    crate::offered::add(&mut catalogs, "level_translator", "catalogs/level_translator.csv", ROWS)
         .unwrap();
     let board = checked.standalone_boards().next().expect("one board");
     solve(board, &catalogs)

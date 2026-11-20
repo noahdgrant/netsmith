@@ -66,13 +66,13 @@ physical for Widget {{
 
 /// The project's row for `r1`'s value: 2.5 mm tall, by a document of the row's.
 const ROWS: &str = "\
-mpn,resistance,max_power,package,height,library,source
-ACME-R316,31.6kohm +/- 1%,62.5mW,0402,2.5mm,Basic,https://example.invalid/acme.pdf height: page 2
+mpn,resistance,max_power,package,height,source
+ACME-R316,31.6kohm +/- 1%,62.5mW,0402,2.5mm,https://example.invalid/acme.pdf height: page 2
 ";
 
 fn catalogs() -> Catalogs {
     let mut c = Catalogs::jlcpcb();
-    c.add_file("resistor", "catalogs/resistor.csv", ROWS)
+    netsmith_solve::migrate::add_to(&mut c, "resistor", "catalogs/resistor.csv", ROWS)
         .unwrap();
     c
 }

@@ -218,11 +218,11 @@ board Zz9Board {
 const HEADER: &str =
     "lcsc,mpn,vout.voltage,dropout,max_current,package,library,price,stock,date,source\n";
 /// Invented rows: not real parts.
-const ROW_S: &str = "C9001,ZZ9-33-S,3.3V +/- 2%,0.3V,0.5A,SOT-23-5,Basic,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n";
-const ROW_A: &str = "C9002,ZZ9-33-A,3.3V +/- 1%,0.2V,0.5A,SOT-23-5,Basic,0.10,1000,2026-10-31,https://example.invalid/zz9-33-a.pdf\n";
+const ROW_S: &str = "C9900001,ZZ9-33-S,3.3V +/- 2%,0.3V,0.5A,SOT-23-5,Basic,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n";
+const ROW_A: &str = "C9900002,ZZ9-33-A,3.3V +/- 1%,0.2V,0.5A,SOT-23-5,Basic,0.10,1000,2026-10-31,https://example.invalid/zz9-33-a.pdf\n";
 
 fn set_rows(root: &Path, rows: &str) {
-    fs::write(root.join("catalogs/zz9.csv"), format!("{HEADER}{rows}")).unwrap();
+    netsmith_solve::migrate::write_to(root, "catalogs/zz9.csv", &format!("{HEADER}{rows}")).unwrap();
 }
 
 fn lock_project(label: &str) -> (TempDir, Workspace) {
@@ -317,7 +317,7 @@ fn a_lock_that_is_stale_lists_what_lock_check_would_print() {
     assert_eq!(
         lock.diff,
         [
-            "Zz9Board: `u`: `ZZ9-33-S` (lcsc C9001, mpn ZZ9-33-S) -> `ZZ9-33-A` (lcsc C9002, mpn ZZ9-33-A)"
+            "Zz9Board: `u`: `ZZ9-33-S` (mpn ZZ9-33-S, jlcpcb-assembly C9900001, lcsc-retail C9900001) -> `ZZ9-33-A` (mpn ZZ9-33-A, jlcpcb-assembly C9900002, lcsc-retail C9900002)"
         ]
     );
     // The locked row still passes, so the solver has nothing to report; and the file is as it was.
@@ -338,16 +338,16 @@ fn row_of_u(editor: &Workspace) -> Option<String> {
 fn a_lock_that_is_stale_still_holds_the_part_to_its_locked_row_in_the_view() {
     let (root, editor) = lock_project("sidecars-lock-held-view");
     // Without a lock the first row that works is the pick.
-    assert_eq!(row_of_u(&editor).as_deref(), Some("C9001"));
+    assert_eq!(row_of_u(&editor).as_deref(), Some("C9900001"));
     write_lock(&root);
     // A row the catalog gains before the locked one is what the solver would pick fresh, but
     // the view is built as `build` builds it: with the lock, so the part keeps its row.
     set_rows(&root, &format!("{ROW_A}{ROW_S}"));
     assert!(!lock_of(&editor).current);
-    assert_eq!(row_of_u(&editor).as_deref(), Some("C9001"));
+    assert_eq!(row_of_u(&editor).as_deref(), Some("C9900001"));
     // With no lock the same catalog picks the new row.
     fs::remove_file(root.join("src/main.lock.toml")).unwrap();
-    assert_eq!(row_of_u(&editor).as_deref(), Some("C9002"));
+    assert_eq!(row_of_u(&editor).as_deref(), Some("C9900002"));
 }
 
 #[test]

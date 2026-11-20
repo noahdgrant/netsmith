@@ -7,20 +7,19 @@ use netsmith_check::{Loader, check};
 use netsmith_design::{Designed, design_board};
 use netsmith_solve::{Catalogs, solve};
 
-const HEAD: &str = "mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,height_growth,assembly,library,source\n";
+const HEAD: &str = "mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,height_growth,assembly,source\n";
 
 /// Two cells, 5.5 V to 65 degC and 4.2 V to 85 degC, soldered by hand only, and hand-assembled
 /// by its row.
-const HAND: &str = "ZZS-0F5,0.5F +/- 20%,120mohm,200mohm,6uA,\"5.5V to 65degC, 4.2V to 85degC\",2,Hand,Radial_D16.0mm_P7.50mm,1mm,hand,Extended,https://example.invalid/zzs-0f5.pdf\n";
+const HAND: &str = "ZZS-0F5,0.5F +/- 20%,120mohm,200mohm,6uA,\"5.5V to 65degC, 4.2V to 85degC\",2,Hand,Radial_D16.0mm_P7.50mm,1mm,hand,https://example.invalid/zzs-0f5.pdf\n";
 /// One that allows reflow, and says nothing of who assembles it.
-const REFLOW: &str = "ZZS-0F5-R,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,Reflow,Radial_D16.0mm_P7.50mm,1mm,,Extended,https://example.invalid/zzs-0f5-r.pdf\n";
+const REFLOW: &str = "ZZS-0F5-R,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,Reflow,Radial_D16.0mm_P7.50mm,1mm,,https://example.invalid/zzs-0f5-r.pdf\n";
 /// One held in a holder, never soldered.
-const HELD: &str = "ZZS-0F5-H,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,None,Radial_D16.0mm_P7.50mm,1mm,,Extended,https://example.invalid/zzs-0f5-h.pdf\n";
+const HELD: &str = "ZZS-0F5-H,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,None,Radial_D16.0mm_P7.50mm,1mm,,https://example.invalid/zzs-0f5-h.pdf\n";
 
 fn build(row: &str, environment: &str, lines: &str) -> Result<Designed, Vec<String>> {
     let mut catalogs = Catalogs::empty();
-    catalogs
-        .add_file("supercap", "catalogs/supercap.csv", &format!("{HEAD}{row}"))
+    netsmith_solve::migrate::add_to(&mut catalogs, "supercap", "catalogs/supercap.csv", &format!("{HEAD}{row}"))
         .unwrap();
     let src = format!(
         "import std::env::Environment

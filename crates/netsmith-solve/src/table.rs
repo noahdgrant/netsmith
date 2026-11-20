@@ -18,10 +18,8 @@
 //!
 //! | fixed column | meaning |
 //! |---|---|
-//! | `lcsc` | the supplier's part number (`C25104`). Where the part has an offer ([`crate::offers`], ADR 0143) the offer's `sku` is read instead, and this column where it has none; for a standard row the two are equal (a test holds them so) |
 //! | `manufacturer` | the part's manufacturer, as its datasheet spells it (`Texas Instruments`); with the `mpn` it is the row's identity (ADR 0143). Empty means the row does not say, and the `mpn` alone is the identity, the same part whoever makes it |
 //! | `mpn` | the manufacturer's part number; also a field of the part if its catalog lists `.mpn` |
-//! | `library` | JLCPCB's `Basic`, `Extended` or `Preferred`. Where the part has a `jlcpcb` offer its `class` is read instead, as for `lcsc` |
 //! | `assembly` | who assembles the part when the design does not say: `fab`, `hand`, `none` or `consigned` (ADR 0024, ADR 0084) |
 //! | `height` | how tall the part's body stands above the face of the board it is on, a length of one value (`2.4mm`), read from the datasheet or the manufacturer's drawing, with the document, its revision and the page or table in the `source` cell (ADR 0094). The part's `.height` is this when nothing in the design states one; empty means the height is unknown. A part whose `catalog` lists `.height` as a column of its own reads it as that column instead |
 //! | `temp_min`, `temp_max` | the least and the greatest temperature the part works at, each one temperature as the datasheet prints it (`-40degC`, or `233.15K`, which is the same temperature), with the datasheet or record and which temperature it is (ambient, junction or operating) in `source` and `notes` (ADR 0099). A figure that is a junction range (`TJ`) is accepted as the part's range and the part is judged by it: a junction range that covers the environment is a pass, and the part's own heating is not computed, which is the limit of the check. A design whose board states an `.environment` is checked against them: a row whose range does not cover it is not offered, and a row with an empty cell is offered and named in a guideline finding. A project's own part that states `.temp_min` or `.temp_max` in its source states it for every row |
@@ -29,11 +27,17 @@
 //! | `qualification` | the qualification the part's datasheet says its ordering code has: `Aec` where the datasheet or the maker's product page says it is qualified to an AEC standard (AEC-Q100 for integrated circuits, Q101 for discrete semiconductors, Q200 for passives; the `notes` say which, with the document, its revision and the page), `None` where it says the ordering code is not qualified (the commercial grade of a part that has a qualified one), and empty where nothing says, which is unknown and not a refusal. Never written from memory (ADR 0099). A design whose board's `.environment` states `.qualification &= Qualification::Aec` is checked against it: a row that says `None` is not offered, and a row with an empty cell is offered and named in a guideline finding. A project's own part that states `.qualification` in its source states it for every row |
 //! | `price`, `stock` | the board house's (JLCPCB's) snapshot, USD and pieces, entered by hand; `netsmith catalog refresh` never writes them (ADR 0039). The solver does not read them: a row is offered whatever its stock (ADR 0047), and only the bill of materials shows them, after a supply provider's answer |
 //! | `price_breaks` | the board house's price at each quantity, `1:0.0019 1000:0.0015` (pieces:USD), entered by hand; nothing reads it |
-//! | `source` | where the row was read. Required when the row has an `lcsc` or `mpn` |
+//! | `source` | where the row was read. Required when the row has an `mpn` |
 //! | `date` | the day the `price` and `stock` were read, `2026-10-31`; the bill of materials and `netsmith catalog age` take the age of the numbers from it |
-//! | `checked` | the day `netsmith catalog refresh` last found the row's manufacturer's number and package equal to LCSC's record, `2026-11-02`; empty if never; nothing reads it |
-//! | `name` | what a message calls the row (default: the `mpn`, then the `lcsc`) |
-//! | `label` | the schematic's value field (default: the `mpn`, then the `lcsc`, then the `name`) |
+//! | `checked` | the day a person last found the row right; empty if never; nothing reads it. `netsmith catalog refresh` writes the day it checked an offer in the offers file's own `checked` (ADR 0143) |
+//! | `name` | what a message calls the row (default: the `mpn`) |
+//! | `label` | the schematic's value field (default: the `mpn`, then the `name`) |
+//!
+//! **A row holds no supplier's number** (ADR 0143). What a supplier calls the part, and how it
+//! sorts it (JLCPCB's Basic, Extended or Preferred library), is an offer, a row of
+//! `offers/<supplier>.csv` ([`crate::offers`]) of the row's `manufacturer` and `mpn`. The `lcsc`
+//! and `library` columns that a row once had are refused with how to move them
+//! (`netsmith project migrate-offers`).
 //! | `notes` | free text |
 //!
 //! # Why files, and why these rules (ADR 0022, accepted 2026-11-04)
@@ -64,12 +68,12 @@
 //!   the cell, and the column is a [`Value::Curved`].
 //! - **`name` and `label` exist** because messages and schematics must stay as they were
 //!   (`10kΩ 1% 0402 C25744`, a value of `4.7k`), which a generic rule could not make. They are
-//!   the one column added to the task as handed over, and default to the `mpn`, then the `lcsc`.
+//!   the one column added to the task as handed over, and default to the `mpn`.
 //!   A fixed column that is about the row, not the part, may also be listed as a column of a
 //!   part (`mpn` in a keyed catalog); the cell is then used for both.
-//! - **A source is required** for a row with an `lcsc` or `mpn`: the project rule that no part
-//!   number comes from memory, enforced by the loader and not by a test over one file. A row
-//!   with neither is a made-up part, as the sample catalogs are, and needs a `name`.
+//! - **A source is required** for a row with an `mpn`: the project rule that no part number
+//!   comes from memory, enforced by the loader and not by a test over one file. A row with none
+//!   is a made-up part, as the sample catalogs are, and needs a `name`.
 //! - **The order of the rows is the selection policy.** `jlcpcb.rs` used to sort by Basic, then
 //!   price, then value; the standard files are now written in that order and a test checks the
 //!   part that can still be checked (Basic before Extended). A project that wants "cheapest
@@ -87,8 +91,8 @@
 //!   inside the project, each named after its catalog. A `.csv` in a folder whose stem is not a
 //!   catalog name is an error that names the file: a forgotten or misnamed catalog would
 //!   otherwise be a silent "no catalog" at the part that needs it. A file named like a standard
-//!   catalog adds its rows after the standard ones. A part is in a catalog once: the same `lcsc`
-//!   twice, or the same part by its identity (ADR 0143: the same `mpn`, and the same
+//!   catalog adds its rows after the standard ones. A part is in a catalog once: the same part by
+//!   its identity (ADR 0143: the same `mpn`, and the same
 //!   `manufacturer` when both rows name one; a row with no manufacturer is its `mpn` whoever
 //!   makes it), in one file or across the standard file and a project's, is an error that
 //!   names both places ("one answer"). Two rows of one `mpn` from two named manufacturers are
@@ -130,11 +134,9 @@ use crate::offers::{Bought, Offers, bought_by};
 use crate::standard::Standard;
 
 /// The columns that are about the row, not about the part.
-const FIXED: [&str; 18] = [
-    "lcsc",
+const FIXED: [&str; 16] = [
     "manufacturer",
     "mpn",
-    "library",
     "assembly",
     "height",
     "temp_min",
@@ -150,6 +152,10 @@ const FIXED: [&str; 18] = [
     "label",
     "notes",
 ];
+
+/// The columns a catalog row once had and has no more (ADR 0143): a supplier's number and class
+/// are an offer, in `offers/<supplier>.csv`.
+pub const RETIRED: [&str; 2] = ["lcsc", "library"];
 
 /// The value columns of a standard kind's catalog, if it has any: the columns that carry the
 /// part's value, the number a design is expected to choose or bound (ADR 0065), a resistor's
@@ -256,8 +262,8 @@ struct Header {
     names: Vec<String>,
 }
 
-/// What a catalog file records about one LCSC number, as it was last checked: stock and price
-/// move, so these are for a person to read and not for the solver.
+/// What a catalog file and its offers record about one supplier number, as it was last checked:
+/// stock and price move, so these are for a person to read and not for the solver.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Supplier {
     pub lcsc: String,
@@ -280,11 +286,9 @@ struct Row {
     line: usize,
     header: Rc<Header>,
     cells: Vec<String>,
-    lcsc: String,
     /// The `manufacturer` cell, empty when the row says none.
     manufacturer: String,
     mpn: String,
-    library: Option<Library>,
     name: String,
     label: String,
     /// Whether the row is from a file that ships in the binary (`data/`), not a project's.
@@ -330,19 +334,10 @@ impl Row {
         }
     }
 
-    /// The row's own `lcsc` and `library` columns.
-    fn columns(&self) -> Bought {
-        Bought {
-            lcsc: (!self.lcsc.is_empty()).then(|| self.lcsc.clone()),
-            library: self.library,
-        }
-    }
-
-    /// What the row is bought by: its offers, and its columns where it has none
-    /// ([`bought_by`]). An error names the row.
+    /// What the row is bought by: its offers ([`bought_by`]). An error names the row.
     fn bought(&self, offers: &Offers) -> Result<Bought, String> {
         let manufacturer = (!self.manufacturer.is_empty()).then_some(self.manufacturer.as_str());
-        bought_by(offers, manufacturer, &self.mpn, self.columns()).map_err(|e| {
+        bought_by(offers, manufacturer, &self.mpn).map_err(|e| {
             format!(
                 "{}: {e}: give the row its manufacturer, as the offer it is bought by has it",
                 self.at()
@@ -363,18 +358,18 @@ impl Row {
 pub struct Table {
     rows: Vec<Row>,
     /// The curve files of the catalog's rows (`crate::curve`), each with the name of the row it
-    /// is for (its file stem: the row's `lcsc`, or its `mpn`).
+    /// is for (its file stem: the row's `mpn`).
     curves: Vec<(String, Arc<Curve>)>,
 }
 
 impl Table {
-    /// What the rows say about one LCSC number: the first row that is bought by it, its own
-    /// column or its offer ([`bought_by`]).
+    /// What the rows say about one supplier number: the first row that is bought by it
+    /// ([`bought_by`]).
     pub fn supplier(&self, lcsc: &str, offers: &Offers) -> Option<Supplier> {
         let (row, bought) = self.rows.iter().find_map(|r| {
             // A row whose offers are ambiguous is refused where a part reads the catalog; here
-            // it is its columns.
-            let bought = r.bought(offers).unwrap_or_else(|_| r.columns());
+            // it is bought by nothing.
+            let bought = r.bought(offers).unwrap_or_default();
             (bought.lcsc.as_deref() == Some(lcsc)).then_some((r, bought))
         })?;
         Some(Supplier {
@@ -407,6 +402,13 @@ impl Table {
             ));
         };
         let names: Vec<String> = names.iter().map(|n| n.trim().to_string()).collect();
+        let retired: Vec<&str> = RETIRED
+            .into_iter()
+            .filter(|r| names.iter().any(|n| n == r))
+            .collect();
+        if !retired.is_empty() {
+            return Err(retired_columns(file, *line, &retired));
+        }
         for (i, n) in names.iter().enumerate() {
             if n.is_empty() {
                 return Err(format!("{file}:{line}: column {} has no name", i + 1));
@@ -433,10 +435,8 @@ impl Table {
                 line: *line,
                 header: header.clone(),
                 cells: fields.clone(),
-                lcsc: String::new(),
                 manufacturer: String::new(),
                 mpn: String::new(),
-                library: None,
                 name: String::new(),
                 label: String::new(),
                 built_in,
@@ -453,7 +453,7 @@ impl Table {
     }
 
     /// Add the rows of another file after these. A part may be in a catalog once, whichever
-    /// file it is in: the same `lcsc` twice, or two rows of the same identity (ADR 0143: the same
+    /// file it is in: two rows of the same identity (ADR 0143: the same
     /// `mpn`, and the same `manufacturer` when both rows name one, [`Row::same_part`]), is an
     /// error naming both lines. Two rows of one `mpn` from two named manufacturers are two parts.
     /// When the first is a row of the built-in catalog and the second a project's (a release
@@ -461,12 +461,8 @@ impl Table {
     /// differs between the two and how to fix the project: remove its row, and set the `row` of
     /// the pick lock to the built-in row's name, which `netsmith project lock --update` does.
     pub fn append(&mut self, other: Table) -> Result<(), String> {
-        let mut by_lcsc: BTreeMap<&str, &Row> = BTreeMap::new();
         let mut by_mpn: BTreeMap<&str, Vec<&Row>> = BTreeMap::new();
         for row in &self.rows {
-            if !row.lcsc.is_empty() {
-                by_lcsc.entry(&row.lcsc).or_insert(row);
-            }
             if !row.mpn.is_empty() {
                 by_mpn.entry(&row.mpn).or_default().push(row);
             }
@@ -483,12 +479,6 @@ impl Table {
                     )
                 }
             };
-            if !row.lcsc.is_empty() {
-                if let Some(first) = by_lcsc.get(row.lcsc.as_str()) {
-                    return Err(twin(first, format!("the lcsc `{}`", row.lcsc)));
-                }
-                by_lcsc.insert(&row.lcsc, row);
-            }
             if !row.mpn.is_empty() {
                 let same = by_mpn.entry(&row.mpn).or_default();
                 if let Some(first) = same.iter().find(|r| r.same_part(row)) {
@@ -504,7 +494,7 @@ impl Table {
         Ok(())
     }
 
-    /// Attach a curve file to the row it is named by (`row`: the row's `lcsc`, or its `mpn`).
+    /// Attach a curve file to the row it is named by (`row`: the row's `mpn`).
     /// Which row and column it is for is checked when a part reads the catalog
     /// ([`Table::candidates`]), since only the part says what its columns are. A row has one
     /// curve for each column: a second file for the same row and column is an error naming both.
@@ -538,29 +528,24 @@ impl Table {
         self.rows.iter().any(|r| r.name == name)
     }
 
-    /// The built-in row that has the LCSC number of `locked`, or (when the lock has none) its
-    /// manufacturer part number, and its manufacturer when both name one: `locked` with that
-    /// row's name and numbers. What a pick lock's row is rewritten to when the project's row of
-    /// the part was removed for it (issue #1119).
-    pub fn built_in_row_with(&self, locked: &LockedRow) -> Option<LockedRow> {
+    /// The built-in row of the part of `locked`, by its manufacturer part number and its
+    /// manufacturer when both name one: `locked` with that row's name and numbers, and the skus
+    /// of its offers. What a pick lock's row is rewritten to when the project's row of the part
+    /// was removed for it (issue #1119).
+    pub fn built_in_row_with(&self, locked: &LockedRow, offers: &Offers) -> Option<LockedRow> {
+        let m = locked.mpn.as_ref()?;
         let row = self.rows.iter().filter(|r| r.built_in).find(|r| {
-            match (&locked.lcsc, &locked.mpn) {
-                (Some(l), _) => r.lcsc == *l,
-                (None, Some(m)) => {
-                    !r.mpn.is_empty()
-                        && r.mpn == *m
-                        && locked
-                            .manufacturer
-                            .as_ref()
-                            .is_none_or(|w| r.manufacturer.is_empty() || r.manufacturer == *w)
-                }
-                (None, None) => false,
-            }
+            !r.mpn.is_empty()
+                && r.mpn == *m
+                && locked
+                    .manufacturer
+                    .as_ref()
+                    .is_none_or(|w| r.manufacturer.is_empty() || r.manufacturer == *w)
         })?;
         let number = |n: &String| (!n.is_empty()).then(|| n.clone());
         Some(LockedRow {
             row: row.name.clone(),
-            lcsc: number(&row.lcsc),
+            skus: crate::lock::channel_skus(&row.bought(offers).unwrap_or_default().skus),
             manufacturer: number(&row.manufacturer),
             mpn: number(&row.mpn),
             ..locked.clone()
@@ -569,11 +554,7 @@ impl Table {
 
     /// The curve of a row's column, if a curve file is named by the row.
     fn curve_of(&self, row: &Row, column: &str) -> Option<&Arc<Curve>> {
-        let key = if row.lcsc.is_empty() {
-            &row.mpn
-        } else {
-            &row.lcsc
-        };
+        let key = &row.mpn;
         if key.is_empty() {
             return None;
         }
@@ -596,8 +577,8 @@ impl Table {
     /// the line and the cell. `optional` names the columns the statement marks `optional`
     /// (ADR 0078): a file may leave one out, and a row may leave its cell empty.
     ///
-    /// A row's `lcsc` and `library` are read through its offers ([`bought_by`]), and are its
-    /// own columns where it has none.
+    /// A row's supplier number and JLCPCB's library of it are read from its offers
+    /// ([`bought_by`]).
     pub fn candidates(
         &self,
         name: &str,
@@ -613,13 +594,9 @@ impl Table {
                 .join(", ")
         };
         for (key, curve) in &self.curves {
-            if !self
-                .rows
-                .iter()
-                .any(|r| r.lcsc == *key || (r.lcsc.is_empty() && r.mpn == *key))
-            {
+            if !self.rows.iter().any(|r| r.mpn == *key) {
                 return Err(format!(
-                    "{}: no row of `catalog {name}` has the lcsc `{key}` (or, for a row with no lcsc, the mpn): a curve file is named by the row it is for",
+                    "{}: no row of `catalog {name}` has the mpn `{key}`: a curve file is named by the mpn of the row it is for",
                     curve.file
                 ));
             }
@@ -726,6 +703,24 @@ impl Table {
     }
 }
 
+/// The error for a catalog file whose header still has a column of [`RETIRED`]: what moved where,
+/// and the command that moves it.
+fn retired_columns(file: &str, line: usize, retired: &[&str]) -> String {
+    let named = retired
+        .iter()
+        .map(|c| format!("`{c}`"))
+        .collect::<Vec<_>>()
+        .join(" and ");
+    let (them, has) = if retired.len() == 1 {
+        ("the column", "has")
+    } else {
+        ("the columns", "have")
+    };
+    format!(
+        "{file}:{line}: {them} {named} {has} gone from catalog files (ADR 0143): a catalog row is the part, its `manufacturer` and `mpn`, and what a supplier calls it is an offer, a row of `offers/jlcpcb.csv` and `offers/lcsc.csv` (the `lcsc` number is the offer's `sku`, and the `library` the `class` of the jlcpcb offer); `netsmith project migrate-offers` moves them into the project's offers files and removes them here (docs/MIGRATING.md)"
+    )
+}
+
 /// The columns that say where and when a row was read, not what the part is: a project's row
 /// and the built-in one differ in them without the parts differing.
 const RECORD_ONLY: [&str; 7] = [
@@ -786,7 +781,6 @@ impl Row {
     /// Read the fixed columns and check what a row must say about itself.
     fn read_fixed_columns(&mut self) -> Result<(), String> {
         let at = self.at();
-        self.lcsc = self.cell("lcsc").unwrap_or_default().to_string();
         self.manufacturer = self.cell("manufacturer").unwrap_or_default().to_string();
         self.mpn = self.cell("mpn").unwrap_or_default().to_string();
         if !self.manufacturer.is_empty() && self.mpn.is_empty() {
@@ -795,17 +789,6 @@ impl Row {
                 self.manufacturer
             ));
         }
-        self.library = match self.cell("library") {
-            None => None,
-            Some("Basic") => Some(Library::Basic),
-            Some("Extended") => Some(Library::Extended),
-            Some("Preferred") => Some(Library::Preferred),
-            Some(other) => {
-                return Err(format!(
-                    "{at}: library `{other}` is not Basic, Extended or Preferred"
-                ));
-            }
-        };
         if let Some(assembly) = self.cell("assembly")
             && !["fab", "hand", "none", "consigned"].contains(&assembly)
         {
@@ -846,27 +829,22 @@ impl Row {
                 return Err(format!("{at}: {column} `{date}` is not like 2026-10-31"));
             }
         }
-        let real = !self.lcsc.is_empty() || !self.mpn.is_empty();
-        if real && self.cell("source").is_none() {
-            let which = if self.lcsc.is_empty() {
-                format!("mpn {}", self.mpn)
-            } else {
-                format!("lcsc {}", self.lcsc)
-            };
+        if !self.mpn.is_empty() && self.cell("source").is_none() {
             return Err(format!(
-                "{at}: the row for {which} has no source; every part in a catalog needs the URL or text it was read from in its `source` column"
+                "{at}: the row for mpn {} has no source; every part in a catalog needs the URL or text it was read from in its `source` column",
+                self.mpn
             ));
         }
         let first =
-            |names: [Option<&str>; 3]| names.into_iter().flatten().next().map(str::to_string);
-        let (lcsc, mpn) = (self.cell("lcsc"), self.cell("mpn"));
-        let name = first([self.cell("name"), mpn, lcsc]);
+            |names: [Option<&str>; 2]| names.into_iter().flatten().next().map(str::to_string);
+        let mpn = self.cell("mpn");
+        let name = first([self.cell("name"), mpn]);
         let Some(name) = name else {
             return Err(format!(
-                "{at}: the row has no lcsc, mpn or name, so a message could not say which part it is"
+                "{at}: the row has no mpn or name, so a message could not say which part it is"
             ));
         };
-        self.label = first([self.cell("label"), mpn, lcsc]).unwrap_or_else(|| name.clone());
+        self.label = first([self.cell("label"), mpn]).unwrap_or_else(|| name.clone());
         self.name = name;
         Ok(())
     }

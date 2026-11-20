@@ -255,7 +255,7 @@ and says so.
     TSW-118-07-L-D, manufacturer Samtec, 36 pins, 2 x 18, 2 rows, pitch and row spacing 2.54 mm,
     "Through Hole,P=2.54mm", so it **is the Samtec part**, not an equivalent. **Not read:** the
     JLCPCB parts page `jlcpcb.com/partdetail/C6887963` answered with its application shell only
-    (no MPN, package or library type), so the row's `library` cell is empty (read it from
+    (no MPN, package or library type), so the part has no JLCPCB offer, only LCSC's (read its library from
     JLCPCB's page before ordering). Price and stock are not recorded.
   - **Assembly today:** the manifest says nothing, so the part is **soldered by hand** (ADR 0024:
     a through-hole part is `Hand` unless a board says otherwise, and a test holds it, with the

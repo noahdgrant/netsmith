@@ -43,8 +43,7 @@ fn a_part_with_no_catalog_is_listed_by_its_code() {
 #[test]
 fn a_part_with_a_keyed_catalog_takes_the_row_of_its_code() {
     let mut catalogs = Catalogs::empty();
-    catalogs
-        .add_file(
+    netsmith_solve::migrate::add_to(&mut catalogs, 
             "modem",
             "catalogs/modem.csv",
             "mpn,lcsc,source\nMDM-100,C900001,test row\nMDM-100-G,C900002,test row\n",

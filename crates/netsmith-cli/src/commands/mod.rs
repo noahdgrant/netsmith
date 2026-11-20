@@ -27,6 +27,7 @@ mod layout;
 mod lint;
 mod lock;
 mod mcp;
+mod migrate_offers;
 pub mod moved;
 mod nets;
 mod order;
@@ -114,6 +115,8 @@ pub enum Project {
     Lint(lint::Args),
     /// Rewrite the sources in the one layout of the language, or check that they are in it.
     Fmt(fmt::Args),
+    /// Move the catalogs' lcsc and library columns into offers files, and `.lcsc &=` hand picks to `.mpn &=` (ADR 0143).
+    MigrateOffers(migrate_offers::Args),
     /// Make one of the project's orders, or list them with no name (ADR 0035).
     Order(order::Args),
     /// Print the project's boards, systems, panels, modules, files and orders as the editor's tree shows them.
@@ -214,6 +217,7 @@ pub fn run(command: Command) -> ExitCode {
             Project::Lock(args) => lock::run(args),
             Project::Lint(args) => lint::run(args),
             Project::Fmt(args) => fmt::run(args),
+            Project::MigrateOffers(args) => migrate_offers::run(args),
             Project::Order(args) => order::run(args),
             Project::Show(args) => project_show::run(args),
         },

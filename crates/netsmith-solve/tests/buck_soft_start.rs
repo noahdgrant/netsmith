@@ -92,7 +92,7 @@ fn catalogs() -> Catalogs {
         ("inductor", INDUCTOR),
         ("capacitor", CAPACITOR),
     ] {
-        c.add_file(name, &format!("catalogs/{name}.csv"), text)
+        crate::offered::add(&mut c, name, &format!("catalogs/{name}.csv"), text)
             .unwrap();
     }
     c
@@ -243,13 +243,13 @@ fn a_board_with_no_requirement_is_as_it_was() {
 
 /// A project's rows for the `lt8641` catalog (the standard file has none), and an inductor of
 /// a DC resistance the part accepts (the standard ones have more than its 0.04 ohm).
-const LT_ROWS: &str = "mpn,package,library,source
-LT8641IUDC#WPBF,UDC20(18),Extended,invented for a test
+const LT_ROWS: &str = "mpn,package,source
+LT8641IUDC#WPBF,UDC20(18),invented for a test
 ";
 
 const LT_INDUCTORS: &str =
-    "mpn,name,inductance,saturation_current,dc_resistance,package,library,source
-ZL-3R3,ZL-3R3 3.3uH 4.5A inductor 1210,3.3uH +/- 20%,4.5A,0.03ohm,1210,Extended,invented
+    "mpn,name,inductance,saturation_current,dc_resistance,package,source
+ZL-3R3,ZL-3R3 3.3uH 4.5A inductor 1210,3.3uH +/- 20%,4.5A,0.03ohm,1210,invented
 ";
 
 fn lt_board(extra: &str) -> String {
@@ -280,11 +280,9 @@ board Converter {{
 
 fn lt_catalogs() -> Catalogs {
     let mut catalogs = Catalogs::jlcpcb();
-    catalogs
-        .add_file("lt8641", "catalogs/lt8641.csv", LT_ROWS)
+    crate::offered::add(&mut catalogs, "lt8641", "catalogs/lt8641.csv", LT_ROWS)
         .unwrap();
-    catalogs
-        .add_file("inductor", "catalogs/inductor.csv", LT_INDUCTORS)
+    crate::offered::add(&mut catalogs, "inductor", "catalogs/inductor.csv", LT_INDUCTORS)
         .unwrap();
     catalogs
 }

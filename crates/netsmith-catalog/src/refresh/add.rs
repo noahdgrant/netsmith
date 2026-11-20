@@ -3,13 +3,16 @@
 //! Finding the evidence for a row is the slow part of adding a part: for each LCSC number, the
 //! record, the manufacturer's number, the package and the datasheet's ratings are copied into the
 //! CSV by hand. This command does the part a record can do. It asks LCSC's product record, as
-//! `catalog refresh` does (never JLCPCB, ADR 0039), and appends a row with `lcsc`, `mpn`,
-//! `package` and `source` filled in, the `source` naming the record and the day it was read, and
-//! `manufacturer` when the file has the column (ADR 0143), from the same record as LCSC spells it
+//! `catalog refresh` does (never JLCPCB, ADR 0039), and appends a row with `mpn`, `package` and
+//! `source` filled in, the `source` naming the record and the day it was read, and `manufacturer`
+//! when the file has the column (ADR 0143), from the same record as LCSC spells it
 //! (`brandNameEn`), which the `source` then says and the `notes` ask a person to check against
-//! the datasheet. Every
-//! other cell stays empty, and the command lists the columns that need the datasheet (ratings,
-//! curves, heights) or JLCPCB's page (`library`). A row with an empty column that a part needs is
+//! the datasheet. The LCSC number is not a cell of the row: it is an offer (ADR 0143), appended to
+//! the project's LCSC offers file (`offers/lcsc.csv`, made with its header when there is none)
+//! with the same `source` and the day in `checked`. Every other cell stays empty, and the command
+//! lists the columns that need the datasheet (ratings, curves, heights), and the offer of JLCPCB
+//! (`offers/jlcpcb.csv`, with its library from JLCPCB's page) that a part assembled by JLCPCB
+//! needs. A row with an empty column that a part needs is
 //! refused where the part reads it, so the command cannot make a row that passes with a guess in
 //! it: a person or an agent fills those cells from the datasheet, with its source, as
 //! `data/jlcpcb/README.md` says.
@@ -37,6 +40,8 @@ pub struct Added {
     pub read: String,
     /// The file and the line of the row written, with `--to`.
     pub written: Option<(String, usize)>,
+    /// The file and the line of the LCSC offer written beside it.
+    pub offer: Option<(String, usize)>,
     /// The columns the row has a value in.
     pub filled: Vec<String>,
     /// The columns a person must fill from the datasheet or JLCPCB's page.
@@ -62,10 +67,45 @@ pub fn source_of(product: &Product, endpoint: &str, day: &str) -> String {
     )
 }
 
-/// Ask LCSC for `lcsc` and, with `to`, append the row to that catalog file. `shown` is what
-/// messages call the file.
-pub fn add(lcsc: &str, to: Option<(&Path, &str)>, network: Network) -> Result<Added, AddError> {
+/// The files `catalog add` writes, each with what messages call it: the catalog file the row goes
+/// in, and the LCSC offers file its number goes in.
+pub type Files<'a> = ((&'a Path, &'a str), (&'a Path, &'a str));
+
+/// Ask LCSC for `lcsc` and, with `to`, append the row to that catalog file and its offer to the
+/// offers file `offers` (LCSC's, `offers/lcsc.csv`, made when it does not exist). `shown` is what
+/// messages call a file.
+pub fn add(lcsc: &str, to: Option<Files<'_>>, network: Network) -> Result<Added, AddError> {
     let stopped = |e: String| AddError::Stopped(e);
+    let (to, offers) = match to {
+        Some((to, offers)) => (Some(to), Some(offers)),
+        None => (None, None),
+    };
+    // The offers file, read first too: a number it has is a part already added.
+    let offers = match offers {
+        Some((path, shown)) => {
+            let text = match fs::read_to_string(path) {
+                Ok(text) => text,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    netsmith_solve::migrate::OFFERS_HEADER.to_string()
+                }
+                Err(e) => return Err(stopped(format!("{shown}: {e}"))),
+            };
+            let file = CsvFile::parse(shown, text).map_err(stopped)?;
+            let header = file.header();
+            let sku = header
+                .iter()
+                .position(|h| h.trim() == "sku")
+                .ok_or_else(|| stopped(format!("{shown}: the file has no `sku` column; an offers file has manufacturer, mpn, sku, class, source, checked and notes")))?;
+            if let Some(record) = (1..file.len()).find(|&r| file.value(r, sku).trim() == lcsc) {
+                return Err(AddError::Refused(format!(
+                    "{shown}:{}: the file already has an offer of {lcsc}; `netsmith catalog refresh --lcsc {lcsc}` checks it",
+                    file.line(record)
+                )));
+            }
+            Some((path, shown, file))
+        }
+        None => None,
+    };
     // Read the file first: a file that cannot take the row is said before anything is asked.
     let file = match to {
         Some((path, shown)) => {
@@ -78,18 +118,19 @@ pub fn add(lcsc: &str, to: Option<(&Path, &str)>, network: Network) -> Result<Ad
             }
             let header = file.header();
             let column = |name: &str| header.iter().position(|h| h.trim() == name);
-            for needed in ["lcsc", "source"] {
+            for needed in ["mpn", "source"] {
                 if column(needed).is_none() {
                     return Err(stopped(format!(
                         "{shown}: the file has no `{needed}` column, which a row from LCSC's record needs"
                     )));
                 }
             }
-            let at = column("lcsc").expect("checked above");
-            if let Some(record) = (1..file.len()).find(|&r| file.value(r, at).trim() == lcsc) {
-                return Err(AddError::Refused(format!(
-                    "{shown}:{}: the file already has a row for {lcsc}; `netsmith catalog refresh --lcsc {lcsc}` checks it",
-                    file.line(record)
+            if let Some(old) = ["lcsc", "library"]
+                .into_iter()
+                .find(|c| column(c).is_some())
+            {
+                return Err(stopped(format!(
+                    "{shown}: the file has the column `{old}`, which a catalog file no longer has (ADR 0143): run `netsmith project migrate-offers` first"
                 )));
             }
             Some((path, shown, file))
@@ -123,31 +164,45 @@ pub fn add(lcsc: &str, to: Option<(&Path, &str)>, network: Network) -> Result<Ad
         product: product.clone(),
         read: read.clone(),
         written: None,
+        offer: None,
         filled: Vec::new(),
         to_fill: Vec::new(),
     };
-    let Some((path, shown, file)) = file else {
+    let (Some((path, shown, file)), Some((offers_path, offers_shown, offers_file))) =
+        (file, offers)
+    else {
         return Ok(added);
     };
     let header = file.header();
+    let mpn_at = header
+        .iter()
+        .position(|h| h.trim() == "mpn")
+        .expect("checked above");
+    if let Some(record) = (1..file.len()).find(|&r| file.value(r, mpn_at).trim() == product.mpn) {
+        return Err(AddError::Refused(format!(
+            "{shown}:{}: the file already has a row for {}, the part {lcsc} is of: add its offer to {offers_shown} instead",
+            file.line(record),
+            product.mpn
+        )));
+    }
     let mut cells = Vec::new();
     let maker_written =
         header.iter().any(|h| h.trim() == "manufacturer") && product.manufacturer.is_some();
+    let source = match (&product.manufacturer, maker_written) {
+        (Some(maker), true) => format!(
+            "{}; manufacturer: `{maker}`, the record's `brandNameEn`, as LCSC spells it",
+            source_of(&product, &endpoint, &read)
+        ),
+        _ => source_of(&product, &endpoint, &read),
+    };
     for column in header.iter().map(|h| h.trim()) {
         let value = match column {
-            "lcsc" => Some(product.lcsc.clone()),
             "manufacturer" => product.manufacturer.clone(),
             "mpn" => Some(product.mpn.clone()),
             "package" => product.package.clone(),
-            "source" => Some(match (&product.manufacturer, maker_written) {
-                (Some(maker), true) => format!(
-                    "{}; manufacturer: `{maker}`, the record's `brandNameEn`, as LCSC spells it",
-                    source_of(&product, &endpoint, &read)
-                ),
-                _ => source_of(&product, &endpoint, &read),
-            }),
+            "source" => Some(source.clone()),
             "notes" => Some(format!(
-                "Written by `netsmith catalog add` from LCSC's record alone: fill the empty columns from the datasheet (with its source in `source`) and the library type from JLCPCB's page, and check the package against std/kicad.toml{}",
+                "Written by `netsmith catalog add` from LCSC's record alone: fill the empty columns from the datasheet (with its source in `source`), add the part's JLCPCB offer with its library from JLCPCB's page, and check the package against std/kicad.toml{}",
                 if maker_written {
                     ", and the manufacturer's name against the datasheet's spelling"
                 } else {
@@ -170,9 +225,50 @@ pub fn add(lcsc: &str, to: Option<(&Path, &str)>, network: Network) -> Result<Ad
     let line = text.lines().count() + 1;
     text.push_str(&cells.join(","));
     text.push('\n');
+    // The offer: of the row's manufacturer when the row has one, as an offer must be.
+    let offer = netsmith_solve::migrate::MovedOffer {
+        supplier: "lcsc".into(),
+        manufacturer: product.manufacturer.clone().filter(|_| maker_written),
+        mpn: product.mpn.clone(),
+        sku: product.lcsc.clone(),
+        class: None,
+        source,
+        checked: Some(read.clone()),
+        from: String::new(),
+    };
+    let mut offers_text = offers_file.text().to_string();
+    if !offers_text.is_empty() && !offers_text.ends_with('\n') {
+        offers_text.push('\n');
+    }
+    let offer_line = offers_text.lines().count() + 1;
+    offers_text.push_str(&offer_row(&offer));
+    if let Some(dir) = offers_path.parent() {
+        fs::create_dir_all(dir).map_err(|e| stopped(format!("{}: {e}", dir.display())))?;
+    }
     write_atomically(path, &text).map_err(stopped)?;
+    write_atomically(offers_path, &offers_text).map_err(stopped)?;
     added.written = Some((shown.to_string(), line));
+    added.offer = Some((offers_shown.to_string(), offer_line));
+    added.to_fill.push(
+        "a JLCPCB offer (offers/jlcpcb.csv, with its class from JLCPCB's page) for a part JLCPCB assembles"
+            .to_string(),
+    );
     Ok(added)
+}
+
+/// The line of an offers file for an offer `catalog add` made.
+fn offer_row(offer: &netsmith_solve::migrate::MovedOffer) -> String {
+    let fields = [
+        offer.manufacturer.clone().unwrap_or_default(),
+        offer.mpn.clone(),
+        offer.sku.clone(),
+        String::new(),
+        offer.source.clone(),
+        offer.checked.clone().unwrap_or_default(),
+        "Written by `netsmith catalog add` from LCSC's record".to_string(),
+    ];
+    let cells: Vec<String> = fields.iter().map(|f| csv_cell(f)).collect();
+    format!("{}\n", cells.join(","))
 }
 
 /// A CSV field: quoted when it holds a comma, a quote or a line break, with a quote doubled.
@@ -205,9 +301,12 @@ pub fn render_added(added: &Added) -> String {
         Some((file, line)) => {
             out.push_str(&format!(
                 "added {} to {file}:{line} with {}\n",
-                p.lcsc,
+                p.mpn,
                 added.filled.join(", ")
             ));
+            if let Some((offers, at)) = &added.offer {
+                out.push_str(&format!("added the offer of {} to {offers}:{at}\n", p.lcsc));
+            }
             if !added.to_fill.is_empty() {
                 out.push_str(&format!(
                     "fill from the datasheet (with its source) or JLCPCB's page: {}\na part that reads an empty one of these refuses the row until it is filled\n",
@@ -234,6 +333,7 @@ pub fn json_added(added: &Added) -> serde_json::Value {
         "package": p.package,
         "read": added.read,
         "written": added.written.as_ref().map(|(file, line)| json!({"file": file, "line": line})),
+        "offer": added.offer.as_ref().map(|(file, line)| json!({"file": file, "line": line})),
         "filled": added.filled,
         "to_fill": added.to_fill,
     })

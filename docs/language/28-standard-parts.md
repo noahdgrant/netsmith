@@ -316,8 +316,8 @@ error: no `resistor` candidate satisfies `r`: the closest of the 3 that fit, 10Î
 And a row without a rating:
 
 ```csv file=catalogs/resistor.csv set=unrated
-mpn,resistance,max_power,package,library,price,stock,date,source
-ACME-R316,316ohm +/- 1%,,0402,Basic,0.0011,5000,2026-10-31,https://example.invalid/acme-r316.pdf
+mpn,resistance,max_power,package,price,stock,date,source
+ACME-R316,316ohm +/- 1%,,0402,0.0011,5000,2026-10-31,https://example.invalid/acme-r316.pdf
 ```
 
 ```nsm fails catalogs=unrated
@@ -681,8 +681,8 @@ board NoEsr {
 A capacitor row that records an `esr` is the other way to state it. This file (invented, like the file of chapter 12) adds a 47 uF capacitor that records 3 mohm, and the board picks it by its `.mpn` and states a limit and no ESR: the row's figure is the converter's `.output_esr`, and the limit is judged with it, in the worst case of every range as above. A board that stated `.output_esr &= 5mohm` too would be judged with 5 mohm, and a row that left the cell empty would leave the ripple open, as in the board above.
 
 ```csv file=catalogs/capacitor.csv set=esr
-mpn,capacitance,effective_capacitance,max_voltage,package,dielectric,esr,library,source,notes
-ACME-C47U,47uF +/- 20%,derate capacitance by bias: 0:1 6.3:0.5,6.3V,0805,X5R,3mohm,Basic,https://example.invalid/acme-c47u.pdf page 4 table 2,"ESR: invented, one maximum at 1 MHz with no DC bias"
+mpn,capacitance,effective_capacitance,max_voltage,package,dielectric,esr,source,notes
+ACME-C47U,47uF +/- 20%,derate capacitance by bias: 0:1 6.3:0.5,6.3V,0805,X5R,3mohm,https://example.invalid/acme-c47u.pdf page 4 table 2,"ESR: invented, one maximum at 1 MHz with no DC bias"
 ```
 
 ```nsm evaluate catalogs=esr
@@ -943,15 +943,15 @@ error: the `lt8641` catalog is empty (no file of it has a row), so nothing can b
 The file, with the row of the datasheet's Order Information (a project adds the LCSC number it has read):
 
 ```csv file=catalogs/lt8641.csv set=lt8641
-mpn,package,library,source
-LT8641IUDC#WPBF,UDC20(18),Extended,"datasheet Rev. C, Order Information p.2 (automotive products)"
+mpn,package,source
+LT8641IUDC#WPBF,UDC20(18),"datasheet Rev. C, Order Information p.2 (automotive products)"
 ```
 
 The datasheet asks for a DC resistance of 0.04 ohm at most (p.16), and every inductor of the standard catalog has more (0.085 ohm at the least), so a converter around the IC needs an inductor of the project's own. This one is invented, like the part numbers of the other files of this guide:
 
 ```csv file=catalogs/inductor.csv set=lt8641
-mpn,name,inductance,saturation_current,dc_resistance,package,library,source
-ZL-3R3,ZL-3R3 3.3uH 4.5A inductor 1210,3.3uH +/- 20%,4.5A,0.03ohm,1210,Extended,https://example.invalid/zl-3r3
+mpn,name,inductance,saturation_current,dc_resistance,package,source
+ZL-3R3,ZL-3R3 3.3uH 4.5A inductor 1210,3.3uH +/- 20%,4.5A,0.03ohm,1210,https://example.invalid/zl-3r3
 ```
 
 The board around it: 9 V to 16 V in with a 36 V peak and 3.3 V out at up to 2 A.
@@ -1104,8 +1104,8 @@ The rail between them carries `.charge_time_limit`, the longest a charge may tak
 Here an invented cell and an invented charger, whose 2.2 kohm programming resistor sets 1000 V / 2.2 kohm, 455 mA, within the cell's 500 mA:
 
 ```csv file=catalogs/cell.csv set=cells
-mpn,chemistry,capacity,internal_resistance,charge_temperature,discharge_temperature,float_voltage,max_charge_current,package,library,source
-ZZC-1000,LiIon,3.6kC,150mohm,0degC..45degC,-20degC..60degC,4.2V +/- 50mV,500mA,JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal,Extended,invented for the guide
+mpn,chemistry,capacity,internal_resistance,charge_temperature,discharge_temperature,float_voltage,max_charge_current,package,source
+ZZC-1000,LiIon,3.6kC,150mohm,0degC..45degC,-20degC..60degC,4.2V +/- 50mV,500mA,JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal,invented for the guide
 ```
 
 ```nsm evaluate catalogs=cells
@@ -1208,8 +1208,8 @@ board Pouch {
 The same board with an invented coin cell, 40 mAh (144 C), in the tabbed package:
 
 ```csv file=catalogs/cell.csv set=coin
-mpn,chemistry,capacity,internal_resistance,charge_temperature,discharge_temperature,float_voltage,max_charge_current,package,library,source
-ZZC-40,LiIon,144C,1ohm,0degC..45degC,-20degC..60degC,4.2V +/- 50mV,40mA,Coin_D20.0mm_Tabs_P15.00mm,Extended,invented for the guide
+mpn,chemistry,capacity,internal_resistance,charge_temperature,discharge_temperature,float_voltage,max_charge_current,package,source
+ZZC-40,LiIon,144C,1ohm,0degC..45degC,-20degC..60degC,4.2V +/- 50mV,40mA,Coin_D20.0mm_Tabs_P15.00mm,invented for the guide
 ```
 
 ```nsm solve catalogs=coin
@@ -1246,8 +1246,8 @@ A charger part states what it takes from `.vin` (`.vin.current`), as its datashe
 Here a 12 V input, a 5 V buck that gives at most 600 mA, an MCU that draws up to 150 mA, and an invented charger that charges an invented 0.5 F supercapacitor, which leaks up to 6 uA, from 0 V to 4.75 V, its least float voltage. The 2.7 kohm resistor sets 366.7 mA to 374.1 mA: the charge takes 0.6 F times 4.75 V over 366.7 mA less 6 uA, 7.773 s, within the 10 s limit, and the buck gives up to 375.1 mA and 150 mA, within its 600 mA:
 
 ```csv file=catalogs/supercap.csv set=backup
-mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,height_growth,library,source
-ZZS-0F5,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,Reflow,Radial_D16.0mm_P7.50mm,1mm,Extended,invented for the guide
+mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,height_growth,source
+ZZS-0F5,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,Reflow,Radial_D16.0mm_P7.50mm,1mm,invented for the guide
 ```
 
 ```nsm evaluate catalogs=backup
@@ -1926,8 +1926,8 @@ board Backup {
 And an invented tapped part, its two cells held at half the rail each by two equal resistors, one across each cell (a board that joins `.mid` is given a row in the tapped package):
 
 ```csv file=catalogs/supercap.csv set=tapped
-mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,height_growth,library,source
-ZZS-0F5-T,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,Reflow,Radial_D16.0mm_P7.50mm_Tap,1mm,Extended,invented for the guide
+mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,height_growth,source
+ZZS-0F5-T,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,Reflow,Radial_D16.0mm_P7.50mm_Tap,1mm,invented for the guide
 ```
 
 ```nsm solve catalogs=tapped
@@ -2009,8 +2009,8 @@ error: q.gate_source_voltage must always be at least q.on_resistance_vgs, but 3.
 `PMosfet` is a generic like `NMosfet`, with the catalog `p_mosfet` (the same columns as `n_mosfet`), and its standard catalog has three rows, all Alpha & Omega in SOT-23: the AO3401A (30 V, 4 A, `.gate_threshold` 0.5 V to 1.3 V, 85 mohm at a gate drive of 2.5 V, Basic), the AO3407A (30 V, 4.3 A, 1.5 V to 2.5 V, 78 mohm at 4.5 V) and the AO3415A (20 V, 5 A, 0.3 V to 0.9 V, 65 mohm at 1.8 V); the sources are in `data/jlcpcb/README.md`. A project that needs another writes the rows of its parts in a file named `p_mosfet.csv` in `catalogs/`; the rows are added after the standard one, as for any standard catalog. This is a high-side switch with an invented part for a supply that none of them can take: the source of a P-channel MOSFET is the supply, its gate is pulled to ground to turn it on, and `.gate_source_voltage` is the magnitude of the drive.
 
 ```csv file=catalogs/p_mosfet.csv set=pfet
-mpn,name,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate_threshold,on_resistance,package,library,source
-ZP-40,ZP-40 40V 4A P-MOSFET,40V,4A,12V,0.4V..1.3V,0.07ohm,SOT-23,Extended,https://example.invalid/zp-40
+mpn,name,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate_threshold,on_resistance,package,source
+ZP-40,ZP-40 40V 4A P-MOSFET,40V,4A,12V,0.4V..1.3V,0.07ohm,SOT-23,https://example.invalid/zp-40
 ```
 
 ```nsm evaluate catalogs=pfet
@@ -4236,8 +4236,8 @@ Only an input level, the `vih` or `vil` of a `Logic` or of `Levels`, takes rows,
 The standard catalog has no rows, because no translator has been entered with a recorded source (`data/jlcpcb/README.md`). A project writes the rows of its parts in a file named `level_translator.csv`, as for any standard catalog, or a part of its own says `provides LevelTranslator`. The part of this example is invented, and so is its row:
 
 ```csv file=catalogs/level_translator.csv set=translator
-mpn,name,vcc_min,vcc_max,vcc_abs_max,a_abs_max,vt_plus_max,vt_minus_min,max_output_current,max_supply_current,package,library,source
-ZT-17,ZT-17 single-supply translator,2.5V,3.6V,4.2V,4.2V,1.1V,0.45V,3mA,750nA,SOT-23-5,Extended,https://example.invalid/zt-17
+mpn,name,vcc_min,vcc_max,vcc_abs_max,a_abs_max,vt_plus_max,vt_minus_min,max_output_current,max_supply_current,package,source
+ZT-17,ZT-17 single-supply translator,2.5V,3.6V,4.2V,4.2V,1.1V,0.45V,3mA,750nA,SOT-23-5,https://example.invalid/zt-17
 ```
 
 ```nsm module=src::sensor

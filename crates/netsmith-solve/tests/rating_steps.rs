@@ -6,17 +6,17 @@
 use netsmith_check::{Loader, check};
 use netsmith_solve::{Catalogs, Solution, solve};
 
-const HEAD: &str = "mpn,capacitance,effective_capacitance,max_voltage,package,library,source\n";
+const HEAD: &str = "mpn,capacitance,effective_capacitance,max_voltage,package,source\n";
 
 /// Two rows of 1 F: the first rated 5.5 V up to 70 degC and 4.2 V up to 85 degC, the second
 /// 5.5 V up to 85 degC.
 fn catalogs() -> Catalogs {
     let text = format!(
-        "{HEAD}ZZS-A,1F +/- 20%,derate capacitance by bias:,\"5.5V to 70degC, 4.2V to 85degC\",1210,Basic,https://example.invalid/zzs-a.pdf\n\
-ZZS-B,1F +/- 20%,derate capacitance by bias:,5.5V to 85degC,1210,Basic,https://example.invalid/zzs-b.pdf\n"
+        "{HEAD}ZZS-A,1F +/- 20%,derate capacitance by bias:,\"5.5V to 70degC, 4.2V to 85degC\",1210,https://example.invalid/zzs-a.pdf\n\
+ZZS-B,1F +/- 20%,derate capacitance by bias:,5.5V to 85degC,1210,https://example.invalid/zzs-b.pdf\n"
     );
     let mut c = Catalogs::empty();
-    c.add_file("capacitor", "catalogs/capacitor.csv", &text)
+    crate::offered::add(&mut c, "capacitor", "catalogs/capacitor.csv", &text)
         .unwrap();
     c
 }
@@ -65,10 +65,10 @@ fn a_cell_of_steps_is_one_voltage_to_one_temperature_rising() {
         ("5V..6V to 70degC", "`5V..6V` in the steps is not one voltage"),
     ] {
         let text = format!(
-            "{HEAD}ZZS-C,1F +/- 20%,derate capacitance by bias:,{cell},1210,Basic,https://example.invalid/zzs-c.pdf\n"
+            "{HEAD}ZZS-C,1F +/- 20%,derate capacitance by bias:,{cell},1210,https://example.invalid/zzs-c.pdf\n"
         );
         let mut c = Catalogs::empty();
-        c.add_file("capacitor", "catalogs/capacitor.csv", &text)
+        crate::offered::add(&mut c, "capacitor", "catalogs/capacitor.csv", &text)
             .unwrap();
         let s = solved("-20degC..85degC", "3.3V +/- 5%", &c);
         let messages: Vec<&str> = s.diagnostics.iter().map(|d| d.message.as_str()).collect();

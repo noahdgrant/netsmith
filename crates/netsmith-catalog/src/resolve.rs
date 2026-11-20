@@ -353,8 +353,7 @@ mod tests {
 
     fn catalogs(stock: Option<Stock>) -> Catalogs {
         let mut c = Catalogs::empty();
-        c.add_file("resistor", "catalogs/resistor.csv", ROWS)
-            .unwrap();
+        netsmith_solve::migrate::add_to(&mut c, "resistor", "catalogs/resistor.csv", ROWS).unwrap();
         match stock {
             Some(s) => c.with_availability(Arc::new(s)),
             None => c,

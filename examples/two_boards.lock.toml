@@ -16,47 +16,47 @@ provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
 [TwoBoards.parts."led.led"]
 catalog = "led"
 row = "KT-0603R RED LED 0603 C2286"
-lcsc = "C2286"
 mpn = "KT-0603R"
+sku = { jlcpcb-assembly = "C2286", lcsc-retail = "C2286" }
 
 [TwoBoards.parts."led.power_in"]
 catalog = "header"
 row = "PM2.54-1X2PM-H85 2-pin 2.54mm socket C42431841"
-lcsc = "C42431841"
 mpn = "PM2.54-1X2PM-H85"
+sku = { jlcpcb-assembly = "C42431841", lcsc-retail = "C42431841" }
 
 [TwoBoards.parts."led.r1"]
 catalog = "resistor"
 row = "100Ω 1% 0402 C25076"
-lcsc = "C25076"
 mpn = "0402WGF1000TCE"
+sku = { jlcpcb-assembly = "C25076", lcsc-retail = "C25076" }
 
 [TwoBoards.parts."power.power_in"]
 catalog = "header"
 row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"
-lcsc = "C42431798"
 mpn = "PH2.54-1X2P-H25"
+sku = { jlcpcb-assembly = "C42431798", lcsc-retail = "C42431798" }
 
 [TwoBoards.parts."power.power_out"]
 catalog = "header"
 row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"
-lcsc = "C42431798"
 mpn = "PH2.54-1X2P-H25"
+sku = { jlcpcb-assembly = "C42431798", lcsc-retail = "C42431798" }
 
 [TwoBoards.parts."power.stage.input_cap"]
 catalog = "capacitor"
 row = "10uF 20% 10V X5R 0402 C315248"
-lcsc = "C315248"
 mpn = "CL05A106MP5NUNC"
+sku = { jlcpcb-assembly = "C315248", lcsc-retail = "C315248" }
 
 [TwoBoards.parts."power.stage.output_cap"]
 catalog = "capacitor"
 row = "22uF 20% 6.3V X5R 0603 C59461"
-lcsc = "C59461"
 mpn = "CL10A226MQ8NRNC"
+sku = { jlcpcb-assembly = "C59461", lcsc-retail = "C59461" }
 
 [TwoBoards.parts."power.stage.regulator"]
 catalog = "ldo"
 row = "XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446"
-lcsc = "C5446"
 mpn = "XC6206P332MR-G"
+sku = { jlcpcb-assembly = "C5446", lcsc-retail = "C5446" }

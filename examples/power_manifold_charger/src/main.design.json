@@ -6540,7 +6540,7 @@
         "text": "C20",
         "at": {
           "file": "src/main.nsm",
-          "line": 215
+          "line": 227
         },
         "anchors": [
           "boot1_cap"
@@ -6553,7 +6553,7 @@
         "text": "C21",
         "at": {
           "file": "src/main.nsm",
-          "line": 217
+          "line": 229
         },
         "anchors": [
           "boot2_cap"
@@ -6566,7 +6566,7 @@
         "text": "C27",
         "at": {
           "file": "src/main.nsm",
-          "line": 229
+          "line": 245
         },
         "anchors": [
           "cbias_100n"
@@ -6579,7 +6579,7 @@
         "text": "C22",
         "at": {
           "file": "src/main.nsm",
-          "line": 219
+          "line": 231
         },
         "anchors": [
           "cc1_330p"
@@ -6592,7 +6592,7 @@
         "text": "C24",
         "at": {
           "file": "src/main.nsm",
-          "line": 223
+          "line": 239
         },
         "anchors": [
           "cc2_330p"
@@ -6605,7 +6605,7 @@
         "text": "C29",
         "at": {
           "file": "src/main.nsm",
-          "line": 233
+          "line": 249
         },
         "anchors": [
           "comp_cap"
@@ -6618,7 +6618,7 @@
         "text": "C25",
         "at": {
           "file": "src/main.nsm",
-          "line": 225
+          "line": 241
         },
         "anchors": [
           "comp_cap_series"
@@ -6670,7 +6670,7 @@
         "text": "C13",
         "at": {
           "file": "src/main.nsm",
-          "line": 203
+          "line": 211
         },
         "anchors": [
           "dither_10n"
@@ -6683,7 +6683,7 @@
         "text": "Behind the input inductor: the converter's input.",
         "at": {
           "file": "src/main.nsm",
-          "line": 267
+          "line": 287
         },
         "anchors": [],
         "result": null
@@ -6694,7 +6694,7 @@
         "text": "C10",
         "at": {
           "file": "src/main.nsm",
-          "line": 197
+          "line": 205
         },
         "anchors": [
           "emi_vin_100n"
@@ -6707,7 +6707,7 @@
         "text": "C6",
         "at": {
           "file": "src/main.nsm",
-          "line": 189
+          "line": 193
         },
         "anchors": [
           "emi_vin_100u"
@@ -6720,7 +6720,7 @@
         "text": "C8",
         "at": {
           "file": "src/main.nsm",
-          "line": 193
+          "line": 201
         },
         "anchors": [
           "emi_vin_10u_a"
@@ -6733,7 +6733,7 @@
         "text": "C9",
         "at": {
           "file": "src/main.nsm",
-          "line": 195
+          "line": 203
         },
         "anchors": [
           "emi_vin_10u_b"
@@ -6746,7 +6746,7 @@
         "text": "C15",
         "at": {
           "file": "src/main.nsm",
-          "line": 207
+          "line": 215
         },
         "anchors": [
           "emi_vin_1u"
@@ -6824,7 +6824,7 @@
         "text": "C31",
         "at": {
           "file": "src/main.nsm",
-          "line": 237
+          "line": 253
         },
         "anchors": [
           "gate_47p"
@@ -6863,7 +6863,7 @@
         "text": "C26",
         "at": {
           "file": "src/main.nsm",
-          "line": 227
+          "line": 243
         },
         "anchors": [
           "iana_100n"
@@ -6915,7 +6915,7 @@
         "text": "C11",
         "at": {
           "file": "src/main.nsm",
-          "line": 199
+          "line": 207
         },
         "anchors": [
           "ldo_bypass"
@@ -6993,7 +6993,7 @@
         "text": "C14",
         "at": {
           "file": "src/main.nsm",
-          "line": 205
+          "line": 213
         },
         "anchors": [
           "ntc_converter_100n"
@@ -7032,7 +7032,7 @@
         "text": "C16",
         "at": {
           "file": "src/main.nsm",
-          "line": 209
+          "line": 221
         },
         "anchors": [
           "ntc_plug_100n"
@@ -7214,7 +7214,7 @@
         "text": "C5",
         "at": {
           "file": "src/main.nsm",
-          "line": 187
+          "line": 191
         },
         "anchors": [
           "reset_100n"
@@ -7266,7 +7266,7 @@
         "text": "The slot's main DC input (A2 to A7): 24 V nominal, +20 %/-15 % (the design's architecture notes, section 3), ahead of the fuse.",
         "at": {
           "file": "src/main.nsm",
-          "line": 259
+          "line": 279
         },
         "anchors": [],
         "result": null
@@ -7407,7 +7407,7 @@
         "text": "The slot's 5 V logic supply (A12, B12), from the backplane's buck.",
         "at": {
           "file": "src/main.nsm",
-          "line": 261
+          "line": 281
         },
         "anchors": [],
         "result": null
@@ -7418,7 +7418,7 @@
         "text": "The 3.3 V of the LP2985: the microcontroller, the comparator, the I2C pull-ups.",
         "at": {
           "file": "src/main.nsm",
-          "line": 263
+          "line": 283
         },
         "anchors": [],
         "result": null
@@ -7429,7 +7429,7 @@
         "text": "C2",
         "at": {
           "file": "src/main.nsm",
-          "line": 181
+          "line": 185
         },
         "anchors": [
           "v3v3_100n_a"
@@ -7442,7 +7442,7 @@
         "text": "C3",
         "at": {
           "file": "src/main.nsm",
-          "line": 183
+          "line": 187
         },
         "anchors": [
           "v3v3_100n_b"
@@ -7455,7 +7455,7 @@
         "text": "C4",
         "at": {
           "file": "src/main.nsm",
-          "line": 185
+          "line": 189
         },
         "anchors": [
           "v3v3_100n_c"
@@ -7468,7 +7468,7 @@
         "text": "C30",
         "at": {
           "file": "src/main.nsm",
-          "line": 235
+          "line": 251
         },
         "anchors": [
           "v3v3_100n_d"
@@ -7481,7 +7481,7 @@
         "text": "C12",
         "at": {
           "file": "src/main.nsm",
-          "line": 201
+          "line": 209
         },
         "anchors": [
           "v3v3_10u"
@@ -7507,7 +7507,7 @@
         "text": "C35",
         "at": {
           "file": "src/main.nsm",
-          "line": 245
+          "line": 261
         },
         "anchors": [
           "v5_100n"
@@ -7520,7 +7520,7 @@
         "text": "C34",
         "at": {
           "file": "src/main.nsm",
-          "line": 243
+          "line": 259
         },
         "anchors": [
           "v5_1u"
@@ -7533,7 +7533,7 @@
         "text": "C7",
         "at": {
           "file": "src/main.nsm",
-          "line": 191
+          "line": 195
         },
         "anchors": [
           "v5_4u7"
@@ -7546,7 +7546,7 @@
         "text": "The port's VBUS, on the receptacle.",
         "at": {
           "file": "src/main.nsm",
-          "line": 278
+          "line": 298
         },
         "anchors": [],
         "result": null
@@ -7557,7 +7557,7 @@
         "text": "C38",
         "at": {
           "file": "src/main.nsm",
-          "line": 251
+          "line": 267
         },
         "anchors": [
           "vbus_2u2"
@@ -7596,7 +7596,7 @@
         "text": "Behind the shunt R27, ahead of the MOSFET Q4.",
         "at": {
           "file": "src/main.nsm",
-          "line": 276
+          "line": 296
         },
         "anchors": [],
         "result": null
@@ -7607,7 +7607,7 @@
         "text": "C19",
         "at": {
           "file": "src/main.nsm",
-          "line": 213
+          "line": 225
         },
         "anchors": [
           "vbus_sense_10n"
@@ -7620,7 +7620,7 @@
         "text": "The two back-to-back MOSFETs' common source.",
         "at": {
           "file": "src/main.nsm",
-          "line": 274
+          "line": 294
         },
         "anchors": [],
         "result": null
@@ -7631,7 +7631,7 @@
         "text": "C28",
         "at": {
           "file": "src/main.nsm",
-          "line": 231
+          "line": 247
         },
         "anchors": [
           "vcc_100n"
@@ -7644,7 +7644,7 @@
         "text": "C23",
         "at": {
           "file": "src/main.nsm",
-          "line": 221
+          "line": 233
         },
         "anchors": [
           "vcc_10u"
@@ -7670,7 +7670,7 @@
         "text": "Behind the fuse.",
         "at": {
           "file": "src/main.nsm",
-          "line": 265
+          "line": 285
         },
         "anchors": [],
         "result": null
@@ -7681,7 +7681,7 @@
         "text": "Behind the output shunt R28.",
         "at": {
           "file": "src/main.nsm",
-          "line": 272
+          "line": 292
         },
         "anchors": [],
         "result": null
@@ -7692,7 +7692,7 @@
         "text": "The converter's output, the USB-PD contract's voltage (the converter makes 0.8 V to 22 V; the blade is offered 5 V to 21 V by its firmware).",
         "at": {
           "file": "src/main.nsm",
-          "line": 270
+          "line": 290
         },
         "anchors": [],
         "result": null
@@ -7703,7 +7703,7 @@
         "text": "C32",
         "at": {
           "file": "src/main.nsm",
-          "line": 239
+          "line": 255
         },
         "anchors": [
           "vout_conv_10u_a"
@@ -7716,7 +7716,7 @@
         "text": "C33",
         "at": {
           "file": "src/main.nsm",
-          "line": 241
+          "line": 257
         },
         "anchors": [
           "vout_conv_10u_b"
@@ -7729,7 +7729,7 @@
         "text": "C36",
         "at": {
           "file": "src/main.nsm",
-          "line": 247
+          "line": 263
         },
         "anchors": [
           "vout_conv_10u_c"
@@ -7742,7 +7742,7 @@
         "text": "C37",
         "at": {
           "file": "src/main.nsm",
-          "line": 249
+          "line": 265
         },
         "anchors": [
           "vout_conv_10u_d"
@@ -7755,7 +7755,7 @@
         "text": "C39",
         "at": {
           "file": "src/main.nsm",
-          "line": 253
+          "line": 273
         },
         "anchors": [
           "vout_conv_220u"
@@ -7794,7 +7794,7 @@
         "text": "C18",
         "at": {
           "file": "src/main.nsm",
-          "line": 211
+          "line": 223
         },
         "anchors": [
           "vout_sense_1n"
@@ -7807,7 +7807,7 @@
         "text": ".port_trip_current == .protector.ocp_threshold / .port_shunt.resistance",
         "at": {
           "file": "src/main.nsm",
-          "line": 303
+          "line": 323
         },
         "anchors": [
           "protector",
@@ -7821,7 +7821,7 @@
         "text": ".q_port_a.gate_source_voltage == .protector.gate_drive",
         "at": {
           "file": "src/main.nsm",
-          "line": 297
+          "line": 317
         },
         "anchors": [
           "q_port_a",
@@ -7835,7 +7835,7 @@
         "text": ".q_port_b.gate_source_voltage == .protector.gate_drive",
         "at": {
           "file": "src/main.nsm",
-          "line": 298
+          "line": 318
         },
         "anchors": [
           "q_port_b",

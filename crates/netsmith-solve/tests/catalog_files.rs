@@ -58,14 +58,14 @@ board B {
 "#;
 
 const HEADER: &str =
-    "mpn,package,vout.voltage,dropout,max_current,library,price,stock,date,source\n";
+    "mpn,package,vout.voltage,dropout,max_current,price,stock,date,source\n";
 
 /// Two invented regulators, the smaller first.
 fn file() -> String {
     format!(
         "{HEADER}\
-ZZ9-33-S,SOT-23-5,3.3V +/- 2%,0.3V,0.5A,Basic,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n\
-ZZ9-33-D,DFN-6,3.3V +/- 2%,0.2V,1A,Extended,0.20,500,2026-10-31,\"https://example.invalid/zz9, rev B\"\n"
+ZZ9-33-S,SOT-23-5,3.3V +/- 2%,0.3V,0.5A,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n\
+ZZ9-33-D,DFN-6,3.3V +/- 2%,0.2V,1A,0.20,500,2026-10-31,\"https://example.invalid/zz9, rev B\"\n"
     )
 }
 
@@ -104,7 +104,8 @@ fn a_design_names_a_part_of_a_file_by_its_key_and_gets_that_row() {
     assert_eq!(s.picks.len(), 1);
     assert_eq!(s.picks[0].candidate, "ZZ9-33-D");
     assert_eq!(s.picks[0].mpn.as_deref(), Some("ZZ9-33-D"));
-    assert_eq!(s.picks[0].library, Some(netsmith_solve::Library::Extended));
+    // No supplier offers the part (ADR 0143): it is bought by no number and sorted in no library.
+    assert_eq!(s.picks[0].library, None);
     assert_eq!(s.picks[0].lcsc, None);
     // The package is the row's, so the pinout of DFN-6 is the one used.
     match s.model.domain_at("u.package") {
@@ -130,7 +131,7 @@ fn without_a_name_the_message_lists_the_rows_of_the_file() {
 fn a_keyed_file_with_one_row_needs_no_name() {
     let one = format!(
         "{HEADER}\
-ZZ9-33-S,SOT-23-5,3.3V +/- 2%,0.3V,0.5A,Basic,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n"
+ZZ9-33-S,SOT-23-5,3.3V +/- 2%,0.3V,0.5A,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n"
     );
     let c = catalogs(&[("zz9", &one)]).unwrap();
     let s = solved("", &c);
@@ -166,7 +167,7 @@ fn a_narrowing_that_leaves_one_row_of_a_keyed_file_picks_it() {
 fn a_keyed_file_with_one_row_that_does_not_fit_is_not_picked() {
     let one = format!(
         "{HEADER}\
-ZZ9-33-S,SOT-23-5,3.3V +/- 2%,0.3V,0.5A,Basic,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n"
+ZZ9-33-S,SOT-23-5,3.3V +/- 2%,0.3V,0.5A,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n"
     );
     let c = catalogs(&[("zz9", &one)]).unwrap();
     let s = solved(r#".package &= "DFN-6""#, &c);
@@ -246,8 +247,8 @@ fn a_checked_column_is_allowed_and_ignored() {
 fn a_file_named_like_a_catalog_adds_its_rows_after_the_ones_already_there() {
     let mut c = Catalogs::jlcpcb();
     let before = resistors(&c);
-    let row = "lcsc,mpn,resistance,max_power,package,library,price,stock,date,source\n\
-               ,ZZR-1,4.99kohm +/- 1%,62.5mW,0402,Basic,0.01,10,2026-10-31,https://example.invalid/zzr\n";
+    let row = "mpn,resistance,max_power,package,price,stock,date,source\n\
+               ZZR-1,4.99kohm +/- 1%,62.5mW,0402,0.01,10,2026-10-31,https://example.invalid/zzr\n";
     c.add_file("resistor", "catalogs/resistor.csv", row)
         .unwrap();
     let after = resistors(&c);
@@ -281,14 +282,9 @@ fn read_error(text: &str) -> String {
 
 #[test]
 fn a_row_with_a_part_number_and_no_source_is_refused_with_its_line() {
-    let e = read_error(&format!("{HEADER}ZZ9-1,SOT-23-5,3.3V,0.3V,0.5A,,,,,\n"));
+    let e = read_error(&format!("{HEADER}ZZ9-1,SOT-23-5,3.3V,0.3V,0.5A,,,,\n"));
     assert!(
         e.starts_with("catalogs/zz9.csv:2:") && e.contains("mpn ZZ9-1") && e.contains("no source"),
-        "{e}"
-    );
-    let e = read_error("lcsc,package,source\nC1,A,https://example.invalid/a\nC2,B,\n");
-    assert!(
-        e.starts_with("catalogs/zz9.csv:3:") && e.contains("lcsc C2"),
         "{e}"
     );
 }
@@ -298,7 +294,7 @@ fn a_row_without_a_part_number_needs_a_name_but_no_source() {
     assert!(catalogs(&[("zz9", "name,package\nmade up,A\n")]).is_ok());
     let e = read_error("package\nA\n");
     assert!(
-        e.starts_with("catalogs/zz9.csv:2:") && e.contains("no lcsc, mpn or name"),
+        e.starts_with("catalogs/zz9.csv:2:") && e.contains("no mpn or name"),
         "{e}"
     );
 }
@@ -317,13 +313,13 @@ fn a_part_twice_is_refused_naming_both_lines_in_one_file_and_across_files() {
     );
     // The project's file repeats a part of the standard one.
     let mut c = Catalogs::jlcpcb();
-    let dup = "lcsc,source\nC25104,https://example.invalid/again\n";
+    let dup = "mpn,source\n0402WGF3300TCE,https://example.invalid/again\n";
     let e = c
         .add_file("resistor", "catalogs/resistor.csv", dup)
         .unwrap_err();
     assert!(
         e.starts_with("catalogs/resistor.csv:2:")
-            && e.contains("lcsc `C25104`")
+            && e.contains("mpn `0402WGF3300TCE`")
             && e.contains("data/jlcpcb/catalog/resistor.csv:"),
         "{e}"
     );
@@ -411,21 +407,8 @@ fn a_manufacturer_with_no_mpn_is_refused_with_its_line() {
 }
 
 #[test]
-fn the_same_lcsc_twice_is_still_refused_whatever_the_manufacturers() {
-    // Until stage 3 of ADR 0143 a supplier's number is in a catalog once too.
-    let e = read_error(
-        "lcsc,manufacturer,mpn,package,source\nC1,Acme,A-1,A,https://example.invalid\nC1,Zenith,Z-1,A,https://example.invalid\n",
-    );
-    assert_eq!(
-        e,
-        "catalogs/zz9.csv:3: the lcsc `C1` is already a row at catalogs/zz9.csv:2; a part is in a catalog once"
-    );
-}
-
-#[test]
 fn the_fixed_columns_are_checked_with_their_line() {
     for (bad, what) in [
-        ("library\nBasic\nGold\n", "library `Gold`"),
         ("name,price\na,cheap\n", "price `cheap`"),
         ("name,price\na,-1\n", "price `-1`"),
         ("name,stock\na,1.5\n", "stock `1.5`"),
@@ -436,14 +419,7 @@ fn the_fixed_columns_are_checked_with_their_line() {
             "assembly `solder` is not fab, hand, none or consigned",
         ),
     ] {
-        let text = if bad.starts_with("library") {
-            format!("name,{bad}")
-                .replace("name,library", "name,library")
-                .replace("Basic\nGold", "x,Basic\ny,Gold")
-        } else {
-            bad.to_string()
-        };
-        let e = read_error(&text);
+        let e = read_error(bad);
         assert!(
             e.starts_with("catalogs/zz9.csv:") && e.contains(what),
             "{e}"
@@ -640,13 +616,13 @@ fn a_part_number_gives_its_record_from_any_file() {
     );
     assert_eq!(catalogs.supplier("C0"), None);
 
-    catalogs
-        .add_file(
-            "resistor",
-            "catalogs/own.csv",
-            "lcsc,mpn,resistance,max_power,package,price,source\nC9999998,ZZ-1,317ohm +/- 1%,62.5mW,0402,0.5,https://example.invalid\n",
-        )
-        .unwrap();
+    crate::offered::add(
+        &mut catalogs,
+        "resistor",
+        "catalogs/own.csv",
+        "lcsc,mpn,resistance,max_power,package,price,source\nC9999998,ZZ-1,317ohm +/- 1%,62.5mW,0402,0.5,https://example.invalid\n",
+    )
+    .unwrap();
     let own = catalogs.supplier("C9999998").unwrap();
     assert_eq!(
         (own.unit_price_usd, own.stock, own.library),
@@ -756,7 +732,7 @@ fn a_part_that_lists_height_as_its_own_column_reads_it_as_that_column() {
 }
 
 #[test]
-fn a_row_may_be_consigned_and_needs_no_lcsc_for_it() {
+fn a_row_may_be_consigned_and_needs_no_offer_for_it() {
     let text = file()
         .replacen("mpn,", "assembly,mpn,", 1)
         .replace("ZZ9-33-S,", "consigned,ZZ9-33-S,")
@@ -781,7 +757,8 @@ fn resistor_rows(lcsc: &str, stock: &str) -> String {
 
 fn project_resistors(lcsc: &str, stock: &str) -> Catalogs {
     let mut c = Catalogs::jlcpcb();
-    c.add_file(
+    crate::offered::add(
+        &mut c,
         "resistor",
         "catalogs/resistor.csv",
         &resistor_rows(lcsc, stock),

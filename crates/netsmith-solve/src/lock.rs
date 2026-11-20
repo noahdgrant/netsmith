@@ -4,7 +4,7 @@
 //! and offers a locked part only its locked row, judged by everything the design says. The file a
 //! lock is kept in, and what a command does with it, are in `netsmith-pipeline` (`pick_lock`) and `netsmith-cli`.
 //!
-//! A hand pick (`.lcsc &= "C307331"` or `.mpn &= ...` in the source, ADR 0118) comes before the
+//! A hand pick (`.mpn &= "CL21A106KAYNNNE"` in the source, ADR 0122, ADR 0143) comes before the
 //! lock: the lock records the solver's picks, and a hand pick is a requirement of the design.
 
 use std::collections::BTreeMap;
@@ -21,13 +21,16 @@ pub struct LockedRow {
     pub catalog: String,
     /// The row's name, as a message calls it (`Candidate::name`).
     pub row: String,
-    /// The row's LCSC number, manufacturer and manufacturer part number when it is a real part
-    /// and the row names them, so that a row that was renamed or changed in place is found and
-    /// not taken for the locked one. The manufacturer and the part number are the part's
-    /// identity (ADR 0143); a lock of version 1 has no manufacturer.
-    pub lcsc: Option<String>,
+    /// The row's manufacturer and manufacturer part number when it is a real part and the row
+    /// names them, so that a row that was renamed or changed in place is found and not taken for
+    /// the locked one: they are the part's identity (ADR 0143). A lock of version 1 has no
+    /// manufacturer.
     pub manufacturer: Option<String>,
     pub mpn: Option<String>,
+    /// The sku the part resolved to for each supply channel that has an offer of it (ADR 0143),
+    /// by the channel's word (`jlcpcb-assembly`), in the order of [`CHANNELS`]. A record: a
+    /// change of an offer's sku shows in the lock's diff, and the solver does not read it.
+    pub skus: Vec<(String, String)>,
     /// Why a person holds the part to this row (`held = "reason"` in the lock file, issue
     /// #1197): `project lock --check` does not call the row not current, and `--update` keeps it
     /// unless the part is named. The solver does not read it; a person writes it.
@@ -41,12 +44,31 @@ impl LockedRow {
             path,
             catalog: pick.catalog.clone(),
             row: pick.candidate.clone(),
-            lcsc: pick.lcsc.clone(),
+            skus: channel_skus(&pick.skus),
             manufacturer: pick.manufacturer.clone(),
             mpn: pick.mpn.clone(),
             held: None,
         }
     }
+}
+
+/// The supply channels of ADR 0047 and the supplier whose offers each buys by (ADR 0143), by the
+/// words a manifest's `[supply]` and a lock use for them, in the order a lock lists them. Until
+/// a project lists its channels (issue #1459) these are the two a project may buy through.
+pub const CHANNELS: [(&str, &str); 2] = [("jlcpcb-assembly", "jlcpcb"), ("lcsc-retail", "lcsc")];
+
+/// The skus of a part's offers by supplier ([`crate::offers::SUPPLIERS`]) as a lock records them:
+/// by the channel that buys from each supplier, in the order of [`CHANNELS`].
+pub fn channel_skus(by_supplier: &[(String, String)]) -> Vec<(String, String)> {
+    CHANNELS
+        .iter()
+        .filter_map(|(channel, supplier)| {
+            by_supplier
+                .iter()
+                .find(|(s, _)| s == supplier)
+                .map(|(_, sku)| (channel.to_string(), sku.clone()))
+        })
+        .collect()
 }
 
 /// The provider one use of a generic was picked as (ADR 0068, ADR 0113): a use with more than
@@ -70,11 +92,12 @@ pub struct LockedProvider {
 pub struct PickLock {
     /// What a message calls the file the lock is kept in.
     pub file: String,
-    /// The version of the file's format when it is older than the one this netsmith writes
-    /// (`Some(1)` for a lock that records no manufacturer, ADR 0143): the lock is read and holds
-    /// its parts as before, and `project lock --check` calls it not current. `None` for a lock
-    /// of the current version and for one a run makes.
-    pub outdated: Option<i64>,
+    /// What makes the file of an older format than the one this netsmith writes, as the first
+    /// line of a diff says it (`version 1 -> 2: ...` for a lock that records no manufacturer, or
+    /// the line for one that records each part's `lcsc` and no sku, ADR 0143): the lock is read
+    /// and holds its parts as before, and `project lock --check` calls it not current. `None`
+    /// for a lock of the current format and for one a run makes.
+    pub outdated: Option<String>,
     units: BTreeMap<String, Vec<LockedRow>>,
     providers: BTreeMap<String, Vec<LockedProvider>>,
 }

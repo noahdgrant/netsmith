@@ -407,7 +407,7 @@ export function Bom() {
             aria-label="Check parts against LCSC"
             title={
               refreshable
-                ? `Checks the manufacturer's number and package of the rows of ${bom.catalogs.join(', ')} against LCSC's record, as netsmith catalog refresh does, and writes only the day in a checked column. It never writes a price, stock or library: those are JLCPCB's numbers, entered by hand, and JLCPCB data is not fetched (its robots.txt disallows automated clients on /api). LCSC's terms of use are unread; official APIs are future work.`
+                ? `Checks the project's LCSC offers (offers/lcsc.csv) of the parts of ${bom.catalogs.join(', ')} against LCSC's record, the manufacturer's number and the package, as netsmith catalog refresh does, and writes only the day in the offers' checked column. It never writes a price, stock or library: those are JLCPCB's numbers, entered by hand, and JLCPCB data is not fetched (its robots.txt disallows automated clients on /api). LCSC's terms of use are unread; official APIs are future work.`
                 : 'netsmith.toml lists no catalogs of its own to refresh'
             }
             onClick={() => void checkParts(preview, offline)}

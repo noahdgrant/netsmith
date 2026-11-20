@@ -119,14 +119,14 @@ fn rating_board(bound: &str) -> String {
 
 fn caps() -> Catalogs {
     let mut c = Catalogs::empty().with_series(Some(netsmith_solve::Series::E24));
-    c.add_file(
+    crate::offered::add(&mut c, 
         "capacitor",
         "catalogs/capacitor.csv",
         "lcsc,mpn,name,label,capacitance,effective_capacitance,max_voltage,package,library,source\n\
          C900101,ZZC-100N-16,100nF 16V,100n,100nF +/- 10%,derate capacitance by bias: 0:1 16:0.5,16V,0402,Basic,https://example.invalid/a\n",
     )
     .unwrap();
-    c.add_file(
+    crate::offered::add(&mut c, 
         "resistor",
         "catalogs/resistor.csv",
         "lcsc,mpn,name,label,resistance,max_power,package,library,source\n\
@@ -176,7 +176,7 @@ fn lamp(bound: &str) -> String {
 
 fn resistors() -> Catalogs {
     let mut c = Catalogs::empty();
-    c.add_file(
+    crate::offered::add(&mut c, 
         "resistor",
         "catalogs/resistor.csv",
         "lcsc,mpn,name,label,resistance,max_power,package,library,source\n\

@@ -48,8 +48,8 @@ board Logger {
 }
 "#;
 
-const SUPERCAP: &str = "mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,capacitance_at_end_of_life,esr_growth,library,source
-ZZS-1F5,1F +/- 20%,60mohm,100mohm,5uA,5.5V,2,Reflow,Radial_D16.0mm_P7.50mm,0.7,2,Extended,https://example.invalid/zzs-1f5.pdf
+const SUPERCAP: &str = "mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,capacitance_at_end_of_life,esr_growth,source
+ZZS-1F5,1F +/- 20%,60mohm,100mohm,5uA,5.5V,2,Reflow,Radial_D16.0mm_P7.50mm,0.7,2,https://example.invalid/zzs-1f5.pdf
 ";
 
 const DC_ESR: &str = "temperature,dc_esr

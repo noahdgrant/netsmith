@@ -5,18 +5,18 @@
 use netsmith_check::{Loader, check};
 use netsmith_solve::{Catalogs, Solution, solve};
 
-const HEAD: &str = "mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,height_growth,library,source\n";
+const HEAD: &str = "mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,height_growth,source\n";
 
 /// One cell, 2.7 V, in a two-lead package.
-const SINGLE: &str = "ZZS-1F,1F +/- 20%,60mohm,90mohm,4uA,2.7V,1,Reflow,Radial_D8.0mm_P3.50mm,0.5mm,Extended,https://example.invalid/zzs-1f.pdf\n";
+const SINGLE: &str = "ZZS-1F,1F +/- 20%,60mohm,90mohm,4uA,2.7V,1,Reflow,Radial_D8.0mm_P3.50mm,0.5mm,https://example.invalid/zzs-1f.pdf\n";
 /// Two cells with the tap, 5.5 V to 65 degC and 4.2 V to 85 degC.
-const TAPPED: &str = "ZZS-0F5-T,0.5F +/- 20%,120mohm,200mohm,6uA,\"5.5V to 65degC, 4.2V to 85degC\",2,Hand,Radial_D16.0mm_P7.50mm_Tap,1mm,Extended,https://example.invalid/zzs-0f5-t.pdf\n";
+const TAPPED: &str = "ZZS-0F5-T,0.5F +/- 20%,120mohm,200mohm,6uA,\"5.5V to 65degC, 4.2V to 85degC\",2,Hand,Radial_D16.0mm_P7.50mm_Tap,1mm,https://example.invalid/zzs-0f5-t.pdf\n";
 /// Two cells with no tap, 5.5 V at every temperature.
-const DUAL: &str = "ZZS-0F5,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,Hand,Radial_D16.0mm_P7.50mm,1mm,Extended,https://example.invalid/zzs-0f5.pdf\n";
+const DUAL: &str = "ZZS-0F5,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,Hand,Radial_D16.0mm_P7.50mm,1mm,https://example.invalid/zzs-0f5.pdf\n";
 
 fn catalogs(rows: &[&str]) -> Catalogs {
     let mut c = Catalogs::empty();
-    c.add_file(
+    crate::offered::add(&mut c, 
         "supercap",
         "catalogs/supercap.csv",
         &format!("{HEAD}{}", rows.concat()),

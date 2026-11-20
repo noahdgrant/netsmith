@@ -20,29 +20,29 @@ provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
 [CarrierAndCards.parts."carrier.fuse"]
 catalog = "fuse"
 row = "SMD1206P100TF 1A 6V resettable fuse 1206 C20800"
-lcsc = "C20800"
 mpn = "SMD1206P100TF"
+sku = { jlcpcb-assembly = "C20800", lcsc-retail = "C20800" }
 
 [CarrierAndCards.parts."carrier.slot_a"]
 catalog = "header"
 row = "PM2.54-1X10P-H85 10-pin 2.54mm socket C42431852"
-lcsc = "C42431852"
 mpn = "PM2.54-1X10P-H85"
+sku = { jlcpcb-assembly = "C42431852", lcsc-retail = "C42431852" }
 
 [CarrierAndCards.parts."carrier.slot_b"]
 catalog = "header"
 row = "PM2.54-1X10P-H85 10-pin 2.54mm socket C42431852"
-lcsc = "C42431852"
 mpn = "PM2.54-1X10P-H85"
+sku = { jlcpcb-assembly = "C42431852", lcsc-retail = "C42431852" }
 
 [CarrierAndCards.parts."sensor.j1"]
 catalog = "header"
 row = "PH2.54-1X10P-H25 10-pin 2.54mm header C42431810"
-lcsc = "C42431810"
 mpn = "PH2.54-1X10P-H25"
+sku = { jlcpcb-assembly = "C42431810", lcsc-retail = "C42431810" }
 
 [CarrierAndCards.parts."serial.j1"]
 catalog = "header"
 row = "PH2.54-1X10P-H25 10-pin 2.54mm header C42431810"
-lcsc = "C42431810"
 mpn = "PH2.54-1X10P-H25"
+sku = { jlcpcb-assembly = "C42431810", lcsc-retail = "C42431810" }

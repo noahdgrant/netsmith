@@ -11,17 +11,17 @@ provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
 [LedExample.parts."led"]
 catalog = "led"
 row = "KT-0603R RED LED 0603 C2286"
-lcsc = "C2286"
 mpn = "KT-0603R"
+sku = { jlcpcb-assembly = "C2286", lcsc-retail = "C2286" }
 
 [LedExample.parts."power_in"]
 catalog = "header"
 row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"
-lcsc = "C42431798"
 mpn = "PH2.54-1X2P-H25"
+sku = { jlcpcb-assembly = "C42431798", lcsc-retail = "C42431798" }
 
 [LedExample.parts."r1"]
 catalog = "resistor"
 row = "330Ω 1% 0402 C25104"
-lcsc = "C25104"
 mpn = "0402WGF3300TCE"
+sku = { jlcpcb-assembly = "C25104", lcsc-retail = "C25104" }

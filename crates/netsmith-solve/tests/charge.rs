@@ -6,15 +6,15 @@
 use netsmith_check::{Loader, check};
 use netsmith_solve::{Catalogs, Solution, solve};
 
-const HEAD: &str = "mpn,chemistry,capacity,internal_resistance,charge_temperature,discharge_temperature,float_voltage,max_charge_current,package,library,source\n";
+const HEAD: &str = "mpn,chemistry,capacity,internal_resistance,charge_temperature,discharge_temperature,float_voltage,max_charge_current,package,source\n";
 
 /// A lithium-ion cell of 1000 mAh, charged to 4.2 V +/- 50 mV between 0 and 45 degC, at most
 /// 500 mA.
-const CELL: &str = "ZZC-1000,LiIon,3.6kC,150mohm,0degC..45degC,-20degC..60degC,4.2V +/- 50mV,500mA,JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal,Extended,https://example.invalid/zzc-1000.pdf\n";
+const CELL: &str = "ZZC-1000,LiIon,3.6kC,150mohm,0degC..45degC,-20degC..60degC,4.2V +/- 50mV,500mA,JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal,https://example.invalid/zzc-1000.pdf\n";
 
 fn catalogs() -> Catalogs {
     let mut c = Catalogs::jlcpcb();
-    c.add_file("cell", "catalogs/cell.csv", &format!("{HEAD}{CELL}"))
+    crate::offered::add(&mut c, "cell", "catalogs/cell.csv", &format!("{HEAD}{CELL}"))
         .unwrap();
     c
 }

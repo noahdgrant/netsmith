@@ -44,14 +44,14 @@ board Widget {{
 /// has, and it states no range. The standard resistor rows now state theirs (the datasheets'),
 /// and every test here needs a part whose row states none, so that it is offered and named.
 const UNJUDGED_ROW: &str = "\
-mpn,resistance,max_power,package,library,source
-ACME-N,71.5kohm +/- 1%,62.5mW,0402,Basic,https://example.invalid/acme.pdf no range
+mpn,resistance,max_power,package,source
+ACME-N,71.5kohm +/- 1%,62.5mW,0402,https://example.invalid/acme.pdf no range
 ";
 
 /// The standard catalogs and the project row of [`UNJUDGED_ROW`].
 fn jlcpcb() -> Catalogs {
     let mut c = Catalogs::jlcpcb();
-    c.add_file("resistor", "catalogs/resistor.csv", UNJUDGED_ROW)
+    netsmith_solve::migrate::add_to(&mut c, "resistor", "catalogs/resistor.csv", UNJUDGED_ROW)
         .unwrap();
     c
 }
@@ -190,13 +190,13 @@ fn a_stated_range_that_does_not_cover_the_environment_is_an_error_naming_the_par
 /// `ACME-R2`'s only 125 C.
 fn project_rows() -> Catalogs {
     let mut c = Catalogs::jlcpcb();
-    c.add_file(
+    netsmith_solve::migrate::add_to(&mut c, 
         "resistor",
         "catalogs/resistor.csv",
         "\
-mpn,resistance,max_power,package,temp_min,temp_max,library,source
-ACME-R1,31.6kohm +/- 1%,62.5mW,0402,253.15K,343.15K,Basic,https://example.invalid/acme.pdf temp: page 1
-ACME-R2,31.6kohm +/- 1%,62.5mW,0402,,398.15K,Basic,https://example.invalid/acme.pdf temp: page 1
+mpn,resistance,max_power,package,temp_min,temp_max,source
+ACME-R1,31.6kohm +/- 1%,62.5mW,0402,253.15K,343.15K,https://example.invalid/acme.pdf temp: page 1
+ACME-R2,31.6kohm +/- 1%,62.5mW,0402,,398.15K,https://example.invalid/acme.pdf temp: page 1
 ",
     )
     .unwrap();
@@ -247,11 +247,11 @@ fn an_environment_that_states_no_temperature_is_named() {
 fn a_cell_that_is_not_a_temperature_is_refused_with_its_line() {
     let rows = |min: &str, max: &str| {
         let mut c = Catalogs::jlcpcb();
-        c.add_file(
+        netsmith_solve::migrate::add_to(&mut c, 
             "resistor",
             "catalogs/resistor.csv",
             &format!(
-                "mpn,resistance,max_power,package,temp_min,temp_max,library,source\nACME-R1,31.6kohm +/- 1%,62.5mW,0402,{min},{max},Basic,https://example.invalid/acme.pdf\n"
+                "mpn,resistance,max_power,package,temp_min,temp_max,source\nACME-R1,31.6kohm +/- 1%,62.5mW,0402,{min},{max},https://example.invalid/acme.pdf\n"
             ),
         )
         .map(|_| c)
@@ -285,11 +285,11 @@ fn a_cell_may_be_written_in_degc_or_in_kelvin_and_is_the_same_temperature() {
     // spelling is judged the same, and the sign of `-40degC` is the number's.
     let row = |min: &str, max: &str| {
         let mut c = Catalogs::jlcpcb();
-        c.add_file(
+        netsmith_solve::migrate::add_to(&mut c, 
             "resistor",
             "catalogs/resistor.csv",
             &format!(
-                "mpn,resistance,max_power,package,temp_min,temp_max,library,source\nACME-D,71.5kohm +/- 1%,62.5mW,0402,{min},{max},Basic,https://example.invalid/acme.pdf\n"
+                "mpn,resistance,max_power,package,temp_min,temp_max,source\nACME-D,71.5kohm +/- 1%,62.5mW,0402,{min},{max},https://example.invalid/acme.pdf\n"
             ),
         )
         .unwrap();
@@ -660,7 +660,7 @@ fn a_part_that_is_not_fitted_is_not_judged() {
 
 // ---- a row with only a dielectric class (ADR 0099, ENV2-C) ----------------------------------
 
-const CAPACITOR_HEADER: &str = "mpn,capacitance,effective_capacitance,max_voltage,package,dielectric,temp_min,temp_max,library,source\n";
+const CAPACITOR_HEADER: &str = "mpn,capacitance,effective_capacitance,max_voltage,package,dielectric,temp_min,temp_max,source\n";
 
 /// A board with a supply and one bypass capacitor of the invented 100 nF rows of
 /// [`class_rows`], and `extra` inside it.
@@ -690,11 +690,11 @@ fn class_rows(rows: &[(&str, &str)]) -> Catalogs {
     let mut text = CAPACITOR_HEADER.to_string();
     for (mpn, cells) in rows {
         text.push_str(&format!(
-            "{mpn},100nF +/- 10%,derate capacitance by bias:,16V,0402,{cells},Basic,https://example.invalid/{mpn}.pdf\n"
+            "{mpn},100nF +/- 10%,derate capacitance by bias:,16V,0402,{cells},https://example.invalid/{mpn}.pdf\n"
         ));
     }
     let mut c = Catalogs::empty();
-    c.add_file("capacitor", "catalogs/capacitor.csv", &text)
+    netsmith_solve::migrate::add_to(&mut c, "capacitor", "catalogs/capacitor.csv", &text)
         .unwrap();
     c
 }
@@ -815,11 +815,11 @@ fn qualified_board(required: Option<&str>, own: &str) -> String {
 /// `qualification` cell (the column is there, and its cell may be empty).
 fn qualification_row(cell: &str) -> Catalogs {
     let mut c = Catalogs::jlcpcb();
-    c.add_file(
+    netsmith_solve::migrate::add_to(&mut c, 
         "resistor",
         "catalogs/resistor.csv",
         &format!(
-            "mpn,resistance,max_power,package,temp_min,temp_max,library,source,qualification\nACME-Q,31.6kohm +/- 1%,62.5mW,0402,233.15K,358.15K,Basic,https://example.invalid/acme.pdf page 1,{cell}\n"
+            "mpn,resistance,max_power,package,temp_min,temp_max,source,qualification\nACME-Q,31.6kohm +/- 1%,62.5mW,0402,233.15K,358.15K,https://example.invalid/acme.pdf page 1,{cell}\n"
         ),
     )
     .unwrap();
@@ -964,11 +964,11 @@ fn a_qualification_is_judged_when_the_environment_states_no_temperature() {
 fn a_qualification_cell_that_is_not_none_or_aec_is_refused_with_its_line() {
     let rows = |cell: &str| {
         let mut c = Catalogs::jlcpcb();
-        c.add_file(
+        netsmith_solve::migrate::add_to(&mut c, 
             "resistor",
             "catalogs/resistor.csv",
             &format!(
-                "mpn,resistance,max_power,package,library,source,qualification\nACME-Q,31.6kohm +/- 1%,62.5mW,0402,Basic,https://example.invalid/acme.pdf,{cell}\n"
+                "mpn,resistance,max_power,package,source,qualification\nACME-Q,31.6kohm +/- 1%,62.5mW,0402,https://example.invalid/acme.pdf,{cell}\n"
             ),
         )
         .map(|_| c)

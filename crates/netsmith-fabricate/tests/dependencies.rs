@@ -42,8 +42,8 @@ board Feed {
 ";
 
 const ROWS: &str = "\
-mpn,resistance,max_power,package,library,source
-ACME-R316,31.6kohm +/- 1%,62.5mW,0402,Basic,https://example.invalid/acme.pdf
+mpn,resistance,max_power,package,source
+ACME-R316,31.6kohm +/- 1%,62.5mW,0402,https://example.invalid/acme.pdf
 ";
 
 fn write(path: &Path, text: &str) {
