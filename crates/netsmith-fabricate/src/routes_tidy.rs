@@ -85,9 +85,7 @@ use netsmith_router::kept::Kept;
 use serde::Serialize;
 
 use crate::kept_routes::KeptRoutes;
-use crate::routes::{beside_layout, load, save, with_routes};
-
-mod near;
+use crate::routes::{beside_layout, load, near, save, with_routes};
 
 /// How [`tidy_with`] checks a group of changes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -673,19 +671,7 @@ impl<'a> Work<'a> {
         }
         let mut whole = shell.clone();
         whole.parts = parts.clone();
-        // The zones are raised above the pours drawn under them, as the board file has them
-        // (`Board::zone_lift`, issue #1314).
-        let lift = shell.zone_lift();
-        let mut zones = shell.zones.clone();
-        for z in &mut zones {
-            z.priority = z.priority.saturating_add(lift);
-        }
-        zones.extend(
-            netsmith_pcb::process_zones(&whole)
-                .into_iter()
-                .map(|(net, z)| z.on(&whole, &net))
-                .filter(|z| !z.layers.iter().any(|l| shell.replaced(l, &z.net))),
-        );
+        let zones = near::zones_of(&whole);
         Ok(Work {
             board,
             routes,

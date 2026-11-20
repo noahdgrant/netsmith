@@ -295,15 +295,26 @@ pub fn join_pad(board: &Board, routes: &Routes, name: &str) -> Result<Joined, Re
             }
             Err(e) => return Err(e),
             Ok(said) => {
+                // A via joins the pad when the check finds it connected, a track when the fill
+                // joins it: each asks only what it needs (issue #1471: the fill and the check
+                // of a dense board each take seconds).
                 let (after, _) = with_routes(board, &next)?;
-                let report = FillReport::of(&after).map_err(|e| Refusal::Failed(e.to_string()))?;
-                let now = state(&report, &after, &net, refdes, number)?;
-                let done = if fill_layer.is_some() {
-                    !now.unconnected
-                } else {
-                    now.joined
+                let fill =
+                    |b: &Board| FillReport::of(b).map_err(|e| Refusal::Failed(e.to_string()));
+                let report = match fill_layer {
+                    Some(_) => None,
+                    None => Some(fill(&after)?),
+                };
+                let done = match &report {
+                    None => !unconnected(&after, refdes, number)?,
+                    Some(r) => state(r, &after, &net, refdes, number)?.joined,
                 };
                 if !done {
+                    let report = match report {
+                        Some(r) => r,
+                        None => fill(&after)?,
+                    };
+                    let now = state(&report, &after, &net, refdes, number)?;
                     joined.tried.push(tried(format!(
                         "the pad is still not joined with it: {}",
                         now.text
@@ -347,9 +358,23 @@ pub fn join_pad(board: &Board, routes: &Routes, name: &str) -> Result<Joined, Re
 /// How the fill has the pad.
 struct State {
     joined: bool,
-    /// The design rules check finds the pad unconnected.
-    unconnected: bool,
     text: String,
+}
+
+/// Whether the design rules check of `board` finds the pad `part`.`pad` unconnected.
+fn unconnected(board: &Board, part: &str, pad: &str) -> Result<bool, Refusal> {
+    let checked = netsmith_geom::drc_check(
+        &netsmith_pcb::kicad_pcb(board),
+        Some(&netsmith_pcb::kicad_pro(board)),
+        &crate::fab::drc_extras(board),
+    )
+    .map_err(|e| Refusal::Failed(format!("the design rules check: {e}")))?;
+    Ok(checked.findings.iter().any(|f| {
+        f.rule == netsmith_geom::DrcRule::UnconnectedItems
+            && f.items
+                .iter()
+                .any(|i| i.part.as_deref() == Some(part) && i.pad.as_deref() == Some(pad))
+    }))
 }
 
 fn state(
@@ -370,23 +395,12 @@ fn state(
                 .map(move |p| (f.layer.as_str(), p))
         })
         .collect();
-    let checked = netsmith_geom::drc_check(
-        &netsmith_pcb::kicad_pcb(board),
-        Some(&netsmith_pcb::kicad_pro(board)),
-        &crate::fab::drc_extras(board),
-    )
-    .map_err(|e| Refusal::Failed(format!("the design rules check: {e}")))?;
-    let unconnected = checked.findings.iter().any(|f| {
-        f.rule == netsmith_geom::DrcRule::UnconnectedItems
-            && f.items
-                .iter()
-                .any(|i| i.part.as_deref() == Some(part) && i.pad.as_deref() == Some(pad))
-    });
+    // The check of the whole board is made only for a pad no fill lists (issue #1471).
+    let unconnected = listed.is_empty() && unconnected(board, part, pad)?;
     let good = |p: &FillPad| (p.joined && !p.starved) || p.joined_elsewhere;
     if let Some((layer, _)) = listed.iter().find(|(_, p)| good(p)) {
         return Ok(State {
             joined: true,
-            unconnected,
             text: format!("the fill on {layer} joins it"),
         });
     }
@@ -411,7 +425,6 @@ fn state(
     };
     Ok(State {
         joined: listed.is_empty() && !unconnected,
-        unconnected,
         text,
     })
 }
