@@ -173,7 +173,7 @@ commit = "0123456789abcdef0123456789abcdef01234567"
 
 ### Preferred parts
 
-A project says which rows it takes first for a generic part in `preferred.csv`, beside `netsmith.toml` (ADR 0047, issue #802). Each line names a part by its `lcsc` number, its `mpn`, or both; `note` is free text, for why. The file is optional, and a project without one resolves as before.
+A project says which rows it takes first for a generic part in `preferred.csv`, beside `netsmith.toml` (ADR 0047, issue #802). Each line names a part by its `lcsc` number, its `mpn` (with its `manufacturer`, if the line says whose), or both; `note` is free text, for why. The file is optional, and a project without one resolves as before.
 
 ```csv file=preferred.csv
 lcsc,mpn,note
@@ -181,7 +181,7 @@ C25744,,the 10k 0402 reel on our shelf
 C25804,,
 ```
 
-When the bill of materials or `fab` resolves a generic part to a row of its catalog (_Generic parts_ in the chapter on catalogs), the rows that fit and that the file names come first, in the order of the file; the other rows that fit follow as without it, JLCPCB Basic before Preferred before Extended, then the order of the catalog file. A listed row that a supply provider says has no stock is passed over, as any row is. A line with both `lcsc` and `mpn` names only the row that has both.
+When the bill of materials or `fab` resolves a generic part to a row of its catalog (_Generic parts_ in the chapter on catalogs), the rows that fit and that the file names come first, in the order of the file; the other rows that fit follow as without it, JLCPCB Basic before Preferred before Extended, then the order of the catalog file. A listed row that a supply provider says has no stock is passed over, as any row is. A line names a row as a part's identity does (ADR 0143): by its `mpn` when the line and the row have one, and its `manufacturer` when both name one; by its `lcsc` when either has no `mpn`. A line with both `lcsc` and `mpn` therefore names the row of that `mpn`. A part is listed once: two lines of one `mpn` from two manufacturers are two parts, and a line that names a manufacturer must have an `mpn`.
 
 - The file changes only resolution. The solver picks from a catalog's rows in the order of the file as before, so a design's picks and its pick lock are the same with or without it.
 - A part the file names that no catalog has is not an error: it never fits, so it changes nothing.

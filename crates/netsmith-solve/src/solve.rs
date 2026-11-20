@@ -427,9 +427,10 @@ pub struct Pick {
     pub candidate: String,
     /// The value for a schematic: `300`.
     pub label: String,
-    /// The supplier's and manufacturer's part numbers and JLCPCB's library, if the
-    /// candidate is a real part.
+    /// The supplier's part number, the manufacturer and its part number, and JLCPCB's
+    /// library, if the candidate is a real part and its row names them.
     pub lcsc: Option<String>,
+    pub manufacturer: Option<String>,
     pub mpn: Option<String>,
     pub library: Option<Library>,
     /// The row's default for who assembles the part (ADR 0024).

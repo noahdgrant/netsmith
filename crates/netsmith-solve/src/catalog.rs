@@ -174,6 +174,9 @@ pub struct Candidate {
     pub columns: Vec<(String, Value)>,
     /// The supplier's part number (LCSC `C25104`), if this is a real part that can be bought.
     pub lcsc: Option<String>,
+    /// The part's manufacturer, as its datasheet spells it: the row's `manufacturer` cell. With
+    /// the `mpn` it is the part's identity (ADR 0143); `None` when the row names none.
+    pub manufacturer: Option<String>,
     /// The manufacturer's part number.
     pub mpn: Option<String>,
     pub library: Option<Library>,
@@ -535,16 +538,7 @@ impl Catalogs {
         if table.has_row_named(&locked.row) {
             return None;
         }
-        let (row, lcsc, mpn) =
-            table.built_in_row_with(locked.lcsc.as_deref(), locked.mpn.as_deref())?;
-        Some(LockedRow {
-            path: locked.path.clone(),
-            catalog: locked.catalog.clone(),
-            row,
-            lcsc,
-            mpn,
-            held: locked.held.clone(),
-        })
+        table.built_in_row_with(locked)
     }
 
     /// The catalog `name` for a part whose `catalog name { ... }` lists `columns`, with every

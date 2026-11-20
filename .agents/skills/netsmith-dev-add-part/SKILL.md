@@ -20,12 +20,13 @@ One file for each catalog, named by it (`resistor.csv`, `capacitor.csv`, `led.cs
 
 - Every row in a file is offered, whatever its `stock` cell says (the solver does not read stock, ADR 0047). The standard files ship no `price`, `stock`, `date` or `checked`: leave them empty in a row you add to `data/jlcpcb/catalog/` (a project's own file may state them; the `source` cell says when the record was read).
 - `name` is what a message calls the row (`10kΩ 1% 0402 C25744`) and `label` the schematic's value field (`10k`). Both default to the `mpn`.
+- `manufacturer` is an optional fixed column: who makes the part, as its datasheet spells it. A part is its `manufacturer` and `mpn` (ADR 0143), so two rows of one `mpn` from two manufacturers are two parts, and a row with an empty `manufacturer` is its `mpn` whoever makes it (the same part as any row of that `mpn`). Fill it from the datasheet, with the document in `source`; never from memory, and do not fetch it for existing rows from a supplier. A row that names a manufacturer needs an `mpn`.
 - A part you looked at and decided against goes in `data/jlcpcb/considered.csv` with its reason, not in a catalog.
 - A catalog keyed by a column (`catalog mcu by .mpn`) has one row per orderable part, and the design names it with `.mpn` when several rows fit (one fitting row is taken without a name).
 
 ## Starting a row
 
-`netsmith catalog add --lcsc C123 --to <catalog.csv>` asks LCSC's record of the number (never JLCPCB's) and appends a row with `lcsc`, `mpn`, `package` and a `source` that names the record and the day it was read. It leaves every other cell empty and prints the columns to fill: the ratings and curves from the datasheet (add `datasheet:<url>` to `source`) and `library` from JLCPCB's page. A row with an empty cell a part reads is never offered, so the row does nothing until you fill it. Check the `package` against `std/kicad.toml`; LCSC spells some packages its own way. Without `--to` it prints the record and writes nothing.
+`netsmith catalog add --lcsc C123 --to <catalog.csv>` asks LCSC's record of the number (never JLCPCB's) and appends a row with `lcsc`, `mpn`, `package` and a `source` that names the record and the day it was read, and `manufacturer` as LCSC spells it when the file has that column (check it against the datasheet's spelling). It leaves every other cell empty and prints the columns to fill: the ratings and curves from the datasheet (add `datasheet:<url>` to `source`) and `library` from JLCPCB's page. A row with an empty cell a part reads is never offered, so the row does nothing until you fill it. Check the `package` against `std/kicad.toml`; LCSC spells some packages its own way. Without `--to` it prints the record and writes nothing.
 
 ## Refreshing the numbers
 

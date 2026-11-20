@@ -202,8 +202,42 @@ fn the_order_of_the_preferred_list_decides_between_two_listed_rows() {
     };
     assert_eq!(first("lcsc\nC900001\nC900002\n").as_deref(), Some("C900001"));
     assert_eq!(first("lcsc\nC900002\nC900001\n").as_deref(), Some("C900002"));
-    // A line with both columns names only the row that has both.
+    // A line names a row by its mpn when both have one (ADR 0143), whatever its lcsc says.
     assert_eq!(first("lcsc,mpn\nC900002,ZZR-330-B\n").as_deref(), Some("C900001"));
+    assert_eq!(first("lcsc,mpn\nC900001,ZZR-330-E\n").as_deref(), Some("C900002"));
+    // A manufacturer on the line is compared only with a row that names one: these name none.
+    assert_eq!(
+        first("manufacturer,mpn\nAcme Passives,ZZR-330-E\n").as_deref(),
+        Some("C900002")
+    );
+}
+
+#[test]
+fn a_preferred_line_is_one_part_by_its_manufacturer_and_mpn() {
+    let parse = |text: &str| Preferred::parse("preferred.csv", text);
+    // One number from two makers is two parts, and from one maker (or one that names none) the
+    // same part.
+    assert_eq!(
+        parse("manufacturer,mpn\nAcme,ZZR-1\nZenith,ZZR-1\n").map(|l| l.len()),
+        Ok(2)
+    );
+    assert_eq!(
+        parse("manufacturer,mpn\nAcme,ZZR-1\nAcme,ZZR-1\n").unwrap_err(),
+        "preferred.csv:3: `ZZR-1` of `Acme` is listed twice; a part is listed once"
+    );
+    assert_eq!(
+        parse("manufacturer,mpn\nAcme,ZZR-1\n,ZZR-1\n").unwrap_err(),
+        "preferred.csv:3: `ZZR-1` of `Acme` is listed twice; a part is listed once"
+    );
+    assert_eq!(
+        parse("manufacturer,lcsc\nAcme,C900001\n").unwrap_err(),
+        "preferred.csv:2: the line names the manufacturer `Acme` and no `mpn`; a manufacturer names a part only with its part number (ADR 0143)"
+    );
+    assert!(
+        parse("vendor\nAcme\n")
+            .unwrap_err()
+            .contains("the columns `lcsc`, `manufacturer`, `mpn` and `note`")
+    );
 }
 
 #[test]
@@ -219,7 +253,7 @@ fn a_preferred_list_that_is_not_well_formed_is_refused_with_its_line() {
     let refused = |text: &str| Preferred::parse("preferred.csv", text).unwrap_err();
     assert_eq!(
         refused("lcsc,price\nC900001,1\n"),
-        "preferred.csv:1: unknown column `price`; a preferred-parts file has the columns `lcsc`, `mpn` and `note`"
+        "preferred.csv:1: unknown column `price`; a preferred-parts file has the columns `lcsc`, `manufacturer`, `mpn` and `note`"
     );
     assert_eq!(
         refused("note\nwhy\n"),

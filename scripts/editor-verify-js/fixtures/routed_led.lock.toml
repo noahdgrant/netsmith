@@ -2,7 +2,7 @@
 # `netsmith board fab` when this file does not exist. Commit it: a change to a catalog or to the
 # solver that would move a pick shows here and not only in the bill of materials. Refresh it
 # with `netsmith project lock --update`. Nothing in it is edited by hand.
-version = 1
+version = 2
 
 [LedExample.providers."process"]
 generic = "TwoLayer"

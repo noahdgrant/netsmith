@@ -329,6 +329,99 @@ fn a_part_twice_is_refused_naming_both_lines_in_one_file_and_across_files() {
     );
 }
 
+const MAKERS: &str = "manufacturer,mpn,package,vout.voltage,dropout,max_current,source\n";
+
+/// A row of the `zz9` catalog with a `manufacturer` cell.
+fn made_by(maker: &str, mpn: &str, package: &str) -> String {
+    format!("{maker},{mpn},{package},3.3V +/- 2%,0.3V,0.5A,https://example.invalid/{mpn}.pdf\n")
+}
+
+#[test]
+fn two_rows_of_one_mpn_from_two_manufacturers_are_two_parts() {
+    // A part is its manufacturer and its part number (ADR 0143): two makers may use one number.
+    let text = format!(
+        "{MAKERS}{}{}",
+        made_by("Acme Analog", "ZZ9-33", "SOT-23-5"),
+        made_by("Zenith Semi", "ZZ9-33", "DFN-6")
+    );
+    let c = catalogs(&[("zz9", &text)]).unwrap();
+    let s = solved(r#".mpn &= "ZZ9-33"
+    .package &= "DFN-6""#, &c);
+    assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
+    assert_eq!(s.picks[0].mpn.as_deref(), Some("ZZ9-33"));
+    assert_eq!(s.picks[0].manufacturer.as_deref(), Some("Zenith Semi"));
+    // Across files too: a project's row of the same number from another maker is another part.
+    let other = format!("{MAKERS}{}", made_by("Zenith Semi", "ZZ9-33", "DFN-6"));
+    let first = format!("{MAKERS}{}", made_by("Acme Analog", "ZZ9-33", "SOT-23-5"));
+    let mut c = catalogs(&[("zz9", &first)]).unwrap();
+    c.add_file("zz9", "catalogs/more/zz9.csv", &other).unwrap();
+}
+
+#[test]
+fn the_same_manufacturer_and_mpn_twice_is_refused_naming_both_places() {
+    let row = made_by("Acme Analog", "ZZ9-33", "SOT-23-5");
+    let e = read_error(&format!("{MAKERS}{row}{row}"));
+    assert_eq!(
+        e,
+        "catalogs/zz9.csv:3: the manufacturer `Acme Analog` and the mpn `ZZ9-33` is already a row at catalogs/zz9.csv:2; a part is in a catalog once"
+    );
+    // Across two files, the second one's line is the one refused.
+    let mut c = catalogs(&[("zz9", &format!("{MAKERS}{row}"))]).unwrap();
+    let e = c
+        .add_file("zz9", "catalogs/more/zz9.csv", &format!("{MAKERS}{row}"))
+        .unwrap_err();
+    assert!(
+        e.starts_with("catalogs/more/zz9.csv:2: the manufacturer `Acme Analog` and the mpn `ZZ9-33`")
+            && e.contains("already a row at catalogs/zz9.csv:2"),
+        "{e}"
+    );
+}
+
+#[test]
+fn a_row_that_names_no_manufacturer_is_its_mpn_whoever_makes_it() {
+    // An empty `manufacturer` is any maker, so it is the same part as a row of the number that
+    // names one, in either order; the message says which row names none.
+    for (first, second, blank) in [
+        (made_by("", "ZZ9-33", "SOT-23-5"), made_by("Acme Analog", "ZZ9-33", "DFN-6"), 2),
+        (made_by("Acme Analog", "ZZ9-33", "SOT-23-5"), made_by("", "ZZ9-33", "DFN-6"), 3),
+    ] {
+        let e = read_error(&format!("{MAKERS}{first}{second}"));
+        assert_eq!(
+            e,
+            format!(
+                "catalogs/zz9.csv:3: the mpn `ZZ9-33` (of `Acme Analog`; the row at catalogs/zz9.csv:{blank} names no manufacturer, which is that mpn whoever makes it: give it its manufacturer to make the two rows two parts) is already a row at catalogs/zz9.csv:2; a part is in a catalog once"
+            )
+        );
+    }
+    // A catalog with no `manufacturer` column reads as before: its mpn alone is the identity.
+    let e = read_error(&format!(
+        "{HEADER}{}",
+        file().lines().nth(1).unwrap().to_string() + "\n" + file().lines().nth(1).unwrap() + "\n"
+    ));
+    assert!(e.contains("the mpn `ZZ9-33-S` is already a row at catalogs/zz9.csv:2"), "{e}");
+}
+
+#[test]
+fn a_manufacturer_with_no_mpn_is_refused_with_its_line() {
+    let e = read_error("manufacturer,name,package,source\nAcme Analog,made up,A,https://example.invalid\n");
+    assert!(
+        e.starts_with("catalogs/zz9.csv:2: the row names the manufacturer `Acme Analog` and no `mpn`"),
+        "{e}"
+    );
+}
+
+#[test]
+fn the_same_lcsc_twice_is_still_refused_whatever_the_manufacturers() {
+    // Until stage 3 of ADR 0143 a supplier's number is in a catalog once too.
+    let e = read_error(
+        "lcsc,manufacturer,mpn,package,source\nC1,Acme,A-1,A,https://example.invalid\nC1,Zenith,Z-1,A,https://example.invalid\n",
+    );
+    assert_eq!(
+        e,
+        "catalogs/zz9.csv:3: the lcsc `C1` is already a row at catalogs/zz9.csv:2; a part is in a catalog once"
+    );
+}
+
 #[test]
 fn the_fixed_columns_are_checked_with_their_line() {
     for (bad, what) in [

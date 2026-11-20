@@ -1040,3 +1040,66 @@ fn check_except_judges_every_part_but_the_named_ones_and_lists_them() {
     );
     assert_eq!(read_lock(&root), before, "--check writes nothing");
 }
+
+#[test]
+fn a_lock_of_version_1_builds_as_before_and_check_calls_it_not_current_until_update() {
+    let root = led_project("lock-version-1", LED);
+    assert!(netsmith(&root, &["board", "build"]).status.success());
+    // The lock an older netsmith wrote: version 1, with no manufacturer.
+    let v2 = read_lock(&root);
+    assert!(v2.contains("\nversion = 2\n"), "{v2}");
+    let v1 = v2.replace("\nversion = 2\n", "\nversion = 1\n");
+    fs::write(lock_file(&root), &v1).unwrap();
+    // A build still reads it and holds the parts to it, also with --locked, and says it is old.
+    let build = netsmith(&root, &["board", "build", "--locked"]);
+    assert!(build.status.success(), "{}", stderr(&build));
+    assert!(
+        stderr(&build).contains("main.lock.toml is of version 1 of the lock, which records no manufacturer; it holds the parts as before, and `netsmith project lock --update` writes it as version 2"),
+        "{}",
+        stderr(&build)
+    );
+    assert_eq!(read_lock(&root), v1, "a build never rewrites the lock");
+    // `--check` calls it not current, with the line that says why.
+    let check = netsmith(&root, &["project", "lock", "--check"]);
+    assert_eq!(check.status.code(), Some(1), "{}", stderr(&check));
+    assert_eq!(
+        diff_lines(&check),
+        ["version 1 -> 2: the file is of version 1 of the lock, and version 2 records each part's manufacturer beside its lcsc and mpn (ADR 0143)"]
+    );
+    // `--update` writes it as version 2, with the same rows, and it is then current.
+    let update = netsmith(&root, &["project", "lock", "--update"]);
+    assert!(update.status.success(), "{}", stderr(&update));
+    assert_eq!(read_lock(&root), v2);
+    let check = netsmith(&root, &["project", "lock", "--check"]);
+    assert_eq!(check.status.code(), Some(0), "{}", stderr(&check));
+}
+
+#[test]
+fn the_lock_records_the_manufacturer_a_row_names() {
+    let root = zz9_project("lock-manufacturer", "");
+    fs::write(
+        root.join("catalogs/zz9.csv"),
+        "manufacturer,mpn,vout.voltage,dropout,max_current,package,source\n\
+         Acme Analog,ZZ9-33,3.3V +/- 2%,0.3V,0.5A,SOT-23-5,https://example.invalid/acme.pdf\n\
+         Zenith Semi,ZZ9-33,3.3V +/- 1%,0.2V,0.5A,SOT-23-5,https://example.invalid/zenith.pdf\n",
+    )
+    .unwrap();
+    let update = netsmith(&root, &["project", "lock", "--update"]);
+    assert!(update.status.success(), "{}", stderr(&update));
+    let lock = read_lock(&root);
+    assert!(
+        lock.contains("[Zz9Board.parts.\"u\"]\ncatalog = \"zz9\"\nrow = \"ZZ9-33\"\nmanufacturer = \"Acme Analog\"\nmpn = \"ZZ9-33\"\n"),
+        "{lock}"
+    );
+    // The lock holds the part to Acme's row though Zenith's shares its name, and stays current.
+    let check = netsmith(&root, &["project", "lock", "--check"]);
+    assert_eq!(check.status.code(), Some(0), "{}", stderr(&check));
+    // Held to Zenith's row by hand, the lock is not current, and the diff names both makers.
+    fs::write(lock_file(&root), lock.replace("Acme Analog", "Zenith Semi")).unwrap();
+    let check = netsmith(&root, &["project", "lock", "--check"]);
+    assert_eq!(check.status.code(), Some(1), "{}", stderr(&check));
+    assert_eq!(
+        diff_lines(&check),
+        ["Zz9Board: `u`: `ZZ9-33` (manufacturer Zenith Semi, mpn ZZ9-33) -> `ZZ9-33` (manufacturer Acme Analog, mpn ZZ9-33)"]
+    );
+}

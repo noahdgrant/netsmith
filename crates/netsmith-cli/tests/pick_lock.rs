@@ -76,7 +76,7 @@ fn build_writes_the_lock_beside_the_source_and_two_runs_write_the_same_bytes() {
     let first =
         fs::read_to_string(lock_file(&root)).expect("the lock is written beside the source");
     for want in [
-        "version = 1",
+        "version = 2",
         "[LedExample.parts.\"r1\"]",
         "catalog = \"resistor\"",
         &format!("row = \"{SOLVER_ROW}\""),

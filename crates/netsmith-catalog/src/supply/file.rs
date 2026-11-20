@@ -6,7 +6,8 @@
 //! ```
 //!
 //! A row is a part and a channel (`jlcpcb-assembly` or `lcsc-retail`). `lcsc` or `mpn` (one
-//! is enough) names the part; `stock` empty is unknown; `price_breaks` is `from:price`
+//! is enough) names the part, and an optional `manufacturer` column says whose `mpn` it is (a
+//! row is found as [`PartKey::matches`] says, by the `mpn` first, ADR 0143); `stock` empty is unknown; `price_breaks` is `from:price`
 //! pairs, empty if the file has no price; `currency` defaults to `USD`; `date` is the day
 //! the numbers were read and is required, because an answer with no date cannot be aged.
 //! A person writes the file from a supplier's export or by hand, a company keeps its own
@@ -24,6 +25,7 @@ use super::{Channel, PartKey, Quote, SupplyError, SupplyProvider};
 #[derive(Debug)]
 struct Row {
     lcsc: String,
+    manufacturer: String,
     mpn: String,
     quote: Quote,
 }
@@ -63,6 +65,7 @@ impl FileProvider {
         for n in &names {
             if ![
                 "lcsc",
+                "manufacturer",
                 "mpn",
                 "channel",
                 "stock",
@@ -73,12 +76,12 @@ impl FileProvider {
             .contains(n)
             {
                 return Err(format!(
-                    "{shown}:{hline}: `{n}` is not a column of a supply file (lcsc, mpn, channel, stock, price_breaks, currency, date)"
+                    "{shown}:{hline}: `{n}` is not a column of a supply file (lcsc, manufacturer, mpn, channel, stock, price_breaks, currency, date)"
                 ));
             }
         }
         let mut rows = Vec::new();
-        let mut seen: BTreeSet<(String, String, &'static str)> = BTreeSet::new();
+        let mut seen: BTreeSet<(String, String, String, &'static str)> = BTreeSet::new();
         for (line, fields) in body {
             let at = format!("{shown}:{line}");
             if fields.len() != names.len() {
@@ -94,6 +97,7 @@ impl FileProvider {
                     .filter(|c| !c.is_empty())
             };
             let (lcsc, mpn) = (cell("lcsc").unwrap_or(""), cell("mpn").unwrap_or(""));
+            let manufacturer = cell("manufacturer").unwrap_or("");
             if lcsc.is_empty() && mpn.is_empty() {
                 return Err(format!(
                     "{at}: the row names no part: give an lcsc or an mpn"
@@ -121,7 +125,12 @@ impl FileProvider {
                 .and_then(|d| u64::try_from(d).ok())
                 .map(|d| d * 86_400)
                 .ok_or_else(|| format!("{at}: date `{date}` is not like 2026-11-01"))?;
-            if !seen.insert((lcsc.to_string(), mpn.to_string(), channel.word())) {
+            if !seen.insert((
+                lcsc.to_string(),
+                manufacturer.to_string(),
+                mpn.to_string(),
+                channel.word(),
+            )) {
                 return Err(format!(
                     "{at}: the part {} is there twice for {}",
                     if lcsc.is_empty() { mpn } else { lcsc },
@@ -130,6 +139,7 @@ impl FileProvider {
             }
             rows.push(Row {
                 lcsc: lcsc.to_string(),
+                manufacturer: manufacturer.to_string(),
                 mpn: mpn.to_string(),
                 quote: Quote {
                     provider: "file".to_string(),
@@ -158,7 +168,7 @@ impl SupplyProvider for FileProvider {
         Ok(self
             .rows
             .iter()
-            .filter(|r| part.matches(&r.lcsc, &r.mpn))
+            .filter(|r| part.matches(&r.lcsc, &r.manufacturer, &r.mpn))
             .map(|r| r.quote.clone())
             .collect())
     }

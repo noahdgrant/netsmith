@@ -140,10 +140,13 @@ impl Channel {
     }
 }
 
-/// How a part is asked for: by LCSC number, else by the manufacturer's.
+/// How a part is asked for: by its identity (ADR 0143), the manufacturer's part number and the
+/// manufacturer, and by the LCSC number where a side has no manufacturer's number.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PartKey {
     pub lcsc: Option<String>,
+    /// The part's manufacturer, when its row names one.
+    pub manufacturer: Option<String>,
     pub mpn: Option<String>,
 }
 
@@ -151,6 +154,7 @@ impl PartKey {
     pub fn lcsc(lcsc: &str) -> PartKey {
         PartKey {
             lcsc: Some(lcsc.to_string()),
+            manufacturer: None,
             mpn: None,
         }
     }
@@ -160,13 +164,23 @@ impl PartKey {
         self.lcsc.is_none() && self.mpn.is_none()
     }
 
-    /// Whether a row that names `lcsc` and `mpn` is this part. The LCSC number decides if
-    /// the key has one.
-    pub fn matches(&self, lcsc: &str, mpn: &str) -> bool {
-        match (&self.lcsc, &self.mpn) {
-            (Some(k), _) => !lcsc.is_empty() && k == lcsc,
-            (None, Some(k)) => !mpn.is_empty() && k == mpn,
-            (None, None) => false,
+    /// Whether a row that names `lcsc`, `manufacturer` and `mpn` (each empty when the row has
+    /// none) is this part. The manufacturer's part number decides when the key and the row both
+    /// have one, with the manufacturer when both name one (a row or a key with no manufacturer is
+    /// the number whoever makes it); the LCSC number decides when either has no `mpn`.
+    pub fn matches(&self, lcsc: &str, manufacturer: &str, mpn: &str) -> bool {
+        match &self.mpn {
+            Some(k) if !mpn.is_empty() => {
+                k == mpn
+                    && self
+                        .manufacturer
+                        .as_deref()
+                        .is_none_or(|m| manufacturer.is_empty() || m == manufacturer)
+            }
+            _ => self
+                .lcsc
+                .as_ref()
+                .is_some_and(|k| !lcsc.is_empty() && k == lcsc),
         }
     }
 }

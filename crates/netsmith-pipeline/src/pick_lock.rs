@@ -17,8 +17,13 @@ use netsmith_solve::{Catalogs, LockedProvider, LockedRow, PickLock, Solution};
 
 use crate::{outcome_with, render_problems};
 
-/// The version of the file's format.
-const VERSION: i64 = 1;
+/// The version of the file's format. Version 2 (ADR 0143) records each part's `manufacturer`
+/// beside its `lcsc` and `mpn`; a file of version 1 is still read, holds its parts as before, and
+/// is not current, so `project lock --check` says so and `project lock --update` writes it again.
+const VERSION: i64 = 2;
+
+/// The versions of the file this netsmith reads.
+const READS: [i64; 2] = [1, 2];
 
 /// The first lines of a written file.
 const HEADER: &str = "# The catalog row each part of each board was picked as, written by `netsmith board build` and\n# `netsmith board fab` when this file does not exist. Commit it: a change to a catalog or to the\n# solver that would move a pick shows here and not only in the bill of materials. Refresh it\n# with `netsmith project lock --update`. Nothing in it is edited by hand but `held = \"reason\"`,\n# which a person adds to a part's entry to keep the part on its row.\n";
@@ -134,16 +139,17 @@ pub fn open(
 fn parse(text: &str, name: &str) -> Result<PickLock, String> {
     let wrong = |what: String| format!("error: {name}: {what}");
     let table: toml::Table = text.parse().map_err(|e| wrong(format!("{e}")))?;
-    match table.get("version") {
-        Some(toml::Value::Integer(VERSION)) => {}
+    let version = match table.get("version") {
+        Some(toml::Value::Integer(v)) if READS.contains(v) => *v,
         Some(other) => {
             return Err(wrong(format!(
                 "version {other} is not a version of the lock this netsmith reads (version {VERSION}); delete the file to write it again"
             )));
         }
         None => return Err(wrong("it has no `version`".to_string())),
-    }
+    };
     let mut lock = PickLock::new(name);
+    lock.outdated = (version < VERSION).then_some(version);
     for (unit, value) in &table {
         if unit == "version" {
             continue;
@@ -184,12 +190,11 @@ fn parse(text: &str, name: &str) -> Result<PickLock, String> {
             let entry = entry
                 .as_table()
                 .ok_or_else(|| wrong(format!("{at} must be a table")))?;
-            if let Some(extra) = entry
-                .keys()
-                .find(|k| !["catalog", "row", "lcsc", "mpn", "held"].contains(&k.as_str()))
-            {
+            if let Some(extra) = entry.keys().find(|k| {
+                !["catalog", "row", "lcsc", "manufacturer", "mpn", "held"].contains(&k.as_str())
+            }) {
                 return Err(wrong(format!(
-                    "{at} has `{extra}`; it holds `catalog`, `row`, `lcsc`, `mpn` and `held`"
+                    "{at} has `{extra}`; it holds `catalog`, `row`, `lcsc`, `manufacturer`, `mpn` and `held`"
                 )));
             }
             let text = |key: &str, needed: bool| -> Result<Option<String>, String> {
@@ -205,6 +210,7 @@ fn parse(text: &str, name: &str) -> Result<PickLock, String> {
                 catalog: text("catalog", true)?.unwrap_or_default(),
                 row: text("row", true)?.unwrap_or_default(),
                 lcsc: text("lcsc", false)?,
+                manufacturer: text("manufacturer", false)?,
                 mpn: text("mpn", false)?,
                 held: match text("held", false)? {
                     Some(reason) if reason.trim().is_empty() => {
@@ -302,6 +308,9 @@ pub fn render(lock: &PickLock) -> String {
             if let Some(lcsc) = &row.lcsc {
                 let _ = writeln!(out, "lcsc = {}", string(lcsc));
             }
+            if let Some(manufacturer) = &row.manufacturer {
+                let _ = writeln!(out, "manufacturer = {}", string(manufacturer));
+            }
             if let Some(mpn) = &row.mpn {
                 let _ = writeln!(out, "mpn = {}", string(mpn));
             }
@@ -319,14 +328,26 @@ fn describe(row: &LockedRow, with_catalog: bool) -> String {
     if with_catalog {
         text.push_str(&format!(" in the `{}` catalog", row.catalog));
     }
-    let numbers: Vec<String> = [("lcsc", &row.lcsc), ("mpn", &row.mpn)]
-        .into_iter()
-        .filter_map(|(name, number)| number.as_ref().map(|n| format!("{name} {n}")))
-        .collect();
+    let numbers: Vec<String> = [
+        ("lcsc", &row.lcsc),
+        ("manufacturer", &row.manufacturer),
+        ("mpn", &row.mpn),
+    ]
+    .into_iter()
+    .filter_map(|(name, number)| number.as_ref().map(|n| format!("{name} {n}")))
+    .collect();
     if !numbers.is_empty() {
         text.push_str(&format!(" ({})", numbers.join(", ")));
     }
     text
+}
+
+/// The line that says a lock is of an older version of the format: what `project lock --check`
+/// prints for it and `--update` changes.
+fn outdated_line(version: i64) -> String {
+    format!(
+        "version {version} -> {VERSION}: the file is of version {version} of the lock, and version {VERSION} records each part's manufacturer beside its lcsc and mpn (ADR 0143)"
+    )
 }
 
 /// What differs between two locks, one line for each part, in the order board, part path:
@@ -341,8 +362,14 @@ pub fn diff(old: &PickLock, new: &PickLock) -> Vec<String> {
             let line = match before.iter().find(|b| b.path == row.path) {
                 None => format!("{unit}: `{}`: added as {}", row.path, describe(row, true)),
                 Some(b) if b != row => {
-                    let same_row = (&b.catalog, &b.row, &b.lcsc, &b.mpn)
-                        == (&row.catalog, &row.row, &row.lcsc, &row.mpn);
+                    let same_row = (&b.catalog, &b.row, &b.lcsc, &b.manufacturer, &b.mpn)
+                        == (
+                            &row.catalog,
+                            &row.row,
+                            &row.lcsc,
+                            &row.manufacturer,
+                            &row.mpn,
+                        );
                     let with_catalog = b.catalog != row.catalog;
                     let hold = match (&b.held, &row.held) {
                         (Some(was), None) => format!("no longer held: {was}"),
@@ -453,7 +480,8 @@ pub struct Refresh {
     /// The rows the solver picks now, without the lock's holding: what `--update` writes.
     pub now: PickLock,
     /// The difference between the file and `now`, one line for each part ([`diff`]); all the
-    /// parts of the board as added when there is no file. Empty when the lock is current.
+    /// parts of the board as added when there is no file. A file of an older version of the
+    /// format has a first line that says so (`version 1 -> 2`). Empty when the lock is current.
     pub diff: Vec<String>,
     /// The path of every part of the source's boards, and of every entry of the file, in order
     /// of the board and then the path: what a part named to `project lock --update` is looked up in.
@@ -701,7 +729,10 @@ pub fn refresh_parts(
     paths.sort();
     paths.dedup();
     let empty = PickLock::new("");
-    let diff = diff(old.as_ref().unwrap_or(&empty), &now);
+    let mut diff = diff(old.as_ref().unwrap_or(&empty), &now);
+    if let Some(version) = old.as_ref().and_then(|o| o.outdated) {
+        diff.insert(0, outdated_line(version));
+    }
     now.file = file.display().to_string();
     Ok(Refresh {
         file,
@@ -887,6 +918,12 @@ pub fn settle(using: &Use, old: Option<&PickLock>, new: &PickLock) -> Result<Set
             settled.wrote = Some(using.file.clone());
         }
         Some(old) => {
+            // An older format still holds the parts as it says: a run tells, and changes nothing.
+            if let Some(version) = old.outdated {
+                settled.notes.push(format!(
+                    "{name} is of version {version} of the lock, which records no manufacturer; it holds the parts as before, and `netsmith project lock --update` writes it as version {VERSION}"
+                ));
+            }
             let changes = compare(old, new);
             if !changes.is_empty() {
                 let lines = changes.lines();
@@ -920,6 +957,7 @@ mod tests {
             catalog: catalog.into(),
             row: name.into(),
             lcsc: lcsc.map(str::to_string),
+            manufacturer: None,
             mpn: None,
             held: None,
         }
@@ -962,6 +1000,64 @@ mod tests {
             generic: "TwoLayer".into(),
             provider: id.into(),
         }
+    }
+
+    #[test]
+    fn a_lock_records_the_manufacturer_beside_the_numbers_and_reads_it_back() {
+        let mut r1 = row("r1", "resistor", "ZZR-330", None);
+        r1.manufacturer = Some("Acme Passives".into());
+        r1.mpn = Some("ZZR-330".into());
+        let made = lock(&[("Board", r1.clone())]);
+        let text = render(&made);
+        assert!(
+            text.contains("\nversion = 2\n")
+                && text.contains("[Board.parts.\"r1\"]\ncatalog = \"resistor\"\nrow = \"ZZR-330\"\nmanufacturer = \"Acme Passives\"\nmpn = \"ZZR-330\"\n"),
+            "{text}"
+        );
+        assert_eq!(parse(&text, "a.lock.toml").unwrap(), made);
+        // A manufacturer that changes is a line of the diff, with the numbers.
+        let mut other = r1.clone();
+        other.manufacturer = Some("Zenith Passives".into());
+        assert_eq!(
+            diff(&made, &lock(&[("Board", other)])),
+            vec![
+                "Board: `r1`: `ZZR-330` (manufacturer Acme Passives, mpn ZZR-330) -> `ZZR-330` (manufacturer Zenith Passives, mpn ZZR-330)"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_lock_of_version_1_is_read_and_called_outdated() {
+        let v1 = "version = 1\n[Board.parts.\"r1\"]\ncatalog = \"resistor\"\nrow = \"330Ω\"\nlcsc = \"C25104\"\nmpn = \"0402WGF3300TCE\"\n";
+        let old = parse(v1, "a.lock.toml").unwrap();
+        assert_eq!(old.outdated, Some(1));
+        assert_eq!(old.rows("Board")[0].lcsc.as_deref(), Some("C25104"));
+        assert_eq!(old.rows("Board")[0].manufacturer, None);
+        // What a run would write is version 2, and reads back as current.
+        let again = parse(&render(&old), "a.lock.toml").unwrap();
+        assert_eq!(again.outdated, None);
+        assert_eq!(again.rows("Board"), old.rows("Board"));
+        // A run tells that the lock is old, and with the same picks finds no change.
+        let mut picks = old.clone();
+        picks.outdated = None;
+        assert!(compare(&old, &picks).is_empty());
+        let using = Use {
+            file: "a.lock.toml".into(),
+            locked: true,
+            off: false,
+        };
+        let settled = settle(&using, Some(&old), &picks).unwrap();
+        assert_eq!(settled.wrote, None);
+        assert_eq!(
+            settled.notes,
+            vec![
+                "a.lock.toml is of version 1 of the lock, which records no manufacturer; it holds the parts as before, and `netsmith project lock --update` writes it as version 2"
+            ]
+        );
+        assert_eq!(
+            outdated_line(1),
+            "version 1 -> 2: the file is of version 1 of the lock, and version 2 records each part's manufacturer beside its lcsc and mpn (ADR 0143)"
+        );
     }
 
     #[test]
@@ -1039,14 +1135,14 @@ mod tests {
         assert!(at("[Board.parts.\"r1\"]") < at("[Board.parts.\"r2\"]"));
         assert!(at("[Board.parts.\"r2\"]") < at("[Other.parts.\"a\"]"));
         assert!(text.starts_with("# "), "{text}");
-        assert!(text.contains("\nversion = 1\n"), "{text}");
+        assert!(text.contains("\nversion = 2\n"), "{text}");
     }
 
     #[test]
     fn a_wrong_file_is_refused_with_the_place_in_it() {
         let wrong = |text: &str| parse(text, "x.lock.toml").unwrap_err();
         assert!(wrong("").contains("no `version`"));
-        assert!(wrong("version = 2").contains("version 2 is not a version"));
+        assert!(wrong("version = 3").contains("version 3 is not a version"));
         assert!(wrong("version = 1\nB = 3").contains("`B` must be a table"));
         assert!(
             wrong("version = 1\n[B]\nx = 1")

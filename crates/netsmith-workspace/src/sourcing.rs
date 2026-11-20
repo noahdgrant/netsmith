@@ -252,8 +252,10 @@ fn price(line: &mut BomLine, catalogs: &Catalogs, supply: &Supply, today: &str) 
     let Some(lcsc) = line.lcsc.clone() else {
         return;
     };
+    // The editor's line names no manufacturer: the quote is found by its `mpn` whoever makes it.
     let key = PartKey {
         lcsc: Some(lcsc.clone()),
+        manufacturer: None,
         mpn: line.mpn.clone(),
     };
     let reason = match supply.lookup(&key) {

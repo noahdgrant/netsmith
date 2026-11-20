@@ -1045,6 +1045,7 @@ impl Solver<'_> {
                                 candidate: c.name.clone(),
                                 label: c.label.clone(),
                                 lcsc: c.lcsc.clone(),
+                                manufacturer: c.manufacturer.clone(),
                                 mpn: c.mpn.clone(),
                                 library: c.library,
                                 assembly: c.assembly.clone(),

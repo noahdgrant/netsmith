@@ -313,6 +313,7 @@ fn the_file_provider_answers_a_quote_for_each_channel_and_dates_it_from_the_file
     let by_mpn = file
         .lookup(&PartKey {
             lcsc: None,
+            manufacturer: None,
             mpn: Some("TESTRES-10K".into()),
         })
         .unwrap();
@@ -320,6 +321,57 @@ fn the_file_provider_answers_a_quote_for_each_channel_and_dates_it_from_the_file
     // An unlisted part is an empty answer, not an error.
     assert_eq!(file.lookup(&PartKey::lcsc("C900009")).unwrap(), []);
     assert!(!file.cacheable());
+}
+
+#[test]
+fn a_part_is_asked_for_by_its_mpn_and_manufacturer_first_and_by_lcsc_without_an_mpn() {
+    let key = |lcsc: Option<&str>, maker: Option<&str>, mpn: Option<&str>| PartKey {
+        lcsc: lcsc.map(str::to_string),
+        manufacturer: maker.map(str::to_string),
+        mpn: mpn.map(str::to_string),
+    };
+    // The mpn decides when both sides have one, whatever the LCSC numbers say (ADR 0143).
+    let k = key(Some("C1"), None, Some("ZZ-1"));
+    assert!(k.matches("C2", "", "ZZ-1"));
+    assert!(!k.matches("C1", "", "ZZ-2"));
+    // The manufacturer counts when both sides name one; a side with none is any maker.
+    let acme = key(Some("C1"), Some("Acme"), Some("ZZ-1"));
+    assert!(acme.matches("C1", "Acme", "ZZ-1"));
+    assert!(acme.matches("C1", "", "ZZ-1"));
+    assert!(!acme.matches("C1", "Zenith", "ZZ-1"));
+    assert!(k.matches("C1", "Zenith", "ZZ-1"));
+    // A row with no mpn, or a key with none, is found by its LCSC number.
+    assert!(k.matches("C1", "", ""));
+    assert!(!k.matches("C2", "", ""));
+    assert!(PartKey::lcsc("C1").matches("C1", "Acme", "ZZ-1"));
+    assert!(!key(None, None, Some("ZZ-1")).matches("C1", "", ""));
+    assert!(!PartKey::default().matches("", "", ""));
+}
+
+#[test]
+fn a_supply_file_may_say_whose_mpn_a_row_is() {
+    let text = "manufacturer,mpn,channel,stock,price_breaks,currency,date\n\
+                Acme,ZZ-1,lcsc-retail,10,1:0.10,USD,2026-11-01\n\
+                Zenith,ZZ-1,lcsc-retail,20,1:0.20,USD,2026-11-01\n";
+    let file = FileProvider::parse("quotes.csv", text).unwrap();
+    let ask = |maker: Option<&str>| {
+        file.lookup(&PartKey {
+            lcsc: None,
+            manufacturer: maker.map(str::to_string),
+            mpn: Some("ZZ-1".into()),
+        })
+        .unwrap()
+        .iter()
+        .map(|q| q.stock)
+        .collect::<Vec<_>>()
+    };
+    assert_eq!(ask(Some("Zenith")), [Some(20)]);
+    assert_eq!(ask(Some("Acme")), [Some(10)]);
+    assert_eq!(ask(None), [Some(10), Some(20)]);
+    // The same row twice is still refused; another maker's row of the number is not the same.
+    let twice = "manufacturer,mpn,channel,date\nAcme,ZZ-1,lcsc-retail,2026-11-01\nAcme,ZZ-1,lcsc-retail,2026-11-01\n";
+    let e = FileProvider::parse("quotes.csv", twice).unwrap_err();
+    assert!(e.contains("quotes.csv:3: the part ZZ-1 is there twice"), "{e}");
 }
 
 #[test]

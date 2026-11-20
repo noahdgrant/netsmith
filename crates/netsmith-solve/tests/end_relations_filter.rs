@@ -17,6 +17,7 @@ fn row(name: &str, volts: f64) -> Candidate {
             Value::Quantity(Quantity::literal(volts, Some("V")).unwrap().quantity),
         )],
         lcsc: None,
+        manufacturer: None,
         mpn: None,
         library: None,
         assembly: None,

@@ -280,6 +280,7 @@ impl Report {
 /// The columns of a file that a refresh reads, and the one it writes (`checked`).
 struct Columns {
     lcsc: usize,
+    manufacturer: Option<usize>,
     mpn: Option<usize>,
     package: Option<usize>,
     stock: Option<usize>,
@@ -295,6 +296,7 @@ impl Columns {
         })?;
         Ok(Columns {
             lcsc,
+            manufacturer: find("manufacturer"),
             mpn: find("mpn"),
             package: find("package"),
             stock: find("stock"),
@@ -730,6 +732,7 @@ pub fn age(
             };
             let key = PartKey {
                 lcsc: Some(lcsc.clone()),
+                manufacturer: cell(cols.manufacturer),
                 mpn: cell(cols.mpn),
             };
             let aged = |date: Option<String>, days: Option<i64>, unknown: Option<String>| Aged {

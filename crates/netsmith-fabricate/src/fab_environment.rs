@@ -60,6 +60,9 @@ pub(crate) fn judge_resolved(built: &Built, sourcing: &[Sourced]) -> Result<Reso
             candidate: row.name.clone(),
             label: s.value.clone(),
             lcsc: s.lcsc.clone(),
+            // The design's sourcing of a resolved generic names no manufacturer, and the check of
+            // the environment does not read it.
+            manufacturer: None,
             mpn: s.mpn.clone(),
             library: s.library,
             assembly: None,
