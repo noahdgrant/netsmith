@@ -65,6 +65,8 @@ pub(crate) fn judge_resolved(built: &Built, sourcing: &[Sourced]) -> Result<Reso
             manufacturer: None,
             mpn: s.mpn.clone(),
             library: s.library,
+            // The check of the environment does not read the skus either.
+            skus: Vec::new(),
             assembly: None,
             height: s.catalog_height,
             temp_min: row.temp_min,
@@ -168,8 +170,7 @@ C99001,ACME-R1,31.6kohm +/- 1%,62.5mW,0402,253.15K,343.15K,Basic,https://example
 
     fn catalogs() -> Catalogs {
         let mut c = Catalogs::jlcpcb().with_series(Some(netsmith_solve::Series::E96));
-        c.add_file("resistor", "catalogs/resistor.csv", ROW)
-            .unwrap();
+        netsmith_solve::migrate::add_to(&mut c, "resistor", "catalogs/resistor.csv", ROW).unwrap();
         c
     }
 

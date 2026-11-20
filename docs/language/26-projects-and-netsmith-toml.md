@@ -175,7 +175,7 @@ commit = "0123456789abcdef0123456789abcdef01234567"
 
 ### Preferred parts
 
-A project says which rows it takes first for a generic part in `preferred.csv`, beside `netsmith.toml` (ADR 0047, issue #802). Each line names a part by its `lcsc` number, its `mpn` (with its `manufacturer`, if the line says whose), or both; `note` is free text, for why. The file is optional, and a project without one resolves as before.
+A project says which rows it takes first for a generic part in `preferred.csv`, beside `netsmith.toml` (ADR 0047, issue #802). Each line names a part by its `lcsc` number (the sku of its offer, ADR 0143), its `mpn` (with its `manufacturer`, if the line says whose), or both; `note` is free text, for why. The file is optional, and a project without one resolves as before.
 
 ```csv file=preferred.csv
 lcsc,mpn,note

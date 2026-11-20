@@ -53,8 +53,8 @@ board Backup {
 "#;
 
 /// The project's supercapacitor: an invented row, as the standard catalog has none.
-const SUPERCAP: &str = "mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,height_growth,library,source
-ZZS-0F5,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,Reflow,Radial_D16.0mm_P7.50mm,1mm,Extended,invented for a test
+const SUPERCAP: &str = "mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,height_growth,source
+ZZS-0F5,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,Reflow,Radial_D16.0mm_P7.50mm,1mm,invented for a test
 ";
 
 /// The charger's footprint from the generator; the supercapacitor is in the standard mapping.

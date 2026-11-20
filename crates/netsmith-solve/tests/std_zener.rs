@@ -115,7 +115,7 @@ fn a_design_that_states_no_shift_is_unaffected() {
     let (with_figures, picks) = run(&src, &standard());
     let old = Catalogs::empty();
     let mut old = old;
-    old.add_file("zener", "zener.csv", OLD_ROWS).unwrap();
+    crate::offered::add(&mut old, "zener", "zener.csv", OLD_ROWS).unwrap();
     let (without_figures, old_picks) = run(&src, &old);
     assert!(with_figures.is_empty(), "{with_figures:#?}");
     assert!(without_figures.is_empty(), "{without_figures:#?}");
@@ -158,7 +158,7 @@ fn a_shift_asks_for_a_row_that_states_the_coefficient() {
     // A row that has no figure is not offered to a design that needs one: the message names
     // the column and the row is not picked silently with wrong numbers.
     let mut old = Catalogs::empty();
-    old.add_file("zener", "zener.csv", OLD_ROWS).unwrap();
+    crate::offered::add(&mut old, "zener", "zener.csv", OLD_ROWS).unwrap();
     let src = board(
         &format!("{FIFTEEN}\n {OVER_TEMPERATURE}"),
         "    .z.voltage_over_temperature <= 18V",
@@ -179,7 +179,7 @@ fn a_design_that_names_the_leakage_is_offered_only_rows_that_state_it() {
     assert!(m.is_empty(), "{m:#?}");
     assert_eq!(picks, ["z BZT52C15 15V 500mW Zener SOD-123 C2104"]);
     let mut old = Catalogs::empty();
-    old.add_file("zener", "zener.csv", OLD_ROWS).unwrap();
+    crate::offered::add(&mut old, "zener", "zener.csv", OLD_ROWS).unwrap();
     let (m, picks) = run(&src, &old);
     assert!(picks.is_empty());
     assert_eq!(m.len(), 1, "{m:#?}");
@@ -374,7 +374,7 @@ fn an_environment_changes_nothing_for_a_board_that_does_not_bound_the_voltage() 
     // catalog whose row states no coefficient: the row is offered and picked as it is with no
     // environment, and nothing is deferred beyond what the plain board defers.
     let mut old = Catalogs::empty();
-    old.add_file("zener", "zener.csv", OLD_ROWS).unwrap();
+    crate::offered::add(&mut old, "zener", "zener.csv", OLD_ROWS).unwrap();
     let plain = board(FIFTEEN, "");
     let with_environment = in_environment("-40degC..125degC", FIFTEEN, "");
     let (m, picks) = run(&with_environment, &old);
@@ -389,7 +389,7 @@ fn a_row_with_no_coefficient_is_not_offered_to_a_bound_over_the_environment() {
     // The design asks for the voltage over the environment's range and the row cannot give
     // it: it is not picked with a wrong number, and the message names the column.
     let mut old = Catalogs::empty();
-    old.add_file("zener", "zener.csv", OLD_ROWS).unwrap();
+    crate::offered::add(&mut old, "zener", "zener.csv", OLD_ROWS).unwrap();
     let src = in_environment("-40degC..125degC", FIFTEEN, BOUND);
     let (m, picks) = run(&src, &old);
     assert!(picks.is_empty(), "{picks:#?}");

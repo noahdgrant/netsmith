@@ -923,8 +923,9 @@ fn the_bom_reads_price_and_stock_from_the_projects_own_catalog_files_too() {
     fs::create_dir_all(root.join("catalogs")).unwrap();
     fs::write(root.join("netsmith.toml"), "[project]\nname = \"own\"\n").unwrap();
     // A resistor only this project has, with a number that is not a real LCSC part.
-    fs::write(
-        root.join("catalogs/resistor.csv"),
+    netsmith_solve::migrate::write_to(
+        &root,
+        "catalogs/resistor.csv",
         "lcsc,mpn,resistance,max_power,package,library,price,stock,date,source\n\
          C9999999,ZZR-316,316ohm +/- 1%,250mW,0402,Extended,0.0123,42,2026-10-31,https://example.invalid/zzr\n",
     )
@@ -955,8 +956,9 @@ fn the_bom_reads_price_and_stock_from_the_projects_own_catalog_files_too() {
 
     // The catalog file is watched: a change to it builds again.
     let before = editor.analysis().version;
-    fs::write(
-        root.join("catalogs/resistor.csv"),
+    netsmith_solve::migrate::write_to(
+        &root,
+        "catalogs/resistor.csv",
         "lcsc,mpn,resistance,max_power,package,library,price,stock,date,source\n\
          C9999999,ZZR-316,316ohm +/- 1%,250mW,0402,Extended,0.0456,7,2026-11-01,https://example.invalid/zzr\n",
     )
@@ -991,7 +993,7 @@ fn a_catalog_file_that_appears_or_goes_in_a_catalog_folder_builds_again_without_
          C9999999,ZZR-316,316ohm +/- 1%,250mW,0402,Extended,0.0123,42,2026-10-31,https://example.invalid/zzr\n";
     // A file appears in the first folder, and then one in the second.
     fs::create_dir_all(root.join("catalogs")).unwrap();
-    fs::write(root.join("catalogs/resistor.csv"), row).unwrap();
+    netsmith_solve::migrate::write_to(&root, "catalogs/resistor.csv", row).unwrap();
     let second = editor.analysis();
     assert!(second.version > first.version);
     assert_eq!(second.errors, 0, "{:?}", second.problems);
@@ -1040,8 +1042,8 @@ fn write_the_316_ohm_catalog(root: &TempDir) {
     fs::create_dir_all(root.join("parts")).unwrap();
     fs::write(
         root.join("parts/resistor.csv"),
-        "mpn,resistance,max_power,package,library,source\n\
-         ACME-R316,316ohm +/- 1%,62.5mW,0402,Basic,https://example.invalid/acme-r316.pdf\n",
+        "mpn,resistance,max_power,package,source\n\
+         ACME-R316,316ohm +/- 1%,62.5mW,0402,https://example.invalid/acme-r316.pdf\n",
     )
     .unwrap();
 }
@@ -1210,7 +1212,8 @@ fn a_top_level_file_and_the_name_the_manifest_gains_are_the_running_editors() {
     );
 }
 
-/// A project whose one catalog file has a part only it has, a day-old row for the LED example.
+/// A project whose one catalog file has a part only it has, a day-old row for the LED example,
+/// and the part's offers (ADR 0143); the text of its LCSC offers file, which a check writes.
 fn project_with_priced_catalog(name: &str) -> (TempDir, String) {
     let root = TempDir::new(&format!("editor-test-{name}"));
     fs::create_dir_all(root.join("src")).unwrap();
@@ -1219,13 +1222,14 @@ fn project_with_priced_catalog(name: &str) -> (TempDir, String) {
     let catalog = "lcsc,mpn,resistance,max_power,package,library,price,stock,date,checked,source\n\
          C9999999,ZZR-316,316ohm +/- 1%,250mW,0402,Extended,0.0123,42,2026-10-31,,https://example.invalid/zzr\n"
         .to_string();
-    fs::write(root.join("catalogs/resistor.csv"), &catalog).unwrap();
+    netsmith_solve::migrate::write_to(&root, "catalogs/resistor.csv", &catalog).unwrap();
     let led = include_str!("../../../examples/led.nsm").replace(
         ".r1: Resistor {}",
         ".r1: Resistor { .resistance &= 316ohm +/- 1% }",
     );
     fs::write(root.join("src/main.nsm"), led).unwrap();
-    (root, catalog)
+    let offers = fs::read_to_string(root.join("offers/lcsc.csv")).unwrap();
+    (root, offers)
 }
 
 /// Answers for the invented part only this project has. LCSC lists other numbers than the row:
@@ -1321,9 +1325,10 @@ fn the_check_runs_the_command_over_the_projects_catalogs_and_writes_only_checked
     assert_eq!(preview.error, None);
     assert!(preview.dry_run && !preview.files[0].written);
     assert_eq!(
-        fs::read_to_string(root.join("catalogs/resistor.csv")).unwrap(),
+        fs::read_to_string(root.join("offers/lcsc.csv")).unwrap(),
         original
     );
+    let rows = fs::read_to_string(root.join("catalogs/resistor.csv")).unwrap();
     assert_eq!(*heard.lock().unwrap(), ["resistor 1/1: C9999999"]);
     // The page is told what is never written and why, in the command's words.
     assert_eq!(preview.notice, netsmith_catalog::refresh::NOTICE);
@@ -1356,19 +1361,24 @@ fn the_check_runs_the_command_over_the_projects_catalogs_and_writes_only_checked
         .collect();
     assert_eq!(changes, [("checked", "", "2026-11-02")]);
 
-    // The real run rewrites the file, and the editor sees the change.
+    // The real run rewrites the offers file, never the catalog, and the editor sees the change.
     let before = editor.analysis().version;
     let done = editor.refresh_catalogs(false, false, &say).unwrap();
     assert!(done.files[0].written && done.error.is_none());
-    assert!(
-        done.summary.contains("resistor.csv") || done.summary.contains("catalogs/resistor.csv"),
-        "{}",
-        done.summary
-    );
-    let written = fs::read_to_string(root.join("catalogs/resistor.csv")).unwrap();
+    assert!(done.summary.contains("offers/lcsc.csv"), "{}", done.summary);
+    let written = fs::read_to_string(root.join("offers/lcsc.csv")).unwrap();
     assert_eq!(
         written,
-        original.replace("0.0123,42,2026-10-31,,", "0.0123,42,2026-10-31,2026-11-02,")
+        original.replacen(
+            "https://example.invalid/zzr,,",
+            "https://example.invalid/zzr,2026-11-02,",
+            1
+        )
+    );
+    assert_ne!(written, original);
+    assert_eq!(
+        fs::read_to_string(root.join("catalogs/resistor.csv")).unwrap(),
+        rows
     );
     assert!(editor.analysis().version > before);
     // Price, stock and their date are the hand-entered ones: LCSC's 0.02 and stock 0 are not
@@ -1427,7 +1437,7 @@ fn the_check_says_why_it_cannot_and_what_a_blocked_endpoint_did() {
     let why = r.error.unwrap();
     assert!(why.contains("answered 403"), "{why}");
     assert_eq!(
-        fs::read_to_string(root.join("catalogs/resistor.csv")).unwrap(),
+        fs::read_to_string(root.join("offers/lcsc.csv")).unwrap(),
         original
     );
 }

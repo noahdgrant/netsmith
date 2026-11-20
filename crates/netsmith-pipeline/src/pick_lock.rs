@@ -13,12 +13,16 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use netsmith_check::{Assignment, Loader, Model};
+use netsmith_solve::lock::CHANNELS;
 use netsmith_solve::{Catalogs, LockedProvider, LockedRow, PickLock, Solution};
 
 use crate::{outcome_with, render_problems};
 
 /// The version of the file's format. Version 2 (ADR 0143) records each part's `manufacturer`
-/// beside its `lcsc` and `mpn`; a file of version 1 is still read, holds its parts as before, and
+/// and `mpn`, its identity, and the `sku` of its offer for each supply channel
+/// (`sku = { jlcpcb-assembly = "C25104", lcsc-retail = "C25104" }`), where version 1 recorded
+/// the part's `lcsc`. A file of version 1, and one of version 2 that still records `lcsc` (as the
+/// lock did before the catalogs lost the column), is still read, holds its parts as before, and
 /// is not current, so `project lock --check` says so and `project lock --update` writes it again.
 const VERSION: i64 = 2;
 
@@ -149,7 +153,8 @@ fn parse(text: &str, name: &str) -> Result<PickLock, String> {
         None => return Err(wrong("it has no `version`".to_string())),
     };
     let mut lock = PickLock::new(name);
-    lock.outdated = (version < VERSION).then_some(version);
+    lock.outdated = (version < VERSION).then(|| outdated_line(version));
+    let mut records_lcsc = false;
     for (unit, value) in &table {
         if unit == "version" {
             continue;
@@ -191,10 +196,19 @@ fn parse(text: &str, name: &str) -> Result<PickLock, String> {
                 .as_table()
                 .ok_or_else(|| wrong(format!("{at} must be a table")))?;
             if let Some(extra) = entry.keys().find(|k| {
-                !["catalog", "row", "lcsc", "manufacturer", "mpn", "held"].contains(&k.as_str())
+                ![
+                    "catalog",
+                    "row",
+                    "lcsc",
+                    "manufacturer",
+                    "mpn",
+                    "sku",
+                    "held",
+                ]
+                .contains(&k.as_str())
             }) {
                 return Err(wrong(format!(
-                    "{at} has `{extra}`; it holds `catalog`, `row`, `lcsc`, `manufacturer`, `mpn` and `held`"
+                    "{at} has `{extra}`; it holds `catalog`, `row`, `manufacturer`, `mpn`, `sku` and `held`"
                 )));
             }
             let text = |key: &str, needed: bool| -> Result<Option<String>, String> {
@@ -205,11 +219,51 @@ fn parse(text: &str, name: &str) -> Result<PickLock, String> {
                     None => Ok(None),
                 }
             };
+            // The number a lock recorded before a part's supplier numbers were its offers (ADR
+            // 0143): read, so that the file still holds its parts, and the lock is not current.
+            if text("lcsc", false)?.is_some() {
+                records_lcsc = true;
+            }
+            let skus = match entry.get("sku") {
+                None => Vec::new(),
+                Some(toml::Value::Table(t)) => {
+                    let mut skus = Vec::new();
+                    for (channel, _) in CHANNELS {
+                        match t.get(channel) {
+                            None => {}
+                            Some(toml::Value::String(sku)) => {
+                                skus.push((channel.to_string(), sku.clone()))
+                            }
+                            Some(other) => {
+                                return Err(wrong(format!(
+                                    "{at} `sku.{channel}` must be text, not {other}"
+                                )));
+                            }
+                        }
+                    }
+                    if let Some(other) = t.keys().find(|k| !CHANNELS.iter().any(|(c, _)| c == k)) {
+                        return Err(wrong(format!(
+                            "{at} `sku` has `{other}`, which is not a supply channel: it names {}",
+                            CHANNELS
+                                .iter()
+                                .map(|(c, _)| format!("`{c}`"))
+                                .collect::<Vec<_>>()
+                                .join(" and ")
+                        )));
+                    }
+                    skus
+                }
+                Some(other) => {
+                    return Err(wrong(format!(
+                        "{at} `sku` must be a table of a sku for each channel (`sku = {{ jlcpcb-assembly = \"C25104\" }}`), not {other}"
+                    )));
+                }
+            };
             rows.push(LockedRow {
                 path: path.clone(),
                 catalog: text("catalog", true)?.unwrap_or_default(),
                 row: text("row", true)?.unwrap_or_default(),
-                lcsc: text("lcsc", false)?,
+                skus,
                 manufacturer: text("manufacturer", false)?,
                 mpn: text("mpn", false)?,
                 held: match text("held", false)? {
@@ -223,6 +277,11 @@ fn parse(text: &str, name: &str) -> Result<PickLock, String> {
             });
         }
         lock.set(unit, rows);
+    }
+    if records_lcsc && lock.outdated.is_none() {
+        lock.outdated = Some(
+            "lcsc -> sku: the file records each part's `lcsc`, and the lock now records the sku of the part's offer for each supply channel in its place (ADR 0143)".to_string(),
+        );
     }
     Ok(lock)
 }
@@ -305,14 +364,19 @@ pub fn render(lock: &PickLock) -> String {
             let _ = writeln!(out, "\n[{}.parts.{}]", key(unit), string(&row.path));
             let _ = writeln!(out, "catalog = {}", string(&row.catalog));
             let _ = writeln!(out, "row = {}", string(&row.row));
-            if let Some(lcsc) = &row.lcsc {
-                let _ = writeln!(out, "lcsc = {}", string(lcsc));
-            }
             if let Some(manufacturer) = &row.manufacturer {
                 let _ = writeln!(out, "manufacturer = {}", string(manufacturer));
             }
             if let Some(mpn) = &row.mpn {
                 let _ = writeln!(out, "mpn = {}", string(mpn));
+            }
+            if !row.skus.is_empty() {
+                let skus: Vec<String> = row
+                    .skus
+                    .iter()
+                    .map(|(channel, sku)| format!("{} = {}", key(channel), string(sku)))
+                    .collect();
+                let _ = writeln!(out, "sku = {{ {} }}", skus.join(", "));
             }
             if let Some(reason) = &row.held {
                 let _ = writeln!(out, "held = {}", string(reason));
@@ -328,14 +392,15 @@ fn describe(row: &LockedRow, with_catalog: bool) -> String {
     if with_catalog {
         text.push_str(&format!(" in the `{}` catalog", row.catalog));
     }
-    let numbers: Vec<String> = [
-        ("lcsc", &row.lcsc),
-        ("manufacturer", &row.manufacturer),
-        ("mpn", &row.mpn),
-    ]
-    .into_iter()
-    .filter_map(|(name, number)| number.as_ref().map(|n| format!("{name} {n}")))
-    .collect();
+    let numbers: Vec<String> = [("manufacturer", &row.manufacturer), ("mpn", &row.mpn)]
+        .into_iter()
+        .filter_map(|(name, number)| number.as_ref().map(|n| format!("{name} {n}")))
+        .chain(
+            row.skus
+                .iter()
+                .map(|(channel, sku)| format!("{channel} {sku}")),
+        )
+        .collect();
     if !numbers.is_empty() {
         text.push_str(&format!(" ({})", numbers.join(", ")));
     }
@@ -346,12 +411,12 @@ fn describe(row: &LockedRow, with_catalog: bool) -> String {
 /// prints for it and `--update` changes.
 fn outdated_line(version: i64) -> String {
     format!(
-        "version {version} -> {VERSION}: the file is of version {version} of the lock, and version {VERSION} records each part's manufacturer beside its lcsc and mpn (ADR 0143)"
+        "version {version} -> {VERSION}: the file is of version {version} of the lock, and version {VERSION} records each part's manufacturer and mpn, and the sku of its offer for each supply channel in place of its lcsc (ADR 0143)"
     )
 }
 
 /// What differs between two locks, one line for each part, in the order board, part path:
-/// `Board: `r1`: `A` (lcsc C1, mpn M1) -> `B` (lcsc C2, mpn M2)` for a part whose row, or whose
+/// `Board: `r1`: `A` (mpn M1, jlcpcb-assembly C1) -> `B` (mpn M2, jlcpcb-assembly C2)` for a part whose row, or whose
 /// numbers, changed, `added as ...` for a part the old lock has no entry for, and `dropped (was
 /// ...)` for an entry of a part that is no longer there. Empty when the locks hold the same.
 pub fn diff(old: &PickLock, new: &PickLock) -> Vec<String> {
@@ -362,11 +427,11 @@ pub fn diff(old: &PickLock, new: &PickLock) -> Vec<String> {
             let line = match before.iter().find(|b| b.path == row.path) {
                 None => format!("{unit}: `{}`: added as {}", row.path, describe(row, true)),
                 Some(b) if b != row => {
-                    let same_row = (&b.catalog, &b.row, &b.lcsc, &b.manufacturer, &b.mpn)
+                    let same_row = (&b.catalog, &b.row, &b.skus, &b.manufacturer, &b.mpn)
                         == (
                             &row.catalog,
                             &row.row,
-                            &row.lcsc,
+                            &row.skus,
                             &row.manufacturer,
                             &row.mpn,
                         );
@@ -513,7 +578,7 @@ pub struct Kept {
 }
 
 impl Kept {
-    /// `Board: `r1`: `A` in the `resistor` catalog (lcsc C1)`, then `: reason` for a held row.
+    /// `Board: `r1`: `A` in the `resistor` catalog (mpn M1)`, then `: reason` for a held row.
     pub fn line(&self) -> String {
         let mut line = format!("{}: `{}`: {}", self.unit, self.path, self.row);
         if let Some(reason) = &self.reason {
@@ -730,8 +795,8 @@ pub fn refresh_parts(
     paths.dedup();
     let empty = PickLock::new("");
     let mut diff = diff(old.as_ref().unwrap_or(&empty), &now);
-    if let Some(version) = old.as_ref().and_then(|o| o.outdated) {
-        diff.insert(0, outdated_line(version));
+    if let Some(line) = old.as_ref().and_then(|o| o.outdated.clone()) {
+        diff.insert(0, line);
     }
     now.file = file.display().to_string();
     Ok(Refresh {
@@ -919,9 +984,9 @@ pub fn settle(using: &Use, old: Option<&PickLock>, new: &PickLock) -> Result<Set
         }
         Some(old) => {
             // An older format still holds the parts as it says: a run tells, and changes nothing.
-            if let Some(version) = old.outdated {
+            if old.outdated.is_some() {
                 settled.notes.push(format!(
-                    "{name} is of version {version} of the lock, which records no manufacturer; it holds the parts as before, and `netsmith project lock --update` writes it as version {VERSION}"
+                    "{name} is of an older format of the lock, which records no manufacturer or no sku of each channel (ADR 0143); it holds the parts as before, and `netsmith project lock --update` writes it as version {VERSION}"
                 ));
             }
             let changes = compare(old, new);
@@ -956,7 +1021,9 @@ mod tests {
             path: path.into(),
             catalog: catalog.into(),
             row: name.into(),
-            lcsc: lcsc.map(str::to_string),
+            skus: lcsc
+                .map(|l| vec![("jlcpcb-assembly".to_string(), l.to_string())])
+                .unwrap_or_default(),
             manufacturer: None,
             mpn: None,
             held: None,
@@ -989,7 +1056,25 @@ mod tests {
             ("Other", row("d1", "led", "red \"0603\"", Some("C2286"))),
         ]);
         let text = render(&made);
+        assert!(
+            text.contains("\nsku = { jlcpcb-assembly = \"C25104\" }\n"),
+            "{text}"
+        );
         assert_eq!(parse(&text, "a.lock.toml").unwrap(), made);
+        // Both channels, in their order.
+        let mut both = row("r1", "resistor", "330Ω", None);
+        both.skus = vec![
+            ("jlcpcb-assembly".into(), "C25104".into()),
+            ("lcsc-retail".into(), "C25104".into()),
+        ];
+        let both = lock(&[("Board", both)]);
+        let both_text = render(&both);
+        assert!(
+            both_text
+                .contains("\nsku = { jlcpcb-assembly = \"C25104\", lcsc-retail = \"C25104\" }\n"),
+            "{both_text}"
+        );
+        assert_eq!(parse(&both_text, "a.lock.toml").unwrap(), both);
         // Two writes of the same picks are the same bytes.
         assert_eq!(render(&made), text);
     }
@@ -1030,8 +1115,9 @@ mod tests {
     fn a_lock_of_version_1_is_read_and_called_outdated() {
         let v1 = "version = 1\n[Board.parts.\"r1\"]\ncatalog = \"resistor\"\nrow = \"330Ω\"\nlcsc = \"C25104\"\nmpn = \"0402WGF3300TCE\"\n";
         let old = parse(v1, "a.lock.toml").unwrap();
-        assert_eq!(old.outdated, Some(1));
-        assert_eq!(old.rows("Board")[0].lcsc.as_deref(), Some("C25104"));
+        assert_eq!(old.outdated, Some(outdated_line(1)));
+        assert_eq!(old.rows("Board")[0].mpn.as_deref(), Some("0402WGF3300TCE"));
+        assert_eq!(old.rows("Board")[0].skus, vec![]);
         assert_eq!(old.rows("Board")[0].manufacturer, None);
         // What a run would write is version 2, and reads back as current.
         let again = parse(&render(&old), "a.lock.toml").unwrap();
@@ -1051,12 +1137,36 @@ mod tests {
         assert_eq!(
             settled.notes,
             vec![
-                "a.lock.toml is of version 1 of the lock, which records no manufacturer; it holds the parts as before, and `netsmith project lock --update` writes it as version 2"
+                "a.lock.toml is of an older format of the lock, which records no manufacturer or no sku of each channel (ADR 0143); it holds the parts as before, and `netsmith project lock --update` writes it as version 2"
             ]
         );
         assert_eq!(
             outdated_line(1),
-            "version 1 -> 2: the file is of version 1 of the lock, and version 2 records each part's manufacturer beside its lcsc and mpn (ADR 0143)"
+            "version 1 -> 2: the file is of version 1 of the lock, and version 2 records each part's manufacturer and mpn, and the sku of its offer for each supply channel in place of its lcsc (ADR 0143)"
+        );
+    }
+
+    #[test]
+    fn a_lock_of_version_2_that_records_lcsc_is_called_outdated() {
+        let old = "version = 2\n[Board.parts.\"r1\"]\ncatalog = \"resistor\"\nrow = \"330Ω\"\nlcsc = \"C25104\"\nmpn = \"0402WGF3300TCE\"\n";
+        let old = parse(old, "a.lock.toml").unwrap();
+        assert_eq!(
+            old.outdated.as_deref(),
+            Some(
+                "lcsc -> sku: the file records each part's `lcsc`, and the lock now records the sku of the part's offer for each supply channel in its place (ADR 0143)"
+            )
+        );
+        let again = parse(&render(&old), "a.lock.toml").unwrap();
+        assert_eq!(again.outdated, None);
+    }
+
+    #[test]
+    fn a_sku_of_a_channel_that_is_not_one_is_refused() {
+        let text = "version = 2\n[Board.parts.\"r1\"]\ncatalog = \"resistor\"\nrow = \"330Ω\"\nsku = { digikey-retail = \"311-330\" }\n";
+        let e = parse(text, "a.lock.toml").unwrap_err();
+        assert_eq!(
+            e,
+            "error: a.lock.toml: [Board.parts.\"r1\"] `sku` has `digikey-retail`, which is not a supply channel: it names `jlcpcb-assembly` and `lcsc-retail`"
         );
     }
 
@@ -1199,10 +1309,10 @@ mod tests {
         assert_eq!(
             diff(&old, &new),
             vec![
-                "Board: `r1`: `A` (lcsc C1, mpn M1) -> `A2` (lcsc C2, mpn M2)",
+                "Board: `r1`: `A` (mpn M1, jlcpcb-assembly C1) -> `A2` (mpn M2, jlcpcb-assembly C2)",
                 "Board: `r2`: dropped (it was `B` in the `resistor` catalog, and is no longer a part of the board)",
                 "Board: `r3`: added as `C` in the `resistor` catalog",
-                "Other: `d1`: dropped (it was `L` in the `led` catalog (lcsc C9), and is no longer a part of the board)",
+                "Other: `d1`: dropped (it was `L` in the `led` catalog (jlcpcb-assembly C9), and is no longer a part of the board)",
             ]
         );
         assert!(diff(&old, &old).is_empty());
@@ -1212,7 +1322,7 @@ mod tests {
         assert_eq!(
             diff(&was, &renumbered),
             vec![
-                "Board: `r2`: `B` in the `resistor` catalog (lcsc C6) -> `B` in the `capacitor` catalog (lcsc C7)"
+                "Board: `r2`: `B` in the `resistor` catalog (jlcpcb-assembly C6) -> `B` in the `capacitor` catalog (jlcpcb-assembly C7)"
             ]
         );
     }
@@ -1227,7 +1337,7 @@ mod tests {
         ]);
         let text = render(&made);
         assert!(
-            text.contains("[Board.parts.\"r1\"]\ncatalog = \"resistor\"\nrow = \"A\"\nlcsc = \"C1\"\nheld = \"the supplier's stock of the other row is 0\"\n"),
+            text.contains("[Board.parts.\"r1\"]\ncatalog = \"resistor\"\nrow = \"A\"\nsku = { jlcpcb-assembly = \"C1\" }\nheld = \"the supplier's stock of the other row is 0\"\n"),
             "{text}"
         );
         assert_eq!(text.matches("\nheld = ").count(), 1, "{text}");
@@ -1250,7 +1360,7 @@ mod tests {
         assert_eq!(
             diff(&made, &moved),
             vec![
-                "Board: `r1`: `A` (lcsc C1) -> `B` (lcsc C2) (no longer held: the supplier's stock of the other row is 0)"
+                "Board: `r1`: `A` (jlcpcb-assembly C1) -> `B` (jlcpcb-assembly C2) (no longer held: the supplier's stock of the other row is 0)"
             ]
         );
         // The lock a build compares picks with does not read the reason.

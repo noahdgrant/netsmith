@@ -1048,6 +1048,7 @@ impl Solver<'_> {
                                 manufacturer: c.manufacturer.clone(),
                                 mpn: c.mpn.clone(),
                                 library: c.library,
+                                skus: self.catalogs.skus_of(c),
                                 assembly: c.assembly.clone(),
                                 height: c.height,
                                 temp_min: c.temp_min,

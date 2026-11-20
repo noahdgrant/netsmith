@@ -45,11 +45,10 @@ fn world(providers: &[Provider]) -> World {
             &format!("{}.nsm", module.replace("::", "/")),
             &provider_source(name, fmax, &catalog),
         );
-        catalogs
-            .add_file(
+        netsmith_solve::migrate::add_to(&mut catalogs, 
                 &catalog,
                 &format!("catalogs/{catalog}.csv"),
-                &format!("mpn,package,library,source\n{mpn},PKG_{name},Extended,https://example.invalid/{mpn}\n"),
+                &format!("mpn,package,source\n{mpn},PKG_{name},https://example.invalid/{mpn}\n"),
             )
             .unwrap();
     }
@@ -904,11 +903,10 @@ fn silent_world() -> World {
     let mut w = world(&[ALPHA, BETA]);
     w.loader
         .insert("src::aaa", "src/aaa.nsm", &silent("AaaCoax", "aaacoax"));
-    w.catalogs
-        .add_file(
+    netsmith_solve::migrate::add_to(&mut w.catalogs, 
             "aaacoax",
             "catalogs/aaacoax.csv",
-            "mpn,package,library,source\nAAA-0,PKG_Aaa,Extended,https://example.invalid/aaa-0\n",
+            "mpn,package,source\nAAA-0,PKG_Aaa,https://example.invalid/aaa-0\n",
         )
         .unwrap();
     w
@@ -940,11 +938,10 @@ fn when_no_provider_can_be_judged_the_first_stands_and_the_bound_is_named() {
     let mut w = silent_world();
     w.loader
         .insert("src::bbb", "src/bbb.nsm", &silent("BbbCoax", "bbbcoax"));
-    w.catalogs
-        .add_file(
+    netsmith_solve::migrate::add_to(&mut w.catalogs, 
             "bbbcoax",
             "catalogs/bbbcoax.csv",
-            "mpn,package,library,source\nBBB-0,PKG_Bbb,Extended,https://example.invalid/bbb-0\n",
+            "mpn,package,source\nBBB-0,PKG_Bbb,https://example.invalid/bbb-0\n",
         )
         .unwrap();
     let source = "import src::rf::CoaxReceptacle\nimport src::aaa::AaaCoax\nimport src::bbb::BbbCoax\nboard Feed {\n    .rf: CoaxReceptacle { .max_frequency >= 500MHz }\n}\n";

@@ -12,503 +12,503 @@ provider = "std::mfg::jlcpcb::JlcFourLayerA04161H7628"
 [PowerManifoldCharger.parts."boot1_cap"]
 catalog = "capacitor"
 row = "100nF 10% 50V X7R 0402 C307331"
-lcsc = "C307331"
 mpn = "CL05B104KB54PNC"
+sku = { jlcpcb-assembly = "C307331", lcsc-retail = "C307331" }
 
 [PowerManifoldCharger.parts."boot2_cap"]
 catalog = "capacitor"
 row = "100nF 10% 50V X7R 0402 C307331"
-lcsc = "C307331"
 mpn = "CL05B104KB54PNC"
+sku = { jlcpcb-assembly = "C307331", lcsc-retail = "C307331" }
 
 [PowerManifoldCharger.parts."cbias_100n"]
 catalog = "capacitor"
 row = "100nF 10% 50V X7R 0402 C307331"
-lcsc = "C307331"
 mpn = "CL05B104KB54PNC"
+sku = { jlcpcb-assembly = "C307331", lcsc-retail = "C307331" }
 
 [PowerManifoldCharger.parts."cc1_330p"]
 catalog = "capacitor"
 row = "330pF 5% 50V C0G 0402 C13533"
-lcsc = "C13533"
 mpn = "CL05C331JB5NNNC"
+sku = { jlcpcb-assembly = "C13533", lcsc-retail = "C13533" }
 
 [PowerManifoldCharger.parts."cc2_330p"]
 catalog = "capacitor"
 row = "330pF 5% 50V C0G 0402 C13533"
-lcsc = "C13533"
 mpn = "CL05C331JB5NNNC"
+sku = { jlcpcb-assembly = "C13533", lcsc-retail = "C13533" }
 
 [PowerManifoldCharger.parts."comp_cap"]
 catalog = "capacitor"
 row = "100pF 5% 50V C0G 0402 C1546"
-lcsc = "C1546"
 mpn = "0402CG101J500NT"
+sku = { jlcpcb-assembly = "C1546", lcsc-retail = "C1546" }
 
 [PowerManifoldCharger.parts."comp_cap_series"]
 catalog = "capacitor"
 row = "4.7nF 10% 50V X7R 0402 C1538"
-lcsc = "C1538"
 mpn = "0402B472K500NT"
+sku = { jlcpcb-assembly = "C1538", lcsc-retail = "C1538" }
 
 [PowerManifoldCharger.parts."comp_resistor"]
 catalog = "resistor"
 row = "56.2kΩ 1% 0402 C54968"
-lcsc = "C54968"
 mpn = "0402WGF5622TCE"
+sku = { jlcpcb-assembly = "C54968", lcsc-retail = "C54968" }
 
 [PowerManifoldCharger.parts."comparator"]
 catalog = "tlv7022"
 row = "TLV7022DDFR"
-lcsc = "C2862588"
 mpn = "TLV7022DDFR"
+sku = { jlcpcb-assembly = "C2862588", lcsc-retail = "C2862588" }
 
 [PowerManifoldCharger.parts."converter"]
 catalog = "tps55288"
 row = "TPS55288RPMR"
-lcsc = "C2864583"
 mpn = "TPS55288RPMR"
+sku = { jlcpcb-assembly = "C2864583", lcsc-retail = "C2864583" }
 
 [PowerManifoldCharger.parts."dither_10n"]
 catalog = "capacitor"
 row = "10nF 10% 50V X7R 0402 C15195"
-lcsc = "C15195"
 mpn = "CL05B103KB5NNNC"
+sku = { jlcpcb-assembly = "C15195", lcsc-retail = "C15195" }
 
 [PowerManifoldCharger.parts."emi_vin_100n"]
 catalog = "capacitor"
 row = "100nF 10% 50V X7R 0402 C307331"
-lcsc = "C307331"
 mpn = "CL05B104KB54PNC"
+sku = { jlcpcb-assembly = "C307331", lcsc-retail = "C307331" }
 
 [PowerManifoldCharger.parts."emi_vin_100u"]
 catalog = "capacitor"
 row = "100uF 20% 50V electrolytic SMD,D6.3xL7.7mm C3151829"
-lcsc = "C3151829"
 mpn = "RVT1H101M0607"
+sku = { jlcpcb-assembly = "C3151829", lcsc-retail = "C3151829" }
 
 [PowerManifoldCharger.parts."emi_vin_10u_a"]
 catalog = "capacitor"
 row = "10uF 10% 50V X7R 1206 C89632"
-lcsc = "C89632"
 mpn = "CL31B106KBHNNNE"
+sku = { jlcpcb-assembly = "C89632", lcsc-retail = "C89632" }
 
 [PowerManifoldCharger.parts."emi_vin_10u_b"]
 catalog = "capacitor"
 row = "10uF 10% 50V X7R 1206 C89632"
-lcsc = "C89632"
 mpn = "CL31B106KBHNNNE"
+sku = { jlcpcb-assembly = "C89632", lcsc-retail = "C89632" }
 
 [PowerManifoldCharger.parts."emi_vin_1u"]
 catalog = "capacitor"
 row = "1uF 10% 50V X7R 0603 C5199872"
-lcsc = "C5199872"
 mpn = "CL10B105KB8NQNC"
+sku = { jlcpcb-assembly = "C5199872", lcsc-retail = "C5199872" }
 
 [PowerManifoldCharger.parts."en_pulldown"]
 catalog = "resistor"
 row = "100kΩ 1% 0402 C25741"
-lcsc = "C25741"
 mpn = "0402WGF1003TCE"
+sku = { jlcpcb-assembly = "C25741", lcsc-retail = "C25741" }
 
 [PowerManifoldCharger.parts."fault_pullup"]
 catalog = "resistor"
 row = "100kΩ 1% 0402 C25741"
-lcsc = "C25741"
 mpn = "0402WGF1003TCE"
+sku = { jlcpcb-assembly = "C25741", lcsc-retail = "C25741" }
 
 [PowerManifoldCharger.parts."flag_pullup"]
 catalog = "resistor"
 row = "47kΩ 1% 0402 C25792"
-lcsc = "C25792"
 mpn = "0402WGF4702TCE"
+sku = { jlcpcb-assembly = "C25792", lcsc-retail = "C25792" }
 
 [PowerManifoldCharger.parts."fsw_resistor"]
 catalog = "resistor"
 row = "49.9kΩ 1% 0402 C25897"
-lcsc = "C25897"
 mpn = "0402WGF4992TCE"
+sku = { jlcpcb-assembly = "C25897", lcsc-retail = "C25897" }
 
 [PowerManifoldCharger.parts."fuse"]
 catalog = "fuse"
 row = "0451008.MRL 8A 125V fuse 2410 C142876"
-lcsc = "C142876"
 mpn = "0451008.MRL"
+sku = { jlcpcb-assembly = "C142876", lcsc-retail = "C142876" }
 
 [PowerManifoldCharger.parts."gate_47p"]
 catalog = "capacitor"
 row = "47pF 5% 50V C0G 0402 C1567"
-lcsc = "C1567"
 mpn = "0402CG470J500NT"
+sku = { jlcpcb-assembly = "C1567", lcsc-retail = "C1567" }
 
 [PowerManifoldCharger.parts."gate_high_resistor"]
 catalog = "resistor"
 row = "1Ω 1% 0402 C25086"
-lcsc = "C25086"
 mpn = "0402WGF100KTCE"
+sku = { jlcpcb-assembly = "C25086", lcsc-retail = "C25086" }
 
 [PowerManifoldCharger.parts."gate_low_resistor"]
 catalog = "resistor"
 row = "1Ω 1% 0402 C25086"
-lcsc = "C25086"
 mpn = "0402WGF100KTCE"
+sku = { jlcpcb-assembly = "C25086", lcsc-retail = "C25086" }
 
 [PowerManifoldCharger.parts."iana_100n"]
 catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"
-lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
+sku = { jlcpcb-assembly = "C1525", lcsc-retail = "C1525" }
 
 [PowerManifoldCharger.parts."ilim_resistor"]
 catalog = "resistor"
 row = "45.3kΩ 1% 0402 C2933099"
-lcsc = "C2933099"
 mpn = "FRC0402F4532TS"
+sku = { jlcpcb-assembly = "C2933099", lcsc-retail = "C2933099" }
 
 [PowerManifoldCharger.parts."input_inductor"]
 catalog = "inductor"
 row = "1uH 20% 12A inductor SMD,7x6.6mm C112125"
-lcsc = "C112125"
 mpn = "MWSA0603S-1R0MT"
+sku = { jlcpcb-assembly = "C112125", lcsc-retail = "C112125" }
 
 [PowerManifoldCharger.parts."ldo"]
 catalog = "lp2985"
 row = "LP2985A-33DBVR"
-lcsc = "C89826"
 mpn = "LP2985A-33DBVR"
+sku = { jlcpcb-assembly = "C89826", lcsc-retail = "C89826" }
 
 [PowerManifoldCharger.parts."ldo_bypass"]
 catalog = "capacitor"
 row = "10nF 10% 50V X7R 0402 C15195"
-lcsc = "C15195"
 mpn = "CL05B103KB5NNNC"
+sku = { jlcpcb-assembly = "C15195", lcsc-retail = "C15195" }
 
 [PowerManifoldCharger.parts."led"]
 catalog = "led"
 row = "XL-1608UGC-04 GREEN LED 0603 C965804"
-lcsc = "C965804"
 mpn = "XL-1608UGC-04"
+sku = { jlcpcb-assembly = "C965804", lcsc-retail = "C965804" }
 
 [PowerManifoldCharger.parts."led_resistor"]
 catalog = "resistor"
 row = "1kΩ 1% 0402 C11702"
-lcsc = "C11702"
 mpn = "0402WGF1001TCE"
+sku = { jlcpcb-assembly = "C11702", lcsc-retail = "C11702" }
 
 [PowerManifoldCharger.parts."mcu"]
 catalog = "stm32g071c8"
 row = "STM32G071C8T6"
-lcsc = "C529341"
 mpn = "STM32G071C8T6"
+sku = { jlcpcb-assembly = "C529341", lcsc-retail = "C529341" }
 
 [PowerManifoldCharger.parts."mode_resistor"]
 catalog = "resistor"
 row = "75kΩ 1% 0402 C25798"
-lcsc = "C25798"
 mpn = "0402WGF7502TCE"
+sku = { jlcpcb-assembly = "C25798", lcsc-retail = "C25798" }
 
 [PowerManifoldCharger.parts."ntc_converter"]
 catalog = "antc1608_ntc"
 row = "ANTC1608-103F3380FB"
-lcsc = "C52155402"
 mpn = "ANTC1608-103F3380FB"
+sku = { jlcpcb-assembly = "C52155402", lcsc-retail = "C52155402" }
 
 [PowerManifoldCharger.parts."ntc_converter_100n"]
 catalog = "capacitor"
 row = "100nF 10% 50V X7R 0402 C307331"
-lcsc = "C307331"
 mpn = "CL05B104KB54PNC"
+sku = { jlcpcb-assembly = "C307331", lcsc-retail = "C307331" }
 
 [PowerManifoldCharger.parts."ntc_converter_pullup"]
 catalog = "resistor"
 row = "10kΩ 1% 0402 C25744"
-lcsc = "C25744"
 mpn = "0402WGF1002TCE"
+sku = { jlcpcb-assembly = "C25744", lcsc-retail = "C25744" }
 
 [PowerManifoldCharger.parts."ntc_plug"]
 catalog = "antc1608_ntc"
 row = "ANTC1608-103F3380FB"
-lcsc = "C52155402"
 mpn = "ANTC1608-103F3380FB"
+sku = { jlcpcb-assembly = "C52155402", lcsc-retail = "C52155402" }
 
 [PowerManifoldCharger.parts."ntc_plug_100n"]
 catalog = "capacitor"
 row = "100nF 10% 50V X7R 0402 C307331"
-lcsc = "C307331"
 mpn = "CL05B104KB54PNC"
+sku = { jlcpcb-assembly = "C307331", lcsc-retail = "C307331" }
 
 [PowerManifoldCharger.parts."ntc_plug_pullup"]
 catalog = "resistor"
 row = "10kΩ 1% 0402 C25744"
-lcsc = "C25744"
 mpn = "0402WGF1002TCE"
+sku = { jlcpcb-assembly = "C25744", lcsc-retail = "C25744" }
 
 [PowerManifoldCharger.parts."output_shunt"]
 catalog = "resistor"
 row = "10mΩ 1% 1W current sense 1206 C105362"
-lcsc = "C105362"
 mpn = "FMF06FTHR010-LH"
+sku = { jlcpcb-assembly = "C105362", lcsc-retail = "C105362" }
 
 [PowerManifoldCharger.parts."ovp_ceil_bottom"]
 catalog = "resistor"
 row = "100kΩ 1% 0402 C25741"
-lcsc = "C25741"
 mpn = "0402WGF1003TCE"
+sku = { jlcpcb-assembly = "C25741", lcsc-retail = "C25741" }
 
 [PowerManifoldCharger.parts."ovp_ceil_top"]
 catalog = "resistor"
 row = "57.6kΩ 1% 0402 C2960799"
-lcsc = "C2960799"
 mpn = "FRC0402F5762TS"
+sku = { jlcpcb-assembly = "C2960799", lcsc-retail = "C2960799" }
 
 [PowerManifoldCharger.parts."ovp_ref_pulldown"]
 catalog = "resistor"
 row = "100kΩ 1% 0402 C25741"
-lcsc = "C25741"
 mpn = "0402WGF1003TCE"
+sku = { jlcpcb-assembly = "C25741", lcsc-retail = "C25741" }
 
 [PowerManifoldCharger.parts."port_shunt"]
 catalog = "resistor"
 row = "7mΩ 1% 1W current sense 1206 C7420011"
-lcsc = "C7420011"
 mpn = "FRM121WFR007TM"
+sku = { jlcpcb-assembly = "C7420011", lcsc-retail = "C7420011" }
 
 [PowerManifoldCharger.parts."port_tvs"]
 catalog = "tvs"
 row = "ESDA25P35-1U1M 22V TVS DFN1610-2 C1974707"
-lcsc = "C1974707"
 mpn = "ESDA25P35-1U1M"
+sku = { jlcpcb-assembly = "C1974707", lcsc-retail = "C1974707" }
 
 [PowerManifoldCharger.parts."power_inductor"]
 catalog = "inductor"
 row = "5.6uH 20% 14A inductor SMD,11.5x10mm C17700183"
-lcsc = "C17700183"
 mpn = "MWSA1005S-5R6MT"
+sku = { jlcpcb-assembly = "C17700183", lcsc-retail = "C17700183" }
 
 [PowerManifoldCharger.parts."protector"]
 catalog = "tcpp02_m18"
 row = "TCPP02-M18"
-lcsc = "C3662929"
 mpn = "TCPP02-M18"
+sku = { jlcpcb-assembly = "C3662929", lcsc-retail = "C3662929" }
 
 [PowerManifoldCharger.parts."q_high"]
 catalog = "bsc059n04ls6"
 row = "BSC059N04LS6"
-lcsc = "C534356"
 mpn = "BSC059N04LS6"
+sku = { jlcpcb-assembly = "C534356", lcsc-retail = "C534356" }
 
 [PowerManifoldCharger.parts."q_low"]
 catalog = "bsc059n04ls6"
 row = "BSC059N04LS6"
-lcsc = "C534356"
 mpn = "BSC059N04LS6"
+sku = { jlcpcb-assembly = "C534356", lcsc-retail = "C534356" }
 
 [PowerManifoldCharger.parts."q_port_a"]
 catalog = "bsc059n04ls6"
 row = "BSC059N04LS6"
-lcsc = "C534356"
 mpn = "BSC059N04LS6"
+sku = { jlcpcb-assembly = "C534356", lcsc-retail = "C534356" }
 
 [PowerManifoldCharger.parts."q_port_b"]
 catalog = "bsc059n04ls6"
 row = "BSC059N04LS6"
-lcsc = "C534356"
 mpn = "BSC059N04LS6"
+sku = { jlcpcb-assembly = "C534356", lcsc-retail = "C534356" }
 
 [PowerManifoldCharger.parts."reset_100n"]
 catalog = "capacitor"
 row = "100nF 10% 50V X7R 0402 C307331"
-lcsc = "C307331"
 mpn = "CL05B104KB54PNC"
+sku = { jlcpcb-assembly = "C307331", lcsc-retail = "C307331" }
 
 [PowerManifoldCharger.parts."scl_pullup"]
 catalog = "resistor"
 row = "4.7kΩ 1% 0402 C25900"
-lcsc = "C25900"
 mpn = "0402WGF4701TCE"
+sku = { jlcpcb-assembly = "C25900", lcsc-retail = "C25900" }
 
 [PowerManifoldCharger.parts."sda_pullup"]
 catalog = "resistor"
 row = "4.7kΩ 1% 0402 C25900"
-lcsc = "C25900"
 mpn = "0402WGF4701TCE"
+sku = { jlcpcb-assembly = "C25900", lcsc-retail = "C25900" }
 
 [PowerManifoldCharger.parts."tcpp_en_pulldown"]
 catalog = "resistor"
 row = "100kΩ 1% 0402 C25741"
-lcsc = "C25741"
 mpn = "0402WGF1003TCE"
+sku = { jlcpcb-assembly = "C25741", lcsc-retail = "C25741" }
 
 [PowerManifoldCharger.parts."tcpp_en_series"]
 catalog = "resistor"
 row = "4.7kΩ 1% 0402 C25900"
-lcsc = "C25900"
 mpn = "0402WGF4701TCE"
+sku = { jlcpcb-assembly = "C25900", lcsc-retail = "C25900" }
 
 [PowerManifoldCharger.parts."usb"]
 catalog = "gt_usb_7004"
 row = "GT-USB-7004"
-lcsc = "C2686968"
 mpn = "GT-USB-7004"
+sku = { jlcpcb-assembly = "C2686968", lcsc-retail = "C2686968" }
 
 [PowerManifoldCharger.parts."usb_esd"]
 catalog = "usblc6_2sc6"
 row = "USBLC6-2SC6"
-lcsc = "C2687116"
 mpn = "USBLC6-2SC6"
+sku = { jlcpcb-assembly = "C2687116", lcsc-retail = "C2687116" }
 
 [PowerManifoldCharger.parts."usb_scl_pullup"]
 catalog = "resistor"
 row = "4.7kΩ 1% 0402 C25900"
-lcsc = "C25900"
 mpn = "0402WGF4701TCE"
+sku = { jlcpcb-assembly = "C25900", lcsc-retail = "C25900" }
 
 [PowerManifoldCharger.parts."usb_sda_pullup"]
 catalog = "resistor"
 row = "4.7kΩ 1% 0402 C25900"
-lcsc = "C25900"
 mpn = "0402WGF4701TCE"
+sku = { jlcpcb-assembly = "C25900", lcsc-retail = "C25900" }
 
 [PowerManifoldCharger.parts."v3v3_100n_a"]
 catalog = "capacitor"
 row = "100nF 10% 50V X7R 0402 C307331"
-lcsc = "C307331"
 mpn = "CL05B104KB54PNC"
+sku = { jlcpcb-assembly = "C307331", lcsc-retail = "C307331" }
 
 [PowerManifoldCharger.parts."v3v3_100n_b"]
 catalog = "capacitor"
 row = "100nF 10% 50V X7R 0402 C307331"
-lcsc = "C307331"
 mpn = "CL05B104KB54PNC"
+sku = { jlcpcb-assembly = "C307331", lcsc-retail = "C307331" }
 
 [PowerManifoldCharger.parts."v3v3_100n_c"]
 catalog = "capacitor"
 row = "100nF 10% 50V X7R 0402 C307331"
-lcsc = "C307331"
 mpn = "CL05B104KB54PNC"
+sku = { jlcpcb-assembly = "C307331", lcsc-retail = "C307331" }
 
 [PowerManifoldCharger.parts."v3v3_100n_d"]
 catalog = "capacitor"
 row = "100nF 10% 50V X7R 0402 C307331"
-lcsc = "C307331"
 mpn = "CL05B104KB54PNC"
+sku = { jlcpcb-assembly = "C307331", lcsc-retail = "C307331" }
 
 [PowerManifoldCharger.parts."v3v3_10u"]
 catalog = "capacitor"
 row = "10uF 10% 16V X7R 0805 C95841"
-lcsc = "C95841"
 mpn = "CL21B106KOQNNNE"
+sku = { jlcpcb-assembly = "C95841", lcsc-retail = "C95841" }
 
 [PowerManifoldCharger.parts."v3v3_4u7"]
 catalog = "capacitor"
 row = "4.7uF 10% 10V X7R 0603 C108342"
-lcsc = "C108342"
 mpn = "0603B475K100NT"
+sku = { jlcpcb-assembly = "C108342", lcsc-retail = "C108342" }
 
 [PowerManifoldCharger.parts."v5_100n"]
 catalog = "capacitor"
 row = "100nF 10% 50V X7R 0402 C307331"
-lcsc = "C307331"
 mpn = "CL05B104KB54PNC"
+sku = { jlcpcb-assembly = "C307331", lcsc-retail = "C307331" }
 
 [PowerManifoldCharger.parts."v5_1u"]
 catalog = "capacitor"
 row = "1uF 10% 50V X7R 0603 C5199872"
-lcsc = "C5199872"
 mpn = "CL10B105KB8NQNC"
+sku = { jlcpcb-assembly = "C5199872", lcsc-retail = "C5199872" }
 
 [PowerManifoldCharger.parts."v5_4u7"]
 catalog = "capacitor"
 row = "4.7uF 10% 10V X7R 0603 C108342"
-lcsc = "C108342"
 mpn = "0603B475K100NT"
+sku = { jlcpcb-assembly = "C108342", lcsc-retail = "C108342" }
 
 [PowerManifoldCharger.parts."vbus_2u2"]
 catalog = "capacitor"
 row = "2.2uF 10% 50V X7R 1206 C50254"
-lcsc = "C50254"
 mpn = "CL31B225KBHNNNE"
+sku = { lcsc-retail = "C50254" }
 
 [PowerManifoldCharger.parts."vbus_divider_bottom"]
 catalog = "resistor"
 row = "10kΩ 1% 0402 C25744"
-lcsc = "C25744"
 mpn = "0402WGF1002TCE"
+sku = { jlcpcb-assembly = "C25744", lcsc-retail = "C25744" }
 
 [PowerManifoldCharger.parts."vbus_divider_top"]
 catalog = "resistor"
 row = "100kΩ 1% 0402 C25741"
-lcsc = "C25741"
 mpn = "0402WGF1003TCE"
+sku = { jlcpcb-assembly = "C25741", lcsc-retail = "C25741" }
 
 [PowerManifoldCharger.parts."vbus_sense_10n"]
 catalog = "capacitor"
 row = "10nF 10% 50V X7R 0402 C15195"
-lcsc = "C15195"
 mpn = "CL05B103KB5NNNC"
+sku = { jlcpcb-assembly = "C15195", lcsc-retail = "C15195" }
 
 [PowerManifoldCharger.parts."vcc_100n"]
 catalog = "capacitor"
 row = "100nF 10% 50V X7R 0402 C307331"
-lcsc = "C307331"
 mpn = "CL05B104KB54PNC"
+sku = { jlcpcb-assembly = "C307331", lcsc-retail = "C307331" }
 
 [PowerManifoldCharger.parts."vcc_10u"]
 catalog = "capacitor"
 row = "10uF 10% 16V X5R 0805 C1713"
-lcsc = "C1713"
 mpn = "CL21A106KOQNNNE"
+sku = { jlcpcb-assembly = "C1713", lcsc-retail = "C1713" }
 
 [PowerManifoldCharger.parts."vcc_bead"]
 catalog = "ferrite_bead"
 row = "BLM18KG601SN1D 600R 1.3A ferrite bead 0603 C85833"
-lcsc = "C85833"
 mpn = "BLM18KG601SN1D"
+sku = { jlcpcb-assembly = "C85833", lcsc-retail = "C85833" }
 
 [PowerManifoldCharger.parts."vout_conv_10u_a"]
 catalog = "capacitor"
 row = "10uF 10% 50V X7R 1206 C89632"
-lcsc = "C89632"
 mpn = "CL31B106KBHNNNE"
+sku = { jlcpcb-assembly = "C89632", lcsc-retail = "C89632" }
 
 [PowerManifoldCharger.parts."vout_conv_10u_b"]
 catalog = "capacitor"
 row = "10uF 10% 50V X7R 1206 C89632"
-lcsc = "C89632"
 mpn = "CL31B106KBHNNNE"
+sku = { jlcpcb-assembly = "C89632", lcsc-retail = "C89632" }
 
 [PowerManifoldCharger.parts."vout_conv_10u_c"]
 catalog = "capacitor"
 row = "10uF 10% 50V X7R 1206 C89632"
-lcsc = "C89632"
 mpn = "CL31B106KBHNNNE"
+sku = { jlcpcb-assembly = "C89632", lcsc-retail = "C89632" }
 
 [PowerManifoldCharger.parts."vout_conv_10u_d"]
 catalog = "capacitor"
 row = "10uF 10% 50V X7R 1206 C89632"
-lcsc = "C89632"
 mpn = "CL31B106KBHNNNE"
+sku = { jlcpcb-assembly = "C89632", lcsc-retail = "C89632" }
 
 [PowerManifoldCharger.parts."vout_conv_220u"]
 catalog = "capacitor"
 row = "220uF 20% 35V polymer SMD,D8xL9mm C46550469"
-lcsc = "C46550469"
 mpn = "MA35V220M8X9"
+sku = { jlcpcb-assembly = "C46550469", lcsc-retail = "C46550469" }
 
 [PowerManifoldCharger.parts."vout_divider_bottom"]
 catalog = "resistor"
 row = "10kΩ 1% 0402 C25744"
-lcsc = "C25744"
 mpn = "0402WGF1002TCE"
+sku = { jlcpcb-assembly = "C25744", lcsc-retail = "C25744" }
 
 [PowerManifoldCharger.parts."vout_divider_top"]
 catalog = "resistor"
 row = "100kΩ 1% 0402 C25741"
-lcsc = "C25741"
 mpn = "0402WGF1003TCE"
+sku = { jlcpcb-assembly = "C25741", lcsc-retail = "C25741" }
 
 [PowerManifoldCharger.parts."vout_sense_1n"]
 catalog = "capacitor"
 row = "1nF 10% 50V X7R 0402 C1523"
-lcsc = "C1523"
 mpn = "0402B102K500NT"
+sku = { jlcpcb-assembly = "C1523", lcsc-retail = "C1523" }

@@ -56,8 +56,7 @@ fn run(
 ) -> Result<Vec<netsmith_fabricate::fab::Fabricated>, String> {
     // A project that states an E-series is offered generic parts of it after the rows.
     let mut catalogs = Catalogs::jlcpcb().with_series(Some(netsmith_solve::Series::E96));
-    catalogs
-        .add_file("resistor", "catalogs/resistor.csv", rows)
+    netsmith_solve::migrate::add_to(&mut catalogs, "resistor", "catalogs/resistor.csv", rows)
         .unwrap();
     fab(
         "invented.nsm",

@@ -69,10 +69,10 @@ board Zz9Board {
 const ZZ9_HEADER: &str =
     "lcsc,mpn,vout.voltage,dropout,max_current,package,library,price,stock,date,source\n";
 /// Invented rows: not real parts.
-const ROW_S: &str = "C9001,ZZ9-33-S,3.3V +/- 2%,0.3V,0.5A,SOT-23-5,Basic,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n";
-const ROW_A: &str = "C9002,ZZ9-33-A,3.3V +/- 1%,0.2V,0.5A,SOT-23-5,Basic,0.10,1000,2026-10-31,https://example.invalid/zz9-33-a.pdf\n";
+const ROW_S: &str = "C9900001,ZZ9-33-S,3.3V +/- 2%,0.3V,0.5A,SOT-23-5,Basic,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n";
+const ROW_A: &str = "C9900002,ZZ9-33-A,3.3V +/- 1%,0.2V,0.5A,SOT-23-5,Basic,0.10,1000,2026-10-31,https://example.invalid/zz9-33-a.pdf\n";
 /// The same part as `ROW_S`, which cannot supply the board's 50 mA.
-const ROW_S_WEAK: &str = "C9001,ZZ9-33-S,3.3V +/- 2%,0.3V,1mA,SOT-23-5,Basic,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n";
+const ROW_S_WEAK: &str = "C9900001,ZZ9-33-S,3.3V +/- 2%,0.3V,1mA,SOT-23-5,Basic,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n";
 
 fn led_project(label: &str, source: &str) -> TempDir {
     let root = TempDir::new(label);
@@ -98,7 +98,7 @@ fn zz9_project(label: &str, rows: &str) -> TempDir {
 }
 
 fn set_rows(root: &Path, rows: &str) {
-    fs::write(root.join("catalogs/zz9.csv"), format!("{ZZ9_HEADER}{rows}")).unwrap();
+    netsmith_solve::migrate::write_to(root, "catalogs/zz9.csv", &format!("{ZZ9_HEADER}{rows}")).unwrap();
 }
 
 fn with_second_led() -> String {
@@ -159,7 +159,7 @@ fn update_with_no_lock_writes_the_lock_build_would_write_and_says_what_it_holds(
     let lines = diff_lines(&run);
     assert!(
         lines.contains(
-            &"LedExample: `r1`: added as `330Ω 1% 0402 C25104` in the `resistor` catalog (lcsc C25104, mpn 0402WGF3300TCE)"
+            &"LedExample: `r1`: added as `330Ω 1% 0402 C25104` in the `resistor` catalog (mpn 0402WGF3300TCE, jlcpcb-assembly C25104, lcsc-retail C25104)"
                 .to_string()
         ),
         "{lines:?}"
@@ -228,7 +228,7 @@ fn a_catalog_edit_that_moves_a_pick_is_a_stale_lock_and_update_changes_the_pick(
     assert!(netsmith(&root, &["project", "lock", "--update"]).status.success());
     assert!(
         read_lock(&root).contains("row = \"ZZ9-33-S\"")
-            && read_lock(&root).contains("lcsc = \"C9001\""),
+            && read_lock(&root).contains("sku = { jlcpcb-assembly = \"C9900001\""),
         "{}",
         read_lock(&root)
     );
@@ -240,7 +240,7 @@ fn a_catalog_edit_that_moves_a_pick_is_a_stale_lock_and_update_changes_the_pick(
     let before = read_lock(&root);
     let check = netsmith(&root, &["project", "lock", "--check"]);
     assert_eq!(check.status.code(), Some(1));
-    let moved = "Zz9Board: `u`: `ZZ9-33-S` (lcsc C9001, mpn ZZ9-33-S) -> `ZZ9-33-A` (lcsc C9002, mpn ZZ9-33-A)";
+    let moved = "Zz9Board: `u`: `ZZ9-33-S` (mpn ZZ9-33-S, jlcpcb-assembly C9900001, lcsc-retail C9900001) -> `ZZ9-33-A` (mpn ZZ9-33-A, jlcpcb-assembly C9900002, lcsc-retail C9900002)";
     assert_eq!(diff_lines(&check), [moved], "{}", stdout(&check));
     assert!(
         stdout(&check).starts_with(&format!("{} is not current\n", lock_file(&root).display()))
@@ -302,7 +302,7 @@ fn a_row_that_no_longer_passes_or_is_gone_is_reported_in_the_solvers_words_and_r
         assert!(
             diff_lines(&check)
                 == [
-                    "Zz9Board: `u`: `ZZ9-33-S` (lcsc C9001, mpn ZZ9-33-S) -> `ZZ9-33-A` (lcsc C9002, mpn ZZ9-33-A)"
+                    "Zz9Board: `u`: `ZZ9-33-S` (mpn ZZ9-33-S, jlcpcb-assembly C9900001, lcsc-retail C9900001) -> `ZZ9-33-A` (mpn ZZ9-33-A, jlcpcb-assembly C9900002, lcsc-retail C9900002)"
                 ],
             "{label}: {}",
             stdout(&check)
@@ -550,7 +550,7 @@ fn update_part_takes_a_new_pick_for_the_named_parts_only() {
     assert!(run.status.success(), "{}", stderr(&run));
     assert_eq!(
         diff_lines(&run),
-        ["Zz9Two: `v`: `ZZ9-33-S` (lcsc C9001, mpn ZZ9-33-S) -> `ZZ9-33-A` (lcsc C9002, mpn ZZ9-33-A)"],
+        ["Zz9Two: `v`: `ZZ9-33-S` (mpn ZZ9-33-S, jlcpcb-assembly C9900001, lcsc-retail C9900001) -> `ZZ9-33-A` (mpn ZZ9-33-A, jlcpcb-assembly C9900002, lcsc-retail C9900002)"],
         "{}",
         stdout(&run)
     );
@@ -767,9 +767,10 @@ fn lock_prints_one_json_document_with_the_diff_the_text_has_and_the_same_exit_co
     assert!(bad.stdout.is_empty());
 }
 
-/// A project's own resistor row for the part the lock of `LED` holds (C25104), as a project
-/// that had the part before the built-in catalog did would write it (issue #1119).
-const OWN_C25104: &str = "lcsc,mpn,resistance,max_power,package,source\nC25104,ACME-R330,330ohm +/- 5%,62.5mW,0402,https://example.invalid/acme-r330\n";
+/// A project's own resistor row for the part the lock of `LED` holds (0402WGF3300TCE, C25104),
+/// as a project that had the part before the built-in catalog did would write it, under a name
+/// of its own (issue #1119).
+const OWN_C25104: &str = "name,mpn,resistance,max_power,package,source\nACME-R330,0402WGF3300TCE,330ohm +/- 5%,62.5mW,0402,https://example.invalid/acme-r330\n";
 
 /// The row name the lock of `LED` has for `r1`, and the lock with the name the project's row had.
 fn lock_of_the_project_row(root: &Path) -> (String, String) {
@@ -794,12 +795,12 @@ fn lock_of_the_project_row(root: &Path) -> (String, String) {
 fn a_project_row_of_a_built_in_part_is_refused_naming_the_row_to_use_and_what_differs() {
     let root = led_project("lock-built-in-twin", LED);
     fs::create_dir_all(root.join("catalogs")).unwrap();
-    fs::write(root.join("catalogs/resistor.csv"), OWN_C25104).unwrap();
+    netsmith_solve::migrate::write_to(&root, "catalogs/resistor.csv", OWN_C25104).unwrap();
     let run = netsmith(&root, &["board", "build"]);
     assert!(!run.status.success());
     let said = stderr(&run);
     for want in [
-        "catalogs/resistor.csv:2: the lcsc `C25104` is already a row at data/jlcpcb/catalog/resistor.csv:",
+        "catalogs/resistor.csv:2: the mpn `0402WGF3300TCE` is already a row at data/jlcpcb/catalog/resistor.csv:",
         "a row of the built-in catalog (`330Ω 1% 0402 C25104`)",
         "they differ in name (`ACME-R330` here, `330Ω 1% 0402 C25104` built in)",
         "resistance (`330ohm +/- 5%` here,",
@@ -822,7 +823,7 @@ fn a_lock_row_whose_part_the_built_in_catalog_has_under_another_name_is_told_and
     assert!(!build.status.success());
     let said = stderr(&build);
     assert!(
-        said.contains("the `resistor` catalog has no row `ACME-R330` now; the row with the LCSC number C25104 is `330Ω 1% 0402 C25104` now, and `netsmith project lock --update` sets the lock to it"),
+        said.contains("the `resistor` catalog has no row `ACME-R330` now; the row with the manufacturer part number 0402WGF3300TCE is `330Ω 1% 0402 C25104` now, and `netsmith project lock --update` sets the lock to it"),
         "{said}"
     );
 
@@ -830,7 +831,7 @@ fn a_lock_row_whose_part_the_built_in_catalog_has_under_another_name_is_told_and
     assert_eq!(check.status.code(), Some(1), "{}", stderr(&check));
     assert_eq!(
         diff_lines(&check),
-        ["LedExample: `r1`: `ACME-R330` (lcsc C25104, mpn 0402WGF3300TCE) -> `330Ω 1% 0402 C25104` (lcsc C25104, mpn 0402WGF3300TCE)"],
+        ["LedExample: `r1`: `ACME-R330` (mpn 0402WGF3300TCE, jlcpcb-assembly C25104, lcsc-retail C25104) -> `330Ω 1% 0402 C25104` (mpn 0402WGF3300TCE, jlcpcb-assembly C25104, lcsc-retail C25104)"],
         "{}",
         stdout(&check)
     );
@@ -878,7 +879,7 @@ fn check_accepts_a_pick_held_on_purpose_and_lists_it_with_its_reason() {
     // `v` is still due, so the lock is not current, and the diff says nothing of `u`.
     let check = netsmith(&root, &["project", "lock", "--check"]);
     assert_eq!(check.status.code(), Some(1), "{}", stderr(&check));
-    let listed = "Zz9Two: `u`: `ZZ9-33-S` in the `zz9` catalog (lcsc C9001, mpn ZZ9-33-S): ";
+    let listed = "Zz9Two: `u`: `ZZ9-33-S` in the `zz9` catalog (mpn ZZ9-33-S, jlcpcb-assembly C9900001, lcsc-retail C9900001): ";
     assert!(
         diff_lines(&check)
             .iter()
@@ -928,7 +929,7 @@ fn check_accepts_a_pick_held_on_purpose_and_lists_it_with_its_reason() {
         serde_json::json!([{
             "board": "Zz9Two",
             "part": "u",
-            "row": "`ZZ9-33-S` in the `zz9` catalog (lcsc C9001, mpn ZZ9-33-S)",
+            "row": "`ZZ9-33-S` in the `zz9` catalog (mpn ZZ9-33-S, jlcpcb-assembly C9900001, lcsc-retail C9900001)",
             "reason": WHY,
         }])
     );
@@ -1015,7 +1016,7 @@ fn check_except_judges_every_part_but_the_named_ones_and_lists_them() {
     assert!(check.status.success(), "{}", stderr(&check));
     let text = stdout(&check);
     assert!(
-        text.contains("Zz9Two: `u`: `ZZ9-33-S` in the `zz9` catalog (lcsc C9001, mpn ZZ9-33-S)\n")
+        text.contains("Zz9Two: `u`: `ZZ9-33-S` in the `zz9` catalog (mpn ZZ9-33-S, jlcpcb-assembly C9900001, lcsc-retail C9900001)\n")
             && text.contains("Zz9Two: `v`: "),
         "{text}"
     );
@@ -1054,7 +1055,7 @@ fn a_lock_of_version_1_builds_as_before_and_check_calls_it_not_current_until_upd
     let build = netsmith(&root, &["board", "build", "--locked"]);
     assert!(build.status.success(), "{}", stderr(&build));
     assert!(
-        stderr(&build).contains("main.lock.toml is of version 1 of the lock, which records no manufacturer; it holds the parts as before, and `netsmith project lock --update` writes it as version 2"),
+        stderr(&build).contains("main.lock.toml is of an older format of the lock, which records no manufacturer or no sku of each channel (ADR 0143); it holds the parts as before, and `netsmith project lock --update` writes it as version 2"),
         "{}",
         stderr(&build)
     );
@@ -1064,7 +1065,7 @@ fn a_lock_of_version_1_builds_as_before_and_check_calls_it_not_current_until_upd
     assert_eq!(check.status.code(), Some(1), "{}", stderr(&check));
     assert_eq!(
         diff_lines(&check),
-        ["version 1 -> 2: the file is of version 1 of the lock, and version 2 records each part's manufacturer beside its lcsc and mpn (ADR 0143)"]
+        ["version 1 -> 2: the file is of version 1 of the lock, and version 2 records each part's manufacturer and mpn, and the sku of its offer for each supply channel in place of its lcsc (ADR 0143)"]
     );
     // `--update` writes it as version 2, with the same rows, and it is then current.
     let update = netsmith(&root, &["project", "lock", "--update"]);

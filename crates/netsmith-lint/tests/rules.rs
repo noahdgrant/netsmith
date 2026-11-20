@@ -295,8 +295,7 @@ fn an_assembly_a_project_generic_gives_is_found_on_its_provider_not_on_the_gener
 #[test]
 fn an_assembly_the_row_a_key_names_gives_is_found_and_a_picked_row_is_not() {
     let mut catalogs = Catalogs::jlcpcb();
-    catalogs
-        .add_file(
+    netsmith_solve::migrate::add_to(&mut catalogs, 
             "plug",
             "plug.csv",
             "lcsc,mpn,name,label,assembly,source\nC1,PLUG-1,Plug 1,Plug,hand,invented for this test\nC2,PLUG-2,Plug 2,Plug,fab,invented for this test\n",

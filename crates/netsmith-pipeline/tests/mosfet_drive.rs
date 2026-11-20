@@ -9,28 +9,27 @@ use netsmith_solve::Catalogs;
 
 /// An invented 100 V N-channel row that states no test voltage, as a project's own row.
 const ZN_BLANK: &str = "\
-mpn,name,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate_threshold,on_resistance,package,library,source
-ZN-100,ZN-100 100V 2A N-MOSFET,100V,2A,20V,1V..2V,0.2ohm,SOT-23,Extended,https://example.invalid/zn-100
+mpn,name,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate_threshold,on_resistance,package,source
+ZN-100,ZN-100 100V 2A N-MOSFET,100V,2A,20V,1V..2V,0.2ohm,SOT-23,https://example.invalid/zn-100
 ";
 
 /// An invented 100 V N-channel row that states it (a header with the column).
 const ZN_STATED: &str = "\
-mpn,name,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate_threshold,on_resistance,on_resistance_vgs,package,library,source
-ZN-100,ZN-100 100V 2A N-MOSFET,100V,2A,20V,1V..2V,0.2ohm,4.5V,SOT-23,Extended,https://example.invalid/zn-100
+mpn,name,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate_threshold,on_resistance,on_resistance_vgs,package,source
+ZN-100,ZN-100 100V 2A N-MOSFET,100V,2A,20V,1V..2V,0.2ohm,4.5V,SOT-23,https://example.invalid/zn-100
 ";
 
 /// An invented 40 V P-channel row that states it.
 const ZP_STATED: &str = "\
-mpn,name,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate_threshold,on_resistance,on_resistance_vgs,package,library,source
-ZP-40,ZP-40 40V 4A P-MOSFET,40V,4A,12V,0.4V..1.3V,0.07ohm,4.5V,SOT-23,Extended,https://example.invalid/zp-40
+mpn,name,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate_threshold,on_resistance,on_resistance_vgs,package,source
+ZP-40,ZP-40 40V 4A P-MOSFET,40V,4A,12V,0.4V..1.3V,0.07ohm,4.5V,SOT-23,https://example.invalid/zp-40
 ";
 
 fn world(files: &[(&str, &str)]) -> (Loader, Catalogs) {
     let loader = Loader::std();
     let mut catalogs = Catalogs::jlcpcb();
     for (name, rows) in files {
-        catalogs
-            .add_file(name, &format!("catalogs/{name}.csv"), rows)
+        netsmith_solve::migrate::add_to(&mut catalogs, name, &format!("catalogs/{name}.csv"), rows)
             .unwrap();
     }
     (loader, catalogs)

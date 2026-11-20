@@ -80,7 +80,7 @@ fn build_writes_the_lock_beside_the_source_and_two_runs_write_the_same_bytes() {
         "[LedExample.parts.\"r1\"]",
         "catalog = \"resistor\"",
         &format!("row = \"{SOLVER_ROW}\""),
-        "lcsc = \"C25104\"",
+        "sku = { jlcpcb-assembly = \"C25104\", lcsc-retail = \"C25104\" }",
         "mpn = \"0402WGF3300TCE\"",
         "[LedExample.parts.\"led\"]",
     ] {
@@ -131,7 +131,7 @@ fn a_locked_row_that_still_passes_is_the_pick_though_the_solver_would_pick_anoth
             &format!("row = \"{SOLVER_ROW}\""),
             &format!("row = \"{OTHER_ROW}\""),
         )
-        .replace("lcsc = \"C25104\"\nmpn = \"0402WGF3300TCE\"\n", "");
+        .replace("mpn = \"0402WGF3300TCE\"\nsku = { jlcpcb-assembly = \"C25104\", lcsc-retail = \"C25104\" }\n", "");
     fs::write(lock_file(&root), &held).unwrap();
     let run = netsmith(&root, &["board", "build"]);
     assert!(run.status.success(), "{}", stderr(&run));
@@ -193,15 +193,27 @@ fn a_row_the_catalog_no_longer_has_or_whose_number_changed_is_named() {
         stderr(&run)
     );
 
-    fs::write(lock_file(&root), lock.replace("\"C25104\"", "\"C1\"")).unwrap();
+    // The part is its manufacturer part number (ADR 0143): another one is another part.
+    fs::write(
+        lock_file(&root),
+        lock.replace("\"0402WGF3300TCE\"", "\"ZZ-OTHER\""),
+    )
+    .unwrap();
     let run = netsmith(&root, &["board", "build"]);
     assert!(!run.status.success());
     assert!(
-        stderr(&run).contains("now has the LCSC number C25104")
-            && stderr(&run).contains("and the lock has C1"),
+        stderr(&run).contains("now has the manufacturer part number 0402WGF3300TCE")
+            && stderr(&run).contains("and the lock has ZZ-OTHER"),
         "{}",
         stderr(&run)
     );
+    // A sku the lock records is a record: another one holds the same part, and `lock --check`
+    // calls the lock not current.
+    fs::write(lock_file(&root), lock.replace("\"C25104\"", "\"C1\"")).unwrap();
+    let run = netsmith(&root, &["board", "build"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    let check = netsmith(&root, &["project", "lock", "--check"]);
+    assert_eq!(check.status.code(), Some(1), "{}", stderr(&check));
 
     fs::write(
         lock_file(&root),

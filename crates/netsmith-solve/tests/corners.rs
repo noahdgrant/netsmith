@@ -7,18 +7,18 @@
 use netsmith_check::{Loader, check};
 use netsmith_solve::{Catalogs, Solution, solve};
 
-const HEAD: &str = "mpn,capacitance,effective_capacitance,max_voltage,package,esr,capacitance_at_end_of_life,esr_growth,library,source\n";
+const HEAD: &str = "mpn,capacitance,effective_capacitance,max_voltage,package,esr,capacitance_at_end_of_life,esr_growth,source\n";
 
 /// Keeps half of its capacitance and triples its ESR by the end of its life.
-const LOSSY: &str = "ZZC-LOSSY,100uF +/- 20%,derate capacitance by bias: 0:1 16:1,16V,1210,20mohm,0.5,3,Basic,https://example.invalid/zzc-lossy.pdf\n";
+const LOSSY: &str = "ZZC-LOSSY,100uF +/- 20%,derate capacitance by bias: 0:1 16:1,16V,1210,20mohm,0.5,3,https://example.invalid/zzc-lossy.pdf\n";
 /// Keeps 90 % and grows its ESR by half.
-const STEADY: &str = "ZZC-STEADY,100uF +/- 20%,derate capacitance by bias: 0:1 16:1,16V,1210,20mohm,0.9,1.5,Basic,https://example.invalid/zzc-steady.pdf\n";
+const STEADY: &str = "ZZC-STEADY,100uF +/- 20%,derate capacitance by bias: 0:1 16:1,16V,1210,20mohm,0.9,1.5,https://example.invalid/zzc-steady.pdf\n";
 /// States nothing of its life.
-const BARE: &str = "ZZC-BARE,100uF +/- 20%,derate capacitance by bias: 0:1 16:1,16V,1210,20mohm,,,Basic,https://example.invalid/zzc-bare.pdf\n";
+const BARE: &str = "ZZC-BARE,100uF +/- 20%,derate capacitance by bias: 0:1 16:1,16V,1210,20mohm,,,https://example.invalid/zzc-bare.pdf\n";
 
 fn catalogs(rows: &[&str]) -> Catalogs {
     let mut c = Catalogs::empty();
-    c.add_file("capacitor", "catalogs/capacitor.csv", &format!("{HEAD}{}", rows.concat()))
+    crate::offered::add(&mut c, "capacitor", "catalogs/capacitor.csv", &format!("{HEAD}{}", rows.concat()))
         .unwrap();
     c
 }

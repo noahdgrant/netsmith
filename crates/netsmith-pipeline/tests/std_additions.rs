@@ -13,14 +13,14 @@ const TRANSLATOR_CSV: &str = include_str!("../../../data/jlcpcb/catalog/level_tr
 /// An invented 40 V, 4 A P-channel part, as a project's own row of the standard catalog. It
 /// comes after the standard row, so it serves what the AO3401A (30 V) cannot.
 const ZP_ROWS: &str = "\
-mpn,name,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate_threshold,on_resistance,package,library,source
-ZP-40,ZP-40 40V 4A P-MOSFET,40V,4A,12V,0.4V..1.3V,0.07ohm,SOT-23,Extended,https://example.invalid/zp-40
+mpn,name,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate_threshold,on_resistance,package,source
+ZP-40,ZP-40 40V 4A P-MOSFET,40V,4A,12V,0.4V..1.3V,0.07ohm,SOT-23,https://example.invalid/zp-40
 ";
 
 /// An invented translator, as a project's own row of the standard catalog.
 const ZT_ROWS: &str = "\
-mpn,name,vcc_min,vcc_max,vcc_abs_max,a_abs_max,vt_plus_max,vt_minus_min,max_output_current,max_supply_current,package,library,source
-ZT-17,ZT-17 translator,2.5V,3.6V,4.2V,4.2V,1.1V,0.45V,3mA,750nA,SOT-23-5,Extended,https://example.invalid/zt-17
+mpn,name,vcc_min,vcc_max,vcc_abs_max,a_abs_max,vt_plus_max,vt_minus_min,max_output_current,max_supply_current,package,source
+ZT-17,ZT-17 translator,2.5V,3.6V,4.2V,4.2V,1.1V,0.45V,3mA,750nA,SOT-23-5,https://example.invalid/zt-17
 ";
 
 /// An invented provider of `PMosfet`, with a catalog of its own.
@@ -38,8 +38,8 @@ part ZpPower provides PMosfet {
 ";
 
 const ZP_POWER_CSV: &str = "\
-mpn,name,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate_threshold,on_resistance,package,library,source
-ZP-60,ZP-60 60V 8A P-MOSFET,60V,8A,20V,1V..3V,0.03ohm,SOT-23,Extended,https://example.invalid/zp-60
+mpn,name,max_drain_source_voltage,max_drain_current,max_gate_source_voltage,gate_threshold,on_resistance,package,source
+ZP-60,ZP-60 60V 8A P-MOSFET,60V,8A,20V,1V..3V,0.03ohm,SOT-23,https://example.invalid/zp-60
 ";
 
 /// An invented provider of `LevelTranslator`; `{A_LIMIT}` is the end of the row of `.a.line`.
@@ -64,8 +64,8 @@ fn zt_provider(limit: &str) -> String {
 }
 
 const ZT_WIDE_CSV: &str = "\
-mpn,name,vcc_min,vcc_max,vcc_abs_max,a_abs_max,vt_plus_max,vt_minus_min,max_output_current,max_supply_current,package,library,source
-ZT-55,ZT-55 wide translator,3V,5.5V,6.5V,6.5V,2.1V,0.7V,6mA,8uA,SOT-23-5,Extended,https://example.invalid/zt-55
+mpn,name,vcc_min,vcc_max,vcc_abs_max,a_abs_max,vt_plus_max,vt_minus_min,max_output_current,max_supply_current,package,source
+ZT-55,ZT-55 wide translator,3V,5.5V,6.5V,6.5V,2.1V,0.7V,6mA,8uA,SOT-23-5,https://example.invalid/zt-55
 ";
 
 struct World {
@@ -86,8 +86,7 @@ fn world(modules: &[(&str, &str)], files: &[(&str, &str)]) -> World {
     }
     let mut catalogs = Catalogs::jlcpcb();
     for (name, rows) in files {
-        catalogs
-            .add_file(name, &format!("catalogs/{name}.csv"), rows)
+        netsmith_solve::migrate::add_to(&mut catalogs, name, &format!("catalogs/{name}.csv"), rows)
             .unwrap();
     }
     World { loader, catalogs }
@@ -148,7 +147,7 @@ fn q_mpn(b: &netsmith_pipeline::Built) -> Option<&str> {
 }
 
 fn only_header(csv: &str) -> bool {
-    csv.lines().count() == 1 && csv.starts_with("lcsc,mpn,name,label,")
+    csv.lines().count() == 1 && csv.starts_with("mpn,name,label,")
 }
 
 #[test]

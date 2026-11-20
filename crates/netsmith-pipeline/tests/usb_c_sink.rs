@@ -310,8 +310,7 @@ fn with_own_receptacle(jack: &str) -> Result<Outcome, String> {
     let mut loader = Loader::std();
     loader.insert("src::acme", "src/acme.nsm", OWN_RECEPTACLE);
     let mut catalogs = Catalogs::jlcpcb();
-    catalogs
-        .add_file("acme_receptacle", "catalogs/acme_receptacle.csv", ACME_ROWS)
+    netsmith_solve::migrate::add_to(&mut catalogs, "acme_receptacle", "catalogs/acme_receptacle.csv", ACME_ROWS)
         .unwrap();
     let src = format!(
         "import src::acme::AcmeReceptacle   // brings the provider in scope\n{}",

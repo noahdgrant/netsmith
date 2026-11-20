@@ -30,6 +30,21 @@ fn read(path: &str) -> String {
     fs::read_to_string(project().join(path)).unwrap_or_else(|e| panic!("{path}: {e}"))
 }
 
+/// The offer of the project's part `mpn` (ADR 0143: a catalog row holds no supplier's number):
+/// the sku and class of its JLCPCB offer, else the sku of its LCSC offer with no class.
+fn offer(mpn: &str) -> (String, String) {
+    for supplier in ["jlcpcb", "lcsc"] {
+        let text = read(&format!("offers/{supplier}.csv"));
+        let records = netsmith_solve::parse_csv(&text).unwrap();
+        let header = &records[0].1;
+        let at = |name: &str| header.iter().position(|h| h == name).unwrap();
+        if let Some((_, r)) = records[1..].iter().find(|(_, r)| r[at("mpn")] == mpn) {
+            return (r[at("sku")].clone(), r[at("class")].clone());
+        }
+    }
+    panic!("no offer of {mpn}")
+}
+
 /// A board of KiCad 7's spelling (format 20221018): a `(net N "name")` table, the reference in
 /// an `fp_text`, a plated mounting hole with a ring of vias numbered like its pad, an outline
 /// of four lines in KiCad 7's `(stroke ...)` form, and no title block.
@@ -929,8 +944,9 @@ board SmallPartsFixture {
             assert_eq!(text.lines().count(), 2, "{file}: one row");
             let mut reader = csv_row(&text);
             let mut cell = |name: &str| reader.remove(name).unwrap_or_default();
-            assert_eq!(cell("lcsc"), lcsc, "{file}");
-            assert_eq!(cell("library"), library, "{file}");
+            let (sku, class) = crate::orbit::offer(&cell("mpn"));
+            assert_eq!(sku, lcsc, "{file}");
+            assert_eq!(class, library, "{file}");
             assert_eq!(cell("price"), "", "{file}: price is not read");
             assert_eq!(cell("stock"), "", "{file}: stock is not read");
             let source = cell("source");
@@ -1739,7 +1755,8 @@ board Ics {
             let rows = read(file);
             let row = rows.lines().nth(1).expect("a row");
             assert_eq!(rows.lines().count(), 2, "{file}: one row");
-            assert!(row.starts_with(&format!("{lcsc},{mpn},")), "{row}");
+            assert!(row.starts_with(&format!("{mpn},")), "{row}");
+            assert_eq!(crate::orbit::offer(mpn).0, lcsc, "{file}");
             for page in [
                 format!("https://jlcpcb.com/partdetail/{lcsc}"),
                 format!("https://www.lcsc.com/product-detail/{lcsc}.html"),

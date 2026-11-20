@@ -6,22 +6,53 @@ How to move a project:
 
 1. Run `netsmith board check` in the project with the new netsmith. A project whose `netsmith.toml` names an older release (`netsmith = "0.1.0"`), or names none, and whose check fails, ends the run with a note that points here.
 2. Read the section of each release after the project's own, oldest first, and fix what the errors name. Most changes are mechanical: the errors' line numbers find every place.
-3. Run `netsmith project lock --check`: a release may pick other parts for the same source (a new check, a new catalog row). `netsmith project lock --update` takes the new picks; review the lock's diff. A release also adds rows to the built-in catalogs (its notes list them): when a project's own catalog file already has one of those parts, the build stops with "a part is in a catalog once", naming the built-in row and what differs from the project's. Remove the project's row from its catalog file; a pick lock that names that row (`row = "..."`) is then repaired by `netsmith project lock --update`, which sets it to the built-in row of the same LCSC number and changes no other row.
+3. Run `netsmith project lock --check`: a release may pick other parts for the same source (a new check, a new catalog row). `netsmith project lock --update` takes the new picks; review the lock's diff. A release also adds rows to the built-in catalogs (its notes list them): when a project's own catalog file already has one of those parts, the build stops with "a part is in a catalog once", naming the built-in row and what differs from the project's. Remove the project's row from its catalog file; a pick lock that names that row (`row = "..."`) is then repaired by `netsmith project lock --update`, which sets it to the built-in row of the same manufacturer part number and changes no other row.
 4. When the project builds, set `netsmith = "<release>"` in the `[project]` table of `netsmith.toml`. `netsmith project refresh` brings the project's guide and skills up to the release (ADR 0131); it does not touch the sources.
 
 Every change below that makes source an error was a pull request whose title has `!` (a breaking change in Conventional Commits), and the release notes on GitHub list those commits. A change that will make source an error adds its entry under _Unreleased_ in the same pull request (`AGENTS.md`, ADR 0134).
 
 ## Unreleased
 
-### The pick lock is version 2 (issue #1456, ADR 0143)
+### A catalog row holds no supplier's number, and a hand pick is by `.mpn` (issue #1458, ADR 0143)
 
-Not a break: nothing that built is an error. `<stem>.lock.toml` now records each part's `manufacturer` beside its `lcsc` and `mpn`, and says `version = 2`. A lock of version 1 is still read and holds its parts as before, also with `--locked` (the build says so in a note), but `netsmith project lock --check`, as a CI job runs it, calls it not current and exits 1:
+A part is its manufacturer's number now, and what a supplier calls it is an **offer**, a row of `offers/<supplier>.csv` beside the catalogs (`offers/jlcpcb.csv`, `offers/lcsc.csv`; the manifest's `offer_dirs`, default `["offers"]`). The `lcsc` and `library` columns of a catalog file and the `.lcsc` hand pick are gone:
+
+| What stops | Old spelling | New spelling |
+|---|---|---|
+| A catalog file with an `lcsc` or `library` column | `catalogs/led.csv`: `lcsc,mpn,...,library,source` with `C2286,KT-0603R,...,Basic,...` | `catalogs/led.csv`: `mpn,...,source` with `KT-0603R,...`; `offers/jlcpcb.csv`: `,KT-0603R,C2286,Basic,<source>,,` and `offers/lcsc.csv`: `,KT-0603R,C2286,,<source>,,` (columns `manufacturer,mpn,sku,class,source,checked,notes`) |
+| A hand pick by the supplier's number | `.c5.lcsc &= "C307331"` | `.c5.mpn &= "CL05B104KB54PNC"`, with `.c5.manufacturer &= "..."` when two parts share the number |
+| A curve file named by the row's LCSC number | `catalogs/curves/schottky/C2480.csv` | `catalogs/curves/schottky/SS14.csv`, the row's `mpn` |
+| `catalog add` into a file with the old columns | `netsmith catalog add --lcsc C2286 --to catalogs/led.csv` wrote `lcsc` into the row | the same command writes the row without it and the number into `offers/lcsc.csv` |
 
 ```text
-version 1 -> 2: the file is of version 1 of the lock, and version 2 records each part's manufacturer beside its lcsc and mpn (ADR 0143)
+error: catalogs/led.csv:1: the columns `lcsc` and `library` have gone from catalog files (ADR 0143): a catalog row is the part, its `manufacturer` and `mpn`, and what a supplier calls it is an offer, a row of `offers/jlcpcb.csv` and `offers/lcsc.csv` (the `lcsc` number is the offer's `sku`, and the `library` the `class` of the jlcpcb offer); `netsmith project migrate-offers` moves them into the project's offers files and removes them here (docs/MIGRATING.md)
+error: `.lcsc &= "C307331"` on `c5`: a hand pick is by the manufacturer's part number now, and a supplier's number is an offer (ADR 0143): write `.mpn &= "CL05B104KB54PNC"` in its place, the part the jlcpcb offer C307331 is of (data/offers/jlcpcb.csv:36); `netsmith project migrate-offers` rewrites these narrowings in a project's sources
 ```
 
-Run `netsmith project lock --update` once and commit the lock. Its diff is the `version` line and the header's comment, and a `manufacturer` line for a part whose catalog row names one (the new optional `manufacturer` column of a catalog file).
+The move is mechanical, and one command does it: run `netsmith project migrate-offers` in the project (`--check` first says what it would change and writes nothing). It removes the two columns from the project's own catalog files, every other cell as it was written, appends an offer of `lcsc` for each row with an `lcsc` and one of `jlcpcb`, with the row's `library` as its `class`, for each row with a `library` (each with the row's `manufacturer`, `mpn`, `source` and `checked`), and rewrites every `.lcsc &= "C..."` of the project's sources as the `.mpn` of the part the number is an offer of. It writes everything or nothing: a row with an `lcsc` and no `mpn`, or a number no offer has, stops it with the place, for you to write the `mpn` by hand. Rename a curve file named by an LCSC number to the row's `mpn` by hand. A dependency's catalogs are migrated in its own project.
+
+Then run `netsmith project lock --update` and commit the lock (below). `netsmith catalog refresh` now checks the offers of LCSC (`offers/lcsc.csv`) and writes the day in their `checked`, not in the catalog's; a refresh's JSON reports each offers file, and `catalog add`'s has an `offer`.
+
+### The pick lock is version 2 (issues #1456, #1458, ADR 0143)
+
+`<stem>.lock.toml` now records each part's `manufacturer` beside its `mpn`, and the `sku` of its offer for each supply channel in place of its `lcsc`, and says `version = 2`:
+
+```toml
+[LedExample.parts."r1"]
+catalog = "resistor"
+row = "330Ω 1% 0402 C25104"
+mpn = "0402WGF3300TCE"
+sku = { jlcpcb-assembly = "C25104", lcsc-retail = "C25104" }
+```
+
+A lock of version 1, and one that records `lcsc` (as the lock did before #1458), is still read and holds its parts as before, also with `--locked` (the build says so in a note), but `netsmith project lock --check`, as a CI job runs it, calls it not current and exits 1, with one of:
+
+```text
+version 1 -> 2: the file is of version 1 of the lock, and version 2 records each part's manufacturer and mpn, and the sku of its offer for each supply channel in place of its lcsc (ADR 0143)
+lcsc -> sku: the file records each part's `lcsc`, and the lock now records the sku of the part's offer for each supply channel in its place (ADR 0143)
+```
+
+Run `netsmith project lock --update` once and commit the lock. Its diff is the `version` line, each `lcsc` line replaced by a `sku` line of the same number, and a `manufacturer` line for a part whose catalog row names one; the parts are the same.
 
 ## 0.7.0: changes since 0.6.0
 

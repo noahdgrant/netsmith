@@ -2188,11 +2188,11 @@ fn a_relation_that_names_a_part_is_about_the_parts_it_names_and_not_the_rails_pa
 fn a_part_whose_row_has_only_a_class_is_judged_by_the_classs_range() {
     let rows = |class: &str| {
         let mut c = Catalogs::empty();
-        c.add_file(
+        netsmith_solve::migrate::add_to(&mut c, 
             "capacitor",
             "catalogs/capacitor.csv",
             &format!(
-                "mpn,capacitance,effective_capacitance,max_voltage,package,dielectric,library,source\nZZC-1,100nF +/- 10%,derate capacitance by bias:,16V,0402,{class},Basic,https://example.invalid/zzc.pdf\n"
+                "mpn,capacitance,effective_capacitance,max_voltage,package,dielectric,source\nZZC-1,100nF +/- 10%,derate capacitance by bias:,16V,0402,{class},https://example.invalid/zzc.pdf\n"
             ),
         )
         .unwrap();

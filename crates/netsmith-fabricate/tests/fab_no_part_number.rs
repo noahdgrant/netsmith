@@ -69,7 +69,7 @@ board Invented {
 
 fn catalogs() -> Catalogs {
     let mut c = Catalogs::jlcpcb();
-    c.add_file("resistor", "catalogs/resistor.csv", ROWS)
+    netsmith_solve::migrate::add_to(&mut c, "resistor", "catalogs/resistor.csv", ROWS)
         .unwrap();
     c
 }
@@ -174,7 +174,7 @@ fn a_part_that_is_not_assembled_by_the_board_house_needs_no_number() {
     // The row's own `assembly` column is the third way: the pick carries it.
     let dir = TempDir::unused("fab-no-part-number-row");
     let mut c = Catalogs::jlcpcb();
-    c.add_file(
+    netsmith_solve::migrate::add_to(&mut c, 
         "resistor",
         "catalogs/resistor.csv",
         "lcsc,mpn,resistance,max_power,package,library,assembly,source\n\

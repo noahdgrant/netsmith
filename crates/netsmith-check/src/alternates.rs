@@ -200,7 +200,7 @@ impl Checker<'_> {
         if kind == primary_kind && primary.ty.args == a.decl.ty.args && self.fitted.is_empty() {
             self.error(
                 a.span,
-                format!("`{text}`: `.{name}` is a `{kind}` already; an alternate is another kind of part, and a different row of the same kind is a hand pick (`.{name}.lcsc &= \"C1234\"`)"),
+                format!("`{text}`: `.{name}` is a `{kind}` already; an alternate is another kind of part, and a different row of the same kind is a hand pick (`.{name}.mpn &= \"...\"`)"),
             );
             return;
         }

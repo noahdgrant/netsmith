@@ -27,7 +27,7 @@ fn project(label: &str, source: &str) -> TempDir {
         "[project]\nname = \"own\"\nseries = \"E96\"\n",
     )
     .unwrap();
-    fs::write(root.join("catalogs/resistor.csv"), OWN_CATALOG).unwrap();
+    netsmith_solve::migrate::write_to(&root, "catalogs/resistor.csv", OWN_CATALOG).unwrap();
     fs::write(root.join("src/main.nsm"), source).unwrap();
     root
 }

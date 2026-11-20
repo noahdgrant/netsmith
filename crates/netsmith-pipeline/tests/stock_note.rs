@@ -46,8 +46,7 @@ fn rows(lcsc: &str, stock: &str) -> String {
 
 fn built(lcsc: &str, stock: &str) -> Built {
     let mut catalogs = Catalogs::jlcpcb();
-    catalogs
-        .add_file("resistor", "catalogs/resistor.csv", &rows(lcsc, stock))
+    netsmith_solve::migrate::add_to(&mut catalogs, "resistor", "catalogs/resistor.csv", &rows(lcsc, stock))
         .unwrap();
     let outcome = outcome_with("invented.nsm", BOARD, &Loader::std(), &catalogs, None)
         .unwrap_or_else(|e| panic!("{}", netsmith_pipeline::render_problems(&e)));

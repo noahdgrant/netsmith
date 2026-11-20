@@ -263,9 +263,13 @@ const PRELUDE: &str = include_str!("../../../std/prelude.nsm");
 /// Its module name, as `import` would write it.
 pub const PRELUDE_MODULE: &str = "std::prelude";
 
-/// The members of every part that name the catalog row it is (ADR 0122): narrowing either is a
-/// hand pick.
-pub(crate) const HAND_PICK: [&str; 2] = ["lcsc", "mpn"];
+/// The members of every part that name the catalog row it is (ADR 0122, ADR 0143): its
+/// manufacturer's part number and its manufacturer. Narrowing `.mpn` is a hand pick, and
+/// `.manufacturer` beside it says which of two parts of one number. `lcsc` is the member a hand
+/// pick was once written with (`.lcsc &= "C307331"`): every part still has it, as text, so that
+/// a source that narrows it reaches the solver, which refuses it with the `.mpn` narrowing to
+/// write in its place, read from the offers (ADR 0143). It is not a hand pick.
+pub(crate) const HAND_PICK: [&str; 3] = ["mpn", "manufacturer", "lcsc"];
 
 /// The type of a value member that a built-in type name gives: `Some(Some(d))` for a
 /// quantity, `Some(None)` for text, `None` for a name that is no built-in value.
@@ -1378,9 +1382,10 @@ impl<'a> Checker<'a> {
                 let field = self.model.add_field(id, name, kind);
                 self.model.add_member(id, name, Member::Field(field));
             }
-            // And two for the numbers of the catalog row it is (ADR 0122): the supplier's part
-            // number and the manufacturer's. A design that narrows either holds a part that
-            // picks from a catalog to the row with that number (a hand pick), before the lock.
+            // And three for the catalog row it is (ADR 0122, ADR 0143): the manufacturer's part
+            // number and the manufacturer, which a design narrows to hold a part that picks from
+            // a catalog to the row of that part (a hand pick), before the lock; and `lcsc`, the
+            // supplier's number a hand pick was once written with, which the solver refuses.
             for name in HAND_PICK {
                 let field = self.model.add_field(id, name, FieldKind::Text);
                 self.model.add_member(id, name, Member::Field(field));

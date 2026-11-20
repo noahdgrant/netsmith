@@ -286,8 +286,8 @@ board Zz9Board {
 }
 "#;
 
-const ZZ9_CSV: &str = "mpn,package,vout.voltage,dropout,max_current,library,price,stock,date,source\n\
-ZZ9-33-S,SOT-23-5,3.3V +/- 2%,0.3V,0.5A,Basic,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n";
+const ZZ9_CSV: &str = "mpn,package,vout.voltage,dropout,max_current,price,stock,date,source\n\
+ZZ9-33-S,SOT-23-5,3.3V +/- 2%,0.3V,0.5A,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n";
 
 /// A project whose `netsmith.toml` has the `manifest_lines` (about its catalogs), with the
 /// regulator module and board, and `catalogs/zz9.csv`.
@@ -331,8 +331,8 @@ fn a_project_file_named_like_a_standard_catalog_adds_parts_to_it_through_the_pro
     write(
         &root,
         "catalogs/resistor.csv",
-        "mpn,resistance,max_power,package,library,price,stock,date,source\n\
-         ZZR-316,316ohm +/- 1%,250mW,0402,Basic,0.01,10,2026-10-31,https://example.invalid/zzr\n",
+        "mpn,resistance,max_power,package,price,stock,date,source\n\
+         ZZR-316,316ohm +/- 1%,250mW,0402,0.01,10,2026-10-31,https://example.invalid/zzr\n",
     );
     // The LED example with its resistor fixed to a value only the project has.
     let board = LED.replace(
@@ -355,7 +355,7 @@ fn a_mistake_in_a_project_catalog_file_names_the_file_and_line_through_the_progr
     for (csv, expect) in [
         (
             // The second row has no source.
-            format!("{ZZ9_CSV}ZZ9-33-D,SOT-23-5,3.3V,0.2V,1A,,,,,\n"),
+            format!("{ZZ9_CSV}ZZ9-33-D,SOT-23-5,3.3V,0.2V,1A,,,,\n"),
             "catalogs/zz9.csv:3: the row for mpn ZZ9-33-D has no source",
         ),
         (
@@ -389,14 +389,14 @@ fn a_project_file_that_repeats_a_standard_part_is_refused_naming_both_files() {
     write(
         &root,
         "catalogs/resistor.csv",
-        "lcsc,mpn,resistance,max_power,package,source\nC25104,X,330ohm +/- 1%,62.5mW,0402,https://example.invalid/x\n",
+        "name,mpn,resistance,max_power,package,source\nX,0402WGF3300TCE,330ohm +/- 1%,62.5mW,0402,https://example.invalid/x\n",
     );
     write(&root, "src/main.nsm", LED);
     let run = netsmith(&root, &["board", "build"]);
     let said = String::from_utf8_lossy(&run.stderr);
     assert!(!run.status.success());
     assert!(
-        said.contains("catalogs/resistor.csv:2: the lcsc `C25104` is already a row at data/jlcpcb/catalog/resistor.csv:"),
+        said.contains("catalogs/resistor.csv:2: the mpn `0402WGF3300TCE` is already a row at data/jlcpcb/catalog/resistor.csv:"),
         "{said}"
     );
 }

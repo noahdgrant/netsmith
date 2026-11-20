@@ -42,7 +42,7 @@ C990001,ZZT-10K,10k thermistor,10k,10kohm +/- 1%,3950,https://example.invalid/t\
 fn catalogs(series: Option<Series>, rows: bool) -> Catalogs {
     let mut c = Catalogs::empty().with_series(series);
     if rows {
-        c.add_file("thermistor", "catalogs/thermistor.csv", ROWS)
+        crate::offered::add(&mut c, "thermistor", "catalogs/thermistor.csv", ROWS)
             .unwrap();
     }
     c

@@ -26,6 +26,21 @@ fn read(path: &str) -> String {
     fs::read_to_string(project().join(path)).unwrap_or_else(|e| panic!("{path}: {e}"))
 }
 
+/// The offer of the project's part `mpn` (ADR 0143: a catalog row holds no supplier's number):
+/// the sku and class of its JLCPCB offer, else the sku of its LCSC offer with no class.
+fn offer(mpn: &str) -> (String, String) {
+    for supplier in ["jlcpcb", "lcsc"] {
+        let text = read(&format!("offers/{supplier}.csv"));
+        let records = netsmith_solve::parse_csv(&text).unwrap();
+        let header = &records[0].1;
+        let at = |name: &str| header.iter().position(|h| h == name).unwrap();
+        if let Some((_, r)) = records[1..].iter().find(|(_, r)| r[at("mpn")] == mpn) {
+            return (r[at("sku")].clone(), r[at("class")].clone());
+        }
+    }
+    panic!("no offer of {mpn}")
+}
+
 fn parsed(text: &str) -> toml::Table {
     text.parse::<toml::Table>()
         .unwrap_or_else(|e| panic!("the table is not TOML: {e}"))
@@ -973,7 +988,7 @@ board InterfaceBare {
             let header = rows.lines().next().unwrap();
             assert_eq!(rows.lines().count(), 2, "{file}: one row");
             let row = rows.lines().nth(1).unwrap();
-            assert!(row.starts_with(&format!("{lcsc},")), "{file}: {row}");
+            assert_eq!(crate::easyduino::offer(mpn.trim_matches('"')).0, lcsc, "{file}: {row}");
             assert!(
                 row.contains(mpn.trim_matches('"')),
                 "{file}: the part number"
@@ -989,8 +1004,9 @@ board InterfaceBare {
                 "{file}: the reference's own number"
             );
             if let Some(library) = library {
-                assert!(
-                    row.contains(&format!(",{library},")),
+                assert_eq!(
+                    crate::easyduino::offer(mpn.trim_matches('"')).1,
+                    library,
                     "{file}: library type"
                 );
             } else {
@@ -1665,11 +1681,16 @@ board IcsFixture {
         assert_eq!(text.lines().count(), 2);
         let row = text.lines().nth(1).unwrap();
         for figure in [
-            "C6186,AMS1117-3.3,",
-            ",3.201V..3.399V,1.3V,0.8A,1.2W,SOT-223,-40degC,125degC,Basic,",
+            "AMS1117-3.3,",
+            ",3.201V..3.399V,1.3V,0.8A,1.2W,SOT-223,-40degC,125degC,",
         ] {
             assert!(row.contains(figure), "{figure}");
         }
+        // Its number and library are its JLCPCB offer (ADR 0143).
+        assert_eq!(
+            crate::easyduino::offer("AMS1117-3.3"),
+            ("C6186".to_string(), "Basic".to_string())
+        );
         // Where each figure was read.
         for place in ["page 2", "page 3", "note 2", "boldface"] {
             assert!(row.contains(place), "{place}");
@@ -1796,7 +1817,7 @@ board IcsFixture {
             let header: Vec<&str> = text.lines().next().unwrap().split(',').collect();
             let row = text
                 .lines()
-                .find(|l| l.starts_with(&format!("{lcsc},{mpn},")))
+                .find(|l| l.starts_with(&format!("{mpn},")) && crate::easyduino::offer(mpn).0 == lcsc)
                 .unwrap_or_else(|| panic!("{file}: no row {lcsc} {mpn}"));
             assert!(
                 row.contains(&format!("https://jlcpcb.com/partdetail/{lcsc} ")),

@@ -206,6 +206,13 @@ fn project_catalogs() -> Catalogs {
             .add_file(&file.name, &file.file, &text)
             .unwrap_or_else(|e| panic!("{e}"));
     }
+    // And its offers, which hold the parts' numbers (ADR 0143).
+    for file in project.offer_files().unwrap_or_else(|e| panic!("{e}")) {
+        let text = fs::read_to_string(&file.path).unwrap();
+        catalogs
+            .add_offers_file(&file.supplier, &file.file, &text)
+            .unwrap_or_else(|e| panic!("{e}"));
+    }
     catalogs
 }
 

@@ -10,7 +10,7 @@
 //! and no name and no pads (stored as a row with empty `pads`: every row of a part has at least
 //! one pad, so the two cannot be mistaken), or an empty table `pins { }`, which says "a part,
 //! whose pins are its own" and asks for no pin (`Connector`); narrowings, relations (`==`, `>=`, `<=`), defaults
-//! (`?=`), `bridge` and `.designator &= "J"`; and no `.mpn` or `.lcsc` declaration (every part has both, ADR 0122, and a
+//! (`?=`), `bridge` and `.designator &= "J"`; and no `.mpn`, `.manufacturer` or `.lcsc` declaration (every part has them, ADR 0122, ADR 0143, and a
 //! provider's catalog lists them as columns; a generic of modules has neither). A relation
 //! or narrowing in a generic is a check that every provider meets and every user may rely on; the
 //! solver evaluates it on whichever provider is tried. All providers of one generic are parts or
@@ -63,7 +63,7 @@
 //! `.name: Generic { ... }` takes the same statements as any member's block, over the generic's
 //! members only. A path through a use to a member the generic does not declare is an error (the
 //! module rule of ADR 0004), which is what makes the board independent of the pick; the
-//! built-in members (`assembly`, `designator`, `lcsc`, `mpn`, `height`, `height_growth`, `routing_margin`, `standoff`, `pin_protrusion`, `model`, `place`) are exempt.
+//! built-in members (`assembly`, `designator`, `lcsc`, `mpn`, `manufacturer`, `height`, `height_growth`, `routing_margin`, `standoff`, `pin_protrusion`, `model`, `place`) are exempt.
 //! A module's user chooses a provider of a use inside it by narrowing the use from outside
 //! (`.jack.receptacle.mpn &= "ACME-USBC-16"`, ADR 0116).
 //!
@@ -116,11 +116,12 @@ pub(crate) struct ProviderRef {
 
 /// The members every part has whatever its definition says, which a use of a generic may
 /// name too.
-const BUILT_IN: [&str; 16] = [
+const BUILT_IN: [&str; 17] = [
     "assembly",
     "designator",
     "lcsc",
     "mpn",
+    "manufacturer",
     "height",
     "height_growth",
     "routing_margin",
@@ -393,7 +394,7 @@ impl Checker<'_> {
             && self.model.instance(owner).kind == InstKind::Part
         {
             return format!(
-                "`{name}` is a member every part has, as text: the number of the catalog row it is (ADR 0122); do not declare it, and narrow it with `.{name} &= \"...\"`"
+                "`{name}` is a member every part has, as text: the catalog row it is (ADR 0122, ADR 0143); do not declare it, and narrow it with `.{name} &= \"...\"`"
             );
         }
         let how = match self.model.member(owner, name) {

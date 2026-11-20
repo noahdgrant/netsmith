@@ -61,7 +61,7 @@ const CONSIGNED: &str = "        .assembly_mode &= AssemblyMode::Consigned";
 
 fn catalogs(rows: &str) -> Catalogs {
     let mut c = Catalogs::jlcpcb();
-    c.add_file("resistor", "catalogs/resistor.csv", rows)
+    netsmith_solve::migrate::add_to(&mut c, "resistor", "catalogs/resistor.csv", rows)
         .unwrap();
     c
 }

@@ -49,15 +49,14 @@ impl Solver<'_> {
             return true;
         };
         let file = self.lock_file();
+        // A part is its manufacturer and its number (ADR 0143): the skus the lock records are a
+        // record of what the part was bought by, and a changed offer is a line of the lock's
+        // diff, not another part.
         let same_number = |c: &Candidate| {
             locked
-                .lcsc
+                .mpn
                 .as_ref()
-                .is_none_or(|l| c.lcsc.as_ref() == Some(l))
-                && locked
-                    .mpn
-                    .as_ref()
-                    .is_none_or(|m| c.mpn.as_ref() == Some(m))
+                .is_none_or(|m| c.mpn.as_ref() == Some(m))
                 && locked
                     .manufacturer
                     .as_ref()
@@ -78,13 +77,13 @@ impl Solver<'_> {
             // A row of the part's number under another name: a release added the part to the
             // built-in catalog, and the project's row was removed for it (issue #1119).
             let renamed = locked
-                .lcsc
+                .mpn
                 .as_ref()
-                .and_then(|l| cat.candidates.iter().find(|c| c.lcsc.as_ref() == Some(l)))
+                .and_then(|_| cat.candidates.iter().find(|c| same_number(c)))
                 .map(|c| {
                     format!(
-                        "; the row with the LCSC number {} is `{}` now, and `netsmith project lock --update` sets the lock to it",
-                        c.lcsc.as_deref().unwrap_or_default(),
+                        "; the row with the manufacturer part number {} is `{}` now, and `netsmith project lock --update` sets the lock to it",
+                        c.mpn.as_deref().unwrap_or_default(),
                         c.name
                     )
                 })
@@ -108,12 +107,10 @@ impl Solver<'_> {
             };
             Some(
                 format!(
-                    "the row `{}` of the `{}` catalog now has the LCSC number {} and the manufacturer part number {}, and the lock has {} and {}",
+                    "the row `{}` of the `{}` catalog now has the manufacturer part number {}, and the lock has {}",
                     locked.row,
                     cat.name,
-                    changed.lcsc.as_deref().unwrap_or("none"),
                     changed.mpn.as_deref().unwrap_or("none"),
-                    locked.lcsc.as_deref().unwrap_or("none"),
                     locked.mpn.as_deref().unwrap_or("none"),
                 ) + &makers,
             )
@@ -147,44 +144,91 @@ impl Solver<'_> {
         }
     }
 
-    /// A `.lcsc` narrowed on a part that picks from no catalog names a row of nothing (ADR
-    /// 0121): an error at the narrowing, as a member that does not exist would be.
+    /// The narrowings of a part's catalog row that hold it to nothing, each an error at the
+    /// narrowing, as a member that does not exist would be: a `.manufacturer` on a part that
+    /// picks from no catalog, or with no `.mpn` beside it (it says which of two parts of one
+    /// number the hand pick is, ADR 0143), and any `.lcsc`, the supplier's number a hand pick
+    /// was once written with, whose message gives the `.mpn` to write, read from the offers.
     pub(super) fn refuse_stray_hand_picks(&mut self) {
-        let stray: Vec<(InstId, FieldId)> = self
+        let text = |s: &Self, id: InstId, name: &str| match s.model.member(id, name) {
+            Some(Member::Field(f)) => match s.domain(f) {
+                Domain::Text(t) => Some((f, t.clone())),
+                _ => None,
+            },
+            _ => None,
+        };
+        let parts: Vec<InstId> = self
             .model
             .instances()
-            .filter(|(_, i)| i.kind == InstKind::Part && i.catalog.is_none())
-            .filter_map(|(id, _)| match self.model.member(id, "lcsc") {
-                Some(Member::Field(f)) => Some((id, f)),
-                _ => None,
-            })
-            .filter(|(_, f)| matches!(self.domain(*f), Domain::Text(_)))
+            .filter(|(_, i)| i.kind == InstKind::Part)
+            .map(|(id, _)| id)
             .collect();
-        for (id, f) in stray {
+        for id in parts {
             let path = self.model.path_of(id);
             let inst = self.model.instance(id);
-            let ty = inst.type_name.clone();
-            let (source, span) = self
-                .model
-                .field(f)
-                .narrowed_at
-                .last()
-                .copied()
-                .unwrap_or_else(|| inst.at());
-            self.report(
-                source,
-                span,
-                format!(
-                    "`{path}.lcsc` holds the part to a catalog row, but `{path}` (`{ty}`) picks from no catalog: remove the narrowing"
-                ),
-            );
+            let (ty, no_catalog, at) = (inst.type_name.clone(), inst.catalog.is_none(), inst.at());
+            let place =
+                |s: &Self, f: FieldId| s.model.field(f).narrowed_at.last().copied().unwrap_or(at);
+            if let Some((f, sku)) = text(self, id, "lcsc") {
+                let (source, span) = place(self, f);
+                let message = self.lcsc_refusal(&path, &sku);
+                self.report(source, span, message);
+            }
+            if let Some((f, maker)) = text(self, id, "manufacturer") {
+                let (source, span) = place(self, f);
+                if no_catalog {
+                    self.report(
+                        source,
+                        span,
+                        format!(
+                            "`{path}.manufacturer` holds the part to a catalog row, but `{path}` (`{ty}`) picks from no catalog: remove the narrowing"
+                        ),
+                    );
+                } else if text(self, id, "mpn").is_none() {
+                    self.report(
+                        source,
+                        span,
+                        format!(
+                            "`{path}.manufacturer &= \"{maker}\"` says which of two parts of one number a hand pick is, and `{path}` has no `.mpn` narrowed: a hand pick is by `.mpn` (ADR 0143); narrow `.mpn` too, or remove the narrowing"
+                        ),
+                    );
+                }
+            }
         }
     }
 
-    /// A part that the design holds to one row by its `.lcsc` or `.mpn` (a hand pick, ADR 0122)
-    /// is offered only that row, which every statement of the design and every relation then
-    /// judge, as for a locked row. Returns `false` when the catalog has no such row, which it has
-    /// reported at the narrowing.
+    /// The error for `.lcsc &= "<sku>"` on the part at `path`: netsmith holds a part to a row by
+    /// its manufacturer's number (ADR 0143), and the offer of that sku says which number it is.
+    fn lcsc_refusal(&self, path: &str, sku: &str) -> String {
+        let head = format!(
+            "`.lcsc &= \"{sku}\"` on `{path}`: a hand pick is by the manufacturer's part number now, and a supplier's number is an offer (ADR 0143)"
+        );
+        let offers = self.catalogs.offers();
+        let Some(offer) = offers.by_sku(sku) else {
+            return format!(
+                "{head}; no offer has the sku {sku}, so write `.mpn &= \"...\"` with the part number of the row it named (its `source` has it); `netsmith project migrate-offers` moves a project's catalog columns into its offers files and rewrites these narrowings"
+            );
+        };
+        // The manufacturer is written only when the number alone is two parts.
+        let shared = offers.of(&offer.supplier, None, &offer.mpn).is_err();
+        let narrowing = match (&offer.manufacturer, shared) {
+            (Some(m), true) => {
+                format!("`.mpn &= \"{}\"` and `.manufacturer &= \"{m}\"`", offer.mpn)
+            }
+            _ => format!("`.mpn &= \"{}\"`", offer.mpn),
+        };
+        format!(
+            "{head}: write {narrowing} in its place, the part the {} offer {sku} is of ({}); `netsmith project migrate-offers` rewrites these narrowings in a project's sources",
+            offer.supplier, offer.at
+        )
+    }
+
+    /// A part that the design holds to one row by its `.mpn`, and its `.manufacturer` when two
+    /// parts share the number (a hand pick, ADR 0122, ADR 0143), is offered only that row, which
+    /// every statement of the design and every relation then judge, as for a locked row. Two rows
+    /// of one number from two manufacturers are both offered when the pick names no
+    /// manufacturer, and the first that fits is taken, as for any rows. Returns `false` when the
+    /// catalog has no such row, which it has reported at the narrowing.
     fn hold_to_choice(
         &mut self,
         part: InstId,
@@ -192,11 +236,11 @@ impl Solver<'_> {
         chosen: &HandPick,
         cat: &mut Catalog,
     ) -> bool {
+        let (source, span) = chosen.at.unwrap_or_else(|| self.model.instance(part).at());
         if cat.candidates.iter().any(|c| chosen.is(c)) {
             cat.candidates.retain(|c| chosen.is(c));
             return true;
         }
-        let (source, span) = chosen.at.unwrap_or_else(|| self.model.instance(part).at());
         self.report(
             source,
             span,

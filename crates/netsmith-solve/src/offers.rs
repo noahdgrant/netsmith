@@ -33,11 +33,11 @@
 //! `build.rs`; a project's own are in the folders of its manifest's `offer_dirs` (default
 //! `["offers"]`) and add their offers after the standard ones.
 //!
-//! **What reads them.** Until stage 3 (issue #1458) the catalog rows keep their `lcsc` and
-//! `library` columns, and [`bought_by`] is the one place a row's supplier number and class are
-//! read for the solver and for resolving a generic part: the `jlcpcb` offer, then the `lcsc`
-//! offer, and the row's own column where there is no offer. A test holds every standard row's
-//! columns equal to its offers (`tests/offers.rs`), so the two cannot drift before the columns go.
+//! **What reads them.** A catalog row has no supplier's number and no supplier's class (ADR 0143,
+//! stage 3): [`bought_by`] is the one place a row's number and class are read, for the solver,
+//! for resolving a generic part and for the pick lock, from the part's offers: the `jlcpcb` offer,
+//! then the `lcsc` offer. A row with no offer is a part that cannot be bought from either, and a
+//! bill of materials says so.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -374,35 +374,55 @@ fn class(supplier: &str, cell: Option<&str>) -> Result<Option<Library>, String> 
     }
 }
 
-/// What a catalog row is bought by: its supplier number and JLCPCB's library of it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// What a catalog row is bought by: its supplier number and JLCPCB's library of it, and the sku
+/// of each supplier that offers it, in the order of [`SUPPLIERS`].
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct Bought {
     pub lcsc: Option<String>,
     pub library: Option<Library>,
+    pub skus: Vec<(String, String)>,
 }
 
-/// The supplier number and the class of the part `manufacturer` and `mpn`, whose catalog row
-/// still has the columns `lcsc` and `library` (ADR 0143, stage 2): the one function the solver's
-/// and a generic's resolution's reading of them goes through ([`crate::table`]). The number is
-/// the `sku` of the part's `jlcpcb` offer, else of its `lcsc` offer, else the row's `lcsc`; the
-/// class is the `class` of its `jlcpcb` offer, else the row's `library`. A row with no `mpn` has
-/// no offer and is its columns. Stage 3 (issue #1458) removes the columns, and the offers alone
-/// remain.
+/// The supplier number and the class of the part `manufacturer` and `mpn`, read from its offers
+/// (ADR 0143): the one function the solver's, a generic's resolution's and the pick lock's
+/// reading of them goes through ([`crate::table`]). The number is the `sku` of the part's
+/// `jlcpcb` offer, else of its `lcsc` offer; the class is the `class` of its `jlcpcb` offer. A
+/// part with no offer, or a row with no `mpn` (a made-up part), is bought by nothing.
 pub(crate) fn bought_by(
     offers: &Offers,
     manufacturer: Option<&str>,
     mpn: &str,
-    columns: Bought,
 ) -> Result<Bought, String> {
     if mpn.is_empty() {
-        return Ok(columns);
+        return Ok(Bought::default());
     }
-    let jlcpcb = offers.of("jlcpcb", manufacturer, mpn)?;
-    let lcsc = offers.of("lcsc", manufacturer, mpn)?;
+    let mut skus = Vec::new();
+    let mut found = Vec::new();
+    for supplier in SUPPLIERS {
+        let offer = offers.of(supplier, manufacturer, mpn)?;
+        if let Some(o) = offer {
+            skus.push((supplier.to_string(), o.sku.clone()));
+        }
+        found.push(offer);
+    }
+    let (jlcpcb, lcsc) = (found[0], found[1]);
     Ok(Bought {
-        lcsc: jlcpcb.or(lcsc).map(|o| o.sku.clone()).or(columns.lcsc),
-        library: jlcpcb.and_then(|o| o.class).or(columns.library),
+        lcsc: jlcpcb.or(lcsc).map(|o| o.sku.clone()),
+        library: jlcpcb.and_then(|o| o.class),
+        skus,
     })
+}
+
+impl Offers {
+    /// The first offer of any supplier, in the order of [`SUPPLIERS`], whose `sku` is `sku`: what
+    /// a supplier's number that a source or a file still names is the part of (ADR 0143).
+    pub fn by_sku(&self, sku: &str) -> Option<&Offer> {
+        SUPPLIERS.iter().find_map(|supplier| {
+            self.by_sku
+                .get(&(supplier.to_string(), sku.to_string()))
+                .map(|&i| &self.offers[i])
+        })
+    }
 }
 
 #[cfg(test)]
@@ -508,34 +528,39 @@ mod tests {
     }
 
     #[test]
-    fn bought_by_reads_the_offers_and_falls_back_to_the_columns() {
+    fn bought_by_reads_the_offers_only() {
         let mut offers = load("jlcpcb", ",ZZ1,C1,Extended,x,,\n").unwrap();
         offers
-            .add_file("lcsc", "offers/lcsc.csv", &format!("{HEAD},ZZ2,C2,,x,,\n"))
+            .add_file(
+                "lcsc",
+                "offers/lcsc.csv",
+                &format!("{HEAD},ZZ1,C1,,x,,\n,ZZ2,C2,,x,,\n"),
+            )
             .unwrap();
-        let columns = || Bought {
-            lcsc: Some("C9".into()),
-            library: Some(Library::Basic),
-        };
         assert_eq!(
-            bought_by(&offers, None, "ZZ1", columns()).unwrap(),
+            bought_by(&offers, None, "ZZ1").unwrap(),
             Bought {
                 lcsc: Some("C1".into()),
-                library: Some(Library::Extended)
+                library: Some(Library::Extended),
+                skus: vec![("jlcpcb".into(), "C1".into()), ("lcsc".into(), "C1".into())],
             }
         );
-        // The LCSC offer gives the number, and the row's column the class.
+        // The LCSC offer gives the number, and no JLCPCB offer no class.
         assert_eq!(
-            bought_by(&offers, None, "ZZ2", columns()).unwrap(),
+            bought_by(&offers, None, "ZZ2").unwrap(),
             Bought {
                 lcsc: Some("C2".into()),
-                library: Some(Library::Basic)
+                library: None,
+                skus: vec![("lcsc".into(), "C2".into())],
             }
         );
+        assert_eq!(bought_by(&offers, None, "ZZ3").unwrap(), Bought::default());
+        assert_eq!(bought_by(&offers, None, "").unwrap(), Bought::default());
+        assert_eq!(offers.by_sku("C2").map(|o| o.mpn.as_str()), Some("ZZ2"));
         assert_eq!(
-            bought_by(&offers, None, "ZZ3", columns()).unwrap(),
-            columns()
+            offers.by_sku("C1").map(|o| o.supplier.as_str()),
+            Some("jlcpcb")
         );
-        assert_eq!(bought_by(&offers, None, "", columns()).unwrap(), columns());
+        assert!(offers.by_sku("C3").is_none());
     }
 }

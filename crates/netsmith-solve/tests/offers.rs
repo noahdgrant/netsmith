@@ -1,6 +1,6 @@
-//! Offers files (ADR 0143, stage 2): the standard ones hold the numbers of the standard rows,
-//! and a project's give its rows their supplier number and class through the one function the
-//! solver reads them by. Every project part here is invented; `example.invalid` is not a real
+//! Offers files (ADR 0143): the standard ones are the numbers of the standard rows, and a
+//! project's give its rows their supplier number and class through the one function the solver
+//! reads them by; a row holds no supplier's number. Every project part here is invented; `example.invalid` is not a real
 //! address.
 
 use std::collections::BTreeMap;
@@ -8,7 +8,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use netsmith_check::{FieldKind, Loader, check};
-use netsmith_solve::offers::Offers;
 use netsmith_solve::{Catalogs, Library, Solution, parse_csv, solve};
 
 fn data(path: &str) -> PathBuf {
@@ -34,54 +33,6 @@ fn rows(file: &str, text: &str) -> Vec<(usize, BTreeMap<String, String>)> {
         .collect()
 }
 
-/// What differs between the `lcsc` and `library` columns of the rows of the catalog file `file`
-/// and the offers of their parts, one line each: a row with an `lcsc` must have a `jlcpcb` offer
-/// of that `sku` and its `library` as the `class`, and an `lcsc` offer of that `sku`.
-fn disagreements(file: &str, text: &str, offers: &Offers) -> Vec<String> {
-    let mut out = Vec::new();
-    for (line, row) in rows(file, text) {
-        let cell = |name: &str| row.get(name).map(String::as_str).unwrap_or_default();
-        let (lcsc, mpn) = (cell("lcsc"), cell("mpn"));
-        let manufacturer = Some(cell("manufacturer")).filter(|m| !m.is_empty());
-        if lcsc.is_empty() {
-            continue;
-        }
-        let at = format!("{file}:{line}");
-        for supplier in ["jlcpcb", "lcsc"] {
-            let offer = match offers.of(supplier, manufacturer, mpn) {
-                Ok(Some(offer)) => offer,
-                Ok(None) => {
-                    out.push(format!("{at}: `{mpn}` has no {supplier} offer"));
-                    continue;
-                }
-                Err(e) => {
-                    out.push(format!("{at}: {e}"));
-                    continue;
-                }
-            };
-            if offer.sku != lcsc {
-                out.push(format!(
-                    "{at}: lcsc `{lcsc}`, and the {supplier} offer at {} has the sku `{}`",
-                    offer.at, offer.sku
-                ));
-            }
-            let class = offer.class.map(|c| c.to_string()).unwrap_or_default();
-            let library = if supplier == "jlcpcb" {
-                cell("library")
-            } else {
-                ""
-            };
-            if class != library {
-                out.push(format!(
-                    "{at}: library `{library}`, and the {supplier} offer at {} has the class `{class}`",
-                    offer.at
-                ));
-            }
-        }
-    }
-    out
-}
-
 /// The standard catalog files, as (shown name, text).
 fn standard_files() -> Vec<(String, String)> {
     let dir = data("jlcpcb/catalog");
@@ -103,68 +54,80 @@ fn standard_files() -> Vec<(String, String)> {
         .collect()
 }
 
-const REGENERATE: &str = "until stage 3 of ADR 0143 the rows hold the numbers: run `cargo run -p netsmith-solve --example offers_from_catalogs` after changing a row's lcsc, library or checked, and commit data/offers/";
-
+/// The standard offers and the standard rows are one set of parts (ADR 0143): every offer is of
+/// a row, and every row is offered by both suppliers by one number, which is what the rows held
+/// in their `lcsc` column before it went. The catalogs say of that number what its row says.
 #[test]
-fn the_standard_offers_are_the_standard_rows_columns() {
+fn the_standard_offers_and_the_standard_rows_are_the_same_parts() {
     let catalogs = Catalogs::jlcpcb();
     let offers = catalogs.offers();
     let mut found = Vec::new();
-    let mut numbered = 0;
+    let mut parts = 0;
     for (file, text) in standard_files() {
-        found.extend(disagreements(&file, &text, offers));
-        for (_, row) in rows(&file, &text) {
-            let lcsc = &row["lcsc"];
-            if lcsc.is_empty() {
-                continue;
-            }
-            numbered += 1;
-            // And the one function reads them: what the catalogs say of the number is the row's.
-            let supplier = catalogs.supplier(lcsc).expect("a standard row");
-            assert_eq!(supplier.mpn, row["mpn"], "{file}: {lcsc}");
-            assert_eq!(
-                supplier.library.map(|l| l.to_string()).unwrap_or_default(),
-                row["library"],
-                "{file}: {lcsc}"
+        for (line, row) in rows(&file, &text) {
+            let at = format!("{file}:{line}");
+            assert!(
+                !row.contains_key("lcsc") && !row.contains_key("library"),
+                "{at}: a standard catalog has no lcsc or library column (ADR 0143)"
             );
+            let mpn = &row["mpn"];
+            let manufacturer = row.get("manufacturer").filter(|m| !m.is_empty());
+            parts += 1;
+            let skus: Vec<String> = ["jlcpcb", "lcsc"]
+                .into_iter()
+                .filter_map(|supplier| match offers.of(supplier, manufacturer.map(String::as_str), mpn) {
+                    Ok(Some(offer)) => Some(offer.sku.clone()),
+                    Ok(None) => {
+                        found.push(format!("{at}: `{mpn}` has no {supplier} offer"));
+                        None
+                    }
+                    Err(e) => {
+                        found.push(format!("{at}: {e}"));
+                        None
+                    }
+                })
+                .collect();
+            if let [jlcpcb, lcsc] = skus.as_slice() {
+                if jlcpcb != lcsc {
+                    found.push(format!(
+                        "{at}: `{mpn}` is {jlcpcb} at jlcpcb and {lcsc} at lcsc; JLCPCB assembles by the LCSC number"
+                    ));
+                }
+                let supplier = catalogs.supplier(jlcpcb).expect("a standard row");
+                assert_eq!(&supplier.mpn, mpn, "{at}");
+            }
         }
     }
-    assert!(found.is_empty(), "{}\n{REGENERATE}", found.join("\n"));
+    assert!(found.is_empty(), "{}", found.join("\n"));
     // No standard offer is of a part that no standard row has.
     for supplier in ["jlcpcb", "lcsc"] {
         let count = offers.iter().filter(|o| o.supplier == supplier).count();
-        assert_eq!(count, numbered, "{supplier}: {REGENERATE}");
+        assert_eq!(count, parts, "{supplier}");
     }
     assert!(offers.iter().all(|o| o.built_in));
     assert!(catalogs.offer_notes().is_empty());
 }
 
 #[test]
-fn the_consistency_check_names_a_row_that_disagrees_with_its_offer() {
-    let offers = Catalogs::jlcpcb().offers().clone();
-    let file = "data/jlcpcb/catalog/resistor.csv";
-    let text = fs::read_to_string(data("jlcpcb/catalog/resistor.csv")).unwrap();
-    assert!(disagreements(file, &text, &offers).is_empty());
-    // The 330 ohm row is Basic at C25104: say Extended, then another number.
-    let line = text
-        .lines()
-        .position(|l| l.starts_with("C25104,"))
-        .expect("the 330 ohm row")
-        + 1;
-    let changed = text.replacen(",Basic,", ",Extended,", 1);
-    assert!(changed.lines().nth(line - 1).unwrap().contains(",Extended,"));
+fn a_catalog_with_an_lcsc_or_a_library_column_is_refused_with_how_to_move_them() {
+    let e = Catalogs::jlcpcb()
+        .add_file(
+            "zz9",
+            "catalogs/zz9.csv",
+            "lcsc,mpn,package,library,source\nC1,ZZ9-33,SOT-23-3,Basic,x\n",
+        )
+        .unwrap_err();
     assert_eq!(
-        disagreements(file, &changed, &offers),
-        [format!(
-            "{file}:{line}: library `Extended`, and the jlcpcb offer at data/offers/jlcpcb.csv:{} has the class `Basic`",
-            offers.of("jlcpcb", None, "0402WGF3300TCE").unwrap().unwrap().at.rsplit(':').next().unwrap()
-        )]
+        e,
+        "catalogs/zz9.csv:1: the columns `lcsc` and `library` have gone from catalog files (ADR 0143): a catalog row is the part, its `manufacturer` and `mpn`, and what a supplier calls it is an offer, a row of `offers/jlcpcb.csv` and `offers/lcsc.csv` (the `lcsc` number is the offer's `sku`, and the `library` the `class` of the jlcpcb offer); `netsmith project migrate-offers` moves them into the project's offers files and removes them here (docs/MIGRATING.md)"
     );
-    let renumbered = text.replacen("C25104,", "C99999,", 1);
-    let found = disagreements(file, &renumbered, &offers);
-    assert_eq!(found.len(), 2, "{found:#?}");
-    assert!(found[0].contains("lcsc `C99999`, and the jlcpcb offer"), "{}", found[0]);
-    assert!(found[1].contains("lcsc `C99999`, and the lcsc offer"), "{}", found[1]);
+    let e = Catalogs::jlcpcb()
+        .add_file("zz9", "catalogs/zz9.csv", "mpn,package,library,source\n")
+        .unwrap_err();
+    assert!(
+        e.starts_with("catalogs/zz9.csv:1: the column `library` has gone from catalog files"),
+        "{e}"
+    );
 }
 
 /// A regulator of a project's catalog, keyed by its part number.
@@ -204,9 +167,9 @@ board B {
 "#;
 
 const ROWS: &str = "\
-lcsc,mpn,package,library,source
-,ZZ9-33,SOT-23-3,,https://example.invalid/zz9.pdf
-,ZZ9-50,SOT-23-3,Extended,https://example.invalid/zz9.pdf
+mpn,package,source
+ZZ9-33,SOT-23-3,https://example.invalid/zz9.pdf
+ZZ9-50,SOT-23-3,https://example.invalid/zz9.pdf
 ";
 
 const HEAD: &str = "manufacturer,mpn,sku,class,source,checked,notes\n";
@@ -252,7 +215,7 @@ fn a_project_offer_gives_its_row_the_number_and_the_class() {
 }
 
 #[test]
-fn an_lcsc_offer_gives_the_number_and_the_row_keeps_its_class() {
+fn an_lcsc_offer_gives_the_number_and_no_class() {
     let c = project(&[("lcsc", ",ZZ9-50,C900002,,https://example.invalid/lcsc,,\n")]).unwrap();
     let columns = [
         ("mpn".to_string(), FieldKind::Text),
@@ -265,7 +228,7 @@ fn an_lcsc_offer_gives_the_number_and_the_row_keeps_its_class() {
         .find(|r| r.mpn.as_deref() == Some("ZZ9-50"))
         .unwrap();
     assert_eq!(row.lcsc.as_deref(), Some("C900002"));
-    assert_eq!(row.library, Some(Library::Extended));
+    assert_eq!(row.library, None);
 }
 
 #[test]

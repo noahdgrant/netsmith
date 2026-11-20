@@ -743,8 +743,7 @@ fn sourced(s: &Solution) -> Vec<(String, String, Library)> {
 /// to check: the standard rows fail the LED's own check, and this one is offered.
 fn with_unrated_led() -> Catalogs {
     let mut catalogs = Catalogs::jlcpcb();
-    catalogs
-        .add_file(
+    crate::offered::add(&mut catalogs, 
             "led",
             "catalogs/led.csv",
             "lcsc,mpn,name,label,color,forward_voltage,package,library,source\n\
@@ -1757,8 +1756,7 @@ fn branches_that_overload_the_regulator_only_with_some_leds_are_searched() {
     // cores is within the limit too and nothing is refused before it is tried: the search finds
     // the choice. The audit searches each choice the look-ahead refuses again without it.
     let mut catalogs = with_unrated_led();
-    catalogs
-        .add_file(
+    crate::offered::add(&mut catalogs, 
             "led",
             "catalogs/led_high.csv",
             "lcsc,mpn,name,label,color,forward_voltage,package,library,source\n\
@@ -1783,8 +1781,7 @@ C900402,ZZ-HIGH,High LED 0603,ZZ-HIGH,Red,2.2V..2.4V,0603,Extended,https://examp
 /// each share one (`ahead.rs`, issue #1017).
 fn with_high_led() -> Catalogs {
     let mut catalogs = with_unrated_led();
-    catalogs
-        .add_file(
+    crate::offered::add(&mut catalogs, 
             "led",
             "catalogs/led_high.csv",
             "lcsc,mpn,name,label,color,forward_voltage,package,library,source\n\
@@ -2068,7 +2065,7 @@ fn a_resistor_whose_current_nothing_states_has_no_power_to_check() {
 #[test]
 fn a_row_with_no_rating_is_never_offered_and_the_message_counts_them() {
     let mut c = Catalogs::empty();
-    c.add_file(
+    crate::offered::add(&mut c, 
         "resistor",
         "catalogs/resistor.csv",
         "mpn,resistance,max_power,package,source\n\

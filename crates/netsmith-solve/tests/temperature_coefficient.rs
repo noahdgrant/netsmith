@@ -25,7 +25,7 @@ board B {{
 
 fn with_rows(rows: &str) -> Catalogs {
     let mut c = Catalogs::jlcpcb();
-    c.add_file("resistor", "catalogs/resistor.csv", rows)
+    crate::offered::add(&mut c, "resistor", "catalogs/resistor.csv", rows)
         .unwrap();
     c
 }
@@ -41,9 +41,9 @@ fn messages(s: &Solution) -> Vec<String> {
 }
 
 /// Two invented 100 ohm rows: one states 50 ppm/K, one states nothing.
-const ROWS: &str = "mpn,resistance,max_power,package,temperature_coefficient,library,source
-ZZR-STATED,100ohm +/- 1%,62.5mW,0402,0.00005,Extended,https://example.invalid/a
-ZZR-BLANK,100ohm +/- 1%,62.5mW,0402,,Extended,https://example.invalid/b
+const ROWS: &str = "mpn,resistance,max_power,package,temperature_coefficient,source
+ZZR-STATED,100ohm +/- 1%,62.5mW,0402,0.00005,https://example.invalid/a
+ZZR-BLANK,100ohm +/- 1%,62.5mW,0402,,https://example.invalid/b
 ";
 
 #[test]
@@ -133,16 +133,16 @@ fn a_message_about_something_else_does_not_blame_the_empty_column() {
 #[test]
 fn a_file_may_leave_the_column_out_and_only_that_column() {
     // A project file written before the column existed is read as empty there.
-    let old = "mpn,resistance,max_power,package,library,source
-ZZR-OLD,7.77ohm +/- 1%,62.5mW,0402,Extended,https://example.invalid/c
+    let old = "mpn,resistance,max_power,package,source
+ZZR-OLD,7.77ohm +/- 1%,62.5mW,0402,https://example.invalid/c
 ";
     let c = with_rows(old);
     let s = solved(&board(".resistance &= 7.77ohm +/- 1%"), &c);
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     assert_eq!(s.picks[0].candidate, "ZZR-OLD");
     // Any other column the part lists stays required.
-    let no_power = "mpn,resistance,package,library,source
-ZZR-NO,8.88ohm +/- 1%,0402,Extended,https://example.invalid/d
+    let no_power = "mpn,resistance,package,source
+ZZR-NO,8.88ohm +/- 1%,0402,https://example.invalid/d
 ";
     let c = with_rows(no_power);
     let s = solved(&board(".resistance &= 8.88ohm +/- 1%"), &c);

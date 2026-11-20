@@ -1,10 +1,13 @@
 //! `netsmith catalog refresh` and `netsmith catalog age` (ADR 0039).
 //!
-//! A refresh is a check, not a data update. It looks each row's `lcsc` number up at LCSC
-//! (ADR 0039 says how) and compares the manufacturer's number and the package
-//! with the row's. A row that agrees is VERIFIED, and if the file has a `checked` column the
-//! day is written there: the one cell a refresh ever writes. A row whose record disagrees is a
-//! CONFLICT and a row LCSC no longer lists is MISSING; neither is changed and none is deleted.
+//! A refresh is a check, not a data update. It checks the offers of a supplier that has a record
+//! to read, which is LCSC's alone (ADR 0143): it looks each offer of `offers/lcsc.csv` up at LCSC
+//! by its `sku` (ADR 0039 says how) and compares the manufacturer's number with the offer's `mpn`
+//! and the package with the `package` of the catalog row of the part. An offer that agrees is
+//! VERIFIED, and the day is written in its `checked` cell: the one cell a refresh ever writes. An
+//! offer whose record disagrees is a CONFLICT and one LCSC no longer lists is MISSING; neither is
+//! changed and none is deleted. JLCPCB's offers are never checked: JLCPCB is not asked. A catalog
+//! row holds no supplier's number (ADR 0143), so the catalog files are read and never written.
 //!
 //! The board is assembled from JLCPCB's parts library, and LCSC's price and stock are not
 //! JLCPCB's, so a refresh never writes `price`, `stock`, `price_breaks`, `library` or `date`.
@@ -21,10 +24,10 @@
 //! (`POST /api/catalog/refresh`, which needs the `X-Netsmith` header, reports each looked-up part
 //! over the WebSocket as `progress` of task `catalog`, and answers with a `CatalogRefresh`).
 //!
-//! For each row with an `lcsc` number it asks LCSC's product record
+//! For each offer of LCSC it asks LCSC's product record of its `sku`
 //! (`GET .../ftps/wm/product/detail?productCode=C25104`) and compares the manufacturer's number
-//! (`productModel`) with the row's `mpn`, and the package (`encapStandard`) with the row's
-//! `package`. The suppliers spell packages their own way (`SOT-23-3L` for `SOT-23`), so the row's
+//! (`productModel`) with the offer's `mpn`, and the package (`encapStandard`) with the `package`
+//! of the part's catalog row, when one of the catalogs read has the part. The suppliers spell packages their own way (`SOT-23-3L` for `SOT-23`), so the row's
 //! package may be the supplier's or one of its words, with a trailing `-<digit>L` removed. The
 //! manufacturer's number is the real check; the package only catches a number reissued for another
 //! package.
@@ -32,10 +35,9 @@
 //! - **VERIFIED** when both agree, **CONFLICT** when either differs (with both values), **MISSING**
 //!   when LCSC no longer lists the part, **SKIPPED** with `--offline` when no answer was kept. The
 //!   exit code is 1 for a CONFLICT or MISSING and 2 when the run had to stop.
-//! - **It writes one cell, `checked`**: the day (UTC) the row last verified, or with `--offline`
-//!   the day the kept answer was got, only if the file has the column (the standard files
-//!   do, empty). Nothing reads it; it exists so a diff and `git log` show which rows were last
-//!   verified. It never writes `price`, `stock`, `price_breaks`, `library`, `date` or any other
+//! - **It writes one cell, `checked`** of the offer: the day (UTC) the offer last verified, or with
+//!   `--offline` the day the kept answer was got (every offers file has the column). Nothing reads
+//!   it; it exists so a diff and `git log` show which offers were last verified. It never writes `price`, `stock`, `price_breaks`, `library`, `date` or any other
 //!   cell. A test asserts that every cell but `checked` is byte-identical after a refresh of
 //!   every row of every standard file, against a fake LCSC that lists a different stock and price
 //!   for each. The file is edited in place, by byte span, the rows are never reordered (the order
@@ -50,8 +52,10 @@
 //!   has 0 and LCSC lists some, the report says to check JLCPCB's parts page by hand. The exit
 //!   code is unaffected. LCSC's prices are not read.
 //! - **Selection:** `--dry-run` prints the diff and writes nothing; `--only <catalog>` and
-//!   `--lcsc <C123>` choose catalogs and rows. With no path the files are the project's catalogs
-//!   and, in the netsmith repository, `data/jlcpcb/catalog/`. The standard catalogs are also
+//!   `--lcsc <C123>` choose the catalogs of the parts and the offers' skus. With no path the files
+//!   are the project's catalogs and offers and, in the netsmith repository, `data/jlcpcb/catalog/`
+//!   and `data/offers/`. A path is a catalog file, an offers file (`lcsc.csv`) or a folder of
+//!   either; with no offers file among them, the project's are read. The standard catalogs are also
 //!   inside the binary, which cannot be written, so they are checked in the repository and reach
 //!   users with a release.
 //! - **Polite, and honest when it cannot be.** One request at a time, 500 ms apart (`--delay`);
@@ -65,7 +69,8 @@
 //!   if it is `C` and digits. `NETSMITH_LCSC_URL` points the command at another address (a mirror,
 //!   a proxy of your own, the tests' fake server).
 //! - **`netsmith catalog age [--days N]`** (default 90, `STALE_DAYS`) lists the rows whose price
-//!   and stock (`date`) are older or missing. A refresh never changes `date`, so it never makes a
+//!   and stock (`date`) are older or missing, each by the sku of its offer (the `jlcpcb` offer,
+//!   else the `lcsc` one); a row with no offer has no price to age. A refresh never changes `date`, so it never makes a
 //!   row less stale. ADR 0047 ages a provider's quotes, and the standard catalogs ship none.
 //! - **The editor** shows the date of each bill line's price and stock under the price, with the
 //!   age in a tooltip, and marks a line older than 90 days in amber with a dot in front of its
@@ -143,7 +148,7 @@ mod targets;
 
 use std::{fs, path::Path};
 
-pub use add::{AddError, Added, add, json_added, render_added, source_of};
+pub use add::{AddError, Added, Files, add, json_added, render_added, source_of};
 pub use date::{age_days, date_of, days_of, now_secs};
 pub use http::{
     Endpoints, Fetcher, LCSC_URL_VAR, Network, USER_AGENT, cache_base, check_endpoint,
@@ -157,11 +162,27 @@ use http::Got;
 
 use crate::supply::{Lookup, PartKey, Supply};
 
+/// The catalog files and the offers files a catalog command acts on: which they are is
+/// `resolve_targets` in `netsmith-fabricate`, which reads the project's manifest.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Targets {
+    /// Catalog files (`catalogs/resistor.csv`): read for the package and stock of a part, and
+    /// never written.
+    pub catalogs: Vec<Target>,
+    /// Offers files, each named for its supplier (`offers/lcsc.csv`, ADR 0143): a refresh
+    /// checks and writes the ones of LCSC, and `catalog age` reads all of them for the sku of a
+    /// row.
+    pub offers: Vec<Target>,
+}
+
+/// The supplier whose offers a refresh checks: the one with a record netsmith reads (ADR 0039).
+pub const CHECKED_SUPPLIER: &str = "lcsc";
+
 /// What every refresh says about itself, first in its summary and in the editor: what it does,
 /// what it never writes and why, and what has not been checked (ADR 0039).
 pub const NOTICE: &str = "\
 JLCPCB data is not fetched: netsmith asks LCSC only.
-This is a check against LCSC's product record: each row's manufacturer's number and package (CONFLICT if they differ, MISSING if LCSC no longer lists the part). A row that agrees gets today's date in its `checked` column, if the file has one.
+This is a check of LCSC's offers (offers/lcsc.csv) against LCSC's product record: each offer's manufacturer's number, and the package of its part's catalog row (CONFLICT if they differ, MISSING if LCSC no longer lists the part). An offer that agrees gets today's date in its `checked` column.
 Never written: price, stock, price_breaks, library, date. They are JLCPCB's numbers, entered by hand, and LCSC's price and stock differ from them. Where LCSC's stock suggests a row needs a look (stock 0), the report says so; read JLCPCB's parts page by hand.
 The solver does not read stock (ADR 0047): price and stock come from a supply provider, and `netsmith catalog age` lists the rows whose price and stock are old or unknown.
 LCSC's terms of use have not been read: a person must read them before this command is advertised. Official APIs (JLCAPI, the LCSC API) need an account and are future work.
@@ -178,7 +199,7 @@ pub struct Options {
     pub dry_run: bool,
     /// Only the catalogs with these names (a file's name without `.csv`); empty is all.
     pub only: Vec<String>,
-    /// Only the rows with these LCSC numbers; empty is all.
+    /// Only the offers with these LCSC numbers (skus); empty is all.
     pub lcsc: Vec<String>,
     pub network: Network,
 }
@@ -224,10 +245,12 @@ impl Status {
     }
 }
 
+/// What became of one offer of an offers file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RowReport {
-    /// The 1-based line of the row.
+    /// The 1-based line of the offer.
     pub line: usize,
+    /// The offer's `sku`, LCSC's number.
     pub lcsc: String,
     pub status: Status,
     pub changes: Vec<Change>,
@@ -236,17 +259,20 @@ pub struct RowReport {
     pub notes: Vec<String>,
 }
 
+/// What a refresh found of one offers file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileReport {
-    /// The path as given, as a message names it.
+    /// The path of the offers file as given, as a message names it.
     pub file: String,
+    /// The supplier the file is named for (`lcsc`).
     pub catalog: String,
     pub rows: Vec<RowReport>,
-    /// Rows with no `lcsc` number, which a refresh has nothing to ask about.
+    /// The rows of the catalogs read that have a part number and no offer in this file, which a
+    /// refresh has nothing to ask about.
     pub without_lcsc: usize,
     /// Whether the file was written (never in a dry run, never if nothing changed).
     pub written: bool,
-    /// About the file as a whole: that it has no `checked` column to record the check in.
+    /// About the file as a whole.
     pub notes: Vec<String>,
 }
 
@@ -277,67 +303,92 @@ impl Report {
     }
 }
 
-/// The columns of a file that a refresh reads, and the one it writes (`checked`).
+/// The columns of a catalog file that a refresh and `catalog age` read; a catalog file is never
+/// written.
 struct Columns {
-    lcsc: usize,
     manufacturer: Option<usize>,
     mpn: Option<usize>,
     package: Option<usize>,
     stock: Option<usize>,
     date: Option<usize>,
-    checked: Option<usize>,
 }
 
 impl Columns {
-    fn of(file: &str, header: &[String]) -> Result<Columns, String> {
-        let find = |name: &str| header.iter().position(|h| h == name);
-        let lcsc = find("lcsc").ok_or_else(|| {
-            format!("{file}: there is no `lcsc` column, so there is nothing to look up")
-        })?;
-        Ok(Columns {
-            lcsc,
+    fn of(header: &[String]) -> Columns {
+        let find = |name: &str| header.iter().position(|h| h.trim() == name);
+        Columns {
             manufacturer: find("manufacturer"),
             mpn: find("mpn"),
             package: find("package"),
             stock: find("stock"),
             date: find("date"),
-            checked: find("checked"),
+        }
+    }
+}
+
+/// The columns of an offers file that a refresh reads, and the one it writes (`checked`).
+struct OfferColumns {
+    manufacturer: usize,
+    mpn: usize,
+    sku: usize,
+    checked: usize,
+}
+
+impl OfferColumns {
+    fn of(file: &str, header: &[String]) -> Result<OfferColumns, String> {
+        let find = |name: &str| {
+            header
+                .iter()
+                .position(|h| h.trim() == name)
+                .ok_or_else(|| {
+                    format!("{file}: there is no `{name}` column; an offers file has manufacturer, mpn, sku, class, source, checked and notes")
+                })
+        };
+        Ok(OfferColumns {
+            manufacturer: find("manufacturer")?,
+            mpn: find("mpn")?,
+            sku: find("sku")?,
+            checked: find("checked")?,
         })
     }
 }
 
-/// Refresh the catalogs in `targets`. `say` is told what is being looked up. An `Err` is a
-/// stop (the network refused, an endpoint changed shape, a file could not be read): then
-/// nothing has been written.
-pub fn refresh(
-    targets: &[Target],
-    options: &Options,
-    say: &dyn Fn(&str),
-) -> Result<Report, String> {
-    let mut fetcher = Fetcher::new(options.network.clone());
-    let mut report = Report {
-        dry_run: options.dry_run,
-        ..Report::default()
-    };
-    let mut writes: Vec<(&Path, String, usize)> = Vec::new();
-    let mut seen_lcsc: Vec<String> = Vec::new();
+/// One row of a catalog file, as a refresh and `catalog age` read it.
+struct CatalogRow {
+    /// The catalog's name (the file's name without `.csv`).
+    catalog: String,
+    file: String,
+    line: usize,
+    manufacturer: Option<String>,
+    mpn: Option<String>,
+    package: Option<String>,
+    stock: Option<String>,
+    date: Option<String>,
+}
+
+impl CatalogRow {
+    /// Whether this row is the part named by `manufacturer` and `mpn` (ADR 0143): the same
+    /// `mpn`, and the same manufacturer when both name one.
+    fn is(&self, manufacturer: Option<&str>, mpn: &str) -> bool {
+        self.mpn.as_deref() == Some(mpn)
+            && match (self.manufacturer.as_deref(), manufacturer) {
+                (Some(a), Some(b)) => a == b,
+                _ => true,
+            }
+    }
+}
+
+/// The rows of the catalog files of `targets`, in order.
+fn catalog_rows(targets: &[Target]) -> Result<Vec<CatalogRow>, String> {
+    let mut rows = Vec::new();
     for target in targets {
-        if !options.only.is_empty() && !options.only.contains(&target.catalog) {
-            continue;
-        }
         let text = fs::read_to_string(&target.path)
             .map_err(|e| format!("{}: {e}", target.path.display()))?;
-        let mut file = CsvFile::parse(&target.shown, text)?;
+        let file = CsvFile::parse(&target.shown, text)?;
         if file.is_empty() {
-            return Err(format!(
-                "{}: the file is empty; the first line names the columns",
-                target.shown
-            ));
+            continue;
         }
-        let cols = Columns::of(&target.shown, &file.header())?;
-        let mut rows = Vec::new();
-        let mut without_lcsc = 0;
-        let total = file.len() - 1;
+        let cols = Columns::of(&file.header());
         for record in 1..file.len() {
             if file.width(record) != file.width(0) {
                 return Err(format!(
@@ -348,25 +399,110 @@ pub fn refresh(
                     file.width(0)
                 ));
             }
-            let lcsc = file.value(record, cols.lcsc).trim().to_string();
+            let cell = |c: Option<usize>| {
+                c.map(|c| file.value(record, c).trim().to_string())
+                    .filter(|v| !v.is_empty())
+            };
+            rows.push(CatalogRow {
+                catalog: target.catalog.clone(),
+                file: target.shown.clone(),
+                line: file.line(record),
+                manufacturer: cell(cols.manufacturer),
+                mpn: cell(cols.mpn),
+                package: cell(cols.package),
+                stock: cell(cols.stock),
+                date: cell(cols.date),
+            });
+        }
+    }
+    Ok(rows)
+}
+
+/// Refresh the offers of LCSC in `targets.offers` ([`CHECKED_SUPPLIER`]), reading the package and
+/// stock of each part from its row in `targets.catalogs`. `say` is told what is being looked up.
+/// An `Err` is a stop (the network refused, an endpoint changed shape, a file could not be
+/// read): then nothing has been written.
+pub fn refresh(targets: &Targets, options: &Options, say: &dyn Fn(&str)) -> Result<Report, String> {
+    let checked: Vec<&Target> = targets
+        .offers
+        .iter()
+        .filter(|t| t.catalog == CHECKED_SUPPLIER)
+        .collect();
+    if checked.is_empty() {
+        return Err(
+            "there is no offers file of LCSC (`offers/lcsc.csv`) to check: a refresh checks the offers of LCSC, whose record netsmith reads, against that record (ADR 0143); a catalog row holds no supplier's number, so `netsmith project migrate-offers` moves a catalog's old `lcsc` column into the offers files"
+                .to_string(),
+        );
+    }
+    let rows = catalog_rows(&targets.catalogs)?;
+    let mut fetcher = Fetcher::new(options.network.clone());
+    let mut report = Report {
+        dry_run: options.dry_run,
+        ..Report::default()
+    };
+    let mut writes: Vec<(&Path, String, usize)> = Vec::new();
+    let mut seen_lcsc: Vec<String> = Vec::new();
+    for target in checked {
+        let text = fs::read_to_string(&target.path)
+            .map_err(|e| format!("{}: {e}", target.path.display()))?;
+        let mut file = CsvFile::parse(&target.shown, text)?;
+        if file.is_empty() {
+            return Err(format!(
+                "{}: the file is empty; the first line names the columns",
+                target.shown
+            ));
+        }
+        let cols = OfferColumns::of(&target.shown, &file.header())?;
+        let mut reports = Vec::new();
+        let mut offered: Vec<(Option<String>, String)> = Vec::new();
+        let total = file.len() - 1;
+        for record in 1..file.len() {
+            if file.width(record) != file.width(0) {
+                return Err(format!(
+                    "{}:{}: the offer has {} fields but the header has {}",
+                    target.shown,
+                    file.line(record),
+                    file.width(record),
+                    file.width(0)
+                ));
+            }
+            let value = |c: usize| file.value(record, c).trim().to_string();
+            let (lcsc, mpn) = (value(cols.sku), value(cols.mpn));
+            let manufacturer = Some(value(cols.manufacturer)).filter(|m| !m.is_empty());
+            offered.push((manufacturer.clone(), mpn.clone()));
             if lcsc.is_empty() {
-                without_lcsc += 1;
+                continue;
+            }
+            let row = rows.iter().find(|r| r.is(manufacturer.as_deref(), &mpn));
+            if !options.only.is_empty() && !row.is_some_and(|r| options.only.contains(&r.catalog)) {
                 continue;
             }
             if !options.lcsc.is_empty() && !options.lcsc.contains(&lcsc) {
                 continue;
             }
             seen_lcsc.push(lcsc.clone());
-            say(&format!("{} {record}/{total}: {lcsc}", target.catalog));
-            rows.push(refresh_row(&mut file, record, &cols, &lcsc, &mut fetcher)?);
+            let of = row.map_or_else(|| "no catalog row".to_string(), |r| r.catalog.clone());
+            say(&format!("{of} {record}/{total}: {lcsc}"));
+            reports.push(refresh_offer(
+                &mut file,
+                record,
+                &cols,
+                (&lcsc, &mpn),
+                row,
+                &mut fetcher,
+            )?);
         }
-        let mut notes = Vec::new();
-        if cols.checked.is_none() && rows.iter().any(|r| r.status == Status::Verified) {
-            notes.push(
-                "the file has no `checked` column, so the check is not recorded; add one (after `date`) to keep the day each row was verified"
-                    .to_string(),
-            );
-        }
+        let without_lcsc = rows
+            .iter()
+            .filter(|r| options.only.is_empty() || options.only.contains(&r.catalog))
+            .filter(|r| {
+                r.mpn.as_deref().is_some_and(|m| {
+                    !offered
+                        .iter()
+                        .any(|(maker, mpn)| r.is(maker.as_deref(), mpn) && mpn == m)
+                })
+            })
+            .count();
         let changed = file.is_changed();
         if changed && !options.dry_run {
             writes.push((&target.path, file.render(), report.files.len()));
@@ -374,10 +510,10 @@ pub fn refresh(
         report.files.push(FileReport {
             file: target.shown.clone(),
             catalog: target.catalog.clone(),
-            rows,
+            rows: reports,
             without_lcsc,
             written: false,
-            notes,
+            notes: Vec::new(),
         });
     }
     report.unknown_lcsc = options
@@ -395,12 +531,14 @@ pub fn refresh(
     Ok(report)
 }
 
-/// Look up one row, check it, and record the day in its `checked` cell.
-fn refresh_row(
+/// Look up one offer, check it against LCSC's record and the catalog row of its part, and record
+/// the day in its `checked` cell.
+fn refresh_offer(
     file: &mut CsvFile,
     record: usize,
-    cols: &Columns,
-    lcsc: &str,
+    cols: &OfferColumns,
+    (lcsc, mpn): (&str, &str),
+    part: Option<&CatalogRow>,
     fetcher: &mut Fetcher,
 ) -> Result<RowReport, String> {
     let line = file.line(record);
@@ -424,38 +562,34 @@ fn refresh_row(
     let Some(product) = product else {
         return Ok(row(
             Status::Missing(format!(
-                "LCSC has no record of {lcsc}; the row is as it was"
+                "LCSC has no record of {lcsc}; the offer is as it was"
             )),
             Vec::new(),
             Vec::new(),
         ));
     };
 
-    // The part has to be the part the row is.
+    // The part has to be the part the offer is of.
     let mut disagree = Vec::new();
-    let cell = |c: Option<usize>| {
-        c.map(|c| file.value(record, c).trim().to_string())
-            .filter(|v| !v.is_empty())
-    };
-    if let Some(mpn) = cell(cols.mpn)
-        && !product.mpn.eq_ignore_ascii_case(&mpn)
-    {
+    if !mpn.is_empty() && !product.mpn.eq_ignore_ascii_case(mpn) {
         disagree.push(format!(
-            "LCSC lists the manufacturer's number {}, the row has {mpn}",
+            "LCSC lists the manufacturer's number {}, the offer has {mpn}",
             product.mpn
         ));
     }
-    if let Some(package) = cell(cols.package)
+    if let Some(r) = part
+        && let Some(package) = &r.package
         && let Some(theirs) = &product.package
-        && !package_matches(&package, theirs)
+        && !package_matches(package, theirs)
     {
         disagree.push(format!(
-            "LCSC lists the package {theirs}, the row has {package}"
+            "LCSC lists the package {theirs}, the row at {}:{} has {package}",
+            r.file, r.line
         ));
     }
     if !disagree.is_empty() {
         return Ok(row(
-            Status::Conflict(format!("{}; the row is as it was", disagree.join("; "))),
+            Status::Conflict(format!("{}; the offer is as it was", disagree.join("; "))),
             Vec::new(),
             Vec::new(),
         ));
@@ -464,7 +598,9 @@ fn refresh_row(
     // LCSC's stock is not JLCPCB's and is never written. A big difference in kind (one has
     // none, the other has some) is worth saying, so a person looks at JLCPCB's page.
     let mut notes = Vec::new();
-    let row_stock = cell(cols.stock).and_then(|s| s.parse::<u64>().ok());
+    let row_stock = part
+        .and_then(|r| r.stock.as_deref())
+        .and_then(|s| s.parse::<u64>().ok());
     match (product.stock, row_stock) {
         (Some(0), stock) if stock != Some(0) => notes.push(format!(
             "LCSC lists stock 0 where the row has {}: the row is not changed; check JLCPCB's parts page by hand",
@@ -478,16 +614,15 @@ fn refresh_row(
 
     // The one cell a refresh writes.
     let mut changes = Vec::new();
-    if let Some(c) = cols.checked {
-        let (old, new) = (file.value(record, c).trim().to_string(), date_of(secs));
-        if old != new {
-            file.set(record, c, &new);
-            changes.push(Change {
-                column: "checked".to_string(),
-                from: old,
-                to: new,
-            });
-        }
+    let c = cols.checked;
+    let (old, new) = (file.value(record, c).trim().to_string(), date_of(secs));
+    if old != new {
+        file.set(record, c, &new);
+        changes.push(Change {
+            column: "checked".to_string(),
+            from: old,
+            to: new,
+        });
     }
     Ok(row(Status::Verified, changes, notes))
 }
@@ -558,9 +693,7 @@ pub fn render_summary(report: &Report) -> String {
         }
     }
     for c in &report.unknown_lcsc {
-        out.push_str(&format!(
-            "MISSING {c}: no row of the catalogs has this number\n"
-        ));
+        out.push_str(&format!("MISSING {c}: no offer of LCSC has this number\n"));
     }
     let mut totals = [0usize; 4];
     for file in &report.files {
@@ -584,7 +717,7 @@ pub fn render_summary(report: &Report) -> String {
             _ => "nothing to change",
         };
         out.push_str(&format!(
-            "{}: {} rows looked up, {} verified, {} conflict, {} missing, {} skipped; {verb}\n",
+            "{}: {} offers looked up, {} verified, {} conflict, {} missing, {} skipped; {verb}\n",
             file.file,
             file.rows.len(),
             counts[0],
@@ -667,6 +800,7 @@ pub fn json_report(report: &Report) -> serde_json::Value {
 pub struct Aged {
     pub file: String,
     pub line: usize,
+    /// The sku of the row's offer: the `jlcpcb` offer's, else the `lcsc` one's.
     pub lcsc: String,
     /// The day the price and stock were read: the supply provider's answer, else the row's
     /// `date` cell. `None` if they are unknown, or the cell is not a date.
@@ -682,7 +816,7 @@ pub struct Aged {
 pub struct AgeReport {
     pub today: String,
     pub days: u32,
-    /// Rows with an `lcsc` number, which are the rows with a price to age.
+    /// Rows with an offer, which are the rows with a price to age.
     pub rows: usize,
     /// Rows whose price and stock were read more than `days` days ago, or whose `date` cell
     /// is not a date.
@@ -692,11 +826,13 @@ pub struct AgeReport {
     pub unknown: Vec<Aged>,
 }
 
-/// The rows of `targets` whose price and stock were read more than `days` days before
-/// `today`, and the rows whose price and stock are unknown. What is known comes from
-/// `supply` (ADR 0047) and, for a row it has no answer for, from the row's own `date` cell.
+/// The rows of `targets.catalogs` whose price and stock were read more than `days` days before
+/// `today`, and the rows whose price and stock are unknown. What is known comes from `supply`
+/// (ADR 0047) and, for a row it has no answer for, from the row's own `date` cell. A row is asked
+/// for by the sku of its offer in `targets.offers` (the `jlcpcb` offer, else the `lcsc` one,
+/// ADR 0143), and a row with no offer has no price to age.
 pub fn age(
-    targets: &[Target],
+    targets: &Targets,
     only: &[String],
     days: u32,
     today: &str,
@@ -709,51 +845,54 @@ pub fn age(
         old: Vec::new(),
         unknown: Vec::new(),
     };
-    for target in targets {
-        if !only.is_empty() && !only.contains(&target.catalog) {
-            continue;
-        }
+    let mut offers = netsmith_solve::offers::Offers::empty();
+    for target in &targets.offers {
         let text = fs::read_to_string(&target.path)
             .map_err(|e| format!("{}: {e}", target.path.display()))?;
-        let file = CsvFile::parse(&target.shown, text)?;
-        if file.is_empty() {
+        offers.add_file(&target.catalog, &target.shown, &text)?;
+    }
+    for row in catalog_rows(&targets.catalogs)? {
+        if !only.is_empty() && !only.contains(&row.catalog) {
             continue;
         }
-        let cols = Columns::of(&target.shown, &file.header())?;
-        for record in 1..file.len() {
-            let lcsc = file.value(record, cols.lcsc).trim().to_string();
-            if lcsc.is_empty() {
-                continue;
+        let Some(mpn) = row.mpn.as_deref() else {
+            continue;
+        };
+        let manufacturer = row.manufacturer.as_deref();
+        let mut sku = None;
+        for supplier in netsmith_solve::offers::SUPPLIERS {
+            if let Some(offer) = offers.of(supplier, manufacturer, mpn)? {
+                sku = Some(offer.sku.clone());
+                break;
             }
-            report.rows += 1;
-            let cell = |c: Option<usize>| {
-                c.map(|c| file.value(record, c).trim().to_string())
-                    .filter(|d| !d.is_empty())
-            };
-            let key = PartKey {
-                lcsc: Some(lcsc.clone()),
-                manufacturer: cell(cols.manufacturer),
-                mpn: cell(cols.mpn),
-            };
-            let aged = |date: Option<String>, days: Option<i64>, unknown: Option<String>| Aged {
-                file: target.shown.clone(),
-                line: file.line(record),
-                lcsc: lcsc.clone(),
-                date,
-                days,
-                unknown,
-            };
-            let (date, why) = match supply.lookup(&key) {
-                Lookup::Quoted(q) => (Some(date_of(q.fetched)), String::new()),
-                Lookup::Unknown(why) => (cell(cols.date), why),
-            };
-            match date {
-                None => report.unknown.push(aged(None, None, Some(why))),
-                Some(date) => {
-                    let age = age_days(&date, today);
-                    if age.is_none_or(|a| a > i64::from(days)) {
-                        report.old.push(aged(Some(date), age, None));
-                    }
+        }
+        let Some(lcsc) = sku else {
+            continue;
+        };
+        report.rows += 1;
+        let key = PartKey {
+            lcsc: Some(lcsc.clone()),
+            manufacturer: row.manufacturer.clone(),
+            mpn: row.mpn.clone(),
+        };
+        let aged = |date: Option<String>, days: Option<i64>, unknown: Option<String>| Aged {
+            file: row.file.clone(),
+            line: row.line,
+            lcsc: lcsc.clone(),
+            date,
+            days,
+            unknown,
+        };
+        let (date, why) = match supply.lookup(&key) {
+            Lookup::Quoted(q) => (Some(date_of(q.fetched)), String::new()),
+            Lookup::Unknown(why) => (row.date.clone(), why),
+        };
+        match date {
+            None => report.unknown.push(aged(None, None, Some(why))),
+            Some(date) => {
+                let age = age_days(&date, today);
+                if age.is_none_or(|a| a > i64::from(days)) {
+                    report.old.push(aged(Some(date), age, None));
                 }
             }
         }

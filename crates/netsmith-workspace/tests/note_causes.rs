@@ -188,8 +188,7 @@ fn values_that_depend_on_each_other_are_a_circle() {
 #[test]
 fn a_part_the_catalog_says_is_out_of_stock_is_a_pick() {
     let mut catalogs = Catalogs::jlcpcb();
-    catalogs
-        .add_file(
+    netsmith_solve::migrate::add_to(&mut catalogs, 
             "resistor",
             "catalogs/resistor.csv",
             "lcsc,mpn,resistance,max_power,package,library,stock,source\n\

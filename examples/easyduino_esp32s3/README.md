@@ -529,7 +529,7 @@ the part's pin table.
   switch is: pins `.a` (pad 1) and `.b` (pad 2), rated 50 mA and 12 V DC.
   - Catalog row (`catalogs/xunpu_ts_1088.csv`): JLCPCB and LCSC pages read on 2026-11-10 (the
     JLCPCB page names the part and the package `SMD, 4x3mm` and **does not say Basic or Extended**,
-    so `library` is empty). Price, stock, height and temperatures are empty (the drawing prints no
+    so the part has no JLCPCB offer, only LCSC's). Price, stock, height and temperatures are empty (the drawing prints no
     height maximum nor temperature range; LCSC's page lists 2 mm and -30 to +80 C, and no document
     read here prints them).
   - Source: XUNPU's drawing "TACT SWITCH" `TS-1088-ARXXXXXX`, rev. A, scale 1:1, one sheet

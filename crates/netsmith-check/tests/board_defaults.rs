@@ -446,7 +446,7 @@ board B {
 
 #[test]
 fn the_other_built_in_members_are_no_value_a_line_offers() {
-    for field in ["mpn", "lcsc", "designator", "height"] {
+    for field in ["mpn", "manufacturer", "lcsc", "designator", "height"] {
         let c = run(&board(
             &format!("        Resistor.{field} ?= \"x\""),
             "    .r1: Resistor",

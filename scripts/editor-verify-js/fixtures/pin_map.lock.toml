@@ -7,19 +7,19 @@ version = 2
 [PinMapBoard.parts."load"]
 catalog = "resistor"
 row = "10kΩ 1% 0603 C25804"
-lcsc = "C25804"
 mpn = "0603WAF1002T5E"
+sku = { jlcpcb-assembly = "C25804", lcsc-retail = "C25804" }
 
 # A part the board no longer has: the lock is not current, and the editor lists what
 # `netsmith project lock --check` would say.
 [PinMapBoard.parts."pullup"]
 catalog = "resistor"
 row = "4.7kΩ 1% 0402 C25900"
-lcsc = "C25900"
 mpn = "0402WGF4701TCE"
+sku = { jlcpcb-assembly = "C25900", lcsc-retail = "C25900" }
 
 [PinMapBoard.parts."pull"]
 catalog = "resistor"
 row = "4.7kΩ 1% 0402 C25900"
-lcsc = "C25900"
 mpn = "0402WGF4701TCE"
+sku = { jlcpcb-assembly = "C25900", lcsc-retail = "C25900" }

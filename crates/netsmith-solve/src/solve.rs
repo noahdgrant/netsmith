@@ -428,11 +428,15 @@ pub struct Pick {
     /// The value for a schematic: `300`.
     pub label: String,
     /// The supplier's part number, the manufacturer and its part number, and JLCPCB's
-    /// library, if the candidate is a real part and its row names them.
+    /// library, if the candidate is a real part and its row names them. The number and the
+    /// library are read from the part's offers (ADR 0143): the `jlcpcb` offer, else the `lcsc`.
     pub lcsc: Option<String>,
     pub manufacturer: Option<String>,
     pub mpn: Option<String>,
     pub library: Option<Library>,
+    /// The sku of each supplier that offers the part ([`crate::offers::SUPPLIERS`]), by the
+    /// supplier's name, in that order: what the pick lock records for each channel.
+    pub skus: Vec<(String, String)>,
     /// The row's default for who assembles the part (ADR 0024).
     pub assembly: Option<String>,
     /// The row's `height` in mm, if it has one (ADR 0094): the part's height unless the design
@@ -1329,11 +1333,12 @@ impl Budget {
     }
 }
 
-/// A part's hand pick (ADR 0122): the `.lcsc` and `.mpn` the design narrowed it to, and where.
+/// A part's hand pick (ADR 0122, ADR 0143): the `.mpn` the design narrowed it to, with the
+/// `.manufacturer` when two parts share the number, and where.
 #[derive(Debug, Clone)]
 struct HandPick {
-    lcsc: Option<String>,
     mpn: Option<String>,
+    manufacturer: Option<String>,
     /// The narrowing a message points at: the last statement that narrowed either member.
     at: Option<(SourceId, Span)>,
 }
@@ -1348,36 +1353,38 @@ impl HandPick {
                     || matches!(c.column(column), Some(Value::Text(t)) if t == n)
             })
         };
-        has(&self.lcsc, &c.lcsc, "lcsc") && has(&self.mpn, &c.mpn, "mpn")
+        has(&self.mpn, &c.mpn, "mpn") && has(&self.manufacturer, &c.manufacturer, "manufacturer")
     }
 
-    /// The statements as the source writes them: `.lcsc &= "C307331"`.
+    /// The statements as the source writes them: `.mpn &= "CL21A106KAYNNNE"`.
     fn statement(&self) -> String {
         let mut parts = Vec::new();
-        if let Some(l) = &self.lcsc {
-            parts.push(format!("`.lcsc &= \"{l}\"`"));
-        }
         if let Some(m) = &self.mpn {
             parts.push(format!("`.mpn &= \"{m}\"`"));
         }
+        if let Some(m) = &self.manufacturer {
+            parts.push(format!("`.manufacturer &= \"{m}\"`"));
+        }
         parts.join(" and ")
     }
 
-    /// The numbers as a message says them: `LCSC number C307331`.
+    /// The numbers as a message says them: `the manufacturer part number CL21A106KAYNNNE`.
     fn number(&self) -> String {
-        let mut parts = Vec::new();
-        if let Some(l) = &self.lcsc {
-            parts.push(format!("the LCSC number {l}"));
-        }
+        let mut text = String::new();
         if let Some(m) = &self.mpn {
-            parts.push(format!("the manufacturer part number {m}"));
+            text.push_str(&format!("the manufacturer part number {m}"));
         }
-        parts.join(" and ")
+        if let Some(m) = &self.manufacturer {
+            text.push_str(&format!(" of the manufacturer {m}"));
+        }
+        text
     }
 }
 
 /// The hand picks of the parts of `model` that pick from a catalog, by path: each part whose
-/// `.lcsc` or `.mpn` holds one text (ADR 0122).
+/// `.mpn` holds one text, with its `.manufacturer` when that holds one too (ADR 0122, ADR 0143).
+/// A `.manufacturer` with no `.mpn`, and a `.lcsc`, are refused where they are written
+/// (`Solver::refuse_stray_hand_picks`), and pick nothing.
 fn hand_picks(model: &Model) -> BTreeMap<String, HandPick> {
     let mut picks = BTreeMap::new();
     for (id, inst) in model.instances() {
@@ -1385,11 +1392,11 @@ fn hand_picks(model: &Model) -> BTreeMap<String, HandPick> {
             continue;
         }
         let mut pick = HandPick {
-            lcsc: None,
             mpn: None,
+            manufacturer: None,
             at: None,
         };
-        for name in ["lcsc", "mpn"] {
+        for name in ["mpn", "manufacturer"] {
             let Some(Member::Field(f)) = model.member(id, name) else {
                 continue;
             };
@@ -1401,11 +1408,11 @@ fn hand_picks(model: &Model) -> BTreeMap<String, HandPick> {
                 pick.at = Some(at);
             }
             match name {
-                "lcsc" => pick.lcsc = Some(text.clone()),
-                _ => pick.mpn = Some(text.clone()),
+                "mpn" => pick.mpn = Some(text.clone()),
+                _ => pick.manufacturer = Some(text.clone()),
             }
         }
-        if pick.lcsc.is_some() || pick.mpn.is_some() {
+        if pick.mpn.is_some() {
             picks.insert(model.path_of(id), pick);
         }
     }
@@ -1427,9 +1434,8 @@ struct Solver<'a> {
     /// The rows a pick lock holds the parts of this board or system to, by path (see
     /// `PickLock`). A part held to a row by `Catalogs::with_pin` is not held by the lock.
     locked: BTreeMap<String, LockedRow>,
-    /// The hand picks of the parts of this board or system, by path: a part whose `.lcsc` or
-    /// `.mpn` the design narrows is held to the row with that number, before the lock's (ADR
-    /// 0121).
+    /// The hand picks of the parts of this board or system, by path: a part whose `.mpn` the
+    /// design narrows is held to the row with that number, before the lock's (ADR 0122).
     chosen: BTreeMap<String, HandPick>,
     diagnostics: Vec<Diagnostic>,
     seen: HashSet<Diagnostic>,

@@ -6,18 +6,18 @@
 use netsmith_check::{Loader, check};
 use netsmith_solve::{Catalogs, Solution, solve};
 
-const CELL_HEAD: &str = "mpn,chemistry,capacity,internal_resistance,charge_temperature,discharge_temperature,float_voltage,max_charge_current,package,library,source\n";
+const CELL_HEAD: &str = "mpn,chemistry,capacity,internal_resistance,charge_temperature,discharge_temperature,float_voltage,max_charge_current,package,source\n";
 /// A lithium-ion cell of 1000 mAh (3.6 kC), charged to 4.2 V +/- 50 mV, at most 500 mA.
-const CELL: &str = "ZZC-1000,LiIon,3.6kC,150mohm,0degC..45degC,-20degC..60degC,4.2V +/- 50mV,500mA,JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal,Extended,https://example.invalid/zzc-1000.pdf\n";
-const SUPERCAP_HEAD: &str = "mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,height_growth,library,source\n";
+const CELL: &str = "ZZC-1000,LiIon,3.6kC,150mohm,0degC..45degC,-20degC..60degC,4.2V +/- 50mV,500mA,JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal,https://example.invalid/zzc-1000.pdf\n";
+const SUPERCAP_HEAD: &str = "mpn,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,height_growth,source\n";
 /// Two cells with no tap, 0.5 F +/- 20%, leaking up to 6 uA, 5.5 V.
-const SUPERCAP: &str = "ZZS-0F5,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,Hand,Radial_D16.0mm_P7.50mm,1mm,Extended,https://example.invalid/zzs-0f5.pdf\n";
+const SUPERCAP: &str = "ZZS-0F5,0.5F +/- 20%,120mohm,200mohm,6uA,5.5V,2,Hand,Radial_D16.0mm_P7.50mm,1mm,https://example.invalid/zzs-0f5.pdf\n";
 
 fn catalogs() -> Catalogs {
     let mut c = Catalogs::jlcpcb();
-    c.add_file("cell", "catalogs/cell.csv", &format!("{CELL_HEAD}{CELL}"))
+    crate::offered::add(&mut c, "cell", "catalogs/cell.csv", &format!("{CELL_HEAD}{CELL}"))
         .unwrap();
-    c.add_file(
+    crate::offered::add(&mut c, 
         "supercap",
         "catalogs/supercap.csv",
         &format!("{SUPERCAP_HEAD}{SUPERCAP}"),

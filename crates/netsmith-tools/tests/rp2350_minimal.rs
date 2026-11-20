@@ -35,6 +35,21 @@ fn read(path: &str) -> String {
     fs::read_to_string(project().join(path)).unwrap_or_else(|e| panic!("{path}: {e}"))
 }
 
+/// The offer of the project's part `mpn` (ADR 0143: a catalog row holds no supplier's number):
+/// the sku and class of its JLCPCB offer, else the sku of its LCSC offer with no class.
+fn offer(mpn: &str) -> (String, String) {
+    for supplier in ["jlcpcb", "lcsc"] {
+        let text = read(&format!("offers/{supplier}.csv"));
+        let records = netsmith_solve::parse_csv(&text).unwrap();
+        let header = &records[0].1;
+        let at = |name: &str| header.iter().position(|h| h == name).unwrap();
+        if let Some((_, r)) = records[1..].iter().find(|(_, r)| r[at("mpn")] == mpn) {
+            return (r[at("sku")].clone(), r[at("class")].clone());
+        }
+    }
+    panic!("no offer of {mpn}")
+}
+
 /// A board of three footprints, written the way KiCad 10 writes them: a 20 x 10 mm outline with
 /// 2 mm corners (four lines, four arcs), a connector turned by -90 degrees with a plated slot,
 /// an unconnected pad and a pad with an old-style `(net 3 "name")`, and a mounting hole turned
@@ -531,10 +546,11 @@ board Fixture {
             // The cells before `source` hold no comma, so they split on the commas.
             let cells: Vec<&str> = text.lines().nth(1).unwrap().split(',').collect();
             let cell = |name: &str| cells[columns.iter().position(|c| *c == name).unwrap()];
-            assert_eq!(cell("lcsc"), lcsc, "{file}");
+            let (sku, class) = crate::rp2350_minimal::offer(cell("mpn"));
+            assert_eq!(sku, lcsc, "{file}");
             assert_eq!(cell("price"), "", "{file}: price is not read");
             assert_eq!(cell("stock"), "", "{file}: stock is not read");
-            assert_eq!(cell("library"), "Extended", "{file}");
+            assert_eq!(class, "Extended", "{file}");
             let source = text.lines().nth(1).unwrap();
             assert!(
                 source.contains(&format!("https://jlcpcb.com/partdetail/{lcsc} ")),
@@ -989,7 +1005,8 @@ fn the_footprint_has_the_pitch_the_pad_count_and_the_exposed_pad_of_the_datashee
 fn the_catalog_row_names_the_part_and_its_source() {
     let rows = read("catalogs/rp2350a.csv");
     let row = rows.lines().nth(1).expect("a row");
-    assert!(row.starts_with("C42411118,RP2350A,"), "{row}");
+    assert!(row.starts_with("RP2350A,"), "{row}");
+    assert_eq!(crate::rp2350_minimal::offer("RP2350A").0, "C42411118");
     assert!(row.contains("https://jlcpcb.com/partdetail/C42411118"));
     assert!(row.contains("2026-11-10"), "the day the page was read");
     // The standard catalogs do not have it, so the part is the project's.
@@ -1422,7 +1439,8 @@ board FlashAndCrystal {
             let rows = read(file);
             let row = rows.lines().nth(1).expect("a row");
             assert_eq!(rows.lines().count(), 2, "{file}: one row");
-            assert!(row.starts_with(&format!("{lcsc},{mpn},")), "{row}");
+            assert!(row.starts_with(&format!("{mpn},")), "{row}");
+            assert_eq!(crate::rp2350_minimal::offer(mpn).0, lcsc, "{file}");
             assert!(row.contains(page), "{file}: the page it was read from");
             assert!(
                 row.contains("2026-11-10"),
@@ -1815,7 +1833,7 @@ fn the_catalog_rows_of_the_receptacle_and_the_jst_header_have_their_numbers_and_
         let rows = read(file);
         let row = rows.lines().nth(1).expect("a row");
         assert_eq!(rows.lines().count(), 2, "{file}: one row");
-        assert!(row.starts_with(&format!("{number},")), "{row}");
+        assert_eq!(crate::rp2350_minimal::offer(mpn.trim_matches('"')).0, number, "{row}");
         assert!(
             row.contains(mpn) || row.contains(mpn.trim_matches('"')),
             "{row}"
@@ -1825,7 +1843,7 @@ fn the_catalog_rows_of_the_receptacle_and_the_jst_header_have_their_numbers_and_
             row.contains("2026-11-10"),
             "the day the page was read: {row}"
         );
-        assert!(row.contains(",Extended,"), "{row}");
+        assert_eq!(crate::rp2350_minimal::offer(mpn.trim_matches('"')).1, "Extended", "{row}");
     }
     // The header's row: LCSC's page was read, JLCPCB's returned no library type, so none is
     // recorded (an empty cell, not a guess).
@@ -1833,7 +1851,8 @@ fn the_catalog_rows_of_the_receptacle_and_the_jst_header_have_their_numbers_and_
     let row = rows.lines().nth(1).expect("a row");
     assert_eq!(rows.lines().count(), 2, "one row");
     assert!(
-        row.starts_with("C6887963,TSW-118-07-L-D,TSW-118-07-L-D,,"),
+        row.starts_with("TSW-118-07-L-D,TSW-118-07-L-D,8.38mm,")
+            && crate::rp2350_minimal::offer("TSW-118-07-L-D") == ("C6887963".to_string(), String::new()),
         "{row}"
     );
     assert!(

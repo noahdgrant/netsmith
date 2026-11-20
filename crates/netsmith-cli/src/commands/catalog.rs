@@ -17,9 +17,9 @@ pub struct Args {
 
 #[derive(Debug, PartialEq, Subcommand)]
 pub enum Command {
-    /// Check catalog rows against LCSC's record and write the day in `checked` (ADR 0039).
+    /// Check LCSC's offers of the catalogs' parts against its record and write the day in `checked` (ADR 0039, ADR 0143).
     Refresh(RefreshArgs),
-    /// Append a row made from LCSC's record of a number to a catalog, or print the record.
+    /// Append a row and its LCSC offer made from LCSC's record of a number, or print the record.
     Add(AddArgs),
     /// List the catalog rows whose price and stock are older than `--days` days, and the unknown ones.
     Age(AgeArgs),
@@ -28,10 +28,10 @@ pub enum Command {
 #[derive(Debug, Clone, PartialEq, Eq, Default, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`catalog refresh` is the one command that uses the network, and it is opt-in (ADR 0039): nothing else, and never the solver, asks anyone anything. JLCPCB data is not fetched: the command asks LCSC only. For each row with an `lcsc` number it reads LCSC's record of that part and checks the manufacturer's number and the package against the row. A row that agrees is `VERIFIED`, and if the file has a `checked` column it gets the day there: that is the only cell the command ever writes. It never writes `price`, `stock`, `price_breaks`, `library` or `date`: the board is assembled from JLCPCB's parts library, those cells are JLCPCB's numbers entered by hand, and LCSC's price (often at a first break above one piece) and stock differ from them. It may say, as a note and not a finding, that LCSC lists stock 0 where the row has some (or the reverse), so you read JLCPCB's parts page by hand; the age of a row's own numbers is still its `date`, so a refresh never makes a stale row fresh. It keeps the order, quoting and line endings of the file, so the result is a small diff.\n\nWith no path it acts on the project's catalog files (the `*.csv` of its `catalog_dirs` folders and the files under `catalogs`) and, in the netsmith repository, on `data/jlcpcb/catalog/`; a path is a catalog file or a directory of them (the standard catalogs inside the binary cannot be written, so they are checked in the repository and arrive with a release). A row is reported, not changed, when the records disagree with it: `CONFLICT` if the manufacturer's number or the package is not the row's, `MISSING` if LCSC no longer lists the number (a row is never deleted); `SKIPPED` is a row `--offline` has no kept answer for.\n\nLCSC's endpoint is unofficial and LCSC's terms of use have not been read: a person must read them before the command is advertised, and official APIs (JLCAPI, the LCSC API; they need an account) are future work. Meanwhile the command is polite: one request at a time, `--delay` apart, a User-Agent that says what it is, answers kept for `--cache-ttl` and retried with a growing wait.\n\nThe exit code is 0, 1 if any row is `CONFLICT` or `MISSING`, and 2 when the run had to stop (the endpoint refused, or answered in another shape: nothing is written then)."
+    after_long_help = "`catalog refresh` is the one command that uses the network, and it is opt-in (ADR 0039): nothing else, and never the solver, asks anyone anything. JLCPCB data is not fetched: the command asks LCSC only, and checks LCSC's offers (ADR 0143): a catalog row holds no supplier's number, and what LCSC calls a part is a row of the offers file `offers/lcsc.csv`. For each of those offers it reads LCSC's record of its `sku` and checks the manufacturer's number against the offer's `mpn` and the package against the `package` of the part's catalog row. An offer that agrees is `VERIFIED` and gets the day in its `checked` column: that is the only cell the command ever writes, and a catalog file is never written. JLCPCB's offers (`offers/jlcpcb.csv`) are not checked. It never writes `price`, `stock`, `price_breaks`, `class` or `date`: the board is assembled from JLCPCB's parts library, those are JLCPCB's numbers entered by hand, and LCSC's price (often at a first break above one piece) and stock differ from them. It may say, as a note and not a finding, that LCSC lists stock 0 where the row has some (or the reverse), so you read JLCPCB's parts page by hand; the age of a row's own numbers is still its `date`, so a refresh never makes a stale row fresh. It keeps the order, quoting and line endings of the file, so the result is a small diff.\n\nWith no path it acts on the project's catalog and offers files (the `*.csv` of its `catalog_dirs` folders and the files under `catalogs`, and its `offer_dirs` folders) and, in the netsmith repository, on `data/jlcpcb/catalog/` and `data/offers/`; a path is a catalog file, an offers file (`lcsc.csv`) or a directory of them, and with no offers file among them the project's are read (the standard catalogs and offers inside the binary cannot be written, so they are checked in the repository and arrive with a release). An offer is reported, not changed, when the records disagree with it: `CONFLICT` if the manufacturer's number or the package is not the part's, `MISSING` if LCSC no longer lists the number (an offer is never deleted); `SKIPPED` is an offer `--offline` has no kept answer for.\n\nLCSC's endpoint is unofficial and LCSC's terms of use have not been read: a person must read them before the command is advertised, and official APIs (JLCAPI, the LCSC API; they need an account) are future work. Meanwhile the command is polite: one request at a time, `--delay` apart, a User-Agent that says what it is, answers kept for `--cache-ttl` and retried with a growing wait.\n\nThe exit code is 0, 1 if any offer is `CONFLICT` or `MISSING`, and 2 when the run had to stop (the endpoint refused, or answered in another shape: nothing is written then)."
 )]
 pub struct RefreshArgs {
-    /// Catalog files or folders of them; none is the project's catalogs.
+    /// Catalog or offers files, or folders of them; none is the project's catalogs and offers.
     #[arg(value_name = "CATALOG.CSV|DIR")]
     pub paths: Vec<PathBuf>,
     /// Print the diff, cell by cell, and write nothing.
@@ -40,10 +40,10 @@ pub struct RefreshArgs {
     /// Ask nothing, and use the kept answers of any age.
     #[arg(long, conflicts_with_all = ["delay_ms", "cache_ttl_hours"])]
     pub offline: bool,
-    /// Only this catalog (repeatable).
+    /// Only the offers of the parts of this catalog (repeatable).
     #[arg(long, value_name = "CATALOG")]
     pub only: Vec<String>,
-    /// Only the row of this LCSC number (repeatable).
+    /// Only the offer of this LCSC number (repeatable).
     #[arg(long, value_name = "C123")]
     pub lcsc: Vec<String>,
     /// The pause between requests, in milliseconds (default 500).
@@ -57,14 +57,14 @@ pub struct RefreshArgs {
     pub no_cache: bool,
     /// Text for a person, or one JSON document on stdout.
     ///
-    /// `json` prints one JSON document on stdout and nothing else there: `command` (`catalog refresh`), `ok` (false when a row is a `conflict` or `missing`, as the exit code 1 says), `dry_run`, the `requests` made to LCSC, the `files` and `unknown_lcsc`, the numbers given to `--lcsc` that no row has. Each file has its `file` and `catalog`, the counts `looked_up`, `verified`, `conflict`, `missing`, `skipped` and `without_lcsc` (rows with no `lcsc` number), whether it was `written`, its `notes`, and the `rows` the text names: those that changed, are not verified or have a note, each with its `line`, `lcsc`, `status` (`verified`, `conflict`, `missing` or `skipped`), `why` for the last three, the `changes` (`column`, `from`, `to`) and its `notes`. The run's own notice is left out. The progress, one line for each row looked up, is on stderr; a run that had to stop is an error on stderr with exit code 2 and nothing on stdout.
+    /// `json` prints one JSON document on stdout and nothing else there: `command` (`catalog refresh`), `ok` (false when a row is a `conflict` or `missing`, as the exit code 1 says), `dry_run`, the `requests` made to LCSC, the `files` and `unknown_lcsc`, the numbers given to `--lcsc` that no offer has. Each file is an offers file of LCSC and has its `file`, its supplier as `catalog`, the counts `looked_up`, `verified`, `conflict`, `missing`, `skipped` and `without_lcsc` (rows of the catalogs read with a part number and no offer in the file), whether it was `written`, its `notes`, and the `rows` the text names: the offers that changed, are not verified or have a note, each with its `line`, its sku as `lcsc`, `status` (`verified`, `conflict`, `missing` or `skipped`), `why` for the last three, the `changes` (`column`, `from`, `to`) and its `notes`. The run's own notice is left out. The progress, one line for each offer looked up, is on stderr; a run that had to stop is an error on stderr with exit code 2 and nothing on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: Format,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "`catalog add --lcsc <C123> --to <catalog.csv>` asks LCSC's record of the number (never JLCPCB's) and appends a row with `lcsc`, `mpn`, `package` and a `source` that names the record and the day, and `manufacturer` as LCSC spells it when the file has that column (check it against the datasheet), leaving every other cell empty and listing the columns that need the datasheet or JLCPCB's page; without `--to` it prints the record and writes nothing."
+    after_long_help = "`catalog add --lcsc <C123> --to <catalog.csv>` asks LCSC's record of the number (never JLCPCB's) and appends a row with `mpn`, `package` and a `source` that names the record and the day, and `manufacturer` as LCSC spells it when the file has that column (check it against the datasheet), leaving every other cell empty and listing the columns that need the datasheet; the number itself is an offer (ADR 0143), appended to the project's `offers/lcsc.csv` (the first folder of `offer_dirs`, or `offers/` beside the folder the command runs in outside a project; the file is made when there is none) with the same `source` and the day in `checked`. A part JLCPCB assembles also needs its offer in `offers/jlcpcb.csv`, with the library from JLCPCB's page as its `class`, which the command does not write. Without `--to` it prints the record and writes nothing."
 )]
 #[command(args_override_self = true)]
 pub struct AddArgs {
@@ -82,14 +82,14 @@ pub struct AddArgs {
     pub no_cache: bool,
     /// Text for a person, or one JSON document on stdout.
     ///
-    /// `json` prints one JSON document on stdout and nothing else there: `command` (`catalog add`), `ok`, the `lcsc` number, the `manufacturer` as LCSC spells it (null when the record names none), the `mpn`, the `package` (null when LCSC lists none), the day it was `read`, `written` (the `file` and `line` of the row added, null with no `--to`), the columns `filled`, and the columns `to_fill`, which need the datasheet or JLCPCB's page. A number LCSC has no record of, or one the file already has, is `ok` false with a `findings` list of one error (the code `catalog`) and exit code 1; a run that could not be made is an error on stderr with exit code 2 and nothing on stdout.
+    /// `json` prints one JSON document on stdout and nothing else there: `command` (`catalog add`), `ok`, the `lcsc` number, the `manufacturer` as LCSC spells it (null when the record names none), the `mpn`, the `package` (null when LCSC lists none), the day it was `read`, `written` (the `file` and `line` of the row added, null with no `--to`), `offer` (the `file` and `line` of the LCSC offer added, null with no `--to`), the columns `filled`, and `to_fill`, the columns that need the datasheet and the JLCPCB offer to write. A number LCSC has no record of, one the offers file already has, or a part the catalog file already has, is `ok` false with a `findings` list of one error (the code `catalog`) and exit code 1; a run that could not be made is an error on stderr with exit code 2 and nothing on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: Format,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(
-    after_long_help = "`catalog age` prints the rows whose price and stock were read more than `--days` days ago (the supply provider's answer, else the row's `date`) and, apart, the rows whose price and stock are unknown because no provider has them and the row has no `date` (unknown is not old and not 0); it reads the `[supply]` table of the project that contains the directory."
+    after_long_help = "`catalog age` prints the rows whose price and stock were read more than `--days` days ago (the supply provider's answer, else the row's `date`) and, apart, the rows whose price and stock are unknown because no provider has them and the row has no `date` (unknown is not old and not 0); each row is named and asked for by the sku of its offer (the JLCPCB offer, else the LCSC one, ADR 0143), and a row with no offer has no price to age. It reads the `[supply]` table of the project that contains the directory."
 )]
 #[command(args_override_self = true)]
 pub struct AgeArgs {
@@ -104,7 +104,7 @@ pub struct AgeArgs {
     pub only: Vec<String>,
     /// Text for a person, or one JSON document on stdout.
     ///
-    /// `json` prints one JSON document on stdout and nothing else there: `command` (`catalog age`), `ok`, `today`, `days` (the age from which a row is old), `rows` (the rows with an `lcsc` number), the `old` rows (`file`, `line`, `lcsc`, the `date` the price and stock were read and `days` ago, each null when the cell is not a date) and the `unknown` rows (`file`, `line`, `lcsc`, `why` nobody knows them).
+    /// `json` prints one JSON document on stdout and nothing else there: `command` (`catalog age`), `ok`, `today`, `days` (the age from which a row is old), `rows` (the rows with an offer), the `old` rows (`file`, `line`, the sku of the offer as `lcsc`, the `date` the price and stock were read and `days` ago, each null when the cell is not a date) and the `unknown` rows (`file`, `line`, `lcsc`, `why` nobody knows them).
     #[arg(long, value_enum, default_value = "text")]
     pub format: Format,
 }
@@ -132,7 +132,18 @@ fn run_catalog_add(request: &AddArgs) -> ExitCode {
     }
     let to: Option<&Path> = request.to.as_deref();
     let shown = to.map(|p| p.display().to_string());
-    match refresh::add(&request.lcsc, to.zip(shown.as_deref()), network) {
+    // The LCSC offers file the number goes in: the project's, else `offers/lcsc.csv` here.
+    let offers = match to.map(|_| lcsc_offers_file()).transpose() {
+        Ok(offers) => offers,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let files = to
+        .zip(shown.as_deref())
+        .zip(offers.as_ref().map(|(p, s)| (p.as_path(), s.as_str())));
+    match refresh::add(&request.lcsc, files, network) {
         Ok(added) => {
             if request.format == Format::Json {
                 print_json(&refresh::json_added(&added));
@@ -158,6 +169,20 @@ fn run_catalog_add(request: &AddArgs) -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+/// Where `catalog add` writes the LCSC offer: the offers file of LCSC of the project that
+/// contains the current directory ([`Project::offer_file_of`]), or `offers/lcsc.csv` in the
+/// current directory outside a project.
+fn lcsc_offers_file() -> Result<(PathBuf, String), String> {
+    let cwd = env::current_dir().map_err(|e| e.to_string())?;
+    if let Some(project) = Project::find(&cwd)?
+        && let Some((path, file)) = project.offer_file_of("lcsc")?
+    {
+        return Ok((path, file));
+    }
+    let file = "offers/lcsc.csv".to_string();
+    Ok((cwd.join(&file), file))
 }
 
 fn run_catalog_refresh(request: &RefreshArgs) -> ExitCode {

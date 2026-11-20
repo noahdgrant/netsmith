@@ -252,8 +252,7 @@ fn all() -> Vec<String> {
     // may leave out.
     for series in [None, Some(Series::E24)] {
         let mut project = Catalogs::empty().with_series(series);
-        project
-            .add_file("resistor", "catalogs/resistor.csv", ROWS)
+        crate::offered::add(&mut project, "resistor", "catalogs/resistor.csv", ROWS)
             .unwrap();
         for (name, source) in [
             ("values", VALUES),

@@ -12,29 +12,29 @@ provider = "std::mfg::jlcpcb::JlcTwoLayer1oz"
 [IndicatorExample.parts."enable_in"]
 catalog = "header"
 row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"
-lcsc = "C42431798"
 mpn = "PH2.54-1X2P-H25"
+sku = { jlcpcb-assembly = "C42431798", lcsc-retail = "C42431798" }
 
 [IndicatorExample.parts."power_in"]
 catalog = "header"
 row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"
-lcsc = "C42431798"
 mpn = "PH2.54-1X2P-H25"
+sku = { jlcpcb-assembly = "C42431798", lcsc-retail = "C42431798" }
 
 [IndicatorExample.parts."status_indicator.bypass"]
 catalog = "capacitor"
 row = "100nF 10% 16V X7R 0402 C1525"
-lcsc = "C1525"
 mpn = "CL05B104KO5NNNC"
+sku = { jlcpcb-assembly = "C1525", lcsc-retail = "C1525" }
 
 [IndicatorExample.parts."status_indicator.current_limit"]
 catalog = "resistor"
 row = "1kΩ 1% 0402 C11702"
-lcsc = "C11702"
 mpn = "0402WGF1001TCE"
+sku = { jlcpcb-assembly = "C11702", lcsc-retail = "C11702" }
 
 [IndicatorExample.parts."status_indicator.led"]
 catalog = "led"
 row = "LTST-C190KGKT GREEN LED 0603 C125094"
-lcsc = "C125094"
 mpn = "LTST-C190KGKT"
+sku = { jlcpcb-assembly = "C125094", lcsc-retail = "C125094" }

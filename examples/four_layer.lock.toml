@@ -12,29 +12,29 @@ provider = "std::mfg::jlcpcb::JlcFourLayerA04161H7628"
 [FourLayerExample.parts."power_in"]
 catalog = "header"
 row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"
-lcsc = "C42431798"
 mpn = "PH2.54-1X2P-H25"
+sku = { jlcpcb-assembly = "C42431798", lcsc-retail = "C42431798" }
 
 [FourLayerExample.parts."power_out"]
 catalog = "header"
 row = "PH2.54-1X2P-H25 2-pin 2.54mm header C42431798"
-lcsc = "C42431798"
 mpn = "PH2.54-1X2P-H25"
+sku = { jlcpcb-assembly = "C42431798", lcsc-retail = "C42431798" }
 
 [FourLayerExample.parts."stage.input_cap"]
 catalog = "capacitor"
 row = "10uF 20% 10V X5R 0402 C315248"
-lcsc = "C315248"
 mpn = "CL05A106MP5NUNC"
+sku = { jlcpcb-assembly = "C315248", lcsc-retail = "C315248" }
 
 [FourLayerExample.parts."stage.output_cap"]
 catalog = "capacitor"
 row = "22uF 20% 6.3V X5R 0603 C59461"
-lcsc = "C59461"
 mpn = "CL10A226MQ8NRNC"
+sku = { jlcpcb-assembly = "C59461", lcsc-retail = "C59461" }
 
 [FourLayerExample.parts."stage.regulator"]
 catalog = "ldo"
 row = "XC6206P332MR-G 3.3V 100mA LDO SOT-23 C5446"
-lcsc = "C5446"
 mpn = "XC6206P332MR-G"
+sku = { jlcpcb-assembly = "C5446", lcsc-retail = "C5446" }

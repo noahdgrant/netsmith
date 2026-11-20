@@ -85,7 +85,7 @@ fn locked_to(root: &Path, stem: &str, row: &str) {
             &format!("row = \"{SOLVER_ROW}\""),
             &format!("row = \"{row}\""),
         )
-        .replace("lcsc = \"C25104\"\nmpn = \"0402WGF3300TCE\"\n", "");
+        .replace("mpn = \"0402WGF3300TCE\"\nsku = { jlcpcb-assembly = \"C25104\", lcsc-retail = \"C25104\" }\n", "");
     fs::write(lock(root, stem), text).unwrap();
 }
 

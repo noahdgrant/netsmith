@@ -8,8 +8,8 @@ use netsmith_check::{Domain, Loader, check};
 use netsmith_fabricate::project::Project;
 use netsmith_testkit::TempDir;
 
-const ROW: &str = "mpn,forward_voltage,max_reverse_voltage,max_forward_current,package,library,source
-ZZD-CURVE,0.6V,77V,1A,SOD-323,Extended,https://example.invalid/zzd
+const ROW: &str = "mpn,forward_voltage,max_reverse_voltage,max_forward_current,package,source
+ZZD-CURVE,0.6V,77V,1A,SOD-323,https://example.invalid/zzd
 ";
 
 const CURVE: &str = "current,forward_voltage
