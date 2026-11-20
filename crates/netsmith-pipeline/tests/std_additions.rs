@@ -160,7 +160,7 @@ fn the_standard_catalog_of_the_translator_has_a_header_and_no_row_and_says_where
     let n_mosfet = include_str!("../../../data/jlcpcb/catalog/n_mosfet.csv");
     assert_eq!(header, n_mosfet.lines().next().unwrap());
     assert_eq!(P_MOSFET_CSV.lines().count(), 4, "{P_MOSFET_CSV}");
-    for row in ["C15127,AO3401A,", "C15155,AO3407A,", "C133233,AO3415A,"] {
+    for row in ["AO3401A,AO3401A ", "AO3407A,AO3407A ", "AO3415A,AO3415A "] {
         assert!(P_MOSFET_CSV.contains(&format!("\n{row}")), "{row}");
     }
     // With no rows and no file of the project, a board is refused where the row is missing.
