@@ -142,16 +142,24 @@ _Avoid_: Manhattan length (the tree is of straight lines at any angle), airwire 
 Wire or dot in the editor's schematic that serves nothing: an end that touches no pin, power symbol, flag, label, X or other wire of its net (a dead end, such as a rail that runs on past its last tap), two wires of one net along one line, a hook (out, across a grid step or less, and back), a wire that is a point, a dot where fewer than three arms of a net meet, three arms and no dot, a wire along a pin's line, or along the outline of a body or a flag within 0.7 mm. The drawing has none: the engine takes them off when it has routed, and `netsmith_view::check` reports any that is left.
 _Avoid_: Dangling wire, spur, stub (a stub is the short wire straight out of a pin)
 
+**Supplier**:
+A seller of parts, named by the file of its **offers** and by the **supply channel** that buys from it: `jlcpcb`, `lcsc`, `digikey`, `mouser`. It is not a **supply provider** (the code that asks it for a quote) and not the board house that assembles (ADR 0143, proposed).
+_Avoid_: Vendor, distributor (for the same thing), source (a `source` cell is where a number was read)
+
 **Supply budget**:
 What a source rail that states its own `.current` gives at most, the magnitude of the low end of the stated range (`.supply.current &= -1A..0A` is 1 A): the DC analysis finds a fault when even the least the loads on the rail's net draw is more than the budget (ADR 0076, amendment 13). A rail that states no `.current` has no budget.
 _Avoid_: Current limit (a part's own relation), Load rating
+
+**Supply channel**:
+Where a project buys a part and how the stock and price are read: `jlcpcb-assembly` (the stock JLCPCB holds for its assembly), `lcsc-retail`, `digikey-retail` and the like (ADR 0047, ADR 0143, proposed). The `[supply]` table of `netsmith.toml` lists them in order and the first with an **offer** for a part buys it; each has its own rule for choosing among the rows that fit (JLCPCB's: Basic, Preferred, Extended). It is independent of `.assembly`, which says who places the part. Not a pin's **channel** of a class.
+_Avoid_: Source of supply, route (for a channel), store
 
 **Supply peak**:
 The `.supply_peak` of a part in a `~>` chain, a `Fuse`: the `.peak` of the rail whose `pos` the chain starts on, which the checker gives the part without being told (ADR 0086). The chain carries it as it carries the current, so a part in series, which is across no rail and has no `.bias`, is checked against the highest voltage it has to interrupt. A part in no chain from a rail has none, and a design states it.
 _Avoid_: Chain voltage, input peak
 
 **Supply provider**:
-A source of price and stock for a part number, behind one trait: given an LCSC or manufacturer's number it answers with quotes, each saying its channel (JLCPCB assembly stock or LCSC retail stock), stock, price breaks and when it was read. Asked when the bill of materials or `fab` is made, cached with a timestamp, and when it has no answer price and stock are **unknown**, never guessed and never 0. Configured in the `[supply]` table of `netsmith.toml`; credentials never go there (ADR 0047).
+A source of price and stock for a part number, behind one trait: given a part's number it answers with quotes, each saying its **supply channel** (JLCPCB assembly stock or LCSC retail stock), stock, price breaks and when it was read. ADR 0143 (proposed) has it asked by the **offer**'s `sku` and not by an LCSC number. Asked when the bill of materials or `fab` is made, cached with a timestamp, and when it has no answer price and stock are **unknown**, never guessed and never 0. Configured in the `[supply]` table of `netsmith.toml`; credentials never go there (ADR 0047).
 _Avoid_: Supplier feed, price list (a file provider reads one)
 
 **Supply row**:
