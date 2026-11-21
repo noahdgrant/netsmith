@@ -125,7 +125,7 @@ fn applying_one_writes_what_the_editors_post_writes() {
             alternative: alternative.name.clone(),
         })
         .unwrap();
-    let lcsc = alternative.lcsc.as_deref().unwrap();
+    let lcsc = alternative.sku.as_deref().unwrap();
     let run = swap(&by_cli, &["r1", "--apply", lcsc, "--format", "json"]);
     assert!(run.status.success(), "{}", said(&run));
     let answer: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();

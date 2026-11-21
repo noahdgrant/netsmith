@@ -230,6 +230,10 @@ pub struct FabOptions {
     /// connections (`rip_rounds` in `netsmith.toml`, `--rip-rounds`; issue #1088): the router's
     /// own, [`netsmith_router::RIP_ROUNDS`], by default, and 0 runs none.
     pub rip_rounds: usize,
+    /// The weights of the router's quality objective (`--length-weight`, `--via-weight`,
+    /// `--layer-change-weight`; issue #1517); `None`, the default, routes at the router's own
+    /// costs with no polish pass.
+    pub weights: Option<netsmith_router::Weights>,
     /// Write the board's 3D scene as `<board>.glb` into the board's package folder, beside the
     /// pin map and `fab-notes.txt` and outside the Gerber zip: the scene of the board as routed,
     /// as `dev board3d --glb` writes it (docs/BOARD3D.md). The default is `true`; the command line
@@ -273,6 +277,10 @@ pub struct FabOptions {
     /// try (`--place-budget`, `place_budget` in `netsmith.toml`, issue #764). The default is
     /// no limit.
     pub place_budget: netsmith_core::job::Limit,
+    /// The weight of the placer's objective for routing (`--routing-objective`,
+    /// `routing_objective` in `netsmith.toml`, issue 1544). The default is 0: the objective is
+    /// left out, and every board places as it did before.
+    pub routing_objective: f64,
     /// Whether a seed that places the board and is not the layout file's may be written to the
     /// file (issue #458): `fab` writes it; an order and the editor's release never change a
     /// choice by themselves, and stop instead.
@@ -421,6 +429,7 @@ impl Default for FabOptions {
             pin_map_source: None,
             track_margin: DEFAULT_TRACK_MARGIN,
             rip_rounds: netsmith_router::RIP_ROUNDS,
+            weights: None,
             glb: true,
             save_placed: false,
             step: true,
@@ -430,6 +439,7 @@ impl Default for FabOptions {
             models: None,
             place_seeds: crate::layout::DEFAULT_PLACE_SEEDS,
             place_budget: netsmith_core::job::Limit::default(),
+            routing_objective: 0.0,
             seed_writes: SeedWrites::Write,
             offline: false,
             reuse: Reuse::Off,
@@ -449,6 +459,64 @@ pub fn rip_rounds(project: Option<&crate::project::Project>) -> usize {
     project
         .and_then(|p| p.manifest.rip_rounds)
         .unwrap_or(netsmith_router::RIP_ROUNDS)
+}
+
+/// The weights of the router's quality objective the project's keys give (`length_weight`,
+/// `via_weight`, `layer_change_weight` of `netsmith.toml`, issue 1517), the router's own for a
+/// key not stated; `None` when none is stated, which routes as the router always has. The reason
+/// when a weight is out of its range.
+pub fn weights_of(
+    manifest: &crate::project::Manifest,
+) -> Result<Option<netsmith_router::Weights>, String> {
+    weights_with(Some(manifest), (None, None, None))
+}
+
+/// [`weights_of`] the project, for the editor and the orders, which have no flags: a project
+/// that parsed has weights in their ranges, so there is no error to tell here.
+pub fn project_weights(
+    project: Option<&crate::project::Project>,
+) -> Option<netsmith_router::Weights> {
+    weights(project, (None, None, None)).ok().flatten()
+}
+
+/// The line `fab` tells of the weights it routes with (issue 1536), so a run says which the flags
+/// and the project's keys gave.
+pub fn weights_line(w: &netsmith_router::Weights) -> String {
+    format!(
+        "with the weights of the quality objective: length {} of the router's own, via {} mm, layer change {} mm",
+        w.length, w.via, w.layer_change
+    )
+}
+
+/// The weights of a run: each of the three flags (`--length-weight`, `--via-weight`,
+/// `--layer-change-weight`) wins over the project's key of that name, and the router's own
+/// weight stands for one neither states; `None` when none is stated at all.
+pub fn weights(
+    project: Option<&crate::project::Project>,
+    flags: (Option<f64>, Option<f64>, Option<f64>),
+) -> Result<Option<netsmith_router::Weights>, String> {
+    weights_with(project.map(|p| &p.manifest), flags)
+}
+
+fn weights_with(
+    manifest: Option<&crate::project::Manifest>,
+    (length, via, layer_change): (Option<f64>, Option<f64>, Option<f64>),
+) -> Result<Option<netsmith_router::Weights>, String> {
+    let key = |f: fn(&crate::project::Manifest) -> Option<f64>| manifest.and_then(f);
+    let length = length.or(key(|m| m.length_weight));
+    let via = via.or(key(|m| m.via_weight));
+    let layer_change = layer_change.or(key(|m| m.layer_change_weight));
+    if length.is_none() && via.is_none() && layer_change.is_none() {
+        return Ok(None);
+    }
+    let own = netsmith_router::Weights::DEFAULT;
+    let w = netsmith_router::Weights {
+        length: length.unwrap_or(own.length),
+        via: via.unwrap_or(own.via),
+        layer_change: layer_change.unwrap_or(own.layer_change),
+    };
+    w.check()?;
+    Ok(Some(w))
 }
 
 /// How many times the process's least track a signal is drawn at where there is room, when the
@@ -1273,6 +1341,7 @@ fn fab_board(
                     crate::layout::Seeding {
                         seeds: options.place_seeds,
                         budget: options.place_budget,
+                        routing_objective: options.routing_objective,
                         progress: None,
                     },
                 )
@@ -1564,6 +1633,9 @@ fn fab_board(
                 None
             }
         });
+        if let Some(w) = options.weights {
+            say(format!("{}: routing {}", built.label(), weights_line(&w)));
+        }
         let routing = timings::stage("fab.route", &label, || {
             netsmith_core::job::reporting(sink, || match &from {
                 Some(from) => {
@@ -1574,6 +1646,7 @@ fn fab_board(
                         options.route_timeout,
                         RouteOptions {
                             rip_rounds: options.rip_rounds,
+                            weights: options.weights,
                             ..RouteOptions::default()
                         },
                         options.track_margin,
@@ -1597,6 +1670,7 @@ fn fab_board(
                     options.route_timeout,
                     RouteOptions {
                         rip_rounds: options.rip_rounds,
+                        weights: options.weights,
                         ..RouteOptions::default()
                     },
                     options.track_margin,
@@ -1739,10 +1813,10 @@ fn fab_board(
             })
             .collect();
         if incomplete.is_none() {
-            let voltages = netsmith_design::guidelines::net_voltages(&built.trace.model);
             drops.extend(
-                crate::track_drop::findings(&board, &voltages)
-                    .into_iter()
+                crate::track_drop::drops_of(&board, &built.trace.model)
+                    .iter()
+                    .filter_map(crate::track_drop::NetDrop::finding)
                     .map(|m| {
                         format!(
                             "{}: {} guideline: {m}",
@@ -1884,6 +1958,9 @@ fn fab_board(
             extras.extend(model_notes(scene));
         }
         extras.extend(crate::no_supplier::note(&sourcing));
+        // What the owner buys, by channel (ADR 0143): the consigned and hand-soldered parts, each
+        // with its channel's sku.
+        extras.extend(crate::buying::notes(&crate::buying::lines(&sourcing)));
         if options.offline {
             extras.push(OFFLINE_NOTE.to_string());
         }
@@ -1962,7 +2039,11 @@ fn fab_board(
             for_review,
             waived: waived.iter().map(Waived::line).collect(),
             pictures: pictures.iter().map(|(file, _)| file.clone()).collect(),
-            drc: drc_extras(&board),
+            drc: netsmith_geom::DrcExtras {
+                // A guideline of the check that a strict run makes an error (issue #1509).
+                strict_guidelines: catalogs.strict_guidelines(),
+                ..drc_extras(&board)
+            },
             trim: board.trims().iter().map(Trim::note).collect(),
             process: Some(board.process_note()),
             extras,
@@ -2177,7 +2258,7 @@ fn fab_board(
             summary: pkg.summary(),
             notes,
             files,
-            facts: BoardFacts::of(&board, &pkg),
+            facts: BoardFacts::of(&board, &pkg).bought_by(&sourcing),
             origins: board.origins(),
             requirements: pkg
                 .constraints
@@ -2338,6 +2419,7 @@ pub fn review_picture_request(layer: netsmith_pcb::CopperLayer) -> crate::pcb_pi
         drc: true,
         islands: true,
         stitching: false,
+        rule_areas: true,
         format: crate::pcb_picture::Format::Png,
     }
 }
@@ -3271,6 +3353,24 @@ fn fab_panel(
             cell.count *= (spec.columns * spec.rows) as usize;
             cell
         },
+        // The panel's parts are its cells', named as bom.csv names them (`R1_3`).
+        bought: run
+            .fabricated
+            .facts
+            .bought
+            .iter()
+            .map(|l| crate::buying::BuyLine {
+                designators: (1..=(spec.columns * spec.rows) as usize)
+                    .flat_map(|k| {
+                        l.designators
+                            .iter()
+                            .map(move |d| netsmith_fab::panel_designator(d, k))
+                    })
+                    .collect(),
+                ..l.clone()
+            })
+            .collect(),
+        bom_channels: run.fabricated.facts.bom_channels.clone(),
     };
     Ok(Fabricated {
         board: spec.name.clone(),
@@ -3319,7 +3419,7 @@ fn alternate_notes(
     alternates
         .iter()
         .map(|a| {
-            let number = match (&a.sourcing.mpn, &a.sourcing.lcsc) {
+            let number = match (&a.sourcing.mpn, &a.sourcing.sku) {
                 (Some(mpn), Some(lcsc)) => format!(" ({mpn}, {lcsc})"),
                 (Some(n), None) | (None, Some(n)) => format!(" ({n})"),
                 (None, None) => String::new(),
@@ -3348,7 +3448,7 @@ fn alternate_entries(
         .map(|a| netsmith_fab::AlternateEntry {
             designator: a.refdes.clone(),
             part_number: a.sourcing.mpn.clone().unwrap_or_else(|| a.kind.clone()),
-            lcsc: a.sourcing.lcsc.clone(),
+            lcsc: a.sourcing.sku.clone(),
         })
         .collect()
 }
@@ -3409,9 +3509,13 @@ fn fit_of(sourcing: &[Sourced]) -> BTreeMap<String, Fit> {
 /// interface (the `prepare-fab-order` step). If
 /// JLCPCB documents a marker, the mark changes in this one function.
 ///
-/// Where it is not shown: the editor's bill of materials shows a consigned part as an ordinary
-/// line with no number and no price (its API has a `hand_solder` flag and no consigned one, and
-/// a new field changes the generated types; not built, issue #19).
+/// The supply channel (ADR 0143). The LCSC cell is filled from the part's sku only when the
+/// channel that buys it reads LCSC's offers (`jlcpcb-assembly`, `lcsc-retail`), so a project
+/// that buys from those alone gets the bill it got before, byte for byte. A consigned part bought
+/// in `digikey-retail` or `mouser-retail` keeps its manufacturer's number as the comment and an
+/// empty cell, and `fab-notes.txt` lists it with its channel and sku ([`crate::buying`]). A part
+/// the board house is to buy from such a channel is refused before anything is placed
+/// ([`crate::no_supplier`]): JLCPCB buys by LCSC's numbers.
 ///
 /// `paths` is the member path of each part of `sourcing`, in its order, so that a part a
 /// `[[member]]` row of `kicad.toml` gives its own footprint is listed with it; a part past its
@@ -3447,10 +3551,12 @@ pub fn bom_entries(
             _ => s.value.clone(),
         };
         // A part that is not fitted is a line of its own with no number to buy (issue #1273).
+        // The cell holds an LCSC number only: a part bought in another channel has none here
+        // (ADR 0143), and `fab-notes.txt` names its channel and sku.
         let lcsc = if s.not_fitted.is_some() {
             None
         } else {
-            s.lcsc.clone()
+            s.lcsc_number().map(str::to_string)
         };
         match entries
             .iter_mut()
@@ -3509,7 +3615,7 @@ pub fn route_with_margin(
     track_margin: f64,
     say: &dyn Fn(String),
 ) -> netsmith_router::Routing {
-    with_margin(
+    let routing = with_margin(
         board,
         route_timeout,
         base,
@@ -3517,7 +3623,24 @@ pub fn route_with_margin(
         say,
         route_with,
         |routing| routing.left.len(),
-    )
+    );
+    say_rerouted(&board.name, &routing, say);
+    routing
+}
+
+/// The nets the router's reroute pass laid again (issue #1538), one line each.
+pub fn say_rerouted(board: &str, routing: &netsmith_router::Routing, say: &dyn Fn(String)) {
+    for r in &routing.rerouted {
+        let before = if r.with.is_empty() {
+            String::new()
+        } else {
+            format!(", laid before {}", r.with.join(", "))
+        };
+        say(format!(
+            "{board}: rerouted net {}{before}: {:.1} mm of track by the weights is now {:.1} mm",
+            r.net, r.before, r.after
+        ));
+    }
 }
 
 /// [`route_with_margin`], keeping the router's copper of `before` for every net the placement
@@ -3531,7 +3654,7 @@ pub fn reroute_with_margin(
     track_margin: f64,
     say: &dyn Fn(String),
 ) -> netsmith_router::carry::Rerouted {
-    with_margin(
+    let done = with_margin(
         board,
         route_timeout,
         base,
@@ -3539,7 +3662,9 @@ pub fn reroute_with_margin(
         say,
         |board, options| netsmith_router::carry::reroute(before, board, rip, options),
         |done| done.routing.left.len(),
-    )
+    );
+    say_rerouted(&board.name, &done.routing, say);
+    done
 }
 
 fn with_margin<T>(
@@ -3634,6 +3759,7 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
         target_widths: board.target_track_widths(),
         neck_reach: netsmith_router::route::NECK_REACH,
         via_counts: board.via_counts(),
+        via_group_gap: board.rules.group_gap(),
         track_angle: true,
         round_track_angle: board.process.min_round_track_angle,
         marks: Some(marks_of(board)),
@@ -3672,6 +3798,8 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
             .collect(),
         // The layout file's waivers of findings of a part's own footprint (issue #1196).
         waivers: board.drc_waivers(),
+        strict_guidelines: false,
+        open: Vec::new(),
         // The rules the `.kicad_dru` beside the board holds for KiCad too (issue #1185).
         ..board.rules.process_rules()
     }
@@ -3800,6 +3928,45 @@ pub fn marks_of(board: &Board) -> netsmith_geom::DrcMarks {
 
 #[cfg(test)]
 mod tests {
+    use netsmith_router::Weights;
+
+    fn project_with(keys: &str) -> crate::project::Manifest {
+        crate::project::Manifest::parse(&format!("[project]\nname = \"a\"\n{keys}")).unwrap()
+    }
+
+    /// The weights of a run (issue 1536): none stated is the router's own routing; a key states
+    /// the weights it names and the router's own stand for the rest; a flag wins over its key.
+    #[test]
+    fn a_flag_wins_over_the_key_of_the_same_name() {
+        let none = (None, None, None);
+        assert_eq!(super::weights(None, none), Ok(None));
+        assert_eq!(super::weights_with(Some(&project_with("")), none), Ok(None));
+        let keyed = project_with("via_weight = 40\nlayer_change_weight = 2\n");
+        let own = Weights::DEFAULT;
+        assert_eq!(
+            super::weights_with(Some(&keyed), none),
+            Ok(Some(Weights {
+                via: 40.0,
+                layer_change: 2.0,
+                ..own
+            }))
+        );
+        assert_eq!(
+            super::weights_with(Some(&keyed), (Some(0.5), Some(8.0), None)),
+            Ok(Some(Weights {
+                length: 0.5,
+                via: 8.0,
+                layer_change: 2.0
+            }))
+        );
+        // A flag with no project, and a flag out of its range.
+        assert_eq!(
+            super::weights_with(None, (None, Some(45.0), None)),
+            Ok(Some(Weights { via: 45.0, ..own }))
+        );
+        let e = super::weights_with(Some(&keyed), (Some(0.01), None, None)).unwrap_err();
+        assert!(e.contains("the length weight is 0.01"), "{e}");
+    }
 
     fn moved_seed(stated: bool) -> crate::layout::Seeds {
         crate::layout::Seeds {
@@ -4057,7 +4224,9 @@ mod tests {
             kind: kind.into(),
             value: value.into(),
             package: package.map(Into::into),
-            lcsc: lcsc.map(Into::into),
+            sku: lcsc.map(Into::into),
+            channel: None,
+            manufacturer: None,
             mpn: None,
             library: None,
             assembly,
@@ -4340,7 +4509,7 @@ mod tests {
 
     /// The fields of a process that are not a rule the router and the design rules check keep,
     /// each with the reason (issue #431).
-    const NOT_A_COPPER_RULE: [(&str, &str); 37] = [
+    const NOT_A_COPPER_RULE: [(&str, &str); 38] = [
         (
             "finish",
             "the surface finish, a word for the notes and the order",
@@ -4452,6 +4621,10 @@ mod tests {
         (
             "min_round_track_angle",
             "the angle at which a track may leave round copper, unstated by every process and judged on the routed board by `acid_trap` only where a board states it: the router draws none of it; `a_round_track_angle_a_board_states_reaches_the_check` proves the check keeps it",
+        ),
+        (
+            "via_group_gap",
+            "the space at which vias of one net stand side by side as one group, unstated by every process (the least clearance then): `a_via_group_gap_a_board_states_reaches_the_router_and_the_check` proves both keep it",
         ),
     ];
 
@@ -4569,6 +4742,7 @@ mod tests {
             pad_ring: Some(rules.min_annular_ring),
             text_to_mask: Some(rules.silk_to_pad),
             round_track_angle: p.min_round_track_angle,
+            via_group_gap: rules.group_gap(),
             marks: Some(netsmith_geom::DrcMarks {
                 min_fiducials: p.min_fiducials as usize,
                 fiducial_diameter: p.fiducial_diameter,
@@ -4652,6 +4826,25 @@ mod tests {
             "{}",
             stated.1
         );
+    }
+
+    /// The space at which vias of one net stand side by side as one group
+    /// (`.process.via_group_gap`, issue #1505) is stated by no process and is the least
+    /// clearance then; a board that states it changes both the router's rules and what the
+    /// check is given.
+    #[test]
+    fn a_via_group_gap_a_board_states_reaches_the_router_and_the_check() {
+        let p = process("TwoLayer", &[]);
+        assert_eq!(p.via_group_gap, None);
+        let rules = netsmith_pcb::Rules::for_process(&p).unwrap();
+        assert_eq!(rules.group_gap(), p.min_clearance);
+        let base = what_is_kept(&p).unwrap();
+        let stated = process("TwoLayer", &[".via_group_gap &= 0.15mm".to_string()]);
+        assert_eq!(stated.via_group_gap, Some(0.15));
+        let after = what_is_kept(&stated).unwrap();
+        assert_ne!(after.0, base.0, "it does not reach the router");
+        assert_ne!(after.1, base.1, "it does not reach the check");
+        assert!(after.1.contains("via_group_gap: 0.15"), "{}", after.1);
     }
 
     /// Every rule a process states reaches both the router and the design rules check: a

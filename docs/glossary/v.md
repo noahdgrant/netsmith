@@ -8,6 +8,10 @@ _Avoid_: V-score, scoring
 One value of an enum, written `Enum::Variant` (`AssemblyMode::Hand`). Not a text: `"hand"` is refused where a variant belongs, and the message names the variant it was meant to be. A row of a part's `.variants` table is an **Order code**, not a variant.
 _Avoid_: Case, member (a member is a `.name` of a definition), mode
 
+**Via group**:
+Vias of one net that stand side by side, their copper no more than the group gap apart edge to edge, or through other vias of the group that are: the process's least clearance, or the board's `.process.via_group_gap` (issue #1505). The design rules check's `via_current` counts a group against what its current needs, the router puts vias beside a via until its group has as many, and the quality report's via pairs leave out a group the current needs. Not a _Via pair_, which is two vias of the two nets of a diff pair.
+_Avoid_: Via cluster, via array, stitched vias
+
 **Via in pad**:
 A via whose centre is on a surface-mount pad. The fabricator fills it with epoxy and caps it with plating so that the solder stays on the pad; the process says up to what size it does that (`.via_in_pad`), and `fab-notes.txt` says how many there are and on which parts, in a line of its own, because the fill costs extra; `project order` stops until the cost is accepted (issue #1118). The router uses one only when a pad cannot be reached any other way.
 

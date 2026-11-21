@@ -16,7 +16,7 @@ export interface Hint {
 
 /** What one part says: value, package and the supplier number it was resolved to. */
 export function partText(p: PartInfo): string {
-  return [p.value, p.package, p.lcsc].filter((x): x is string => !!x && x.trim() !== '').join(' · ');
+  return [p.value, p.package, p.sku].filter((x): x is string => !!x && x.trim() !== '').join(' · ');
 }
 
 /** The hints of the parts declared in `path`: one for each declaration line. A declaration that

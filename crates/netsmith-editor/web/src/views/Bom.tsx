@@ -33,7 +33,7 @@ import { ageLabel, count, dollars, plural } from '../util';
 /** Where the line's price and stock come from, when, and whether that is too long ago; or why nobody knows them. */
 function freshness(l: BomLine, staleAfter: number): string {
   if (l.unresolved) return l.unresolved;
-  if (!l.lcsc) return '';
+  if (!l.sku) return '';
   if (l.date == null) return `Price and stock unknown: ${l.unknown ?? 'no provider has them'}. Unknown is not 0.`;
   const when = `Price and stock from ${l.supply ?? 'the catalog row'}, read ${l.date}, ${ageLabel(l.ageDays)}`;
   return l.stale ? `${when}: older than ${staleAfter} days, ask the supplier again before relying on them` : when;
@@ -47,20 +47,21 @@ function readOn(l: BomLine): string {
 
 const TONE: Record<Sourcing, Tone> = { found: 'ok', stale: 'warn', unchecked: 'neutral', ambiguous: 'warn', missing: 'bad', hand: 'info' };
 const MEANING: Record<Sourcing, string> = {
-  found: 'An LCSC number with a price and stock that are not old',
-  stale: 'An LCSC number whose price and stock were read long ago',
-  unchecked: 'An LCSC number, but no provider has said what it costs or what is in stock',
+  found: 'A supplier number with a price and stock that are not old',
+  stale: 'A supplier number whose price and stock were read long ago',
+  unchecked: 'A supplier number, but no provider has said what it costs or what is in stock',
   ambiguous: 'A generic part that no single catalog row stands for; the nearest rows are in the tooltip of the line',
-  missing: 'No LCSC number: the board house cannot place this part',
+  missing: 'No offer in the project\'s supply channels: nobody can buy this part',
   hand: 'Soldered by hand: the board house does not place it',
 };
 
-type ColumnId = 'qty' | 'value' | 'package' | 'lcsc' | 'library' | 'status' | 'each' | 'stock' | 'checked';
+type ColumnId = 'qty' | 'value' | 'package' | 'channel' | 'sku' | 'library' | 'status' | 'each' | 'stock' | 'checked';
 const COLUMNS: { id: ColumnId; label: string; num?: boolean }[] = [
   { id: 'qty', label: 'Qty', num: true },
   { id: 'value', label: 'Value' },
   { id: 'package', label: 'Package' },
-  { id: 'lcsc', label: 'LCSC' },
+  { id: 'channel', label: 'Channel' },
+  { id: 'sku', label: 'SKU' },
   { id: 'library', label: 'Library' },
   { id: 'status', label: 'Sourcing' },
   { id: 'each', label: 'Each', num: true },
@@ -232,7 +233,13 @@ function Row({ l, cols, lit, staleAfter, mark, marking, onSwap }: { l: BomLine; 
         </td>
       )}
       {cols.has('package') && <td title={l.footprint ?? ''}>{l.package ?? l.footprint ?? '-'}</td>}
-      {cols.has('lcsc') && <td class="mono lcsc">{l.lcsc ?? (l.unresolved ? 'unresolved' : l.handSolder ? 'by hand' : 'none')}</td>}
+      {cols.has('channel') && (
+        <td class="channel" title={l.consigned ? 'Consigned: you buy it in this channel and ship it to the board house, which places it' : undefined}>
+          {l.channel ?? '-'}
+          {l.consigned && <div class="checked">consigned</div>}
+        </td>
+      )}
+      {cols.has('sku') && <td class="mono sku">{l.sku ?? (l.unresolved ? 'unresolved' : l.handSolder ? 'by hand' : 'none')}</td>}
       {cols.has('library') && <td>{l.library ? <span class={`pill ${l.library.toLowerCase()}`}>{l.library}</span> : ''}</td>}
       {cols.has('status') && (
         <td>
@@ -242,17 +249,17 @@ function Row({ l, cols, lit, staleAfter, mark, marking, onSwap }: { l: BomLine; 
         </td>
       )}
       {cols.has('each') && (
-        <td class={`num ${l.lcsc && l.unitUsd == null ? 'unknown' : ''}`} title={`${dollars(l.lineUsd)} for ${l.quantity}. ${freshness(l, staleAfter)}`}>
-          {l.lcsc && l.unitUsd == null ? 'unknown' : dollars(l.unitUsd)}
+        <td class={`num ${l.sku && l.unitUsd == null ? 'unknown' : ''}`} title={`${dollars(l.lineUsd)} for ${l.quantity}. ${freshness(l, staleAfter)}`}>
+          {l.sku && l.unitUsd == null ? 'unknown' : dollars(l.unitUsd)}
         </td>
       )}
       {cols.has('stock') && (
-        <td class={`num ${l.lcsc && l.stock == null ? 'unknown' : ''}`} title={freshness(l, staleAfter)}>
-          {l.lcsc && l.stock == null ? 'unknown' : count(l.stock)}
+        <td class={`num ${l.sku && l.stock == null ? 'unknown' : ''}`} title={freshness(l, staleAfter)}>
+          {l.sku && l.stock == null ? 'unknown' : count(l.stock)}
         </td>
       )}
       {cols.has('checked') && (
-        <td class="num">{(l.lcsc || l.unresolved) && <span class={`checked${l.stale || l.unresolved ? ' stale' : ''}`}>{readOn(l)}</span>}</td>
+        <td class="num">{(l.sku || l.unresolved) && <span class={`checked${l.stale || l.unresolved ? ' stale' : ''}`}>{readOn(l)}</span>}</td>
       )}
     </tr>
   );
@@ -329,7 +336,7 @@ export function Bom() {
   const matches = (l: BomLine) =>
     (!problemsOnly || isProblem(l)) &&
     (!q ||
-      [l.designators.join(' '), l.value, l.kind, l.package ?? '', l.footprint ?? '', l.lcsc ?? '', l.mpn ?? '', l.library ?? '', SOURCING_LABEL[sourcing(l)]]
+      [l.designators.join(' '), l.value, l.kind, l.package ?? '', l.footprint ?? '', l.channel ?? '', l.sku ?? '', l.mpn ?? '', l.library ?? '', SOURCING_LABEL[sourcing(l)]]
         .join(' ')
         .toLowerCase()
         .includes(q));
@@ -343,7 +350,7 @@ export function Bom() {
   const gone = useMemo(
     () =>
       (bomDelta?.removed ?? []).filter(
-        (l) => !q || [l.designators.join(' '), l.value, l.kind, l.package ?? '', l.footprint ?? '', l.lcsc ?? '', l.mpn ?? ''].join(' ').toLowerCase().includes(q),
+        (l) => !q || [l.designators.join(' '), l.value, l.kind, l.package ?? '', l.footprint ?? '', l.sku ?? '', l.mpn ?? ''].join(' ').toLowerCase().includes(q),
       ),
     [bomDelta, q],
   );
@@ -359,7 +366,7 @@ export function Bom() {
   const uniqueValues = new Set(everything.map((l) => `${l.value}|${l.package ?? ''}`)).size;
   const stale = everything.filter((l) => l.stale).length;
   const problems = everything.filter(isProblem).length;
-  const unpriced = bom.lines.filter((l) => l.lcsc && l.unitUsd == null).length;
+  const unpriced = bom.lines.filter((l) => l.sku && l.unitUsd == null).length;
   const refreshable = bom.catalogs.length > 0;
   const shownCols = COLUMNS.filter((c) => cols.has(c.id));
   const span = 1 + shownCols.length + (marking ? 1 : 0);
@@ -582,7 +589,8 @@ export function Bom() {
                     {cols.has('qty') && <td class="num">{l.quantity}</td>}
                     {cols.has('value') && <td title={l.kind}>{l.value}</td>}
                     {cols.has('package') && <td title={l.footprint ?? ''}>{l.package ?? l.footprint ?? '-'}</td>}
-                    {cols.has('lcsc') && <td class="mono lcsc">DNP</td>}
+                    {cols.has('channel') && <td />}
+                    {cols.has('sku') && <td class="mono sku">DNP</td>}
                     {cols.has('library') && <td />}
                     {cols.has('status') && <td />}
                     {cols.has('each') && <td />}
@@ -621,7 +629,8 @@ export function Bom() {
                     {cols.has('qty') && <td class="num">{l.quantity}</td>}
                     {cols.has('value') && <td title={l.kind}>{l.value}</td>}
                     {cols.has('package') && <td title={l.footprint ?? ''}>{l.package ?? l.footprint ?? '-'}</td>}
-                    {cols.has('lcsc') && <td class="mono lcsc">{l.lcsc ?? (l.handSolder ? 'by hand' : 'none')}</td>}
+                    {cols.has('channel') && <td />}
+                    {cols.has('sku') && <td class="mono sku">{l.sku ?? (l.handSolder ? 'by hand' : 'none')}</td>}
                     {cols.has('library') && <td />}
                     {cols.has('status') && <td />}
                     {cols.has('each') && <td class="num">{l.unitUsd != null ? dollars(l.unitUsd) : ''}</td>}
@@ -647,7 +656,7 @@ export function Bom() {
       <ViewHelp id="bom">
         <p>One row for each value and package the board needs, with the designators it covers and the catalog line chosen for it.</p>
         <p>
-          <b>Library</b> is the part's JLCPCB library: the solver takes Basic before Preferred before Extended. <b>Soldered by hand</b> lists the parts the board house does not place.
+          <b>Channel</b> is the supply channel that buys the part (the first of the project's <code>[supply] channels</code> with an offer of it, or the one <code>[supply.parts]</code> names) and <b>SKU</b> its number there; a <b>consigned</b> part is one you buy there and ship to the board house. <b>Library</b> is the part's JLCPCB library: the solver takes Basic before Preferred before Extended. <b>Soldered by hand</b> lists the parts the board house does not place.
         </p>
         <p>
           <b>Each</b> and <b>Stock</b> are the catalog's own figures, entered by hand. <b>Checked</b> is the day Check parts last found the row's manufacturer number and package equal to LCSC's record.

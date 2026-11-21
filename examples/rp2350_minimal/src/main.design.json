@@ -3897,6 +3897,19 @@
           "source": "part `ss_pullup.resistor`: 0 mA to 0.34 mA; the current of part `ss_link`, part `gpio0_link` is not known, so it may be more"
         }
       ],
+      "pin_currents": [
+        {
+          "net": "net-flash.qspi.cs",
+          "path": "flash.qspi.cs",
+          "pins": [
+            {
+              "refdes": "U1",
+              "pin": "1"
+            }
+          ],
+          "current": 0.0
+        }
+      ],
       "outline": {
         "width": [
           52.0,

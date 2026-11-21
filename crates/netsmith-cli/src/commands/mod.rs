@@ -43,6 +43,7 @@ mod project_show;
 mod render;
 mod route;
 mod routes;
+mod rules;
 mod schematic;
 mod schematic_layout;
 mod show;
@@ -135,6 +136,8 @@ pub enum Board {
     Fab(fab::Args),
     /// Run the design rules check alone, on the placed board with its routes file or on a KiCad board.
     Drc(drc::Args),
+    /// Print the rules the design rules check holds the board to: clearances, widths per net, mask, holes, vias, rule areas, classes, layers.
+    Rules(rules::Args),
     /// Print what the solve left a part or member with, and why each part has its row.
     Explain(explain::Args),
     /// Say whether two designs are the same circuit.
@@ -227,6 +230,7 @@ pub fn run(command: Command) -> ExitCode {
             Board::Build(args) => build::run(args),
             Board::Fab(args) => fab::run(args),
             Board::Drc(args) => drc::run(args),
+            Board::Rules(args) => rules::run(args),
             Board::Explain(args) => explain::run(args),
             Board::Compare(args) => compare::run(args),
             Board::Pins(args) => pins::run(args),

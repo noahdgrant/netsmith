@@ -122,7 +122,7 @@ The router's count, for each 1 mm square of a board, of how often its searches f
 _Avoid_: congestion map, heat map
 
 **Curve file**:
-The points of one column of one catalog row over the part's operating conditions (a diode's forward voltage at each current and temperature), `curves/<catalog>/<row>.csv` beside the catalog file and named by the row's `mpn`. The solver reads the column off it, interpolated, at the ranges the design gives the part; the row keeps its single figure for a design that gives none (`netsmith_solve::curve`, issue #1260).
+The points of one column of one catalog row over the part's operating conditions (a diode's forward voltage at each current and temperature), `curves/<catalog>/<row>.csv` beside the catalog file and named by the row's `mpn` (a name that is the `mpn` of two manufacturers' rows is refused, issue #1464). The solver reads the column off it, interpolated, at the ranges the design gives the part; the row keeps its single figure for a design that gives none (`netsmith_solve::curve`, issue #1260).
 _Avoid_: bias curve (a capacitor's curve in its `effective_capacitance` cell), lookup table
 
 **Cut-off voltage**:

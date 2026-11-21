@@ -76,6 +76,8 @@ const FIXTURES = {
   pin_map: 'scripts/editor-verify-js/fixtures/pin_map.nsm',
   // An L-shaped polygon outline with fillets and an arc (issue #57): the PCB view draws its edge.
   polygon_outline: 'scripts/editor-verify-js/fixtures/polygon_outline.nsm',
+  // A part whose own footprint carries a keep-out zone (issue 1543): the PCB view hatches the rule area.
+  rule_areas: 'scripts/editor-verify-js/fixtures/rule_areas.nsm',
   // A board with a `defaults` block (issue #625): the part card says which statement gave a package.
   board_defaults: 'scripts/editor-verify-js/fixtures/board_defaults.nsm',
   // A project with no board: the views say where to write the first one.

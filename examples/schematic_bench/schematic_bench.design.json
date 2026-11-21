@@ -3607,6 +3607,17 @@
       ],
       "pin_currents": [
         {
+          "net": "net-adc.amp.in_a_pos",
+          "path": "adc.amp.in_a_pos",
+          "pins": [
+            {
+              "refdes": "U1",
+              "pin": "3"
+            }
+          ],
+          "current": 0.0
+        },
+        {
           "net": "GND",
           "path": "adc.r_bottom.b",
           "pins": [
@@ -3616,6 +3627,28 @@
             }
           ],
           "current": 2.6870017289034133e-6
+        },
+        {
+          "net": "net-buck.ic.fb",
+          "path": "buck.ic.fb",
+          "pins": [
+            {
+              "refdes": "U2",
+              "pin": "6"
+            }
+          ],
+          "current": 0.0
+        },
+        {
+          "net": "net-buck.ic.rt",
+          "path": "buck.ic.rt",
+          "pins": [
+            {
+              "refdes": "U2",
+              "pin": "4"
+            }
+          ],
+          "current": 0.0
         },
         {
           "net": "GND",
@@ -3649,6 +3682,17 @@
             }
           ],
           "current": 0.000014354068
+        },
+        {
+          "net": "+2V8",
+          "path": "ldo.u.fb",
+          "pins": [
+            {
+              "refdes": "U3",
+              "pin": "4"
+            }
+          ],
+          "current": 0.0
         },
         {
           "net": "+3V3",

@@ -238,6 +238,8 @@
   --pcb-starved: #ff6b6b;
   /* a stitching via the export will lay that the routes file does not hold, pcb/stitchMarks.ts, issue 1489: 3:1 on the board */
   --pcb-stitching: #6f8fb0;
+  /* copper a net's length does not count (a dead stub, a second way), pcb/uncountedMarks.ts, issue 1495: 3:1 on the board */
+  --pcb-uncounted: #d98cff;
   /* the modules lit on the board (pcb/modules.ts, issue 1129), each in its own colour: netsmith_pcb::MODULE_COLOURS_DARK */
   --module-1: #ff5fa2;
   --module-2: #3ddc97;
@@ -493,6 +495,8 @@
   --pcb-starved: #c4302b;
   /* a stitching via the export will lay that the routes file does not hold, pcb/stitchMarks.ts, issue 1489: 3:1 on the board */
   --pcb-stitching: #3d6690;
+  /* copper a net's length does not count (a dead stub, a second way), pcb/uncountedMarks.ts, issue 1495: 3:1 on the board */
+  --pcb-uncounted: #8e2aa8;
   /* the modules lit on the board (pcb/modules.ts, issue 1129), each in its own colour: netsmith_pcb::MODULE_COLOURS_LIGHT */
   --module-1: #c2185b;
   --module-2: #1b8a5a;
@@ -745,6 +749,8 @@
   --pcb-starved: #ff8a85;
   /* a stitching via the export will lay that the routes file does not hold, pcb/stitchMarks.ts, issue 1489: 3:1 on the board */
   --pcb-stitching: #9ec4ff;
+  /* copper a net's length does not count (a dead stub, a second way), pcb/uncountedMarks.ts, issue 1495: 3:1 on the board */
+  --pcb-uncounted: #eab0ff;
   /* the modules lit on the board (pcb/modules.ts, issue 1129), each in its own colour: netsmith_pcb::MODULE_COLOURS_DARK */
   --module-1: #ff5fa2;
   --module-2: #3ddc97;
@@ -997,6 +1003,8 @@
   --pcb-starved: #9c0d08;
   /* a stitching via the export will lay that the routes file does not hold, pcb/stitchMarks.ts, issue 1489: 3:1 on the board */
   --pcb-stitching: #1d4f8a;
+  /* copper a net's length does not count (a dead stub, a second way), pcb/uncountedMarks.ts, issue 1495: 3:1 on the board */
+  --pcb-uncounted: #66167d;
   /* the modules lit on the board (pcb/modules.ts, issue 1129), each in its own colour: netsmith_pcb::MODULE_COLOURS_LIGHT, darker for high contrast */
   --module-1: #a3134c;
   --module-2: #146b45;

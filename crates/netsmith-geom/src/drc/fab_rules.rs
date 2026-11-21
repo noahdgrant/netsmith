@@ -147,8 +147,9 @@ fn track_angle(out: &mut Out<'_>) {
     }
 }
 
-/// A via of a net that needs more than one where it changes layer, in a cluster of touching
-/// vias of the net smaller than that.
+/// A via of a net that needs more than one where it changes layer, in a group of vias of the
+/// net side by side smaller than that: vias whose copper is no more than
+/// [`super::Extras::via_group_gap`] apart, edge to edge, through others that are (issue #1505).
 fn via_current(out: &mut Out<'_>) {
     let m = out.m;
     if m.extras.via_counts.is_empty() {
@@ -166,6 +167,7 @@ fn via_current(out: &mut Out<'_>) {
         let Some(&(_, needs)) = m.extras.via_counts.iter().find(|(n, _)| n == net) else {
             continue;
         };
+        let gap = m.extras.via_group_gap.max(0.0);
         let mut cluster = vec![start];
         seen[start] = true;
         let mut k = 0;
@@ -174,7 +176,7 @@ fn via_current(out: &mut Out<'_>) {
             for (j, w) in vias.iter().enumerate() {
                 if !seen[j]
                     && w.net.as_deref() == Some(net)
-                    && w.at.dist(v.at) <= (w.diameter + v.diameter) / 2.0 + EPS
+                    && w.at.dist(v.at) <= (w.diameter + v.diameter) / 2.0 + gap + EPS
                 {
                     seen[j] = true;
                     cluster.push(j);
@@ -253,13 +255,7 @@ fn track_current(out: &mut Out<'_>) {
             continue;
         };
         let inner = t.layer.starts_with("In");
-        let Some(&(_, least)) = x
-            .inner_least_widths
-            .iter()
-            .filter(|_| inner)
-            .chain(&x.least_widths)
-            .find(|(n, _)| n == net)
-        else {
+        let Some(least) = x.least_width(net, inner) else {
             continue;
         };
         if t.width >= least - EPS / 100.0 {
@@ -314,7 +310,7 @@ fn track_current(out: &mut Out<'_>) {
         out.push_carrying(
             Rule::TrackCurrent,
             format!(
-                "{} is {:.4} mm wide; {held} {needed:.4} mm ({basis}), and only within {:.2} mm of the pads of a part on the net may a track be narrower: widen it to {needed:.2} mm or more, or lower the current",
+                "{} is {:.4} mm wide; {held} {needed:.4} mm ({basis}), and only within {:.2} mm of the box round the pad centres of a part on the net (measured from the centres of its pads, not from their edges) may a track be narrower: widen it to {needed:.2} mm or more, or lower the current",
                 c.item.what, t.width, x.neck_reach
             ),
             c.item.at,
@@ -441,7 +437,7 @@ fn track_impedance(out: &mut Out<'_>) {
         out.push(
             Rule::TrackImpedance,
             format!(
-                "{} is {:.4} mm wide; its net's impedance target needs {:.4} mm on {}, and only within {:.2} mm of the pads of a part on the net may a track be another width",
+                "{} is {:.4} mm wide; its net's impedance target needs {:.4} mm on {}, and only within {:.2} mm of the box round the pad centres of a part on the net (measured from the centres of its pads, not from their edges) may a track be another width",
                 c.item.what, t.width, want, t.layer, x.neck_reach
             ),
             c.item.at,
@@ -530,11 +526,7 @@ fn hole_to_track(out: &mut Out<'_>) {
         let plated_pad = h.plated
             && h.owner
                 .is_some_and(|o| matches!(m.items[o].kind, Kind::Pad(_)));
-        if plated_pad {
-            x.plated_hole_clearance
-        } else {
-            x.hole_to_track
-        }
+        x.hole_to_track_of(plated_pad)
     };
     let holes: Vec<usize> = (0..m.holes.len())
         .filter(|&h| limit(&m.holes[h]).is_some())

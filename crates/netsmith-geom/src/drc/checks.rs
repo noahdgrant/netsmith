@@ -363,8 +363,7 @@ fn copper_clearance(out: &mut Out<'_>) {
         };
         let need = m
             .rules
-            .net_clearance(a.net.as_deref())
-            .max(m.rules.net_clearance(b.net.as_deref()))
+            .pair_clearance(a.net.as_deref(), b.net.as_deref())
             .max(a.own_clearance)
             .max(b.own_clearance);
         let layer_name = m.layer_name(layer).to_string();

@@ -80,7 +80,7 @@ export interface PartCard {
   path: string;
   /** The modules above the part, as a path (`stage`), or null for a part of the board itself. */
   module: string | null;
-  lcsc: string | null;
+  sku: string | null;
   assembled: boolean;
   pins: PinRow[];
   decl: Location | null;
@@ -235,7 +235,7 @@ export function partCard(ctx: CardContext, part: PartInfo, also: PartInfo[] = []
     packageFrom: part.packageFrom ?? null,
     path: part.path,
     module: moduleOf(part.path),
-    lcsc: part.lcsc,
+    sku: part.sku,
     assembled: part.assembled,
     pins: ctx.detail ? pinsOf(ctx.detail, part.refdes) : [],
     decl: part.decl,
@@ -371,7 +371,7 @@ export function solvedRows(solved: Solved | null | undefined): SolvedLine[] {
   if (solved.ratings?.length) rows.push({ label: 'Rated', value: solved.ratings.map((r) => `${r.name.replace(/_/g, ' ')} ${rangeText(r.range)}`).join(', ') });
   const row = solved.row;
   if (row) {
-    const id = [row.mpn, row.lcsc, row.library].filter(Boolean).join(' · ');
+    const id = [row.mpn, row.sku, row.library].filter(Boolean).join(' · ');
     rows.push({
       label: 'Row',
       value: row.generic ? `generic${row.catalog ? ` ${row.catalog}` : ''}: a value and a package, no catalog row yet` : [row.catalog, id].filter(Boolean).join(' · '),

@@ -56,7 +56,7 @@ fn a_generic_that_declares_a_series_gets_the_values_of_the_series() {
     );
     assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
     let pick = &s.picks[0];
-    assert!(pick.lcsc.is_none());
+    assert!(pick.sku.is_none());
     let generic = pick.generic.as_ref().expect("a value the solver made");
     assert_eq!(generic.series(), Some(Series::E24));
     assert_eq!(generic.nominal(), Some(4700.0));
@@ -72,7 +72,7 @@ fn a_row_comes_first_and_a_generated_value_resolves_to_a_row_that_fits() {
         &catalogs(Some(Series::E24), true),
     );
     assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
-    assert_eq!(s.picks[0].lcsc.as_deref(), Some("C990001"));
+    assert_eq!(s.picks[0].sku.as_deref(), Some("C990001"));
     // A generated 10 k at 5% resolves to the 1% row: as good or better, the same beta.
     let s = solved(
         &board("#[series(E24)]", "9.4kohm..10.6kohm"),
@@ -80,7 +80,7 @@ fn a_row_comes_first_and_a_generated_value_resolves_to_a_row_that_fits() {
     );
     let generic = s.picks[0].generic.clone().expect("generated");
     let found = resolve(&generic, &catalogs(Some(Series::E24), true), &|_, _| None);
-    assert_eq!(found.unwrap().lcsc.as_deref(), Some("C990001"));
+    assert_eq!(found.unwrap().sku.as_deref(), Some("C990001"));
 }
 
 #[test]

@@ -209,6 +209,11 @@ pub fn gap(a: &Shape, b: &Shape) -> Gap {
 /// joined; one whose round end only touches the edge, or misses it, is not.
 pub const JOIN: f64 = 1e-9;
 
+/// How far beyond an arc track's edge a point still lies on it, as KiCad's hit test of an arc has
+/// it (issue #1542): the edge itself is on it (a nanometre, KiCad's unit, absorbs the rounding).
+/// A straight track's edge is not ([`JOIN`]).
+pub const ARC_TOUCH: f64 = 1e-6;
+
 /// Whether the copper of two shapes runs into each other by more than [`JOIN`]: copper that only
 /// touches is not joined, as in KiCad.
 pub(crate) fn joined(a: &Shape, b: &Shape) -> bool {

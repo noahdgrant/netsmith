@@ -65,7 +65,7 @@ fn solved(out: &mut String, solved: &Solved) {
         let mut says = Vec::new();
         says.extend(row.catalog.as_ref().map(|c| format!("catalog {c}")));
         says.extend(row.mpn.clone());
-        says.extend(row.lcsc.clone());
+        says.extend(row.sku.clone());
         says.extend(row.library.clone());
         if row.generic {
             says.push("generic: no row stands for it yet".to_string());
@@ -101,7 +101,7 @@ fn part(out: &mut String, p: &PartInfo) {
     let facts = [
         Some(format!("kind {}", p.kind)),
         p.package.as_ref().map(|k| format!("package {k}")),
-        p.lcsc.as_ref().map(|l| format!("LCSC {l}")),
+        p.sku.as_ref().map(|l| format!("sku {l}")),
         Some(
             if p.assembled {
                 "assembled"

@@ -5,20 +5,10 @@ use super::*;
 /// The box the text the silkscreen prints for the part takes, on the board (its designator,
 /// or the text the design gives in its place), or `None` for a part that prints none.
 /// The text is upright whatever the part's turn: its place turns with the part, and its
-/// letters do not (KiCad takes the angle of a footprint's text as the board's).
+/// letters do not (KiCad takes the angle of a footprint's text as the board's); a layout file
+/// entry may place and turn it (issue #1506).
 pub(crate) fn text_box(part: &Placed, rules: &Rules) -> Option<Rect> {
-    if netsmith_core::is_artwork(&part.kind) || part.silk_text().is_none() {
-        return None;
-    }
-    let (height, width) = (part.text_height(rules), part.text_width(rules));
-    let c = part.to_board(part.reference_at(rules));
-    Some(
-        Rect::new(
-            Pt::new(c.x - width / 2.0, c.y - height / 2.0),
-            Pt::new(c.x + width / 2.0, c.y + height / 2.0),
-        )
-        .expanded(TEXT_PAD),
-    )
+    part.text_rect(rules).map(|r| r.expanded(TEXT_PAD))
 }
 
 pub(super) fn shape_of(

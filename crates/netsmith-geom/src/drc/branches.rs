@@ -15,7 +15,9 @@
 //! A pin need not state its current to be such a branch (issue #1333): a pin whose current the
 //! model knows and is less than its net's (the design's `pin_currents`: what the rails and the
 //! parts that pass a current through it carry, as a buck's feedback divider takes microamps
-//! from its output) counts as one, with that current. A pad of a pin whose current is not
+//! from its output) counts as one, with that current, and so does an `input` pin that nothing
+//! carries a current through (an enable pin tied to a converter's input, issue #1504), with
+//! none. A pad of a pin whose current is not
 //! known (a capacitor's, a connector's that no rail names) is of the trunk, so the copper is
 //! sized by the sum of the known currents of the pins past it and never by a guess.
 

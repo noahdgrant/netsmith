@@ -58,10 +58,10 @@ pub fn of(model: &Model, inst: InstId, source: &Sourced) -> Option<Solved> {
         .as_ref()
         .map(|c| c.name.clone());
     let row =
-        (catalog.is_some() || source.lcsc.is_some() || source.mpn.is_some()).then(|| SolvedRow {
+        (catalog.is_some() || source.sku.is_some() || source.mpn.is_some()).then(|| SolvedRow {
             catalog,
             mpn: source.mpn.clone(),
-            lcsc: source.lcsc.clone(),
+            sku: source.sku.clone(),
             library: source.library.map(|l| l.to_string()),
             generic: source.generic.is_some(),
         });

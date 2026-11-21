@@ -239,6 +239,11 @@ pub fn key(inputs: &Inputs) -> Option<String> {
                     options.pin_map_source.as_deref(),
                     options.track_margin.to_bits(),
                     options.rip_rounds,
+                    options.weights.map(|w| (
+                        w.length.to_bits(),
+                        w.via.to_bits(),
+                        w.layer_change.to_bits()
+                    )),
                 ),
                 (
                     options.glb,
@@ -246,6 +251,7 @@ pub fn key(inputs: &Inputs) -> Option<String> {
                     options.step,
                     options.place_seeds,
                     options.place_budget,
+                    options.routing_objective.to_bits(),
                     options.offline,
                     catalogs.constraints_warn(),
                 ),

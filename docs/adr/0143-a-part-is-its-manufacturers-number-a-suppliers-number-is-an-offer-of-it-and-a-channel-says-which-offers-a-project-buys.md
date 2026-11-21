@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # A part is its manufacturer's number, a supplier's number is an offer of it, and a channel says which offers a project buys
 
-Meets tests 1 (the catalog files, the pick lock and the `.lcsc` narrowing of a source are formats and syntax that projects write) and 3 (a column for each supplier is the obvious alternative). The owner agreed the design in conversation on 2026-11-20 (the hand pick by `.mpn` only, the offers in a file for each supplier, and this ADR first); it stays `proposed` until the owner has read the text. Issue #1462 and the issues it lists carry the stages, and `docs/MIGRATING.md` the break when it lands.
+Meets tests 1 (the catalog files, the pick lock and the `.lcsc` narrowing of a source are formats and syntax that projects write) and 3 (a column for each supplier is the obvious alternative). The owner agreed the design in conversation on 2026-11-20 (the hand pick by `.mpn` only, the offers in a file for each supplier, and this ADR first), and accepted this ADR on 2026-11-21. Issue #1462, closed, and the issues it lists carried the stages, and `docs/MIGRATING.md` has the break.
 
 **The problem.** A catalog row names its part by an LCSC number and carries JLCPCB's library class, `.lcsc &=` is a narrowing in the language (ADR 0122), the pick lock records the row, and the rule that resolves a generic is "Basic, then Preferred, then Extended" in code. That is one supplier in the identity of every part. A board that is bought from Digi-Key and sent to the board house (a consigned part, ADR 0084), or soldered by hand, has no place in it, and each supplier added the old way would add a column, a field of `PartKey` and a rule to the language and the solver. ADR 0047 started to take the supplier's word out of the row (price, stock, date); this takes out the rest.
 

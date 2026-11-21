@@ -23,7 +23,7 @@ pub fn notes(designed: &Designed, catalogs: &Catalogs) -> Vec<String> {
         if sourced.assembly == Assembly::Consigned {
             continue;
         }
-        let Some(lcsc) = sourced.lcsc.as_deref() else {
+        let Some(lcsc) = sourced.sku.as_deref() else {
             continue;
         };
         if let Some(why) = catalogs.sold_out(lcsc) {
@@ -35,7 +35,7 @@ pub fn notes(designed: &Designed, catalogs: &Catalogs) -> Vec<String> {
         .map(|(_, refdes, i, why)| {
             let banked = refdes.len() > 1;
             let sourced = &designed.sourcing[i];
-            let lcsc = sourced.lcsc.as_deref().unwrap_or_default();
+            let lcsc = sourced.sku.as_deref().unwrap_or_default();
             let part = match sourced.mpn.as_deref() {
                 Some(mpn) => format!("{lcsc} ({mpn})"),
                 None => lcsc.to_string(),

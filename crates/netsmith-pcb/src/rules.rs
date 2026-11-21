@@ -93,9 +93,22 @@ pub struct Rules {
     pub microvia_drill: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub microvia_diameter: Option<f64>,
+    /// The most space between the copper of two vias of one net at which they stand side by
+    /// side as one group, where the board states it (`.process.via_group_gap`, issue #1505);
+    /// `None` is the process's least clearance. [`Rules::group_gap`] reads it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via_group_gap: Option<f64>,
 }
 
 impl Rules {
+    /// The most space between the copper of two vias of one net, edge to edge, at which they
+    /// stand side by side as one group (issue #1505): the stated `via_group_gap`, or the least
+    /// clearance. The group `via_current` counts, the quality report's via pairs and the
+    /// router's groups all read it.
+    pub fn group_gap(&self) -> f64 {
+        self.via_group_gap.unwrap_or(self.clearance).max(0.0)
+    }
+
     /// What the placer keeps between a courtyard and the board edge when the process states
     /// nothing to derive it from.
     pub const DEFAULT_EDGE_WALL: f64 = 2.0;
@@ -196,6 +209,7 @@ impl Rules {
                 .hdi
                 .as_ref()
                 .map(|h| ((h.min_laser_drill + 2.0 * h.min_ring) * 1e9).round() / 1e9),
+            via_group_gap: process.via_group_gap,
         })
     }
 

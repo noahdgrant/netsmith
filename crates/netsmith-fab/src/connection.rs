@@ -8,8 +8,10 @@
 //! check of connectivity, which the design rules check makes). The
 //! **connection** is, in each part of the graph that joins two pads or more, the shortest way
 //! from its first pad to each of the others, all those ways together: for two pads the path
-//! from pad to pad, for more a tree of the branches the pads need. The rest of the copper is
-//! **not counted**:
+//! from pad to pad, for more a tree of the branches the pads need, and the copper that lies
+//! wholly inside one of those pads (the short track a hand-routed board draws to a pad's centre
+//! is the way into the pad, no stub to remove: issue #1511). The rest of the copper is **not
+//! counted**, each piece in one run, so the runs add up to the copper less the length:
 //!
 //! - a **stub** leads nowhere: what is left when the ends that touch no pad are cut back, again
 //!   and again, and every track of a part that joins fewer than two pads;
@@ -57,6 +59,17 @@ pub struct NotCounted {
     pub length: f64,
     /// A point at one end of it, in mm.
     pub at: (f64, f64),
+    /// The pieces of track it is made of, so a view can draw it (issue #1495).
+    pub pieces: Vec<Piece>,
+}
+
+/// One straight piece of a run not counted: a track, or the part of one between a tee or a via
+/// and its end, in mm.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct Piece {
+    pub from: (f64, f64),
+    pub to: (f64, f64),
+    pub width: f64,
 }
 
 /// The connection of one net: the pieces of track it counts, and the runs it does not.
@@ -139,25 +152,36 @@ fn connect(art: &Artwork, net: &str, segs: &[&Seg], pads: &[&ArtworkPad]) -> Con
         .filter(|v| v.net.as_deref() == Some(net))
         .collect();
     let layer_index = |layer: &str| art.copper.iter().position(|c| c == layer);
-    // Split each track where another track's end or a via of the net stands on it, at that point.
+    // Split each track where another track's end or a via of the net stands on it, at the point
+    // of the track nearest it, so the pieces add up to the track. An end that touches the track
+    // away from its centre line is joined to that point (a tee): cutting at the end itself would
+    // draw a piece from the track to it, which copies a short track that ends there (issue #1511).
     let mut pieces: Vec<Seg> = Vec::new();
+    let mut tees: Vec<(Pt, Pt, &str)> = Vec::new();
     for (i, s) in segs.iter().enumerate() {
         let (_, layer, a, b, w) = s;
         let mut cuts: Vec<(f64, Pt)> = Vec::new();
-        let mut cut_at = |p: Pt, reach: f64| {
+        let mut cut_at = |p: Pt, reach: f64, tee: bool| {
             let (d, t) = along(p, *a, *b);
-            if d <= reach && p.dist(*a) > SAME && p.dist(*b) > SAME {
-                cuts.push((t, p));
+            if d > reach {
+                return;
+            }
+            let q = Pt::new(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+            if q.dist(*a) > SAME && q.dist(*b) > SAME {
+                cuts.push((t, q));
+            }
+            if tee && p.dist(q) > SAME {
+                tees.push((q, p, layer.as_str()));
             }
         };
         for (j, o) in segs.iter().enumerate() {
             if j != i && o.1 == *layer {
-                cut_at(o.2, w / 2.0);
-                cut_at(o.3, w / 2.0);
+                cut_at(o.2, w / 2.0, true);
+                cut_at(o.3, w / 2.0, true);
             }
         }
         for v in &vias {
-            cut_at(v.at, w / 2.0);
+            cut_at(v.at, w / 2.0, false);
         }
         cuts.sort_by(|x, y| x.0.total_cmp(&y.0));
         let mut from = *a;
@@ -195,6 +219,22 @@ fn connect(art: &Artwork, net: &str, segs: &[&Seg], pads: &[&ArtworkPad]) -> Con
         for (d, pad) in pads.iter().enumerate() {
             if in_pad(pad, p) {
                 union.join(k, ends + vias.len() + d);
+            }
+        }
+    }
+    // A track's end that touches another track is joined to the point of it nearest the end.
+    for (q, p, layer) in &tees {
+        let at = |pt: Pt| -> Vec<usize> {
+            (0..ends)
+                .filter(|&k| {
+                    let (e, l) = end(k);
+                    l == *layer && e.dist(pt) <= SAME
+                })
+                .collect()
+        };
+        for k in at(*q) {
+            for m in at(*p) {
+                union.join(k, m);
             }
         }
     }
@@ -285,6 +325,17 @@ fn connect(art: &Artwork, net: &str, segs: &[&Seg], pads: &[&ArtworkPad]) -> Con
             }
         }
     }
+    // Copper wholly inside a pad the connection reaches is counted: it is the way into the pad
+    // (the short track a hand-routed board draws to the pad's centre), not copper to remove.
+    for (e, counted) in counted.iter_mut().enumerate() {
+        let (u, v) = edge(e);
+        let reached = part
+            .get(&u)
+            .is_some_and(|p| terminals.iter().filter(|t| part.get(t) == Some(p)).count() >= 2);
+        if u == v && terminals.contains(&u) && reached {
+            *counted = true;
+        }
+    }
     // Cut back the ends that touch no pad: what goes is a stub; what stays, a second way.
     let mut kind: Vec<Option<Uncounted>> = (0..pieces.len())
         .map(|e| (!counted[e]).then_some(Uncounted::SecondWay))
@@ -297,7 +348,7 @@ fn connect(art: &Artwork, net: &str, segs: &[&Seg], pads: &[&ArtworkPad]) -> Con
         let lonely = part
             .get(&u)
             .is_none_or(|p| terminals.iter().filter(|t| part.get(t) == Some(p)).count() < 2);
-        if u == v || lonely {
+        if (u == v && !counted[e]) || lonely {
             kind[e] = Some(Uncounted::Stub);
             live[e] = false;
         }
@@ -343,8 +394,14 @@ fn connect(art: &Artwork, net: &str, segs: &[&Seg], pads: &[&ArtworkPad]) -> Con
             layer: s.1.clone(),
             length: 0.0,
             at: (s.2.x, s.2.y),
+            pieces: Vec::new(),
         });
         run.length += s.2.dist(s.3);
+        run.pieces.push(Piece {
+            from: (s.2.x, s.2.y),
+            to: (s.3.x, s.3.y),
+            width: s.4,
+        });
     }
     let mut not_counted: Vec<NotCounted> =
         by_run.into_values().filter(|r| r.length > SAME).collect();

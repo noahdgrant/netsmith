@@ -22,7 +22,7 @@
 use std::path::Path;
 
 use netsmith_core::Design;
-use netsmith_pcb::{Board, Layout, LayoutFace, PartPlace, PlacementFault};
+use netsmith_pcb::{Board, DesignatorEntry, Layout, LayoutFace, PartPlace, PlacementFault};
 use serde::Serialize;
 
 /// Why `turn` is not a turn a part may take, if it is not: a turn is any angle from 0 up to
@@ -142,6 +142,10 @@ pub struct Entry {
     pub side: &'static str,
     /// The placer leaves a locked part where it is.
     pub lock: bool,
+    /// Where its designator text is, when the entry says (issue #1506): `at`, the offset from
+    /// the footprint's origin on the board in mm, and `turn`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub designator: Option<DesignatorEntry>,
     /// Who wrote it (`hand`, `auto`, `regen`, `import`), as written.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
@@ -157,6 +161,7 @@ impl Entry {
             turn: place.rotation,
             side: face_word(place.side),
             lock: place.lock,
+            designator: place.designator,
             source: place.source.clone(),
             line,
         }
@@ -164,12 +169,20 @@ impl Entry {
 
     fn text(&self) -> String {
         format!(
-            "at {}, {} mm  turn {}  {}{}{}{}",
+            "at {}, {} mm  turn {}  {}{}{}{}{}",
             number(self.at[0]),
             number(self.at[1]),
             number(self.turn),
             self.side,
             if self.lock { "  locked" } else { "" },
+            self.designator
+                .map(|d| format!(
+                    "  designator at {}, {} mm turn {}",
+                    number(d.at[0]),
+                    number(d.at[1]),
+                    number(d.turn)
+                ))
+                .unwrap_or_default(),
             self.source
                 .as_ref()
                 .map(|s| format!("  source {s}"))
@@ -287,6 +300,9 @@ pub struct Change {
     pub turn: Option<f64>,
     pub side: Option<LayoutFace>,
     pub lock: Option<bool>,
+    /// The designator's place (issue #1506): `Some(Some(_))` writes it, `Some(None)` removes
+    /// it, so that the text is placed by itself again.
+    pub designator: Option<Option<DesignatorEntry>>,
 }
 
 /// What [`set`] wrote.
@@ -315,6 +331,15 @@ impl Written {
     }
 }
 
+/// Why a `designator` table is not one the text may take, if it is not: an offset that is not
+/// a number, or a turn that is not from 0 up to 360 (issue #1506).
+pub fn designator_error(d: DesignatorEntry) -> Option<String> {
+    if !d.at.iter().all(|v| v.is_finite()) {
+        return Some("the designator's offset is not a number".to_string());
+    }
+    turn_error(d.turn).map(|why| format!("the designator's turn: {why}"))
+}
+
 /// Write the entry of the part at `path` in the layout file at `file` (made, with that alone,
 /// if it does not exist), keeping every other table as the editor does. It refuses a path the
 /// board has no part at, a turn that is not from 0 up to 360, a position that is not a number,
@@ -337,6 +362,11 @@ pub fn set(design: &Design, file: &Path, path: &str, change: &Change) -> Result<
     {
         return Err("the position is not a number".to_string());
     }
+    if let Some(Some(d)) = change.designator
+        && let Some(why) = designator_error(d)
+    {
+        return Err(why);
+    }
     let name = file.display().to_string();
     let mut layout = read(file)?.map_or_else(Layout::default, |(_, layout)| layout);
     let table = layout.boards.entry(design.name.clone()).or_default();
@@ -347,6 +377,7 @@ pub fn set(design: &Design, file: &Path, path: &str, change: &Change) -> Result<
             rotation: change.turn.unwrap_or(old.rotation),
             side: change.side.unwrap_or(old.side),
             lock: change.lock.unwrap_or(old.lock),
+            designator: change.designator.unwrap_or(old.designator),
             ..old.clone()
         },
         None => PartPlace {
@@ -358,6 +389,7 @@ pub fn set(design: &Design, file: &Path, path: &str, change: &Change) -> Result<
             rotation: change.turn.unwrap_or(0.0),
             side: change.side.unwrap_or_default(),
             text: Default::default(),
+            designator: change.designator.unwrap_or(None),
             lock: change.lock.unwrap_or(false),
             source: Some("hand".to_string()),
         },
@@ -395,7 +427,7 @@ pub enum Severity {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Finding {
     pub severity: Severity,
-    /// `no_entry`, `no_part`, `bad_turn`, `bad_place`, `requirement`, `placement`,
+    /// `no_entry`, `no_part`, `bad_turn`, `bad_place`, `bad_designator`, `requirement`, `placement`,
     /// `walled_in`, `soft_margin`, `no_room` or `unmeasured`.
     pub kind: &'static str,
     /// The part's path.
@@ -611,6 +643,15 @@ pub fn check(
                 path: Some(path.clone()),
                 line,
                 message: format!("the entry of `{path}` has a position that is not a number"),
+                fault: None,
+            });
+        } else if let Some(why) = place.designator.and_then(designator_error) {
+            findings.push(Finding {
+                severity: Severity::Error,
+                kind: "bad_designator",
+                path: Some(path.clone()),
+                line,
+                message: format!("the entry of `{path}`: {why}"),
                 fault: None,
             });
         }

@@ -193,8 +193,10 @@ fn checked(columns: usize, rows: usize) -> Vec<(&'static str, usize)> {
 #[test]
 fn the_check_of_an_edit_looks_at_its_neighbourhood_and_not_at_the_board() {
     // Four times the board: the same edits in the cell in the middle look at as many items.
-    let small = checked(3, 2);
-    let big = checked(6, 4);
+    // Three rows, so the box round a via that the check of a cut piece of a fill looks in
+    // (`pad_island_cut`, 5 mm round it, issue #1524) is inside the small board as well.
+    let small = checked(3, 3);
+    let big = checked(6, 6);
     for ((what, s), (_, b)) in small.iter().zip(&big) {
         eprintln!("{what}: {s} items on the small board, {b} on the big one");
         assert!(*s > 0, "{what}: the check looked at nothing");

@@ -39,7 +39,7 @@ fn the_part_is_picked_from_its_catalog_row_and_builds_on_a_3v3_supply() {
         .find(|p| s.model.path_of(p.part) == "u")
         .expect("the microcontroller is picked");
     assert_eq!(pick.catalog, "attiny13a");
-    assert_eq!(pick.lcsc.as_deref(), Some("C14075"));
+    assert_eq!(pick.sku.as_deref(), Some("C14075"));
     assert_eq!(pick.mpn.as_deref(), Some("ATTINY13A-SSU"));
 }
 

@@ -24,6 +24,9 @@
 //! - **Escape room** ([`escape`], 2 for each net unless the caller says otherwise): the nets
 //!   that leave each side of a busy part beyond what the corridor in front of the side holds,
 //!   where the board's edge or another part on its face is nearer than the escape ring's 1.5 mm.
+//! - **Routing** ([`routing`], off unless the caller asks for it): power nets weighed by their
+//!   current, the corridor between a part on a bus and its host's pins kept clear, and no part
+//!   on the other face under a fine-pitch part's escape ring.
 //! - **Cohesion**: the half perimeter of the box round the parts of each module instance
 //!   (each prefix of the instance path), so a module stays together.
 //! - **Decoupling**: the distance from a capacitor's pads to the power pins it decouples
@@ -290,6 +293,7 @@ mod nets;
 mod overflow;
 mod pose;
 mod rooms;
+pub(crate) mod routing;
 mod shapes;
 mod silk;
 #[cfg(test)]
@@ -472,6 +476,11 @@ pub(crate) struct Problem<'a> {
     pub pin_distances: &'a [netsmith_pcb::PinNear],
     /// The RF nets (issue #1274): their length weighs [`RF_WEIGHT`] times a net's of two pads.
     pub rf_nets: &'a [String],
+    /// The current each net carries where the design knows it, in amperes, by net name
+    /// ([`routing`]).
+    pub net_currents: &'a [(String, f64)],
+    /// The weight of the placement objective for routing ([`routing`], issue #1534), 0 for none.
+    pub routing: f64,
 }
 
 /// What a run ended with.
@@ -934,6 +943,13 @@ struct Engine<'a> {
     escapers: Vec<usize>,
     escape_kept: Vec<(f64, Vec<usize>)>,
     w_escape: f64,
+    /// The weight of the placement objective for routing ([`routing`]), and the buses it keeps
+    /// clear: each, the buses each part is the satellite or host of, and the marks of the
+    /// evaluation being made.
+    w_routing: f64,
+    buses: Vec<routing::Bus>,
+    buses_of: Vec<Vec<usize>>,
+    bus_mark: Vec<u32>,
 }
 
 /// Place the parts that are not fixed so that the cost is least the search finds, and write

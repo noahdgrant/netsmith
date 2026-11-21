@@ -280,7 +280,7 @@ fn find(data: &BoardData, catalogs: &Catalogs, refdes: &str) -> Result<Found, Ap
                 why: check.and_then(|c| c.outcome.clone().err()),
                 name: alt.name,
                 line: alt.line,
-                lcsc: alt.lcsc,
+                sku: alt.sku,
                 mpn: alt.mpn,
                 value,
                 edit,
