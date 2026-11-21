@@ -29,6 +29,8 @@ pub struct Seen {
     pub user_agent: String,
     /// The `Authorization` header, empty when there is none.
     pub authorization: String,
+    /// Every header, its name in lower case.
+    pub headers: Vec<(String, String)>,
     pub body: String,
     pub at: Instant,
 }
@@ -40,6 +42,15 @@ impl Seen {
             .split_once("productCode=")
             .map(|(_, c)| c.to_string())
             .unwrap_or_default()
+    }
+
+    /// The value of a header, by its name in any case; empty when there is none.
+    pub fn header(&self, name: &str) -> &str {
+        let name = name.to_ascii_lowercase();
+        self.headers
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map_or("", |(_, v)| v.as_str())
     }
 
     /// The path without the query.
@@ -168,12 +179,14 @@ fn serve(mut stream: TcpStream, seen: &Mutex<Vec<Seen>>, handler: &Handler) {
     let method = parts.next().unwrap_or_default().to_string();
     let target = parts.next().unwrap_or_default().to_string();
     let (mut length, mut user_agent, mut authorization) = (0usize, String::new(), String::new());
+    let mut headers = Vec::new();
     loop {
         let mut header = String::new();
         if reader.read_line(&mut header).unwrap_or(0) == 0 || header.trim().is_empty() {
             break;
         }
         if let Some((name, value)) = header.split_once(':') {
+            headers.push((name.trim().to_ascii_lowercase(), value.trim().to_string()));
             match name.trim().to_ascii_lowercase().as_str() {
                 "content-length" => length = value.trim().parse().unwrap_or(0),
                 "user-agent" => user_agent = value.trim().to_string(),
@@ -189,6 +202,7 @@ fn serve(mut stream: TcpStream, seen: &Mutex<Vec<Seen>>, handler: &Handler) {
         target,
         user_agent,
         authorization,
+        headers,
         body: String::from_utf8_lossy(&body).into_owned(),
         at: Instant::now(),
     };

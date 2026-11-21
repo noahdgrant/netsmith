@@ -23,7 +23,7 @@ pub enum Command {
     Add(AddArgs),
     /// List the catalog rows whose price and stock are older than `--days` days, and the unknown ones.
     Age(AgeArgs),
-    /// Find parts by words, a manufacturer's number or parametric filters, with each supplier's sku, stock and price (Nexar; opt-in).
+    /// Find parts by words, a manufacturer's number or parametric filters, with each supplier's sku, stock and price (Nexar or Digi-Key; opt-in).
     Search(super::catalog_search::Args),
 }
 
@@ -67,7 +67,7 @@ pub struct RefreshArgs {
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(group(ArgGroup::new("record").required(true).args(["lcsc", "from"])))]
 #[command(
-    after_long_help = concat!("`catalog add --lcsc <C123> --to <catalog.csv>` asks LCSC's record of the number (never JLCPCB's) and appends a row with `mpn`, `package` and a `source` that names the record and the day, and `manufacturer` as LCSC spells it when the file has that column (check it against the datasheet), leaving every other cell empty and listing the columns that need the datasheet; the number itself is an offer (ADR 0143), appended to the project's `offers/lcsc.csv` (the first folder of `offer_dirs`, or `offers/` beside the folder the command runs in outside a project; the file is made when there is none) with the same `source` and the day in `checked`. A part JLCPCB assembles also needs the offer's `class`, the library from JLCPCB's page, which the command does not write (an offer with no `class` is not in the `jlcpcb-assembly` channel). Without `--to` it prints the record and writes nothing.\n\n`catalog add --from <supplier> <sku or mpn> --to <catalog.csv>` asks the project's search provider (Nexar, as `catalog search` does) for the record of the part that `supplier` (`lcsc`, `digikey` or `mouser`) offers under that sku, or whose manufacturer's number is exactly that, and writes nothing unless the record names one such part with one offer of that supplier (two packagings of one supplier, two manufacturers of one number: give the sku). It appends a row with `mpn`, `manufacturer` when the file has the column, `package` when the record states it (with `--details`, which needs a Nexar plan that includes it), a `source` that names the record and the day, and `notes`; and an offer for the named supplier and for each other supplier with one offer in the record, in the project's `offers/<supplier>.csv` (made when there is none), each with a `source` and the day in `checked`. A supplier with several offers is listed and not written. Every other cell stays empty and is listed as needing the datasheet, with the `class` of an LCSC offer (JLCPCB's library, which no record read here gives).\n\n", super::catalog_search::terms!())
+    after_long_help = concat!("`catalog add --lcsc <C123> --to <catalog.csv>` asks LCSC's record of the number (never JLCPCB's) and appends a row with `mpn`, `package` and a `source` that names the record and the day, and `manufacturer` as LCSC spells it when the file has that column (check it against the datasheet), leaving every other cell empty and listing the columns that need the datasheet; the number itself is an offer (ADR 0143), appended to the project's `offers/lcsc.csv` (the first folder of `offer_dirs`, or `offers/` beside the folder the command runs in outside a project; the file is made when there is none) with the same `source` and the day in `checked`. A part JLCPCB assembles also needs the offer's `class`, the library from JLCPCB's page, which the command does not write (an offer with no `class` is not in the `jlcpcb-assembly` channel). Without `--to` it prints the record and writes nothing.\n\n`catalog add --from <supplier> <sku or mpn> --to <catalog.csv>` asks the project's search provider (`--provider`, else for `--from digikey` Digi-Key's own API when the project names `[supply.digikey]`, else the one the project names, Nexar when both) for the record of the part that `supplier` (`lcsc`, `digikey` or `mouser`) offers under that sku, or whose manufacturer's number is exactly that, and writes nothing unless the record names one such part with one offer of that supplier (two packagings of one supplier, two manufacturers of one number: give the sku). It appends a row with `mpn`, `manufacturer` when the file has the column, `package` when the record states it (on Nexar with `--details`, which needs a plan that includes it; Digi-Key's record names no package, so it is listed to fill), a `source` that names the record and the day, and `notes`; and an offer for the named supplier and for each other supplier with one offer in the record, in the project's `offers/<supplier>.csv` (made when there is none), each with a `source` and the day in `checked`. A supplier with several offers is listed and not written. Every other cell stays empty and is listed as needing the datasheet, with the `class` of an LCSC offer (JLCPCB's library, which no record read here gives).\n\n", super::catalog_search::terms!())
 )]
 #[command(args_override_self = true)]
 pub struct AddArgs {
@@ -77,9 +77,12 @@ pub struct AddArgs {
     /// A supplier and its sku, or a manufacturer's number, to add from the search provider's record.
     #[arg(long, num_args = 2, value_names = ["SUPPLIER", "SKU|MPN"])]
     pub from: Option<Vec<String>>,
-    /// With `--from`, also ask for the package, the values and the datasheet (a Nexar plan that includes them).
+    /// With `--from`, also ask Nexar for the package, the values and the datasheet (a Nexar plan that includes them).
     #[arg(long, conflicts_with = "lcsc")]
     pub details: bool,
+    /// With `--from`, the search provider to ask: `nexar` or `digikey` (default: digikey for `--from digikey` when the project names it, else the one it names, nexar when both).
+    #[arg(long, value_name = "PROVIDER", value_parser = ["nexar", "digikey"], conflicts_with = "lcsc")]
+    pub provider: Option<String>,
     /// With `--from`, the pause between requests, in milliseconds (default 500).
     #[arg(long = "delay", value_name = "MS", conflicts_with = "lcsc")]
     pub delay_ms: Option<u64>,
@@ -201,20 +204,29 @@ fn run_catalog_add_from(request: &AddArgs, (supplier, number): (&str, &str)) -> 
         eprintln!("error: {e}");
         ExitCode::from(2)
     };
-    let mut nexar = match super::catalog_search::provider(
-        request.offline,
-        request.delay_ms,
-        None,
-        request.no_cache,
-    ) {
-        Ok(p) => p,
-        Err(e) => return fail(e),
+    let run = super::catalog_search::Run {
+        offline: request.offline,
+        delay_ms: request.delay_ms,
+        ttl_hours: None,
+        no_cache: request.no_cache,
     };
+    // A supplier netsmith has no offers of is refused before a provider is chosen.
+    if !netsmith_fabricate::search::SUPPLIERS.contains(&supplier) {
+        return fail(format!(
+            "`{supplier}` is not a supplier netsmith has offers of: {}",
+            netsmith_fabricate::search::SUPPLIERS.join(", ")
+        ));
+    }
+    let mut provider =
+        match super::catalog_search::provider(run, request.provider.as_deref(), Some(supplier)) {
+            Ok(p) => p,
+            Err(e) => return fail(e),
+        };
     let to: Option<&Path> = request.to.as_deref();
     let shown = to.map(|p| p.display().to_string());
     let offers = |supplier: &str| offers_file(supplier);
     match add::add_from(
-        &mut nexar,
+        provider.as_mut(),
         (supplier, number),
         request.details,
         to.zip(shown.as_deref()),
@@ -378,6 +390,7 @@ mod tests {
                     lcsc: Some("C2286".into()),
                     from: None,
                     details: false,
+                    provider: None,
                     delay_ms: None,
                     to: Some(PathBuf::from("catalogs/led.csv")),
                     offline: false,
@@ -436,7 +449,11 @@ mod tests {
             ErrorKind::ArgumentConflict
         );
         // --details and --delay are of a search provider's record.
-        for flag in [&["--details"][..], &["--delay", "9"]] {
+        for flag in [
+            &["--details"][..],
+            &["--delay", "9"],
+            &["--provider", "digikey"],
+        ] {
             let mut args = vec!["catalog", "add", "--lcsc", "C1"];
             args.extend_from_slice(flag);
             assert_eq!(kind(&args), ErrorKind::ArgumentConflict, "{flag:?}");
