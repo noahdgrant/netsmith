@@ -20,9 +20,12 @@
 //!   tidy` finds the last two;
 //! - **short**: straight tracks shorter than [`crate::routes_tidy::TINY`] of their widths, the
 //!   tracks `routes tidy` makes one of when several are in a row;
-//! - **via pairs**: two vias of one net side by side, their copper no more than
-//!   [`netsmith_fab::VIA_PAIR_GAP`] (0.5 mm) apart edge to edge, each via taken once, as `board
-//!   nets` counts the vias of a diff pair side by side.
+//! - **via pairs**: two vias of one net side by side, each via taken once, the nearest first:
+//!   their copper no more than the group gap apart edge to edge (`Rules::group_gap`, the
+//!   process's least clearance unless the board states `.process.via_group_gap`, issue #1505),
+//!   the rule by which `via_current` and the router group vias. A group of vias side by side
+//!   (through others that are) no larger than the net's current needs is wanted copper and no
+//!   defect.
 //!
 //! Each track and via is counted once: as unneeded first, then in a duplicate way only when the
 //! way has a track that is not unneeded (a nudge from a pad's centre back into the pad is a way
@@ -172,8 +175,14 @@ impl Quality {
                 vias.entry(&v.net).or_default().push((v.at, v.diameter));
             }
         }
+        let gap = board.rules.group_gap();
         for (net, list) in &vias {
-            let n = via_pairs(list);
+            let needs = board
+                .net_currents
+                .iter()
+                .find(|c| c.net == *net)
+                .map_or(1, |c| c.vias);
+            let n = via_pairs(list, gap, needs);
             if n > 0 {
                 by.entry(net.to_string()).or_default().via_pairs += n;
             }
@@ -285,20 +294,48 @@ fn crossing(a0: Pt, a1: Pt, b0: Pt, b1: Pt) -> Option<Pt> {
 }
 
 /// How many pairs of the vias `list` (of one net, each its centre and diameter) stand side by
-/// side, each via taken once, the nearest first.
-fn via_pairs(list: &[(Pt, f64)]) -> usize {
+/// side, their copper no more than `gap` apart, each via taken once, the nearest first; the
+/// vias of a group side by side (through others that are) of no more than `needs` vias, what
+/// the net's current needs, are left out.
+fn via_pairs(list: &[(Pt, f64)], gap: f64, needs: usize) -> usize {
+    let beside = |i: usize, k: usize| {
+        let ((a, d), (b, e)) = (list[i], list[k]);
+        a.distance(b) - d / 2.0 - e / 2.0 <= gap + 1e-9
+    };
+    // The groups, and the vias of a group the current needs, which count as taken.
     let mut taken = vec![false; list.len()];
+    let mut seen = vec![false; list.len()];
+    for start in 0..list.len() {
+        if seen[start] {
+            continue;
+        }
+        seen[start] = true;
+        let mut group = vec![start];
+        let mut k = 0;
+        while k < group.len() {
+            let at = group[k];
+            for (j, seen) in seen.iter_mut().enumerate() {
+                if !*seen && beside(at, j) {
+                    *seen = true;
+                    group.push(j);
+                }
+            }
+            k += 1;
+        }
+        if group.len() <= needs.max(1) && group.len() > 1 {
+            for &g in &group {
+                taken[g] = true;
+            }
+        }
+    }
     let mut n = 0;
     for i in 0..list.len() {
         if taken[i] {
             continue;
         }
-        let (at, d) = list[i];
+        let at = list[i].0;
         let beside = (i + 1..list.len())
-            .filter(|&k| {
-                let (o, od) = list[k];
-                !taken[k] && at.distance(o) - d / 2.0 - od / 2.0 <= netsmith_fab::VIA_PAIR_GAP
-            })
+            .filter(|&k| !taken[k] && beside(i, k))
             .min_by(|&x, &y| at.distance(list[x].0).total_cmp(&at.distance(list[y].0)));
         if let Some(k) = beside {
             taken[i] = true;
@@ -337,10 +374,25 @@ mod tests {
     #[test]
     fn vias_side_by_side_are_counted_once_each() {
         let v = |x: f64| (Pt::new(x, 0.0), 0.6);
-        // Copper 0.2 mm apart, then 0.4 mm on, then 2 mm on.
-        assert_eq!(via_pairs(&[v(0.0), v(0.8), v(1.8), v(4.4)]), 1);
-        assert_eq!(via_pairs(&[v(0.0), v(0.8), v(1.6), v(2.4)]), 2);
-        assert_eq!(via_pairs(&[v(0.0), v(3.0)]), 0);
+        // Copper 0.2 mm apart, then 0.4 mm on, then 2 mm on, judged by a 0.3 mm gap.
+        assert_eq!(via_pairs(&[v(0.0), v(0.8), v(1.8), v(4.4)], 0.3, 1), 1);
+        assert_eq!(via_pairs(&[v(0.0), v(0.8), v(1.6), v(2.4)], 0.3, 1), 2);
+        assert_eq!(via_pairs(&[v(0.0), v(3.0)], 0.3, 1), 0);
+    }
+
+    /// The gap is the group rule's (issue #1505): copper 0.15 mm apart is a pair at the
+    /// least clearance of 0.15 mm and none at 0.1 mm; and a group the net's current needs is
+    /// wanted, one larger than it is not.
+    #[test]
+    fn via_pairs_follow_the_group_gap_and_leave_out_a_group_the_current_needs() {
+        let v = |x: f64| (Pt::new(x, 0.0), 0.45);
+        let row = [v(0.0), v(0.6)];
+        assert_eq!(via_pairs(&row, 0.15, 1), 1);
+        assert_eq!(via_pairs(&row, 0.1, 1), 0);
+        assert_eq!(via_pairs(&row, 0.15, 2), 0);
+        let three = [v(0.0), v(0.6), v(1.2)];
+        assert_eq!(via_pairs(&three, 0.15, 3), 0);
+        assert_eq!(via_pairs(&three, 0.15, 2), 1);
     }
 
     #[test]
