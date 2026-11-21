@@ -437,6 +437,11 @@ pub struct BoardOut {
     /// Left out when there are none.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub long_paths: Vec<netsmith_fab::PathRow>,
+    /// For `board drc` of a design's board: the quality of its routed copper (issue #1481), the
+    /// totals and each net with a defect, as `board nets` has it. Left out when there is no
+    /// defect.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quality: Option<netsmith_fabricate::net_quality::Quality>,
 }
 
 /// The count of the notes of the run, for each cause, whether or not they are listed.

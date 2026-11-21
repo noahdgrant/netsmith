@@ -569,6 +569,7 @@ fn run_fab(
                             pair_skews: Vec::new(),
                             group_spreads: Vec::new(),
                             long_paths: Vec::new(),
+                            quality: None,
                         });
                         continue;
                     }

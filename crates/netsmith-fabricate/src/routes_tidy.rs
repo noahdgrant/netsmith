@@ -610,7 +610,84 @@ struct Work<'a> {
     items: usize,
 }
 
+/// A defect that the passes of [`shapes`] find in the copper of a board as it stands, for the
+/// quality report of `board nets` (issue #1481): its kind, its net and how many tracks and vias
+/// of the copper it is (the tracks and vias of a duplicate way, the one track of a nudge).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Defect {
+    pub kind: Kind,
+    pub net: String,
+    pub tracks: usize,
+    pub vias: usize,
+}
+
+/// The nudges, the duplicate ways, the overlapping copper and the copper that ends in nothing
+/// of `board`'s tracks and vias, as `routes tidy` finds them (each detector once, nothing checked or changed): the measure the
+/// quality report counts by, so that what tidy removes is what the report counts.
+pub(crate) fn shape_defects(board: &Board) -> Vec<Defect> {
+    let routes = Routes::default();
+    let work = Work::looking(board, &routes);
+    work.nudges()
+        .into_iter()
+        .chain(work.duplicates())
+        .chain(work.overlaps())
+        .chain(work.dead_copper())
+        .map(|c| Defect {
+            kind: c.change.kind,
+            net: c.change.net,
+            tracks: c.remove_wires.len(),
+            vias: c.remove_holes.len(),
+        })
+        .collect()
+}
+
 impl<'a> Work<'a> {
+    /// The copper of `board` as it stands, its tracks and vias, every one of them open to the
+    /// detectors of [`shapes`], with nothing to check a change by: for [`shape_defects`].
+    fn looking(board: &'a Board, routes: &'a Routes) -> Self {
+        let mut copper = Copper::default();
+        for (n, t) in board.tracks.iter().enumerate() {
+            copper.wires.push(Wire {
+                owner: Owner::RoutesFile,
+                track: t.clone(),
+                drawn: t.clone(),
+                was: None,
+                fixed: false,
+                alive: true,
+                widened: false,
+                rank: (n, 0),
+            });
+        }
+        for v in &board.vias {
+            copper.holes.push(Hole {
+                owner: Owner::RoutesFile,
+                via: v.clone(),
+                was: None,
+                fixed: false,
+                alive: true,
+            });
+        }
+        Work {
+            board,
+            routes,
+            copper,
+            rebuilt: BTreeSet::new(),
+            shell: board.clone(),
+            parts: Vec::new(),
+            part_boxes: Vec::new(),
+            zones: Vec::new(),
+            project: String::new(),
+            extras: netsmith_geom::DrcExtras::default(),
+            grid: near::Grid::new(board.outline, 1.0),
+            reach: 0.0,
+            lines: Vec::new(),
+            widen: false,
+            spots: shapes::spots(board),
+            checks: 0,
+            items: 0,
+        }
+    }
+
     fn new(
         board: &'a Board,
         routes: &'a Routes,
