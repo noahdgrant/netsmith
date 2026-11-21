@@ -108,7 +108,8 @@ type CopyKey = (String, CopperLayer, (i64, i64), (i64, i64));
 
 /// Each straight track drawn from track `first` on (but those in `keep`) that is a copy of
 /// another of its net and layer, the same two ends and as wide or narrower, taken off (issue
-/// #1568): taking two pieces off a loop may leave what is left of one track the same as another.
+/// #1568; of two as wide, the first stays, drawn from its lesser end, issue #1572): taking two
+/// pieces off a loop may leave what is left of one track the same as another.
 /// The other has the same ends, going the same ways, so taking the copy off changes no copper
 /// and no bend. Returns how many were taken off.
 fn drop_exact_copies(board: &mut Board, first: usize, keep: &[&Track]) -> usize {
@@ -120,6 +121,7 @@ fn drop_exact_copies(board: &mut Board, first: usize, keep: &[&Track]) -> usize 
     };
     let mut seen: HashMap<CopyKey, usize> = HashMap::new();
     let mut gone = vec![false; board.tracks.len()];
+    let mut canonical: Vec<usize> = Vec::new();
     for k in 0..board.tracks.len() {
         let t = &board.tracks[k];
         if t.mid.is_some() {
@@ -139,8 +141,21 @@ fn drop_exact_copies(board: &mut Board, first: usize, keep: &[&Track]) -> usize 
                 if may_go(goes) {
                     gone[goes] = true;
                     seen.insert(key(t), stays);
+                    if !wider {
+                        canonical.push(stays);
+                    }
                 }
             }
+        }
+    }
+    // Of two as wide, the first stays, drawn from its lesser end: which of the two copies was
+    // drawn which way (from the order the lines were routed in) changes neither the track left
+    // nor where it is, so neither the arcs drawn after it (issue #1572).
+    for k in canonical {
+        let t = &mut board.tracks[k];
+        let q = |p: Pt| ((p.x / SAME).round() as i64, (p.y / SAME).round() as i64);
+        if q(t.to) < q(t.from) {
+            std::mem::swap(&mut t.from, &mut t.to);
         }
     }
     let count = gone.iter().filter(|g| **g).count();
