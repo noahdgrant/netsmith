@@ -168,7 +168,6 @@ impl<'a> Router<'a> {
             negotiate: options.negotiate,
             history: RefCell::new(vec![Vec::new(); stack.len()]),
             negotiation: options.negotiation,
-            chain: options.chain,
             soft_price: Cell::new(100),
             stack,
             outer_only,

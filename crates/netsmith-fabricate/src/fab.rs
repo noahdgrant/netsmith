@@ -4401,7 +4401,7 @@ mod tests {
         let why = vec![
             netsmith_router::LineReport {
                 line: left.lines[0].clone(),
-                stage: netsmith_router::Stage::Chain,
+                stage: netsmith_router::Stage::Negotiation,
                 blockers: vec!["GND".into(), "SIG_C".into()],
                 pads: vec![],
                 vias: vec![],
@@ -4446,7 +4446,7 @@ mod tests {
         assert_eq!(text.matches("\nnet ").count(), 2, "{text}");
         assert!(
             text.contains(
-                "  net SIG_A: U1.A3 to R1.1: failed in the chain of rip-ups; in its way: net(s) GND, SIG_C\n"
+                "  net SIG_A: U1.A3 to R1.1: failed in the negotiation; in its way: net(s) GND, SIG_C\n"
             ),
             "{text}"
         );

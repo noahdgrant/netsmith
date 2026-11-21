@@ -118,7 +118,7 @@ How full the coarse plan leaves a tile on a layer: the most of its four edges' p
 _Avoid_: congestion (the router's negotiation over cells), demand
 
 **Crowding map**:
-The router's count, for each 1 mm square of a board, of how often its searches for the nets in a line's way (paths that may cross other nets' copper, in rip-up, negotiation and the chain of rip-ups) passed through the square, over a whole run (`Routing::crowding`, written to `routing-report.json` when connections are left, and drawn as `crowding.png` by `netsmith dev route --stages`). A high count is where lines fought over the room.
+The router's count, for each 1 mm square of a board, of how often its searches for the nets in a line's way (paths that may cross other nets' copper, in rip-up, the negotiation and the rounds of rip-up) passed through the square, over a whole run (`Routing::crowding`, written to `routing-report.json` when connections are left, and drawn as `crowding.png` by `netsmith dev route --stages`). A high count is where lines fought over the room.
 _Avoid_: congestion map, heat map
 
 **Curve file**:

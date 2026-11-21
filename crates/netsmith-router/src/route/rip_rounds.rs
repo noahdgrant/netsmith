@@ -1,8 +1,8 @@
-//! Rounds of rip-up and re-route of whole nets, for the lines a try still leaves after the chain
-//! (issue #1088).
+//! Rounds of rip-up and re-route of whole nets, for the lines a try still leaves after the
+//! negotiation (issue #1088).
 //!
 //! The stages before it each keep a line's neighbours where they are unless the line and all it
-//! moved fit at once ([`Router::rip_up_for`], [`Router::rip_up_chain`]), or stop when a round
+//! moved fit at once ([`Router::rip_up_for`], [`Router::make_way`]), or stop when a round
 //! spreads the lines left ([`Router::negotiate`]). On a dense board placed by hand that leaves a
 //! few lines that have no free path unless some other nets move. This stage lets them move:
 //!
@@ -34,7 +34,7 @@
 //! without and 6 with (seed 4 routes, in one round of 60 searches and 7 nets ripped). The other
 //! lines left are on a fine-pitch part, where the line and a net ripped for it take turns in one
 //! gap; a round there makes 500 to 650 searches and adds 8 to 12 s to the try. Tried and not
-//! kept: the nets of a line the rounds routed kept hard for the rest of them (the chain's lock),
+//! kept: the nets of a line the rounds routed kept hard for the rest of them (the lock of a line making its way),
 //! and 20 rounds with 6 rips a net: no seed more. With every try (the scorecard's way), the
 //! boards that route keep their copper (mixed seed 4 routes on its second try with the same 226
 //! vias); taking a try the rounds complete as final gave it 242 vias, which is why it is only a

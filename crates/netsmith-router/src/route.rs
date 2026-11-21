@@ -40,7 +40,7 @@
 //! dearer than two bends, and an acute angle or a step back is no move. A diagonal step costs
 //! [`DIAGONAL`] against [`STEP`] (14 against 10, the length), passes between the two cells
 //! beside it, which must both be open, and the heuristic is the octile distance. The repairs
-//! after it (rip-ups, negotiation, the chain) make four fifths of the searches on a dense board
+//! after it (rip-ups, negotiation, the rounds of whole nets) make four fifths of the searches on a dense board
 //! and search in four directions, as the router did before. The exact pass over the copper
 //! ([`Router::settled`]) then cuts every right angle into two bends of 45 degrees, a diagonal
 //! from 0.3 mm down to 0.05 mm from the corner ([`CHAMFERS`]), the farthest that keeps the
@@ -68,15 +68,15 @@
 //! fine-pitch grid of pads, which has the fewest ways out, comes before the others (see
 //! [`pad_depth`]). A line that cannot be routed is then tried again by ripping up the nets
 //! that stand in its way, routing it, and routing those again; lines still left are negotiated
-//! for, and then each is given a bounded chain of rip-ups of single lines, each of which may
-//! rip up the lines in its own way ([`Router::rip_up_chain`]). If lines are still left, the
+//! for, each first making its way by ripping up single lines, each of which may rip up the lines
+//! in its own way ([`Router::make_way`]). If lines are still left, the
 //! whole board is routed again with the lines in another order (shortest first, longest
 //! first, by net, in reverse net order), at most [`MOST_TRIES`] times in all; on a board with a
 //! fine-pitch part, the second try is the first order again with **escape lanes** reserved
 //! softly round the part's pads, and every later try has them too (see "Escape lanes"). From the
 //! second try on, every order also keeps the lines' classes in turn (see "Classes of lines").
 //! The first complete result is kept, or failing that the one that leaves fewest lines. A try
-//! that still leaves lines after the chain gets **rounds of rip-up and re-route of whole nets**
+//! that still leaves lines after the negotiation gets **rounds of rip-up and re-route of whole nets**
 //! (`route/rip_rounds.rs`, issue #1088, [`RouteOptions::rip_rounds`]): each line left is routed
 //! through the copper of the nets its cheapest crossing path meets, those nets are removed whole
 //! and routed again after it, bounded by counts of rounds, rips of one net and searches. A try the
@@ -120,13 +120,16 @@
 //!    for cells where a track of the least width fits, and a track through them is **necked
 //!    down** to the least width there and full width elsewhere.
 //! 5. Lines still left are **negotiated** for (PathFinder, `route/negotiation.rs`, issue #1533):
-//!    each is routed allowing overlaps with other nets' copper at a present price that grows each
-//!    round, the cells where it overlaps get dearer for the rest of the try (the history), the
-//!    single lines it overlaps are ripped up, and they are routed again after it. Bounded by
+//!    each first makes its way, ripping up sets of the single lines in its way and routing them
+//!    again, each making its way in turn, a set kept only when every line it moved is routed
+//!    again; when it finds none, it is routed allowing overlaps with other nets' copper at a
+//!    present price that grows each round, the cells where it overlaps get dearer for the rest of
+//!    the try (the history), the single lines it overlaps are ripped up, and they are routed again
+//!    after it. Bounded by
 //!    counts, [`RouteOptions::negotiation`]: at most six rounds and 3000 searches a try, fewer
 //!    when a round spreads the lines left (see "What a try costs"), and the best state is kept.
 //!    The earlier rip-up put the nets back if the line did not fit; this one lets lines fail for
-//!    a round so the others can move. The chain (below) has what it leaves.
+//!    a round so the others can move. The rounds of whole nets have what it leaves.
 //!
 //! There is no fan-out stage that puts a via beside each pad of a dense footprint before
 //! routing: the search already puts a via on any free cell next to a pad, and a pad with no
@@ -155,16 +158,14 @@
 //!   surface-mount pads, a gap under a via and two spaces, counted in pitches from the outside
 //!   of the part's pads). Such a pad has few ways out and a short line of a part beside the
 //!   grid can take the gap it needs. A board with no such grid has the old first order.
-//! - **A last chain of rip-ups of single lines** ([`Router::rip_up_chain`]), after the
-//!   negotiation of each try, for each line still left. A net's other lines stay where they
-//!   are, and lines routed for a line above are locked below it (a lock, not a reservation:
-//!   this ends a cycle of two lines). Bounded by [`CHAIN_SEARCHES`] 600 for a line and
-//!   [`CHAIN_TOTAL`] 3000 for a try of the board, depth 4, whatever the time limit. Nothing in
-//!   it is random, ties go by line number, and the same board gives the same copper. The
-//!   negotiation before it does not replace it: without it the invented boards leave 19 lines
-//!   against 2 (30 against 5, and 15 with the negotiation's bounds quadrupled, before it learnt
-//!   the whole path, issue #1572) (issue #1566,
-//!   `route/negotiation.rs`, [`RouteOptions::chain`]).
+//! - **A chain of rip-ups of single lines**, for each line still left. A net's other lines stay
+//!   where they are, and lines routed for a line above are locked below it (a lock, not a
+//!   reservation: this ends a cycle of two lines). Bounded by 600 searches for a line, depth 4,
+//!   whatever the time limit. Nothing in it is random, ties go by line number, and the same board
+//!   gives the same copper. It ran after the negotiation of each try, with 3000 searches of its
+//!   own, until issue #1570 made it the first step of each line in each round of the
+//!   negotiation ([`Router::make_way`], with the history the rounds learn): the invented boards
+//!   then leave no line, against 2 with the chain after the negotiation (`route/negotiation.rs`).
 //! - **`.kicad_pro` gives the Default net class a `priority`.** Without it KiCad 9 ignored the
 //!   Default class's clearance and checked every board against its own 0.2 mm (measured: a
 //!   0.1 mm project reported "clearance 0.2000 mm"). One added line in every `.kicad_pro`.
@@ -621,7 +622,7 @@
 //!   named nothing because the time ran out gave a person nothing to move.
 //! - **Crowding** ([`Routing::crowding`], [`Crowding`]): squares of 1 mm (ten cells), counting
 //!   each soft path (every search for the nets in a line's way: rip-up, negotiation, whose
-//!   `learn` is of the cells of that path it overlaps and is not counted again, and the chain) once in each square it
+//!   `learn` is of the cells of that path it overlaps and is not counted again, and the rounds) once in each square it
 //!   passes through, over all tries of a run. A counter a path cell; the searches for `why`
 //!   are not counted.
 //! - **Snapshots** ([`RouteOptions::snapshots`], off by default): the copper and the lines left
@@ -680,7 +681,8 @@
 //! - Rip up single lines, not nets. A net's other lines stay where they are. The alternative,
 //!   nets as before, keeps the connection of a net's pads together but ripped up 3 to 20 lines
 //!   at a time here.
-//! - Depth 4, 600 searches a line, 3000 a try. The numbers are tuned on the two invented boards
+//! - Depth 4, 600 searches a line, 3000 a try (since issue #1570 the step of the negotiation,
+//!   [`WAY_DEPTH`] and [`WAY_SEARCHES`], within the negotiation's 3000). The numbers are tuned on the two invented boards
 //!   over 12 seeds, and 12 more seeds of the first that were not used for tuning came out the
 //!   same. A deeper chain finishes more of the tight board's last lines at more time; the
 //!   bound exists so that time stays bounded whatever the board, and a lower one gives back
@@ -807,18 +809,17 @@ fn present_price(round: usize) -> i64 {
     price
 }
 
-/// The last resort for a line that is still left ([`Router::rip_up_chain`]): how many levels of
-/// lines ripped up for lines ripped up it goes down, how many searches it may spend on one
-/// line and on all lines of one try of the board, and how far from the path (mm beyond the
-/// least the masks keep) the copper of a line may be for the line to be ripped up: first the
-/// lines the path crosses, then those within 0.1 mm of it, then within 0.25 mm.
-const CHAIN_DEPTH: usize = 4;
-const CHAIN_SEARCHES: usize = 600;
-const CHAIN_TOTAL: usize = 3000;
-const CHAIN_NEAR: [f64; 3] = [0.0, 0.1, 0.25];
+/// How a line makes its way in the negotiation ([`Router::make_way`]): how many levels of lines
+/// ripped up for lines ripped up it goes down, how many searches it may spend on one line, and
+/// how far from the line's path (mm beyond the least the masks keep) the copper of a line may be
+/// for the line to be ripped up: first the lines the path crosses, then those within 0.1 mm of
+/// it, then within 0.25 mm.
+const WAY_DEPTH: usize = 4;
+const WAY_SEARCHES: usize = 600;
+const WAY_NEAR: [f64; 3] = [0.0, 0.1, 0.25];
 
 /// The rounds of rip-up and re-route of whole nets that a try that leaves lines gets after the
-/// chain ([`RouteOptions::rip_rounds`], [`Router::rip_rounds`], issue #1088).
+/// negotiation ([`RouteOptions::rip_rounds`], [`Router::rip_rounds`], issue #1088).
 pub const RIP_ROUNDS: usize = 6;
 /// How many times the rounds of one try may rip up one net: after that its copper is hard to
 /// the soft searches of the rounds, as a protected line's is.
@@ -1248,14 +1249,11 @@ struct Router<'a> {
     class_use: LineClasses,
     /// Whether this try keeps the classes' protection.
     classed: Cell<bool>,
-    /// Whether lines left over are negotiated for and given a chain of rip-ups, and what the
-    /// negotiation has learnt.
+    /// Whether lines left over are negotiated for, and what the negotiation has learnt.
     negotiate: bool,
     history: RefCell<Vec<Vec<u8>>>,
     /// The bounds of the negotiation ([`RouteOptions::negotiation`]).
     negotiation: Negotiation,
-    /// Whether the chain of rip-ups runs after it ([`RouteOptions::chain`]).
-    chain: bool,
     /// What a soft search pays for crossing other nets' copper, in hundredths of [`SOFT`] and
     /// [`SOFT_VIA`]: 100, or the present price of the negotiation's round.
     soft_price: Cell<i64>,
@@ -1341,8 +1339,8 @@ pub struct RouteOptions {
     /// Negotiate for lines that are still left after that ([`Router::negotiate`], bounded by
     /// [`RouteOptions::negotiation`]): route each allowing overlaps at a price that grows each
     /// round, make the cells they overlap dearer, rip up the lines they overlap and route those
-    /// again; and then give each line still left a bounded chain of rip-ups of single lines
-    /// ([`Router::rip_up_chain`]). Only used with `rip_up`.
+    /// again, each line first making its way through the single lines in it
+    /// ([`Router::make_way`]). Only used with `rip_up`.
     pub negotiate: bool,
     /// Give up after this long, leaving the lines not yet routed in the ratsnest. `None` is
     /// no limit.
@@ -1383,7 +1381,7 @@ pub struct RouteOptions {
     /// own via, once the pours are stitched (`crate::pour_pads`); on by default.
     pub pour_pads: bool,
     /// The rounds of rip-up and re-route of whole nets that a try gets when lines are still left
-    /// after the chain ([`RIP_ROUNDS`] by default; 0 runs none). Only used with `rip_up`.
+    /// after the negotiation ([`RIP_ROUNDS`] by default; 0 runs none). Only used with `rip_up`.
     pub rip_rounds: usize,
     /// Whether the pours are stitched to the other layers of their nets once the board is routed
     /// (`stitch.rs`); on by default. `netsmith routes route` routes one net and writes its
@@ -1404,15 +1402,10 @@ pub struct RouteOptions {
     /// its rounds. [`Reroute::NONE`] runs none.
     pub reroute: Reroute,
     /// The bounds of the negotiation ([`Router::negotiate`], issue #1533), which a try that
-    /// leaves lines after its rip-ups gets before the chain: its rounds and its searches, counts
-    /// both. [`Negotiation::NONE`] runs none, and the chain has the lines alone. Only used with
-    /// `negotiate`.
+    /// leaves lines after its rip-ups gets: its rounds and its searches, counts both.
+    /// [`Negotiation::NONE`] runs none, and the rounds of whole nets have the lines alone. Only
+    /// used with `negotiate`.
     pub negotiation: Negotiation,
-    /// Whether the chain of rip-ups of single lines ([`Router::rip_up_chain`]) runs after the
-    /// negotiation, from its end and from the state it began with. `true` by default; `false`
-    /// is for measuring what the chain closes that the negotiation does not (issue #1566:
-    /// `negotiation::measured`'s `no chain`). Only used with `negotiate`.
-    pub chain: bool,
 }
 
 /// The bounds of the negotiation ([`RouteOptions::negotiation`], issue #1533), counts both:
@@ -1432,7 +1425,7 @@ impl Negotiation {
         rounds: NEGOTIATION_ROUNDS,
         searches: NEGOTIATION_SEARCHES,
     };
-    /// No negotiation: the chain has the lines the rip-ups leave.
+    /// No negotiation: the rounds of whole nets have the lines the rip-ups leave.
     pub const NONE: Negotiation = Negotiation {
         rounds: 0,
         searches: 0,
@@ -1458,8 +1451,7 @@ pub struct Negotiated {
     /// The lines left when the negotiation began, and when it ended (the best state it saw).
     pub left_before: usize,
     pub left_after: usize,
-    /// Whether the try kept the negotiation's end: it left fewer lines, and the chain from it
-    /// did no worse than the chain from the state the negotiation began with.
+    /// Whether the try kept the negotiation's end: it left fewer lines than it began with.
     pub kept: bool,
 }
 
@@ -1642,7 +1634,6 @@ impl Default for RouteOptions {
             reroute: Reroute::DEFAULT,
             power_groups: true,
             negotiation: Negotiation::DEFAULT,
-            chain: true,
         }
     }
 }
@@ -1678,8 +1669,6 @@ pub enum Stage {
     RipUp,
     /// The negotiation ([`Router::negotiate`]).
     Negotiation,
-    /// The chain of rip-ups of single lines ([`Router::rip_up_chain`]).
-    Chain,
     /// The rounds of rip-up and re-route of whole nets ([`Router::rip_rounds`]).
     RipRounds,
     /// The time limit passed, or the router was told to stop, before or while it was tried.
@@ -1693,7 +1682,6 @@ impl std::fmt::Display for Stage {
             Stage::LessRoom => "failed in the try with less room",
             Stage::RipUp => "failed while ripping up the nets in its way",
             Stage::Negotiation => "failed in the negotiation",
-            Stage::Chain => "failed in the chain of rip-ups",
             Stage::RipRounds => "failed in the rounds that rip up whole nets",
             Stage::OutOfTime => "not finished, the time ran out",
         })
@@ -1749,7 +1737,7 @@ impl RipRounds {
 }
 
 /// The crowding map: how often, over a whole run of the router, the paths that may cross other
-/// nets' copper (each search for the nets in a line's way, in rip-up, negotiation and the chain)
+/// nets' copper (each search for the nets in a line's way, in rip-up, negotiation and the rounds)
 /// passed through each square of the board, a path counted once in a square.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Crowding {
@@ -1805,7 +1793,7 @@ pub enum SnapshotStage {
     /// The tries with less room and the rip-ups.
     RipUp,
     Negotiation,
-    /// The end of the try, after the chain of rip-ups; its tracks are the board's, with the arcs
+    /// The end of the try, after the rounds of whole nets; its tracks are the board's, with the arcs
     /// at its bends.
     Final,
 }
