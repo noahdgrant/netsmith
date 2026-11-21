@@ -76,6 +76,7 @@ mod simplify;
 mod soft_margin;
 mod stackup;
 mod standard_height;
+mod stitching;
 mod summary;
 mod svg;
 mod track_drop;
@@ -199,6 +200,7 @@ pub use stackup::{
     LayerKind, StackLayer, layers as stackup_layers, round as round_nm, thickness_tolerance,
 };
 pub use standard_height::StandardHeight;
+pub use stitching::{is_stitching_via, stitch_grid, stitched_pours};
 pub use summary::{
     DecouplingSummary, FaceSummary, GuidelineSummary, ModuleSummary, Moved, Neighbour, Neighbours,
     NetSummary, Place, PlacementComparison, RatsnestLine, Summary, SummaryBox, Totals,
