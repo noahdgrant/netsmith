@@ -76,6 +76,8 @@ struct Server {
     /// The folder the commands run in: `--project`, or the folder the server was started in.
     dir: PathBuf,
     tools: Vec<Tool>,
+    /// The instructions: [`INSTRUCTIONS`], the arguments many tools share, and the editor's.
+    instructions: String,
     /// The running editor the page tool is attached to (`--editor`).
     attach: Option<Attach>,
     /// The tool calls running, by their request id (as its JSON text).
@@ -116,10 +118,19 @@ impl Server {
                 attach.describe(&mut tool.schema);
             }
         }
+        let mut instructions = format!(
+            "{INSTRUCTIONS} Arguments that many tools take, with the same name and help in each \
+             (the tool lists only their type, choices and default): {}.",
+            tools::shared_arguments(&tools)
+        );
+        if let Some(attach) = attach {
+            instructions.push_str(&attach.instructions());
+        }
         Server {
             program,
             dir,
             tools,
+            instructions,
             attach,
             jobs: Mutex::new(HashMap::new()),
         }
@@ -207,10 +218,7 @@ impl Server {
                         "title": "netsmith",
                         "version": env!("CARGO_PKG_VERSION"),
                     },
-                    "instructions": match self.attach {
-                        Some(attach) => format!("{INSTRUCTIONS}{}", attach.instructions()),
-                        None => INSTRUCTIONS.to_string(),
-                    },
+                    "instructions": self.instructions,
                 }))
             }
             "ping" => Ok(json!({})),
