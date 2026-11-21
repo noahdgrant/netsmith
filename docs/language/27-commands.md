@@ -255,7 +255,7 @@ The rules of netsmith's that KiCad's check lacks:
 | `hole_to_edge` | KiCad has no rule for a hole with no copper against the edge. |
 | `mask_to_track` | KiCad has no constraint from a solder mask opening to copper. |
 | `via_in_pad` | KiCad does not know which vias the board house fills and caps. |
-| `track_current`, `via_current`, `track_impedance` | They need the design's currents and impedance targets, and allow a narrower track by a pad, which KiCad's `track_width` constraint cannot. |
+| `track_current`, `via_current`, `track_impedance` | They need the design's currents and impedance targets, and allow a narrower track by a pad (within the reach, 1 mm, of the box round the centres of a part's pads, measured from the centres and not from the pads' edges), which KiCad's `track_width` constraint cannot. |
 | `track_angle`, `acid_trap` | KiCad checks no angle. |
 | `fiducial_*`, `test_point_*`, `finish_fine_pitch`, `assembly_size` | The board house's assembly rules, which KiCad does not know. `assembly_size` quotes its source (`.process.assembly_size_source`, `source` in JSON). |
 | `stackup`, `via_span`, `via_aspect_ratio` | The process's stackup, which the project file does not hold. |
