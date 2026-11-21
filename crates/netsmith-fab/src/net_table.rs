@@ -12,7 +12,11 @@
 //! line's (an arc by its chords), as the router's meanders measure it.
 //!
 //! - The **nets** are those that no zone pours, with a track or a via: a poured net's tracks are
-//!   not its connection. Its **straight length** is the shortest tree of straight lines between
+//!   not its connection. A net's **length** is that of its connection (issue #1487,
+//!   [`crate::connection`]): the tracks that take its pads to each other, not a second way of
+//!   one connection or a stub that leads nowhere, which the table names with their lengths and
+//!   layers, so that a duplicate track does not count twice in a pair's skew or a group's
+//!   spread. Its **straight length** is the shortest tree of straight lines between
 //!   the centres of its pads, as for [`crate::NetRoutes`].
 //! - A net **changes layer** at a via where its tracks meet on two layers or more (a via of a
 //!   pour, or one a track only ends on, changes none).
@@ -42,6 +46,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use netsmith_geom::{Artwork, COUPLED, Pt};
 
+use crate::connection::{self, NotCounted, Uncounted};
+
 /// The step a pair's first net is sampled at, in mm.
 pub const SAMPLE: f64 = 0.05;
 /// The most two vias of a pair are apart, copper edge to copper edge, to be side by side, in mm:
@@ -54,8 +60,12 @@ const SAME: f64 = 1e-3;
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct NetRow {
     pub net: String,
-    /// The length of all the net's tracks, in mm.
+    /// The length of the net's connection, in mm: the tracks that take its pads to each other
+    /// (issue #1487, [`crate::connection`]), not a second way or a dead stub; all its tracks
+    /// for a net with no pad on the board.
     pub length: f64,
+    /// The length of all the net's tracks, in mm.
+    pub copper: f64,
     /// The shortest tree of straight lines between the centres of the net's pads, in mm.
     pub straight: f64,
     /// `length` over `straight`; 0 for a net whose pads are on one point.
@@ -65,6 +75,47 @@ pub struct NetRow {
     pub layer_changes: usize,
     /// The copper layers the net's tracks are on, front to back, as the board file names them.
     pub layers: Vec<String>,
+    /// The copper `length` does not count, longest first.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub not_counted: Vec<NotCounted>,
+}
+
+impl NetRow {
+    /// The line for a person that says which copper `length` does not count: `net P: 7.00 mm
+    /// of its 27.00 mm of copper not counted in its length: a second way of 7.00 mm on F.Cu at
+    /// (12.00, 5.00)`.
+    pub fn not_counted_line(&self) -> String {
+        let runs: Vec<String> = self
+            .not_counted
+            .iter()
+            .map(|r| {
+                format!(
+                    "{} of {:.2} mm on {} at ({:.2}, {:.2})",
+                    r.kind.words(),
+                    r.length,
+                    r.layer,
+                    r.at.0,
+                    r.at.1
+                )
+            })
+            .collect();
+        format!(
+            "net {}: {:.2} mm of its {:.2} mm of copper not counted in its length: {}",
+            self.net,
+            self.copper - self.length,
+            self.copper,
+            runs.join(", ")
+        )
+    }
+
+    /// The length of the copper not counted of one kind, in mm.
+    pub fn uncounted(&self, kind: Uncounted) -> f64 {
+        self.not_counted
+            .iter()
+            .filter(|r| r.kind == kind)
+            .map(|r| r.length)
+            .sum()
+    }
 }
 
 /// One diff pair's numbers.
@@ -73,7 +124,7 @@ pub struct PairRow {
     /// The two nets, the positive first.
     pub p: String,
     pub n: String,
-    /// Each net's track length, in mm.
+    /// The length of each net's connection, in mm ([`NetRow::length`]).
     pub length_p: f64,
     pub length_n: f64,
     /// The difference of the two, in mm.
@@ -199,7 +250,7 @@ pub struct NetTable {
 }
 
 /// A straight piece of track: net, layer, its ends and its width.
-type Seg = (String, String, Pt, Pt, f64);
+pub(crate) type Seg = (String, String, Pt, Pt, f64);
 
 /// The distance from `p` to the segment `a`-`b`.
 fn to_segment(p: Pt, a: Pt, b: Pt) -> f64 {
@@ -230,6 +281,7 @@ pub(crate) fn rows(art: &Artwork) -> Vec<NetRow> {
         .into_iter()
         .filter(|s| routed(&s.0))
         .collect();
+    let connections = connection::of(art, &segs);
     let mut length: BTreeMap<&str, f64> = BTreeMap::new();
     let mut layers: BTreeMap<&str, BTreeSet<usize>> = BTreeMap::new();
     let order = |layer: &str| {
@@ -275,12 +327,16 @@ pub(crate) fn rows(art: &Artwork) -> Vec<NetRow> {
     names
         .into_iter()
         .map(|net| {
-            let length = length.get(net).copied().unwrap_or_default();
+            let copper = length.get(net).copied().unwrap_or_default();
+            let connection = connections.get(net);
+            let length =
+                connection.map_or(copper, |c| c.counted.iter().map(|s| s.2.dist(s.3)).sum());
             let straight = pads.get(net).map_or(0.0, |pts| crate::score::prim(pts));
             let (vias, layer_changes) = vias.get(net).copied().unwrap_or_default();
             NetRow {
                 net: net.to_string(),
                 length,
+                copper,
                 straight,
                 ratio: if straight > SAME {
                     length / straight
@@ -295,12 +351,15 @@ pub(crate) fn rows(art: &Artwork) -> Vec<NetRow> {
                     .flatten()
                     .filter_map(|&k| art.copper.get(k).cloned())
                     .collect(),
+                not_counted: connection
+                    .map(|c| c.not_counted.clone())
+                    .unwrap_or_default(),
             }
         })
         .collect()
 }
 
-/// The numbers of the pair `p`, `n` from the board's straight pieces of track.
+/// The numbers of the pair `p`, `n` from the straight pieces of track of their connections.
 fn pair_row(art: &Artwork, segs: &[Seg], p: &str, n: &str, limit: f64) -> PairRow {
     let length = |net: &str| -> f64 {
         segs.iter()
@@ -417,8 +476,18 @@ impl NetTable {
         pairs: &[PairLimit],
         groups: &[netsmith_core::LengthGroup],
     ) -> NetTable {
-        let segs = crate::score::lines(art);
-        let has = |net: &str| segs.iter().any(|s| s.0 == net);
+        let all = crate::score::lines(art);
+        let has = |net: &str| all.iter().any(|s| s.0 == net);
+        // A pair is measured on the copper of its connections, not a second way or a stub.
+        let connections = connection::of(art, &all);
+        let segs: Vec<Seg> = all
+            .iter()
+            .filter(|s| !connections.contains_key(&s.0))
+            .cloned()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .chain(connections.into_values().flat_map(|c| c.counted))
+            .collect();
         let nets = rows(art);
         let groups = groups
             .iter()
@@ -577,6 +646,9 @@ impl NetTable {
                 n.layers.join(" "),
             ));
         }
+        for n in self.nets.iter().filter(|n| !n.not_counted.is_empty()) {
+            out.push_str(&format!("{}\n", n.not_counted_line()));
+        }
         for p in &self.pairs {
             let gaps = match p.gaps {
                 Some((least, most)) => format!(", gap {least:.3} to {most:.3} mm"),
@@ -597,6 +669,21 @@ impl NetTable {
                 p.vias_n,
                 p.via_pairs,
             ));
+            let left: Vec<&str> = [&p.p, &p.n]
+                .into_iter()
+                .filter(|net| {
+                    self.nets
+                        .iter()
+                        .any(|r| &r.net == *net && !r.not_counted.is_empty())
+                })
+                .map(String::as_str)
+                .collect();
+            if !left.is_empty() {
+                out.push_str(&format!(
+                    "  (the lengths leave out copper of {} that is not part of its connection: see its net)\n",
+                    left.join(" and ")
+                ));
+            }
         }
         for g in &self.groups {
             let nets: Vec<String> = g

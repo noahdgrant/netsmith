@@ -74,6 +74,7 @@
 
 mod board;
 mod bom;
+mod connection;
 mod cpl;
 mod crosscheck;
 mod csv;
@@ -105,6 +106,7 @@ pub use board::{Board, BoardError as FabBoardError, BoardPart, Fit, Side};
 pub use bom::{
     AlternateEntry, BomEntry, BomError, from_board as bom_from_board, parse_csv as parse_bom_csv,
 };
+pub use connection::{NotCounted, Uncounted};
 pub use cpl::CplError;
 pub use crosscheck::{
     Error as CrossCheckError, LayerResult as CrossCheckLayerResult, Limits as CrossCheckLimits,

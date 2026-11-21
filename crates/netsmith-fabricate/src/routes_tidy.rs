@@ -20,7 +20,14 @@
 //!   and bend after it (the check's own advice, "make it a right angle"). The bend after is cut
 //!   as a corner is when it would bend by more than 45 degrees.
 //!
-//! With `widen` (`routes tidy --widen`, issue #1294) a fifth: **narrow tracks**. A straight
+//! - **tracks inside a pad, duplicate ways, overlapping copper and runs of tiny tracks** (issue #1485), the
+//!   defects of a routed board that the check finds nothing of: a track from a pad's or a via's
+//!   centre to a point still inside it is removed, the longer of two ways between the same two
+//!   places of a net is removed, a track inside another is removed and two that overlap on one
+//!   line become one, and a run of tiny tracks round a corner becomes one track or one corner
+//!   ([`shapes`]).
+//!
+//! With `widen` (`routes tidy --widen`, issue #1294) one more: **narrow tracks**. A straight
 //! track narrower than the width its net wants on its layer ([`wanted_width`]: the width the
 //! router draws the net at there, for its current, its class or its impedance target) is
 //! widened to it. A widening refused by the rule of every change (the wider track comes too
@@ -87,6 +94,9 @@ use serde::Serialize;
 use crate::kept_routes::KeptRoutes;
 use crate::routes::{beside_layout, load, near, save, with_routes};
 
+mod shapes;
+pub use shapes::{TINY, TINY_RUN};
+
 /// How [`tidy_with`] checks a group of changes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Checking {
@@ -133,6 +143,14 @@ pub enum Kind {
     AcidTrap,
     /// A track narrower than its net wants widened (`--widen`).
     Widen,
+    /// A track from a pad's or a via's centre to a point still inside it removed.
+    InPad,
+    /// A second way between two places of a net removed.
+    Duplicate,
+    /// A track inside another removed, or two overlapping on one line made one.
+    Overlap,
+    /// A run of tiny tracks made one track or one corner.
+    TinyRun,
 }
 
 impl Kind {
@@ -144,6 +162,10 @@ impl Kind {
             Kind::Stub => "stub",
             Kind::AcidTrap => "acid trap",
             Kind::Widen => "narrow track",
+            Kind::InPad => "track inside a pad",
+            Kind::Duplicate => "duplicate way",
+            Kind::Overlap => "overlapping copper",
+            Kind::TinyRun => "run of tiny tracks",
         }
     }
 }
@@ -186,6 +208,14 @@ pub struct Counts {
     pub acid_traps: usize,
     /// Narrow tracks widened (`--widen`).
     pub widened: usize,
+    /// Tracks from a pad's or a via's centre to a point still inside it, removed.
+    pub in_pad_tracks: usize,
+    /// Second ways between two places of a net, removed.
+    pub duplicates: usize,
+    /// Tracks inside another removed, and pairs overlapping on one line made one.
+    pub overlaps: usize,
+    /// Runs of tiny tracks made one track or one corner.
+    pub tiny_runs: usize,
 }
 
 /// What [`tidy`] did, or with `dry_run` would do.
@@ -210,6 +240,10 @@ pub struct Tidied {
     pub checks: usize,
     /// How many items (tracks, vias, pads and zones) those checks looked at, in all.
     pub items_checked: usize,
+    /// How many pairs of tracks the overlap pass compared, in all its rounds: the work done, which
+    /// grows with the tracks near each track and not with the tracks of its net.
+    #[serde(skip)]
+    pub overlap_compared: usize,
     /// What else there is to know: a kept file not used, or made stale.
     pub notes: Vec<String>,
     /// The files written (none for a dry run, or when nothing changed).
@@ -230,14 +264,18 @@ impl Tidied {
         let c = &self.counts;
         let _ = write!(
             s,
-            "{}: {} {} corner(s), {} collinear pair(s), {} dangling via(s), {} stub(s), {} acid trap(s)",
+            "{}: {} {} corner(s), {} collinear pair(s), {} dangling via(s), {} stub(s), {} acid trap(s), {} track(s) inside a pad, {} duplicate way(s), {} overlapping track(s), {} run(s) of tiny tracks",
             self.board,
             if self.dry_run { "would tidy" } else { "tidied" },
             c.corners,
             c.merges,
             c.vias,
             c.stubs,
-            c.acid_traps
+            c.acid_traps,
+            c.in_pad_tracks,
+            c.duplicates,
+            c.overlaps,
+            c.tiny_runs
         );
         if self.widen {
             let _ = write!(
@@ -452,6 +490,10 @@ pub fn tidy_passes(
             Kind::Stub => counts.stubs += 1,
             Kind::AcidTrap => counts.acid_traps += 1,
             Kind::Widen => counts.widened += 1,
+            Kind::InPad => counts.in_pad_tracks += 1,
+            Kind::Duplicate => counts.duplicates += 1,
+            Kind::Overlap => counts.overlaps += 1,
+            Kind::TinyRun => counts.tiny_runs += 1,
         }
     }
     let new_routes = work.routes_of(&work.copper);
@@ -471,6 +513,7 @@ pub fn tidy_passes(
         findings_after: look.keys.len(),
         connections_left: look.lines.len(),
         checks: work.checks,
+        overlap_compared: work.compared.get(),
         items_checked: work.items,
         notes: Vec::new(),
         wrote: Vec::new(),
@@ -566,11 +609,93 @@ struct Work<'a> {
     lines: Vec<String>,
     /// Whether narrow tracks are widened too.
     widen: bool,
+    /// The pads of each net, for the passes of [`shapes`].
+    spots: BTreeMap<String, Vec<shapes::Spot>>,
     checks: usize,
     items: usize,
+    /// The pairs of tracks the overlap pass compared ([`Tidied::overlap_compared`]).
+    compared: std::cell::Cell<usize>,
+}
+
+/// A defect that the passes of [`shapes`] find in the copper of a board as it stands, for the
+/// quality report of `board nets` (issue #1481): its kind, its net and how many tracks and vias
+/// of the copper it is, by their places in the board's `tracks` and `vias` (the tracks and vias
+/// of a duplicate way, the one track of a nudge).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Defect {
+    pub kind: Kind,
+    pub net: String,
+    pub wires: Vec<usize>,
+    pub holes: Vec<usize>,
+}
+
+/// The nudges, the duplicate ways, the overlapping copper and the copper that ends in nothing
+/// of `board`'s tracks and vias, as `routes tidy` finds them (each detector once, nothing checked or changed): the measure the
+/// quality report counts by, so that what tidy removes is what the report counts.
+pub(crate) fn shape_defects(board: &Board) -> Vec<Defect> {
+    let routes = Routes::default();
+    let work = Work::looking(board, &routes);
+    work.nudges()
+        .into_iter()
+        .chain(work.duplicates())
+        .chain(work.overlaps())
+        .chain(work.dead_copper())
+        .map(|c| Defect {
+            kind: c.change.kind,
+            net: c.change.net,
+            wires: c.remove_wires,
+            holes: c.remove_holes,
+        })
+        .collect()
 }
 
 impl<'a> Work<'a> {
+    /// The copper of `board` as it stands, its tracks and vias, every one of them open to the
+    /// detectors of [`shapes`], with nothing to check a change by: for [`shape_defects`].
+    fn looking(board: &'a Board, routes: &'a Routes) -> Self {
+        let mut copper = Copper::default();
+        for (n, t) in board.tracks.iter().enumerate() {
+            copper.wires.push(Wire {
+                owner: Owner::RoutesFile,
+                track: t.clone(),
+                drawn: t.clone(),
+                was: None,
+                fixed: false,
+                alive: true,
+                widened: false,
+                rank: (n, 0),
+            });
+        }
+        for v in &board.vias {
+            copper.holes.push(Hole {
+                owner: Owner::RoutesFile,
+                via: v.clone(),
+                was: None,
+                fixed: false,
+                alive: true,
+            });
+        }
+        Work {
+            board,
+            routes,
+            copper,
+            rebuilt: BTreeSet::new(),
+            shell: board.clone(),
+            parts: Vec::new(),
+            part_boxes: Vec::new(),
+            zones: Vec::new(),
+            project: String::new(),
+            extras: netsmith_geom::DrcExtras::default(),
+            grid: near::Grid::new(board.outline, 1.0),
+            reach: 0.0,
+            lines: Vec::new(),
+            widen: false,
+            spots: shapes::spots(board),
+            checks: 0,
+            items: 0,
+        }
+    }
+
     fn new(
         board: &'a Board,
         routes: &'a Routes,
@@ -687,8 +812,10 @@ impl<'a> Work<'a> {
             reach,
             lines: Vec::new(),
             widen: false,
+            spots: shapes::spots(board),
             checks: 0,
             items: 0,
+            compared: std::cell::Cell::new(0),
         })
     }
 
@@ -1190,11 +1317,21 @@ impl<'a> Work<'a> {
             };
             push(c, &mut out);
         }
-        for c in self.merges() {
-            // A merge has one form: refused once, it is not tried again.
+        // A merge, a track inside a pad, a duplicate way and an overlap have one form: refused once, each
+        // is not tried again.
+        let once = self
+            .merges()
+            .into_iter()
+            .chain(self.in_pad_tracks())
+            .chain(self.overlaps())
+            .chain(self.duplicates());
+        for c in once {
             if attempt(&c.key) == 0 {
                 push(Some(c), &mut out);
             }
+        }
+        for c in self.tiny_runs(&attempt) {
+            push(Some(c), &mut out);
         }
         if self.widen {
             for i in 0..self.copper.wires.len() {
@@ -1920,16 +2057,16 @@ mod tests {
 
     /// The LED example placed, a fixture of `netsmith-pcb` (15 by 7 mm; nets GND, VCC and
     /// `net-led.anode`; R1's pad 2 at (9.61, 4.4) and D1's pad 2 at (13.3875, 4.2) on top).
-    fn led() -> Board {
+    pub(super) fn led() -> Board {
         serde_json::from_str(include_str!(
             "../../netsmith-pcb/tests/fixtures/led.board.json"
         ))
         .expect("a fixture is the JSON of a Board")
     }
 
-    const W: f64 = 0.15;
+    pub(super) const W: f64 = 0.15;
 
-    fn track(layer: CopperLayer, from: [f64; 2], to: [f64; 2]) -> RouteTrack {
+    pub(super) fn track(layer: CopperLayer, from: [f64; 2], to: [f64; 2]) -> RouteTrack {
         RouteTrack {
             layer,
             width: W,
@@ -1941,14 +2078,14 @@ mod tests {
     }
 
     /// Straight tracks through `points`, one after another.
-    fn path(layer: CopperLayer, points: &[[f64; 2]]) -> Vec<RouteTrack> {
+    pub(super) fn path(layer: CopperLayer, points: &[[f64; 2]]) -> Vec<RouteTrack> {
         points
             .windows(2)
             .map(|p| track(layer, p[0], p[1]))
             .collect()
     }
 
-    fn via(at: [f64; 2]) -> RouteVia {
+    pub(super) fn via(at: [f64; 2]) -> RouteVia {
         RouteVia {
             at,
             diameter: 0.45,
@@ -1958,7 +2095,7 @@ mod tests {
         }
     }
 
-    fn routes_of(
+    pub(super) fn routes_of(
         board: &Board,
         records: Vec<(&str, bool, Vec<RouteTrack>, Vec<RouteVia>)>,
     ) -> Routes {
@@ -1979,7 +2116,7 @@ mod tests {
         routes
     }
 
-    fn findings(board: &Board, routes: &Routes) -> Vec<String> {
+    pub(super) fn findings(board: &Board, routes: &Routes) -> Vec<String> {
         let mut w = Work::new(board, routes, None).unwrap();
         // The board as the file draws it, checked.
         let copper = w.copper.clone();
@@ -1988,7 +2125,7 @@ mod tests {
 
     /// [`tidy`], which checks neighbourhoods, and the same with every group checked on the whole
     /// board (issue #1225): the same changes, refusals and copper.
-    fn tidied(board: &Board, routes: &Routes, kept: Option<KeptCopper<'_>>) -> Tidied {
+    pub(super) fn tidied(board: &Board, routes: &Routes, kept: Option<KeptCopper<'_>>) -> Tidied {
         let kept2 = kept.as_ref().map(|k| KeptCopper {
             kept: k.kept,
             stale: k.stale,
@@ -2029,7 +2166,7 @@ mod tests {
         assert_eq!(w.board_of(&w.copper), by_file);
     }
 
-    fn lines(board: &Board, routes: &Routes) -> Vec<String> {
+    pub(super) fn lines(board: &Board, routes: &Routes) -> Vec<String> {
         let b = with_routes(board, routes).unwrap().0;
         let mut l: Vec<String> = netsmith_pcb::Ratsnest::of(&b)
             .lines
@@ -2086,6 +2223,7 @@ mod tests {
                 stubs: 0,
                 acid_traps: 1,
                 widened: 0,
+                ..Counts::default()
             },
             "{said}"
         );
