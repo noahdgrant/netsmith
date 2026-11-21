@@ -160,7 +160,10 @@
 //!   are, and lines routed for a line above are locked below it (a lock, not a reservation:
 //!   this ends a cycle of two lines). Bounded by [`CHAIN_SEARCHES`] 600 for a line and
 //!   [`CHAIN_TOTAL`] 3000 for a try of the board, depth 4, whatever the time limit. Nothing in
-//!   it is random, ties go by line number, and the same board gives the same copper.
+//!   it is random, ties go by line number, and the same board gives the same copper. The
+//!   negotiation before it does not replace it: without it the invented boards leave 30 lines
+//!   against 5, and 15 with the negotiation's bounds quadrupled (issue #1566,
+//!   `route/negotiation.rs`, [`RouteOptions::chain`]).
 //! - **`.kicad_pro` gives the Default net class a `priority`.** Without it KiCad 9 ignored the
 //!   Default class's clearance and checked every board against its own 0.2 mm (measured: a
 //!   0.1 mm project reported "clearance 0.2000 mm"). One added line in every `.kicad_pro`.
@@ -1250,6 +1253,8 @@ struct Router<'a> {
     history: RefCell<Vec<Vec<u8>>>,
     /// The bounds of the negotiation ([`RouteOptions::negotiation`]).
     negotiation: Negotiation,
+    /// Whether the chain of rip-ups runs after it ([`RouteOptions::chain`]).
+    chain: bool,
     /// What a soft search pays for crossing other nets' copper, in hundredths of [`SOFT`] and
     /// [`SOFT_VIA`]: 100, or the present price of the negotiation's round.
     soft_price: Cell<i64>,
@@ -1402,6 +1407,11 @@ pub struct RouteOptions {
     /// both. [`Negotiation::NONE`] runs none, and the chain has the lines alone. Only used with
     /// `negotiate`.
     pub negotiation: Negotiation,
+    /// Whether the chain of rip-ups of single lines ([`Router::rip_up_chain`]) runs after the
+    /// negotiation, from its end and from the state it began with. `true` by default; `false`
+    /// is for measuring what the chain closes that the negotiation does not (issue #1566:
+    /// `negotiation::measured`'s `no chain`). Only used with `negotiate`.
+    pub chain: bool,
 }
 
 /// The bounds of the negotiation ([`RouteOptions::negotiation`], issue #1533), counts both:
@@ -1631,6 +1641,7 @@ impl Default for RouteOptions {
             reroute: Reroute::DEFAULT,
             power_groups: true,
             negotiation: Negotiation::DEFAULT,
+            chain: true,
         }
     }
 }

@@ -127,8 +127,9 @@ fn measured_boards() -> Vec<(String, Board)> {
 }
 
 /// Prints, for each board of [`measured_boards`], the lines left and the objective without the
-/// negotiation (`none`: the chain has the lines the rip-ups leave) and with it, and the work the
-/// negotiation did. One try by default (`NETSMITH_TRIES` for more), so that what is printed is
+/// negotiation (`none`: the chain has the lines the rip-ups leave), with it (`negotiated`), and
+/// with it and no chain after it (`no chain`, [`RouteOptions::chain`], issue #1566: what the
+/// chain closes that the negotiation does not), and the work the negotiation did. One try by default (`NETSMITH_TRIES` for more), so that what is printed is
 /// that try's. `cargo test --release -p netsmith-router --test main negotiation::measured --
 /// --ignored --nocapture`.
 #[test]
@@ -140,15 +141,17 @@ fn measured() {
         "board", "setting", "left", "detour", "vias", "changes", "over2"
     );
     for (name, board) in measured_boards() {
-        for (setting, negotiation) in [
-            ("none", Negotiation::NONE),
-            ("negotiated", Negotiation::DEFAULT),
+        for (setting, negotiation, chain) in [
+            ("none", Negotiation::NONE, true),
+            ("negotiated", Negotiation::DEFAULT, true),
+            ("no chain", Negotiation::DEFAULT, false),
         ] {
             let mut b = board.clone();
             let routing = route_with(
                 &mut b,
                 RouteOptions {
                     negotiation,
+                    chain,
                     most_tries: tries,
                     time_limit: Some(guard::GUARD),
                     ..RouteOptions::default()

@@ -323,13 +323,13 @@ impl<'a> Router<'a> {
             self.negotiate(&mut state, ROOM_TIGHT, attempt, attempts);
             self.snapshot(SnapshotStage::Negotiation, &state);
             self.stage.set(Stage::Chain);
-            if !state.failed.is_empty() {
+            if self.chain && !state.failed.is_empty() {
                 self.finish(&mut state, ROOM_TIGHT, attempt, attempts);
             }
             // The chain from the state the negotiation began with too, when the negotiation
             // changed it: the try keeps the end with fewer lines left, and of two that leave as
             // many the one the weights find cheaper, so no try routes less than without it.
-            if state.negotiated.left_after < state.negotiated.left_before {
+            if self.chain && state.negotiated.left_after < state.negotiated.left_before {
                 let mut other = start;
                 self.finish(&mut other, ROOM_TIGHT, attempt, attempts);
                 let ours = (state.failed.len(), self.state_cost(&state));
