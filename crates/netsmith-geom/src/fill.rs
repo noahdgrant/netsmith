@@ -129,7 +129,7 @@ use crate::polygons::{
 const DEFAULT_CLEARANCE: f64 = 0.2;
 
 mod cut;
-pub(crate) use cut::cuts;
+pub(crate) use cut::{By, cuts};
 
 /// Whether a via joins a pour with thermal spokes (as a pad does) rather than solid copper:
 /// KiCad joins it solid (found by the cross-check, ADR 0034).

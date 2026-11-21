@@ -58,6 +58,7 @@
 use super::checks::Out;
 use super::model::Kind;
 use super::{Item, Rule};
+use crate::artwork::PadKind;
 use crate::fill::{self, MIN_SPOKES};
 use crate::plot;
 
@@ -216,8 +217,9 @@ pub(crate) fn run(out: &mut Out<'_>) {
 }
 
 /// The `pad_island_cut` findings of the fills `judged` of `layer` ([`fill::cuts`], issue
-/// #1509): each piece a track of another net cut off from the rest of its fill, with pads of its
-/// net on it and no other way to them. A warning, an error when guidelines are strict.
+/// #1509): each piece copper of another net (a track, pad or via), a hole, a rule area or a pour
+/// of a higher priority cut off from the rest of its fill (issue #1524), with pads of its net on
+/// it and no other way to them. A warning, an error when guidelines are strict.
 fn cut_pieces(out: &mut Out<'_>, layer: &str, judged: &[fill::Judged], rules: &plot::Rules) {
     let m = out.m;
     for c in fill::cuts(m.art, layer, judged, rules, &m.extras.open) {
@@ -234,7 +236,95 @@ fn cut_pieces(out: &mut Out<'_>, layer: &str, judged: &[fill::Judged], rules: &p
             .iter()
             .filter_map(|&k| item_of(Kind::Pad(k)))
             .collect();
-        let Some(track) = item_of(Kind::Track(c.track)) else {
+        let net_of = |n: &Option<String>| n.clone().unwrap_or_else(|| "no net".to_string());
+        let zone_item = |k: usize, what: String| Item {
+            what,
+            at: c.near,
+            part: None,
+            pad: None,
+            net: m.art.zones[k].net.clone(),
+        };
+        // What cut the piece off: its words in the message, what to do, and its item.
+        let (what, fix, cutter) = match c.by {
+            fill::By::Track(t) => (
+                format!("a track of {}", net_of(&m.art.tracks[t].net)),
+                "move the track".to_string(),
+                item_of(Kind::Track(t)),
+            ),
+            fill::By::Via(v) => (
+                format!("a via of {}", net_of(&m.art.vias[v].net)),
+                "move the via".to_string(),
+                item_of(Kind::Via(v)),
+            ),
+            fill::By::Pad(k) => {
+                let p = &m.art.pads[k];
+                (
+                    format!("pad {}.{} [{}]", p.part, p.number, net_of(&p.net)),
+                    format!("move {} or its pad's neighbours apart", p.part),
+                    item_of(Kind::Pad(k)),
+                )
+            }
+            fill::By::Hole(k) => {
+                let p = &m.art.pads[k];
+                // A hole with no copper on any layer is no item of the copper's: named as the
+                // check of holes names it.
+                let label = if p.kind == PadKind::Npth {
+                    "NPTH pad"
+                } else {
+                    "PTH pad"
+                };
+                let hole = if p.number.is_empty() {
+                    format!("the hole of {}", p.part)
+                } else {
+                    format!("the hole of pad {}.{}", p.part, p.number)
+                };
+                (
+                    hole,
+                    format!("move {}", p.part),
+                    item_of(Kind::Pad(k)).or_else(|| {
+                        Some(Item {
+                            what: format!("{label} {} of {}", p.number, p.part),
+                            at: p.at,
+                            part: Some(p.part.clone()),
+                            pad: Some(p.number.clone()),
+                            net: p.net.clone(),
+                        })
+                    }),
+                )
+            }
+            fill::By::RuleArea(k) => {
+                let a = &m.art.zones[k];
+                // Its name, as `items_not_allowed` gives it.
+                let name = match (a.owner.is_empty(), a.name.is_empty()) {
+                    (false, true) => format!("of {}'s footprint", a.owner),
+                    (false, false) => format!("'{}' of {}'s footprint", a.name, a.owner),
+                    (true, true) => "'(unnamed)'".to_string(),
+                    (true, false) => format!("'{}'", a.name),
+                };
+                (
+                    format!("the rule area {name}"),
+                    "move or shrink the rule area".to_string(),
+                    Some(zone_item(k, format!("Rule area {name} on {layer}"))),
+                )
+            }
+            fill::By::Pour(k) => {
+                let a = &m.art.zones[k];
+                let n = net_of(&a.net);
+                (
+                    format!("the pour of {n}"),
+                    "lower that pour's priority or move it".to_string(),
+                    Some(zone_item(
+                        k,
+                        if a.name.is_empty() {
+                            format!("Zone [{n}] on {layer}")
+                        } else {
+                            format!("Zone {} [{n}] on {layer}", a.name)
+                        },
+                    )),
+                )
+            }
+        };
+        let Some(cutter) = cutter else {
             continue;
         };
         let names: Vec<String> = c
@@ -250,19 +340,15 @@ fn cut_pieces(out: &mut Out<'_>, layer: &str, judged: &[fill::Judged], rules: &p
         } else {
             "the pour"
         };
-        let other = m.art.tracks[c.track]
-            .net
-            .clone()
-            .unwrap_or_else(|| "no net".to_string());
         let message = format!(
-            "a track of {other} cuts a piece of {whose} of {net} ({:.3} mm² at ({:.3}, {:.3})) off from the rest of its fill, and nothing else joins {} on it to the net: no via, plated hole, track or other fill of {net}; move the track, or give the pad a via or a track of its own",
+            "{what} cuts a piece of {whose} of {net} ({:.3} mm² at ({:.3}, {:.3})) off from the rest of its fill, and nothing else joins {} on it to the net: no via, plated hole, track or other fill of {net}; {fix}, or give the pad a via or a track of its own",
             c.area,
             c.at.x,
             c.at.y,
             names.join(", "),
         );
         let mut items = pads;
-        items.push(track);
+        items.push(cutter);
         items.push(Item {
             what: if zone.name.is_empty() {
                 format!("Zone [{net}] on {layer}")
@@ -670,6 +756,11 @@ mod tests {
     /// The board of [`board`] with the SIG ring of [`ring`] round a GND pad of R1 at (10, 10),
     /// a second GND pad (R2) outside the ring, and `items`, checked with `extras`.
     fn cut_board(items: &str, extras: &Extras) -> Report {
+        cut_board_by(&ring(), items, extras)
+    }
+
+    /// The board of [`cut_board`] with `wall` round R1's pad in place of the SIG ring.
+    fn cut_board_by(wall: &str, items: &str, extras: &Extras) -> Report {
         let pcb = format!(
             r#"(kicad_pcb (layers (0 "F.Cu" signal) (2 "B.Cu" signal))
             (net 0 "") (net 1 "GND") (net 2 "SIG")
@@ -682,8 +773,7 @@ mod tests {
             (footprint "L:R" (layer "F.Cu") (at 17 17)
               (property "Reference" "R2")
               (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 1 "GND")))
-            {} {items})"#,
-            ring()
+            {wall} {items})"#
         );
         check(&pcb, None, extras).unwrap()
     }
@@ -766,6 +856,119 @@ mod tests {
         // A box that cuts through the piece: the piece may go on outside it.
         assert_eq!(
             cuts(&cut_board("", &open((3.0, 3.0), (10.0, 17.0)))),
+            Vec::<String>::new()
+        );
+    }
+
+    /// The points every `step` mm round the square of side 6 mm centred on R1's pad.
+    fn round_r1(step: f64) -> Vec<(f64, f64)> {
+        let n = (6.0 / step).round() as usize;
+        let mut out = Vec::new();
+        for i in 0..n {
+            let d = i as f64 * step;
+            out.extend([
+                (7.0 + d, 7.0),
+                (13.0, 7.0 + d),
+                (13.0 - d, 13.0),
+                (7.0, 13.0 - d),
+            ]);
+        }
+        out
+    }
+
+    #[test]
+    fn pads_vias_holes_and_rule_areas_of_other_nets_cut_a_pad_off_too() {
+        // Issue #1524: with no track near, the copper round R1's pad cuts its piece of the pour
+        // off from the via, and the finding names it.
+        let pads = r#"(footprint "L:W" (layer "F.Cu") (at 10 10)
+            (property "Reference" "U1")
+            (pad "1" smd rect (at 0 -3) (size 7 1) (layers "F.Cu") (net 2 "SIG"))
+            (pad "2" smd rect (at 3 0) (size 1 7) (layers "F.Cu") (net 2 "SIG"))
+            (pad "3" smd rect (at 0 3) (size 7 1) (layers "F.Cu") (net 2 "SIG"))
+            (pad "4" smd rect (at -3 0) (size 1 7) (layers "F.Cu") (net 2 "SIG")))"#;
+        let found = cuts(&cut_board_by(pads, "", &Extras::default()));
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].starts_with("pad U1.")
+                && found[0].contains(" [SIG] cuts a piece of the pour of GND (")
+                && found[0].contains("; move U1 or its pad's neighbours apart, or give the pad")
+                && found[0].contains("SMD pad 1 [GND] of R1"),
+            "{}",
+            found[0]
+        );
+        let vias: String = round_r1(0.75)
+            .into_iter()
+            .map(|(x, y)| {
+                format!(
+                    r#"(via (at {x} {y}) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 2))"#
+                )
+            })
+            .collect();
+        let found = cuts(&cut_board_by(&vias, "", &Extras::default()));
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].starts_with("a via of SIG cuts a piece of the pour of GND (")
+                && found[0].contains("; move the via, or give the pad")
+                && found[0].contains("Via [SIG]"),
+            "{}",
+            found[0]
+        );
+        let holes: String = round_r1(1.0)
+            .into_iter()
+            .enumerate()
+            .map(|(k, (x, y))| {
+                format!(
+                    r#"(footprint "L:H" (layer "F.Cu") (at {x} {y})
+                    (property "Reference" "H{k}")
+                    (pad "" np_thru_hole circle (at 0 0) (size 0.9 0.9) (drill 0.9) (layers "*.Cu" "*.Mask")))"#
+                )
+            })
+            .collect();
+        let report = cut_board_by(&holes, "", &Extras::default());
+        let found = cuts(&report);
+        assert_eq!(found.len(), 1, "{report}");
+        assert!(
+            found[0].contains(" cuts a piece of the pour of GND (")
+                && found[0].contains("; move H"),
+            "{}",
+            found[0]
+        );
+        let area = |name: &str, (x0, y0): (f64, f64), (x1, y1): (f64, f64)| {
+            format!(
+                r#"(zone (net 0) (net_name "") (layer "F.Cu") (name "{name}")
+                (keepout (tracks allowed) (vias allowed) (pads allowed) (copperpour not_allowed) (footprints allowed))
+                (polygon (pts (xy {x0} {y0}) (xy {x1} {y0}) (xy {x1} {y1}) (xy {x0} {y1}))))"#
+            )
+        };
+        let areas = [
+            area("top", (6.5, 6.5), (13.5, 7.5)),
+            area("right", (12.5, 6.5), (13.5, 13.5)),
+            area("bottom", (6.5, 12.5), (13.5, 13.5)),
+            area("left", (6.5, 6.5), (7.5, 13.5)),
+        ]
+        .concat();
+        let found = cuts(&cut_board_by(&areas, "", &Extras::default()));
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].starts_with("the rule area '")
+                && found[0].contains("' cuts a piece of the pour of GND (")
+                && found[0].contains("; move or shrink the rule area, or give the pad")
+                && found[0].contains("Rule area '"),
+            "{}",
+            found[0]
+        );
+        // A gap in the wall leaves the piece joined: nothing is cut.
+        let open: String = round_r1(0.75)
+            .into_iter()
+            .filter(|&(x, y)| !(x == 7.0 && (9.0..=11.0).contains(&y)))
+            .map(|(x, y)| {
+                format!(
+                    r#"(via (at {x} {y}) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 2))"#
+                )
+            })
+            .collect();
+        assert_eq!(
+            cuts(&cut_board_by(&open, "", &Extras::default())),
             Vec::<String>::new()
         );
     }
