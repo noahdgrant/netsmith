@@ -186,7 +186,7 @@
 //! No example of `examples/` changed its widths or notes with any amendment: their currents are
 //! milliamps, at the process's least track.
 
-use netsmith_check::{Domain, InstId, InstKind, Member, Model};
+use netsmith_check::{Domain, InstId, InstKind, Member, Model, PinKind};
 use netsmith_core::{Features, InnerUse, NetCurrent, OUNCE_OF_COPPER, Process};
 
 /// The temperature rise the check designs to when the board states none, in kelvin. A
@@ -835,10 +835,11 @@ pub fn plan_tracks(
 /// only feeds it needs no more. What flows through a pin is the sum of what the rails whose
 /// `pos` or `neg` it is and the parts with an end of their `bridge` on it carry, each at the
 /// larger end of its range in size, with the pins joined to it inside its part (an alias with
-/// no pad of its own is the same copper). A pin that nothing carries a current through (a
-/// capacitor's, a pin no rail names), or that one carrier with no known current does, is left
-/// out: its
-/// current is not known, and the design rules check holds the copper to it to its net's. So is
+/// no pad of its own is the same copper). An `input` pin that nothing carries a current through
+/// (an enable pin on a converter's input, issue #1504) carries none. Any other pin that nothing
+/// carries a current through (a capacitor's, whose ripple the model does not know, a pin no
+/// rail names), or that one carrier with no known current does, is left out: its current is
+/// not known, and the design rules check holds the copper to it to its net's. So is
 /// a pin that carries its whole net's current, which says nothing more than the net does. Only
 /// the nets with a known current ([`TrackPlan::currents`]) are read: the others are not held
 /// to a width. The router does not read these; a pin that states its own current
@@ -868,6 +869,20 @@ fn pin_currents(model: &Model, carriers: &[Carrier], plan: &mut TrackPlan) {
                 .map(|c| c.range.map(|(lo, hi)| lo.abs().max(hi.abs())))
                 .peekable();
             if through.peek().is_none() {
+                // An input that nothing carries a current through (an enable or undervoltage
+                // pin, a sense or bias input) takes no current, its leakage aside (issue
+                // #1504): the model counts none for it in its net's current, and the copper
+                // that only feeds it is held to what the other pins past it carry.
+                if same
+                    .iter()
+                    .all(|&p| model.pin_kind(p) == Some(PinKind::Input))
+                {
+                    plan.pin_currents.push(PinCurrent {
+                        pin,
+                        net: net.name.clone(),
+                        current: 0.0,
+                    });
+                }
                 continue;
             }
             let Some(current) = through.sum::<Option<f64>>() else {

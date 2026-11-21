@@ -148,3 +148,29 @@ fn a_pin_with_no_known_current_has_no_pin_current() {
     let u = d.design.features.pin_currents.iter().find(|l| l.path == "u.vdd.pos");
     assert_eq!(u.map(|l| l.current), Some(0.02), "{paths:?}");
 }
+
+#[test]
+fn an_input_on_a_power_net_carries_no_current_of_its_own() {
+    // Issue #1504: a part's enable input is tied to `5V`, a net of 3 A. Nothing carries a
+    // current through it, so the copper that only feeds it is held to what it takes, none, and
+    // not to the net's current. The supply header's pin, which no rail's current is known for,
+    // stays of the trunk.
+    let src = board("").replace(
+        "        .vdd.neg power \"GND\" \"2\"\n",
+        "        .vdd.neg power \"GND\" \"2\"\n        .en input \"EN\" \"3\"\n",
+    );
+    let src = src.replace(".u.vdd ~ .load\n", ".u.vdd ~ .load\n    .u.en ~ .load.pos\n");
+    assert!(src.contains(".en input"), "{src}");
+    let d = design(&src).unwrap_or_else(|e| panic!("{e:?}"));
+    let f = &d.design.features;
+    let en = f.pin_currents.iter().find(|l| l.path == "u.en");
+    assert_eq!(en.map(|l| (l.net.as_str(), l.current)), Some(("5V", 0.0)), "{:?}", f.pin_currents);
+    assert_eq!(en.unwrap().pins[0].pin, "3");
+    let paths: Vec<&str> = f.pin_currents.iter().map(|l| l.path.as_str()).collect();
+    assert!(!paths.contains(&"supply.p1"), "{paths:?}");
+    // The buck example's feedback input takes none either.
+    let d = design(include_str!("../../../examples/buck_converter.nsm"))
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    let fb = d.design.features.pin_currents.iter().find(|l| l.path == "reg.ic.fb");
+    assert_eq!(fb.map(|l| l.current), Some(0.0), "{:?}", d.design.features.pin_currents);
+}

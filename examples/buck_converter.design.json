@@ -699,6 +699,17 @@
           "current": 0.00005443225736580124
         },
         {
+          "net": "net-reg.divider.rbottom.a",
+          "path": "reg.ic.fb",
+          "pins": [
+            {
+              "refdes": "U1",
+              "pin": "3"
+            }
+          ],
+          "current": 0.0
+        },
+        {
           "net": "net-reg.ic.boost.b",
           "path": "reg.inductor.a",
           "pins": [
