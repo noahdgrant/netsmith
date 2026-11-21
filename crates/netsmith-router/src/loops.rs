@@ -10,6 +10,9 @@
 //! via's edge is no place inside it, so a removal that adds a fault there is not made (issue
 //! #1518). Taking copper away never
 //! comes nearer other copper, and a piece on a loop joins nothing the rest does not.
+//! Before the loops, a piece that lies on another, end to end the same, goes (the narrower, or
+//! of two as wide the one of the track cut into fewer pieces): two tracks of a net that overlap
+//! on one line leave no copy of a track behind (issue #1539).
 //!
 //! A net's copper is a graph: its pads and vias are places (a track that ends anywhere in one
 //! joins it), and so is each other end of a track; a track is cut where another of its net ends
@@ -163,10 +166,17 @@ fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize
     }
     let count = places.len() + free.len();
     let is_free = |n: usize| n >= places.len();
+    let mut kept = vec![true; pieces.len()];
+    let copies = drop_copies(board, &pieces, &mut kept);
     // A net with no loop has nothing to take off: most nets, and each is looked at once.
     let mut sets: Vec<usize> = (0..count).collect();
     let mut looped = false;
-    for p in &pieces {
+    for p in pieces
+        .iter()
+        .zip(&kept)
+        .filter(|(_, k)| **k)
+        .map(|(p, _)| p)
+    {
         let (a, b) = (find(&mut sets, p.a), find(&mut sets, p.b));
         if a == b {
             looped = true;
@@ -174,7 +184,7 @@ fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize
             sets[a] = b;
         }
     }
-    if !looped {
+    if !looped && copies == 0 {
         return 0;
     }
     // The pieces at each place.
@@ -185,7 +195,6 @@ fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize
             by_place[p.b].push(k);
         }
     }
-    let mut kept = vec![true; pieces.len()];
     // Whether `x` reaches `y` over the kept pieces.
     let joined = |kept: &[bool], x: usize, y: usize| {
         let mut seen = vec![false; count];
@@ -278,7 +287,7 @@ fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize
         let length = |k: usize| pieces[k].from.distance(pieces[k].to);
         length(y).total_cmp(&length(x)).then(x.cmp(&y))
     });
-    let mut dropped = 0;
+    let mut dropped = copies;
     let mut faulty = faults(
         &rebuilt(&board.tracks, &pieces, &kept, &tracks),
         net,
@@ -339,6 +348,66 @@ fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize
     }
     let all: Vec<usize> = (0..board.tracks.len()).collect();
     board.tracks = rebuilt(&board.tracks, &pieces, &kept, &all);
+    dropped
+}
+
+/// Each piece that lies on another of its layer, end to end the same (two tracks of the net that
+/// overlap on one line are cut into such pieces where they lie one on the other), taken off
+/// `kept` when the router drew it (issue #1539): its copper is the other's, so taking it off
+/// changes no copper and leaves no copy of a track. Of two, the narrower goes; of two as wide,
+/// the one of the track cut into fewer pieces (a track wholly on another goes whole), then the
+/// later. Returns how many were taken off.
+fn drop_copies(board: &Board, pieces: &[Piece], kept: &mut [bool]) -> usize {
+    let mut by_places: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
+    for (k, p) in pieces.iter().enumerate() {
+        by_places
+            .entry((p.a.min(p.b), p.a.max(p.b)))
+            .or_default()
+            .push(k);
+    }
+    let mut cut_into: HashMap<usize, usize> = HashMap::new();
+    for p in pieces {
+        *cut_into.entry(p.track).or_default() += 1;
+    }
+    let mut dropped = 0;
+    let mut groups: Vec<&Vec<usize>> = by_places.values().filter(|g| g.len() > 1).collect();
+    groups.sort_unstable();
+    for group in groups {
+        for (i, &x) in group.iter().enumerate() {
+            for &y in &group[i + 1..] {
+                if !kept[x] || !kept[y] {
+                    continue;
+                }
+                let (px, py) = (&pieces[x], &pieces[y]);
+                let (tx, ty) = (&board.tracks[px.track], &board.tracks[py.track]);
+                let one = (px.from.distance(py.from) < SAME && px.to.distance(py.to) < SAME)
+                    || (px.from.distance(py.to) < SAME && px.to.distance(py.from) < SAME);
+                if !one
+                    || tx.layer != ty.layer
+                    || tx.mid.is_some()
+                    || ty.mid.is_some()
+                    || px.track == py.track
+                {
+                    continue;
+                }
+                let goes = if (tx.width - ty.width).abs() > 1e-9 {
+                    if tx.width < ty.width { x } else { y }
+                } else if cut_into[&px.track] != cut_into[&py.track] {
+                    if cut_into[&px.track] < cut_into[&py.track] {
+                        x
+                    } else {
+                        y
+                    }
+                } else {
+                    y
+                };
+                if pieces[goes].new {
+                    kept[goes] = false;
+                    dropped += 1;
+                }
+            }
+        }
+    }
     dropped
 }
 
@@ -463,6 +532,26 @@ mod tests {
         assert_eq!(drop_second_ways(&mut board, 0, &[]), 1);
         assert_eq!(board.tracks.len(), before.len());
         assert!(netsmith_pcb::Ratsnest::of(&board).is_empty());
+    }
+
+    #[test]
+    fn a_track_that_lies_on_half_of_another_goes_and_leaves_no_copy() {
+        // Issue #1539: the two were cut into pieces that lie one on the other, and the piece of
+        // the longer track was taken off, leaving its other half and a copy of the shorter.
+        let mut board = routed_led();
+        let before = board.tracks.clone();
+        let longest = (0..before.len())
+            .filter(|&k| before[k].mid.is_none())
+            .max_by(|&a, &b| before[a].length().total_cmp(&before[b].length()))
+            .unwrap();
+        let t = &before[longest];
+        let half = Pt::new((t.from.x + t.to.x) / 2.0, (t.from.y + t.to.y) / 2.0);
+        board.tracks.push(Track {
+            to: half,
+            ..t.clone()
+        });
+        assert_eq!(drop_second_ways(&mut board, 0, &[]), 1);
+        assert_eq!(board.tracks, before);
     }
 
     #[test]
