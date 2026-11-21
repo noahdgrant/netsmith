@@ -8,7 +8,8 @@
 //! footprints by simulated annealing (ADR 0033, the header of `anneal.rs`), keeping to the
 //! requirements of the physical file (ADR 0045). [`precheck`] says, before any placing, what
 //! those requirements prove. [`regenerate`] places one module again with the rest held (the
-//! header of `regenerate.rs`). [`Quality`] measures a placement.
+//! header of `regenerate.rs`). [`Quality`] measures a placement, and [`routing_counts`] what the
+//! objective for routing (`PlaceOptions::routing_objective`, issue #1534) asks of one.
 //!
 //! The board model, the options the placer is told and its refusals
 //! ([`netsmith_pcb::PlaceOptions`]), and the measure of a placement ([`netsmith_pcb::Quality`])
@@ -18,6 +19,7 @@
 
 mod anneal;
 mod board;
+mod counts;
 mod fit;
 mod place;
 mod regenerate;
@@ -28,6 +30,7 @@ mod pcb_fixtures;
 mod testlib;
 
 pub use board::{board_from_design, board_from_design_placed, board_where_ended, precheck};
+pub use counts::{RoutingCounts, routing_counts};
 pub use netsmith_pcb::{DecouplingDistance, Quality, crossings};
 pub use place::{PlaceError, place_subset};
 pub use regenerate::{
