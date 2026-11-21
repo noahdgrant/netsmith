@@ -292,15 +292,26 @@ fn measured() {
             let tidied = routes_tidy::tidy_with(&board, routes, None, checking).unwrap();
             let time = began.elapsed();
             eprintln!(
-                "{what}, {checking:?}: {} tracks: {} change(s), {} refused, {} checks, {} items checked, in {time:.1?}",
+                "{what}, {checking:?}: {} tracks: {} change(s), {} refused, {} checks, {} items checked, {} pairs compared by the overlap pass, in {time:.1?}",
                 tracks(routes),
                 tidied.changes.len(),
                 tidied.refused.len(),
                 tidied.checks,
-                tidied.items_checked
+                tidied.items_checked,
+                tidied.overlap_compared
             );
         }
     }
+    // One net of thousands of tracks: the overlap pass's pairs (issue 1492).
+    let (board, routes) = long(3000);
+    let began = std::time::Instant::now();
+    let tidied = routes_tidy::tidy(&board, &routes, None).unwrap();
+    eprintln!(
+        "one net of {} tracks: {} pairs compared by the overlap pass, in {:.1?}",
+        tracks(&routes),
+        tidied.overlap_compared,
+        began.elapsed()
+    );
 }
 
 /// A board for `--widen` (issue #1294): a net `p` that wants 0.5 mm, drawn from pad 2 of one
@@ -406,4 +417,93 @@ fn widen_makes_each_narrow_track_as_wide_as_its_net_wants_or_its_neighbours_allo
         routes_tidy::wanted_width(&board, "q", CopperLayer::Front),
         board.rules.track_width
     );
+}
+
+/// One net of `n` straight tracks of 1 mm along one line (the widths alternate, so that no two
+/// make a collinear pair) from a resistor to another, with a track of 0.5 mm inside the middle
+/// one, which the overlap pass removes (issue 1492).
+fn long(n: usize) -> (Board, Routes) {
+    let led = led();
+    let resistor = led
+        .parts
+        .iter()
+        .find(|p| p.refdes == "R1")
+        .expect("the LED board's resistor")
+        .clone();
+    let mut board = led.clone();
+    board.name = "long".to_string();
+    board.parts.clear();
+    board.nets.clear();
+    let min = led.outline.min;
+    let end = n as f64 + 3.02;
+    board.outline = Rect::new(min, min + Pt::new(end + 3.0, 5.0));
+    for (refdes, x) in [("RA", 2.0), ("RB", end)] {
+        let mut part = resistor.clone();
+        part.refdes = refdes.to_string();
+        part.path = refdes.to_lowercase();
+        part.at = min + Pt::new(x, 2.0);
+        board.parts.push(part);
+    }
+    let pad = |refdes: &str, number: &str| PadRef {
+        refdes: refdes.to_string(),
+        number: number.to_string(),
+    };
+    board.nets.push(BoardNet {
+        name: "p".to_string(),
+        pads: vec![pad("RA", "2"), pad("RB", "1")],
+    });
+    let mut tracks: Vec<RouteTrack> = (0..n)
+        .map(|i| {
+            let x = 2.51 + i as f64;
+            RouteTrack {
+                layer: CopperLayer::Front,
+                width: if i % 2 == 0 { 0.15 } else { 0.16 },
+                from: [x, 2.0],
+                mid: None,
+                to: [x + 1.0, 2.0],
+                lock: false,
+            }
+        })
+        .collect();
+    let middle = 2.51 + (n / 2) as f64;
+    tracks.extend(straight(
+        CopperLayer::Front,
+        &[[middle + 0.2, 2.0], [middle + 0.7, 2.0]],
+    ));
+    let mut routes = Routes::default();
+    routes.boards.entry(board.name.clone()).or_default().nets.insert(
+        "p".to_string(),
+        NetRoutes {
+            pads: netsmith_pcb::pad_hash(&board, "p").expect("a net of the board"),
+            lock: false,
+            tracks,
+            vias: Vec::new(),
+            zones: Vec::new(),
+        },
+    );
+    (board, routes)
+}
+
+#[test]
+fn the_overlap_pass_compares_a_track_with_its_neighbours_and_not_with_its_net() {
+    // Four times the tracks of one net: the pairs of a net would be sixteen times as many,
+    // the tracks near each track are as many on either board.
+    let run = |n: usize| {
+        let (board, routes) = long(n);
+        let tidied = routes_tidy::tidy(&board, &routes, None).unwrap();
+        let said = tidied.text();
+        assert_eq!(tidied.counts.overlaps, 1, "{said}");
+        assert_eq!(tidied.counts.merges, 0, "{said}");
+        assert!(tidied.refused.is_empty(), "{said}");
+        eprintln!("{n} tracks: {} pairs compared", tidied.overlap_compared);
+        tidied.overlap_compared
+    };
+    let (small, big) = (run(100), run(400));
+    assert!(small > 0, "the pass compared nothing");
+    let ratio = big as f64 / small as f64;
+    assert!(
+        ratio < 6.0,
+        "the pairs compared grow {ratio:.2} times for 4 times the tracks: {small} then {big}"
+    );
+    assert!(big < 20 * 400, "{big} pairs compared for 400 tracks");
 }

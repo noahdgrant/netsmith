@@ -2,10 +2,10 @@
 //! design rules check finds nothing (issue #1485): a routed board passes the check with all of
 //! them and still carries copper a person removes by hand.
 //!
-//! - **nudges**: a straight track from the centre of a pad or a via of its net to a point still
-//!   inside that pad or via is removed: the copper there is the pad's or the via's already. A
-//!   pad is held to the circle of its shorter side round its centre, which lies inside every
-//!   shape of pad however it is turned; a via to its round copper;
+//! - **tracks inside a pad**: a straight track from the centre of a pad or a via of its net to
+//!   a point still inside that pad or via is removed: the copper there is the pad's or the
+//!   via's already. A pad is held to the circle of its shorter side round its centre, which
+//!   lies inside every shape of pad however it is turned; a via to its round copper;
 //! - **duplicate ways**: the copper of a net is taken as ways, each a run of tracks, and the
 //!   vias it changes layer by, between two stops: a pad, or a place where other than two tracks
 //!   and vias meet. Two ways between the same two stops join what one of them joins, and no pad
@@ -154,8 +154,8 @@ impl Work<'_> {
         }
     }
 
-    /// Each nudge: a track from the centre of a pad or a via of its net to a point still in it.
-    pub(super) fn nudges(&self) -> Vec<Candidate> {
+    /// Each track inside a pad: a track from the centre of a pad or a via of its net to a point still in it.
+    pub(super) fn in_pad_tracks(&self) -> Vec<Candidate> {
         let mut out = Vec::new();
         for i in 0..self.copper.wires.len() {
             if !self.editable(i) {
@@ -186,7 +186,7 @@ impl Work<'_> {
             }
             if let Some(said) = said {
                 out.push(self.removal(
-                    Kind::Nudge,
+                    Kind::InPad,
                     i,
                     format!("{said} ({:.3} mm)", length(t)),
                     Vec::new(),
@@ -197,10 +197,13 @@ impl Work<'_> {
     }
 
     /// Each track whose copper lies inside another's, and each pair of collinear tracks of one
-    /// width that overlap along their line.
+    /// width that overlap along their line. A track is compared with the tracks of its net and
+    /// layer that the board's grid lists near it, so the work grows with the neighbourhood and
+    /// not with the length of the net (issue 1492).
     pub(super) fn overlaps(&self) -> Vec<Candidate> {
+        let wires = &self.copper.wires;
         let mut by: BTreeMap<(String, &'static str), Vec<usize>> = BTreeMap::new();
-        for (i, w) in self.copper.wires.iter().enumerate() {
+        for (i, w) in wires.iter().enumerate() {
             if w.alive && w.track.mid.is_none() {
                 by.entry((w.track.net.clone(), w.track.layer.word()))
                     .or_default()
@@ -210,12 +213,33 @@ impl Work<'_> {
         let mut out = Vec::new();
         let mut gone = std::collections::BTreeSet::new();
         for list in by.values() {
-            for (n, &a) in list.iter().enumerate() {
-                for &b in &list[n + 1..] {
+            for &a in list {
+                let ta = &wires[a].track;
+                let hood = super::near::track_box(ta).expanded(NEAR);
+                // (The grid lists a track by the box it was drawn in, to the micrometre.)
+                let mut others: Vec<usize> = self
+                    .grid
+                    .near(&hood)
+                    .into_iter()
+                    .filter_map(|item| match item {
+                        super::near::Item::Wire(b) if b > a && b < wires.len() => Some(b),
+                        _ => None,
+                    })
+                    .filter(|&b| {
+                        let tb = &wires[b].track;
+                        wires[b].alive
+                            && tb.mid.is_none()
+                            && tb.net == ta.net
+                            && tb.layer == ta.layer
+                    })
+                    .collect();
+                others.sort_unstable();
+                for b in others {
                     if gone.contains(&a) || gone.contains(&b) {
                         continue;
                     }
-                    let (ta, tb) = (&self.copper.wires[a].track, &self.copper.wires[b].track);
+                    self.compared.set(self.compared.get() + 1);
+                    let (ta, tb) = (&wires[a].track, &wires[b].track);
                     if !super::near::meets(&super::near::track_box(ta), &super::near::track_box(tb))
                     {
                         continue;
@@ -799,7 +823,7 @@ mod tests {
     }
 
     #[test]
-    fn a_nudge_inside_a_pad_is_removed() {
+    fn a_track_inside_a_pad_is_removed() {
         // From R1's pad 2's centre a step to (9.66, 4.35), still in the pad, then out of it.
         let (counts, tracks, said) = tidy_anode(path(
             TOP,
@@ -816,7 +840,7 @@ mod tests {
         assert_eq!(
             only(counts),
             Counts {
-                nudges: 1,
+                in_pad_tracks: 1,
                 ..Counts::default()
             },
             "{said:?}"
