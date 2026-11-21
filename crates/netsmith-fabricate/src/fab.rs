@@ -277,6 +277,10 @@ pub struct FabOptions {
     /// try (`--place-budget`, `place_budget` in `netsmith.toml`, issue #764). The default is
     /// no limit.
     pub place_budget: netsmith_core::job::Limit,
+    /// The weight of the placer's objective for routing (`--routing-objective`,
+    /// `routing_objective` in `netsmith.toml`, issue 1544). The default is 0: the objective is
+    /// left out, and every board places as it did before.
+    pub routing_objective: f64,
     /// Whether a seed that places the board and is not the layout file's may be written to the
     /// file (issue #458): `fab` writes it; an order and the editor's release never change a
     /// choice by themselves, and stop instead.
@@ -435,6 +439,7 @@ impl Default for FabOptions {
             models: None,
             place_seeds: crate::layout::DEFAULT_PLACE_SEEDS,
             place_budget: netsmith_core::job::Limit::default(),
+            routing_objective: 0.0,
             seed_writes: SeedWrites::Write,
             offline: false,
             reuse: Reuse::Off,
@@ -1336,6 +1341,7 @@ fn fab_board(
                     crate::layout::Seeding {
                         seeds: options.place_seeds,
                         budget: options.place_budget,
+                        routing_objective: options.routing_objective,
                         progress: None,
                     },
                 )
@@ -1807,10 +1813,10 @@ fn fab_board(
             })
             .collect();
         if incomplete.is_none() {
-            let voltages = netsmith_design::guidelines::net_voltages(&built.trace.model);
             drops.extend(
-                crate::track_drop::findings(&board, &voltages)
-                    .into_iter()
+                crate::track_drop::drops_of(&board, &built.trace.model)
+                    .iter()
+                    .filter_map(crate::track_drop::NetDrop::finding)
                     .map(|m| {
                         format!(
                             "{}: {} guideline: {m}",

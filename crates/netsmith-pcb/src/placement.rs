@@ -27,6 +27,13 @@ pub const ORIGIN: Pt = Pt { x: 20.0, y: 20.0 };
 /// header of the placer's `anneal/escape.rs`).
 pub const ESCAPE_ROOM: f64 = 2.0;
 
+/// The weight of the placement objective for routing that a caller who asks for it gives
+/// ([`PlaceOptions::routing_objective`], issue #1534): power nets weigh more by their current,
+/// a part on a bus of another keeps the corridor between their pins clear, and no part on the
+/// other face stands under a fine-pitch part's escape ring. The header of the placer's
+/// `anneal/routing.rs` says what each term costs at this weight and what was measured.
+pub const ROUTING_OBJECTIVE: f64 = 1.0;
+
 /// What is known about where the parts go, besides the design.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlaceOptions {
@@ -111,6 +118,18 @@ pub struct PlaceOptions {
     /// it the push of a busy part (issue #1035), so the run is the one from before either was
     /// built.
     pub escape_room: f64,
+    /// The current each net carries where the design knows it, in amperes (issue #431), by
+    /// net name: what `routing_objective` weighs a power net's length by. `Board::load` fills
+    /// it from the design; it changes nothing while `routing_objective` is 0.
+    pub net_currents: Vec<(String, f64)>,
+    /// The weight of the placement objective for routing (issue #1534): 0, the default, leaves
+    /// it out, so the placement is the one from before it was built; [`ROUTING_OBJECTIVE`] is
+    /// the weight it was measured at. With it the input power chain is placed short and in the
+    /// order its current flows, on one face when the faces are shared; a part that shares a bus
+    /// of four or more nets with one other part (a memory and its controller) is kept beside
+    /// the pins it joins, with no third part between; and no part on the other face stands
+    /// under a fine-pitch part's escape ring, where its vias go.
+    pub routing_objective: f64,
 }
 
 impl Default for PlaceOptions {
@@ -136,6 +155,8 @@ impl Default for PlaceOptions {
             lines_warn: false,
             track_overflow: 0.0,
             escape_room: ESCAPE_ROOM,
+            net_currents: Vec::new(),
+            routing_objective: 0.0,
         }
     }
 }

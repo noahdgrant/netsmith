@@ -185,6 +185,10 @@ impl Workspace {
                 place_seeds: netsmith_fabricate::layout::place_seeds(target.project.as_ref()),
                 rip_rounds: netsmith_fabricate::fab::rip_rounds(target.project.as_ref()),
                 weights: netsmith_fabricate::fab::project_weights(target.project.as_ref()),
+                routing_objective: netsmith_fabricate::layout::routing_objective(
+                    target.project.as_ref(),
+                    None,
+                ),
                 place_budget: netsmith_fabricate::layout::place_budget(
                     target.project.as_ref(),
                     None,

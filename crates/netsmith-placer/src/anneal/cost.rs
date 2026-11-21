@@ -172,6 +172,10 @@ impl<'a> Engine<'a> {
         // So is the escape ring of a fine-pitch part.
         c += self.ring_cost(i, j);
         c += self.ring_cost(j, i);
+        // Under it, on the other face, with the objective for routing (issue #1534).
+        if self.w_routing > 0.0 {
+            c.soft += self.under_cost(i, j);
+        }
         c += self.pair_of_parts(i, j);
         c
     }
@@ -486,6 +490,9 @@ impl<'a> Engine<'a> {
                     c.hard += self.link_cost(k);
                 }
             }
+        }
+        if !self.buses.is_empty() {
+            c.soft += self.buses_with(set, stamp);
         }
         c.soft += W_CROSSING * self.crossings(&touched, stamp) as f64;
         if self.w_overflow > 0.0 {

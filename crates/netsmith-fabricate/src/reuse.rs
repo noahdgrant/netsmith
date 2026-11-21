@@ -251,6 +251,7 @@ pub fn key(inputs: &Inputs) -> Option<String> {
                     options.step,
                     options.place_seeds,
                     options.place_budget,
+                    options.routing_objective.to_bits(),
                     options.offline,
                     catalogs.constraints_warn(),
                 ),

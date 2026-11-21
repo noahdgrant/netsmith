@@ -442,6 +442,11 @@ pub struct BoardOut {
     /// defect.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quality: Option<netsmith_fabricate::net_quality::Quality>,
+    /// For `board drc` of a design's board: the power nets whose routed tracks drop more than
+    /// the track-drop budget (issue #1540), as `board nets` has them. Left out when there are
+    /// none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub track_drops: Vec<netsmith_fabricate::track_drop::NetDrop>,
 }
 
 /// The count of the notes of the run, for each cause, whether or not they are listed.
