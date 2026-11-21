@@ -4,12 +4,20 @@
 //! They are added after routing, in the places the routed copper, the pads, the holes, the
 //! board edge and the keepouts leave free. KiCad fills the pour round them. A via goes on
 //! the grid point, or the nearest free point within a third of the pitch of it, and a grid
-//! point with none is left without. A grid point with a via of the pour's net that near already
-//! gets none (issue #1483): a stitching via a routes file brought back from an earlier export,
-//! or one the router laid, is that point's, so `fab` after `routes import` lays no second grid.
+//! point with none is left without.
+//!
+//! One through via joins every layer, so a net poured on both outer layers gets one via per grid
+//! point, not one per pour (issue 1482): a via of an earlier pour of the net within the search of
+//! a point stands for it, where this pour's own rules allow that via too.
+//!
+//! A grid point with a via of the pour's net within a third of the pitch of it before the
+//! stitching starts gets none either (issue #1483): a stitching via a routes file brought back
+//! from an earlier export, or one the router laid, is that point's, so `fab` after
+//! `routes import` lays no second grid. The pads' own vias, which may yet go
+//! (`crate::pour_pads`), do not count.
 //!
 //! The grid is at the pour's `.stitch_pitch`, read at the top of the range, every other row
-//! shifted by half a pitch (`netsmith_pcb::stitch_grid`). A via keeps from other nets' copper the space KiCad checks, and
+//! shifted by half a pitch (`netsmith_pcb::stitch_grid`, which `routes import` reads too). A via keeps from other nets' copper the space KiCad checks, and
 //! from the holes, the pads, the board edge, the cutouts and the keepouts that forbid vias.
 //! The vias the router drops beside the pads of a plane net are there while the stitching is
 //! placed. Where a pad sits on a pour of its own net, its via goes after the stitching
@@ -29,7 +37,7 @@
 //! gets no fence (`fab-notes.txt` says so, `Board::fence_ground`). The vias are placed after the
 //! stitching, before the teardrops and the arcs, which keep clear of them.
 
-use netsmith_pcb::{Board, Pt, Rect, Via};
+use netsmith_pcb::{Board, CopperLayer, Pt, Rect, Via};
 
 /// The grid the vias are put on, in mm.
 const STEP: f64 = 0.05;
@@ -176,20 +184,36 @@ impl<'a> Free<'a> {
     }
 }
 
-/// Add stitching vias to every pour that states a pitch and has another layer on its net. A grid
-/// point with a via of the pour's net within a third of the pitch of it already (a stitching via
-/// a routes file brought back from an earlier export, or a via the router laid) gets none beside
-/// it (issue #1483): that via is the point's. The vias of `spare` do not count, as they may yet
-/// go (the pads' own vias, `crate::pour_pads`).
+/// Whether a net has another layer to be stitched to: an inner plane, or the pour of the
+/// other outer layer.
+fn other_layers(board: &Board, net: &str, layer: CopperLayer) -> bool {
+    board.planes.iter().any(|p| p.net == net)
+        || board.pours.iter().any(|p| p.net == net && p.layer != layer)
+}
+
+/// Add stitching vias to every pour that states a pitch and has another layer on its net. The
+/// vias of `spare` (the pads' own, which may yet go) stand for no grid point (issue #1483).
 pub fn stitch(board: &mut Board, spare: &[Via]) {
-    let pours: Vec<(netsmith_pcb::BoardPour, f64)> = netsmith_pcb::stitched_pours(board)
-        .into_iter()
-        .map(|(p, pitch)| (p.clone(), pitch))
+    let pours = board.pours.clone();
+    // The vias on the board before the stitching, each of which stands for a grid point of a
+    // pour of its net within a third of the pitch of it (issue #1483).
+    let before: Vec<Via> = board
+        .vias
+        .iter()
+        .filter(|v| !spare.contains(v))
+        .cloned()
         .collect();
-    for (pour, pitch) in &pours {
-        let pitch = *pitch;
+    // The stitching vias put so far, with the net of the pour each is for.
+    let mut stitched: Vec<(String, Via)> = Vec::new();
+    for pour in &pours {
+        let Some(pitch) = pour.stitch_pitch else {
+            continue;
+        };
         // A net a routes file locks gets no copper (`netsmith_pcb::Routes`).
         if board.fixed.is_locked(&pour.net) {
+            continue;
+        }
+        if !other_layers(board, &pour.net, pour.layer) {
             continue;
         }
         let rules = board.rules.clone();
@@ -198,32 +222,64 @@ pub fn stitch(board: &mut Board, spare: &[Via]) {
                 pour_clearance: pour.clearance.unwrap_or(0.0),
                 ..Free::of(board, &pour.net)
             };
+            let o = board.outline;
+            let reach = rules.copper_to_edge + rules.via_diameter / 2.0 + MARGIN;
             let search = (pitch / 3.0 / STEP).floor() as i64;
             let mut found: Vec<Via> = Vec::new();
-            // Two pours on one net would put a via on the grid twice; the first one's are
-            // kept by the check against the vias already there.
+            // A through via joins every layer, so a via an earlier pour of this net put near
+            // a grid point (within the search) stands for it; without that, the second pour
+            // would put a touching via beside the first (issue 1482).
             let all: Vec<Via> = board.vias.clone();
-            let own: Vec<Pt> = all
+            let standing: Vec<&Via> = stitched
                 .iter()
-                .filter(|v| v.net == pour.net && !spare.contains(v))
-                .map(|v| v.at)
+                .filter(|(net, _)| *net == pour.net)
+                .map(|(_, via)| via)
                 .collect();
-            for point in netsmith_pcb::stitch_grid(board, pitch) {
-                if own.iter().any(|v| v.distance(point) <= pitch / 3.0 + 1e-9) {
-                    continue;
-                }
-                if let Some(at) = nearest_free(&free, point, search, &all, &found) {
-                    found.push(Via {
-                        net: pour.net.clone(),
-                        at,
-                        diameter: rules.via_diameter,
-                        drill: rules.via_drill,
-                        span: None,
+            let reach_of_point = search as f64 * STEP + STEP / 2.0;
+            let (mut y, mut row) = (o.min.y + reach, 0);
+            while y <= o.max.y - reach + 1e-9 {
+                // Every other row is shifted by half a pitch, so the vias stagger.
+                let mut x = o.min.x + reach + if row % 2 == 1 { pitch / 2.0 } else { 0.0 };
+                while x <= o.max.x - reach + 1e-9 {
+                    let point = Pt::new(x, y);
+                    let there = before
+                        .iter()
+                        .any(|v| v.net == pour.net && v.at.distance(point) <= pitch / 3.0 + 1e-9);
+                    if there {
+                        x += pitch;
+                        continue;
+                    }
+                    let stands = standing.iter().any(|v| {
+                        v.span.is_none() && v.at.distance(point) <= reach_of_point && {
+                            // It stands for the point only where this pour's own rules
+                            // allow it too (its clearance may be wider).
+                            let others: Vec<Via> =
+                                all.iter().filter(|o| o.at != v.at).cloned().collect();
+                            free.allows(v.at, &others)
+                        }
                     });
+                    if stands {
+                        x += pitch;
+                        continue;
+                    }
+                    let near = nearest_free(&free, point, search, &all, &found);
+                    if let Some(at) = near {
+                        found.push(Via {
+                            net: pour.net.clone(),
+                            at,
+                            diameter: rules.via_diameter,
+                            drill: rules.via_drill,
+                            span: None,
+                        });
+                    }
+                    x += pitch;
                 }
+                y += pitch;
+                row += 1;
             }
             found
         };
+        stitched.extend(free_vias.iter().map(|v| (pour.net.clone(), v.clone())));
         board.vias.extend(free_vias);
     }
 }
@@ -330,7 +386,7 @@ fn nearest_free(free: &Free, p: Pt, search: i64, all: &[Via], found: &[Via]) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netsmith_pcb::{BoardPour, CopperLayer, Track};
+    use netsmith_pcb::{BoardPour, Track};
 
     /// The LED board with its parts taken away and a ground pour on the front, with a straight
     /// 8 mm track of `VCC` across its middle (the board is 15 mm by 7 mm) on a path fenced every `pitch` mm.
@@ -417,5 +473,47 @@ mod tests {
             "{:?}",
             board.track_path_lines()
         );
+    }
+
+    /// The board of `fenced`, with a ground plane and a ground pour on each of `layers`, stitched
+    /// every 4 mm.
+    fn poured_on(layers: &[CopperLayer]) -> Board {
+        let mut board = fenced(None, false);
+        board.tracks.clear();
+        board.planes.push(netsmith_pcb::Plane {
+            layer: "In1.Cu".into(),
+            net: "GND".into(),
+        });
+        for &layer in layers {
+            board.pours.push(BoardPour {
+                layer,
+                net: "GND".into(),
+                stitch_pitch: Some(4.0),
+                thermal_gap: None,
+                spoke_width: None,
+                clearance: None,
+                min_width: None,
+                pads: None,
+            });
+        }
+        board
+    }
+
+    #[test]
+    fn two_outer_pours_and_a_plane_of_one_net_get_one_via_per_grid_point() {
+        // Issue 1482: a through via joins both pours and the plane, so the second pour's grid
+        // is the first's, not another set of vias beside it.
+        let mut one = poured_on(&[CopperLayer::Front]);
+        stitch(&mut one);
+        assert!(one.vias.len() > 4, "{:?}", one.vias);
+        let mut both = poured_on(&[CopperLayer::Front, CopperLayer::Back]);
+        stitch(&mut both);
+        assert_eq!(both.vias, one.vias);
+        // And none touches another.
+        for (i, a) in both.vias.iter().enumerate() {
+            for b in &both.vias[i + 1..] {
+                assert!(a.at.distance(b.at) > a.diameter * 2.0, "{a:?} {b:?}");
+            }
+        }
     }
 }
