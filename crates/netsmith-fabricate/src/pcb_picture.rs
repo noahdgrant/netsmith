@@ -37,6 +37,13 @@
 //! yet (no `--route`) the router's tracks may still move a via within a third of the pitch, or
 //! take its point.
 //!
+//! **The rule areas** (issue #1543) are the `rule_areas` of `netsmith board rules`
+//! ([`crate::drc::rule_areas_to_draw`]): the footprints' keep-outs (a library's, an RF module's
+//! antenna area) and the board's that are not the physical file's keepouts (those are drawn as
+//! keepouts already), on a layer drawn, hatched and outlined, dashed, in the keepouts' red, each
+//! with a tip naming what it forbids; each is printed after the picture. They are of the board
+//! placed as drawn, so a footprint's moves and turns with its part.
+//!
 //! **The PNG** is the SVG filled by `netsmith-draw` (ADR 0142) at the scale asked, so the two
 //! are the same drawing, and the same board gives the same bytes.
 
@@ -45,8 +52,8 @@ use std::time::Duration;
 
 use netsmith_geom::Constraints;
 use netsmith_pcb::{
-    Board, FillReport, Lit, Marker, PictureIsland, PictureLayers, PictureOptions, Pt, Ratline,
-    Ratsnest, Rect, picture_svg,
+    Board, FillReport, Lit, Marker, PictureIsland, PictureLayers, PictureOptions, PictureRuleArea,
+    Pt, Ratline, Ratsnest, Rect, picture_svg,
 };
 use netsmith_router::RouteOptions;
 
@@ -99,6 +106,8 @@ pub struct Request {
     /// Draw the stitching vias the export will have that the routes file does not, in a tone of
     /// their own (issue #1489).
     pub stitching: bool,
+    /// Draw the rule areas, the footprints' and the board's (issue #1543).
+    pub rule_areas: bool,
     pub format: Format,
 }
 
@@ -120,6 +129,9 @@ pub struct Drawn {
     /// The stitching vias drawn (`--stitching`): those the export will have that the routes
     /// file does not.
     pub stitching: usize,
+    /// The rule areas drawn, each as it is said (`antenna of U1 forbids tracks, vias on F.Cu`):
+    /// those with a layer drawn.
+    pub rule_areas: Vec<String>,
 }
 
 /// Put on `board`, placed and with no copper, the copper the picture draws (the module's
@@ -302,6 +314,33 @@ pub fn draw(
     } else {
         (Vec::new(), Vec::new())
     };
+    let rule_areas: Vec<PictureRuleArea> = if request.rule_areas {
+        crate::drc::rule_areas_to_draw(board)?
+            .into_iter()
+            .map(|a| PictureRuleArea {
+                name: a.name,
+                part: a.part,
+                layers: a.layers,
+                rings: a
+                    .outlines
+                    .iter()
+                    .chain(&a.holes)
+                    .map(|r| r.iter().map(|&[x, y]| Pt::new(x, y)).collect())
+                    .collect(),
+                forbids: a.forbids.iter().map(|k| k.to_string()).collect(),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let rule_area_lines: Vec<String> = rule_areas
+        .iter()
+        .filter(|a| match request.layers {
+            PictureLayers::All => !a.layers.is_empty(),
+            PictureLayers::One(l) => a.layers.iter().any(|n| n == l.name()),
+        })
+        .map(PictureRuleArea::said)
+        .collect();
     let options = PictureOptions {
         layers: request.layers,
         from_below: request
@@ -313,6 +352,7 @@ pub fn draw(
         designators: request.designators,
         lit,
         stitching: stitching.iter().map(|v| v.at).collect(),
+        rule_areas,
     };
     let svg = picture_svg(board, &open, &islands, &markers, &options)?;
     let bytes = match request.format {
@@ -341,6 +381,7 @@ pub fn draw(
         markers: listed,
         islands: island_lines,
         stitching: stitching.len(),
+        rule_areas: rule_area_lines,
     })
 }
 

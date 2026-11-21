@@ -49,6 +49,7 @@ mod fit;
 mod gerber;
 mod hints;
 mod nets;
+mod rule_areas;
 mod stitching;
 mod summary;
 mod view;
@@ -60,6 +61,7 @@ pub use fit::*;
 pub use gerber::*;
 pub use hints::*;
 pub use nets::*;
+pub use rule_areas::*;
 pub use stitching::*;
 pub use summary::*;
 pub use view::*;
@@ -2588,6 +2590,8 @@ pub fn typescript() -> String {
         PcbFill,
         StitchingVia,
         PcbStitching,
+        RuleArea,
+        PcbRuleAreas,
         NetsUncountedKind,
         NetsPiece,
         NetsUncounted,

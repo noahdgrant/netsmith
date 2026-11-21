@@ -1881,6 +1881,28 @@ export type PcbStitching = { board: string,
  */
 layoutStamp: string, routesStamp: string, routed: boolean, vias: Array<StitchingVia>, };
 
+export type RuleArea = { name: string, 
+/**
+ * The part whose footprint carries it; `None` for the board's. A footprint's area does not
+ * forbid the footprint itself.
+ */
+part: string | null, 
+/**
+ * KiCad's names of its copper layers (`F.Cu`, `In1.Cu`, `B.Cu`).
+ */
+layers: Array<string>, outlines: Array<Array<PcbPoint>>, holes: Array<Array<PcbPoint>>, 
+/**
+ * The kinds it forbids: `tracks`, `vias`, `pads`, `copperpour`, `footprints`.
+ */
+forbids: Array<string>, };
+
+export type PcbRuleAreas = { board: string, 
+/**
+ * The stamps of the placement and of the routes file they were found on, and whether the
+ * board was routed.
+ */
+layoutStamp: string, routesStamp: string, routed: boolean, areas: Array<RuleArea>, };
+
 export type NetsUncountedKind = "stub" | "second_way";
 
 export type NetsPiece = { from: [number, number], to: [number, number], width: number, };

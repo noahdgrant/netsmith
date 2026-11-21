@@ -1,0 +1,12 @@
+# The footprint of the invented antenna part of rule_areas.nsm: two pads and a keep-out zone
+# beside them, as a library's RF module has (issue 1543).
+
+[[library]]
+name = "own"
+footprints = "libs/own.pretty"
+
+[[part]]
+kind = "Antenna"
+package = "SOT-23"
+default = true
+footprint = "own:Antenna"

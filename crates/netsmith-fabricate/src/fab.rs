@@ -2410,6 +2410,7 @@ pub fn review_picture_request(layer: netsmith_pcb::CopperLayer) -> crate::pcb_pi
         drc: true,
         islands: true,
         stitching: false,
+        rule_areas: true,
         format: crate::pcb_picture::Format::Png,
     }
 }
