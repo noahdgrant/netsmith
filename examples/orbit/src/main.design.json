@@ -3532,6 +3532,17 @@
           "current": 5.222098328158936e-6
         },
         {
+          "net": "net-buck_boost.divider.rbottom.a",
+          "path": "buck_boost.ic.fb",
+          "pins": [
+            {
+              "refdes": "U1",
+              "pin": "4"
+            }
+          ],
+          "current": 0.0
+        },
+        {
           "net": "+3.3V",
           "path": "buck_boost.pg_pullup.resistor.a",
           "pins": [
@@ -3541,6 +3552,39 @@
             }
           ],
           "current": 0.00003424375063769004
+        },
+        {
+          "net": "+3.3V",
+          "path": "eeprom.a0",
+          "pins": [
+            {
+              "refdes": "U3",
+              "pin": "1"
+            }
+          ],
+          "current": 0.0
+        },
+        {
+          "net": "+3.3V",
+          "path": "eeprom.a1",
+          "pins": [
+            {
+              "refdes": "U3",
+              "pin": "2"
+            }
+          ],
+          "current": 0.0
+        },
+        {
+          "net": "net-eeprom.i2c.scl",
+          "path": "eeprom.i2c.scl",
+          "pins": [
+            {
+              "refdes": "U3",
+              "pin": "6"
+            }
+          ],
+          "current": 0.0
         },
         {
           "net": "+3.3V",
