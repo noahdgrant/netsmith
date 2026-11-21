@@ -3,8 +3,12 @@
 //! cell, about 30 tracks and 2 vias a cell) on four layers, with a plane on each inner layer.
 //! An edit is checked where it is: the items its check looks at are counted, and compared
 //! between two sizes of board; they grow with the edit's neighbourhood, not with the board.
-//! `routes join-pad` of a pad that only a via joins to its plane is made there too. `measured`
-//! prints the time of each on a board of about 150 parts and 2,500 shapes.
+//! `routes join-pad` of a pad that only a via joins to its plane is made there too, and the
+//! items its fills, connectivity and checks look at are compared so (issue #1474). `measured`
+//! prints the time of each on a board of about 150 parts and 2,500 shapes. A batch of
+//! `routes add` (issue #1472) is made there too: each shape's result and the findings of a
+//! refusal, its document, and its work for each shape on two sizes of board; `measured_batch`
+//! prints the time of 2,000 shapes.
 
 use netsmith_fabricate::join_pad;
 use netsmith_fabricate::routes::{self, Edit, Refusal, batch};
@@ -241,10 +245,12 @@ fn measured() {
     let began = std::time::Instant::now();
     let joined = join_pad::join_pad(&board, &routes, &format!("RC{n}.1")).unwrap();
     eprintln!(
-        "join-pad: {} in {:.2?}, {} tries refused or not joining",
+        "join-pad: {} in {:.2?}, {} tries refused or not joining, {} fills, connectivity and checks of {} items",
         if joined.join.is_some() { "joined" } else { "not joined" },
         began.elapsed(),
-        joined.tried.len()
+        joined.tried.len(),
+        joined.counts.checks,
+        joined.counts.items
     );
 }
 
@@ -261,7 +267,39 @@ fn join_pad_joins_a_pad_to_its_plane_with_a_track_and_a_via() {
     assert!(join.via.is_some(), "{text}");
 }
 
-
+#[test]
+fn join_pad_looks_at_the_pads_neighbourhood_and_net_and_not_at_the_board() {
+    // The pad in the cell in the middle of a board and of one four times its size, both large
+    // enough that the box round the pad (more than 5 mm out) lies inside the board.
+    let looked = |columns: usize, rows: usize| {
+        let n = columns * (rows / 2) + columns / 2;
+        let (board, routes) = lonely_pad(columns, rows, n);
+        let joined = join_pad::join_pad(&board, &routes, &format!("RC{n}.1")).unwrap();
+        assert!(joined.join.is_some(), "{}{:?}", joined.text(), joined.refused);
+        let shapes: usize = board.parts.iter().map(|p| p.footprint.pads.len()).sum::<usize>()
+            + routes
+                .boards
+                .values()
+                .flat_map(|t| t.nets.values())
+                .map(|r| r.shapes())
+                .sum::<usize>();
+        (joined.counts, shapes)
+    };
+    let (small, small_board) = looked(6, 4);
+    let (big, big_board) = looked(12, 8);
+    eprintln!(
+        "join-pad: {} steps of {} items on the small board ({small_board} pads and shapes), {} steps of {} items on the big one ({big_board})",
+        small.checks, small.items, big.checks, big.items
+    );
+    assert!(small.items > 0, "join-pad looked at nothing");
+    assert_eq!(small.checks, big.checks, "the same tries on both boards");
+    assert!(
+        big.items <= small.items + small.items / 4,
+        "the items join-pad looked at grow from {} to {} with four times the board",
+        small.items,
+        big.items
+    );
+}
 
 /// The batch of `routes add` (issue #1472) for the cells `cells` of a board `columns` wide:
 /// in each, `pieces` short tracks of its top net on the bottom under its first track, end to
