@@ -16,6 +16,16 @@
 //! `routes import` lays no second grid. The pads' own vias, which may yet go
 //! (`crate::pour_pads`), do not count.
 //!
+//! Nor do they keep a grid point from its via (issue 1484): a pad on an island of the pour,
+//! with its own via beside it, may stand where the island's only free place for a stitching
+//! via is, and the pad's via would then be the island's only join to the plane, so it could
+//! never go. Where a point has no free place with the pads' own vias there and has one without
+//! them, its via goes there all the same, and [`stitch`] returns it with the pads' vias it is too
+//! near ([`OnSpare`]). It stays only if they all go: `crate::pour_pads` drops a pad's via where
+//! the pour joins the pad to a stitching via, these counted, and where a pad keeps its via the
+//! stitching vias over it go, so no two vias stand on one place. A point the pads' vias did not
+//! keep from its via is stitched as before.
+//!
 //! The grid is at the pour's `.stitch_pitch`, read at the top of the range, every other row
 //! shifted by half a pitch (`netsmith_pcb::stitch_grid`, which `routes import` reads too). A via keeps from other nets' copper the space KiCad checks, and
 //! from the holes, the pads, the board edge, the cutouts and the keepouts that forbid vias.
@@ -191,9 +201,19 @@ fn other_layers(board: &Board, net: &str, layer: CopperLayer) -> bool {
         || board.pours.iter().any(|p| p.net == net && p.layer != layer)
 }
 
+/// A stitching via put where only the pads' own vias of `spare` kept it from its grid point
+/// (issue 1484): it stays only if every via of `under` goes (`crate::pour_pads`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct OnSpare {
+    pub via: Via,
+    pub under: Vec<Via>,
+}
+
 /// Add stitching vias to every pour that states a pitch and has another layer on its net. The
-/// vias of `spare` (the pads' own, which may yet go) stand for no grid point (issue #1483).
-pub fn stitch(board: &mut Board, spare: &[Via]) {
+/// vias of `spare` (the pads' own, which may yet go) stand for no grid point (issue #1483), and a
+/// grid point whose only free places they take gets its via there all the same (issue 1484): the
+/// vias so put, each with the spare vias it is too near, are returned.
+pub fn stitch(board: &mut Board, spare: &[Via]) -> Vec<OnSpare> {
     let pours = board.pours.clone();
     // The vias on the board before the stitching, each of which stands for a grid point of a
     // pour of its net within a third of the pitch of it (issue #1483).
@@ -205,6 +225,7 @@ pub fn stitch(board: &mut Board, spare: &[Via]) {
         .collect();
     // The stitching vias put so far, with the net of the pour each is for.
     let mut stitched: Vec<(String, Via)> = Vec::new();
+    let mut on_spare: Vec<OnSpare> = Vec::new();
     for pour in &pours {
         let Some(pitch) = pour.stitch_pitch else {
             continue;
@@ -230,6 +251,8 @@ pub fn stitch(board: &mut Board, spare: &[Via]) {
             // a grid point (within the search) stands for it; without that, the second pour
             // would put a touching via beside the first (issue 1482).
             let all: Vec<Via> = board.vias.clone();
+            // The vias on the board less the pads' own, which may yet go (issue 1484).
+            let kept: Vec<Via> = all.iter().filter(|v| !spare.contains(v)).cloned().collect();
             let standing: Vec<&Via> = stitched
                 .iter()
                 .filter(|(net, _)| *net == pour.net)
@@ -262,15 +285,28 @@ pub fn stitch(board: &mut Board, spare: &[Via]) {
                         x += pitch;
                         continue;
                     }
-                    let near = nearest_free(&free, point, search, &all, &found);
-                    if let Some(at) = near {
-                        found.push(Via {
-                            net: pour.net.clone(),
-                            at,
-                            diameter: rules.via_diameter,
-                            drill: rules.via_drill,
-                            span: None,
+                    let via = |at| Via {
+                        net: pour.net.clone(),
+                        at,
+                        diameter: rules.via_diameter,
+                        drill: rules.via_drill,
+                        span: None,
+                    };
+                    if let Some(at) = nearest_free(&free, point, search, &all, &found) {
+                        found.push(via(at));
+                    } else if let Some(at) = nearest_free(&free, point, search, &kept, &found) {
+                        // Only the pads' own vias, which may yet go, are in the way: the via
+                        // goes here, and stays if they go (issue 1484).
+                        let under: Vec<Via> = spare
+                            .iter()
+                            .filter(|s| !free.allows(at, std::slice::from_ref(*s)))
+                            .cloned()
+                            .collect();
+                        on_spare.push(OnSpare {
+                            via: via(at),
+                            under,
                         });
+                        found.push(via(at));
                     }
                     x += pitch;
                 }
@@ -282,6 +318,7 @@ pub fn stitch(board: &mut Board, spare: &[Via]) {
         stitched.extend(free_vias.iter().map(|v| (pour.net.clone(), v.clone())));
         board.vias.extend(free_vias);
     }
+    on_spare
 }
 
 /// The stitching vias the export of `board` will have that its routes file does not (issue
