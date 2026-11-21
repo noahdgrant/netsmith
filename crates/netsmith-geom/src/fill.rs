@@ -2253,6 +2253,7 @@ mod tests {
             clearance: Some(clearance),
             priority: 0,
             patterns: vec![pattern.to_string()],
+            ..Default::default()
         };
         let rules = Rules {
             edge_clearance: 0.2,
