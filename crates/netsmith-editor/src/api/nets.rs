@@ -17,7 +17,8 @@ use ts_rs::TS;
 #[serde(rename_all = "camelCase")]
 pub struct NetsRow {
     pub net: String,
-    /// The length of all its tracks.
+    /// The length of its connection: the copper that takes its pads to each other, not a
+    /// second way of one connection or a dead stub (issue 1487).
     pub length: f64,
     /// The shortest tree of straight lines between its pads' centres.
     pub straight: f64,

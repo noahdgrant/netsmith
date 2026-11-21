@@ -160,3 +160,125 @@ fn a_hand_zone_over_the_processs_pour_comes_back_with_its_own_priority() {
         assert_eq!(zones[0].priority, priority);
     }
 }
+
+/// The board of [`hdi_board`], 8 mm longer and wider, with a ground pour on top stitched every
+/// 2 mm to its ground plane.
+fn stitched_board() -> netsmith_pcb::Board {
+    let mut board = hdi_board();
+    board.outline.max = board.outline.max + Pt::new(8.0, 8.0);
+    board.pours.push(netsmith_pcb::BoardPour {
+        layer: CopperLayer::Front,
+        net: "GND".into(),
+        stitch_pitch: Some(2.0),
+        thermal_gap: None,
+        spoke_width: None,
+        clearance: None,
+        min_width: None,
+        pads: None,
+    });
+    board
+}
+
+#[test]
+fn stitching_vias_brought_back_by_an_import_are_not_laid_again() {
+    // Issue #1483: fab, import, fab, import, fab of a board with a stitched pour. The import
+    // leaves the stitching vias out, and `fab` lays the grid once.
+    let mut counts = Vec::new();
+    let mut routes = netsmith_pcb::Routes::default();
+    for round in 0..3 {
+        let mut board = stitched_board();
+        let name = board.name.clone();
+        netsmith_pcb::apply_routes(&mut board, &routes, "board.routes.toml")
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        netsmith_router::route(&mut board);
+        let gnd = board.vias.iter().filter(|v| v.net == "GND").count();
+        counts.push((board.vias.len(), gnd));
+        let pcb = kicad_pcb(&board);
+        let import = netsmith_tools::routes_import::import(&stitched_board(), &pcb, None, false)
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert!(
+            import.stitching_vias > 0,
+            "round {round}: the stitching vias are known: {:?}",
+            import.skipped
+        );
+        let imported = import.counts().2;
+        assert_eq!(
+            imported + import.stitching_vias,
+            board.vias.len(),
+            "round {round}: every via is imported or known as stitching: {:?}",
+            import.skipped
+        );
+        // Locked, the net gets no copper from `fab`, so the import keeps them.
+        let locked = netsmith_tools::routes_import::import(&stitched_board(), &pcb, None, true)
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            (locked.stitching_vias, locked.counts().2),
+            (0, board.vias.len()),
+            "round {round}: {:?}",
+            locked.skipped
+        );
+        routes.boards.insert(name, import.finish(&board));
+    }
+    assert!(counts[0].1 > 0, "the pour is stitched: {counts:?}");
+    assert_eq!(counts[1], counts[0], "{counts:?}");
+    assert_eq!(counts[2], counts[0], "{counts:?}");
+}
+
+/// The vias of `net` on `board` no track of the net ends on.
+fn lone_vias(board: &netsmith_pcb::Board, net: &str) -> Vec<Via> {
+    board
+        .vias
+        .iter()
+        .filter(|v| {
+            v.net == net
+                && !board.tracks.iter().any(|t| {
+                    t.net == v.net && (t.from.distance(v.at) < 1e-6 || t.to.distance(v.at) < 1e-6)
+                })
+        })
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn a_grid_point_with_a_via_of_the_pours_net_near_it_gets_no_other() {
+    let mut board = stitched_board();
+    netsmith_router::route(&mut board);
+    // The stitching vias are those a board with no pitch lacks.
+    let mut unstitched = stitched_board();
+    unstitched.pours[0].stitch_pitch = None;
+    netsmith_router::route(&mut unstitched);
+    let stitched: Vec<Via> = lone_vias(&board, "GND")
+        .into_iter()
+        .filter(|v| !unstitched.vias.contains(v))
+        .collect();
+    assert!(stitched.len() > 4, "{stitched:?}");
+    // The stitching vias, each moved 0.1 mm off where it was (still within a third of the pitch of its grid point),
+    // in a routes file: routed again, the board gets no more.
+    let mut again = stitched_board();
+    let corner = again.outline.min;
+    let record = netsmith_pcb::NetRoutes {
+        pads: netsmith_pcb::pad_hash(&again, "GND").unwrap(),
+        vias: stitched
+            .iter()
+            .map(|v| netsmith_pcb::RouteVia {
+                at: [v.at.x - corner.x + 0.1, v.at.y - corner.y],
+                diameter: v.diameter,
+                drill: v.drill,
+                layers: Vec::new(),
+                lock: false,
+            })
+            .collect(),
+        ..Default::default()
+    };
+    let mut routes = netsmith_pcb::Routes::default();
+    routes
+        .boards
+        .entry(again.name.clone())
+        .or_default()
+        .nets
+        .insert("GND".into(), record);
+    netsmith_pcb::apply_routes(&mut again, &routes, "board.routes.toml").unwrap();
+    netsmith_router::route(&mut again);
+    let gnd = |b: &netsmith_pcb::Board| b.vias.iter().filter(|v| v.net == "GND").count();
+    assert_eq!(gnd(&again), gnd(&board), "{:?}", again.vias);
+}
