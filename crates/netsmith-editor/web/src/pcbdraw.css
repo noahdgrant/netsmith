@@ -65,6 +65,13 @@
  * dashed ring, a tone apart from the vias of the copper drawn; the Layers menu's Stitching hides them. */
 .pcb-host svg .l-stitching > .stitching-via { fill: var(--pcb-stitching); fill-opacity: .75; stroke: var(--pcb-stitching); stroke-width: calc(1.25 * var(--px, .04)); stroke-dasharray: calc(3 * var(--px, .04)) calc(2 * var(--px, .04)); }
 .pcb-host svg .l-stitching[data-current="false"] { opacity: .4; }
+/* The copper a net's length does not count (pcb/uncountedMarks.ts, issue 1495): a dashed line in --pcb-uncounted over the track, a dead stub
+ * finer dashed than a second way; a click picks the routes file's track under it, or the net. The Layers menu's Not counted hides them. */
+.pcb-host svg .l-uncounted .uncounted-piece { stroke: var(--pcb-uncounted); stroke-opacity: .9; stroke-linecap: round; stroke-dasharray: calc(6 * var(--px, .04)) calc(3 * var(--px, .04)); cursor: pointer; }
+.pcb-host svg .l-uncounted .stub .uncounted-piece { stroke-dasharray: calc(2 * var(--px, .04)) calc(2 * var(--px, .04)); }
+.pcb-host svg .l-uncounted[data-current="false"] { opacity: .4; }
+.pcb-host .side-front svg .l-uncounted > .uncounted-back,
+.pcb-host .side-back svg .l-uncounted > .uncounted-front { opacity: .22; }
 .pcb-host svg :is(.l-islands, .l-starved)[data-current="false"] { opacity: .4; }
 .pcb-host .side-front svg :is(.l-islands > .island-back, .l-starved > .starved-back),
 .pcb-host .side-back svg :is(.l-islands > .island-front, .l-starved > .starved-front) { opacity: .22; }

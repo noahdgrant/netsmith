@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { CopperLayer, CopperZone, FillArea, FillCounts, FillPad, NetsGroup, NetsPair, NetsRow, PcbCopper, PcbScene, SummaryGuideline, SummaryPads } from '../api';
-import { copperLayerLine, copperZoneLine, fillAreaLine, fillCountsLine, fillPadLine, fillStarvedLine, fillWord, guidelineLine, mm, netGroupLine, netPairLine, netRowLine, padName, padProblem, padsLine, pourFields, sheetBox, summaryQuery, teardropsLine } from './summary';
+import type { CopperLayer, CopperZone, FillArea, FillCounts, FillPad, NetsGroup, NetsPair, NetsRow, NetsUncounted, PcbCopper, PcbScene, SummaryGuideline, SummaryPads } from '../api';
+import { copperLayerLine, copperZoneLine, fillAreaLine, fillCountsLine, fillPadLine, fillStarvedLine, fillWord, guidelineLine, mm, netGroupLine, netPairLine, netRowLine, netUncountedLine, uncountedBox, uncountedRunLine, padName, padProblem, padsLine, pourFields, sheetBox, summaryQuery, teardropsLine } from './summary';
 
 describe('a number of the summary', () => {
   it('is to the hundredth with no trailing zeros', () => {
@@ -112,12 +112,22 @@ describe('the copper areas', () => {
 
 describe('the table of the nets', () => {
   it('says a net and a pair in words', () => {
-    const row: NetsRow = { net: 'CANH', length: 63.094, straight: 60.2, ratio: 1.0481, vias: 2, layerChanges: 2, layers: ['F.Cu', 'B.Cu'] };
+    const row: NetsRow = { net: 'CANH', length: 63.094, copper: 63.094, straight: 60.2, ratio: 1.0481, vias: 2, layerChanges: 2, layers: ['F.Cu', 'B.Cu'], notCounted: [] };
     expect(netRowLine(row)).toBe('CANH: 63.09 mm routed, straight 60.2 mm (1.05x), 2 vias, 2 layer changes, on F.Cu B.Cu');
     expect(netRowLine({ ...row, ratio: 0, vias: 1, layerChanges: 1, layers: [] })).toBe('CANH: 63.09 mm routed, straight 60.2 mm, 1 via, 1 layer change');
     const pair: NetsPair = { p: 'CANH', n: 'CANL', lengthP: 63.09, lengthN: 63.11, skew: 0.02, limit: 0.1, over: false, coupled: 60.5, share: 0.959, gaps: [0.1, 0.12], viasP: 2, viasN: 2, viaPairs: 2 };
     expect(netPairLine(pair)).toBe('CANH/CANL: 63.09 and 63.11 mm, skew 0.02 mm (within 0.1 mm); coupled 60.5 mm (96%), gap 0.1 to 0.12 mm; vias 2 and 2, 2 side by side');
     expect(netPairLine({ ...pair, skew: 2.5, over: true, coupled: 0, share: 0, gaps: null })).toBe('CANH/CANL: 63.09 and 63.11 mm, skew 2.5 mm (over 0.1 mm); coupled 0 mm (0%); vias 2 and 2, 2 side by side');
+  });
+
+  it('says the copper a net leaves out of its length, and where it is (issue 1495)', () => {
+    const run: NetsUncounted = { kind: 'second_way', layer: 'F.Cu', length: 10, at: [12, 10], pieces: [{ from: [12, 10], to: [17, 10], width: 0.2 }, { from: [17, 10], to: [17, 15], width: 0.2 }] };
+    const row: NetsRow = { net: 'P', length: 20, copper: 30, straight: 20, ratio: 1, vias: 0, layerChanges: 0, layers: ['F.Cu'], notCounted: [run] };
+    expect(netUncountedLine(row)).toBe('P: 10 mm of its 30 mm of copper not counted in its length');
+    expect(netUncountedLine({ ...row, notCounted: [] })).toBe('');
+    expect(uncountedRunLine(run)).toBe('a second way of 10 mm on F.Cu at (12, 10)');
+    expect(uncountedRunLine({ ...run, kind: 'stub', length: 1.5 })).toBe('a dead stub of 1.5 mm on F.Cu at (12, 10)');
+    expect(uncountedBox(run)).toEqual({ x: 11, y: 9, width: 7, height: 7 });
   });
 
   it('says a group of nets matched in length in words', () => {

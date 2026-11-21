@@ -251,6 +251,15 @@ fn a_second_way_and_a_dead_stub_are_not_counted_in_a_nets_length_or_a_pairs_skew
     let way = &p.not_counted[0];
     assert_eq!((way.kind, way.layer.as_str()), (Uncounted::SecondWay, "F.Cu"));
     assert!(close(way.length, 10.0), "{way:?}");
+    // Its pieces are the copper it is (issue #1495): they add up to its length, and one starts
+    // where it is said to be.
+    let pieces: f64 = way
+        .pieces
+        .iter()
+        .map(|s| ((s.to.0 - s.from.0).powi(2) + (s.to.1 - s.from.1).powi(2)).sqrt())
+        .sum();
+    assert!(close(pieces, way.length), "{way:?}");
+    assert!(way.pieces.iter().any(|s| s.from == way.at) && way.pieces.iter().all(|s| s.width > 0.0));
     assert!(close(p.uncounted(Uncounted::SecondWay), 10.0));
     let n = t.nets.iter().find(|n| n.net == "N").unwrap();
     let plain_n = plain.nets.iter().find(|n| n.net == "N").unwrap();
@@ -285,6 +294,7 @@ fn a_second_way_and_a_dead_stub_are_not_counted_in_a_nets_length_or_a_pairs_skew
         .unwrap();
     assert_eq!(p["not_counted"][0]["kind"], "second_way");
     assert_eq!(p["copper"], 30.0);
+    assert!(p["not_counted"][0]["pieces"][0]["width"].as_f64().unwrap() > 0.0);
     // A net with nothing left out says nothing of it.
     assert!(plain.nets.iter().all(|n| n.not_counted.is_empty()));
     assert!(!plain.text().contains("not counted"), "{}", plain.text());

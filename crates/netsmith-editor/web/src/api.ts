@@ -1881,12 +1881,30 @@ export type PcbStitching = { board: string,
  */
 layoutStamp: string, routesStamp: string, routed: boolean, vias: Array<StitchingVia>, };
 
+export type NetsUncountedKind = "stub" | "second_way";
+
+export type NetsPiece = { from: [number, number], to: [number, number], width: number, };
+
+export type NetsUncounted = { kind: NetsUncountedKind, 
+/**
+ * The copper layer, as the board file names it (`F.Cu`).
+ */
+layer: string, length: number, 
+/**
+ * A point at one end of it.
+ */
+at: [number, number], pieces: Array<NetsPiece>, };
+
 export type NetsRow = { net: string, 
 /**
  * The length of its connection: the copper that takes its pads to each other, not a
  * second way of one connection or a dead stub (issue 1487).
  */
 length: number, 
+/**
+ * The length of all its tracks.
+ */
+copper: number, 
 /**
  * The shortest tree of straight lines between its pads' centres.
  */
@@ -1902,7 +1920,11 @@ layerChanges: number,
 /**
  * The copper layers its tracks are on, front to back, as the board file names them.
  */
-layers: Array<string>, };
+layers: Array<string>, 
+/**
+ * The copper `length` does not count, longest first (issue 1495): none for most nets.
+ */
+notCounted: Array<NetsUncounted>, };
 
 export type NetsPair = { 
 /**

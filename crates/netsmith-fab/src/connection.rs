@@ -57,6 +57,17 @@ pub struct NotCounted {
     pub length: f64,
     /// A point at one end of it, in mm.
     pub at: (f64, f64),
+    /// The pieces of track it is made of, so a view can draw it (issue #1495).
+    pub pieces: Vec<Piece>,
+}
+
+/// One straight piece of a run not counted: a track, or the part of one between a tee or a via
+/// and its end, in mm.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct Piece {
+    pub from: (f64, f64),
+    pub to: (f64, f64),
+    pub width: f64,
 }
 
 /// The connection of one net: the pieces of track it counts, and the runs it does not.
@@ -343,8 +354,14 @@ fn connect(art: &Artwork, net: &str, segs: &[&Seg], pads: &[&ArtworkPad]) -> Con
             layer: s.1.clone(),
             length: 0.0,
             at: (s.2.x, s.2.y),
+            pieces: Vec::new(),
         });
         run.length += s.2.dist(s.3);
+        run.pieces.push(Piece {
+            from: (s.2.x, s.2.y),
+            to: (s.3.x, s.3.y),
+            width: s.4,
+        });
     }
     let mut not_counted: Vec<NotCounted> =
         by_run.into_values().filter(|r| r.length > SAME).collect();

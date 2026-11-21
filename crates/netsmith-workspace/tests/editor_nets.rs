@@ -52,6 +52,12 @@ fn the_table_of_the_routed_board_has_both_nets_and_the_pair_within_its_skew() {
     assert!((length(&pair.p) - pair.length_p).abs() < 1e-9);
     assert!((length(&pair.n) - pair.length_n).abs() < 1e-9);
     assert!(!pair.over && pair.skew <= pair.limit, "{pair:?}");
+    // Each net carries all its copper beside its length, and the runs its length leaves out,
+    // each with the pieces a view draws (issue 1495).
+    for n in &nets.nets {
+        assert!(n.copper + 1e-6 >= n.length, "{n:?}");
+        assert!(n.not_counted.iter().all(|r| !r.pieces.is_empty()), "{n:?}");
+    }
     assert!((pair.coupled - pair.share * pair.length_p).abs() < 1e-6, "{pair:?}");
     assert_eq!(editor.pcb_nets("Nope").unwrap_err().status, 404);
 }
