@@ -97,7 +97,9 @@ pub struct Weighing {
     /// What a millimetre of a signal net's track costs the router, as a share of its own (1).
     ///
     /// From 0.1 to 10. Any of the three weights turns on the router's polish pass, which routes
-    /// each signal line again on a finished board and keeps the cheaper copper; with none the
+    /// each signal line again on a finished board and keeps the cheaper copper, and its reroute
+    /// pass, which lays the nets that detour most again with the nets in their way, the worst
+    /// first, and keeps that only when the total gets shorter; with none the
     /// router routes as before. A signal net is one no plane, pour or zone fills and whose
     /// current needs no vias side by side.
     #[arg(long, value_name = "SHARE", value_parser = parse_weight)]
