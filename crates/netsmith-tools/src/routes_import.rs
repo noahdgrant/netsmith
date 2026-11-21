@@ -31,6 +31,10 @@ pub struct Import {
     /// pour (the same net, layer, outline and settings, issue #1116); each is also said in
     /// `skipped`.
     pub process_zones: usize,
+    /// How many vias of the KiCad board were left out because each is a stitching via of a pour
+    /// that `fab` lays again (on the pour's grid, of the rules' size, with no track ending on it,
+    /// [`netsmith_pcb::is_stitching_via`], issue #1483); said once in `skipped`.
+    pub stitching_vias: usize,
 }
 
 impl Import {
@@ -527,6 +531,62 @@ pub fn import(
             to: shape.to,
             lock: false,
         });
+    }
+    // The stitching vias of the pours, as `fab` laid them: `fab` lays them again on the same
+    // grid, so the routes file keeps none (issue #1483). A locked net gets no copper from `fab`,
+    // so its stitching vias are kept.
+    let mut stitching = 0;
+    let mut kept = 0;
+    // The pads stand where the KiCad board has them, for the check that a via is in none.
+    let mut placed = board.clone();
+    for part in &mut placed.parts {
+        if let Some(place) = out.places.get(&part.path) {
+            part.at = board.outline.min + netsmith_pcb::Pt::new(place.at[0], place.at[1]);
+            part.rotation = place.rotation;
+            part.side = match place.side {
+                Face::Bottom => netsmith_pcb::Side::Back,
+                Face::Top => netsmith_pcb::Side::Front,
+            };
+        }
+    }
+    for (net, record) in out.nets.iter_mut() {
+        let ends: Vec<[f64; 2]> = record.tracks.iter().flat_map(|t| [t.from, t.to]).collect();
+        let before = record.vias.len();
+        let mut found = 0;
+        record.vias.retain(|v| {
+            let via = netsmith_pcb::Via {
+                net: net.clone(),
+                at: board.outline.min + netsmith_pcb::Pt::new(v.at[0], v.at[1]),
+                diameter: v.diameter,
+                drill: v.drill,
+                span: None,
+            };
+            let joined = ends
+                .iter()
+                .any(|e| (e[0] - v.at[0]).hypot(e[1] - v.at[1]) < 1e-3);
+            let is =
+                v.layers.is_empty() && !joined && netsmith_pcb::is_stitching_via(&placed, &via);
+            if is {
+                found += 1;
+            }
+            !is || lock
+        });
+        if lock {
+            kept += found;
+        } else {
+            stitching += before - record.vias.len();
+        }
+    }
+    out.stitching_vias = stitching;
+    if stitching > 0 {
+        out.skipped.push(format!(
+            "{stitching} stitching via(s) of the pours: left out (`fab` lays them again on the pour's grid)"
+        ));
+    }
+    if kept > 0 {
+        out.skipped.push(format!(
+            "{kept} stitching via(s) of the pours kept, as the import locks their nets and `fab` lays no copper on a locked net"
+        ));
     }
     let (zones, unread) = crate::copper::read_zones(pcb, "the KiCad board")?;
     out.skipped.extend(unread);
