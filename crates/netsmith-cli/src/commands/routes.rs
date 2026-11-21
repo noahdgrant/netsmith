@@ -46,6 +46,12 @@ pub enum Command {
     Import(ImportArgs),
     /// Print the routes file's copper and what the router would still route.
     Show(ShowArgs),
+    /// Add many tracks, vias and zones from a file or stdin, each checked as its verb checks it,
+    /// and write the routes file once.
+    #[command(
+        after_long_help = "The document is TOML (`[[track]]`, `[[via]]` and `[[zone]]` tables) or JSON (the arrays `track`, `via` and `zone`), by the file's extension, `.toml` or `.json`; `-` reads it from stdin, JSON when it starts with `{`. Each entry has the fields of the flags of `add-track` (`net`, `layer`, `width`, `from`, `to`, `mid`, `lock`), `add-via` (`net`, `at` as one place or a list of places for a group, `count`, `pitch`, `diameter`, `drill`, `layers` as two words, `lock`) and `add-zone` (`net`, `layer` as a word or a list, one of `outline`, `rect` and `board_outline`, `clearance`, `min_width`, `thermal_gap`, `spoke_width`, `priority`, `pads`, `lock`), with the same defaults; a place is `[x, y]` in mm from the outline's top left corner, y down.\n\nThe entries are checked one after another, the tracks, then the vias, then the zones, each in the document's order, on the board with the shapes made before them, as the verb checks its shape (where it is: issue #1471). Up to 16 in a row are checked together: a group the check finds no new error with is made whole, and one it does is halved until each refused shape is found alone, so a shape is refused when it is refused alone after the shapes before it (an error that a later shape of its group takes away is not counted). A shape refused (a short, a crossing, a clearance, a word that is not a layer) is skipped and said, with the findings that refused it, and the rest go on; with `--stop-on-refusal` the batch stops at the first refusal and keeps the shapes made before it. The routes file is written once, at the end, with every shape made (with `--dry-run`, not at all). The exit code is 0 when every shape was made, 1 when one was refused (the others are written), 2 when it could not run (a document that cannot be read, a board that cannot be built).\n\nWith `--format json`: `board`, `shapes` (one for each entry: `kind`, `index` from 1 among its kind's, `net`, `result` `ok`, `refused` or `not_tried`, `said`, and for a refusal by the design rules check `findings`, each with `rule`, `message`, `at`, `layer` and `shapes`), `made`, `refused`, `not_tried`, `stopped`, `checks`, `items_checked`, `written`, `dry_run` and `file`."
+    )]
+    Add(AddArgs),
     /// Add a track to a net, refused if it breaks the design rules.
     #[command(name = "add-track")]
     AddTrack(AddTrackArgs),
@@ -129,6 +135,27 @@ pub struct ImportArgs {
     /// Leave every net unlocked: the router may add copper to complete it.
     #[arg(long)]
     pub unlocked: bool,
+    /// Text for a person, or one JSON document on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: common::Format,
+}
+
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct AddArgs {
+    /// The shapes: a `.toml` or `.json` file, or `-` for stdin.
+    #[arg(value_name = "SHAPES")]
+    pub shapes: String,
+    #[command(flatten)]
+    pub target: Target,
+    /// Stop at the first shape refused (the shapes made before it are written).
+    #[arg(long)]
+    pub stop_on_refusal: bool,
+    /// Check every shape and write nothing.
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Text for a person, or one JSON document on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: common::Format,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -373,6 +400,7 @@ pub fn run(args: Args) -> ExitCode {
     match args.command {
         Command::Import(a) => import(&a),
         Command::Show(a) => show(&a),
+        Command::Add(a) => add(&a),
         Command::AddTrack(a) => edit(&a.target, |_| lib::Edit::AddTrack {
             net: a.net.clone(),
             layer: a.layer,
@@ -609,6 +637,84 @@ fn edit_all(target: &Target, changes: impl Fn(&Board) -> Vec<lib::Edit>) -> Exit
     }
 }
 
+/// `routes add SHAPES` (issue #1472, `netsmith_fabricate::routes::batch`): exit 0 when every
+/// shape was made, 1 when one was refused, 2 when it could not run.
+fn add(args: &AddArgs) -> ExitCode {
+    use netsmith_fabricate::routes::batch;
+    let text = if args.shapes == "-" {
+        let mut text = String::new();
+        match std::io::Read::read_to_string(&mut std::io::stdin(), &mut text) {
+            Ok(_) => text,
+            Err(e) => {
+                eprintln!("error: stdin: {e}");
+                return ExitCode::from(2);
+            }
+        }
+    } else {
+        match fs::read_to_string(&args.shapes) {
+            Ok(text) => text,
+            Err(e) => {
+                eprintln!("error: {}: {e}", args.shapes);
+                return ExitCode::from(2);
+            }
+        }
+    };
+    let name = if args.shapes == "-" {
+        "stdin"
+    } else {
+        &args.shapes
+    };
+    let doc =
+        match batch::Document::parse(&text, name, batch::Document::is_json(&args.shapes, &text)) {
+            Ok(doc) => doc,
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::from(2);
+            }
+        };
+    let done = with_board(&args.target, |layout, board| {
+        let file = routes_file(layout);
+        let mut routes = lib::load(&file)?;
+        let added = timings::stage("routes add", &board.name, || {
+            batch::add(board, &mut routes, &doc, args.stop_on_refusal)
+        })?;
+        let written = added.made > 0 && !args.dry_run;
+        if written {
+            lib::save(&file, &routes)?;
+        }
+        Ok((added, file, written))
+    });
+    let (added, file, written) = match done {
+        Ok(done) => done,
+        Err(code) => return code,
+    };
+    match args.format {
+        common::Format::Json => {
+            let mut doc = serde_json::to_value(&added).expect("plain data");
+            doc["written"] = written.into();
+            doc["dry_run"] = args.dry_run.into();
+            doc["file"] = file.display().to_string().into();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&doc).expect("plain data")
+            );
+        }
+        common::Format::Text => {
+            print!("{}", added.text());
+            if written {
+                println!("wrote {}", file.display());
+            } else if args.dry_run {
+                println!("dry run: {} is not written", file.display());
+            }
+        }
+    }
+    if added.refused > 0 {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
 /// `routes route` (issue #1195, `netsmith_fabricate::route_net`): exit 0 when the net is routed
 /// (or would be, with `--dry-run`) or joined already, 1 when it is refused, 2 when it could not
 /// be tried.
@@ -768,7 +874,8 @@ fn import(args: &ImportArgs) -> ExitCode {
         Ok(i) => i,
         Err(code) => return code,
     };
-    // Then placed again with those places, for each net's pads as they are.
+    // Then placed again with those places, for each net's pads as they are, and checked with
+    // the copper taken (issue #1472).
     let written = with_board(&args.target, |layout, board| {
         let file = routes_file(layout);
         let mut routes = lib::load(&file).unwrap_or_default();
@@ -776,14 +883,57 @@ fn import(args: &ImportArgs) -> ExitCode {
             .boards
             .insert(board.name.clone(), import.finish(board));
         lib::save(&file, &routes)?;
-        Ok(file)
+        let found = lib::own_copper_findings(&lib::with_routes(board, &routes)?.0)?;
+        Ok((file, board.name.clone(), found))
     });
-    let file = match written {
+    let (file, board_name, found) = match written {
         Ok(f) => f,
         Err(code) => return code,
     };
     let (tracks, arcs, vias) = import.counts();
     let zones = import.zones();
+    if args.format == common::Format::Json {
+        let nets: Vec<serde_json::Value> = import
+            .nets
+            .iter()
+            .map(|(net, record)| {
+                let arcs = record.tracks.iter().filter(|t| t.mid.is_some()).count();
+                serde_json::json!({
+                    "net": net,
+                    "kicad_net": import
+                        .mapped
+                        .iter()
+                        .find(|(ours, _, _)| ours == net)
+                        .map(|(_, theirs, _)| theirs),
+                    "locked": record.lock,
+                    "tracks": record.tracks.len() - arcs,
+                    "arcs": arcs,
+                    "vias": record.vias.len(),
+                    "zones": record.zones.len(),
+                    "refusals": found.get(net).cloned().unwrap_or_default(),
+                })
+            })
+            .collect();
+        let doc = serde_json::json!({
+            "board": board_name,
+            "file": file.display().to_string(),
+            "parts_paired_by": parts_file.as_ref().map(|p| p.display().to_string()),
+            "locked": !args.unlocked,
+            "nets": nets,
+            "tracks": tracks,
+            "arcs": arcs,
+            "vias": vias,
+            "zones": zones,
+            "places": if args.no_places { 0 } else { import.places.len() },
+            "refitted": import.refitted,
+            "skipped": import.skipped,
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&doc).expect("plain data")
+        );
+        return ExitCode::SUCCESS;
+    }
     match &parts_file {
         Some(p) => println!("parts paired by {}", p.display()),
         None => println!("parts paired by reference designator"),
@@ -809,6 +959,19 @@ fn import(args: &ImportArgs) -> ExitCode {
             format!("; {} part place(s) in the layout file", import.places.len())
         }
     );
+    // Each net whose own copper the design rules check finds an error of: a lock of it is
+    // refused until the copper is mended (`routes lock`, issue #1328).
+    for (net, errors) in &found {
+        if import.nets.contains_key(net) {
+            println!(
+                "net {net}: {} error(s) of the design rules check in its copper, first: [{}] at ({:.3}, {:.3})",
+                errors.len(),
+                errors[0].rule,
+                errors[0].at[0],
+                errors[0].at[1]
+            );
+        }
+    }
     ExitCode::SUCCESS
 }
 

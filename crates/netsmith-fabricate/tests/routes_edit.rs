@@ -5,10 +5,13 @@
 //! between two sizes of board; they grow with the edit's neighbourhood, not with the board.
 //! `routes join-pad` of a pad that only a via joins to its plane is made there too, and the
 //! items its fills, connectivity and checks look at are compared so (issue #1474). `measured`
-//! prints the time of each on a board of about 150 parts and 2,500 shapes.
+//! prints the time of each on a board of about 150 parts and 2,500 shapes. A batch of
+//! `routes add` (issue #1472) is made there too: each shape's result and the findings of a
+//! refusal, its document, and its work for each shape on two sizes of board; `measured_batch`
+//! prints the time of 2,000 shapes.
 
 use netsmith_fabricate::join_pad;
-use netsmith_fabricate::routes::{self, Edit, Refusal};
+use netsmith_fabricate::routes::{self, Edit, Refusal, batch};
 use netsmith_pcb::{
     Board, BoardNet, CopperLayer, NetRoutes, PadRef, Pt, RouteVia, Routes, ZonePads,
 };
@@ -295,5 +298,229 @@ fn join_pad_looks_at_the_pads_neighbourhood_and_net_and_not_at_the_board() {
         "the items join-pad looked at grow from {} to {} with four times the board",
         small.items,
         big.items
+    );
+}
+
+/// The batch of `routes add` (issue #1472) for the cells `cells` of a board `columns` wide:
+/// in each, `pieces` short tracks of its top net on the bottom under its first track, end to
+/// end, a via on them and a zone of the net round the via, all allowed.
+fn batch_of(cells: impl Iterator<Item = usize>, columns: usize, pieces: usize) -> batch::Document {
+    let mut doc = batch::Document::default();
+    for n in cells {
+        let [x, y] = cell(n, columns);
+        let net = format!("s{n}");
+        let step = 1.5 / pieces as f64;
+        for k in 0..pieces {
+            doc.track.push(batch::TrackShape {
+                net: net.clone(),
+                layer: Some("bottom".to_string()),
+                width: None,
+                from: [x + 2.0 + step * k as f64, y + 1.0],
+                to: [x + 2.0 + step * (k + 1) as f64, y + 1.0],
+                mid: None,
+                lock: false,
+            });
+        }
+        doc.via.push(batch::ViaShape {
+            net: net.clone(),
+            at: batch::Places::One([x + 3.0, y + 1.0]),
+            count: None,
+            pitch: None,
+            diameter: None,
+            drill: None,
+            layers: None,
+            lock: false,
+        });
+        doc.zone.push(batch::ZoneShape {
+            net,
+            layer: Some(batch::Layers::One("bottom".to_string())),
+            outline: None,
+            rect: Some([x + 2.0, y + 0.3, 2.0, 1.4]),
+            board_outline: false,
+            clearance: None,
+            min_width: None,
+            thermal_gap: None,
+            spoke_width: None,
+            priority: 0,
+            pads: None,
+            lock: false,
+        });
+    }
+    doc
+}
+
+#[test]
+fn a_batch_makes_each_shape_skips_a_refused_one_and_says_why_with_its_place() {
+    let (board, routes) = board(3, 2);
+    let mut doc = batch_of([4].into_iter(), 3, 3);
+    // Across the top net of the cell's first corner, on the top: a short.
+    let [x, y] = cell(4, 3);
+    doc.track.insert(
+        1,
+        batch::TrackShape {
+            net: "z4".to_string(),
+            layer: None,
+            width: None,
+            from: [x + 6.0, y + 0.5],
+            to: [x + 7.0, y + 1.5],
+            mid: None,
+            lock: false,
+        },
+    );
+    // A word that is not a layer is refused, not an error of the batch.
+    doc.track.push(batch::TrackShape {
+        layer: Some("middle".to_string()),
+        ..doc.track[0].clone()
+    });
+    let mut next = routes.clone();
+    let done = batch::add(&board, &mut next, &doc, false).unwrap();
+    let results: Vec<(&str, usize, &str)> = done
+        .shapes
+        .iter()
+        .map(|s| (s.kind, s.index, s.result))
+        .collect();
+    assert_eq!(
+        results,
+        [
+            ("track", 1, "ok"),
+            ("track", 2, "refused"),
+            ("track", 3, "ok"),
+            ("track", 4, "ok"),
+            ("track", 5, "refused"),
+            ("via", 1, "ok"),
+            ("zone", 1, "ok"),
+        ],
+        "{}",
+        done.text()
+    );
+    let short = &done.shapes[1];
+    assert!(!short.findings.is_empty(), "{short:?}");
+    let found = &short.findings[0];
+    assert!(
+        ["shorting_items", "tracks_crossing", "clearance"].contains(&found.rule.as_str()),
+        "{found:?}"
+    );
+    // Its place is in the routes file's frame, near the track drawn.
+    assert!(
+        (x + 5.0..x + 8.0).contains(&found.at[0]) && (y - 0.5..y + 2.5).contains(&found.at[1]),
+        "{found:?}"
+    );
+    assert!(done.shapes[4].said.contains("`middle`"), "{:?}", done.shapes[4]);
+    assert_eq!((done.made, done.refused, done.not_tried), (5, 2, 0));
+    let record = &next.boards[&board.name].nets["s4"];
+    let before = &routes.boards[&board.name].nets["s4"];
+    assert_eq!(record.tracks.len(), before.tracks.len() + 3);
+    assert_eq!(record.vias.len(), before.vias.len() + 1);
+    assert_eq!(record.zones.len(), before.zones.len() + 1);
+    // The four tracks were checked together, refused, and halved until the short was found
+    // alone: [1, 2] refused, [1] and [2] alone, then [3, 4]; the bad layer is no check; the
+    // via and the zone are a group: 5 checks, each with and without its shapes.
+    assert_eq!(done.checks, 2 * 6, "{}", done.text());
+
+    // With `stop_on_refusal` the rest are not tried, and what was made before is kept.
+    let mut next = routes.clone();
+    let done = batch::add(&board, &mut next, &doc, true).unwrap();
+    assert!(done.stopped);
+    assert_eq!((done.made, done.refused, done.not_tried), (1, 1, 5));
+    assert_eq!(
+        next.boards[&board.name].nets["s4"].tracks.len(),
+        before.tracks.len() + 1
+    );
+}
+
+#[test]
+fn a_batchs_document_is_toml_or_json_with_the_fields_of_the_verbs() {
+    let toml = r#"
+[[track]]
+net = "s1"
+layer = "bottom"
+from = [1, 2]
+to = [3, 2]
+
+[[via]]
+net = "s1"
+at = [[1, 1], [1.5, 1]]
+
+[[zone]]
+net = "s1"
+layer = ["top", "bottom"]
+rect = [1, 1, 2, 2]
+pads = "thru-hole-only"
+"#;
+    assert!(!batch::Document::is_json("shapes.toml", toml));
+    let doc = batch::Document::parse(toml, "shapes.toml", false).unwrap();
+    assert_eq!((doc.track.len(), doc.via.len(), doc.zone.len()), (1, 1, 1));
+    let json = r#"{"track": [{"net": "s1", "layer": "bottom", "from": [1, 2], "to": [3, 2]}],
+        "via": [{"net": "s1", "at": [[1, 1], [1.5, 1]]}],
+        "zone": [{"net": "s1", "layer": ["top", "bottom"], "rect": [1, 1, 2, 2], "pads": "thru-hole-only"}]}"#;
+    assert!(batch::Document::is_json("-", json));
+    assert_eq!(
+        batch::Document::parse(json, "stdin", true).unwrap(),
+        doc
+    );
+    // A field no verb has, and a document with no shape, are errors naming the document.
+    let e = batch::Document::parse("[[track]]\nnet = \"a\"\nfrom = [0, 0]\nto = [1, 0]\nwidht = 1\n", "s.toml", false)
+        .unwrap_err();
+    assert!(e.starts_with("s.toml:") && e.contains("widht"), "{e}");
+    let e = batch::Document::parse("{}", "stdin", true).unwrap_err();
+    assert!(e.contains("no shape"), "{e}");
+}
+
+/// The items the checks of a batch in the two by two cells at the top left corner of a board
+/// `columns` by `rows` looked at, and the checks it made, for each shape.
+fn batch_work_per_shape(columns: usize, rows: usize) -> (f64, f64) {
+    let (board, mut routes) = board(columns, rows);
+    let block = [0, 1, columns, columns + 1];
+    let doc = batch_of(block.into_iter(), columns, 6);
+    let done = batch::add(&board, &mut routes, &doc, false).unwrap();
+    assert_eq!(done.refused, 0, "{}", done.text());
+    let shapes = doc.shapes() as f64;
+    (
+        done.items_checked as f64 / shapes,
+        done.checks as f64 / shapes,
+    )
+}
+
+#[test]
+fn a_batch_checks_its_shapes_in_their_neighbourhood_and_not_on_the_board() {
+    // The same batch on four times the board: its checks look at about as many items for each
+    // shape, so a batch costs its shapes' neighbourhoods; and its groups make fewer checks than
+    // it has shapes.
+    let (small, small_checks) = batch_work_per_shape(3, 2);
+    let (big, big_checks) = batch_work_per_shape(6, 4);
+    eprintln!(
+        "{small:.1} items a shape on the small board ({small_checks:.2} checks a shape), {big:.1} on the big one ({big_checks:.2})"
+    );
+    assert!(small > 0.0);
+    assert!(
+        big <= small * 1.25,
+        "the items checked for a shape grow from {small:.1} to {big:.1} with four times the board"
+    );
+    assert_eq!(big_checks, small_checks);
+    assert!(big_checks < 1.0, "{big_checks} checks a shape");
+}
+
+/// Prints the time of a batch of about 2,000 shapes (26 in each cell) on the board of
+/// [`measured`] (154 parts, four layers): `cargo test -p netsmith-fabricate --test main
+/// routes_edit::measured_batch -- --ignored --nocapture`. The number to beat (issue #1472): a
+/// minute.
+#[test]
+#[ignore = "a measurement, not a check"]
+fn measured_batch() {
+    let (columns, rows) = (11, 7);
+    let (board, mut routes) = board(columns, rows);
+    let doc = batch_of(0..columns * rows, columns, 24);
+    let began = std::time::Instant::now();
+    let done = batch::add(&board, &mut routes, &doc, false).unwrap();
+    let time = began.elapsed();
+    eprintln!(
+        "{} parts, {} shapes: {} made, {} refused in {time:.2?} ({:.1?} a shape), {} checks of {} items",
+        board.parts.len(),
+        doc.shapes(),
+        done.made,
+        done.refused,
+        time / doc.shapes() as u32,
+        done.checks,
+        done.items_checked
     );
 }

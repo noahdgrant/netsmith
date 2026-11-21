@@ -244,10 +244,11 @@ impl Server {
     fn execute(
         &self,
         argv: &[String],
+        input: Option<&str>,
         job: &Job,
         progress: impl FnMut(&str),
     ) -> std::io::Result<run::Ran> {
-        run::run(&self.program, argv, &self.dir, job, progress)
+        run::run(&self.program, argv, input, &self.dir, job, progress)
     }
 
     /// A tool call: runs the command and answers with what it printed, unless it was cancelled
@@ -283,7 +284,7 @@ impl Server {
             }
         };
         // A mistake in the arguments is the tool's error, so the model can mend it.
-        let argv = match tool.argv(&arguments) {
+        let (argv, input) = match tool.argv_with_input(&arguments) {
             Ok(argv) => argv,
             Err(e) => {
                 out.answer(
@@ -301,7 +302,7 @@ impl Server {
             .insert(key.clone(), job.clone());
         let token = params["_meta"].get("progressToken").cloned();
         let mut told = 0u64;
-        let ran = self.execute(&argv, &job, |line| {
+        let ran = self.execute(&argv, input.as_deref(), &job, |line| {
             if let Some(token) = &token {
                 told += 1;
                 out.send(&json!({
