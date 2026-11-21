@@ -282,6 +282,7 @@ pub fn run(args: Args) -> ExitCode {
 /// `None` without `--route`. `view pcb` and `board nets` take the two flags.
 pub(super) fn route_of(route: bool, timeout: Option<u64>) -> Option<Route> {
     route.then(|| Route {
+        weights: netsmith_fabricate::fab::project_weights(project().as_ref()),
         timeout: match timeout {
             Some(0) => None,
             Some(secs) => Some(Duration::from_secs(secs)),
@@ -294,7 +295,7 @@ pub(super) fn route_of(route: bool, timeout: Option<u64>) -> Option<Route> {
     })
 }
 
-/// The project of the current folder, if there is one: its `rip_rounds` and `track_margin`.
+/// The project of the current folder, if there is one: its `rip_rounds`, `track_margin` and routing weights.
 fn project() -> Option<netsmith_fabricate::project::Project> {
     netsmith_fabricate::project::Target::resolve(None)
         .ok()

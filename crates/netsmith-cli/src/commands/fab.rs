@@ -205,19 +205,12 @@ pub fn run(args: Args) -> ExitCode {
 /// `fab` of the files or the project's boards.
 fn run_chosen(args: &Args, format: Format) -> ExitCode {
     let (constraints_warn, pins_locked) = (args.constraints_warn(), args.pins_locked());
-    let weights = match args.weighing.weights() {
-        Ok(w) => w,
-        Err(e) => {
-            eprintln!("error: {e}");
-            return ExitCode::from(2);
-        }
-    };
     timings::stage("fab.total", "", || {
         run_fab(
             args.file.as_deref(),
             args.out.as_deref(),
             args.route_timeout,
-            (args.rip_rounds, weights),
+            (args.rip_rounds, &args.weighing),
             args.allow_drc_violations,
             (args.for_review, !args.no_pictures),
             args.cross_check,
@@ -344,7 +337,7 @@ fn run_fab(
     file: Option<&str>,
     out: Option<&Path>,
     route_timeout: Option<u64>,
-    (rip_rounds, weights): (Option<usize>, Option<netsmith_router::Weights>),
+    (rip_rounds, weighing): (Option<usize>, &common::Weighing),
     allow_drc_violations: bool,
     (for_review, review_pictures): (bool, bool),
     cross_check: bool,
@@ -394,6 +387,14 @@ fn run_fab(
             netsmith_fabricate::fab::no_kicad_note(&netsmith_kicad::Search::machine())
         );
     }
+    // The weights of the router's quality objective: the flags, else the project's keys.
+    let weights = match weighing.weights(target.project.as_ref()) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
     let options = FabOptions {
         route_timeout: match route_timeout {
             Some(0) => None,
@@ -787,6 +788,15 @@ pub(super) fn run_order(
         Err(code) => return code,
     };
     let kicad = KicadCliExe::locate();
+    // An order routes with the weights of the project's keys, as `fab` does (issue #1536).
+    let weights =
+        match netsmith_fabricate::fab::weights(target.project.as_ref(), (None, None, None)) {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::from(2);
+            }
+        };
     let options = FabOptions {
         route_timeout: match route_timeout {
             Some(0) => None,
@@ -808,8 +818,7 @@ pub(super) fn run_order(
         pin_map_source: None,
         track_margin: track_margin(&target),
         rip_rounds: rip_rounds_of(&target, rip_rounds),
-        // An order routes at the router's own costs (issue #1517).
-        weights: None,
+        weights,
         glb: glb_wanted(&target, no_glb),
         step: step_wanted(&target, no_step),
         pdf: pdf_wanted(&target, no_pdf),
