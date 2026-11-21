@@ -635,3 +635,37 @@ fn a_branch_carries_the_sum_of_the_currents_of_the_pins_past_it() {
     assert_eq!(tracks(0.4, 0.4), 2, "the two tracks before J1 carry 0.8 A");
     assert_eq!(tracks(0.0, 2.0), 3, "all three carry J2's 2 A");
 }
+
+#[test]
+fn a_via_and_a_track_to_an_input_that_takes_no_current_stand_alone() {
+    // Issue #1504: the branch of `branch_board` feeds J1's pin, an input the design stage says
+    // takes no current (an enable pin tied to a converter's input), on a net that needs 0.4 mm
+    // and three vias. Its 0.2 mm tracks and its one via are held to what J1 takes, and the
+    // finding of a branch that needs more names the current it assumed.
+    let mut b = branch_board(0.2, false);
+    let extras = DrcExtras {
+        pin_currents: vec![pin_current("J1", 0.0)],
+        ..branch_extras(None)
+    };
+    let r = check(&mut b, &extras);
+    assert_eq!(
+        (r.count(DrcRule::TrackCurrent), r.count(DrcRule::ViaCurrent)),
+        (0, 0)
+    );
+    let extras = DrcExtras {
+        pin_currents: vec![pin_current("J1", 2.0)],
+        ..branch_extras(None)
+    };
+    let r = check(&mut b, &extras);
+    let via = r
+        .findings
+        .iter()
+        .find(|v| v.rule == DrcRule::ViaCurrent)
+        .unwrap();
+    assert!(
+        via.message.contains("only feeds branches of net `P` and carries at most 2 A")
+            && via.message.contains("`j1.p1`"),
+        "{}",
+        via.message
+    );
+}

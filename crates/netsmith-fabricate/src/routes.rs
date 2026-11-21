@@ -189,26 +189,81 @@ fn drc_findings_with(
         .collect())
 }
 
+/// Whether `item` of a finding is a track, a via or a zone of `net` (not a pad of a part): the
+/// net's own copper.
+fn is_own_copper(item: &netsmith_geom::DrcItem, net: &str) -> bool {
+    item.part.is_none()
+        && item.net.as_deref() == Some(net)
+        && ["Track", "Via", "Zone"]
+            .iter()
+            .any(|k| item.what.starts_with(k))
+}
+
 /// The errors of [`drc_errors`] of `board` (placed, with the routes file's copper and no
-/// router's) that name a track, a via or a zone of `net`: the findings of the net's record's
-/// own copper, which `routes lock` refuses for (issue #1328).
-fn own_copper_errors(board: &Board, net: &str) -> Result<Vec<String>, String> {
-    let own = |i: &netsmith_geom::DrcItem| {
-        i.part.is_none()
-            && i.net.as_deref() == Some(net)
-            && ["Track", "Via", "Zone"]
-                .iter()
-                .any(|k| i.what.starts_with(k))
-    };
+/// router's) that `routes lock` of `net`, whose record's pads moved, refuses for (issues #1328
+/// and #1507): those of the record's own copper where it ran to a pad that moved. Where it ran
+/// is where [`netsmith_pcb::open_ends`] finds it open (a track end or via that runs into nothing
+/// of the net, the far end of a piece that reaches one pad or none), and a finding is of it when
+/// it names a track, via or zone of the net and lies within the board's largest space between
+/// copper and copper or a hole and half the diagonal of the pad named there (the moved pad, as large where
+/// it was as where it is) of such an end. A finding of the net's copper elsewhere (two of its
+/// tracks far from the moved pad, another net's track crossing it at its other end) is the
+/// design rules check's to report and does not stop the lock: what the lock vouches for, by
+/// writing the pads again, is the copper at the pads that moved.
+fn moved_copper_errors(board: &Board, net: &str) -> Result<Vec<String>, String> {
+    let tracks: Vec<usize> = (0..board.tracks.len())
+        .filter(|&i| board.tracks[i].net == net)
+        .collect();
+    let vias: Vec<usize> = (0..board.vias.len())
+        .filter(|&i| board.vias[i].net == net)
+        .collect();
+    let r = &board.rules;
+    let reach = [
+        r.clearance,
+        r.hole_clearance,
+        r.plated_hole_clearance,
+        r.pad_to_pad,
+        r.mask_to_track,
+    ]
+    .into_iter()
+    .chain(board.net_clearances.iter().map(|(_, c)| *c))
+    .filter(|v| v.is_finite())
+    .fold(0.0, f64::max)
+        + 0.01;
+    let ends: Vec<(Pt, f64)> = netsmith_pcb::open_ends(board, net, &tracks, &vias)
+        .into_iter()
+        .map(|o| {
+            let size = o
+                .pad
+                .as_ref()
+                .and_then(|r| {
+                    let part = board.part(&r.refdes)?;
+                    part.footprint
+                        .pads_numbered(&r.number)
+                        .map(|p| p.width.hypot(p.height) / 2.0)
+                        .reduce(f64::max)
+                })
+                .unwrap_or(0.0);
+            (o.at, reach + size)
+        })
+        .collect();
+    if ends.is_empty() {
+        return Ok(Vec::new());
+    }
     Ok(drc_findings(board)?
         .iter()
-        .filter(|f| f.items.iter().any(own))
+        .filter(|f| {
+            // A finding's place is in the routes file's frame ([`drc_findings`]).
+            let at = Pt::new(f.at.x, f.at.y) + board.outline.min;
+            ends.iter().any(|(end, within)| end.distance(at) <= *within)
+                && f.items.iter().any(|i| is_own_copper(i, net))
+        })
         .map(ToString::to_string)
         .collect())
 }
 
 /// The errors of [`drc_errors`] of `board` (placed, with the routes file's copper) by the nets
-/// whose own copper they name (a track, a via or a zone of the net, as [`own_copper_errors`]
+/// whose own copper they name (a track, a via or a zone of the net, as [`is_own_copper`]
 /// reads them): what `routes import --format json` says of each net it took (issue #1472). A
 /// finding of two nets' copper (a short) is under each.
 pub fn own_copper_findings(
@@ -219,13 +274,7 @@ pub fn own_copper_findings(
         let mut nets: Vec<&str> = f
             .items
             .iter()
-            .filter(|i| {
-                i.part.is_none()
-                    && ["Track", "Via", "Zone"]
-                        .iter()
-                        .any(|k| i.what.starts_with(k))
-            })
-            .filter_map(|i| i.net.as_deref())
+            .filter_map(|i| i.net.as_deref().filter(|net| is_own_copper(i, net)))
             .collect();
         nets.sort_unstable();
         nets.dedup();
@@ -410,9 +459,10 @@ impl std::fmt::Display for Refusal {
 /// Make `change` to `routes` for `board` (placed, with no routes on it), or refuse it and leave
 /// `routes` as it was. An added or moved shape and a record put back are refused when the board
 /// with it has an error of the design rules check that it did not have before, checked where the
-/// board changes ([`new_errors_near`], issue #1471); a lock (which
-/// writes the record again with its pads as they are) when the board has an error of that net's
-/// own copper, whatever other copper's errors the board has (issue #1328). Says what it did.
+/// board changes ([`new_errors_near`], issue #1471); a lock (which writes the record again with
+/// its pads as they are) of a record whose pads moved when the board has an error of that
+/// record's own copper where it ran to a pad that moved ([`moved_copper_errors`]), whatever
+/// other errors the net or the board has (issues #1328 and #1507). Says what it did.
 pub fn edit(board: &Board, routes: &mut Routes, change: &Edit) -> Result<String, Refusal> {
     edit_all(board, routes, std::slice::from_ref(change))
 }
@@ -541,15 +591,25 @@ pub(crate) fn edit_all_with(
                 | Edit::Restore { .. }
         )
     });
-    // The nets a lock writes again: refused only for errors of their records' own copper, which
-    // the board has whether or not they are locked (issue #1328).
+    // The nets whose records' pads moved that a lock writes again: refused only for errors of
+    // the records' own copper where it ran to a pad that moved, which the board has whether or
+    // not they are locked (issues #1328 and #1507). A record whose pads did not move has nothing
+    // a lock vouches for: its errors are the design rules check's to report.
+    let stale = |net: &str| {
+        routes
+            .boards
+            .get(&board.name)
+            .and_then(|t| t.nets.get(net))
+            .is_some_and(|r| hashes.get(net).is_some_and(|h| *h != r.pads))
+    };
     let mut locking: Vec<&str> = changes
         .iter()
         .filter_map(|c| match c {
-            Edit::Lock { net, on: true, .. } => Some(net.as_str()),
+            Edit::Lock { net, on: true, .. } if stale(net) => Some(net.as_str()),
             _ => None,
         })
         .collect();
+    locking.sort_unstable();
     locking.dedup();
     let mut next = routes.clone();
     let zoned = next
@@ -646,11 +706,11 @@ pub(crate) fn edit_all_with(
             }
         }
         for net in locking {
-            let own = own_copper_errors(&after, net)?;
+            let own = moved_copper_errors(&after, net)?;
             if !own.is_empty() {
                 checking.before = Some(before);
                 return Err(Refusal::Refused(format!(
-                    "refused: the design rules check finds {} error(s) of net {net}'s own copper in the routes file; move or delete those shapes (`netsmith routes delete --net {net} --track N`) and lock again, and the routes file is not changed:\n  {}",
+                    "refused: the design rules check finds {} error(s) of net {net}'s own copper where it ran to a pad that moved; move or delete those shapes (`netsmith routes delete --net {net} --track N`) and lock again, and the routes file is not changed:\n  {}",
                     own.len(),
                     own.join("\n  ")
                 )));
@@ -1725,6 +1785,103 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn lock_is_refused_only_for_errors_where_the_record_ran_to_a_pad_that_moved() {
+        // Issue #1507: GND's record, whose pads moved, runs from J1.2 round the parts to D1.1,
+        // with a spur up from J1.2 that runs into nothing, where a pad was. VCC tracks crossing
+        // GND's copper far from that end (the spur near J1.2, the path to D1.1) are the design
+        // rules check's to report and do not stop the lock; one crossing the open end does, and
+        // is the error the refusal names.
+        let mut board = led();
+        board.tracks.clear();
+        board.vias.clear();
+        let o = board.outline.min;
+        let pad = |net: &str, k: usize| {
+            let r = &board.nets.iter().find(|n| n.name == net).unwrap().pads[k];
+            let part = board.part(&r.refdes).unwrap();
+            let c = part.pad_centre(part.footprint.pads_numbered(&r.number).next().unwrap());
+            [c.x - o.x, c.y - o.y]
+        };
+        let (j1, d1) = (pad("GND", 1), pad("GND", 0));
+        let track = |from: [f64; 2], to: [f64; 2]| netsmith_pcb::RouteTrack {
+            layer: netsmith_pcb::CopperLayer::Front,
+            width: 0.2,
+            from,
+            mid: None,
+            to,
+            lock: false,
+        };
+        let low = 6.3;
+        let gnd = NetRoutes {
+            pads: "0000000000000000".into(),
+            tracks: vec![
+                track(j1, [j1[0], low]),
+                track([j1[0], low], [d1[0], low]),
+                track([d1[0], low], d1),
+                track(j1, [j1[0], 0.8]),
+            ],
+            ..NetRoutes::default()
+        };
+        let far = vec![
+            track([8.0, low - 0.5], [8.0, low + 0.4]),
+            track([j1[0] - 0.4, j1[1] - 1.4], [j1[0] + 0.4, j1[1] - 1.4]),
+        ];
+        let at_the_end = track([j1[0] - 0.4, 1.0], [j1[0] + 0.4, 1.0]);
+        let vcc = |tracks| NetRoutes {
+            pads: netsmith_pcb::pad_hash(&board, "VCC").unwrap(),
+            tracks,
+            ..NetRoutes::default()
+        };
+        let mut routes = Routes::default();
+        let table = routes.boards.entry(board.name.clone()).or_default();
+        table.nets.insert("GND".into(), gnd);
+        table
+            .nets
+            .insert("VCC".into(), vcc([far.clone(), vec![at_the_end]].concat()));
+        let lock = Edit::Lock {
+            net: "GND".into(),
+            shape: None,
+            on: true,
+        };
+        let crossings = |routes: &Routes| {
+            drc_errors(&with_routes(&board, routes).unwrap().0)
+                .unwrap()
+                .into_iter()
+                .filter(|e| e.contains("[tracks_crossing]"))
+                .count()
+        };
+        assert_eq!(crossings(&routes), 3);
+
+        // The crossing at the open end refuses, and is the one error named.
+        let before = routes.clone();
+        let said = refusal(edit(&board, &mut routes, &lock));
+        assert!(
+            said.contains(
+                "finds 1 error(s) of net GND's own copper where it ran to a pad that moved"
+            ),
+            "{said}"
+        );
+        let end = format!("at ({:.3}, 1.000)", j1[0]);
+        assert!(said.contains(&end), "{end}: {said}");
+        assert_eq!(routes, before);
+
+        // With it gone, the crossing far from the moved pad does not stop the lock.
+        routes
+            .boards
+            .get_mut(&board.name)
+            .unwrap()
+            .nets
+            .insert("VCC".into(), vcc(far));
+        edit(&board, &mut routes, &lock).unwrap();
+        let record = &routes.boards[&board.name].nets["GND"];
+        assert!(record.lock);
+        assert_eq!(
+            Some(&record.pads),
+            netsmith_pcb::pad_hash(&board, "GND").as_ref()
+        );
+        assert_eq!(crossings(&routes), 2);
     }
 
     #[test]

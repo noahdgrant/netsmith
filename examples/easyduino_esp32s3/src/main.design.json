@@ -3469,6 +3469,30 @@
           "source": "part `en_pullup.resistor`: 0 mA to 0.343 mA; the current of part `reset` is not known, so it may be more"
         }
       ],
+      "pin_currents": [
+        {
+          "net": "VBUS",
+          "path": "bridge.vbus",
+          "pins": [
+            {
+              "refdes": "U1",
+              "pin": "8"
+            }
+          ],
+          "current": 0.0
+        },
+        {
+          "net": "net-auto_reset.q_en.emitter",
+          "path": "mcu.en",
+          "pins": [
+            {
+              "refdes": "U2",
+              "pin": "3"
+            }
+          ],
+          "current": 0.0
+        }
+      ],
       "outline": {
         "width": [
           25.86,

@@ -253,13 +253,7 @@ fn track_current(out: &mut Out<'_>) {
             continue;
         };
         let inner = t.layer.starts_with("In");
-        let Some(&(_, least)) = x
-            .inner_least_widths
-            .iter()
-            .filter(|_| inner)
-            .chain(&x.least_widths)
-            .find(|(n, _)| n == net)
-        else {
+        let Some(least) = x.least_width(net, inner) else {
             continue;
         };
         if t.width >= least - EPS / 100.0 {
@@ -530,11 +524,7 @@ fn hole_to_track(out: &mut Out<'_>) {
         let plated_pad = h.plated
             && h.owner
                 .is_some_and(|o| matches!(m.items[o].kind, Kind::Pad(_)));
-        if plated_pad {
-            x.plated_hole_clearance
-        } else {
-            x.hole_to_track
-        }
+        x.hole_to_track_of(plated_pad)
     };
     let holes: Vec<usize> = (0..m.holes.len())
         .filter(|&h| limit(&m.holes[h]).is_some())

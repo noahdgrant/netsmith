@@ -336,6 +336,7 @@ mod tests {
                 clearance: Some(clearance),
                 priority: 0,
                 patterns: vec![],
+                ..Default::default()
             });
         }
         let text = kicad_dru(&p, &jlcpcb());
