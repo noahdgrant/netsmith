@@ -16,6 +16,10 @@
 //!   .manufacturer &= "..."` when two parts share the number. A sku no offer has is an error at
 //!   its line; in a comment it is left as it is, with a note.
 //!
+//! Each source it rewrites is formatted afterwards, as `netsmith project fmt` formats it, since a
+//! pick grows by the rewrite and may break the line limit; a source it does not rewrite is left
+//! as it is.
+//!
 //! What it does not do: write a pick lock, whose `lcsc` keys `netsmith project lock --update`
 //! turns into the skus of its channels once the catalogs read (the command says so), or touch a
 //! dependency's files, which its own project migrates.
@@ -176,10 +180,33 @@ pub fn plan(project: &Project) -> Result<Plan, String> {
     // The sources.
     for (file, path) in sources_of(project)? {
         let text = fs::read_to_string(&path).map_err(|e| format!("{file}: {e}"))?;
-        let (after, says, notes, wrong) = hand_picks(&file, &text, &known);
+        let (after, mut says, notes, wrong) = hand_picks(&file, &text, &known);
         errors.extend(wrong);
         plan.notes.extend(notes);
         if after != text {
+            // A rewritten pick is longer than the one it replaces and may break the line limit:
+            // the file is formatted as `project fmt` formats it. Only a file the migration
+            // rewrites is, so a second run changes nothing.
+            let after = match netsmith_lang::format(&after) {
+                Ok(formatted) => {
+                    if formatted != after {
+                        says.push("formatted, as `netsmith project fmt` does".to_string());
+                    }
+                    formatted
+                }
+                Err(netsmith_lang::FormatError::Parse(e)) => {
+                    let (line, column) = e.line_col(&after);
+                    errors.push(format!(
+                        "{file}:{line}:{column}: {}; a source that does not parse cannot be migrated, and then formatted: fix it, and run again",
+                        e.message
+                    ));
+                    continue;
+                }
+                Err(e) => {
+                    errors.push(format!("{file}: {e}"));
+                    continue;
+                }
+            };
             plan.rewrites.push(Rewrite {
                 path,
                 file,
