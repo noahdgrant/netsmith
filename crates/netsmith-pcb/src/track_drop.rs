@@ -4,21 +4,32 @@
 //! says why a drop budget is not part of that sizing), and the voltage it drops depends on the
 //! length the router then draws. This measures it on the routed board: each track of the net is
 //! a resistance `rho * length / (width * thickness)`, a via or a pad joins what ends in it with
-//! none, and the drop of the net is its worst-case current (`Board::net_currents`) through the
-//! largest resistance between two of its pads, along the path of least resistance between them.
-//! `fab` compares it with a budget, [`DEFAULT_DROP_BUDGET`] of the rail's voltage, and reports a
-//! net over it as a guideline (the `track drop` rule).
+//! none, and the drop of the net is the most any of its pads sees from a source pad, each run of
+//! the path at the current the pins past it draw (issue #1541). `fab` compares it with a budget,
+//! [`DEFAULT_DROP_BUDGET`] of the rail's voltage, and reports a net over it as a guideline (the
+//! `track drop` rule); `board nets` and `board drc` print it too (issue #1540).
 //!
-//! # Decisions (decided by the agent under the owner's delegation, issue #652)
+//! # Decisions (decided by the agent under the owner's delegation, issues #652 and #1541)
 //!
-//! - **The whole current between the two pads furthest apart.** Which pad is the source is
-//!   not known here, nor how the current divides between the loads, so the drop is the net's
-//!   whole current through the largest resistance between any two of its pads. That is an
-//!   upper bound on the drop from the source to any load, pessimistic in the same way as the
-//!   worst-case current of ADR 0036 (amendment 2), and exact for a net with one source and one
-//!   load. The path between two pads is the one of least resistance, which for a tree (the
-//!   router's nets are trees) is the only one, and otherwise is no less than the parallel
-//!   paths' resistance together, so the figure stays an upper bound.
+//! - **Each run at what the pins past it draw.** A pin whose current is known draws that: one
+//!   that states the current of its branch (issue #1113), or one whose current the model knows
+//!   below its net's (the design's `pin_currents`, issue #1333: a divider's resistor carries the
+//!   voltage across it over its resistance, from the DC analysis, and an input none). A pin
+//!   whose current is not known (a connector's, a regulator's output, a capacitor's) may draw
+//!   the net's whole current, its worst-case current (`Board::net_currents`), and may be the
+//!   source: which pad is the source is not known here, so each pad of such a pin is tried as
+//!   one (every pad, when all the pins' currents are known). From a source the current takes
+//!   the paths of least resistance to every place, a tree, and each run of that tree carries
+//!   the sum of what the pins beyond it draw, each pin once however many pads it has, and never
+//!   more than the net's current. The drop to a pad is the sum along its path of each run's
+//!   resistance times its current, and the net's drop is the largest over every source and
+//!   pad. A net of pins of no known current drops its whole current through the largest
+//!   resistance between two of its pads, as before issue #1541: an upper bound on the drop from
+//!   the source to any load, pessimistic in the same way as the worst-case current of ADR 0036
+//!   (amendment 2), and exact for a net with one source and one load. The router's nets are
+//!   trees, where the tree of least resistance is the copper; where copper closes a loop, all
+//!   the current is taken along the one path, more than the parallel paths share, so the
+//!   figure stays an upper bound.
 //! - **The drawn width, copper at 20 °C.** The copper is the process's outer copper
 //!   (`stackup.copper_weight`), at the resistivity of annealed copper at 20 °C,
 //!   [`COPPER_RESISTIVITY`]. A track warm from its current, or finished narrower than drawn
@@ -32,9 +43,10 @@
 //!   file is not measured: its copper is an area. Two pads that only a zone joins are not a
 //!   pair. Layers are not told apart: tracks of the net that end at one place are joined there,
 //!   which the router draws only through a via.
-//! - **A branch is not a pair's end** (issue #1113). The pad of a pin that states the current of
-//!   its branch carries that current and not the net's, so it is left out of the pairs: the
-//!   net's whole current through its thin track would be a drop that never happens.
+//! - **A branch draws its own current** (issues #1113 and #1541). The pad of a pin that states
+//!   the current of its branch, or whose current the model knows, draws that current and is
+//!   never a source while a pin of no known current is on the net: the net's whole current
+//!   through a divider's thin track would be a drop that never happens.
 
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
@@ -52,30 +64,69 @@ pub const DEFAULT_DROP_BUDGET: f64 = 0.01;
 /// How near two ends of copper must be to be one place, in mm.
 const JOIN: f64 = 1e-3;
 
+/// One run of a [`TrackDrop`]'s path: a length of track at one width, and the current it
+/// carries.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DropRun {
+    /// In mm.
+    pub length: f64,
+    /// In mm, of outer copper.
+    pub width: f64,
+    /// In amperes: what the pins past it draw, at most the net's current.
+    pub current: f64,
+}
+
+impl DropRun {
+    /// The run's resistance at `width` in copper `thickness` mm thick, in ohms.
+    fn ohms(&self, width: f64, thickness: f64) -> f64 {
+        COPPER_RESISTIVITY * self.length / (width * thickness)
+    }
+}
+
 /// The drop of one net's tracks at its current.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TrackDrop {
     pub net: String,
-    /// The net's worst-case current, in amperes.
+    /// The most current a run of the path carries, in amperes: the net's worst-case current
+    /// where the pins past the run include one of no known current.
     pub current: f64,
-    /// The largest resistance between two of its pads, in ohms.
+    /// The resistance of the path, in ohms.
     pub resistance: f64,
-    /// The two pads that resistance is between.
+    /// The two pads of the path: the source (a pad of a pin of no known current) and the load.
     pub from: PadRef,
     pub to: PadRef,
     /// The length of track on the path between them, in mm, and its narrowest track.
     pub length: f64,
     pub narrowest: f64,
-    /// Each run of the path as (length, width), in mm: what [`TrackDrop::width_for`] widens.
-    pub runs: Vec<(f64, f64)>,
+    /// Each run of the path: what [`TrackDrop::width_for`] widens.
+    pub runs: Vec<DropRun>,
     /// The copper's thickness, in mm.
     pub thickness: f64,
 }
 
 impl TrackDrop {
-    /// The voltage the path drops at the net's current, in volts.
+    /// The voltage the path drops, in volts: each run's resistance times its current.
     pub fn drop(&self) -> f64 {
-        self.current * self.resistance
+        self.drop_at(0.0)
+    }
+
+    /// Whether every run carries the net's whole current: a path with no pin of a known current
+    /// past any of its runs.
+    pub fn whole_current(&self) -> bool {
+        self.runs
+            .iter()
+            .all(|r| r.current >= self.current * (1.0 - 1e-9))
+    }
+
+    /// The drop with every run narrower than `width` widened to it.
+    fn drop_at(&self, width: f64) -> f64 {
+        if self.thickness <= 0.0 {
+            return 0.0;
+        }
+        self.runs
+            .iter()
+            .map(|r| r.current * r.ohms(r.width.max(width), self.thickness))
+            .sum()
     }
 
     /// The least width, in steps of 0.01 mm, that every run of the path narrower than it would
@@ -85,15 +136,9 @@ impl TrackDrop {
         if self.thickness <= 0.0 || self.current <= 0.0 {
             return None;
         }
-        let ohms = |w: f64| {
-            self.runs
-                .iter()
-                .map(|&(l, run)| COPPER_RESISTIVITY * l / (run.max(w) * self.thickness))
-                .sum::<f64>()
-        };
         (1..=5000)
             .map(|k| k as f64 / 100.0)
-            .find(|&w| ohms(w) * self.current <= volts * (1.0 + 1e-9))
+            .find(|&w| self.drop_at(w) <= volts * (1.0 + 1e-9))
     }
 }
 
@@ -113,17 +158,40 @@ pub fn in_outer_copper(tracks: &[&Track], outer: f64, inner: f64) -> Vec<Track> 
         .collect()
 }
 
-/// One pad of a net, for [`net_drop`]: what names it and the box its copper spans.
+/// What a pin of a [`NetPad`] draws, when it is known (issue #1541): a pin that states the
+/// current of its branch, or one whose current the model knows (a divider's resistor, an input).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PinDraw {
+    /// The pin's path in the design: its pads, however many, draw this once.
+    pub pin: String,
+    /// In amperes.
+    pub current: f64,
+}
+
+/// One pad of a net, for [`net_drop`]: what names it, the box its copper spans, and what its
+/// pin draws, when it is known.
 #[derive(Debug, Clone)]
 pub struct NetPad {
     pub pad: PadRef,
     pub min: Pt,
     pub max: Pt,
+    pub draws: Option<PinDraw>,
 }
 
-/// The largest resistance between two pads of different [`PadRef`]s along the tracks and vias
-/// given, which are of one net: `None` when no two of them are joined by a track. `thickness`
-/// is the copper's, in mm.
+impl NetPad {
+    /// The pin the pad is of: its path when its current is known, else the pad's own name.
+    fn pin(&self) -> String {
+        match &self.draws {
+            Some(d) => d.pin.clone(),
+            None => format!("{}.{}", self.pad.refdes, self.pad.number),
+        }
+    }
+}
+
+/// The largest drop from a source pad to another pad along the tracks and vias given, which
+/// are of one net whose worst-case current is `current`, as the header of this module says:
+/// `None` when no two pads of different pins are joined by a track. `thickness` is the
+/// copper's, in mm.
 pub fn net_drop(
     net: &str,
     current: f64,
@@ -198,6 +266,29 @@ pub fn net_drop(
         }
         pad_places.push(at);
     }
+    // The pins, each once, and what each draws: a pin of no known current may draw the net's.
+    let mut pins: Vec<(String, f64)> = Vec::new();
+    let pin_of: Vec<usize> = pads
+        .iter()
+        .map(|p| {
+            let name = p.pin();
+            match pins.iter().position(|(n, _)| *n == name) {
+                Some(i) => i,
+                None => {
+                    pins.push((name, p.draws.as_ref().map_or(current, |d| d.current)));
+                    pins.len() - 1
+                }
+            }
+        })
+        .collect();
+    // The sources: the pads of a pin of no known current, or every pad when all are known.
+    let sources: Vec<usize> = match (0..pads.len())
+        .filter(|&n| pads[n].draws.is_none())
+        .collect::<Vec<_>>()
+    {
+        none if none.is_empty() => (0..pads.len()).collect(),
+        some => some,
+    };
     let ohms = |(l, w): (f64, f64)| {
         if w <= 0.0 {
             0.0
@@ -210,9 +301,18 @@ pub fn net_drop(
         next[a].push((b, k));
         next[b].push((a, k));
     }
-    let mut worst: Option<(f64, usize, usize, Vec<usize>)> = None;
-    for (n, &start) in pad_places.iter().enumerate() {
-        // The least resistance from this pad to every place, and the edge it came by.
+    let other = |k: usize, at: usize| {
+        if edges[k].0 == at {
+            edges[k].1
+        } else {
+            edges[k].0
+        }
+    };
+    let mut worst: Option<(f64, usize, usize, Vec<DropRun>)> = None;
+    for &n in &sources {
+        let start = pad_places[n];
+        // The least resistance from this pad to every place, and the edge it came by: the
+        // tree the current from this source takes.
         let mut best = vec![f64::INFINITY; places.len()];
         let mut came: Vec<Option<usize>> = vec![None; places.len()];
         best[start] = 0.0;
@@ -231,43 +331,68 @@ pub fn net_drop(
                 }
             }
         }
-        for (m, &end) in pad_places.iter().enumerate().skip(n + 1) {
-            if pads[m].pad == pads[n].pad || !best[end].is_finite() {
+        // What each place passes on: the sum of what the pins past it draw, each pin once and
+        // the source's own not at all, at most the net's current.
+        let mut load = vec![0.0; places.len()];
+        let mut marked: Vec<Vec<usize>> = vec![Vec::new(); places.len()];
+        for (m, &end) in pad_places.iter().enumerate() {
+            let pin = pin_of[m];
+            if pin == pin_of[n] || !best[end].is_finite() {
                 continue;
             }
-            // Two pads joined through a track, not only through each other's copper.
-            let mut path = Vec::new();
+            let mut at = end;
+            loop {
+                if marked[at].contains(&pin) {
+                    break;
+                }
+                marked[at].push(pin);
+                load[at] += pins[pin].1;
+                match came[at] {
+                    Some(k) => at = other(k, at),
+                    None => break,
+                }
+            }
+        }
+        for (m, &end) in pad_places.iter().enumerate() {
+            if pin_of[m] == pin_of[n] || !best[end].is_finite() {
+                continue;
+            }
+            // The path back to the source, each run at what the place past it passes on.
+            let mut runs = Vec::new();
+            let mut volts = 0.0;
             let mut at = end;
             while let Some(k) = came[at] {
-                path.push(k);
-                at = if edges[k].0 == at {
-                    edges[k].1
-                } else {
-                    edges[k].0
-                };
+                let (length, width) = (edges[k].2, edges[k].3);
+                if width > 0.0 {
+                    let amps = load[at].min(current);
+                    volts += amps * ohms((length, width));
+                    runs.push(DropRun {
+                        length,
+                        width,
+                        current: amps,
+                    });
+                }
+                at = other(k, at);
             }
-            if !path.iter().any(|&k| edges[k].3 > 0.0) {
+            // Two pads joined through a track, not only through each other's copper.
+            if runs.is_empty() {
                 continue;
             }
-            if worst.as_ref().is_none_or(|w| best[end] > w.0 + 1e-15) {
-                worst = Some((best[end], n, m, path));
+            runs.reverse();
+            if worst.as_ref().is_none_or(|w| volts > w.0 + 1e-15) {
+                worst = Some((volts, n, m, runs));
             }
         }
     }
-    let (resistance, a, b, path) = worst?;
-    let runs: Vec<(f64, f64)> = path
-        .iter()
-        .map(|&k| (edges[k].2, edges[k].3))
-        .filter(|&(_, w)| w > 0.0)
-        .collect();
+    let (_, a, b, runs) = worst?;
     Some(TrackDrop {
         net: net.to_string(),
-        current,
-        resistance,
+        current: runs.iter().map(|r| r.current).fold(0.0, f64::max),
+        resistance: runs.iter().map(|r| r.ohms(r.width, thickness)).sum(),
         from: pads[a].pad.clone(),
         to: pads[b].pad.clone(),
-        length: runs.iter().map(|r| r.0).sum(),
-        narrowest: runs.iter().map(|r| r.1).fold(f64::INFINITY, f64::min),
+        length: runs.iter().map(|r| r.length).sum(),
+        narrowest: runs.iter().map(|r| r.width).fold(f64::INFINITY, f64::min),
         runs,
         thickness,
     })
@@ -310,21 +435,18 @@ impl Board {
                 .map(|v| v.at)
                 .collect();
             let mut pads = Vec::new();
-            // A branch's pad carries its own current and not the net's (issue #1113).
-            for r in net
-                .pads
-                .iter()
-                .filter(|r| self.branch_of(&c.net, r).is_none())
-            {
+            for r in &net.pads {
                 let Some(part) = self.part(&r.refdes) else {
                     continue;
                 };
+                let draws = self.draw_of(&c.net, r);
                 for p in part.footprint.pads.iter().filter(|p| p.number == r.number) {
                     let b = part.pad_bounds(p);
                     pads.push(NetPad {
                         pad: r.clone(),
                         min: b.min,
                         max: b.max,
+                        draws: draws.clone(),
                     });
                 }
             }
@@ -333,5 +455,30 @@ impl Board {
             ));
         }
         drops
+    }
+
+    /// What the pin with `pad` on `net` draws, when it is known (issue #1541): the current its
+    /// branch states (issue #1113), or the one the model knows for it (`pin_currents`, issue
+    /// #1333: a divider's resistor carries the voltage across it over its resistance, an input
+    /// none).
+    pub fn draw_of(&self, net: &str, pad: &PadRef) -> Option<PinDraw> {
+        if let Some(b) = self.branch_of(net, pad) {
+            return Some(PinDraw {
+                pin: b.path.clone(),
+                current: b.current,
+            });
+        }
+        self.pin_currents
+            .iter()
+            .find(|l| {
+                l.net == net
+                    && l.pins
+                        .iter()
+                        .any(|p| p.refdes == pad.refdes && p.pin == pad.number)
+            })
+            .map(|l| PinDraw {
+                pin: l.path.clone(),
+                current: l.current,
+            })
     }
 }
