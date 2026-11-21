@@ -504,10 +504,10 @@ mod tests {
         // Issue 1482: a through via joins both pours and the plane, so the second pour's grid
         // is the first's, not another set of vias beside it.
         let mut one = poured_on(&[CopperLayer::Front]);
-        stitch(&mut one);
+        stitch(&mut one, &[]);
         assert!(one.vias.len() > 4, "{:?}", one.vias);
         let mut both = poured_on(&[CopperLayer::Front, CopperLayer::Back]);
-        stitch(&mut both);
+        stitch(&mut both, &[]);
         assert_eq!(both.vias, one.vias);
         // And none touches another.
         for (i, a) in both.vias.iter().enumerate() {
