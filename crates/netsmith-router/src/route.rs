@@ -728,7 +728,7 @@ mod settle_tests;
 #[cfg(test)]
 mod stage_tests;
 
-pub(crate) use clean::SHORT;
+pub(crate) use clean::shortest;
 pub(crate) use grid::*;
 pub(crate) use obstacles::*;
 use pads::*;

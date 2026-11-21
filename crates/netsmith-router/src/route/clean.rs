@@ -16,11 +16,13 @@
 //!
 //! **Steps.** The grid's paths step a cell at a time, and the cut of a right angle
 //! ([`Router::cut_corners`]) on a run of a cell or two leaves pieces of 0.05 to 0.14 mm. A
-//! piece shorter than [`SHORT`] between two other pieces of the line is taken out: where the
+//! piece shorter than [`shortest`] (0.14 mm or two widths) between two other pieces of the line is taken out: where the
 //! runs on either side bend by 45 degrees or less, they are drawn on to meet; where they bend by
 //! a right angle, they meet at a cut corner of [`CHAMFERS`]; where they run in parallel, they
-//! meet at one bend of 45 degrees each way. A change is kept only when it leaves fewer short
-//! pieces, or as many and fewer pieces, so the clean-up ends.
+//! meet at one bend of 45 degrees each way; where the piece after it runs on in parallel, nearer
+//! than that, it goes too and the runs on either side meet. A change is kept only when it leaves fewer short
+//! pieces, or as many and fewer pieces, so the clean-up ends, and moves no bend into a pad or a
+//! via of the line.
 //!
 //! Every change is checked against the copper of other nets, the holes and the edge as the
 //! settled copper is ([`Router::settled`]), and a change that would come too near is not made:
@@ -28,9 +30,23 @@
 
 use super::*;
 
-/// A straight piece shorter than this, between two others of its line, is a step (issue
-/// #1486): a diagonal of one cell of the grid is just longer.
+/// A straight piece shorter than this, or than [`SHORT_WIDTHS`] of its widths, between two
+/// others of its line, is a step (issue #1486): a diagonal of one cell of the grid is just
+/// longer.
 pub(crate) const SHORT: f64 = 0.14;
+
+/// A straight piece shorter than this many of its widths is short: the quality report's measure
+/// (`netsmith_fabricate::routes_tidy::TINY`, issue #1481).
+pub(crate) const SHORT_WIDTHS: f64 = 2.0;
+
+/// The least length of a straight piece of `width` that is not short.
+pub(crate) fn shortest(width: f64) -> f64 {
+    SHORT.max(SHORT_WIDTHS * width)
+}
+
+fn is_short(t: &Track) -> bool {
+    t.from.distance(t.to) < shortest(t.width)
+}
 
 /// Ends nearer than this are one place.
 const SAME: f64 = 1e-6;
@@ -95,10 +111,7 @@ fn touching(tracks: &[Track], layer: CopperLayer, at: Pt, but: &[usize]) -> Vec<
 
 /// How many pieces of `tracks` are short, and how many there are.
 fn measure(tracks: &[Track]) -> (usize, usize) {
-    let short = tracks
-        .iter()
-        .filter(|t| t.from.distance(t.to) < SHORT)
-        .count();
+    let short = tracks.iter().filter(|t| is_short(t)).count();
     (short, tracks.len())
 }
 
@@ -334,11 +347,33 @@ impl<'a> Router<'a> {
     pub(super) fn smooth(&self, routed: &mut Routed, clear: &Clear<'_>) {
         let joints = self.joints(routed);
         let at_joint = |p: Pt| joints.iter().any(|&j| same(j, p));
+        let net = self.nets[routed.line];
+        // The line's vias, which no change moves.
+        let vias = Routed {
+            line: routed.line,
+            tracks: Vec::new(),
+            vias: routed.vias.clone(),
+        };
+        // A bend the change moves into the copper at a joint would leave a track in it.
+        let into_joint = |change: &Change, tracks: &[Track]| {
+            let moved = change
+                .moved
+                .iter()
+                .map(|&(k, from, to)| (from, to, tracks[k].layer));
+            let added = change.added.iter().map(|t| (t.from, t.to, t.layer));
+            moved.chain(added).any(|(from, to, layer)| {
+                let layer = self.stack.index(layer).unwrap_or(FRONT);
+                [from, to]
+                    .into_iter()
+                    .filter(|&q| !at_joint(q))
+                    .any(|q| joints.iter().any(|&j| self.in_end(net, &vias, j, q, layer)))
+            })
+        };
         // Each change kept leaves fewer short pieces or fewer pieces, so this ends.
         loop {
             let tracks = &routed.tracks;
             let before = measure(tracks);
-            let short = |k: usize| tracks[k].from.distance(tracks[k].to) < SHORT;
+            let short = |k: usize| is_short(&tracks[k]);
             // The one other piece at a place of the line that is no joint, if there is one.
             let next = |k: usize, at: Pt| -> Option<usize> {
                 if at_joint(at) {
@@ -368,6 +403,7 @@ impl<'a> Router<'a> {
                                         changes.into_iter().find_map(|change| {
                                             let after = change.apply(tracks);
                                             (measure(&after) < before
+                                                && !into_joint(&change, tracks)
                                                 && change.clear(tracks, &self.stack, clear))
                                             .then_some(after)
                                         })
@@ -375,8 +411,24 @@ impl<'a> Router<'a> {
                             {
                                 return Some(change);
                             }
-                            if run.len() == RUN || !short(b) || run.contains(&b) {
+                            if run.len() == RUN || run.contains(&b) {
                                 return None;
+                            }
+                            // A longer piece goes too only where it runs on in parallel with
+                            // `a`, nearer its line than a short piece is long: a jog too small
+                            // for a bend of 45 degrees, which the next piece takes up.
+                            if !short(b) {
+                                let a0 = far(&tracks[a], p);
+                                let (Some(da), Some(db)) = (way(a0, p), way(q, far(&tracks[b], q)))
+                                else {
+                                    return None;
+                                };
+                                let across = (da.0 * (q.y - p.y) - da.1 * (q.x - p.x)).abs();
+                                let parallel = (da.0 * db.1 - da.1 * db.0).abs() < 1e-9
+                                    && da.0 * db.0 + da.1 * db.1 > 0.0;
+                                if !parallel || across >= shortest(tracks[b].width) {
+                                    return None;
+                                }
                             }
                             q = far(&tracks[b], q);
                             run.push(b);

@@ -54,14 +54,21 @@ fn bends(tracks: &[Track]) -> Vec<f64> {
 
 #[test]
 fn a_jog_of_one_cell_becomes_one_bend_of_45_degrees_each_way() {
+    // Narrow tracks, whose shortest piece is 0.14 mm: a diagonal of one cell is longer.
+    let narrow = |from, to| Track {
+        width: 0.05,
+        ..piece(from, to)
+    };
     let tracks = smoothed(vec![
-        piece((50.0, 50.0), (52.0, 50.0)),
-        piece((52.0, 50.0), (52.0, 50.1)),
-        piece((52.0, 50.1), (54.0, 50.1)),
+        narrow((50.0, 50.0), (52.0, 50.0)),
+        narrow((52.0, 50.0), (52.0, 50.1)),
+        narrow((52.0, 50.1), (54.0, 50.1)),
     ]);
     assert_eq!(tracks.len(), 3, "{tracks:?}");
     assert!(
-        tracks.iter().all(|t| t.length() >= SHORT - 1e-9),
+        tracks
+            .iter()
+            .all(|t| t.length() >= shortest(t.width) - 1e-9),
         "{tracks:?}"
     );
     assert!(
@@ -81,7 +88,9 @@ fn a_stair_of_short_pieces_becomes_one_bend() {
         piece((52.2, 50.2), (52.2, 52.0)),
     ]);
     assert!(
-        tracks.iter().all(|t| t.length() >= SHORT - 1e-9),
+        tracks
+            .iter()
+            .all(|t| t.length() >= shortest(t.width) - 1e-9),
         "no short piece is left: {tracks:?}"
     );
     assert!(

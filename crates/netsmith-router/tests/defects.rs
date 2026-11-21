@@ -10,8 +10,14 @@ use netsmith_router::route;
 
 use crate::common;
 
-/// A straight piece shorter than this, outside a pad or via, is a stair step.
+/// A straight piece shorter than this, or than [`TINY_WIDTHS`] of its widths, outside a pad or
+/// via, is a stair step.
 const TINY: f64 = 0.14;
+const TINY_WIDTHS: f64 = 2.0;
+
+fn tiny(t: &Track) -> bool {
+    t.mid.is_none() && t.from.distance(t.to) < TINY.max(TINY_WIDTHS * t.width)
+}
 /// How near a via a T-join may be and still be one beside it.
 const NEAR_VIA: f64 = 1.0;
 const EPS: f64 = 1e-4;
@@ -123,7 +129,6 @@ pub fn count(board: &Board) -> Defects {
         };
         let mut edges: Vec<(usize, usize, Pt, Pt)> = Vec::new();
         for (i, t) in tracks.iter().enumerate() {
-            let len = t.from.distance(t.to);
             let a = anchor_of(t.from, t.layer);
             let b = anchor_of(t.to, t.layer);
             if t.mid.is_none() {
@@ -144,9 +149,9 @@ pub fn count(board: &Board) -> Defects {
                         })
                         .map(|(_, o)| o)
                         .collect();
-                    matches!(at[..], [o] if o.mid.is_none() && o.from.distance(o.to) >= TINY)
+                    matches!(at[..], [o] if o.mid.is_none() && !tiny(o))
                 });
-                if len < TINY && a.is_none() && b.is_none() && !lone_corner {
+                if tiny(t) && a.is_none() && b.is_none() && !lone_corner {
                     d.stair_steps += 1;
                     d.places.push(format!("step {net} {:?} {:?}->{:?}", t.layer, t.from, t.to));
                 }

@@ -11,7 +11,7 @@
 //! the board edge is drawn. It runs after the teardrops and keeps them as they are: an arc never
 //! cuts into the part of a track a teardrop lies along. An arc takes at most half of each straight
 //! track it joins, so two arcs at the two ends of one track never meet; of a track with a bend at
-//! each end it leaves at least the router's shortest piece (`SHORT`, 0.14 mm) straight between the
+//! each end it leaves at least the router's shortest piece (0.14 mm or two widths, `shortest`) straight between the
 //! two arcs, so no straight piece of a hundredth of a millimetre is left (issue #1486), and the short
 //! diagonal of a cut right angle (0.05 to 0.3 mm, `CHAMFERS` in `route.rs`) takes two small arcs
 //! where it is long enough for both. Only a bend
@@ -38,7 +38,7 @@ use std::collections::HashMap;
 use netsmith_geom::ARC_ERROR;
 use netsmith_pcb::{Board, CopperLayer, Pt, Rect, Track};
 
-use crate::route::{EXACT_SLACK, Form, MARGIN, Obstacle, SHORT, Stack, initial_obstacles};
+use crate::route::{EXACT_SLACK, Form, MARGIN, Obstacle, Stack, initial_obstacles, shortest};
 
 /// The largest radius of an arc at a bend, in widths of its track.
 pub const ARC_WIDTHS: f64 = 4.0;
@@ -165,7 +165,7 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
     // The same board gives the same copper.
     bends.sort();
     // The places where a bend may get an arc: a track with one at its other end too keeps a
-    // straight piece of at least `SHORT` between the two, or none (issue #1486).
+    // straight piece of at least `shortest` between the two, or none (issue #1486).
     let mut bend_ends = vec![[false; 2]; board.tracks.len()];
     for [(a, a_to), (b, b_to)] in &bends {
         bend_ends[*a][usize::from(*a_to)] = true;
@@ -213,7 +213,7 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
         // Nor into a teardrop at a track's other end.
         let room = |k: usize, far_is_to: bool, t: &Track, far: Pt, length: f64| {
             let share = if bend_ends[k][usize::from(far_is_to)] {
-                (length - SHORT) / 2.0
+                (length - shortest(t.width)) / 2.0
             } else {
                 length / 2.0
             };
@@ -462,7 +462,7 @@ mod tests {
         // Each arc takes at most half of what is past the shortest piece the router draws.
         let (arcs, left) = cut_corner_rounded(0.1);
         assert_eq!(arcs, 2);
-        assert!(left >= SHORT, "{left}");
+        assert!(left >= shortest(0.1), "{left}");
         // Where an arc of a track's width does not fit so, the bends keep their corners
         // rather than leave a piece of a hundredth of a millimetre between two arcs (issue #1486).
         let (arcs, left) = cut_corner_rounded(0.2);

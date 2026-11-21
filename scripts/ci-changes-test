@@ -368,7 +368,7 @@ crates_row "netsmith-tools netsmith-workspace netsmith-design netsmith-pipeline 
 crates_row "netsmith-tools netsmith-workspace netsmith-check netsmith-solve" examples/carrier_and_cards.nsm
 crates_row "netsmith-tools netsmith-workspace netsmith-core netsmith-check netsmith-solve netsmith-design netsmith-pipeline netsmith-fabricate netsmith-placer netsmith-router" examples/two_boards.nsm examples/linear_regulator.lock.toml
 crates_row "netsmith-tools netsmith-workspace netsmith-core netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-pipeline netsmith-placer netsmith-router netsmith-fabricate" examples/led.nsm
-crates_row "netsmith-tools netsmith-workspace netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-pipeline netsmith-placer netsmith-router netsmith-core netsmith-fabricate" examples/status_indicator.nsm examples/led.lock.toml
+crates_row "netsmith-tools netsmith-workspace netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-pipeline netsmith-placer netsmith-router netsmith-fabricate netsmith-core" examples/status_indicator.nsm examples/led.lock.toml
 crates_row "netsmith-tools netsmith-workspace netsmith-design netsmith-pipeline netsmith-placer netsmith-router netsmith-fabricate" examples/four_layer.nsm examples/ten_layer.nsm examples/six_layer.nsm
 crates_row "netsmith-tools netsmith-workspace" examples/schematic_bench/src/main.nsm
 crates_row "netsmith-tools netsmith-workspace netsmith-netlist netsmith-fabricate netsmith-view" examples/orbit/src/main.nsm crates/netsmith-view/src/layout.rs

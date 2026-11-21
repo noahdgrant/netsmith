@@ -629,13 +629,13 @@ pub(crate) struct Defect {
     pub holes: Vec<usize>,
 }
 
-/// The nudges, the duplicate ways, the overlapping copper and the copper that ends in nothing
+/// The tracks inside a pad, the duplicate ways, the overlapping copper and the copper that ends in nothing
 /// of `board`'s tracks and vias, as `routes tidy` finds them (each detector once, nothing checked or changed): the measure the
 /// quality report counts by, so that what tidy removes is what the report counts.
 pub(crate) fn shape_defects(board: &Board) -> Vec<Defect> {
     let routes = Routes::default();
     let work = Work::looking(board, &routes);
-    work.nudges()
+    work.in_pad_tracks()
         .into_iter()
         .chain(work.duplicates())
         .chain(work.overlaps())
@@ -693,6 +693,7 @@ impl<'a> Work<'a> {
             spots: shapes::spots(board),
             checks: 0,
             items: 0,
+            compared: std::cell::Cell::new(0),
         }
     }
 
