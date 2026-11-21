@@ -1872,6 +1872,15 @@ fills: Array<FillArea>, counts: FillCounts, starved: Array<FillStarved>,
  */
 unjoinable: Array<FillUnjoinable>, };
 
+export type StitchingVia = { net: string, x: number, y: number, diameter: number, };
+
+export type PcbStitching = { board: string, 
+/**
+ * The stamps of the placement and of the routes file they were found on, and whether the
+ * board was routed.
+ */
+layoutStamp: string, routesStamp: string, routed: boolean, vias: Array<StitchingVia>, };
+
 export type NetsRow = { net: string, 
 /**
  * The length of its connection: the copper that takes its pads to each other, not a

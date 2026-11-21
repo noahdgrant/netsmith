@@ -16,7 +16,7 @@ use super::common::{self, Ids, parse_ids};
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`view pcb` draws a board's copper as the 2D PCB view of the editor does, with no editor, no browser, no GPU and no KiCad: the board placed (the layout file read, the placer run for the rest), the copper of the routes file beside the source, and the router's copper the editor keeps (`.netsmith/routes/`, what `board fab --reuse-routes` starts from) for every net whose pads have not moved since it was routed, with the teardrops the router draws on the finished board, as the Gerbers have them. It routes nothing unless `--route` is given, which runs the router first, from that copper, as `fab --reuse-routes` does; nothing is written but the picture. The open connections are what that copper leaves: the connections `routes show` lists as left to route, drawn as bright straight lines from pad to pad.\n\nWhat is drawn, from the bottom up: the board's shape, the keepouts of the layers drawn (dashed), each layer's pours and planes (translucent, as the Gerbers fill them), teardrop fills, pads and tracks, the layer furthest from the eye first; the vias and the holes; then, when asked, the courtyards and the designators; with `--islands` the copper islands the fill of the pours took out (copper cut off from its net, as `board fill` lists them), hatched and outlined, dashed, in near white and labelled `I1`, `I2`, ...; the open connections; and with `--drc` the places of netsmith's design rules check (the check `board drc` and `fab` run) as numbered rings, red for an error and amber for a warning, with each finding printed after its number. A missing connection is not marked: it is an open connection. A pad the fill starves (fewer than two spokes and tracks join it to the pour) is the check's `starved_thermal` finding, so `--drc` marks it. Each pour is drawn as its fill, as the Gerbers have it: the clearances round other nets' copper, the thermal reliefs and their spokes. The top layer is orange, the bottom teal, each inner layer a tone of its own. Seen from below the board is mirrored left to right, as the editor's Side switch shows the back.\n\nThe PNG is drawn by netsmith's own rasterizer from the SVG (ADR 0142), so the two are the same drawing, and the same board and flags give the same bytes. The path written is printed, then each open connection (`open: net GND: D1.1 to J1.2`), each marker and each removed island (`removed island I1: bottom GND at (12.000, 3.500), 2.150 mm2`, the place a corner of it in the layout file's frame). The exit code is 0 when the picture is written, 1 when the board does not build or place, and 2 when the command cannot run: a layer or an id the board does not have (the error lists those it has), a picture of more than 16384 pixels a side, or a file that cannot be written."
+    after_long_help = "`view pcb` draws a board's copper as the 2D PCB view of the editor does, with no editor, no browser, no GPU and no KiCad: the board placed (the layout file read, the placer run for the rest), the copper of the routes file beside the source, and the router's copper the editor keeps (`.netsmith/routes/`, what `board fab --reuse-routes` starts from) for every net whose pads have not moved since it was routed, with the teardrops the router draws on the finished board, as the Gerbers have them. It routes nothing unless `--route` is given, which runs the router first, from that copper, as `fab --reuse-routes` does; nothing is written but the picture. The open connections are what that copper leaves: the connections `routes show` lists as left to route, drawn as bright straight lines from pad to pad.\n\nWhat is drawn, from the bottom up: the board's shape, the keepouts of the layers drawn (dashed), each layer's pours and planes (translucent, as the Gerbers fill them), teardrop fills, pads and tracks, the layer furthest from the eye first; the vias and the holes; then, when asked, the courtyards and the designators; with `--stitching` the stitching vias the export will have that the routes file does not (the stitching `fab` runs, on the copper drawn), in a cooler grey than the other vias, and their count printed; with `--islands` the copper islands the fill of the pours took out (copper cut off from its net, as `board fill` lists them), hatched and outlined, dashed, in near white and labelled `I1`, `I2`, ...; the open connections; and with `--drc` the places of netsmith's design rules check (the check `board drc` and `fab` run) as numbered rings, red for an error and amber for a warning, with each finding printed after its number. A missing connection is not marked: it is an open connection. A pad the fill starves (fewer than two spokes and tracks join it to the pour) is the check's `starved_thermal` finding, so `--drc` marks it. Each pour is drawn as its fill, as the Gerbers have it: the clearances round other nets' copper, the thermal reliefs and their spokes. The top layer is orange, the bottom teal, each inner layer a tone of its own. Seen from below the board is mirrored left to right, as the editor's Side switch shows the back.\n\nThe PNG is drawn by netsmith's own rasterizer from the SVG (ADR 0142), so the two are the same drawing, and the same board and flags give the same bytes. The path written is printed, then each open connection (`open: net GND: D1.1 to J1.2`), each marker and each removed island (`removed island I1: bottom GND at (12.000, 3.500), 2.150 mm2`, the place a corner of it in the layout file's frame). The exit code is 0 when the picture is written, 1 when the board does not build or place, and 2 when the command cannot run: a layer or an id the board does not have (the error lists those it has), a picture of more than 16384 pixels a side, or a file that cannot be written."
 )]
 pub struct Args {
     /// The source file; with none, the project's boards.
@@ -80,6 +80,14 @@ pub struct Args {
     /// ..., and print them: copper cut off from its net, which the Gerbers do not have.
     #[arg(long)]
     pub islands: bool,
+    /// Draw the stitching vias the export will have that the routes file does not, in a tone of
+    /// their own, and print how many.
+    ///
+    /// They are computed by the stitching `board fab` runs, on the copper drawn: on copper not
+    /// routed yet (no `--route`) the router's tracks may still move a via a little, or take its
+    /// place.
+    #[arg(long)]
+    pub stitching: bool,
     /// Route the board first, from the routes file's and the kept copper, as `board fab
     /// --reuse-routes` does.
     #[arg(long)]
@@ -161,6 +169,7 @@ impl Args {
             only_open: self.only_open,
             drc: self.drc,
             islands: self.islands,
+            stitching: self.stitching,
             format: match self.format {
                 PcbFormat::Png => Format::Png,
                 PcbFormat::Svg => Format::Svg,
@@ -260,6 +269,12 @@ pub fn run(args: Args) -> ExitCode {
     for line in &drawn.islands {
         println!("removed island {line}");
     }
+    if args.stitching {
+        println!(
+            "stitching: {} via(s) the export will have that the routes file does not",
+            drawn.stitching
+        );
+    }
     ExitCode::SUCCESS
 }
 
@@ -319,6 +334,7 @@ mod tests {
             "--only-open",
             "--drc",
             "--islands",
+            "--stitching",
             "--route",
             "--route-timeout",
             "30",
@@ -330,7 +346,7 @@ mod tests {
         assert_eq!(a.region, Some([1.0, 2.5, 10.0, 8.0]));
         assert_eq!(a.request().highlight, ["R1", "net:GND"]);
         assert_eq!(a.route_timeout, Some(30));
-        assert!(a.request().drc && a.request().islands);
+        assert!(a.request().drc && a.request().islands && a.request().stitching);
         assert_eq!(a.default_out("main"), PathBuf::from("main-pcb-inner2.svg"));
     }
 

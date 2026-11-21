@@ -29,6 +29,7 @@
 //! | `GET /api/pcb/summary?board=` (`near=`, `within=`, `between=`) | the placed board summed up as data, what `netsmith layout summary` prints: totals, area and free space of each face, module boxes, decoupling distances, nets, the parts near a part and the distance between two pads (`PcbSummary`, issue #1003); `400` for a part or pad the board has none of |
 //! | `GET /api/pcb/copper?board=` | the board's copper areas as data, what `netsmith board copper` prints: every copper layer with its use (`plane`, `pour`, `signal`), net and a pour's fields, the zones of the routes file counted apart from the process's pours, and the teardrop fills, counted only when the board has been routed here (`PcbCopper`, issue #1085); from the source, no placing, no routing |
 //! | `GET /api/pcb/fill?board=` | how the fill of the board's pours, planes and zones joins each pad of its net, as the PCB view has the board placed (and routed) and as the Gerbers fill it: `solid`, `thermal` with the spokes that reach the fill, or `none`, the counts, the pads of other nets it keeps clear of, the copper islands kept and removed (a removed one with its outline, which the 2D view hatches, issue #1188), and the starved thermal reliefs (`PcbFill`, issue #1187), what `netsmith board fill` prints |
+//! | `GET /api/pcb/stitching?board=` | the stitching vias of the pours that the export will have and the routes file does not, of the board as the PCB view has it placed (and routed): those the router laid, then those the stitching `fab` runs would add to the copper there, each with its net, centre and diameter (`PcbStitching`, issue #1489), what `netsmith view pcb --stitching` draws |
 //! | `GET /api/pcb/nets?board=` | each net's routed and straight length, vias, layer changes and layers, and each diff pair's lengths, skew against the router's target, coupled length, gaps and vias side by side, of the board as the PCB view has it placed (and routed) (`PcbNets`, issue #1223), what `netsmith board nets` prints |
 //! | `POST /api/pcb/place/cancel` | stops the placings of the PCB view that run (issue #764): a `scene` (or the placing of a `route`) that is placing answers `499` and keeps nothing; while a `scene` places, the socket carries `progress` with the task `place` (the placer's lines, as `fab` prints them) and `pcb_live` with the parts where the placer has them, and while a `route` routes, `pcb_live` with the copper laid so far |
 //! | `POST /api/progress` | a line of a run the editor did not start (`netsmith board fab --to-editor`, an `OutsideProgress`), passed to every page as `outside`; `204` |
@@ -185,6 +186,7 @@ const NEEDS_ANALYSIS: &[&str] = &[
     "/api/pcb/summary",
     "/api/pcb/copper",
     "/api/pcb/fill",
+    "/api/pcb/stitching",
     "/api/pcb/nets",
     "/api/pcb/fit",
     "/api/pcb/drc",
@@ -396,6 +398,7 @@ fn router(state: Shared) -> Router {
         .route("/api/pcb/summary", get(pcb_summary))
         .route("/api/pcb/copper", get(pcb_copper))
         .route("/api/pcb/fill", get(pcb_fill))
+        .route("/api/pcb/stitching", get(pcb_stitching))
         .route("/api/pcb/nets", get(pcb_nets))
         .route("/api/pcb/fit", get(pcb_fit))
         .route("/api/pcb/drc", post(pcb_drc))
@@ -1003,6 +1006,15 @@ async fn pcb_fill(
 ) -> Result<Json<crate::api::PcbFill>, ApiError> {
     let board = param(&q, "board")?;
     json(move || s.backend.pcb_fill(&board)).await
+}
+
+/// The stitching vias the export will have that the routes file does not (issue #1489).
+async fn pcb_stitching(
+    State(s): State<Shared>,
+    Query(q): Query1,
+) -> Result<Json<crate::api::PcbStitching>, ApiError> {
+    let board = param(&q, "board")?;
+    json(move || s.backend.pcb_stitching(&board)).await
 }
 
 /// The table of the board's nets and diff pairs (issue #1223).

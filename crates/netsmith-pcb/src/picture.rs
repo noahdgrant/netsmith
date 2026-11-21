@@ -8,7 +8,9 @@
 //! has it, cutouts open; the keepouts that forbid something on a layer drawn (dashed); then each
 //! layer drawn, the one furthest from the viewer first: its pours and planes (translucent), its
 //! teardrop fills, its pads, its tracks and the copper its footprints draw; then the vias with
-//! copper on a layer drawn, and every drilled hole, open to the background. Over the copper: the
+//! copper on a layer drawn (the stitching vias the export will have that the routes file does
+//! not, when given, in a tone of their own, issue #1489), and every drilled hole, open to the
+//! background. Over the copper: the
 //! courtyards and the designators when asked, the copper islands the fill took out when given
 //! (hatched and outlined, dashed, in near white, each with its number: copper the pour would have
 //! had and the Gerbers do not, issue #1188), the open connections (bright lines with a dot at
@@ -76,6 +78,10 @@ pub struct Picture {
     pub designators: bool,
     /// What is lit, the rest faded; `None` fades nothing.
     pub lit: Option<Lit>,
+    /// The places of the vias drawn in the stitching tone: the stitching vias the export will
+    /// have that the routes file does not (issue #1489, `netsmith_router::stitching_vias`). A via
+    /// of the board at one of them is drawn in [`STITCHING`], with `class="stitching"`.
+    pub stitching: Vec<Pt>,
 }
 
 /// Space round the outline when no region is given, in mm.
@@ -92,11 +98,16 @@ const BACK: &str = "#46a3bc";
 /// The inner layers' tones, `In1.Cu` the first; a fifth inner layer takes the first again.
 const INNER: [&str; 4] = ["#9a8cf0", "#5fc98f", "#e0b050", "#e07aa8"];
 const VIA: &str = "#a3adbc";
+/// The stitching vias not yet in the routes file (issue #1489): a cooler, darker grey than
+/// [`VIA`], copper still, but marked as the export's to lay.
+pub const STITCHING: &str = "#6f8fb0";
 /// Every colour the picture fills copper with, as `#rrggbb`: each layer's tone and the vias'. A
 /// reader of the picture tells copper from what is not by them, as the comparison of a board's
 /// copper with its Gerbers' does (issue #1142, `netsmith_fabricate::gerber_compare`); a hole is
 /// drawn in [`BACKGROUND`].
-pub const COPPER: [&str; 7] = [FRONT, BACK, INNER[0], INNER[1], INNER[2], INNER[3], VIA];
+pub const COPPER: [&str; 8] = [
+    FRONT, BACK, INNER[0], INNER[1], INNER[2], INNER[3], VIA, STITCHING,
+];
 const COURTYARD: &str = "#ff26e2";
 const DESIGNATOR: &str = "#d3cfc1";
 const KEEPOUT: &str = "#e0707a";
@@ -448,9 +459,15 @@ pub fn picture(
             continue;
         }
         let c = f.p(v.at);
+        let stitching = options.stitching.iter().any(|p| p.distance(v.at) < 1e-6);
+        let (class, fill) = if stitching {
+            (r#" class="stitching""#, STITCHING)
+        } else {
+            ("", VIA)
+        };
         let _ = writeln!(
             out,
-            r#"<circle{} cx="{}" cy="{}" r="{}" fill="{VIA}"{}/>"#,
+            r#"<circle{class}{} cx="{}" cy="{}" r="{}" fill="{fill}"{}/>"#,
             net_attr(v.net.as_deref()),
             n(c.x),
             n(c.y),
