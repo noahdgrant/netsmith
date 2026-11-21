@@ -33,13 +33,13 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith project lint` | new | `--strict`, `--format` |
 | `netsmith project fmt` | new | `--check` |
 | `netsmith project migrate-offers` | new | `--check` |
-| `netsmith project order` | `netsmith fab --order [NAME]` | `--out`, `--route-timeout`, `--rip-rounds`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--accept-via-in-pad`, `--constraints`, `--no-glb`, `--no-step`, `--no-pdf`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor`, `--format` |
+| `netsmith project order` | `netsmith fab --order [NAME]` | `--out`, `--route-timeout`, `--rip-rounds`, `--allow-drc-violations`, `--cross-check`, `--strict`, `--locked`, `--accept-via-in-pad`, `--constraints`, `--no-glb`, `--no-step`, `--no-pdf`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--progress`, `--to-editor`, `--format` |
 | `netsmith project show` | new | `--format` |
 | `netsmith board check` | `netsmith check` | `--strict`, `--format`, `--notes` |
 | `netsmith board build` | `netsmith build` | `--out`, `--strict`, `--locked`, `--emit-design`, `--emit-solved`, `--portable`, `--format`, `--notes` |
-| `netsmith board fab` | `netsmith fab` | `--out`, `--route-timeout`, `--rip-rounds`, `--length-weight`, `--via-weight`, `--layer-change-weight`, `--allow-drc-violations`, `--for-review`, `--no-pictures`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--pins`, `--no-glb`, `--no-step`, `--no-pdf`, `--save-placed`, `--reuse-routes`, `--portable`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor`, `--format`, `--notes` |
-| `netsmith board drc` | new | `--board`, `--kicad-pcb`, `--place-seeds`, `--place-budget`, `--format` |
-| `netsmith board rules` | new (#1513) | `--board`, `--kicad-pcb`, `--place-seeds`, `--place-budget`, `--format` |
+| `netsmith board fab` | `netsmith fab` | `--out`, `--route-timeout`, `--rip-rounds`, `--length-weight`, `--via-weight`, `--layer-change-weight`, `--allow-drc-violations`, `--for-review`, `--no-pictures`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--pins`, `--no-glb`, `--no-step`, `--no-pdf`, `--save-placed`, `--reuse-routes`, `--portable`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--progress`, `--to-editor`, `--format`, `--notes` |
+| `netsmith board drc` | new | `--board`, `--kicad-pcb`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
+| `netsmith board rules` | new (#1513) | `--board`, `--kicad-pcb`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
 | `netsmith board explain` | `netsmith explain` | `--board`, `--all-rows`, `--format` |
 | `netsmith board compare` | `netsmith compare` | `--ref`, `--against-ref`, `--board`, `--map`, `--by-refdes`, `--ignore-unconnected`, `--loose-values`, `--format` |
 | `netsmith board pins show` | new | `--file`, `--board`, `--format` |
@@ -54,19 +54,19 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith board system` | new | `--name`, `--format` |
 | `netsmith board panel` | new | `--name`, `--format` |
 | `netsmith board copper` | new | `--board`, `--format` |
-| `netsmith board fill` | new (#1187) | `--board`, `--place-seeds`, `--place-budget`, `--format` |
-| `netsmith board nets` | new (#1223) | `--board`, `--lengths`, `--route`, `--route-timeout`, `--gate`, `--max-crossings`, `--max-duplicates`, `--max-unneeded`, `--max-short`, `--max-via-pairs`, `--place-seeds`, `--place-budget`, `--format` |
+| `netsmith board fill` | new (#1187) | `--board`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
+| `netsmith board nets` | new (#1223) | `--board`, `--lengths`, `--route`, `--route-timeout`, `--gate`, `--max-crossings`, `--max-duplicates`, `--max-unneeded`, `--max-short`, `--max-via-pairs`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
 | `netsmith layout show` | the same | `--file` (was `--into`), `--board`, `--format` |
 | `netsmith layout set` | the same | `--file` (was `--into`), `--board`, `--at`, `--turn`, `--side`, `--lock`, `--unlock`, `--designator`, `--format` |
 | `netsmith layout check` | the same | `--file` (was `--into`), `--board`, `--strict`, `--format` |
-| `netsmith layout summary` | the same | `--file` (was `--into`), `--board`, `--near`, `--within`, `--between`, `--place-seeds`, `--place-budget`, `--format` |
-| `netsmith layout compare` | the same | `--file` (was `--into`), `--board`, `--place-seeds`, `--place-budget`, `--format` |
-| `netsmith layout regenerate` | the same | `--file` (was `--into`), `--board`, `--seed`, `--margin`, `--write`, `--place-seeds`, `--place-budget`, `--format` |
-| `netsmith layout capture` | the same | `--file` (was `--into`), `--board`, `--dry-run`, `--place-seeds`, `--place-budget`, `--format` |
-| `netsmith layout fit` | the same | `--file` (was `--into`), `--board`, `--near`, `--step`, `--side`, `--as-laid-out`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor`, `--format` |
-| `netsmith layout parts` | the same | `--file` (was `--into`), `--board`, `--as-laid-out`, `--place-seeds`, `--place-budget`, `--format` |
-| `netsmith layout export` | the same | `--file` (was `--into`), `--board`, `--kicad-pcb` (was `--out`), `--place-seeds`, `--place-budget`, `--format` |
-| `netsmith layout import` | the same | `--file` (was `--into`), `--board`, `--lock`, `--dry-run`, `--place-seeds`, `--place-budget`, `--format` |
+| `netsmith layout summary` | the same | `--file` (was `--into`), `--board`, `--near`, `--within`, `--between`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
+| `netsmith layout compare` | the same | `--file` (was `--into`), `--board`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
+| `netsmith layout regenerate` | the same | `--file` (was `--into`), `--board`, `--seed`, `--margin`, `--write`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
+| `netsmith layout capture` | the same | `--file` (was `--into`), `--board`, `--dry-run`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
+| `netsmith layout fit` | the same | `--file` (was `--into`), `--board`, `--near`, `--step`, `--side`, `--as-laid-out`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--progress`, `--to-editor`, `--format` |
+| `netsmith layout parts` | the same | `--file` (was `--into`), `--board`, `--as-laid-out`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
+| `netsmith layout export` | the same | `--file` (was `--into`), `--board`, `--kicad-pcb` (was `--out`), `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
+| `netsmith layout import` | the same | `--file` (was `--into`), `--board`, `--lock`, `--dry-run`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
 | `netsmith routes import` | the same | `--file` (was `--into`), `--board`, `--parts`, `--no-places`, `--unlocked`, `--format` |
 | `netsmith routes show` | the same | `--file` (was `--into`), `--board`, `--format` |
 | `netsmith routes add` | new (#1472) | `--file`, `--board`, `--stop-on-refusal`, `--dry-run`, `--format` |
@@ -85,7 +85,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith schematic arrange` | new (#1093) | `--file`, `--board`, `--reset`, `--write`, `--format` |
 | `netsmith view 3d` | `netsmith render` | `--board`, `--view`, `--picture` (was `--out`), `--size`, `--section`, `--highlight`, `--xray`, `--case`, `--no-caps`, `--theme`, `--ortho`, `--perspective` |
 | `netsmith view schematic` | new (#1091) | `--board`, `--format`, `--sheet`, `--picture` |
-| `netsmith view pcb` | new (#1086) | `--board`, `--layer`, `--side`, `--region`, `--scale`, `--format`, `--picture`, `--highlight`, `--only-open`, `--courtyards`, `--designators`, `--drc`, `--islands`, `--stitching`, `--route`, `--route-timeout`, `--place-seeds`, `--place-budget` |
+| `netsmith view pcb` | new (#1086) | `--board`, `--layer`, `--side`, `--region`, `--scale`, `--format`, `--picture`, `--highlight`, `--only-open`, `--courtyards`, `--designators`, `--drc`, `--islands`, `--stitching`, `--route`, `--route-timeout`, `--place-seeds`, `--place-budget`, `--routing-objective` |
 | `netsmith view gerber` | new (#1105, #1143) | `--layer`, `--region`, `--scale`, `--format`, `--picture` |
 | `netsmith view editor` | `netsmith editor` | `--port`, `--offline` |
 | `netsmith view editor-3d` | `netsmith view` | `--port`, `--board`, `--view`, `--section`, `--highlight`, `--select`, `--xray`, `--no-xray`, `--ortho`, `--perspective`, `--case`, `--colour-by`, `--height-preview`, `--layers-apart`, `--no-layers-apart`, `--format` (was `--json`), `--picture` |
@@ -104,7 +104,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith import case model` | `netsmith case import` | `--rx`, `--ry`, `--rz`, `--x`, `--y`, `--z`, `--at`, `--holes-at`, `--limits`, `--thickness`, `--limit-step`, `--board`, `--write` |
 | `netsmith dev route` | `netsmith route` | `--out`, `--route-timeout`, `--rip-rounds`, `--margin`, `--turn`, `--tries`, `--stages`, `--plan`, `--classes`, `--arcs`, `--length-weight`, `--via-weight`, `--layer-change-weight`, `--format` |
 | `netsmith dev parity` | `netsmith parity` | `--table`, `--parts`, `--svg`, `--format` |
-| `netsmith dev board3d` | `netsmith board3d` | `--board`, `--format` (was `--json`), `--glb`, `--step`, `--place-seeds`, `--place-budget`, `--progress`, `--to-editor` |
+| `netsmith dev board3d` | `netsmith board3d` | `--board`, `--format` (was `--json`), `--glb`, `--step`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--progress`, `--to-editor` |
 | `netsmith mcp` | new | `--project`, `--editor` |
 
 `netsmith layout check` (issue 1309) measures the parts the layout file places against each other, one list of findings (courtyards, keepouts, cutouts, the edge: `placement`), and `netsmith board fab` runs the same check before the placer starts. `layout check`, `board check`, `board build` and `board fab` also say, before any placing, each part the placer places that no free rectangle among the locked and pinned parts holds (issue 1283: `no_room`, naming the part and the largest free rectangle of each face), a warning that `--strict` makes an error, so that `fab` stops at it instead of spending its placing budget. A part nearer a part with a `soft margin` (issue 1310, `soft margin 3mm round .u1` in the physical file) than the margin asks is a warning too, `soft_margin` in `layout check` among the parts the file places, and `fab` says it where the parts are placed, an error with `--strict`.

@@ -39,6 +39,10 @@ pub const KICAD_VERSION: i64 = 9;
 /// is a whole placement, so a board no seed places costs this many times as long.
 pub const MAX_PLACE_SEEDS: u32 = 32;
 
+/// The most `routing_objective` may weigh (issue 1544): ten times the weight it was measured at
+/// ([`netsmith_pcb::ROUTING_OBJECTIVE`]).
+pub const MAX_ROUTING_OBJECTIVE: f64 = 10.0;
+
 /// The most characters of a project's `revision` (issue #1134): room for a letter, a version or
 /// a short tag, and a line of the title block.
 pub const MAX_REVISION: usize = 32;
@@ -185,6 +189,14 @@ pub struct Manifest {
     /// it. [`crate::layout::parse_place_budget`] reads it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub place_budget: Option<String>,
+    /// The weight of the placer's objective for routing (`routing_objective = 1`, issue 1544;
+    /// from 0 to [`MAX_ROUTING_OBJECTIVE`]; 0, the default, leaves it out, so every board places
+    /// as it did before): power nets weigh more by their current, a part on a bus of another
+    /// keeps the corridor between their pins clear, and no part on the other face stands under a
+    /// fine-pitch part's escape ring. `netsmith_pcb::ROUTING_OBJECTIVE` (1) is the weight it was
+    /// measured at. `--routing-objective` wins over it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routing_objective: Option<f64>,
     /// The E-series the solver may pick generic resistors from when no catalog row works:
     /// `"E12"`, `"E24"` (the default) or `"E96"` (ADR 0047). `"none"` offers
     /// only the catalog's rows.
@@ -695,6 +707,7 @@ impl Manifest {
             layer_change_weight: None,
             place_seeds: None,
             place_budget: None,
+            routing_objective: None,
             environment: None,
             guidelines: None,
             constraints: None,
@@ -850,6 +863,13 @@ impl Manifest {
         {
             return Err(format!(
                 "{MANIFEST}: place_seeds = {n} must be from 1 (the layout file's seed only) to {MAX_PLACE_SEEDS}"
+            ));
+        }
+        if let Some(w) = self.routing_objective
+            && !(0.0..=MAX_ROUTING_OBJECTIVE).contains(&w)
+        {
+            return Err(format!(
+                "{MANIFEST}: routing_objective = {w} must be from 0 (off) to {MAX_ROUTING_OBJECTIVE}"
             ));
         }
         if let Some(text) = &self.place_budget {
@@ -2564,6 +2584,25 @@ mod tests {
             parse("[project]\nname = \"a\"\nlock = \"boards\"\n").unwrap_err(),
             "netsmith.toml: lock = \"boards\" is not one of \"all\", \"top_level\" or \"none\""
         );
+    }
+
+    #[test]
+    fn routing_objective_is_a_weight_from_zero_to_ten() {
+        let m = parse("[project]\nname = \"a\"\nrouting_objective = 1\n").unwrap();
+        assert_eq!(m.routing_objective, Some(1.0));
+        let none = parse("[project]\nname = \"a\"\n").unwrap();
+        assert_eq!(none.routing_objective, None);
+        for bad in ["-1", "10.5", "nan"] {
+            let e = parse(&format!(
+                "[project]\nname = \"a\"\nrouting_objective = {bad}\n"
+            ))
+            .unwrap_err();
+            assert!(
+                e.contains("netsmith.toml: routing_objective =") && e.contains("must be from 0"),
+                "{e}"
+            );
+        }
+        assert!(parse("[project]\nname = \"a\"\nrouting_objective = \"high\"\n").is_err());
     }
 
     #[test]
