@@ -13,6 +13,16 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+### A board's `.corner` is its corner style, a `TrackCorner` (issue #1508)
+
+A board's member `.corner` says how its tracks turn: `TrackCorner::Rounded` (the default) or `TrackCorner::Mitered` (no arcs). A board that has a member `.corner` of another type, for its own use, now stops with "`corner` is not a `TrackCorner`". Rename the board's own member:
+
+| Old spelling | New spelling |
+|---|---|
+| `.corner: Length` (a board's own member) | `.corner_radius: Length`, or any other name |
+
+`netsmith routes route` also rounds the bends of the copper it lays now, as `fab` rounds the router's, unless the board is mitered or the run says `--corner mitered`.
+
 ### `routes tidy` counts `in_pad_tracks`, not `nudges` (issues #1485, #1492)
 
 The pass of `routes tidy` that removes a track from the centre of a pad or a via to a point still inside it is named for what it removes, a track inside a pad (_Nudge_ is a word the glossary avoids). A tool that reads the JSON of `netsmith routes tidy --format json` finds the key and the value renamed, and the text says `track(s) inside a pad` where it said `nudge(s)`:

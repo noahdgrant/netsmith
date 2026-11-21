@@ -277,6 +277,24 @@ Once the board is routed and has its teardrops, each 45 degree bend where two st
 
 Before the arcs, the router's copper is drawn clean (issue #1486), with the searches and what they route as before: each line's tracks end at its pads' and vias' centres, with no short track from a centre to a point still inside the pad or via (a pad's run is moved across to pass its centre, or drawn on from the centre to meet the run just outside the pad at a bend of 45 degrees or less); a stair of pieces shorter than 0.14 mm, or than two track widths (what the quality section of `board nets` counts as short), that the grid leaves at a bend is joined into the runs beside it (one bend of 45 degrees or less, a cut right angle, or a bend of 45 degrees each way for a jog); and where two lines of a net join the same two places twice, the longest piece of the loop and what is left going nowhere are taken off, where that leaves every bend as `track_angle` asks. Each change keeps the rules' space from all other copper, or is not made.
 
+A board says how its tracks turn with the member `.corner` (issue #1508): it declares it as a `TrackCorner` of `std::sources` and narrows it to `TrackCorner::Rounded`, the default and what a board that declares none has, or `TrackCorner::Mitered`, which draws no arc at any bend of any net, so every bend keeps its 45 degree corner. It is for a board that a person reviews by eye: at a small scale the arcs read as stair steps. `netsmith view pcb` follows it too: an arc of a mitered board (an import's, a hand-drawn one) is drawn as its chamfer, a straight line from the arc's start to its end, though the board file and the Gerbers keep the arc. `netsmith routes route` lays its copper in the board's style (it rounds its bends as `fab` rounds the router's, since `fab` never rounds the copper of a routes file), and `--corner mitered` or `--corner rounded` changes it for that one run. `routes tidy` keeps each net's style: it never touches an arc, and the corners it cuts are 45 degree chamfers, never arcs. A net of a `TrackPath` whose `.corner` is `Mitered` (below) is mitered on a rounded board too. A `.corner` of another type is an error that says what to write.
+
+```nsm solve
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::Resistor
+import std::sources::{Rail, TrackCorner}
+
+board Reviewed {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .rail: Rail { .voltage &= 3.3V +/- 5%; .pos.net &= "VCC" }
+    .r: Resistor { .resistance &= 10kohm +/- 1% }
+    .rail.pos ~> .r ~> .rail.neg
+    // Every bend keeps its 45 degree corner: no arcs.
+    .corner: TrackCorner
+    .corner &= TrackCorner::Mitered
+}
+```
+
 ### Teardrops
 
 A board netsmith routes gets a teardrop where each track meets a pad or a via (issue #431): copper that widens the track into the pad, so that a drill that wanders or an etch that undercuts does not break the joint. It is as wide at the pad as 90 % of the pad's copper across the track, at most 2 mm, and reaches half of that beyond the pad's edge, at most 1 mm and no farther than the track runs straight, on the track's layer and net. netsmith draws one only where it keeps every space the design rules check asks of a track (to other nets' copper, holes, solder mask openings, the board edge and rule areas, and on a surface-mount pad the process's space between surface-mount pads, so a fine-pitch part's gaps stay open); elsewhere the joint has none. A teardrop no wider than the track would gain nothing and is not drawn. The board file has each as a KiCad 9 teardrop zone with its fill, so the Gerbers carry the copper, a pour of another net keeps its clearance from it, `fab`'s check measures it, and KiCad reads it as a teardrop. The language has no switch for them; the route scorecard counts no teardrop as track.
@@ -661,7 +679,7 @@ board Antenna {
 }
 ```
 
-The budget is over the chain: `.budget_length`, the top of its range, is the most the tracks of all its nets may be long together. `netsmith board nets` lists each path's nets, their lengths and the sum against it (`path rf: ...`), `board drc` notes a path over it (`track path: rf: ...`), and `fab-notes.txt` has a `track path:` line for each path with its chain, its length and its budget. `.corner` is `TrackCorner::Rounded`, the default, which rounds the bends with arcs as every net's are, or `TrackCorner::Mitered`, which keeps their 45 degree corners. `.fence` puts ground vias along both sides of the path's tracks at that distance from each other, each as near the track as the rules' space allows, joined to the net of the pour on the track's layer, else to an inner plane of a rail's net; a place no via fits, or with a ground via within half the distance already, is left without one, and a path with no such ground gets no fence and the notes say so.
+The budget is over the chain: `.budget_length`, the top of its range, is the most the tracks of all its nets may be long together. `netsmith board nets` lists each path's nets, their lengths and the sum against it (`path rf: ...`), `board drc` notes a path over it (`track path: rf: ...`), and `fab-notes.txt` has a `track path:` line for each path with its chain, its length and its budget. `.corner` is `TrackCorner::Rounded`, the default, which rounds the bends with arcs as the board's other nets are, or `TrackCorner::Mitered`, which keeps their 45 degree corners whatever the board's own `.corner` (How tracks bend, above) says. `.fence` puts ground vias along both sides of the path's tracks at that distance from each other, each as near the track as the rules' space allows, joined to the net of the pour on the track's layer, else to an inner plane of a rail's net; a place no via fits, or with a ground via within half the distance already, is left without one, and a path with no such ground gets no fence and the notes say so.
 
 A chain that is not one is an error of `build`: `.first` and `.last` joined by no chain of parts in series, or by two of the same length (two capacitors side by side), and `.first` or `.last` on no net or on a rail's net. A budget with no top, or a top of 0, is an error too.
 

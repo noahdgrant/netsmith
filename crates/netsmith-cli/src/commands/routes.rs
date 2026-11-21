@@ -190,12 +190,34 @@ pub struct RouteArgs {
     /// that were not put back first; each try is reported, and each may run the router 64 times.
     #[arg(long, value_name = "N", default_value_t = netsmith_fabricate::route_net::TRIES, value_parser = super::route::parse_tries)]
     pub tries: usize,
+    /// How the bends of the copper it lays turn, for this run: `rounded` (arcs, where they keep
+    /// the rules' space) or `mitered` (45 degree corners). Default: the board's `.corner`.
+    ///
+    /// A net of a `TrackPath` whose `.corner` is `Mitered` is mitered whatever this says.
+    #[arg(long, value_enum, value_name = "STYLE")]
+    pub corner: Option<Corner>,
     /// Say what it would do, and write nothing.
     #[arg(long)]
     pub dry_run: bool,
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+}
+
+/// How tracks turn (`--corner`, issue #1508): the variants of `std::sources::TrackCorner`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Corner {
+    Rounded,
+    Mitered,
+}
+
+impl Corner {
+    fn track_corner(self) -> netsmith_core::TrackCorner {
+        match self {
+            Corner::Rounded => netsmith_core::TrackCorner::Rounded,
+            Corner::Mitered => netsmith_core::TrackCorner::Mitered,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -744,6 +766,17 @@ fn route(args: &RouteArgs) -> ExitCode {
             },
             Err(lib::Refusal::Refused(e)) => return Ok(Err(e)),
             Err(lib::Refusal::Failed(e)) => return Err(e),
+        };
+        // `--corner` is the style of this run's copper (issue #1508).
+        let styled;
+        let board = match args.corner {
+            Some(c) => {
+                let mut b = board.clone();
+                b.corner = c.track_corner();
+                styled = b;
+                &styled
+            }
+            None => board,
         };
         let routed = route_net::route_net(board, &routes, &ask)?;
         let written = match (&routed.routes, args.dry_run) {
