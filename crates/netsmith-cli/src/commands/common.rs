@@ -51,7 +51,9 @@ impl Placing {
 }
 
 /// The weights of the router's quality objective (issue #1517), of `board fab`, `routes route`
-/// and `dev route`: with none, the router routes at its own costs, as it always has.
+/// and `dev route`: with none, the router routes at its own costs, as it always has. Each one
+/// wins over the key of the same name in `netsmith.toml` (`length_weight`, `via_weight`,
+/// `layer_change_weight`, issue #1536), which `project order` and the editor's routing read too.
 #[derive(Debug, PartialEq, ClapArgs)]
 pub struct Weighing {
     /// What a millimetre of a signal net's track costs the router, as a share of its own (1).
@@ -77,22 +79,20 @@ pub struct Weighing {
 }
 
 impl Weighing {
-    /// The weights stated, the router's own for the ones not; `None` when none is stated.
-    pub fn weights(&self) -> Result<Option<netsmith_router::Weights>, String> {
-        if self.length_weight.is_none()
-            && self.via_weight.is_none()
-            && self.layer_change_weight.is_none()
-        {
-            return Ok(None);
-        }
-        let own = netsmith_router::Weights::DEFAULT;
-        let w = netsmith_router::Weights {
-            length: self.length_weight.unwrap_or(own.length),
-            via: self.via_weight.unwrap_or(own.via),
-            layer_change: self.layer_change_weight.unwrap_or(own.layer_change),
-        };
-        w.check()?;
-        Ok(Some(w))
+    /// The weights of a run: the flags stated, else the project's keys, the router's own for
+    /// the ones neither states; `None` when none is stated (`netsmith_fabricate::fab::weights`).
+    pub fn weights(
+        &self,
+        project: Option<&netsmith_fabricate::project::Project>,
+    ) -> Result<Option<netsmith_router::Weights>, String> {
+        netsmith_fabricate::fab::weights(
+            project,
+            (
+                self.length_weight,
+                self.via_weight,
+                self.layer_change_weight,
+            ),
+        )
     }
 }
 

@@ -159,6 +159,21 @@ pub struct Manifest {
     /// wins over it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rip_rounds: Option<usize>,
+    /// What a millimetre of a signal net's track costs the router, as a share of its own
+    /// (`length_weight = 1`, from 0.1 to 10), the weight of its quality objective (issue 1517).
+    /// Any of the three weights turns on the router's polish pass; `--length-weight` wins over
+    /// it. `fab`, `order`, `routes route` and the editor's routing read it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub length_weight: Option<f64>,
+    /// What a via of a signal net costs the router, in mm of track (`via_weight = 15`, the
+    /// router's own; from 0 to 1000). `--via-weight` wins over it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via_weight: Option<f64>,
+    /// What a change of layer of a signal net costs the router beyond its via, in mm of track
+    /// (`layer_change_weight = 0`, the router's own; from 0 to 1000). `--layer-change-weight`
+    /// wins over it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layer_change_weight: Option<f64>,
     /// How many seeds the placer tries for a board before it gives up (`place_seeds = 8`, the
     /// default; 1 tries only the layout file's, and [`MAX_PLACE_SEEDS`] is the most): the layout
     /// file's seed, or 0, then the ones after it. The seed that places the board is written to the layout file (issue #458).
@@ -675,6 +690,9 @@ impl Manifest {
             pdf: None,
             track_margin: None,
             rip_rounds: None,
+            length_weight: None,
+            via_weight: None,
+            layer_change_weight: None,
             place_seeds: None,
             place_budget: None,
             environment: None,
@@ -823,6 +841,9 @@ impl Manifest {
             return Err(format!(
                 "{MANIFEST}: track_margin = {m} must be from 1 (the process's least track) to 4"
             ));
+        }
+        if let Err(e) = crate::fab::weights_of(self) {
+            return Err(format!("{MANIFEST}: {e}"));
         }
         if let Some(n) = self.place_seeds
             && !(1..=MAX_PLACE_SEEDS).contains(&n)
@@ -2490,6 +2511,25 @@ mod tests {
         assert_eq!(parse(&m.render()), Ok(m));
         let e = parse("[project]\nname = \"a\"\ntrack_margin = 0.5\n").unwrap_err();
         assert!(e.contains("track_margin = 0.5 must be from 1"), "{e}");
+    }
+
+    #[test]
+    fn routing_weights_are_numbers_in_the_router_s_ranges() {
+        let m = parse(
+            "[project]\nname = \"a\"\nlength_weight = 0.5\nvia_weight = 40\nlayer_change_weight = 2\n",
+        )
+        .unwrap();
+        assert_eq!(
+            (m.length_weight, m.via_weight, m.layer_change_weight),
+            (Some(0.5), Some(40.0), Some(2.0))
+        );
+        let none = parse("[project]\nname = \"a\"\n").unwrap();
+        assert_eq!(none.via_weight, None);
+        let e = parse("[project]\nname = \"a\"\nlength_weight = 20\n").unwrap_err();
+        assert!(e.contains("the length weight is 20"), "{e}");
+        let e = parse("[project]\nname = \"a\"\nvia_weight = -1\n").unwrap_err();
+        assert!(e.contains("the via weight is -1"), "{e}");
+        assert!(parse("[project]\nname = \"a\"\nvia_weight = \"dear\"\n").is_err());
     }
 
     #[test]

@@ -95,7 +95,8 @@ pub struct Args {
 
 /// Routes the saved board again, alone, the way `fab` does, and writes its board files.
 pub fn run(args: Args) -> ExitCode {
-    let weights = match args.weighing.weights() {
+    // `dev route` has no project: its weights are the flags'.
+    let weights = match args.weighing.weights(None) {
         Ok(w) => w,
         Err(e) => {
             eprintln!("error: {e}");
