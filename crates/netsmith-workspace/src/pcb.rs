@@ -145,6 +145,8 @@ pub struct Entry {
     /// The rounds of rip-up the router gives a try that leaves connections (`rip_rounds` in
     /// `netsmith.toml`, issue #1088).
     rip_rounds: usize,
+    /// The weights of the router's quality objective (the project's keys, issue 1536).
+    weights: Option<netsmith_router::Weights>,
     /// Where the placer refused the layout file and the board is shown where it ended (issue
     /// #779): that it was refused and the lines and locks that cannot all hold. Empty for a
     /// board that was placed.
@@ -561,6 +563,7 @@ impl Entry {
         Ok(Entry {
             case_findings,
             rip_rounds: data.rip_rounds,
+            weights: data.weights,
             refusal: Vec::new(),
             place_options: netsmith_pcb::PlaceOptions::default(),
             refused: None,
@@ -683,6 +686,7 @@ impl Entry {
             progress: Some(forward),
             cancel: Some(&CANCEL),
             rip_rounds: self.rip_rounds,
+            weights: self.weights,
             ..RouteOptions::default()
         };
         let routing = match before {
