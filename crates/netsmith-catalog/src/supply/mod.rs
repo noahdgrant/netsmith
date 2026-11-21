@@ -89,7 +89,9 @@
 //! `netsmith.toml`. The first provider that uses one is the search provider of
 //! [`crate::search`] (issue #1460): `[supply.nexar]` with `client_id_env` and
 //! `client_secret_env`, the names of the variables that hold a Nexar application's client id and
-//! secret (the spelling is proposed with it and is the owner's to confirm). No supply provider
+//! secret (the spelling is proposed with it and is the owner's to confirm), and `[supply.digikey]`
+//! with the same two keys and an optional `account_id_env` for Digi-Key's API (issue #1477). No
+//! supply provider
 //! that quotes a price uses a credential yet.
 //!
 //! **Not built:**

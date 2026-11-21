@@ -182,3 +182,34 @@ fn a_second_curve_of_the_same_column_and_a_curve_of_no_catalog_are_errors() {
         .unwrap_err();
     assert!(e.contains("there is no catalog `zener`"), "{e}");
 }
+
+#[test]
+fn a_curve_named_by_the_mpn_of_two_manufacturers_parts_is_refused_naming_both_rows() {
+    // Two rows of one mpn from two makers are two parts (ADR 0143), and a file named by the mpn
+    // cannot say which one its points were read for (issue #1464): it attaches to neither.
+    let rows = "manufacturer,mpn,forward_voltage,max_reverse_voltage,max_forward_current,package,source
+Acme Analog,ZZD-CURVE,0.6V,40V,1A,SOD-323,https://example.invalid/acme
+Zenith Semi,ZZD-CURVE,0.5V,40V,1A,SOD-123,https://example.invalid/zenith
+";
+    let e = resolve_error(CURVE, "ZZD-CURVE", rows);
+    assert!(
+        e.contains(&format!(
+            "{FILE}: the rows at catalogs/schottky.csv:2 (`Acme Analog`) and catalogs/schottky.csv:3 (`Zenith Semi`) both have the mpn `ZZD-CURVE`"
+        )) && e.contains("a curve file is for one part"),
+        "{e}"
+    );
+    // One maker's row alone takes the file.
+    let one = rows.lines().take(2).collect::<Vec<_>>().join("\n") + "\n";
+    let mut c = Catalogs::empty();
+    crate::offered::add(&mut c, "schottky", "catalogs/schottky.csv", &one).unwrap();
+    c.add_curve("schottky", "ZZD-CURVE", FILE, CURVE).unwrap();
+    let s = solved(
+        &board(
+            ".current &= 100mA",
+            "    .environment: Environment { .temperature &= 25degC }",
+        ),
+        &c,
+    );
+    assert!(errors(&s).is_empty(), "{:?}", errors(&s));
+    assert!(close(forward_voltage(&s), (0.42, 0.42)), "{:?}", forward_voltage(&s));
+}

@@ -25,7 +25,7 @@ The room round a mounting hole for the head of the screw (or its washer), stated
 _Avoid_: Screw clearance, head keepout (a keepout is what the board's file states; the head is the hole's)
 
 **Search provider**:
-A source of the parts a supplier has, behind one trait beside the **supply provider**'s (issue #1460, ADR 0143): asked by words, by a manufacturer's number or by parametric filters, it answers with **found parts**, and asked for the record of one part by a supplier's sku or an `mpn`, with that record. Nexar (Octopart's API) is the one built. It is off unless the project names it in `netsmith.toml` (`[supply.nexar]`, with the names of the environment variables of its credentials, never their values) and those variables are set; its answers are cached as a supply provider's are (ADR 0047), and no build, `fab` or test asks it.
+A source of the parts a supplier has, behind one trait beside the **supply provider**'s (issue #1460, ADR 0143): asked by words, by a manufacturer's number or by parametric filters, it answers with **found parts**, and asked for the record of one part by a supplier's sku or an `mpn`, with that record. Nexar (Octopart's API) and Digi-Key's own API (issue #1477) are built. Each is off unless the project names it in `netsmith.toml` (`[supply.nexar]`, `[supply.digikey]`, with the names of the environment variables of its credentials, never their values) and those variables are set, and `--provider` chooses when a project names both; its answers are cached as a supply provider's are (ADR 0047), and no build, `fab` or test asks it.
 _Avoid_: Supply provider (that is asked for the price and stock of a part a catalog has), finder, aggregator (for the trait)
 
 **Seat**:

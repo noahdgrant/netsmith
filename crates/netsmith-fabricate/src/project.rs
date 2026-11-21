@@ -387,6 +387,10 @@ pub struct SupplyConfig {
     /// --from` (issue #1460), on only when the table is there and the variables it names are set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nexar: Option<NexarConfig>,
+    /// `[supply.digikey]`: Digi-Key's own API as a second search provider (issue #1477), on only
+    /// when the table is there and the variables it names are set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub digikey: Option<DigiKeyConfig>,
     /// `[supply.parts]`: the parts that name their own supply channel (ADR 0143 item 4), each
     /// bought by that channel only. A part is named as its pick lock entry names it: under the
     /// table of its board or system, by its path (`[supply.parts.Board]` with
@@ -465,24 +469,76 @@ impl NexarConfig {
     /// A name that is not the name of an environment variable is refused: it may be the value
     /// itself, which must never be in the manifest.
     fn validate(&self) -> Result<(), String> {
-        for (key, name) in [
-            ("client_id_env", &self.client_id_env),
-            ("client_secret_env", &self.client_secret_env),
-        ] {
-            if !is_env_name(name) {
-                return Err(format!(
-                    "{MANIFEST}: [supply.nexar] {key} is not the name of an environment variable (capital letters, digits and `_`, such as `NEXAR_CLIENT_ID`); the manifest holds the variable's name and never its value, so if this is the value, remove it from the file and from the repository's history, and make a new one at portal.nexar.com"
-                ));
-            }
-        }
-        if self.client_id_env == self.client_secret_env {
+        validate_env_names(
+            "nexar",
+            &[
+                ("client_id_env", Some(&self.client_id_env)),
+                ("client_secret_env", Some(&self.client_secret_env)),
+            ],
+            "make a new one at portal.nexar.com",
+        )
+    }
+}
+
+/// The `[supply.digikey]` table: the names of the environment variables that hold the client id
+/// and the client secret of a Digi-Key application (two-legged OAuth), and, optionally, of the
+/// account id Digi-Key's product details ask for. As for `[supply.nexar]`, the manifest holds the
+/// names, never the values.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DigiKeyConfig {
+    /// The variable that holds the client id: `DIGIKEY_CLIENT_ID`.
+    pub client_id_env: String,
+    /// The variable that holds the client secret: `DIGIKEY_CLIENT_SECRET`.
+    pub client_secret_env: String,
+    /// The variable that holds the account id (`X-DIGIKEY-Account-Id`): with it, `catalog add
+    /// --from digikey` asks Digi-Key's product details of the number; without, a keyword search.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id_env: Option<String>,
+}
+
+impl DigiKeyConfig {
+    fn validate(&self) -> Result<(), String> {
+        validate_env_names(
+            "digikey",
+            &[
+                ("client_id_env", Some(&self.client_id_env)),
+                ("client_secret_env", Some(&self.client_secret_env)),
+                ("account_id_env", self.account_id_env.as_ref()),
+            ],
+            "make a new one at developer.digikey.com",
+        )
+    }
+}
+
+/// Each name of a provider's table is the name of an environment variable, and no two are the
+/// same. A value written in a name's place is refused without being repeated, with how to replace
+/// it (`renew`).
+fn validate_env_names(
+    table: &str,
+    names: &[(&str, Option<&String>)],
+    renew: &str,
+) -> Result<(), String> {
+    let given: Vec<(&str, &String)> = names
+        .iter()
+        .filter_map(|(key, name)| name.map(|n| (*key, n)))
+        .collect();
+    for (key, name) in &given {
+        if !is_env_name(name) {
             return Err(format!(
-                "{MANIFEST}: [supply.nexar] client_id_env and client_secret_env name the same variable, {:?}; the id and the secret are two values",
-                self.client_id_env
+                "{MANIFEST}: [supply.{table}] {key} is not the name of an environment variable (capital letters, digits and `_`, such as `{}_CLIENT_ID`); the manifest holds the variable's name and never its value, so if this is the value, remove it from the file and from the repository's history, and {renew}",
+                table.to_ascii_uppercase()
             ));
         }
-        Ok(())
     }
+    for (i, (key, name)) in given.iter().enumerate() {
+        if let Some((other, _)) = given[..i].iter().find(|(_, n)| n == name) {
+            return Err(format!(
+                "{MANIFEST}: [supply.{table}] {other} and {key} name the same variable, {name:?}; they are two values"
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// `NEXAR_CLIENT_ID`: a capital letter or `_`, then capital letters, digits and `_`, at most 64.
@@ -500,6 +556,9 @@ impl SupplyConfig {
     fn validate(&self) -> Result<(), String> {
         if let Some(nexar) = &self.nexar {
             nexar.validate()?;
+        }
+        if let Some(digikey) = &self.digikey {
+            digikey.validate()?;
         }
         match (self.provider.as_deref(), &self.file) {
             (Some("file"), None) => {
@@ -2479,6 +2538,39 @@ mod tests {
                 parse(&format!("[project]\nname = \"x\"\n\n[supply.nexar]\n{bad}")).unwrap_err();
             assert!(e.contains(says), "{e}");
             assert!(!e.contains("a1b2-c3d4"), "{e}");
+        }
+    }
+
+    #[test]
+    fn the_digikey_table_holds_variable_names_with_an_optional_account_and_renders_back() {
+        let text = "[project]\nname = \"x\"\n\n[supply.digikey]\nclient_id_env = \"DIGIKEY_CLIENT_ID\"\nclient_secret_env = \"DIGIKEY_CLIENT_SECRET\"\naccount_id_env = \"DIGIKEY_ACCOUNT_ID\"\n";
+        let m = parse(text).unwrap();
+        let dk = m.supply.as_ref().and_then(|s| s.digikey.as_ref()).unwrap();
+        assert_eq!(dk.account_id_env.as_deref(), Some("DIGIKEY_ACCOUNT_ID"));
+        let rendered = m.render();
+        assert!(rendered.contains("[supply.digikey]"), "{rendered}");
+        assert_eq!(parse(&rendered).unwrap(), m);
+        for (bad, says) in [
+            (
+                "client_id_env = \"A\"\nclient_secret_env = \"B\"\naccount_id_env = \"98765-x\"\n",
+                "account_id_env is not the name of an environment variable",
+            ),
+            (
+                "client_id_env = \"A\"\nclient_secret_env = \"B\"\naccount_id_env = \"A\"\n",
+                "client_id_env and account_id_env name the same variable",
+            ),
+            ("client_id_env = \"A\"\n", "client_secret_env"),
+            (
+                "client_id_env = \"A\"\nclient_secret_env = \"B\"\nsite = \"US\"\n",
+                "unknown field",
+            ),
+        ] {
+            let e = parse(&format!(
+                "[project]\nname = \"x\"\n\n[supply.digikey]\n{bad}"
+            ))
+            .unwrap_err();
+            assert!(e.contains(says), "{e}");
+            assert!(!e.contains("98765-x"), "{e}");
         }
     }
 
