@@ -429,6 +429,7 @@ fn run_fab(
         models: Some(netsmith_fabricate::models::Places::of(&target)),
         place_seeds: placing.seeds(&target),
         place_budget: placing.budget(&target),
+        routing_objective: placing.objective(&target),
         seed_writes: netsmith_fabricate::fab::SeedWrites::Write,
         offline,
         portable,
@@ -830,6 +831,7 @@ pub(super) fn run_order(
         models: Some(netsmith_fabricate::models::Places::of(&target)),
         place_seeds: placing.seeds(&target),
         place_budget: placing.budget(&target),
+        routing_objective: placing.objective(&target),
         // An order is a release: a seed that would change stops it (issue #458).
         seed_writes: netsmith_fabricate::fab::SeedWrites::Order,
         offline,
@@ -990,6 +992,7 @@ mod tests {
                 placing: crate::commands::common::Placing {
                     place_seeds: None,
                     place_budget: None,
+                    routing_objective: None,
                 },
                 watching: crate::commands::common::Watching {
                     progress: crate::progress::Print::Text,
