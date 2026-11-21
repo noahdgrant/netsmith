@@ -5,7 +5,10 @@
 //! piece on a loop first, with what of the line it was on goes nowhere after (a dead end), where
 //! that leaves every place where tracks meet outside a pad or a via bent by 45 degrees at most
 //! (and three or more at right angles or wider), as `track_angle` asks, and no track ending
-//! there alone, on the middle of another, which KiCad's check finds unconnected. Taking copper away never
+//! there alone, on the middle of another, which KiCad's check finds unconnected.
+//! The copper a removal leaves is judged as the check judges it ([`faults`]): a place on a
+//! via's edge is no place inside it, so a removal that adds a fault there is not made (issue
+//! #1518). Taking copper away never
 //! comes nearer other copper, and a piece on a loop joins nothing the rest does not.
 //!
 //! A net's copper is a graph: its pads and vias are places (a track that ends anywhere in one
@@ -160,6 +163,28 @@ fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize
     }
     let count = places.len() + free.len();
     let is_free = |n: usize| n >= places.len();
+    // A net with no loop has nothing to take off: most nets, and each is looked at once.
+    let mut sets: Vec<usize> = (0..count).collect();
+    let mut looped = false;
+    for p in &pieces {
+        let (a, b) = (find(&mut sets, p.a), find(&mut sets, p.b));
+        if a == b {
+            looped = true;
+        } else {
+            sets[a] = b;
+        }
+    }
+    if !looped {
+        return 0;
+    }
+    // The pieces at each place.
+    let mut by_place: Vec<Vec<usize>> = vec![Vec::new(); count];
+    for (k, p) in pieces.iter().enumerate() {
+        by_place[p.a].push(k);
+        if p.b != p.a {
+            by_place[p.b].push(k);
+        }
+    }
     let mut kept = vec![true; pieces.len()];
     // Whether `x` reaches `y` over the kept pieces.
     let joined = |kept: &[bool], x: usize, y: usize| {
@@ -170,7 +195,8 @@ fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize
             if n == y {
                 return true;
             }
-            for (k, p) in pieces.iter().enumerate() {
+            for &k in &by_place[n] {
+                let p = &pieces[k];
                 if !kept[k] {
                     continue;
                 }
@@ -190,10 +216,9 @@ fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize
         false
     };
     let degree = |kept: &[bool], n: usize| {
-        pieces
+        by_place[n]
             .iter()
-            .enumerate()
-            .filter(|(k, p)| kept[*k] && (p.a == n) != (p.b == n))
+            .filter(|&&k| kept[k] && (pieces[k].a == n) != (pieces[k].b == n))
             .count()
     };
     // The bends at a free place, as `track_angle` judges them.
@@ -201,15 +226,15 @@ fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize
         let (layer, at) = free[n - places.len()];
         let mut ways: Vec<(f64, f64)> = Vec::new();
         let mut ends = 0;
-        for (k, p) in pieces.iter().enumerate() {
-            if !kept[k] || (p.a != n && p.b != n) {
+        for &k in &by_place[n] {
+            let p = &pieces[k];
+            if !kept[k] {
                 continue;
             }
             // Two kept pieces of one track that meet here are one track, through it.
-            let through = pieces
+            let through = by_place[n]
                 .iter()
-                .enumerate()
-                .any(|(j, o)| j != k && kept[j] && o.track == p.track && (o.a == n || o.b == n));
+                .any(|&j| j != k && kept[j] && pieces[j].track == p.track);
             if through {
                 continue;
             }
@@ -254,6 +279,11 @@ fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize
         length(y).total_cmp(&length(x)).then(x.cmp(&y))
     });
     let mut dropped = 0;
+    let mut faulty = faults(
+        &rebuilt(&board.tracks, &pieces, &kept, &tracks),
+        net,
+        &places,
+    );
     for k in order {
         if !kept[k] || pieces[k].a == pieces[k].b {
             continue;
@@ -270,9 +300,7 @@ fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize
             if !is_free(n) || degree(&trial, n) != 1 {
                 continue;
             }
-            let Some(j) =
-                (0..pieces.len()).find(|&j| trial[j] && (pieces[j].a == n || pieces[j].b == n))
-            else {
+            let Some(j) = by_place[n].iter().copied().find(|&j| trial[j]) else {
                 continue;
             };
             if !pieces[j].new {
@@ -291,6 +319,17 @@ fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize
             .iter()
             .all(|&n| !is_free(n) || degree(&trial, n) == 0 || bends_well(&trial, n))
         {
+            // The copper it leaves, judged where its tracks end as the check judges it: in a
+            // pad or a via only when clearly inside.
+            let left = faults(
+                &rebuilt(&board.tracks, &pieces, &trial, &tracks),
+                net,
+                &places,
+            );
+            if left > faulty {
+                continue;
+            }
+            faulty = left;
             dropped += kept.iter().zip(&trial).filter(|(a, b)| **a && !**b).count();
             kept = trial;
         }
@@ -298,7 +337,22 @@ fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize
     if dropped == 0 {
         return 0;
     }
-    // Each track as the pieces of it that are kept, those in a row as one.
+    let all: Vec<usize> = (0..board.tracks.len()).collect();
+    board.tracks = rebuilt(&board.tracks, &pieces, &kept, &all);
+    dropped
+}
+
+fn find(sets: &mut [usize], mut a: usize) -> usize {
+    while sets[a] != a {
+        sets[a] = sets[sets[a]];
+        a = sets[a];
+    }
+    a
+}
+
+/// The tracks of `tracks` numbered in `only`, each track of `pieces` as the pieces of it that
+/// are `kept`, those in a row as one.
+fn rebuilt(tracks: &[Track], pieces: &[Piece], kept: &[bool], only: &[usize]) -> Vec<Track> {
     let mut by_track: HashMap<usize, Vec<(Pt, Pt)>> = HashMap::new();
     for (k, p) in pieces.iter().enumerate() {
         let runs = by_track.entry(p.track).or_default();
@@ -310,8 +364,9 @@ fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize
             _ => runs.push((p.from, p.to)),
         }
     }
-    let mut out: Vec<Track> = Vec::with_capacity(board.tracks.len());
-    for (k, t) in board.tracks.iter().enumerate() {
+    let mut out: Vec<Track> = Vec::with_capacity(only.len());
+    for &k in only {
+        let t = &tracks[k];
         match by_track.get(&k) {
             None => out.push(t.clone()),
             Some(runs) => {
@@ -330,8 +385,55 @@ fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize
             }
         }
     }
-    board.tracks = out;
-    dropped
+    out
+}
+
+/// How many places where tracks of `net` end, outside its pads and vias, `track_angle` finds a
+/// fault at: two that bend by more than 45 degrees, or three or more at an acute angle. A place
+/// is in a pad or a via only when it is clearly inside: a pad's box less what a round pad of its
+/// size leaves out at a corner, a via less a micrometre, as the design rules check finds it.
+fn faults(tracks: &[Track], net: &str, places: &[Place]) -> usize {
+    type Ways = (Pt, Vec<(f64, f64)>);
+    let mut ends: HashMap<(CopperLayer, (i64, i64)), Ways> = HashMap::new();
+    for t in tracks.iter().filter(|t| t.net == net) {
+        for at in [t.from, t.to] {
+            let Some(u) = leaving(t, at) else { continue };
+            let key = ((at.x * 1e3).round() as i64, (at.y * 1e3).round() as i64);
+            let entry = ends.entry((t.layer, key)).or_insert((at, Vec::new()));
+            if !entry
+                .1
+                .iter()
+                .any(|v| (v.0 - u.0).abs() < 1e-3 && (v.1 - u.1).abs() < 1e-3)
+            {
+                entry.1.push(u);
+            }
+        }
+    }
+    let inside = |p: Pt, layer: CopperLayer| {
+        places.iter().any(|q| match q {
+            Place::Pad(r, front, back) => {
+                let inset =
+                    r.width().min(r.height()) / 2.0 * (1.0 - std::f64::consts::FRAC_1_SQRT_2);
+                Place::Pad(r.expanded(-inset - SAME), *front, *back).holds(p, layer)
+            }
+            Place::Via(c, r) => c.distance(p) <= r - 1e-3,
+        })
+    };
+    ends.iter()
+        .filter(|((layer, _), (at, ways))| {
+            if ways.len() < 2 || inside(*at, *layer) {
+                return false;
+            }
+            let least = (0..ways.len())
+                .flat_map(|i| (i + 1..ways.len()).map(move |j| (i, j)))
+                .map(|(i, j)| {
+                    let dot = ways[i].0 * ways[j].0 + ways[i].1 * ways[j].1;
+                    dot.clamp(-1.0, 1.0).acos().to_degrees()
+                })
+                .fold(180.0, f64::min);
+            least < if ways.len() == 2 { 134.0 } else { 89.0 }
+        })
+        .count()
 }
 
 #[cfg(test)]

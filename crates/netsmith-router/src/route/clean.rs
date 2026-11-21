@@ -201,7 +201,16 @@ impl<'a> Router<'a> {
             let mut routed = state.routed[i].clone();
             self.snap_ends(&mut routed, net, &clear);
             self.smooth(&mut routed, &clear);
-            if routed.tracks != state.routed[i].tracks {
+            // The line's joins with the rest of its net, judged as `track_angle` judges them: a
+            // line whose clean copper bends there more is kept as it was.
+            let own: Vec<&Routed> = state
+                .routed
+                .iter()
+                .enumerate()
+                .filter(|&(k, r)| k != i && self.nets[r.line] == net)
+                .map(|(_, r)| r)
+                .collect();
+            if routed.tracks != state.routed[i].tracks && self.bends_well(&routed, &own, true) {
                 copper[i] = self.copper_of(&[&routed]).0;
                 state.routed[i] = routed;
             }

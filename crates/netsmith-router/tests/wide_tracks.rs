@@ -27,6 +27,9 @@ fn errors(board: &Board) -> Vec<String> {
 }
 
 /// Give four signal nets each 0.6 mm, 0.9 mm and 0.36 mm, a handful of high-current rails.
+/// The least length of copper, in mm, a board's rails of each width are drawn at it.
+const WIDE_MM: f64 = 5.0;
+
 fn with_rails(mut board: Board) -> Board {
     let signal: Vec<String> = board
         .nets
@@ -58,11 +61,21 @@ fn boards_with_rails_of_0_6_and_0_9_mm_route_completely_and_pass_the_check() {
         let name = format!("seed {seed}, {} parts", board.parts.len());
         assert!(routing.left.is_empty(), "{name}: {:?}", routing.left.lines);
         assert_eq!(errors(&board), Vec::<String>::new(), "{name}");
-        // The rails really were drawn wide, not all necked down.
-        let wide = |w: f64| board.tracks.iter().filter(|t| t.width >= w - 1e-9).count();
+        // The rails really were drawn wide, not all necked down: the length of their copper at
+        // each width (a count of tracks would follow how many pieces the clean-up of issue
+        // #1486 joins into one).
+        let wide = |w: f64| -> f64 {
+            board
+                .tracks
+                .iter()
+                .filter(|t| t.width >= w - 1e-9)
+                .map(|t| t.length())
+                .sum()
+        };
+        eprintln!("{name}: {:.1} / {:.1} mm", wide(0.6), wide(0.9));
         assert!(
-            wide(0.6) > 5 && wide(0.9) > 5,
-            "{name}: {} / {}",
+            wide(0.6) > WIDE_MM && wide(0.9) > WIDE_MM,
+            "{name}: {:.1} / {:.1} mm",
             wide(0.6),
             wide(0.9)
         );
