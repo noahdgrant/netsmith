@@ -28,6 +28,13 @@
 //! | generated 2 | 4, 4, 1.072 | 4, 4, 1.044 | 4, 4, 1.044 |
 //! | generated 3 | 8, 8, 1.115 | 8, 8, 1.104 | 4, 4, 1.239 |
 //!
+//! **Power nets** (issue #1532, [`Router::is_power`]): a line of a net whose current needs a
+//! group of vias side by side, and that no plane, pour or zone fills, pays for each via of the
+//! group ([`Router::power_via_cost`]), with or without weights, so it keeps to one layer where it
+//! can; [`RouteOptions::power_groups`] off routes it as before. Measured (`netsmith-fabricate`'s
+//! `power_nets::measured`, the generated boards with ten nets of 2 A): the power nets' layer
+//! changes 8, 2 and 4 before, 2, 2 and 2 after, each through one group of three vias.
+//!
 //! The polish alone shortens the copper; a dear via trades length for vias (generated 3 halves
 //! its vias for 11 % more track), and a layer change of 15 mm more cuts the changes further
 //! (generated 1: 6 to 3).
@@ -53,6 +60,39 @@ impl<'a> Router<'a> {
             && !self.board.pours.iter().any(|p| &p.net == net)
             && !self.board.planes.iter().any(|p| &p.net == net)
             && !self.board.zones.iter().any(|z| &z.net == net)
+    }
+
+    /// Whether a line is of a power net (issue #1532): a ratsnest line between two pads of a
+    /// net that no plane, pour or zone fills and whose current needs a group of vias side by
+    /// side where it changes layer.
+    pub(super) fn is_power(&self, line: usize) -> bool {
+        let net = &self.lines[line].net;
+        line < self.routed_lines
+            && !self.lines[line].to_plane
+            && self.vias_needed(line) > 1
+            && !self.board.pours.iter().any(|p| &p.net == net)
+            && !self.board.planes.iter().any(|p| &p.net == net)
+            && !self.board.zones.iter().any(|z| &z.net == net)
+    }
+
+    /// The vias in the group a line of a power net changes layer through, when its search pays
+    /// for each of them ([`RouteOptions::power_groups`]).
+    pub(super) fn power_group(&self, line: usize) -> Option<usize> {
+        (self.power_groups && self.is_power(line)).then(|| self.vias_needed(line))
+    }
+
+    /// What a change of layer through a group of `vias` costs a power net's search: each via of
+    /// the group at the router's own cost, or with weights stated at the via weight, and one
+    /// layer change weight for the group.
+    pub(super) fn power_via_cost(&self, vias: usize) -> i64 {
+        match self.weights {
+            Some(w) => Weights {
+                via: w.via * vias as f64,
+                ..w
+            }
+            .via_cost(),
+            None => VIA * vias as i64,
+        }
     }
 
     /// The weights the search for `line` pays, when they are stated and it is of a signal net.

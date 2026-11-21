@@ -13,6 +13,8 @@ The connector of a mate to another board of the system is a mechanical fit: lock
 
 A part with no entry is placed by the placer round the parts the file places; a part with `lock` is left where it is; any other entry is where the placer starts from, and moving a part by hand moves nothing else.
 
+The placer's own objective keeps a fine-pitch part's escape ring clear on its face, and weighs wire, crossings, decoupling and escape room. Its objective for routing (power nets weighed by their current and the chain kept on one face, a part that shares four or more nets with another kept beside those pins, nothing on the other face under a fine-pitch part's escape ring; guide chapter 23, _Placement for routing_) is off and no command turns it on yet: where a board needs that, place those parts by hand (`layout set`, `layout fit`) and say so.
+
 ## Loop
 
 1. **Read what is there**: `netsmith layout show --format json` (a PATH, a part's path or a module's, narrows it; `--board NAME` and `--file FILE.NSM` pick the board). It gives each part's `path`, `refdes` and `entry` (`at`, `turn`, `side`, `lock`, `designator` when the entry places the text, `source`, `line`); a part without `entry` is the placer's. A path the board lacks is refused with the nearest names. Paths are the design's (`stage.output_cap`, `decoupling[2]`), never a designator: a renumbered designator changes no path.
