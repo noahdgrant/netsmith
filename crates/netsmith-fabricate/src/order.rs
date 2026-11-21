@@ -91,7 +91,7 @@
 //!   board house's too, from the price ladder of the channel that buys it (`price_of`); where
 //!   the provider quotes the part in no such channel, the stock it answers first, which the line
 //!   names. No file a supplier's upload reads is written for them: the formats of Digi-Key's and
-//!   Mouser's uploads were not read from their documentation.
+//!   Mouser's uploads could not be read from their documentation (issue #1563).
 //! - **`order-bom.csv`**: `Comment,Footprint,LCSC Part #,Quantity,Used on`, one row for each LCSC
 //!   number. The quantity is the copies of each board times the parts of that number on one board,
 //!   summed over the boards, with **no spares or overage**: how many spares to buy is a decision
