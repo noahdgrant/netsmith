@@ -46,7 +46,7 @@ pub enum Command {
     Set(SetArgs),
     /// Say which parts have no entry, which entries name no part, and which locked entries break a requirement.
     #[command(
-        after_long_help = "One line for each finding, with the line of the entry in the file: an entry that names no part of the board (with the nearest names), an entry with a turn that is not from 0 up to 360 or a position that is not a number, a locked entry that breaks a requirement of the physical file, two parts the file places nearer each other than a `keep 10mm between BuckIc and Crystal` of the physical file asks (a `requirement`), and each fault of the placement check among the parts the file places, together as one list (`placement`: courtyards that overlap, a part past the edge or in a keepout or cutout, too tall, a hole too near), all in the same words `fab` uses (the footprints are loaded and nothing is placed; `fab` runs the same check before its placer starts). A part with no entry is a note: the placer places it. A pad that other parts the file places wall in (no track or via of the process leaves it) is a warning, `walled_in`, which names those parts. A part the file places inside the `soft margin` of another part the file places (`soft margin 3mm round .u1` in the physical file) is a warning, `soft_margin`, which names both; `--strict` makes it an error. A part the placer places (no entry, or an unlocked one) whose courtyard no free rectangle of a face it may go on holds, at any turn the placer may give it, among the locked parts, the edge wall, the cutouts and the keepouts, is a warning, `no_room`, which names the part and the largest free rectangle of each face; `--strict` makes it an error, and `board check` and `fab` say it too, before placing. The exit code is 1 when there is an error, and a note does not make it so. `--format json` prints one JSON document on stdout: the `board`, the `file`, `ok` and the `findings`, each with a `severity` (`error`, `warning` or `note`), a `kind` (`no_entry`, `no_part`, `bad_turn`, `bad_place`, `requirement`, `placement`, `walled_in`, `soft_margin`, `no_room`, `unmeasured`), the part's `path`, the `line` and the `message`."
+        after_long_help = "One line for each finding, with the line of the entry in the file: an entry that names no part of the board (with the nearest names), an entry with a turn that is not from 0 up to 360 or a position that is not a number, a `designator` table whose offset is not a number or whose turn is not from 0 up to 360 (`bad_designator`), a locked entry that breaks a requirement of the physical file, two parts the file places nearer each other than a `keep 10mm between BuckIc and Crystal` of the physical file asks (a `requirement`), and each fault of the placement check among the parts the file places, together as one list (`placement`: courtyards that overlap, a part past the edge or in a keepout or cutout, too tall, a hole too near), all in the same words `fab` uses (the footprints are loaded and nothing is placed; `fab` runs the same check before its placer starts). A part with no entry is a note: the placer places it. A pad that other parts the file places wall in (no track or via of the process leaves it) is a warning, `walled_in`, which names those parts. A part the file places inside the `soft margin` of another part the file places (`soft margin 3mm round .u1` in the physical file) is a warning, `soft_margin`, which names both; `--strict` makes it an error. A part the placer places (no entry, or an unlocked one) whose courtyard no free rectangle of a face it may go on holds, at any turn the placer may give it, among the locked parts, the edge wall, the cutouts and the keepouts, is a warning, `no_room`, which names the part and the largest free rectangle of each face; `--strict` makes it an error, and `board check` and `fab` say it too, before placing. The exit code is 1 when there is an error, and a note does not make it so. `--format json` prints one JSON document on stdout: the `board`, the `file`, `ok` and the `findings`, each with a `severity` (`error`, `warning` or `note`), a `kind` (`no_entry`, `no_part`, `bad_turn`, `bad_place`, `bad_designator`, `requirement`, `placement`, `walled_in`, `soft_margin`, `no_room`, `unmeasured`), the part's `path`, the `line` and the `message`."
     )]
     Check(CheckArgs),
     /// Place the board and sum up the placement: wire, decoupling, modules, area per face, nets, free space.
@@ -264,7 +264,7 @@ pub enum Side {
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
-#[command(group = clap::ArgGroup::new("change").required(true).multiple(true).args(["at", "turn", "side", "lock", "unlock"]))]
+#[command(group = clap::ArgGroup::new("change").required(true).multiple(true).args(["at", "turn", "side", "lock", "unlock", "designator"]))]
 pub struct SetArgs {
     /// The part, by its path in the design (`stage.output_cap`, `decoupling[2]`).
     #[arg(value_name = "PATH")]
@@ -286,6 +286,9 @@ pub struct SetArgs {
     /// Unlock the entry: the placer may move the part.
     #[arg(long)]
     pub unlock: bool,
+    /// Where the designator's text goes: `DX,DY` in mm from the footprint's origin on the board (x right, y down, as `--at`), and `DX,DY,TURN` to turn the text too (degrees counterclockwise, from 0 up to 360). A turn of the part moves neither. `auto` removes it: the text goes on its side again, kept off the board edge by the silk to edge space.
+    #[arg(long, value_name = "DX,DY[,TURN]|auto", value_parser = parse_designator, allow_hyphen_values = true)]
+    pub designator: Option<Designator>,
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
@@ -301,6 +304,28 @@ pub struct CheckArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+}
+
+/// The value of `layout set --designator`: a place for the designator's text, or none (`auto`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Designator(pub Option<netsmith_pcb::DesignatorEntry>);
+
+fn parse_designator(text: &str) -> Result<Designator, String> {
+    if text.trim() == "auto" {
+        return Ok(Designator(None));
+    }
+    let (at, turn) = match text.matches(',').count() {
+        1 => (text, None),
+        2 => {
+            let (at, turn) = text.rsplit_once(',').expect("two commas");
+            (at, Some(parse_turn(turn)?))
+        }
+        _ => return Err(format!("`{text}` is not DX,DY, DX,DY,TURN or auto")),
+    };
+    Ok(Designator(Some(netsmith_pcb::DesignatorEntry {
+        at: parse_point(at)?,
+        turn: turn.unwrap_or(0.0),
+    })))
 }
 
 fn parse_turn(text: &str) -> Result<f64, String> {
@@ -803,6 +828,7 @@ fn set(args: &SetArgs) -> ExitCode {
         } else {
             None
         },
+        designator: args.designator.map(|d| d.0),
     };
     let written = with_design(&args.target, |design, file, libraries| {
         let written = lib::set(design, file, &args.path, &change)?;

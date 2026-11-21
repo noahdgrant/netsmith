@@ -562,13 +562,22 @@ pub fn picture(
             let at = f.p(p.to_board(p.reference_at(&board.rules)));
             let _ = writeln!(
                 out,
-                r#"<text x="{}" y="{}" font-size="{}" font-family="sans-serif" text-anchor="middle" fill="{DESIGNATOR}" stroke="{BOARD}" stroke-width="{}" paint-order="stroke"{}>{}</text>"#,
+                r#"<text x="{}" y="{}" font-size="{}" font-family="sans-serif" text-anchor="middle" fill="{DESIGNATOR}" stroke="{BOARD}" stroke-width="{}" paint-order="stroke"{}{}>{}</text>"#,
                 n(at.x),
                 // The baseline, so that the letters stand round the point.
                 n(at.y + 0.35 * size),
                 n(size),
                 n(f.px(3.0)),
                 opacity("opacity", f.alpha(f.part(&p.path))),
+                // Seen from below, a turn counterclockwise from above is clockwise.
+                crate::svg::turned(
+                    if f.flip.is_some() {
+                        -p.text_turn()
+                    } else {
+                        p.text_turn()
+                    },
+                    at
+                ),
                 escape(text)
             );
         }

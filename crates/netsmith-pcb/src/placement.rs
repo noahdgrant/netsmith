@@ -271,6 +271,8 @@ pub struct Fixed {
     pub side: Side,
     /// Which side of the part its reference designator is written on.
     pub text: ReferenceSide,
+    /// Where its designator text is, when the layout file says (issue #1506).
+    pub designator: Option<crate::board::DesignatorPlace>,
 }
 
 /// The parts do not fit the size the board was given.

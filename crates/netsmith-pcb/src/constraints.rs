@@ -820,6 +820,7 @@ pub fn plan(
                     rotation,
                     side,
                     text: crate::board::ReferenceSide::Above,
+                    designator: None,
                 },
             );
             decided.push((

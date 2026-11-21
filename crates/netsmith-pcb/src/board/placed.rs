@@ -54,6 +54,22 @@ impl ReferenceSide {
     pub const ALL: [ReferenceSide; 4] = [Self::Above, Self::Below, Self::Left, Self::Right];
 }
 
+/// Where a part's designator text is when the layout file says (its `designator` entry, issue
+/// #1506): the centre of the text as an offset from the footprint's origin on the board, x right
+/// and y down, in mm, and the turn of the text, counterclockwise on screen, in degrees. The
+/// offset is the board's, not the footprint's: a turn of the part moves neither.
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+pub struct DesignatorPlace {
+    pub at: Pt,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub turn: f64,
+}
+
+/// The room kept beyond the box of the designator's text when it is kept off the board edge
+/// ([`Placed::text_side_off_edge`]), in mm: what a font's glyphs may reach past netsmith's
+/// measure of the text, as the placer's own pad round the text.
+pub const TEXT_EDGE_PAD: f64 = 0.15;
+
 fn is_zero(v: &f64) -> bool {
     *v == 0.0
 }
@@ -109,6 +125,10 @@ pub struct Placed {
     pub side: Side,
     /// Which side of the part its reference text is on.
     pub reference_side: ReferenceSide,
+    /// Where its designator text is, when the layout file says (issue #1506); `None` puts it on
+    /// its `reference_side`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub designator: Option<DesignatorPlace>,
     /// What its silkscreen prints in place of its designator, if the design says.
     #[serde(default, skip_serializing_if = "Silk::is_designator")]
     pub silk: Silk,
@@ -247,6 +267,69 @@ impl Placed {
             Silk::Nothing => None,
             Silk::Text(t) => Some(t),
         }
+    }
+
+    /// The turn of the text the silkscreen prints, on the board, in degrees counterclockwise:
+    /// the layout file's `designator` turn, or 0, upright.
+    pub fn text_turn(&self) -> f64 {
+        self.designator.map_or(0.0, |d| d.turn)
+    }
+
+    /// The box round the text the silkscreen prints for the part, on the board, turned as it
+    /// is ([`Placed::text_turn`]); `None` for a part that prints none, and for artwork.
+    pub fn text_rect(&self, rules: &Rules) -> Option<Rect> {
+        if netsmith_core::is_artwork(&self.kind) || self.silk_text().is_none() {
+            return None;
+        }
+        let (w, h) = (self.text_width(rules) / 2.0, self.text_height(rules) / 2.0);
+        let r = Rect::new(Pt::new(-w, -h), Pt::new(w, h));
+        let r = if self.text_turn() == 0.0 {
+            r
+        } else {
+            r.rotated(self.text_turn())
+        };
+        Some(r.translated(self.to_board(self.reference_at(rules))))
+    }
+
+    /// The side of the part its text goes on so that the text keeps the silk to edge space
+    /// (`rules.silk_to_silk`, KiCad's `min_silk_clearance`, with [`TEXT_EDGE_PAD`] for the
+    /// font) inside `edge`, as the part lies now (issue #1506): its own side when that keeps
+    /// it, else the first of [`ReferenceSide::ALL`] that does, else the one that leaves the
+    /// text furthest in. A part whose layout file entry places its designator keeps its side:
+    /// the place is the entry's. A part that prints no text keeps its side too.
+    pub fn text_side_off_edge(
+        &self,
+        edge: &crate::polygon::BoardEdge,
+        rules: &Rules,
+    ) -> ReferenceSide {
+        if self.designator.is_some() {
+            return self.reference_side;
+        }
+        let need = rules.silk_to_silk;
+        let mut probe = self.clone();
+        let mut depth_of = |side: ReferenceSide| {
+            probe.reference_side = side;
+            probe
+                .text_rect(rules)
+                .map(|r| edge.box_depth(&r.expanded(TEXT_EDGE_PAD)))
+        };
+        let Some(own) = depth_of(self.reference_side) else {
+            return self.reference_side;
+        };
+        if own >= need - 1e-9 {
+            return self.reference_side;
+        }
+        let mut best = (self.reference_side, own);
+        for side in ReferenceSide::ALL {
+            let depth = depth_of(side).unwrap_or(f64::NEG_INFINITY);
+            if depth >= need - 1e-9 {
+                return side;
+            }
+            if depth > best.1 + 1e-9 {
+                best = (side, depth);
+            }
+        }
+        best.0
     }
 
     /// Whether the footprint has a drilled hole, which takes room on both faces.
@@ -433,9 +516,19 @@ impl Placed {
     /// process's silk to pad space. Above, it is where the library puts it, or further out if
     /// that is nearer than the rules allow. The text is written upright on the board
     /// whatever the part's turn, so its place is found for the part as it lies on the board
-    /// and turned back to the footprint's frame.
+    /// and turned back to the footprint's frame. A layout file entry that places the
+    /// designator ([`DesignatorPlace`]) puts it there instead.
     pub fn reference_at(&self, rules: &Rules) -> Pt {
         let fp = &self.footprint;
+        // The layout file's place, on the board, turned back to the footprint's frame.
+        if let Some(d) = self.designator {
+            let local = d.at.rotate(-self.rotation);
+            return if self.mirrored() {
+                Pt::new(-local.x, local.y)
+            } else {
+                local
+            };
+        }
         // A point of the footprint's frame as it lies on the board, round the origin.
         let lie = |p: Pt| {
             let p = if self.mirrored() {
