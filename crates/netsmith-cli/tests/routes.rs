@@ -795,3 +795,114 @@ fn tidy_says_what_it_would_change_then_cuts_a_corner_and_merges_a_pair() {
     assert!(said.contains("tidied 0 corner(s), 0 collinear pair(s)"), "{said}");
     assert!(said.contains("nothing to write"), "{said}");
 }
+
+/// `netsmith <args>` in `dir` with `input` on stdin.
+fn netsmith_with_input(dir: &Path, args: &[&str], input: &str) -> Output {
+    use std::io::Write;
+    let mut child = Command::new(env!("CARGO_BIN_EXE_netsmith"))
+        .args(args)
+        .current_dir(dir)
+        .env("NETSMITH_NO_KICAD", "1")
+        .env_remove("KICAD_CLI")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    child.wait_with_output().unwrap()
+}
+
+#[test]
+fn routes_add_makes_a_batch_skips_a_refused_shape_and_writes_the_file_once() {
+    let dir = imported("routes-add-batch");
+    // The first via is on the VCC track; the track runs down from it across the GND track
+    // that runs at y = 5.4 (refused, `tracks_crossing`); the second via is on VCC too.
+    let doc = r#"{
+        "track": [{"net": "VCC", "from": [5.0, 2.7], "to": [5.0, 6.0]}],
+        "via": [{"net": "VCC", "at": [5.0, 2.7]}, {"net": "NOPE", "at": [1, 1]}]
+    }"#;
+    let run = netsmith_with_input(
+        &dir,
+        &["routes", "add", "-", "--file", "led.nsm", "--format", "json"],
+        doc,
+    );
+    let said = text(&run);
+    assert_eq!(run.status.code(), Some(1), "{said}");
+    let out: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+    let results: Vec<&str> = out["shapes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["result"].as_str().unwrap())
+        .collect();
+    assert_eq!(results, ["refused", "ok", "refused"], "{said}");
+    let crossing = &out["shapes"][0]["findings"][0];
+    assert_eq!(crossing["rule"], "tracks_crossing", "{said}");
+    assert!(crossing["at"][1].as_f64().unwrap() > 4.0, "{said}");
+    assert_eq!(out["written"], true, "{said}");
+    let routes = fs::read_to_string(dir.join("led.routes.toml")).unwrap();
+    assert!(routes.contains("at = [5.0, 2.7]"), "{routes}");
+    // With `--stop-on-refusal` nothing after the first refusal is tried, and a TOML file is
+    // read by its extension.
+    fs::write(
+        dir.join("shapes.toml"),
+        "[[track]]\nnet = \"VCC\"\nfrom = [5.0, 2.7]\nto = [5.0, 6.0]\n\n[[via]]\nnet = \"VCC\"\nat = [5.0, 2.7]\n",
+    )
+    .unwrap();
+    let run = netsmith(
+        &dir,
+        &[
+            "routes",
+            "add",
+            "shapes.toml",
+            "--file",
+            "led.nsm",
+            "--stop-on-refusal",
+            "--dry-run",
+        ],
+    );
+    let said = text(&run);
+    assert_eq!(run.status.code(), Some(1), "{said}");
+    assert!(said.contains("track 1 (net VCC): refused"), "{said}");
+    assert!(said.contains("stopped at the first refusal (1 not tried)"), "{said}");
+}
+
+#[test]
+fn routes_import_says_each_net_as_data_and_unlocked_locks_none() {
+    let dir = led("routes-import-json");
+    ok(&netsmith(&dir, &["board", "fab", "led.nsm", "--locked", "--out", "first"]));
+    let run = netsmith(
+        &dir,
+        &[
+            "routes",
+            "import",
+            "first/LedExample/LedExample.kicad_pcb",
+            "--file",
+            "led.nsm",
+            "--unlocked",
+            "--format",
+            "json",
+        ],
+    );
+    let said = ok(&run);
+    let out: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+    assert_eq!(out["locked"], false, "{said}");
+    let nets = out["nets"].as_array().unwrap();
+    assert_eq!(nets.len(), 3, "{said}");
+    let gnd = nets.iter().find(|n| n["net"] == "GND").unwrap();
+    assert_eq!(gnd["locked"], false, "{said}");
+    assert_eq!(gnd["tracks"], 4, "{said}");
+    // The board fab made has no error of its copper.
+    assert!(
+        nets.iter().all(|n| n["refusals"].as_array().unwrap().is_empty()),
+        "{said}"
+    );
+    let routes = fs::read_to_string(dir.join("led.routes.toml")).unwrap();
+    assert!(!routes.contains("lock = true"), "{routes}");
+}

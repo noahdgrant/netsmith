@@ -7,6 +7,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+pub mod batch;
 pub(crate) mod near;
 
 use netsmith_pcb::{
@@ -196,6 +197,37 @@ fn own_copper_errors(board: &Board, net: &str) -> Result<Vec<String>, String> {
         .filter(|f| f.items.iter().any(own))
         .map(ToString::to_string)
         .collect())
+}
+
+/// The errors of [`drc_errors`] of `board` (placed, with the routes file's copper) by the nets
+/// whose own copper they name (a track, a via or a zone of the net, as [`own_copper_errors`]
+/// reads them): what `routes import --format json` says of each net it took (issue #1472). A
+/// finding of two nets' copper (a short) is under each.
+pub fn own_copper_findings(
+    board: &Board,
+) -> Result<std::collections::BTreeMap<String, Vec<batch::Found>>, String> {
+    let mut out: std::collections::BTreeMap<String, Vec<batch::Found>> = Default::default();
+    for f in drc_findings(board)? {
+        let mut nets: Vec<&str> = f
+            .items
+            .iter()
+            .filter(|i| {
+                i.part.is_none()
+                    && ["Track", "Via", "Zone"]
+                        .iter()
+                        .any(|k| i.what.starts_with(k))
+            })
+            .filter_map(|i| i.net.as_deref())
+            .collect();
+        nets.sort_unstable();
+        nets.dedup();
+        for net in nets {
+            out.entry(net.to_string())
+                .or_default()
+                .push(batch::Found::of(&f));
+        }
+    }
+    Ok(out)
 }
 
 /// The errors of the design rules check that `after` has and `before` does not: what a change
@@ -415,16 +447,40 @@ pub fn edit_all_counted(
     changes: &[Edit],
 ) -> (Result<String, Refusal>, EditCounts) {
     let mut counts = EditCounts::default();
-    let result = edit_all_with(board, routes, changes, &mut counts);
+    let result = edit_all_with(
+        board,
+        routes,
+        changes,
+        &mut Checking {
+            counts: &mut counts,
+            before: None,
+            found: Vec::new(),
+        },
+    )
+    .map(|said| summary(&said));
     (result, counts)
 }
 
-fn edit_all_with(
+/// What [`edit_all_with`] (which says what it did, a sentence for each change) keeps between
+/// the edits of a batch ([`batch`], issue #1472): the work
+/// of the checks, the board with the routes as they are now (so that the next edit does not put
+/// the whole file on the board again for its `before`), and the findings that refused the edit.
+pub(crate) struct Checking<'a> {
+    pub counts: &'a mut EditCounts,
+    /// `board` with the routes of the file as they are before the edit, when it is known.
+    pub before: Option<Board>,
+    /// The new errors of the design rules check that refused the last edit, in the routes
+    /// file's frame.
+    pub found: Vec<netsmith_geom::DrcFinding>,
+}
+
+pub(crate) fn edit_all_with(
     board: &Board,
     routes: &mut Routes,
     changes: &[Edit],
-    counts: &mut EditCounts,
-) -> Result<String, Refusal> {
+    checking: &mut Checking,
+) -> Result<Vec<String>, Refusal> {
+    checking.found.clear();
     if changes.is_empty() {
         return Err(Refusal::Refused("no change to make".to_string()));
     }
@@ -548,27 +604,43 @@ fn edit_all_with(
     if table.nets.is_empty() {
         next.boards.remove(&board.name);
     }
+    let mut checked = None;
     if check || !locking.is_empty() {
-        let before = with_routes(board, routes)?.0;
+        let before = match checking.before.take() {
+            Some(b) => b,
+            None => with_routes(board, routes)?.0,
+        };
         let after = with_routes(board, &next)?.0;
+        let refused = |checking: &mut Checking, before: Board, e: String| {
+            checking.before = Some(before);
+            Err(Refusal::Refused(e))
+        };
         if let Some(e) = new_zone_error(&before, &after) {
-            return Err(Refusal::Refused(format!(
-                "refused: {e}, and the routes file is not changed"
-            )));
+            return refused(
+                checking,
+                before,
+                format!("refused: {e}, and the routes file is not changed"),
+            );
         }
         if check {
-            let new = new_errors_near(&before, &after, counts)?;
+            let new = new_errors_near(&before, &after, checking.counts)?;
             if !new.is_empty() {
-                return Err(Refusal::Refused(format!(
+                let text = format!(
                     "refused: the design rules check finds {} new error(s) with it, and the routes file is not changed:\n  {}",
                     new.len(),
-                    new.join("\n  ")
-                )));
+                    new.iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join("\n  ")
+                );
+                checking.found = new;
+                return refused(checking, before, text);
             }
         }
         for net in locking {
             let own = own_copper_errors(&after, net)?;
             if !own.is_empty() {
+                checking.before = Some(before);
                 return Err(Refusal::Refused(format!(
                     "refused: the design rules check finds {} error(s) of net {net}'s own copper in the routes file; move or delete those shapes (`netsmith routes delete --net {net} --track N`) and lock again, and the routes file is not changed:\n  {}",
                     own.len(),
@@ -576,9 +648,13 @@ fn edit_all_with(
                 )));
             }
         }
+        checked = Some(after);
     }
+    // The board with the routes as they are now, for the next edit of a batch.
+    checking.before = checked;
     *routes = next;
-    Ok(summary(&said))
+    // One sentence for each change.
+    Ok(said)
 }
 
 /// The errors of the design rules check that `after` has and `before` does not, as
@@ -593,7 +669,7 @@ fn new_errors_near(
     before: &Board,
     after: &Board,
     counts: &mut EditCounts,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<netsmith_geom::DrcFinding>, String> {
     let mut changed: Vec<netsmith_pcb::Rect> = Vec::new();
     changed.extend(differ(&before.tracks, &after.tracks).map(near::track_box));
     changed.extend(differ(&before.vias, &after.vias).map(near::via_box));
@@ -612,7 +688,7 @@ fn new_errors_near(
         let at = Pt::new(f.at.x, f.at.y) + before.outline.min;
         hoods.iter().any(|h| near::holds(h, at))
     };
-    let errors = |whole: &Board, counts: &mut EditCounts| -> Result<Vec<String>, String> {
+    let errors = |whole: &Board, counts: &mut EditCounts| -> Result<Vec<_>, String> {
         let local = near::local(whole, &near::zones_of(whole), &wides);
         counts.count(&local);
         Ok(drc_findings_with(
@@ -620,15 +696,18 @@ fn new_errors_near(
             &netsmith_pcb::kicad_pro(whole),
             &crate::fab::drc_extras(whole),
         )?
-        .iter()
+        .into_iter()
         .filter(|f| in_hood(f))
-        .map(ToString::to_string)
+        .map(|f| (f.to_string(), f))
         .collect())
     };
-    let mut old = errors(before, counts)?;
+    let mut old: Vec<String> = errors(before, counts)?
+        .into_iter()
+        .map(|(t, _)| t)
+        .collect();
     let mut new = Vec::new();
-    for e in errors(after, counts)? {
-        match old.iter().position(|o| *o == e) {
+    for (text, e) in errors(after, counts)? {
+        match old.iter().position(|o| *o == text) {
             Some(k) => {
                 old.swap_remove(k);
             }
@@ -640,7 +719,23 @@ fn new_errors_near(
 
 /// The items of `a` that `b` does not have and of `b` that `a` does not have, each as many
 /// times as it is missing.
-fn differ<'a, T: std::fmt::Debug>(a: &'a [T], b: &'a [T]) -> impl Iterator<Item = &'a T> {
+fn differ<'a, T: std::fmt::Debug + PartialEq>(
+    a: &'a [T],
+    b: &'a [T],
+) -> impl Iterator<Item = &'a T> {
+    // The items the two share at the start and at the end are the same: an edit adds a shape or
+    // a few to one net's record, and the rest of the board is as it was, so only what lies
+    // between is compared by its text (a batch of edits, issue #1472, makes this the most of a
+    // check's own work).
+    let head = a.iter().zip(b).take_while(|(x, y)| x == y).count();
+    let (a, b) = (&a[head..], &b[head..]);
+    let tail = a
+        .iter()
+        .rev()
+        .zip(b.iter().rev())
+        .take_while(|(x, y)| x == y)
+        .count();
+    let (a, b) = (&a[..a.len() - tail], &b[..b.len() - tail]);
     // An item is the same item when everything it holds is (its text, as the routes file
     // keeps places to 0.000001 mm).
     let mut left: HashMap<String, Vec<&'a T>> = HashMap::new();
@@ -661,15 +756,34 @@ fn differ<'a, T: std::fmt::Debug>(a: &'a [T], b: &'a [T]) -> impl Iterator<Item 
 /// priority that overlap, say), when it did not stop those of `before`: the design rules check
 /// does not fill them, and `fab` stops on it. What stops a fill is the zones alone (their
 /// outlines, nets and priorities), so boards with the same zones are not filled (issue #1471).
+/// What a changed zone stops lies where it is: each board is filled with the zones whose boxes
+/// meet a changed zone's (grown by the board's largest space) and the copper there alone, so a
+/// zone added to a board of many costs its neighbours, not every zone's fill (issue #1472).
 fn new_zone_error(before: &Board, after: &Board) -> Option<String> {
     if before.zones == after.zones {
         return None;
     }
-    let error = |b: &Board| {
-        if b.zones.is_empty() {
+    let reach = near::reach(before).max(near::reach(after));
+    let boxes: Vec<netsmith_pcb::Rect> = near::clusters(
+        differ(&before.zones, &after.zones)
+            .filter_map(|z| netsmith_pcb::Rect::around(z.outline.iter().copied()))
+            .map(|r| r.expanded(reach))
+            .collect(),
+    );
+    let error = |whole: &Board| {
+        let meets = |z: &&netsmith_pcb::BoardZone| {
+            netsmith_pcb::Rect::around(z.outline.iter().copied())
+                .is_some_and(|r| boxes.iter().any(|b| near::meets(&r, b)))
+        };
+        let zones: Vec<_> = whole.zones.iter().filter(meets).cloned().collect();
+        if zones.is_empty() {
             return None;
         }
-        netsmith_pcb::zone_fills(b)
+        let mut b = near::local(whole, &[], &boxes);
+        b.zones = zones;
+        b.planes = whole.planes.clone();
+        b.pours = whole.pours.clone();
+        netsmith_pcb::zone_fills(&b)
             .err()
             .map(|e| e.0.trim_start_matches("the board's copper: ").to_string())
     };
@@ -678,7 +792,7 @@ fn new_zone_error(before: &Board, after: &Board) -> Option<String> {
 }
 
 /// What several changes did, in a line: each thing said once, with how many times.
-fn summary(said: &[String]) -> String {
+pub(crate) fn summary(said: &[String]) -> String {
     let mut out: Vec<(&str, usize)> = Vec::new();
     for s in said {
         match out.iter_mut().find(|(t, _)| t == s) {

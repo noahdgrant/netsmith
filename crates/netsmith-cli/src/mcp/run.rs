@@ -56,11 +56,13 @@ pub struct Ran {
 }
 
 /// Runs `program` with `argv` in `dir` for `job`, telling `progress` each line it prints on
-/// stderr: the message of a JSON line of `--progress json`, or the line as it is. Returns when
-/// the command has ended, also when it was cancelled.
+/// stderr: the message of a JSON line of `--progress json`, or the line as it is. `input` is
+/// what the command reads on stdin (a document given to the call itself, issue #1472), or
+/// nothing. Returns when the command has ended, also when it was cancelled.
 pub fn run(
     program: &Path,
     argv: &[String],
+    input: Option<&str>,
     dir: &Path,
     job: &Job,
     mut progress: impl FnMut(&str),
@@ -68,10 +70,25 @@ pub fn run(
     let mut child = Command::new(program)
         .args(argv)
         .current_dir(dir)
-        .stdin(Stdio::null())
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
+    // Written from a thread of its own, so a document larger than the pipe holds does not wait
+    // on a command that is itself waiting to be read.
+    let writer = match (input, child.stdin.take()) {
+        (Some(text), Some(mut stdin)) => {
+            let text = text.to_string();
+            Some(std::thread::spawn(move || {
+                let _ = std::io::Write::write_all(&mut stdin, text.as_bytes());
+            }))
+        }
+        _ => None,
+    };
     let mut stdout = child.stdout.take().expect("stdout is piped");
     let stderr = child.stderr.take().expect("stderr is piped");
     {
@@ -104,6 +121,9 @@ pub fn run(
         }
     }
     let stdout = reader.join().unwrap_or_default();
+    if let Some(writer) = writer {
+        let _ = writer.join();
+    }
     let status = job
         .child
         .lock()
@@ -153,7 +173,7 @@ mod tests {
             let job = job.clone();
             let dir = dir.to_path_buf();
             std::thread::spawn(move || {
-                run(&program, &[], &dir, &job, |line| {
+                run(&program, &[], None, &dir, &job, |line| {
                     let _ = tx.send(line.to_string());
                 })
             })

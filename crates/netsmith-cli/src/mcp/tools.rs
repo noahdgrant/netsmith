@@ -220,6 +220,37 @@ impl Tool {
         }
     }
 
+    /// [`Tool::argv`], and what the command reads on stdin: an argument of one value given a
+    /// JSON object (a document, such as the shapes of `routes_add`, issue #1472) is given to the
+    /// command as `-`, its file being stdin, and the object is written there as JSON. A document
+    /// so has no limit of the length of a command line's word. At most one argument may be one.
+    pub fn argv_with_input(
+        &self,
+        arguments: &Map<String, Value>,
+    ) -> Result<(Vec<String>, Option<String>), String> {
+        let mut arguments = arguments.clone();
+        let mut input = None;
+        for param in &self.params {
+            let single = matches!(
+                param.how,
+                How::Value { .. } | How::Positional { many: false }
+            );
+            if let Some(Value::Object(doc)) = arguments.get(&param.key)
+                && single
+            {
+                if input.is_some() {
+                    return Err(format!(
+                        "`{}`: only one argument may be a document (a JSON object)",
+                        param.key
+                    ));
+                }
+                input = Some(Value::Object(doc.clone()).to_string());
+                arguments.insert(param.key.clone(), Value::String("-".into()));
+            }
+        }
+        Ok((self.argv(&arguments)?, input))
+    }
+
     /// The words of the command line for a call with `arguments`, after `netsmith`: the
     /// command's words, its flags, then `--` and its positional arguments. `--format json` and
     /// `--progress json` are added where the command has them and the call does not choose,
@@ -543,6 +574,35 @@ mod tests {
                 && argv.windows(3).any(|w| w == ["--between", "J1.1", "J1.2"]),
             "{argv:?}"
         );
+    }
+
+    #[test]
+    fn a_document_given_to_the_call_is_the_commands_stdin() {
+        // `routes_add` (issue #1472): the shapes as an object are read from stdin, `-`.
+        let add = tool("routes_add");
+        let doc = json!({ "track": [{ "net": "GND", "from": [1, 1], "to": [2, 1] }] });
+        let (argv, input) = add
+            .argv_with_input(&args(json!({ "shapes": doc, "stop_on_refusal": true })))
+            .unwrap();
+        assert_eq!(
+            argv,
+            [
+                "routes",
+                "add",
+                "--stop-on-refusal",
+                "--format=json",
+                "--",
+                "-"
+            ]
+        );
+        let input: Value = serde_json::from_str(&input.unwrap()).unwrap();
+        assert_eq!(input, doc);
+        // A path is a path, and nothing is read on stdin.
+        let (argv, input) = add
+            .argv_with_input(&args(json!({ "shapes": "shapes.toml" })))
+            .unwrap();
+        assert_eq!(argv.last().unwrap(), "shapes.toml");
+        assert!(input.is_none());
     }
 
     #[test]
