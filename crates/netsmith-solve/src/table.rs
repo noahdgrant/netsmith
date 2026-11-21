@@ -65,7 +65,9 @@
 //! - **Curve files** (issue #1260, owner decision): a column of a row over the part's operating
 //!   conditions is not a cell but a file beside the catalog, `curves/<catalog>/<row>.csv`, read by
 //!   [`crate::curve`] and attached with [`Table::add_curve`]; the row keeps its single figure in
-//!   the cell, and the column is a [`Value::Curved`].
+//!   the cell, and the column is a [`Value::Curved`]. The file is named by the row's `mpn`, so
+//!   a curve whose name is the `mpn` of two rows (two manufacturers' parts, ADR 0143) is refused
+//!   naming both, never attached to both (issue #1464).
 //! - **`name` and `label` exist** because messages and schematics must stay as they were
 //!   (`10kΩ 1% 0402 C25744`, a value of `4.7k`), which a generic rule could not make. They are
 //!   the one column added to the task as handed over, and default to the `mpn`.
@@ -554,7 +556,8 @@ impl Table {
         })
     }
 
-    /// The curve of a row's column, if a curve file is named by the row.
+    /// The curve of a row's column, if a curve file is named by the row. [`Table::candidates`]
+    /// has refused a curve whose name is the mpn of two rows, so it is this row's alone.
     fn curve_of(&self, row: &Row, column: &str) -> Option<&Arc<Curve>> {
         let key = &row.mpn;
         if key.is_empty() {
@@ -597,11 +600,28 @@ impl Table {
                 .join(", ")
         };
         for (key, curve) in &self.curves {
-            if !self.rows.iter().any(|r| r.mpn == *key) {
-                return Err(format!(
-                    "{}: no row of `catalog {name}` has the mpn `{key}`: a curve file is named by the mpn of the row it is for",
-                    curve.file
-                ));
+            let named: Vec<&Row> = self.rows.iter().filter(|r| r.mpn == *key).collect();
+            match named.as_slice() {
+                [] => {
+                    return Err(format!(
+                        "{}: no row of `catalog {name}` has the mpn `{key}`: a curve file is named by the mpn of the row it is for",
+                        curve.file
+                    ));
+                }
+                // Two rows of one mpn in a catalog are two parts, of two named manufacturers
+                // ([`Table::append`] refuses any other pair), and the file's name cannot say
+                // which one its points were read for (issue #1464).
+                [first, second, ..] => {
+                    return Err(format!(
+                        "{}: the rows at {} (`{}`) and {} (`{}`) both have the mpn `{key}`, and a curve file named by an mpn would be the curve of both parts; a curve file is for one part, so remove it, or remove the row of the part it was not read for",
+                        curve.file,
+                        first.at(),
+                        first.manufacturer,
+                        second.at(),
+                        second.manufacturer
+                    ));
+                }
+                [_] => {}
             }
             let kind = columns.iter().find(|(c, _)| *c == curve.column);
             match kind {
