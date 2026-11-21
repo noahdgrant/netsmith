@@ -35,6 +35,35 @@ pub struct Placing {
     /// gives the same answer on every machine; a budget of time does not.
     #[arg(long, value_name = "BUDGET", value_parser = netsmith_fabricate::layout::parse_place_budget)]
     pub place_budget: Option<netsmith_core::job::Limit>,
+    /// The weight of the placer's objective for routing, over `routing_objective` in netsmith.toml.
+    ///
+    /// From 0 (off, the default: every board places as it always has) to 10; 1 is the weight it
+    /// was measured at. With it the input power chain is placed short and in the order its
+    /// current flows (on one face when the faces are shared), a part on a bus of four or more
+    /// nets with one other part is kept beside the pins it joins, and no part on the other face
+    /// stands under a fine-pitch part's escape ring, so the router has less to untangle. A
+    /// weight changes the placement, so it changes the layout file's seed that places the board.
+    #[arg(
+        long,
+        value_name = "WEIGHT",
+        value_parser = parse_routing_objective
+    )]
+    pub routing_objective: Option<f64>,
+}
+
+/// Reads `--routing-objective`: a number from 0 to `MAX_ROUTING_OBJECTIVE`.
+fn parse_routing_objective(text: &str) -> Result<f64, String> {
+    let w: f64 = text
+        .parse()
+        .map_err(|_| format!("`{text}` is not a number"))?;
+    let most = netsmith_fabricate::project::MAX_ROUTING_OBJECTIVE;
+    if (0.0..=most).contains(&w) {
+        Ok(w)
+    } else {
+        Err(format!(
+            "the routing objective is {w}: it must be from 0 (off) to {most}"
+        ))
+    }
 }
 
 impl Placing {
@@ -47,6 +76,15 @@ impl Placing {
     /// The place budget for a board of `target`: `--place-budget`, else the manifest's.
     pub fn budget(&self, target: &Target) -> netsmith_core::job::Limit {
         netsmith_fabricate::layout::place_budget(target.project.as_ref(), self.place_budget)
+    }
+
+    /// The weight of the placer's objective for routing for a board of `target`:
+    /// `--routing-objective`, else the manifest's `routing_objective`, else 0 (off).
+    pub fn objective(&self, target: &Target) -> f64 {
+        netsmith_fabricate::layout::routing_objective(
+            target.project.as_ref(),
+            self.routing_objective,
+        )
     }
 }
 
@@ -413,11 +451,16 @@ pub(super) fn with_placed_board<T>(
                 Some(placing) => netsmith_fabricate::layout::Seeding {
                     seeds: placing.seeds(&target),
                     budget: placing.budget(&target),
+                    routing_objective: placing.objective(&target),
                     progress: Some(say_on_stderr),
                 },
                 None => netsmith_fabricate::layout::Seeding {
                     seeds: netsmith_fabricate::layout::place_seeds(target.project.as_ref()),
                     budget: netsmith_fabricate::layout::place_budget(target.project.as_ref(), None),
+                    routing_objective: netsmith_fabricate::layout::routing_objective(
+                        target.project.as_ref(),
+                        None,
+                    ),
                     progress: None,
                 },
             },

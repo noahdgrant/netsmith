@@ -478,7 +478,10 @@ pub fn place_with(
         layout.as_ref(),
         libraries,
         data.constraints_warn,
-        data.place_seeds,
+        netsmith_fabricate::layout::Seeding {
+            routing_objective: data.routing_objective,
+            ..data.place_seeds.into()
+        },
     );
     // A layout file the placer cannot keep (two locks that overlap, locks that leave the free
     // parts no room) is shown where the placer ended, with its findings, and not refused: the

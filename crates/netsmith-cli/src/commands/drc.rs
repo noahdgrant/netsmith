@@ -25,7 +25,7 @@ pub struct Args {
     #[arg(
         long,
         value_name = "BOARD.KICAD_PCB",
-        conflicts_with_all = ["place_seeds", "place_budget"]
+        conflicts_with_all = ["place_seeds", "place_budget", "routing_objective"]
     )]
     pub kicad_pcb: Option<PathBuf>,
     #[command(flatten)]

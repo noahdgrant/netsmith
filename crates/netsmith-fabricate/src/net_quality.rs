@@ -31,6 +31,9 @@
 //! way has a track that is not unneeded (a nudge from a pad's centre back into the pad is a way
 //! of its own to tidy's detector too), and as short only when it is in neither.
 //!
+//! After the objective, a line for each power net ([`PowerNet`], issue #1532): its layers, its
+//! layer changes and its via groups, against the vias side by side its current needs.
+//!
 //! The limits of `--gate` are [`Counts::LIMITS`] unless a `--max-<kind>` flag gives another: 0
 //! of each, the zero-defect check, and the report states the limits it was judged by.
 
@@ -111,6 +114,110 @@ pub struct Quality {
     /// `None` until [`Quality::with_objective`] gives it the table.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub objective: Option<Objective>,
+    /// The power nets' layer changes and via groups ([`PowerNet`], issue #1532).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub power: Vec<PowerNet>,
+}
+
+/// A power net's copper (issue #1532): a net with a known current (`Board::net_currents`) that
+/// needs more than one via side by side where it changes layer, with track, and that no zone,
+/// pour or plane fills. The router keeps such a net to one layer where it can, and changes its
+/// layer through a group of vias sized for its current; this says how well it did.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PowerNet {
+    pub net: String,
+    /// The net's current, in amperes, and how many vias side by side carry it.
+    pub current: f64,
+    pub vias_needed: usize,
+    /// How many copper layers its tracks are on.
+    pub layers: usize,
+    pub vias: usize,
+    /// Its vias in groups side by side: copper no more than the group gap apart, through others
+    /// that are, as `via_current` groups them (`Rules::group_gap`, issue #1505).
+    pub groups: usize,
+    /// The groups its tracks meet on two layers or more: each a change of layer.
+    pub layer_changes: usize,
+    /// The groups with fewer vias than its current needs.
+    pub short_groups: usize,
+}
+
+impl PowerNet {
+    /// The power nets of `board`, by name.
+    pub fn of_board(board: &Board) -> Vec<PowerNet> {
+        let poured = |net: &str| {
+            board.zones.iter().any(|z| z.net == net)
+                || board.pours.iter().any(|p| p.net == net)
+                || board.planes.iter().any(|p| p.net == net)
+        };
+        let gap = board.rules.group_gap();
+        let mut out: Vec<PowerNet> = board
+            .net_currents
+            .iter()
+            .filter(|c| c.vias > 1 && !poured(&c.net))
+            .filter_map(|c| {
+                let tracks: Vec<&Track> = board.tracks.iter().filter(|t| t.net == c.net).collect();
+                if tracks.is_empty() {
+                    return None;
+                }
+                let layers: BTreeSet<&str> = tracks.iter().map(|t| t.layer.word()).collect();
+                let vias: Vec<(Pt, f64)> = board
+                    .vias
+                    .iter()
+                    .filter(|v| v.net == c.net)
+                    .map(|v| (v.at, v.diameter))
+                    .collect();
+                let groups = via_groups(&vias, gap);
+                let layer_changes = groups
+                    .iter()
+                    .filter(|group| {
+                        let met: BTreeSet<&str> = tracks
+                            .iter()
+                            .filter(|t| {
+                                group.iter().any(|&g| {
+                                    let (at, d) = vias[g];
+                                    let reach = d / 2.0 + NEAR;
+                                    t.from.distance(at) <= reach || t.to.distance(at) <= reach
+                                })
+                            })
+                            .map(|t| t.layer.word())
+                            .collect();
+                        met.len() >= 2
+                    })
+                    .count();
+                Some(PowerNet {
+                    net: c.net.clone(),
+                    current: c.current,
+                    vias_needed: c.vias,
+                    layers: layers.len(),
+                    vias: vias.len(),
+                    groups: groups.len(),
+                    layer_changes,
+                    short_groups: groups.iter().filter(|g| g.len() < c.vias).count(),
+                })
+            })
+            .collect();
+        out.sort_by(|a, b| a.net.cmp(&b.net));
+        out
+    }
+
+    /// The net as a line of text for a person.
+    pub fn text(&self) -> String {
+        let short = if self.short_groups > 0 {
+            format!(", {} group(s) short", self.short_groups)
+        } else {
+            String::new()
+        };
+        format!(
+            "power net {}: {:.2} A, on {} layer(s), {} layer change(s), {} via(s) in {} group(s) of the {} side by side its current needs{short}\n",
+            self.net,
+            self.current,
+            self.layers,
+            self.layer_changes,
+            self.vias,
+            self.groups,
+            self.vias_needed
+        )
+    }
 }
 
 /// How long a net may be against its straight length before the objective names it: twice.
@@ -294,6 +401,7 @@ impl Quality {
             totals,
             nets,
             objective: None,
+            power: PowerNet::of_board(board),
         }
     }
 
@@ -322,6 +430,9 @@ impl Quality {
         let mut out = format!("quality: {}\n", self.totals.words());
         if let Some(o) = &self.objective {
             out.push_str(&o.text());
+        }
+        for p in &self.power {
+            out.push_str(&p.text());
         }
         if self.nets.is_empty() {
             return out;
@@ -396,18 +507,16 @@ fn crossing(a0: Pt, a1: Pt, b0: Pt, b1: Pt) -> Option<Pt> {
         .then(|| Pt::new(a0.x + r.x * t, a0.y + r.y * t))
 }
 
-/// How many pairs of the vias `list` (of one net, each its centre and diameter) stand side by
-/// side, their copper no more than `gap` apart, each via taken once, the nearest first; the
-/// vias of a group side by side (through others that are) of no more than `needs` vias, what
-/// the net's current needs, are left out.
-fn via_pairs(list: &[(Pt, f64)], gap: f64, needs: usize) -> usize {
+/// The vias `list` (of one net, each its centre and diameter) in groups side by side: their
+/// copper no more than `gap` apart, edge to edge, through others that are. Each group is its
+/// vias' indices into `list`.
+fn via_groups(list: &[(Pt, f64)], gap: f64) -> Vec<Vec<usize>> {
     let beside = |i: usize, k: usize| {
         let ((a, d), (b, e)) = (list[i], list[k]);
         a.distance(b) - d / 2.0 - e / 2.0 <= gap + 1e-9
     };
-    // The groups, and the vias of a group the current needs, which count as taken.
-    let mut taken = vec![false; list.len()];
     let mut seen = vec![false; list.len()];
+    let mut groups = Vec::new();
     for start in 0..list.len() {
         if seen[start] {
             continue;
@@ -425,8 +534,25 @@ fn via_pairs(list: &[(Pt, f64)], gap: f64, needs: usize) -> usize {
             }
             k += 1;
         }
+        groups.push(group);
+    }
+    groups
+}
+
+/// How many pairs of the vias `list` (of one net, each its centre and diameter) stand side by
+/// side, their copper no more than `gap` apart, each via taken once, the nearest first; the
+/// vias of a group side by side (through others that are) of no more than `needs` vias, what
+/// the net's current needs, are left out.
+fn via_pairs(list: &[(Pt, f64)], gap: f64, needs: usize) -> usize {
+    let beside = |i: usize, k: usize| {
+        let ((a, d), (b, e)) = (list[i], list[k]);
+        a.distance(b) - d / 2.0 - e / 2.0 <= gap + 1e-9
+    };
+    // The vias of a group the current needs count as taken.
+    let mut taken = vec![false; list.len()];
+    for group in via_groups(list, gap) {
         if group.len() <= needs.max(1) && group.len() > 1 {
-            for &g in &group {
+            for g in group {
                 taken[g] = true;
             }
         }
@@ -508,6 +634,7 @@ mod tests {
             },
             nets: Vec::new(),
             objective: None,
+            power: Vec::new(),
         };
         let over = q.over(&Counts::LIMITS);
         assert_eq!(

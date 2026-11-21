@@ -188,6 +188,15 @@ impl<'a> Engine<'a> {
             if p.rf_nets.contains(&net.name) {
                 weight = RF_WEIGHT;
             }
+            // A power net weighs more by its current, with the objective for routing (issue
+            // #1534).
+            if p.routing > 0.0
+                && !plane
+                && pads.len() <= MAX_LINE_PADS
+                && let Some(&(_, current)) = p.net_currents.iter().find(|(n, _)| *n == net.name)
+            {
+                weight *= routing::power_factor(current, p.routing);
+            }
             let id = nets.len();
             for &(i, _) in &pads {
                 if !nets_of[i].contains(&id) {
@@ -210,6 +219,40 @@ impl<'a> Engine<'a> {
                 lines,
                 plane,
             });
+        }
+
+        // The buses the objective for routing keeps clear (issue #1534), and the extra weight
+        // of their nets.
+        let w_routing = p.routing.max(0.0);
+        let mut buses: Vec<routing::Bus> = Vec::new();
+        if w_routing > 0.0 {
+            let shapes: Vec<(bool, Vec<(usize, usize)>)> =
+                nets.iter().map(|m| (m.plane, m.pads.clone())).collect();
+            let pads_of: Vec<usize> = parts.iter().map(|q| q.footprint.pads.len()).collect();
+            for (part, host, ids) in routing::find_buses(&shapes, &pads_of) {
+                let mut on = vec![false; n];
+                let mut pads = Vec::new();
+                for &id in &ids {
+                    nets[id].weight *= 1.0 + w_routing * routing::BUS_WEIGHT;
+                    for &(i, k) in &nets[id].pads {
+                        on[i] = true;
+                        if i == part || i == host {
+                            pads.push((i, k));
+                        }
+                    }
+                }
+                buses.push(routing::Bus {
+                    part,
+                    host,
+                    pads,
+                    on,
+                });
+            }
+        }
+        let mut buses_of: Vec<Vec<usize>> = vec![Vec::new(); n];
+        for (b, bus) in buses.iter().enumerate() {
+            buses_of[bus.part].push(b);
+            buses_of[bus.host].push(b);
         }
 
         // The pads of each busy part that leave it: on a net that is not a plane and that
@@ -597,6 +640,10 @@ impl<'a> Engine<'a> {
             escape_kept: vec![(0.0, Vec::new()); escapers.len()],
             escapers,
             w_escape: p.escape_room.max(0.0),
+            w_routing,
+            bus_mark: vec![0; buses.len()],
+            buses,
+            buses_of,
         };
         for i in 0..n {
             let pose = engine.clamp(i, engine.poses[i]);
