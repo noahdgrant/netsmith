@@ -1,5 +1,84 @@
 # Changelog
 
+## [0.8.0](https://github.com/noahdgrant/netsmith/compare/v0.7.0...v0.8.0) (2026-11-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* **routes:** a board's .corner mitres every track, honoured by the router, view pcb and routes route --corner ([#1527](https://github.com/noahdgrant/netsmith/issues/1527))
+* **pcb:** vias of one net within the group gap stand side by side as one group ([#1526](https://github.com/noahdgrant/netsmith/issues/1526))
+* **routes:** routes tidy counts in_pad_tracks, not nudges, and the overlap pass looks only at the tracks near each track ([#1497](https://github.com/noahdgrant/netsmith/issues/1497))
+* **supply:** channels for any supplier, and a resolution rule for each ([#1470](https://github.com/noahdgrant/netsmith/issues/1470))
+* **catalog:** the lcsc and library columns and the .lcsc narrowing go (ADR 0143, stage 3) ([#1468](https://github.com/noahdgrant/netsmith/issues/1468))
+
+### Features
+
+* **catalog:** offers files hold a supplier's number and class ([#1467](https://github.com/noahdgrant/netsmith/issues/1467)) ([ce0fe20](https://github.com/noahdgrant/netsmith/commit/ce0fe2083f9719b4333352be90b79aca3ab57f2b)), closes [#1457](https://github.com/noahdgrant/netsmith/issues/1457)
+* **catalog:** rows are identified by manufacturer and mpn, and the lock records them ([#1465](https://github.com/noahdgrant/netsmith/issues/1465)) ([2382673](https://github.com/noahdgrant/netsmith/commit/238267394a595c7aa0eeaeb0a9b4cc388fddc91d))
+* **cli:** board nets reports the routing quality of each net and gates on it ([#1496](https://github.com/noahdgrant/netsmith/issues/1496)) ([037451f](https://github.com/noahdgrant/netsmith/commit/037451fd3aa6b0e446f008bd2bba0a29f6801200))
+* **cli:** board rules prints the rules the design rules check holds a board to ([#1522](https://github.com/noahdgrant/netsmith/issues/1522)) ([c010610](https://github.com/noahdgrant/netsmith/commit/c010610dff3a5b625452404defb5b99ca2a703f3))
+* **cli:** board rules prints the rules the design rules check holds a board to, as text or JSON ([c010610](https://github.com/noahdgrant/netsmith/commit/c010610dff3a5b625452404defb5b99ca2a703f3)), closes [#1513](https://github.com/noahdgrant/netsmith/issues/1513)
+* **cli:** catalog search over a provider trait, Nexar first ([#1478](https://github.com/noahdgrant/netsmith/issues/1478)) ([a6b9970](https://github.com/noahdgrant/netsmith/commit/a6b9970165f4d6bf2a810ff39f3a0408a36d2fee))
+* **drc:** pad_island_cut names a pad, via, hole, rule area or pour of another net that cut the pad off ([#1529](https://github.com/noahdgrant/netsmith/issues/1529)) ([5dea94b](https://github.com/noahdgrant/netsmith/commit/5dea94be0ff07673991df07b4da7436586c6e564)), closes [#1524](https://github.com/noahdgrant/netsmith/issues/1524)
+* **drc:** pad_island_cut, a pad's piece of a pour that a track of another net cut off from the rest of the fill ([#1523](https://github.com/noahdgrant/netsmith/issues/1523)) ([84ea6eb](https://github.com/noahdgrant/netsmith/commit/84ea6eb61da52970ddbee9a2ae2c53c3a72ceec8)), closes [#1509](https://github.com/noahdgrant/netsmith/issues/1509)
+* **editor:** the PCB summary lists the copper a net's length leaves out, and the 2D view marks it ([#1512](https://github.com/noahdgrant/netsmith/issues/1512)) ([c7c2a9e](https://github.com/noahdgrant/netsmith/commit/c7c2a9ecc737c1e41e8c23c1042b482e540a9d58)), closes [#1495](https://github.com/noahdgrant/netsmith/issues/1495)
+* **layout:** a designator entry places a part's silk text, and the text keeps off the board edge ([#1531](https://github.com/noahdgrant/netsmith/issues/1531)) ([b77e132](https://github.com/noahdgrant/netsmith/commit/b77e132a5dbe8ccbd5f70dbcdc629c84ba5a597d))
+* **layout:** layout parts gives a custom pad's real shape and its copper as polygons ([#1519](https://github.com/noahdgrant/netsmith/issues/1519)) ([1c013b8](https://github.com/noahdgrant/netsmith/commit/1c013b8baae273e5c24d8daa81250e99be856eb4)), closes [#1516](https://github.com/noahdgrant/netsmith/issues/1516)
+* **pcb:** vias of one net within the group gap stand side by side as one group ([#1526](https://github.com/noahdgrant/netsmith/issues/1526)) ([debe0b5](https://github.com/noahdgrant/netsmith/commit/debe0b523ad8cc538b6a2d26a1541b43291ea2c9)), closes [#1505](https://github.com/noahdgrant/netsmith/issues/1505)
+* **pcb:** view pcb --stitching and the editor's Stitching layer draw the stitching fab will lay ([#1501](https://github.com/noahdgrant/netsmith/issues/1501)) ([98f4eb1](https://github.com/noahdgrant/netsmith/commit/98f4eb17a18fee9507200d9a10f790f8de541b7f)), closes [#1489](https://github.com/noahdgrant/netsmith/issues/1489)
+* **placer:** a placement objective for routing: power chains by current, a part beside its bus pins, nothing under a fine-pitch escape ([#1545](https://github.com/noahdgrant/netsmith/issues/1545)) ([57d5daf](https://github.com/noahdgrant/netsmith/commit/57d5daf2d8f91d62bf91e9094ee18b79d6a3c213))
+* **placer:** a placement objective for routing: power chains by current, a part beside the pins of its bus, nothing under a fine-pitch part's escape ([57d5daf](https://github.com/noahdgrant/netsmith/commit/57d5daf2d8f91d62bf91e9094ee18b79d6a3c213))
+* **placer:** routing_objective in netsmith.toml and --routing-objective switch on the placement objective for routing ([#1544](https://github.com/noahdgrant/netsmith/issues/1544)) ([a27fd40](https://github.com/noahdgrant/netsmith/commit/a27fd40d6ce49521875414a07633ea1f122bf1a9))
+* **placer:** routing_objective in netsmith.toml and --routing-objective switch on the placement objective for routing ([#1547](https://github.com/noahdgrant/netsmith/issues/1547)) ([a27fd40](https://github.com/noahdgrant/netsmith/commit/a27fd40d6ce49521875414a07633ea1f122bf1a9))
+* **router:** a reroute pass lays the worst nets again with the nets in their way, kept only when the total gets shorter ([#1550](https://github.com/noahdgrant/netsmith/issues/1550)) ([4ee63e6](https://github.com/noahdgrant/netsmith/commit/4ee63e6a07d052f5c82779cd2526484ee8760186)), closes [#1538](https://github.com/noahdgrant/netsmith/issues/1538)
+* **router:** power nets keep to one layer and change layer through one group of vias sized for their current ([#1546](https://github.com/noahdgrant/netsmith/issues/1546)) ([e226f50](https://github.com/noahdgrant/netsmith/commit/e226f50b3581cd1b27cc4c68f5536898e1fbabbd)), closes [#1532](https://github.com/noahdgrant/netsmith/issues/1532)
+* **router:** routing weights as keys of netsmith.toml, so order and the editor route with them ([#1537](https://github.com/noahdgrant/netsmith/issues/1537)) ([d7a508f](https://github.com/noahdgrant/netsmith/commit/d7a508fdadb4366f8da3da09bcdab59e95e4b9d0)), closes [#1536](https://github.com/noahdgrant/netsmith/issues/1536)
+* **router:** weights of length, vias and layer changes for signal nets, a polish pass, and the objective in board nets ([5a65fb4](https://github.com/noahdgrant/netsmith/commit/5a65fb416f4d7781649f20bfce1b440b7fa1c3d2)), closes [#1517](https://github.com/noahdgrant/netsmith/issues/1517)
+* **router:** weights of length, vias and layer changes, a polish pass, and the objective in board nets ([#1535](https://github.com/noahdgrant/netsmith/issues/1535)) ([5a65fb4](https://github.com/noahdgrant/netsmith/commit/5a65fb416f4d7781649f20bfce1b440b7fa1c3d2))
+* **routes:** a board's .corner mitres every track, honoured by the router, view pcb and routes route --corner ([#1527](https://github.com/noahdgrant/netsmith/issues/1527)) ([83c041e](https://github.com/noahdgrant/netsmith/commit/83c041e070a15f2d6e1f1f4ca20266e0b391ab98)), closes [#1508](https://github.com/noahdgrant/netsmith/issues/1508)
+* **routes:** routes add adds many shapes in one call, routes_add in the MCP server, routes import --format json ([#1479](https://github.com/noahdgrant/netsmith/issues/1479)) ([4b96fc0](https://github.com/noahdgrant/netsmith/commit/4b96fc0353352d00042a255ca426e31d4b2adcfe))
+* **routes:** routes add SHAPES adds many shapes in one call, routes_add in the MCP server, routes import --format json ([4b96fc0](https://github.com/noahdgrant/netsmith/commit/4b96fc0353352d00042a255ca426e31d4b2adcfe))
+* **routes:** routes route --rip-depth and --tries for ripped nets that cannot be put back ([#1510](https://github.com/noahdgrant/netsmith/issues/1510)) ([09e93de](https://github.com/noahdgrant/netsmith/commit/09e93de7c7d426795aa8094cffc09d6c179963ad))
+* **routes:** routes route --rip-depth bounds how deep a ripped net rips, and --tries routes the ripped nets again in other orders ([09e93de](https://github.com/noahdgrant/netsmith/commit/09e93de7c7d426795aa8094cffc09d6c179963ad)), closes [#1488](https://github.com/noahdgrant/netsmith/issues/1488)
+* **routes:** the track-drop guideline counts each pin's own current, and board nets and board drc report it ([#1549](https://github.com/noahdgrant/netsmith/issues/1549)) ([796a818](https://github.com/noahdgrant/netsmith/commit/796a818c664fb99f9968394dcafa6248506b4529)), closes [#1541](https://github.com/noahdgrant/netsmith/issues/1541) [#1540](https://github.com/noahdgrant/netsmith/issues/1540)
+* **supply:** a part names its supply channel in [supply.parts] ([#1480](https://github.com/noahdgrant/netsmith/issues/1480)) ([8e8c968](https://github.com/noahdgrant/netsmith/commit/8e8c9688ac7bd77dc1b92c0530300085e9061b2b))
+* **supply:** channels for any supplier, and a resolution rule for each ([#1470](https://github.com/noahdgrant/netsmith/issues/1470)) ([0f649ec](https://github.com/noahdgrant/netsmith/commit/0f649ec029a4a1fca4ff93ac4e5a83e2f1a3a39a))
+
+
+### Bug Fixes
+
+* **drc,routes:** track_current names what its 1 mm is measured from; routes import --no-places prints no per-part notes ([#1528](https://github.com/noahdgrant/netsmith/issues/1528)) ([3612f38](https://github.com/noahdgrant/netsmith/commit/3612f387b88072443d403c7265649c91d217c546))
+* **drc,routes:** track_current says what its 1 mm is measured from; routes import --no-places prints no per-part notes ([3612f38](https://github.com/noahdgrant/netsmith/commit/3612f387b88072443d403c7265649c91d217c546))
+* **drc:** an end that touches an arc's edge is joined, as in KiCad; tees of two widths pinned to KiCad ([#1548](https://github.com/noahdgrant/netsmith/issues/1548)) ([4fa8145](https://github.com/noahdgrant/netsmith/commit/4fa8145646f506d4a52121fd5ef05f6e257b8f50)), closes [#1542](https://github.com/noahdgrant/netsmith/issues/1542)
+* **drc:** via_current and track_current hold the copper to an input pin to the current it takes ([#1520](https://github.com/noahdgrant/netsmith/issues/1520)) ([61ddbe4](https://github.com/noahdgrant/netsmith/commit/61ddbe491e1d6fa286c487fc5dc8a29b388a0543))
+* **fab:** board nets counts each piece of copper once, and a track inside a pad is the way into it ([#1525](https://github.com/noahdgrant/netsmith/issues/1525)) ([70b2315](https://github.com/noahdgrant/netsmith/commit/70b231505904c5b66ec408dffd1a5fb9f921e449)), closes [#1511](https://github.com/noahdgrant/netsmith/issues/1511)
+* **fab:** board nets measures a net's length on its connection, not a second way or a dead stub ([#1494](https://github.com/noahdgrant/netsmith/issues/1494)) ([ce39bab](https://github.com/noahdgrant/netsmith/commit/ce39bab8d18e97d7dddd23b76a93004e9e6745a9)), closes [#1487](https://github.com/noahdgrant/netsmith/issues/1487)
+* **router:** a pad on an island of a pour gives its via up to the stitching via it stood in the way of ([#1502](https://github.com/noahdgrant/netsmith/issues/1502)) ([b0c660f](https://github.com/noahdgrant/netsmith/commit/b0c660fef751fd574d2621cbe4bad3e2d2c138e6)), closes [#1484](https://github.com/noahdgrant/netsmith/issues/1484)
+* **router:** draw ends at pad and via centres, no stair steps and no connection drawn twice ([#1503](https://github.com/noahdgrant/netsmith/issues/1503)) ([5bc68ac](https://github.com/noahdgrant/netsmith/commit/5bc68aca47e0b35da8e227dfb2924056d333da9a))
+* **router:** stitching puts one via per grid point for the pours of one net ([#1490](https://github.com/noahdgrant/netsmith/issues/1490)) ([7914a9e](https://github.com/noahdgrant/netsmith/commit/7914a9ecdc7a78cbfabd3958c5a1580eb6a0b295)), closes [#1482](https://github.com/noahdgrant/netsmith/issues/1482)
+* **router:** the clean-up makes no design rules finding and keeps the arcs, so main builds and fabs again ([#1530](https://github.com/noahdgrant/netsmith/issues/1530)) ([839da6c](https://github.com/noahdgrant/netsmith/commit/839da6c8556554a3aca7a9e51df5fb03664d06e5)), closes [#1518](https://github.com/noahdgrant/netsmith/issues/1518)
+* **routes:** fab after routes import lays no second grid of stitching vias ([#1493](https://github.com/noahdgrant/netsmith/issues/1493)) ([4c45eb1](https://github.com/noahdgrant/netsmith/commit/4c45eb1c2745e569bc0b75b0c1fa39e25d91d076))
+* **routes:** routes lock refuses only for errors where the record ran to a pad that moved ([#1521](https://github.com/noahdgrant/netsmith/issues/1521)) ([aa564a8](https://github.com/noahdgrant/netsmith/commit/aa564a85e7f5e09032dd098d54720815fd7fa98e))
+* **routes:** routes tidy counts in_pad_tracks, not nudges, and the overlap pass looks only at the tracks near each track ([#1497](https://github.com/noahdgrant/netsmith/issues/1497)) ([4ae10b6](https://github.com/noahdgrant/netsmith/commit/4ae10b66f23e9558d748f98555695701f2325382)), closes [#1492](https://github.com/noahdgrant/netsmith/issues/1492)
+* **routes:** routes tidy removes nudges, duplicate ways, overlapping copper and runs of tiny tracks ([#1491](https://github.com/noahdgrant/netsmith/issues/1491)) ([b42a3e0](https://github.com/noahdgrant/netsmith/commit/b42a3e05f3f4254b6592bcd9cce24fb55c0122bc)), closes [#1485](https://github.com/noahdgrant/netsmith/issues/1485)
+
+
+### Performance
+
+* **routes:** an edit of the routes file is checked where it is, not on the whole board ([#1473](https://github.com/noahdgrant/netsmith/issues/1473)) ([87660ff](https://github.com/noahdgrant/netsmith/commit/87660ff0d2ee0501fd75c358f4e6f0ec9674cd90))
+* **routes:** join-pad fills the pad's neighbourhood and asks its net's connectivity, never the whole board ([#1476](https://github.com/noahdgrant/netsmith/issues/1476)) ([f5b805d](https://github.com/noahdgrant/netsmith/commit/f5b805d1d4c74e892d877482af283fcf68fa1331)), closes [#1474](https://github.com/noahdgrant/netsmith/issues/1474)
+
+
+### Refactoring
+
+* **catalog:** the lcsc and library columns and the .lcsc narrowing go (ADR 0143, stage 3) ([#1468](https://github.com/noahdgrant/netsmith/issues/1468)) ([76e5730](https://github.com/noahdgrant/netsmith/commit/76e57302808302111bdb58822f018a02ee03356d))
+
+
+### Documentation
+
+* **adr:** 0143 a part is its manufacturer's number and a supplier's number is an offer of it ([#1463](https://github.com/noahdgrant/netsmith/issues/1463)) ([6470004](https://github.com/noahdgrant/netsmith/commit/64700046ab3973dd27d939bd55f13a3936504e5a))
+* **adr:** 0143 a part is its manufacturer's number and a supplier's number is an offer of it (proposed) ([6470004](https://github.com/noahdgrant/netsmith/commit/64700046ab3973dd27d939bd55f13a3936504e5a))
+
 ## [0.7.0](https://github.com/noahdgrant/netsmith/compare/v0.6.0...v0.7.0) (2026-11-19)
 
 
