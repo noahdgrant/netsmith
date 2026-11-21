@@ -612,13 +612,14 @@ struct Work<'a> {
 
 /// A defect that the passes of [`shapes`] find in the copper of a board as it stands, for the
 /// quality report of `board nets` (issue #1481): its kind, its net and how many tracks and vias
-/// of the copper it is (the tracks and vias of a duplicate way, the one track of a nudge).
+/// of the copper it is, by their places in the board's `tracks` and `vias` (the tracks and vias
+/// of a duplicate way, the one track of a nudge).
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Defect {
     pub kind: Kind,
     pub net: String,
-    pub tracks: usize,
-    pub vias: usize,
+    pub wires: Vec<usize>,
+    pub holes: Vec<usize>,
 }
 
 /// The nudges, the duplicate ways, the overlapping copper and the copper that ends in nothing
@@ -635,8 +636,8 @@ pub(crate) fn shape_defects(board: &Board) -> Vec<Defect> {
         .map(|c| Defect {
             kind: c.change.kind,
             net: c.change.net,
-            tracks: c.remove_wires.len(),
-            vias: c.remove_holes.len(),
+            wires: c.remove_wires,
+            holes: c.remove_holes,
         })
         .collect()
 }

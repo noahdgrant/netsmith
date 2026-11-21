@@ -24,6 +24,10 @@
 //!   [`netsmith_fab::VIA_PAIR_GAP`] (0.5 mm) apart edge to edge, each via taken once, as `board
 //!   nets` counts the vias of a diff pair side by side.
 //!
+//! Each track and via is counted once: as unneeded first, then in a duplicate way only when the
+//! way has a track that is not unneeded (a nudge from a pad's centre back into the pad is a way
+//! of its own to tidy's detector too), and as short only when it is in neither.
+//!
 //! The limits of `--gate` are [`Counts::LIMITS`] unless a `--max-<kind>` flag gives another: 0
 //! of each, the zero-defect check, and the report states the limits it was judged by.
 
@@ -121,22 +125,37 @@ impl Quality {
             .chain(board.planes.iter().map(|p| p.net.as_str()))
             .collect();
         let mut by: BTreeMap<String, Counts> = BTreeMap::new();
-        for d in shape_defects(board) {
+        // Each track and via is counted once: as unneeded copper first, then in a duplicate
+        // way only when the way has a track that is not unneeded (a nudge from a pad's centre is
+        // a way of its own too), then as short only when it is in neither.
+        let defects = shape_defects(board);
+        let mut gone_wires = BTreeSet::new();
+        let mut gone_holes = BTreeSet::new();
+        for d in defects.iter().filter(|d| d.kind != Kind::Duplicate) {
             if poured.contains(d.net.as_str()) {
                 continue;
             }
-            let c = by.entry(d.net).or_default();
-            match d.kind {
-                Kind::Duplicate => c.duplicates += 1,
-                _ => c.unneeded += d.tracks + d.vias,
+            let fresh = d.wires.iter().filter(|&&i| gone_wires.insert(i)).count()
+                + d.holes.iter().filter(|&&i| gone_holes.insert(i)).count();
+            if fresh > 0 {
+                by.entry(d.net.clone()).or_default().unneeded += fresh;
             }
         }
+        let mut dup_wires = BTreeSet::new();
+        for d in defects.iter().filter(|d| d.kind == Kind::Duplicate) {
+            if !poured.contains(d.net.as_str()) && d.wires.iter().any(|i| !gone_wires.contains(i)) {
+                by.entry(d.net.clone()).or_default().duplicates += 1;
+                dup_wires.extend(d.wires.iter().copied());
+            }
+        }
+        gone_wires.extend(dup_wires);
         let mut tracks: BTreeMap<(&str, &'static str), Vec<&Track>> = BTreeMap::new();
-        for t in &board.tracks {
+        for (i, t) in board.tracks.iter().enumerate() {
             if poured.contains(t.net.as_str()) || t.net.is_empty() {
                 continue;
             }
-            if t.mid.is_none() && t.from.distance(t.to) < TINY * t.width {
+            if t.mid.is_none() && !gone_wires.contains(&i) && t.from.distance(t.to) < TINY * t.width
+            {
                 by.entry(t.net.clone()).or_default().short += 1;
             }
             tracks.entry((&t.net, t.layer.word())).or_default().push(t);
