@@ -164,6 +164,11 @@ pub(crate) fn fit(
         Some(p) => BoardEdge::Polygon(p.clone()),
         None => BoardEdge::Round(RoundRect::new(outline_rect, outline.corner_radius)),
     };
+    // The text of a part the layout file locks is where the file, read again after placing,
+    // puts it: on its side, or on another that keeps it off the edge (issue #1506). The other
+    // parts are placed round that.
+    let adjusted = texts_off_edge(parts, placement, &edge, rules);
+    let placement = adjusted.as_ref().unwrap_or(placement);
     corners(parts, &mechanical, outline_rect, &edge, rules);
     // A mechanical part the layout file places is where it says.
     for &i in &mechanical {
@@ -172,6 +177,7 @@ pub(crate) fn fit(
             parts[i].rotation = f.rotation;
             parts[i].side = f.side;
             parts[i].reference_side = f.text;
+            parts[i].designator = f.designator;
         }
     }
     // A mechanical part the design's requirements govern is put in the corner and then moved
@@ -254,6 +260,7 @@ pub(crate) fn fit(
                                 rotation: parts[i].rotation,
                                 side: parts[i].side,
                                 text: parts[i].reference_side,
+                                designator: parts[i].designator,
                             },
                         );
                     }
@@ -381,4 +388,38 @@ fn corners(parts: &mut [Placed], mechanical: &[usize], r: Rect, shape: &BoardEdg
         };
         used[k] = along + w + GAP;
     }
+}
+
+/// The options with the text side of each part they fix moved to the one that keeps its text
+/// off `edge` ([`Placed::text_side_off_edge`]) where that is another; `None` when none moves.
+fn texts_off_edge(
+    parts: &[Placed],
+    placement: &PlaceOptions,
+    edge: &BoardEdge,
+    rules: &Rules,
+) -> Option<PlaceOptions> {
+    let moved: Vec<(String, netsmith_pcb::ReferenceSide)> = parts
+        .iter()
+        .filter_map(|p| {
+            let f = placement.fixed.get(&p.refdes)?;
+            let mut probe = p.clone();
+            probe.at = ORIGIN + f.at;
+            probe.rotation = f.rotation;
+            probe.side = f.side;
+            probe.reference_side = f.text;
+            probe.designator = f.designator;
+            let side = probe.text_side_off_edge(edge, rules);
+            (side != f.text).then(|| (p.refdes.clone(), side))
+        })
+        .collect();
+    if moved.is_empty() {
+        return None;
+    }
+    let mut out = placement.clone();
+    for (refdes, side) in moved {
+        if let Some(f) = out.fixed.get_mut(&refdes) {
+            f.text = side;
+        }
+    }
+    Some(out)
 }

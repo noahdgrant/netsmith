@@ -2240,7 +2240,7 @@ fn turn_between(a: f64, b: f64) -> f64 {
 }
 
 /// The entry for a part as the page describes it. What the page does not show (which side
-/// the reference text is on) is kept from the entry it replaces.
+/// the reference text is on, and the designator's place) is kept from the entry it replaces.
 fn part_place(after: &PartPlacement, old: Option<&PartPlace>) -> Result<PartPlace, ApiError> {
     if ![after.x, after.y, after.rotation]
         .iter()
@@ -2259,6 +2259,7 @@ fn part_place(after: &PartPlacement, old: Option<&PartPlace>) -> Result<PartPlac
             LayoutFace::Top
         },
         text: old.map(|o| o.text).unwrap_or_default(),
+        designator: old.and_then(|o| o.designator),
         lock: after.locked,
         source: after.source.clone().or_else(|| Some("hand".to_string())),
     })

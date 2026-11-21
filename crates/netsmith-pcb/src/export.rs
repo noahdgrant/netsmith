@@ -616,8 +616,16 @@ fn property(child: &Sexp, part: &Placed, rules: &Rules, key: &str) -> Sexp {
             let at = part.reference_at(rules);
             for item in &mut items {
                 if item.head() == Some("at") {
-                    *item =
-                        Sexp::node("at", vec![Sexp::num(at.x), Sexp::num(at.y), Sexp::num(0.0)]);
+                    // The angle is the board's: 0 is upright, or the layout file's turn
+                    // (issue #1506).
+                    *item = Sexp::node(
+                        "at",
+                        vec![
+                            Sexp::num(at.x),
+                            Sexp::num(at.y),
+                            Sexp::num(part.text_turn()),
+                        ],
+                    );
                 } else if item.head() == Some("effects") {
                     *item = text_no_smaller(item, rules);
                 }

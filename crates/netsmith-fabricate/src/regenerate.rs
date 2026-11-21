@@ -203,6 +203,7 @@ fn entry_of(
             LayoutFace::Top
         },
         text: part.reference_side.into(),
+        designator: part.designator.map(Into::into),
         lock,
         source,
     }

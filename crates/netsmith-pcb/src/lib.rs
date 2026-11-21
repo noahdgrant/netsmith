@@ -85,11 +85,12 @@ mod walled;
 
 pub use board::{
     Board, BoardCutout, BoardError, BoardKeepout, BoardNet, BoardPour, BoardZone, CopperLayer,
-    DEFAULT_SKEW, FixedCopper, Hang, HeightUnchecked, HeightUnknown, HoleNeighbour, KeepoutArea,
-    Loaded as LoadedBoard, PadRef, PairCoupling, Placed, PlacementProblem, Plane, ReferenceSide,
-    Side, Silk, StandardPass, Teardrop, Track, Trim, UnknownUnder, Unplaced, Via, ViaOffer,
-    ViaSpan, ViasInPads, ZoneIslands, ZonePads, diff_pairs_of, heights_unknown_warning,
-    member as board_member, outline_box, rect_distance, span_depth, via_offers,
+    DEFAULT_SKEW, DesignatorPlace, FixedCopper, Hang, HeightUnchecked, HeightUnknown,
+    HoleNeighbour, KeepoutArea, Loaded as LoadedBoard, PadRef, PairCoupling, Placed,
+    PlacementProblem, Plane, ReferenceSide, Side, Silk, StandardPass, TEXT_EDGE_PAD, Teardrop,
+    Track, Trim, UnknownUnder, Unplaced, Via, ViaOffer, ViaSpan, ViasInPads, ZoneIslands, ZonePads,
+    diff_pairs_of, heights_unknown_warning, member as board_member, outline_box, rect_distance,
+    span_depth, via_offers,
 };
 pub use body3d::{
     Axis as BodyAxis, Material as BodyMaterial, Primitive as BodyPrimitive, Solid as BodySolid,
@@ -144,9 +145,9 @@ pub use kelvin::{
     sense_carves, sense_copper,
 };
 pub use layout::{
-    BoardLayout, Face as LayoutFace, IMPORT_SOURCE, KeepoutPlace, Layout, LayoutError, PartPlace,
-    RuleWaiver, Waiver, apply_layout, check_drawn_keepout, copper_layers, keepout_declaration,
-    place_options,
+    BoardLayout, DesignatorEntry, Face as LayoutFace, IMPORT_SOURCE, KeepoutPlace, Layout,
+    LayoutError, PartPlace, RuleWaiver, Waiver, apply_layout, check_drawn_keepout, copper_layers,
+    keepout_declaration, place_options,
 };
 pub use live::{Glimpse, GlimpsePart, glimpses_watched, show_glimpse, watching_glimpses};
 pub use miss::RequirementMiss;
