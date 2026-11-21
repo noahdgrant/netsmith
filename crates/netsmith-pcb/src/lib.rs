@@ -208,7 +208,7 @@ pub use summary::{
 };
 pub use svg::{render as render_svg, render_view as render_svg_view};
 pub use track_drop::{
-    COPPER_RESISTIVITY, DEFAULT_DROP_BUDGET, NetPad, TrackDrop, in_outer_copper,
+    COPPER_RESISTIVITY, DEFAULT_DROP_BUDGET, DropRun, NetPad, PinDraw, TrackDrop, in_outer_copper,
     net_drop as track_drop_of,
 };
 pub use validate::{Subject, footprint_pitch, validate_pinout, validate_table};

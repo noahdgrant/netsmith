@@ -2,7 +2,8 @@
 //! the tracks, measured by hand.
 
 use netsmith_pcb::{
-    COPPER_RESISTIVITY, CopperLayer, NetPad, PadRef, Pt, Track, in_outer_copper, track_drop_of,
+    COPPER_RESISTIVITY, CopperLayer, NetPad, PadRef, PinDraw, Pt, Track, in_outer_copper,
+    track_drop_of,
 };
 
 const OZ: f64 = 0.035;
@@ -15,6 +16,18 @@ fn pad(refdes: &str, number: &str, at: Pt) -> NetPad {
         },
         min: Pt::new(at.x - 0.5, at.y - 0.5),
         max: Pt::new(at.x + 0.5, at.y + 0.5),
+        draws: None,
+    }
+}
+
+/// A pad of a pin whose current is known: `current` amperes (issue #1541).
+fn drawing(refdes: &str, number: &str, at: Pt, current: f64) -> NetPad {
+    NetPad {
+        draws: Some(PinDraw {
+            pin: format!("{refdes}.{number}"),
+            current,
+        }),
+        ..pad(refdes, number, at)
     }
 }
 
@@ -170,4 +183,97 @@ fn a_track_on_an_inner_layer_drops_by_its_own_thinner_copper() {
     let d = track_drop_of("P", 1.0, &tracks, &[Pt::new(20.0, 0.0)], &pads, OZ).unwrap();
     let inner = COPPER_RESISTIVITY * 20.0 / (1.0 * INNER);
     assert!((d.resistance - (ohms(20.0, 1.0) + inner)).abs() < 1e-12, "{d:?}");
+}
+
+/// A trunk of 1 mm from the supply's header J1 (0, 0) to the load's header J2 (40, 0), and a
+/// branch of 0.2 mm from the trunk's middle 30 mm up to a divider's resistor R1.
+fn trunk_and_divider() -> (Track, Track) {
+    (
+        track(
+            CopperLayer::Front,
+            Pt::new(0.0, 0.0),
+            Pt::new(40.0, 0.0),
+            1.0,
+        ),
+        track(
+            CopperLayer::Front,
+            Pt::new(20.0, 0.0),
+            Pt::new(20.0, 30.0),
+            0.2,
+        ),
+    )
+}
+
+#[test]
+fn a_divider_draws_its_own_current_and_not_the_nets() {
+    // Issue #1541: 2 A from J1 to J2, and R1 of a feedback divider takes 50 uA. The divider's
+    // branch carries its 50 uA, so the worst drop is J1 to J2 at the net's 2 A and not the
+    // net's 2 A through R1's 30 mm of 0.2 mm.
+    let (trunk, branch) = trunk_and_divider();
+    let pads = [
+        pad("J1", "1", Pt::new(0.0, 0.0)),
+        pad("J2", "1", Pt::new(40.0, 0.0)),
+        drawing("R1", "1", Pt::new(20.0, 30.0), 50e-6),
+    ];
+    let d = track_drop_of("P", 2.0, &[&trunk, &branch], &[], &pads, OZ).unwrap();
+    assert_eq!((d.from.refdes.as_str(), d.to.refdes.as_str()), ("J1", "J2"));
+    assert!((d.drop() - 2.0 * ohms(40.0, 1.0)).abs() < 1e-12, "{d:?}");
+    assert!(d.whole_current());
+
+    // Without the divider's current it would be 2 A through the 0.2 mm branch.
+    let unknown = [
+        pad("J1", "1", Pt::new(0.0, 0.0)),
+        pad("J2", "1", Pt::new(40.0, 0.0)),
+        pad("R1", "1", Pt::new(20.0, 30.0)),
+    ];
+    let d = track_drop_of("P", 2.0, &[&trunk, &branch], &[], &unknown, OZ).unwrap();
+    assert_eq!(d.to.refdes, "R1");
+    let whole = 2.0 * (ohms(20.0, 1.0) + ohms(30.0, 0.2));
+    assert!((d.drop() - whole).abs() < 1e-12, "{d:?}");
+}
+
+#[test]
+fn the_drop_to_a_divider_sums_its_own_current_and_the_trunks_along_the_path() {
+    // Only the supply's header is of no known current: J2 draws 1.5 A, R1 50 uA. From J1 the
+    // trunk's first 20 mm carry both, its last 20 mm J2's 1.5 A, and the branch R1's 50 uA;
+    // the worst drop is to J2.
+    let (trunk, branch) = trunk_and_divider();
+    let pads = [
+        pad("J1", "1", Pt::new(0.0, 0.0)),
+        drawing("J2", "1", Pt::new(40.0, 0.0), 1.5),
+        drawing("R1", "1", Pt::new(20.0, 30.0), 50e-6),
+    ];
+    let d = track_drop_of("P", 2.0, &[&trunk, &branch], &[], &pads, OZ).unwrap();
+    let first = (1.5 + 50e-6) * ohms(20.0, 1.0);
+    assert_eq!(d.to.refdes, "J2");
+    assert!(
+        (d.drop() - (first + 1.5 * ohms(20.0, 1.0))).abs() < 1e-12,
+        "{d:?}"
+    );
+    assert!((d.current - (1.5 + 50e-6)).abs() < 1e-12);
+    assert!(!d.whole_current());
+    assert_eq!(d.runs.len(), 2);
+    assert!((d.runs[1].current - 1.5).abs() < 1e-12, "{:?}", d.runs);
+    // R1's own drop is the trunk's first run and its branch at 50 uA, less than J2's.
+    let to_r1 = first + 50e-6 * ohms(30.0, 0.2);
+    assert!(to_r1 < d.drop());
+    // The width that brings it within a budget widens the runs at the current each carries.
+    let w = d.width_for(0.5 * d.drop()).unwrap();
+    assert!((1.9..=2.1).contains(&w), "{w}");
+}
+
+#[test]
+fn a_pin_of_two_pads_draws_its_current_once() {
+    // R1 is a pin of two pads, each on the branch's end; it draws 1 A once, not twice.
+    let (trunk, branch) = trunk_and_divider();
+    let mut second = drawing("R1", "1", Pt::new(20.0, 30.0), 1.0);
+    second.pad.number = "2".into();
+    let pads = [
+        pad("J1", "1", Pt::new(0.0, 0.0)),
+        drawing("R1", "1", Pt::new(20.0, 30.0), 1.0),
+        second,
+    ];
+    let d = track_drop_of("P", 2.0, &[&trunk, &branch], &[], &pads, OZ).unwrap();
+    let r = ohms(20.0, 1.0) + ohms(30.0, 0.2);
+    assert!((d.drop() - r).abs() < 1e-12, "{d:?}");
 }

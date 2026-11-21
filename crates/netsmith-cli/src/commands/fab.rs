@@ -581,6 +581,7 @@ fn run_fab(
                             group_spreads: Vec::new(),
                             long_paths: Vec::new(),
                             quality: None,
+                            track_drops: Vec::new(),
                         });
                         continue;
                     }

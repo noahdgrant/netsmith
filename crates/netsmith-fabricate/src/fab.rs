@@ -1807,10 +1807,10 @@ fn fab_board(
             })
             .collect();
         if incomplete.is_none() {
-            let voltages = netsmith_design::guidelines::net_voltages(&built.trace.model);
             drops.extend(
-                crate::track_drop::findings(&board, &voltages)
-                    .into_iter()
+                crate::track_drop::drops_of(&board, &built.trace.model)
+                    .iter()
+                    .filter_map(crate::track_drop::NetDrop::finding)
                     .map(|m| {
                         format!(
                             "{}: {} guideline: {m}",
