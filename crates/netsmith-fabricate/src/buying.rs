@@ -16,8 +16,11 @@
 //! bought by nobody.
 //!
 //! No file a supplier's upload reads is written for these lines: the formats of Digi-Key's and
-//! Mouser's bill of materials uploads were not read from their documentation, so no column is
-//! written from memory (the follow-up issue of #1461).
+//! Mouser's bill of materials uploads could not be read from their own documentation, so no
+//! column is written from memory. Issue #1498 tried on 2026-11-21: Mouser's BOM tool and its help
+//! article refuse an automated reader, and Digi-Key's myLists and cart pages name no column,
+//! header or limit. Issue #1563 has the pages and waits for a person to read each upload screen
+//! after signing in.
 
 use netsmith_design::{Assembly, Sourced};
 use netsmith_solve::Channel;
