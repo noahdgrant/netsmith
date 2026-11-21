@@ -31,7 +31,6 @@ const FIRST_ONLY: RouteOptions = RouteOptions {
     reroute: netsmith_router::Reroute::DEFAULT,
     power_groups: true,
     negotiation: netsmith_router::Negotiation::DEFAULT,
-    chain: true,
 };
 const RETRY_ONLY: RouteOptions = RouteOptions {
     retry_orders: true,
@@ -57,7 +56,6 @@ const RETRY_ONLY: RouteOptions = RouteOptions {
     reroute: netsmith_router::Reroute::DEFAULT,
     power_groups: true,
     negotiation: netsmith_router::Negotiation::DEFAULT,
-    chain: true,
 };
 const RIP_UP_ONLY: RouteOptions = RouteOptions {
     retry_orders: false,
@@ -83,7 +81,6 @@ const RIP_UP_ONLY: RouteOptions = RouteOptions {
     reroute: netsmith_router::Reroute::DEFAULT,
     power_groups: true,
     negotiation: netsmith_router::Negotiation::DEFAULT,
-    chain: true,
 };
 
 const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
@@ -110,7 +107,6 @@ const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
     reroute: netsmith_router::Reroute::DEFAULT,
     power_groups: true,
     negotiation: netsmith_router::Negotiation::DEFAULT,
-    chain: true,
 };
 
 fn left(board: &Board, options: RouteOptions) -> usize {
@@ -247,12 +243,12 @@ fn each_line_left_says_the_stage_it_failed_in_and_the_nets_in_its_way() {
     assert_eq!(routing.why.len(), 1, "{:?}", routing.why);
     let why = &routing.why[0];
     assert_eq!(why.line.net, "A");
-    // Every stage tried it; the last is the chain of rip-ups. The pads and the edge alone wall
+    // Every stage tried it; the last is the negotiation. The pads and the edge alone wall
     // it in, so no net's copper is in its way.
-    assert_eq!(why.stage, Stage::Chain);
+    assert_eq!(why.stage, Stage::Negotiation);
     assert!(why.blockers.is_empty(), "{why:?}");
     let json = serde_json::to_value(&routing.why).unwrap();
-    assert_eq!(json[0]["stage"], "chain");
+    assert_eq!(json[0]["stage"], "negotiation");
     assert_eq!(json[0]["line"]["from"]["refdes"], "R1");
     // Hard board 44 with only the first pass leaves a line that a rip-up routes: another net's
     // copper is in its way, and it failed in the first pass.

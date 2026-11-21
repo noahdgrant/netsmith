@@ -109,8 +109,8 @@ fn a_line_walled_in_by_pads_and_the_edge_names_them() {
         "{why:?}"
     );
     assert!(why.vias.is_empty(), "{why:?}");
-    // The rounds found nothing to rip: the stage it last failed in is the chain's.
-    assert_eq!(why.stage, Stage::Chain);
+    // The rounds found nothing to rip: the stage it last failed in is the negotiation.
+    assert_eq!(why.stage, Stage::Negotiation);
     let json = serde_json::to_value(&routing.why).unwrap();
     assert_eq!(json[0]["edge"], true);
     assert!(json[0]["pads"].as_array().is_some_and(|p| !p.is_empty()));
