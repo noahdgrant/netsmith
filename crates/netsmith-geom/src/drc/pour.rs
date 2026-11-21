@@ -68,7 +68,8 @@ pub(crate) fn run(out: &mut Out<'_>) {
     let islands = m.rules.severity(Rule::IsolatedCopper).is_some();
     let width = m.rules.track_width;
     let slivers = m.rules.severity(Rule::CopperSliver).is_some();
-    if !(starved || unjoinable || islands || slivers)
+    let cut = m.rules.severity(Rule::PadIslandCut).is_some();
+    if !(starved || unjoinable || islands || slivers || cut)
         || !m
             .art
             .zones
@@ -101,6 +102,9 @@ pub(crate) fn run(out: &mut Out<'_>) {
         let Ok(judged) = judged else {
             continue;
         };
+        if cut {
+            cut_pieces(out, layer, &judged, &rules);
+        }
         for j in judged {
             let zone = &m.art.zones[j.zone];
             let net = zone.net.clone().unwrap_or_default();
@@ -206,6 +210,75 @@ pub(crate) fn run(out: &mut Out<'_>) {
                         vec![zone_item(at)],
                     );
                 }
+            }
+        }
+    }
+}
+
+/// The `pad_island_cut` findings of the fills `judged` of `layer` ([`fill::cuts`], issue
+/// #1509): each piece a track of another net cut off from the rest of its fill, with pads of its
+/// net on it and no other way to them. A warning, an error when guidelines are strict.
+fn cut_pieces(out: &mut Out<'_>, layer: &str, judged: &[fill::Judged], rules: &plot::Rules) {
+    let m = out.m;
+    for c in fill::cuts(m.art, layer, judged, rules, &m.extras.open) {
+        let zone = &m.art.zones[c.zone];
+        let net = zone.net.clone().unwrap_or_default();
+        let item_of = |kind: Kind| {
+            m.items
+                .iter()
+                .find(|i| i.kind == kind)
+                .map(|i| i.item.clone())
+        };
+        let pads: Vec<Item> = c
+            .pads
+            .iter()
+            .filter_map(|&k| item_of(Kind::Pad(k)))
+            .collect();
+        let Some(track) = item_of(Kind::Track(c.track)) else {
+            continue;
+        };
+        let names: Vec<String> = c
+            .pads
+            .iter()
+            .map(|&k| {
+                let p = &m.art.pads[k];
+                format!("{}.{}", p.part, p.number)
+            })
+            .collect();
+        let whose = if zone.filled.iter().any(|(l, _)| l == layer) {
+            "the fill the board file holds"
+        } else {
+            "the pour"
+        };
+        let other = m.art.tracks[c.track]
+            .net
+            .clone()
+            .unwrap_or_else(|| "no net".to_string());
+        let message = format!(
+            "a track of {other} cuts a piece of {whose} of {net} ({:.3} mm² at ({:.3}, {:.3})) off from the rest of its fill, and nothing else joins {} on it to the net: no via, plated hole, track or other fill of {net}; move the track, or give the pad a via or a track of its own",
+            c.area,
+            c.at.x,
+            c.at.y,
+            names.join(", "),
+        );
+        let mut items = pads;
+        items.push(track);
+        items.push(Item {
+            what: if zone.name.is_empty() {
+                format!("Zone [{net}] on {layer}")
+            } else {
+                format!("Zone {} [{net}] on {layer}", zone.name)
+            },
+            at: c.at,
+            part: None,
+            pad: None,
+            net: zone.net.clone(),
+        });
+        let before = out.findings.len();
+        out.push(Rule::PadIslandCut, message, c.near, Some(layer), items);
+        if m.extras.strict_guidelines {
+            for f in &mut out.findings[before..] {
+                f.severity = super::Severity::Error;
             }
         }
     }
@@ -592,5 +665,108 @@ mod tests {
         );
         let thick = check(&pcb(0.25), Some(LEAST_TRACK), &Extras::default()).unwrap();
         assert_eq!(of(&thick, Rule::CopperSliver), Vec::<String>::new());
+    }
+
+    /// The board of [`board`] with the SIG ring of [`ring`] round a GND pad of R1 at (10, 10),
+    /// a second GND pad (R2) outside the ring, and `items`, checked with `extras`.
+    fn cut_board(items: &str, extras: &Extras) -> Report {
+        let pcb = format!(
+            r#"(kicad_pcb (layers (0 "F.Cu" signal) (2 "B.Cu" signal))
+            (net 0 "") (net 1 "GND") (net 2 "SIG")
+            (gr_rect (start 0 0) (end 20 20) (stroke (width 0.05) (type default)) (fill no) (layer "Edge.Cuts"))
+            (zone (net 1) (net_name "GND") (layer "F.Cu") (connect_pads yes (clearance 0.3)) (min_thickness 0.25)
+              (fill yes (thermal_gap 0.5) (thermal_bridge_width 0.5))
+              (polygon (pts (xy 0.2 0.2) (xy 19.8 0.2) (xy 19.8 19.8) (xy 0.2 19.8))))
+            (via (at 2 2) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
+            {PAD}
+            (footprint "L:R" (layer "F.Cu") (at 17 17)
+              (property "Reference" "R2")
+              (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 1 "GND")))
+            {} {items})"#,
+            ring()
+        );
+        check(&pcb, None, extras).unwrap()
+    }
+
+    fn cuts(report: &Report) -> Vec<String> {
+        report
+            .findings
+            .iter()
+            .filter(|f| f.rule == Rule::PadIslandCut)
+            .map(|f| {
+                assert_eq!(f.layer.as_deref(), Some("F.Cu"));
+                f.with_items()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_pad_a_track_of_another_net_cut_off_from_its_fill_is_a_pad_island_cut() {
+        // Issue #1509: the SIG ring cuts the piece of the pour round R1's pad off from the via,
+        // which the check's connectivity (a pad joined by the pour's outline) does not see.
+        let report = cut_board("", &Extras::default());
+        let found = cuts(&report);
+        assert_eq!(found.len(), 1, "{report}");
+        assert!(
+            found[0].starts_with("a track of SIG cuts a piece of the pour of GND (")
+                && found[0].contains(
+                    "off from the rest of its fill, and nothing else joins R1.1 on it to the net"
+                )
+                && found[0].contains("SMD pad 1 [GND] of R1")
+                && found[0].contains("Track [SIG]")
+                && found[0].contains("Zone [GND] on F.Cu"),
+            "{}",
+            found[0]
+        );
+        let f = report
+            .findings
+            .iter()
+            .find(|f| f.rule == Rule::PadIslandCut)
+            .unwrap();
+        assert_eq!(f.severity, Severity::Warning);
+        // The connectivity still joins the pad: no missing connection says it.
+        assert_eq!(report.count(Rule::UnconnectedItems), 0, "{report}");
+    }
+
+    #[test]
+    fn a_cut_piece_with_its_own_via_or_strict_guidelines() {
+        // A GND via on the cut piece joins it to the net on the back: nothing is cut.
+        let via = r#"(via (at 12 12) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))"#;
+        let joined = cut_board(via, &Extras::default());
+        assert_eq!(cuts(&joined), Vec::<String>::new(), "{joined}");
+        // With strict guidelines it is an error.
+        let strict = Extras {
+            strict_guidelines: true,
+            ..Extras::default()
+        };
+        let report = cut_board("", &strict);
+        let f: Vec<_> = report
+            .findings
+            .iter()
+            .filter(|f| f.rule == Rule::PadIslandCut)
+            .collect();
+        assert_eq!(f.len(), 1, "{report}");
+        assert_eq!(f[0].severity, Severity::Error);
+    }
+
+    #[test]
+    fn a_piece_that_reaches_the_edge_of_a_neighbourhood_is_not_judged() {
+        let open = |min: (f64, f64), max: (f64, f64)| Extras {
+            open: vec![crate::geom::Bounds {
+                min: crate::geom::Pt::new(min.0, min.1),
+                max: crate::geom::Pt::new(max.0, max.1),
+            }],
+            ..Extras::default()
+        };
+        // A box round the ring holds the cut piece: judged as on the whole board.
+        assert_eq!(
+            cuts(&cut_board("", &open((3.0, 3.0), (17.0, 17.0)))).len(),
+            1
+        );
+        // A box that cuts through the piece: the piece may go on outside it.
+        assert_eq!(
+            cuts(&cut_board("", &open((3.0, 3.0), (10.0, 17.0)))),
+            Vec::<String>::new()
+        );
     }
 }

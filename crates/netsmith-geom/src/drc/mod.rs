@@ -371,6 +371,11 @@ pub enum Rule {
     /// A piece of a pour's fill that touches no copper of its net, which the zone's island
     /// setting keeps (issue #838).
     IsolatedCopper,
+    /// A piece of a pour's fill with pads of its net on it and no other way to them, which a
+    /// track of another net cut off from the rest of the fill (netsmith's, issue #1509;
+    /// `fill/cut.rs`): the check's connectivity, which joins a pad by the pour's outline, does
+    /// not see it.
+    PadIslandCut,
     /// A track that meets a pad's straight edge or another track of its net at an acute angle,
     /// a wedge that traps etchant (netsmith's, issue #838).
     AcidTrap,
@@ -394,7 +399,7 @@ pub enum Rule {
 }
 
 impl Rule {
-    pub const ALL: [Rule; 58] = [
+    pub const ALL: [Rule; 59] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -447,6 +452,7 @@ impl Rule {
         Rule::StarvedThermal,
         Rule::UnjoinableThermal,
         Rule::IsolatedCopper,
+        Rule::PadIslandCut,
         Rule::AcidTrap,
         Rule::CopperSliver,
         Rule::Stackup,
@@ -510,6 +516,7 @@ impl Rule {
             Rule::StarvedThermal => "starved_thermal",
             Rule::UnjoinableThermal => "unjoinable_thermal",
             Rule::IsolatedCopper => "isolated_copper",
+            Rule::PadIslandCut => "pad_island_cut",
             Rule::AcidTrap => "acid_trap",
             Rule::CopperSliver => "copper_sliver",
             Rule::Stackup => "stackup",
@@ -552,6 +559,7 @@ impl Rule {
                 | Rule::TestPointEdge
                 | Rule::AcidTrap
                 | Rule::UnjoinableThermal
+                | Rule::PadIslandCut
                 | Rule::Stackup
                 | Rule::ViaSpan
                 | Rule::ViaAspectRatio
@@ -588,6 +596,7 @@ impl Rule {
             | Rule::StarvedThermal
             | Rule::UnjoinableThermal
             | Rule::IsolatedCopper
+            | Rule::PadIslandCut
             | Rule::AcidTrap
             | Rule::CopperSliver => Severity::Warning,
             _ => Severity::Error,
@@ -874,6 +883,13 @@ pub struct Extras {
     /// The layout file's waivers of findings of a part's own footprint (issue #1196, `waivers.rs`):
     /// a finding one covers is moved to [`Report::waived`], and one that covers none is an error.
     pub waivers: Vec<Waiver>,
+    /// Whether guidelines are errors for this run (`fab --strict`, `guidelines = "error"`):
+    /// `pad_island_cut` is then an error, where it is otherwise a warning (issue #1509).
+    pub strict_guidelines: bool,
+    /// The boxes a board cut to a neighbourhood was cut to, in the frame of the board file
+    /// (the check of an edit, `routes add-track`): a piece of a fill that reaches the edge of
+    /// one may go on outside it, so `pad_island_cut` does not judge it. Empty for a whole board.
+    pub open: Vec<crate::geom::Bounds>,
 }
 
 impl Extras {
