@@ -286,7 +286,12 @@ pub struct SetArgs {
     /// Unlock the entry: the placer may move the part.
     #[arg(long)]
     pub unlock: bool,
-    /// Where the designator's text goes: `DX,DY` in mm from the footprint's origin on the board (x right, y down, as `--at`), and `DX,DY,TURN` to turn the text too (degrees counterclockwise, from 0 up to 360). A turn of the part moves neither. `auto` removes it: the text goes on its side again, kept off the board edge by the silk to edge space.
+    /// Where the designator's text goes, from the footprint's origin, or `auto`.
+    ///
+    /// `DX,DY` in mm from the footprint's origin on the board (x right, y down, as `--at`), and
+    /// `DX,DY,TURN` to turn the text too (degrees counterclockwise, from 0 up to 360). A turn of
+    /// the part moves neither. `auto` removes it: the text goes on its side again, kept off the
+    /// board edge by the silk to edge space.
     #[arg(long, value_name = "DX,DY[,TURN]|auto", value_parser = parse_designator, allow_hyphen_values = true)]
     pub designator: Option<Designator>,
     /// Text for a person, or one JSON document on stdout.

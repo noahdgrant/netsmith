@@ -18,14 +18,14 @@ pub const DEFAULT_PORT: u16 = 8787;
 /// `--place-seeds` and `--place-budget`, of `fab` and `dev board3d` (issues #764 and #766).
 #[derive(Debug, PartialEq, ClapArgs)]
 pub struct Placing {
-    /// How many seeds the placer tries for a board, over `place_seeds` in netsmith.toml.
+    /// How many seeds the placer tries, over `place_seeds` in netsmith.toml.
     ///
     /// From 1 (the layout file's seed only) to 32; the default is 8. Each seed is a whole
     /// placement, and a seed that ends a few parts short is run again up to four more times, so
     /// a board no seed places costs about this many times five runs.
     #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..=32))]
     pub place_seeds: Option<u32>,
-    /// How long the placer may look for a board's placement, over `place_budget` in netsmith.toml.
+    /// How long the placer may look, over `place_budget` in netsmith.toml.
     ///
     /// Seconds (`120`, `120s`, `2m`), tries (`5tries`; a try is one run of the placer in a fixed
     /// outline), or both (`120s+5tries`), whichever is spent first; no limit by default. When it
@@ -35,7 +35,7 @@ pub struct Placing {
     /// gives the same answer on every machine; a budget of time does not.
     #[arg(long, value_name = "BUDGET", value_parser = netsmith_fabricate::layout::parse_place_budget)]
     pub place_budget: Option<netsmith_core::job::Limit>,
-    /// The weight of the placer's objective for routing, over `routing_objective` in netsmith.toml.
+    /// How much the placer weighs routing, over `routing_objective` in netsmith.toml.
     ///
     /// From 0 (off, the default: every board places as it always has) to 10; 1 is the weight it
     /// was measured at. With it the input power chain is placed short and in the order its
@@ -94,7 +94,7 @@ impl Placing {
 /// `layer_change_weight`, issue #1536), which `project order` and the editor's routing read too.
 #[derive(Debug, PartialEq, ClapArgs)]
 pub struct Weighing {
-    /// What a millimetre of a signal net's track costs the router, as a share of its own (1).
+    /// What a mm of a signal net's track costs the router, as a share of its own (1).
     ///
     /// From 0.1 to 10. Any of the three weights turns on the router's polish pass, which routes
     /// each signal line again on a finished board and keeps the cheaper copper, and its reroute
@@ -109,8 +109,7 @@ pub struct Weighing {
     /// Raise it for fewer vias at the price of longer tracks; 0 to 1000.
     #[arg(long, value_name = "MM", value_parser = parse_weight)]
     pub via_weight: Option<f64>,
-    /// What a change of layer of a signal net costs the router beyond its via, in mm of track
-    /// (its own is 0).
+    /// What a signal net's change of layer costs beyond its via, in mm of track (its own is 0).
     ///
     /// Each via of a line is one change of layer, so the router pays the two together; `board
     /// nets` counts them apart. 0 to 1000.
