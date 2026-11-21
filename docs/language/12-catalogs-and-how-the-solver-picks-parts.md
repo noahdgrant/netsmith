@@ -422,9 +422,27 @@ file = "supply/quotes.csv"
 - **The first channel with an offer of a part buys it**: its number is that offer's `sku`, which the bill of materials and `fab` give, and its class that offer's `class`. A part that `jlcpcb-assembly` does not buy (its `lcsc` offer has no class, or it has none) is bought by the next channel that has an offer of it. `channel = "lcsc-retail"`, the spelling of a manifest from before the list, is a list of one; a table with both keys, a channel listed twice, an empty list and a channel netsmith does not know are refused. A part does not name its channel yet.
 - **The rows that fit a generic part** are ordered by the channel that buys each: the rows the project's `preferred.csv` names first, then each channel's rows in the order of the list, by the channel's rule, then the rows no channel buys, then the order of the file. A retail channel reads stock and price from the supply provider, in that channel only: a row with stock comes before one whose stock is unknown, and among those the lowest price of one piece first (nothing converts a currency); with no provider, the order of the file decides. A row the provider says has no stock in its channel is passed over in every channel, and the message says which (`ZZR-249-B has no stock in digikey-retail`).
 - **A part no channel has an offer of** has no supplier part number. A part the board house is to assemble is then refused by `fab`, with the channels it tried: `2 part(s) have no offer in any of the project's supply channels (tried: jlcpcb-assembly, lcsc-retail), ...`, and what to write.
-- **`provider` is optional.** Without one nothing is quoted (every price and stock is unknown) and the channels still say which offers the project buys; `file` without `provider = "file"` is refused. The parser refuses a key the table does not have, so a credential cannot be written there by mistake: a credential will be the name of an environment variable (ADR 0047).
+- **`provider` is optional.** Without one nothing is quoted (every price and stock is unknown) and the channels still say which offers the project buys; `file` without `provider = "file"` is refused. The parser refuses a key the table does not have, so a credential cannot be written there by mistake: a credential is the name of an environment variable (ADR 0047), as `[supply.nexar]` has it (_Finding parts at a supplier_, below).
 - **The channel is not `.assembly`.** Who places a part (the board house, a person, or the board house with parts you send it, `AssemblyMode::Consigned`, ADR 0084) is the design's; which channel buys it is the project's list. A consigned part is bought by you and resolved by no channel.
 - **The pick lock** records the sku of each channel of the list that has an offer of a part (_The pick lock_ in the chapter on the shape of a board). An offer added for a supplier the project does not list never moves its lock; adding a channel to the list makes the lock not current until `netsmith project lock --update`, and the new skus are in the diff to review.
+
+#### Finding parts at a supplier
+
+A part the catalogs lack is found with a **search provider** (issue #1460): `netsmith catalog search` lists the parts that match words, a manufacturer's number or parametric filters, and `netsmith catalog add --from <supplier> <sku or mpn> --to catalogs/<file>.csv` writes one of them as a row and its offers. The one provider is Nexar (Octopart's API), and it is off unless the project names it in a `[supply.nexar]` table and the environment variables that table names are set:
+
+```toml
+[project]
+name = "sensor"
+
+[supply.nexar]
+client_id_env = "NEXAR_CLIENT_ID"
+client_secret_env = "NEXAR_CLIENT_SECRET"
+```
+
+- **The names, never the values.** The table holds the names of two environment variables; their values (the client id and secret of an application made at portal.nexar.com) are read from the environment when a request goes out and are written nowhere: not in the manifest, a project file, the cache or a message. A name that is not one (capital letters, digits and `_`) is refused, as it may be the value, and so is any other key. A person must read the terms of use of Nexar and of the sellers it lists before using it (issue #10).
+- **A found part** is the manufacturer and the `mpn` as the provider spells them, and for each supplier netsmith has an offers file of (`lcsc`, `digikey`, `mouser`) its sku, its stock and its price breaks. A stock with no count says why (`not stocked`, `in stock, no quantity given`, `on request`, `unknown`) and is never 0 or a guess, and no currency is converted. `--details` also asks for the package, the values and the datasheet, which Nexar gives to a plan that includes them. `--format json` is for an agent.
+- **A found part is not a row.** `catalog add --from` asks for the record again, writes nothing unless it names exactly one part that the supplier offers under that sku (or whose `mpn` is exactly that number) with one offer of that supplier, and then appends the row (`manufacturer`, `mpn`, `package` when the record states it, a `source` naming the record and the day) and the offers of the suppliers the record names, each in the project's `offers/<supplier>.csv` with a `source` and the day in `checked`. A supplier with two offers of the part (cut tape and a reel) is listed, not written. Every other cell stays empty, and the command lists them as needing the datasheet: a row's ratings never come from a search.
+- **Polite.** One request at a time with a pause (`--delay`), and the answers kept for the table's `cache_hours` (24): the same search twice in a day asks once, and `--offline` uses a kept answer. No build, `fab` or test asks a provider.
 
 #### Curve files
 

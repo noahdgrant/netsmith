@@ -27,6 +27,8 @@ pub struct Seen {
     /// The path and query: `/lcsc?productCode=C25104`.
     pub target: String,
     pub user_agent: String,
+    /// The `Authorization` header, empty when there is none.
+    pub authorization: String,
     pub body: String,
     pub at: Instant,
 }
@@ -165,7 +167,7 @@ fn serve(mut stream: TcpStream, seen: &Mutex<Vec<Seen>>, handler: &Handler) {
     let mut parts = line.split_whitespace();
     let method = parts.next().unwrap_or_default().to_string();
     let target = parts.next().unwrap_or_default().to_string();
-    let (mut length, mut user_agent) = (0usize, String::new());
+    let (mut length, mut user_agent, mut authorization) = (0usize, String::new(), String::new());
     loop {
         let mut header = String::new();
         if reader.read_line(&mut header).unwrap_or(0) == 0 || header.trim().is_empty() {
@@ -175,6 +177,7 @@ fn serve(mut stream: TcpStream, seen: &Mutex<Vec<Seen>>, handler: &Handler) {
             match name.trim().to_ascii_lowercase().as_str() {
                 "content-length" => length = value.trim().parse().unwrap_or(0),
                 "user-agent" => user_agent = value.trim().to_string(),
+                "authorization" => authorization = value.trim().to_string(),
                 _ => {}
             }
         }
@@ -185,6 +188,7 @@ fn serve(mut stream: TcpStream, seen: &Mutex<Vec<Seen>>, handler: &Handler) {
         method,
         target,
         user_agent,
+        authorization,
         body: String::from_utf8_lossy(&body).into_owned(),
         at: Instant::now(),
     };

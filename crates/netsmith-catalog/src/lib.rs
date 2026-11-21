@@ -9,6 +9,7 @@
 pub mod picks;
 pub mod refresh;
 pub mod resolve;
+pub mod search;
 pub mod stock;
 pub mod supply;
 pub mod values;

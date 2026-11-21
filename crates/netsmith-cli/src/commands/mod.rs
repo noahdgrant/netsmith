@@ -8,6 +8,7 @@ mod bom;
 mod build;
 mod case;
 mod catalog;
+mod catalog_search;
 mod check;
 pub(crate) mod common;
 mod compare;
@@ -90,7 +91,7 @@ pub enum Command {
     /// Look at a board: draw it in 3D, serve the editor, drive the editor's 3D view.
     #[command(subcommand)]
     View(View),
-    /// Check, list or add catalog rows against LCSC's record.
+    /// Check, list, add or search for catalog rows against a supplier's record.
     Catalog(catalog::Args),
     /// Bring something from outside into a project: a drawing, KiCad's libraries, a part, a port, a case.
     #[command(subcommand)]

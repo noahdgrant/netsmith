@@ -356,10 +356,65 @@ pub struct SupplyConfig {
     /// How many hours a cached answer is used without asking again (default 24).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_hours: Option<u64>,
+    /// `[supply.nexar]`: the search provider of `netsmith catalog search` and `catalog add
+    /// --from` (issue #1460), on only when the table is there and the variables it names are set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nexar: Option<NexarConfig>,
+}
+
+/// The `[supply.nexar]` table: the names of the environment variables that hold the client id and
+/// the client secret of a Nexar application (ADR 0047 item 3: a credential is given by the name of
+/// an environment variable, never by its value). Both are required, so nothing reads a variable
+/// the project did not name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NexarConfig {
+    /// The variable that holds the client id: `NEXAR_CLIENT_ID`.
+    pub client_id_env: String,
+    /// The variable that holds the client secret: `NEXAR_CLIENT_SECRET`.
+    pub client_secret_env: String,
+}
+
+impl NexarConfig {
+    /// A name that is not the name of an environment variable is refused: it may be the value
+    /// itself, which must never be in the manifest.
+    fn validate(&self) -> Result<(), String> {
+        for (key, name) in [
+            ("client_id_env", &self.client_id_env),
+            ("client_secret_env", &self.client_secret_env),
+        ] {
+            if !is_env_name(name) {
+                return Err(format!(
+                    "{MANIFEST}: [supply.nexar] {key} is not the name of an environment variable (capital letters, digits and `_`, such as `NEXAR_CLIENT_ID`); the manifest holds the variable's name and never its value, so if this is the value, remove it from the file and from the repository's history, and make a new one at portal.nexar.com"
+                ));
+            }
+        }
+        if self.client_id_env == self.client_secret_env {
+            return Err(format!(
+                "{MANIFEST}: [supply.nexar] client_id_env and client_secret_env name the same variable, {:?}; the id and the secret are two values",
+                self.client_id_env
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// `NEXAR_CLIENT_ID`: a capital letter or `_`, then capital letters, digits and `_`, at most 64.
+fn is_env_name(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= 64
+        && (bytes[0].is_ascii_uppercase() || bytes[0] == b'_')
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || *b == b'_')
 }
 
 impl SupplyConfig {
     fn validate(&self) -> Result<(), String> {
+        if let Some(nexar) = &self.nexar {
+            nexar.validate()?;
+        }
         match (self.provider.as_deref(), &self.file) {
             (Some("file"), None) => {
                 return Err(format!(
@@ -2214,6 +2269,33 @@ mod tests {
 
     fn parse(text: &str) -> Result<Manifest, String> {
         Manifest::parse(text)
+    }
+
+    #[test]
+    fn the_nexar_table_holds_two_variable_names_and_renders_back() {
+        let text = "[project]\nname = \"x\"\n\n[supply.nexar]\nclient_id_env = \"NEXAR_CLIENT_ID\"\nclient_secret_env = \"NEXAR_CLIENT_SECRET\"\n";
+        let m = parse(text).unwrap();
+        let nexar = m.supply.as_ref().and_then(|s| s.nexar.as_ref()).unwrap();
+        assert_eq!(nexar.client_id_env, "NEXAR_CLIENT_ID");
+        let rendered = m.render();
+        assert!(rendered.contains("[supply.nexar]"), "{rendered}");
+        assert_eq!(parse(&rendered).unwrap(), m);
+        for (bad, says) in [
+            (
+                "client_id_env = \"A\"\nclient_secret_env = \"a1b2-c3d4\"\n",
+                "client_secret_env is not the name of an environment variable",
+            ),
+            (
+                "client_id_env = \"A\"\nclient_secret_env = \"A\"\n",
+                "name the same variable",
+            ),
+            ("client_id_env = \"A\"\n", "client_secret_env"),
+        ] {
+            let e =
+                parse(&format!("[project]\nname = \"x\"\n\n[supply.nexar]\n{bad}")).unwrap_err();
+            assert!(e.contains(says), "{e}");
+            assert!(!e.contains("a1b2-c3d4"), "{e}");
+        }
     }
 
     #[test]

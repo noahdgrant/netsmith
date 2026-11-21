@@ -30,7 +30,7 @@ use super::{date_of, write_atomically};
 /// The fixed columns a row leaves empty on purpose, which the command does not ask to be filled:
 /// a supplier's price and stock (ADR 0047), the day of a check, and `name` and `label`, which
 /// default to the `mpn`.
-const LEFT_EMPTY: [&str; 6] = ["price", "stock", "date", "checked", "name", "label"];
+pub(crate) const LEFT_EMPTY: [&str; 6] = ["price", "stock", "date", "checked", "name", "label"];
 
 /// What `catalog add` did.
 #[derive(Debug, Clone, PartialEq)]
@@ -272,7 +272,7 @@ fn offer_row(offer: &netsmith_solve::migrate::MovedOffer) -> String {
 }
 
 /// A CSV field: quoted when it holds a comma, a quote or a line break, with a quote doubled.
-fn csv_cell(value: &str) -> String {
+pub(crate) fn csv_cell(value: &str) -> String {
     if value.contains([',', '"', '\n', '\r']) {
         format!("\"{}\"", value.replace('"', "\"\""))
     } else {
