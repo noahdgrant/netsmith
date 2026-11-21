@@ -13,9 +13,11 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+## 0.8.0: changes since 0.7.0
+
 ### A board's `.corner` is its corner style, a `TrackCorner` (issue #1508)
 
-A board's member `.corner` says how its tracks turn: `TrackCorner::Rounded` (the default) or `TrackCorner::Mitered` (no arcs). A board that has a member `.corner` of another type, for its own use, now stops with "`corner` is not a `TrackCorner`". Rename the board's own member:
+A board's member `.corner` says how its tracks turn: `TrackCorner::Rounded` (the default) or `TrackCorner::Mitered` (no arcs). A board that has a member `.corner` of another type, for its own use, now stops with "`corner` is not a `TrackCorner`" (#1527). Rename the board's own member:
 
 | Old spelling | New spelling |
 |---|---|
@@ -25,7 +27,7 @@ A board's member `.corner` says how its tracks turn: `TrackCorner::Rounded` (the
 
 ### The processes gain `.via_group_gap` (issue #1505)
 
-Every process of the standard library (`std::mfg::jlcpcb::TwoLayer`, `FourLayer` and the rest, and `std::mfg::acme`'s) declares `.via_group_gap: Length`, the most space between the copper of two vias of one net at which they stand side by side as one group: the group the check `via_current` counts, the router's groups and the quality report's via pairs. No process states it, and unstated it is the process's `.min_clearance`; a board states another with `.process.via_group_gap &= 0.15mm`, and `&= 0mm` keeps the old rule, that the copper of the vias of a group touch. A provider of yours (`interface MyProcess provides TwoLayer`) that declared a member `.via_group_gap` for itself now stops at the declaration:
+Every process of the standard library (`std::mfg::jlcpcb::TwoLayer`, `FourLayer` and the rest, and `std::mfg::acme`'s) declares `.via_group_gap: Length`, the most space between the copper of two vias of one net at which they stand side by side as one group: the group the check `via_current` counts, the router's groups and the quality report's via pairs. No process states it, and unstated it is the process's `.min_clearance`; a board states another with `.process.via_group_gap &= 0.15mm`, and `&= 0mm` keeps the old rule, that the copper of the vias of a group touch (#1526). A provider of yours (`interface MyProcess provides TwoLayer`) that declared a member `.via_group_gap` for itself now stops at the declaration:
 
 ```text
 error: `via_group_gap` is declared by `TwoLayer`, which this interface provides; do not declare it again: narrow it with `.via_group_gap &= ...`, or state it with a relation
@@ -35,21 +37,9 @@ Delete the declaration and keep its narrowing (`.via_group_gap &= ...`). There i
 
 A board whose vias of a net that needs several stood near one another, not touching, may now pass `via_current` where it failed, and the quality report counts via pairs within the least clearance where it counted them within 0.5 mm, leaving out a group the net's current needs.
 
-### `routes tidy` counts `in_pad_tracks`, not `nudges` (issues #1485, #1492)
-
-The pass of `routes tidy` that removes a track from the centre of a pad or a via to a point still inside it is named for what it removes, a track inside a pad (_Nudge_ is a word the glossary avoids). A tool that reads the JSON of `netsmith routes tidy --format json` finds the key and the value renamed, and the text says `track(s) inside a pad` where it said `nudge(s)`:
-
-| Where | Old spelling | New spelling |
-|---|---|---|
-| `counts` | `"nudges": 1` | `"in_pad_tracks": 1` |
-| a change's `kind` (`changes`, `refused`) | `"kind": "nudge"` | `"kind": "in_pad"` |
-| the text's count | `1 nudge(s)` | `1 track(s) inside a pad` |
-
-The pass was added after the last release (issue #1485), so only a tool that reads a development build has the old spelling.
-
 ### A catalog row holds no supplier's number, and a hand pick is by `.mpn` (issues #1458, #1459, ADR 0143)
 
-A part is its manufacturer's number now, and what a supplier calls it is an **offer**, a row of `offers/<supplier>.csv` beside the catalogs (`offers/lcsc.csv` for LCSC's numbers; the manifest's `offer_dirs`, default `["offers"]`). JLCPCB's parts library assembles by LCSC's numbers, so its sorting of a part (Basic, Extended or Preferred) is the `class` of the part's `lcsc` offer, empty when its library does not list the part: the `jlcpcb-assembly` supply channel buys the `lcsc` offers that have a class, and `lcsc-retail` any of them. The `lcsc` and `library` columns of a catalog file and the `.lcsc` hand pick are gone:
+A part is its manufacturer's number now, and what a supplier calls it is an **offer**, a row of `offers/<supplier>.csv` beside the catalogs (`offers/lcsc.csv` for LCSC's numbers; the manifest's `offer_dirs`, default `["offers"]`). JLCPCB's parts library assembles by LCSC's numbers, so its sorting of a part (Basic, Extended or Preferred) is the `class` of the part's `lcsc` offer, empty when its library does not list the part: the `jlcpcb-assembly` supply channel buys the `lcsc` offers that have a class, and `lcsc-retail` any of them. The `lcsc` and `library` columns of a catalog file and the `.lcsc` hand pick are gone (#1465, #1467, #1468):
 
 | What stops | Old spelling | New spelling |
 |---|---|---|
@@ -65,15 +55,15 @@ error: `.lcsc &= "C307331"` on `c5`: a hand pick is by the manufacturer's part n
 error: preferred.csv:1: the column `lcsc` has gone from a preferred-parts file (ADR 0143): a supplier's number is an offer, so a line names its part by the `mpn`, with the `manufacturer` when two parts share it (the header `mpn,manufacturer,note`); line 2: `C25744` is `0402WGF1002TCE` (data/offers/lcsc.csv:234)
 ```
 
-The move is mechanical, and one command does it: run `netsmith project migrate-offers` in the project (`--check` first says what it would change and writes nothing). It removes the two columns from the project's own catalog files, every other cell as it was written, appends an offer of `lcsc` for each row with an `lcsc`, with the row's `library` as its `class` (each with the row's `manufacturer`, `mpn`, `source` and `checked`), and rewrites every `.lcsc &= "C..."` of the project's sources as the `.mpn` of the part the number is an offer of. It writes everything or nothing: a row with an `lcsc` and no `mpn`, or a number no offer has, stops it with the place, for you to write the `mpn` by hand. Rename a curve file named by an LCSC number to the row's `mpn` by hand, and write a `preferred.csv` that has an `lcsc` column by `mpn` by hand (its error gives the `mpn` of each number). A dependency's catalogs are migrated in its own project. A rewritten pick is longer than the one it replaces, so each source the command rewrites is formatted as `netsmith project fmt` formats it (a source it does not rewrite is left as it is). Run `netsmith project lock --update` afterwards, because the lock now records each part's offers.
+The move is mechanical, and one command does it: run `netsmith project migrate-offers` in the project (`--check` first says what it would change and writes nothing). It removes the two columns from the project's own catalog files, every other cell as it was written, appends an offer of `lcsc` for each row with an `lcsc`, with the row's `library` as its `class` (each with the row's `manufacturer`, `mpn`, `source` and `checked`), and rewrites every `.lcsc &= "C..."` of the project's sources as the `.mpn` of the part the number is an offer of. It writes everything or nothing: a row with an `lcsc` and no `mpn`, or a number no offer has, stops it with the place, for you to write the `mpn` by hand. Rename a curve file named by an LCSC number to the row's `mpn` by hand, and write a `preferred.csv` that has an `lcsc` column by `mpn` by hand (its error gives the `mpn` of each number). A dependency's catalogs are migrated in its own project. A row that names a `manufacturer` and no `mpn` stops at the row ("the row names the manufacturer `...` and no `mpn`"): write the datasheet's part number in `mpn`, or leave `manufacturer` empty. Two rows of one `mpn` that name two manufacturers are now two parts, where 0.7.0 refused the second. A rewritten pick is longer than the one it replaces, so each source the command rewrites is formatted as `netsmith project fmt` formats it (a source it does not rewrite is left as it is). Run `netsmith project lock --update` afterwards, because the lock now records each part's offers.
 
-Which supplier buys a part is the project's supply channels now, the `channels` of `[supply]` in order (default `["jlcpcb-assembly", "lcsc-retail"]`, which buys what the old columns bought; `channel = "..."` still reads, as a list of one): the first with an offer of a part buys it, and JLCPCB's Basic, Preferred, Extended is the rule of `jlcpcb-assembly` (a retail channel goes by stock, then price). Nothing to change for a project that lists none.
+Which supplier buys a part is the project's supply channels now, the `channels` of `[supply]` in order (default `["jlcpcb-assembly", "lcsc-retail"]`, which buys what the old columns bought; `channel = "..."` still reads, as a list of one; #1470): the first with an offer of a part buys it, and JLCPCB's Basic, Preferred, Extended is the rule of `jlcpcb-assembly` (a retail channel goes by stock, then price). Nothing to change for a project that lists none.
 
 Then run `netsmith project lock --update` and commit the lock (below). `netsmith catalog refresh` now checks the offers of LCSC (`offers/lcsc.csv`) and writes the day in their `checked`, not in the catalog's; a refresh's JSON reports each offers file, and `catalog add`'s has an `offer`.
 
 ### The pick lock is version 2 (issues #1456, #1458, ADR 0143)
 
-`<stem>.lock.toml` now records each part's `manufacturer` beside its `mpn`, and the `sku` of its offer for each supply channel in place of its `lcsc`, and says `version = 2`:
+`<stem>.lock.toml` now records each part's `manufacturer` beside its `mpn`, and the `sku` of its offer for each supply channel in place of its `lcsc`, and says `version = 2` (#1465, #1470):
 
 ```toml
 [LedExample.parts."r1"]
@@ -94,11 +84,23 @@ Run `netsmith project lock --update` once and commit the lock. Its diff is the `
 
 ### The bill of materials names each line's supply channel, and its JSON says `sku` (issue #1461, ADR 0143)
 
-Nothing that built stops building, and `bom.csv` and `order-bom.csv` of a project that buys in `jlcpcb-assembly` and `lcsc-retail` alone are the same bytes. What changes:
+Nothing that built stops building (#1499), and `bom.csv` and `order-bom.csv` of a project that buys in `jlcpcb-assembly` and `lcsc-retail` alone are the same bytes. What changes:
 
 - The JSON of `netsmith board bom --format json` and `netsmith board show --format json` (the editor's `GET /api/bom` and `GET /api/board`), and of the editor's compare and swap, name a part's number `sku` in place of `lcsc`: it is the number of the supply channel that buys the part, and Digi-Key's or Mouser's for theirs. A line of the bill of materials also has `channel`, `manufacturer` and `consigned`, and the field the compare reports a changed number in is `sku`. A program that read `lcsc` reads `sku`. The text of `board bom` has the columns `CHANNEL` and `SKU` in place of `LCSC`, and `board show` writes `sku C25104` in place of `LCSC C25104`.
 - `fab-notes.txt` has a `buy from <channel> (...)` line for each channel that buys a consigned or hand-soldered part, and `order.txt` a section _parts you buy, by supply channel_; `order.txt` prices each line from the channel that buys it.
 - A part the board house is to assemble (`AssemblyMode::Fab`) that the project buys in `digikey-retail` or `mouser-retail` is refused by `fab` by name, as a part with no offer is: JLCPCB assembles by LCSC's numbers. Before, its Digi-Key number went into the `LCSC Part #` cell and the package failed. Mark it `AssemblyMode::Consigned` or `AssemblyMode::Hand`, or give it an LCSC offer.
+
+### What changed with no error
+
+The new keys of `netsmith.toml` (`offer_dirs`, `channels`, `[supply.parts]`, `[supply.nexar]`, `[supply.digikey]`, `length_weight`, `via_weight`, `layer_change_weight`, `routing_objective`) and of the layout file (a part's `designator` entry) are read only where they are written, and `[supply] provider` may now be left out. These change what `board drc`, `board fab`, `board nets` and the `routes` commands report or write without an error in the source:
+
+- **Routing.** The router negotiates the lines it cannot route first time, with a price on copper that is fought over (#1567, #1573, #1574, #1576), lays the worst nets again with the nets in their way (#1550), weighs length, vias and layer changes (#1535, #1537), keeps a power net to one layer with one group of vias sized for its current (#1546), draws its ends at pad and via centres with no stair steps or crumbs (#1503, #1558, #1569), and lays one stitching via per grid point (#1490, #1493). A board is routed with other copper than 0.7.0 laid; copper in the routes file is kept as before. The chain of rip-ups is gone, so `routing-failure.txt` and `routing-report.json` no longer name the stage `chain` (#1574).
+- **The placer** weighs routing (power chains by current, a part beside its bus pins, nothing under a fine-pitch escape) only when `routing_objective` in `netsmith.toml` or `--routing-objective` turns it on (#1545, #1547).
+- **`board drc`.** `pad_island_cut` is a new warning (an error with `fab --strict` or `guidelines = "error"`): a pad's piece of a pour that a track of another net cut off from the rest of the fill, with what cut it off (#1523, #1529). `via_current` and `track_current` judge the copper that only feeds an `input` pin by the current of the pins past it, not the net's whole current (#1520), and name what a track's 1 mm is measured from (#1528). An end that touches an arc's edge is joined, as in KiCad (#1548). The track-drop guideline counts each pin's own current, and `board drc` notes a net over its budget (#1549). A board that passed may get a finding it did not have, or lose one.
+- **`routes tidy`** removes tracks inside a pad, duplicate ways, overlapping copper, runs of tiny tracks and tracks of no length (#1491, #1497, #1558). Its JSON names that first pass `in_pad_tracks` (`"kind": "in_pad"`); the pass was added after 0.7.0 and renamed before 0.8.0, so only a tool written against a development build read the earlier `nudges`. `routes lock` is refused only for an error near where a record ran to a pad that moved (#1521).
+- **`board nets`** measures each piece of copper once and a net's length on its connection (#1494, #1525), and reports each net's routing quality and track drop; `--gate` (opt-in) makes the exit code 1 when a total is over its limit (#1496, #1549).
+- **The KiCad board file** names a Reference and a Value for every footprint (#1554).
+- **New commands and flags.** `board rules` (#1522), `catalog search` and `catalog add --from` through Nexar or Digi-Key, opt-in (#1478, #1565), `routes route --rip-depth`, `--tries` and `--corner` (#1510, #1527), `routes add` of many shapes and `routes import --format json` (#1479), `view pcb --stitching` and the rule areas in `view pcb` and the editor (#1501, #1553), and `layout parts` with a custom pad's real shape (#1519). `routes import --no-places` prints `places not imported: N` in place of a note for each part (#1528).
 
 ## 0.7.0: changes since 0.6.0
 
