@@ -161,8 +161,9 @@
 //!   this ends a cycle of two lines). Bounded by [`CHAIN_SEARCHES`] 600 for a line and
 //!   [`CHAIN_TOTAL`] 3000 for a try of the board, depth 4, whatever the time limit. Nothing in
 //!   it is random, ties go by line number, and the same board gives the same copper. The
-//!   negotiation before it does not replace it: without it the invented boards leave 30 lines
-//!   against 5, and 15 with the negotiation's bounds quadrupled (issue #1566,
+//!   negotiation before it does not replace it: without it the invented boards leave 19 lines
+//!   against 2 (30 against 5, and 15 with the negotiation's bounds quadrupled, before it learnt
+//!   the whole path, issue #1572) (issue #1566,
 //!   `route/negotiation.rs`, [`RouteOptions::chain`]).
 //! - **`.kicad_pro` gives the Default net class a `priority`.** Without it KiCad 9 ignored the
 //!   Default class's clearance and checked every board against its own 0.2 mm (measured: a

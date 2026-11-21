@@ -14,7 +14,11 @@
 //! 2. The cells where that path **overlaps** other copper (a cell of the path the masks would
 //!    keep the path from, for that copper alone) get one more unit of **history**
 //!    ([`HISTORY_COST`] a unit for every later search of the try, soft or for copper, up to
-//!    [`HISTORY_MOST`]): only the cells fought over, not the whole path.
+//!    [`HISTORY_MOST`]), and every cell of the path one unit: the cells fought over learn twice
+//!    as fast as the rest of the path. (Learning only the cells fought over, a line whose path
+//!    overlaps little or nothing, one whose copper could not be drawn where the search ran
+//!    because its corners do not fit, was searched for on the same path round after round:
+//!    issue #1572.)
 //! 3. The lines whose copper it overlaps (single lines, not whole nets: a net's other lines stay)
 //!    are ripped up, the line is routed through the room they left, and they are **routed
 //!    again**, shortest first, each paying the history. A line that finds no way is left, and is
@@ -49,7 +53,9 @@
 //! | no chain, 20 rounds, 12000 searches, no stop on a spread | 17 | 1990 |
 //! | the same with the lock and the halving | 15 | 1958 |
 //!
-//! The second run is tight 5 again (1 line left without it, none with it).
+//! The second run is tight 5 again (1 line left without it, none with it). These rows were
+//! measured before the history learnt the whole path (issue #1572); with it, the built form
+//! leaves 2 lines (1864 vias) and no chain 19 (1992 vias).
 //!
 //! The form before this one (2026-11-04 to 2026-11-21) ripped up the whole nets near the line's
 //! path, at one price in every round, and learnt every cell of the path; it had no bound but
@@ -64,12 +70,17 @@
 //! | | lines left | vias | layer changes | nets over twice their straight length | mean detour |
 //! |---|---|---|---|---|---|
 //! | main (and no negotiation) | 9 | 1945 | 1913 | 190 | 1.535 |
-//! | **this** | **5** | **1883** | **1850** | **177** | **1.502** |
+//! | the first form of this, learning the cells fought over only | 5 | 1883 | 1850 | 177 | 1.502 |
+//! | **this, learning the whole path and the cells fought over twice** | **2** | **1864** | **1831** | **177** | **1.487** |
 //!
-//! It finishes four boards main leaves a line of (tight 4 and 6, mixed 1 and 7) and leaves none
-//! that main finishes; seven boards keep its end, at 31 to 170 searches each. Before the chain ran
-//! from both states, one board (tight 5) ended with a line that main's chain closed: the chain
-//! from the negotiation's end, 2 lines, left 1, where from the 4 lines it began with it left none.
+//! It finishes seven boards main leaves lines of (mixed 0, 1, 2, 5 and 7, tight 6) and leaves
+//! none that main finishes; tight 4 and 7 keep their one line. Learning the cells fought over
+//! only, it finished tight 4 too but none of mixed 0, 2 and 5, and it lost a land-grid board
+//! that main finished (`synthetic::a_walled_in_pad_on_a_plane_net_gets_a_via_in_the_pad`, issue
+//! #1572): a line whose overlapping path crossed no copper learnt no cell and was searched for
+//! on the same path, which could not be drawn, round after round. Before the chain ran from both
+//! states, one board (tight 5) ended with a line that main's chain closed: the chain from the
+//! negotiation's end, 2 lines, left 1, where from the 4 lines it began with it left none.
 
 use super::*;
 
@@ -183,7 +194,8 @@ impl<'a> Router<'a> {
     /// Where `line` goes when other nets' copper may be crossed at the present price, as
     /// [`Self::contested`] finds it (the copper of a protected line stays hard), and what that
     /// path overlaps: the routed lines of other nets whose copper the masks would keep the path
-    /// from, in line order, and the cells of the path where it does, each once. `None` if even
+    /// from, in line order, and the cells to learn: those where it does, each once, and then
+    /// every cell of the path. `None` if even
     /// that search finds no path.
     pub(super) fn overlaps(
         &self,
@@ -245,8 +257,13 @@ impl<'a> Router<'a> {
         }
         crossed.sort_unstable();
         crossed.dedup();
+        // Every cell of the path is learnt once, and each cell where it overlaps once more: a
+        // line whose path overlaps little failed as much because its copper could not be drawn
+        // where the search ran (its corners do not fit) as because other copper was in the way,
+        // and learning only the overlap left the next search on the same path (issue #1572).
         fought.sort_unstable();
         fought.dedup();
+        fought.extend(path);
         Some((crossed, fought))
     }
 }
