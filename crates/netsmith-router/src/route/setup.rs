@@ -167,6 +167,8 @@ impl<'a> Router<'a> {
             classed: Cell::new(false),
             negotiate: options.negotiate,
             history: RefCell::new(vec![Vec::new(); stack.len()]),
+            negotiation: options.negotiation,
+            soft_price: Cell::new(100),
             stack,
             outer_only,
             one_layer,
@@ -260,6 +262,7 @@ impl<'a> Router<'a> {
                 via: (0..window.cells())
                     .map(|c| counts.via[c] > 0 && !m.via[c])
                     .collect(),
+                price: self.soft_price.get(),
             });
         }
         // A net on one layer (issue #1274): no via, and no track on any other layer.

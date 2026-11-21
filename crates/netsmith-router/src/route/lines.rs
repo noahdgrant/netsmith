@@ -122,6 +122,7 @@ impl<'a> Router<'a> {
                 pairing: self.pairing.get(),
                 pouring: self.pouring.get(),
                 via_price: self.via_price.get(),
+                soft_price: if soft { self.soft_price.get() } else { 100 },
                 window,
                 print,
                 step,
