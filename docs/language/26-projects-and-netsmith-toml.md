@@ -248,7 +248,7 @@ default = true
 footprint = "own:Sensor"
 ```
 
-The file is `libs/own.pretty/Sensor.kicad_mod`. `build` and `fab` write the library name into the `fp-lib-table` beside the board, so KiCad finds the footprint.
+The file is `libs/own.pretty/Sensor.kicad_mod`. `build` and `fab` write the library name into the `fp-lib-table` beside the board, so KiCad finds the footprint. The board file names each footprint's `Reference` and `Value` whether the library file has those properties or not (a keep-out zone of the footprint belongs to its part by the designator).
 
 **One part with a footprint of its own.** A `[[part]]` row maps every part of a kind in a package. A `[[member]]` row gives one part, named by its member path on its board (as the layout file names it), another footprint, in either way above. A port uses it to draw a part with the original's land pattern where that is not the standard row's: a project may not map a kind and package that `std/kicad.toml` maps, and an original may draw two parts of one kind and package with two land patterns. The symbol and the pin names stay those of the part's row, and the footprint is checked against the pin table as any other is. Here the sensor `.s` is drawn with the generator's SOT-23 instead of `own:Sensor`:
 
