@@ -50,8 +50,8 @@ use netsmith_editor::{
         Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
         FabReport, FileContent, GerberView, GitInfo, KeepoutPlacement, OrderInfo, OrderReport,
         PanelView, PcbChange, PcbCopper, PcbEdit, PcbEdited, PcbFill, PcbFindings, PcbFit, PcbNets,
-        PcbReport, PcbScene, PcbSummary, PinLock, PinMove, PinWritten, PowerTree, Project, Saved,
-        SchematicHints, SystemView,
+        PcbReport, PcbScene, PcbStitching, PcbSummary, PinLock, PinMove, PinWritten, PowerTree,
+        Project, Saved, SchematicHints, SystemView,
     },
 };
 
@@ -1125,6 +1125,34 @@ impl Workspace {
             .unwrap_or_else(|e| e.into_inner())
             .clone()
     }
+
+    /// `then` of the placement `pcb_scene` draws, kept in `state.pcb` (the fill, the nets and the
+    /// stitching ask of it): placed here only when the board has not been placed since the files
+    /// were read, and then kept for the 2D view too. `then` runs with no lock held.
+    fn with_filling<T>(
+        &self,
+        board: &str,
+        then: impl FnOnce(pcb::Filling) -> Result<T, ApiError>,
+    ) -> Result<T, ApiError> {
+        let (version, data) = {
+            let state = self.fresh();
+            let data = state.snapshot.board_handle(board)?;
+            if let Some(entry) = state.pcb.get(board) {
+                let filling = pcb::Filling::of(entry);
+                drop(state);
+                return then(filling);
+            }
+            (state.version, data)
+        };
+        let entry = pcb::place(&data, board)?;
+        let filling = pcb::Filling::of(&entry);
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.version == version {
+            state.pcb.entry(board.to_string()).or_insert(entry);
+        }
+        drop(state);
+        then(filling)
+    }
 }
 
 impl Backend for Workspace {
@@ -1594,50 +1622,15 @@ impl Backend for Workspace {
     }
 
     fn pcb_fill(&self, board: &str) -> Result<PcbFill, ApiError> {
-        // The placement `pcb_scene` draws, kept in `state.pcb`; placed here only when the board
-        // has not been placed since the files were read, and then kept for the 2D view too. The
-        // fill runs with no lock held.
-        let (version, data) = {
-            let state = self.fresh();
-            let data = state.snapshot.board_handle(board)?;
-            if let Some(entry) = state.pcb.get(board) {
-                let filling = pcb::Filling::of(entry);
-                drop(state);
-                return filling.fill(board);
-            }
-            (state.version, data)
-        };
-        let entry = pcb::place(&data, board)?;
-        let filling = pcb::Filling::of(&entry);
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.version == version {
-            state.pcb.entry(board.to_string()).or_insert(entry);
-        }
-        drop(state);
-        filling.fill(board)
+        self.with_filling(board, |filling| filling.fill(board))
+    }
+
+    fn pcb_stitching(&self, board: &str) -> Result<PcbStitching, ApiError> {
+        self.with_filling(board, |filling| Ok(filling.stitching(board)))
     }
 
     fn pcb_nets(&self, board: &str) -> Result<PcbNets, ApiError> {
-        // As `pcb_fill`: the placement `pcb_scene` draws, placed here only when the board has
-        // not been placed since the files were read; measured with no lock held.
-        let (version, data) = {
-            let state = self.fresh();
-            let data = state.snapshot.board_handle(board)?;
-            if let Some(entry) = state.pcb.get(board) {
-                let filling = pcb::Filling::of(entry);
-                drop(state);
-                return filling.nets(board);
-            }
-            (state.version, data)
-        };
-        let entry = pcb::place(&data, board)?;
-        let filling = pcb::Filling::of(&entry);
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.version == version {
-            state.pcb.entry(board.to_string()).or_insert(entry);
-        }
-        drop(state);
-        filling.nets(board)
+        self.with_filling(board, |filling| filling.nets(board))
     }
 
     fn gerber(&self, board: &str, layer: Option<&str>) -> Result<GerberView, ApiError> {

@@ -19,7 +19,8 @@
 //! by a via dropped beside the pad and a short track from the pad to the via; that is all such
 //! a pad needs. Two such pads near each
 //! other may share one via ([`Router::share_vias`]), and a pad in an outer pour of its net gives
-//! its via up once the pour is stitched (`crate::pour_pads`), both issue #834.
+//! its via up once the pour is stitched (`crate::pour_pads`), both issue #834; the stitching
+//! counts a grid point's via that only the pad's own via stood in the way of (issue 1484).
 //!
 //! The grid is 0.1 mm. A cell is open to a track of a net only if the track's copper, and
 //! the clearance round it, stays off every pad, track and via of other nets and off the
@@ -1770,14 +1771,17 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     // clear of them.
     crate::pad_vias::add(board);
     // Pours are stitched to the other layers of their nets in what the routing left free.
-    if options.stitch {
+    let on_spare = if options.stitch {
         let spare: Vec<netsmith_pcb::Via> = drops.iter().map(|d| d.via.clone()).collect();
-        crate::stitch::stitch(board, &spare);
-    }
+        crate::stitch::stitch(board, &spare)
+    } else {
+        Vec::new()
+    };
     // Ground vias along the tracks of a `TrackPath` with a fence (issue #1275).
     crate::stitch::fence(board);
     // A pad that a pour of its net joins to those vias gives up its own (issue #834).
-    crate::pour_pads::drop_vias(board, &drops);
+    // The stitching vias put over those pads' own vias stay only where those go (issue 1484).
+    crate::pour_pads::drop_vias(board, &drops, &on_spare);
     // Teardrops round the copper the search settled (issue #431, S11).
     if options.teardrops {
         crate::teardrop::add(board);

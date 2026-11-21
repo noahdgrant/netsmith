@@ -147,6 +147,7 @@ fn request(format: Format) -> Request {
         only_open: false,
         drc: false,
         islands: false,
+        stitching: false,
         format,
     }
 }
@@ -560,4 +561,79 @@ fn the_islands_the_fill_took_out_are_hatched_and_the_starved_pad_is_a_marker() {
         assert!(!svg.contains(r#"class="island""#));
         assert!(drawn.islands.is_empty());
     }
+}
+
+/// The board of [`board`] with a ground pour on the top stitched every 3 mm to the ground pour
+/// of the bottom (issue #1489).
+fn stitched_board() -> Board {
+    let mut board = board();
+    board.pours.push(netsmith_pcb::BoardPour {
+        layer: CopperLayer::Front,
+        net: "GND".into(),
+        stitch_pitch: Some(3.0),
+        thermal_gap: None,
+        spoke_width: None,
+        clearance: None,
+        min_width: None,
+        pads: None,
+    });
+    assert!(
+        board
+            .pours
+            .iter()
+            .any(|p| p.net == "GND" && p.layer == CopperLayer::Back),
+        "the bottom is poured with GND"
+    );
+    board
+}
+
+/// The stitching vias a picture draws: those of its SVG in the stitching tone.
+fn stitching_drawn(board: &Board) -> (usize, usize) {
+    let drawn = draw(
+        board,
+        &Request {
+            stitching: true,
+            ..request(Format::Svg)
+        },
+        None,
+    )
+    .unwrap();
+    let svg = String::from_utf8(drawn.bytes).unwrap();
+    let toned = svg
+        .matches(r#"<circle class="stitching" data-net="GND""#)
+        .count();
+    assert!(
+        svg.contains(netsmith_pcb::PICTURE_STITCHING),
+        "the tone is the stitching's"
+    );
+    (drawn.stitching, toned)
+}
+
+#[test]
+fn the_stitching_drawn_is_the_stitching_the_router_lays_as_fab_routes() {
+    // Issue #1489: `view pcb --stitching` draws the grid `fab` will lay, counted the same before
+    // the board is routed and after, and none without the flag.
+    let board = stitched_board();
+    let (said, toned) = stitching_drawn(&board);
+    assert!(said > 0, "the top pour is stitched");
+    assert_eq!(toned, said, "every via said is drawn in the stitching tone");
+    let plain = String::from_utf8(draw(&board, &request(Format::Svg), None).unwrap().bytes).unwrap();
+    assert!(!plain.contains(r#"class="stitching""#));
+
+    // The board as `fab` routes it: the same stitching on it, and the picture of it names the
+    // same vias, now the router's.
+    let mut routed = board.clone();
+    netsmith_router::route(&mut routed);
+    let laid = netsmith_router::stitching_vias(&routed);
+    let before: Vec<Pt> = netsmith_router::stitching_vias(&board)
+        .iter()
+        .map(|v| v.at)
+        .collect();
+    let after: Vec<Pt> = laid.iter().map(|v| v.at).collect();
+    assert_eq!(after.len(), said, "{before:?}\n{after:?}");
+    assert!(
+        laid.iter().all(|v| routed.vias.contains(v)),
+        "they are the router's vias, not laid again"
+    );
+    assert_eq!(stitching_drawn(&routed), (said, said));
 }
