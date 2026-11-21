@@ -319,3 +319,50 @@ fn a_net_of_three_pads_counts_the_branches_its_pads_need_joined_at_a_tee() {
     assert!(close(row.length, 16.0) && close(row.copper, 16.0), "{row:?}");
     assert!(row.not_counted.is_empty(), "{row:?}");
 }
+
+#[test]
+fn a_track_inside_a_pad_is_counted_once_and_the_runs_add_up_to_the_copper_less_the_length() {
+    // Pads at (0, 0) and (6, 6), a track from one to the other, and at each end the short track
+    // a hand-routed board draws inside the pad to its centre, from a point the long track's
+    // copper touches but its centre line misses (issue #1511): each was listed twice, as a dead
+    // stub, and the runs added up to more than the copper less the length. A dead stub of 1 mm
+    // tees into the middle.
+    let mut b = Pcb::new(2);
+    b.stub("L", 0.0, 0.0);
+    b.stub("L", 6.0, 6.0);
+    b.track("L", "F.Cu", (0.0, 0.0), (6.0, 6.0), 0.15);
+    b.track("L", "F.Cu", (0.01, 0.0), (0.0, 0.0), 0.15);
+    b.track("L", "F.Cu", (6.0125, 5.95), (6.0, 6.0), 0.15);
+    b.track("L", "F.Cu", (3.0, 3.0), (3.0, 4.0), 0.15);
+    let t = NetTable::of(&Artwork::parse(&b.pcb()).unwrap(), &[], &[]);
+    let row = &t.nets[0];
+    let inside = 0.01 + (0.0125f64.powi(2) + 0.05f64.powi(2)).sqrt();
+    assert!(close(row.copper, 72f64.sqrt() + inside + 1.0), "{row:?}");
+    // The copper inside the pads is the way into them: counted, and no run.
+    assert!(close(row.length, 72f64.sqrt() + inside), "{row:?}");
+    assert_eq!(row.not_counted.len(), 1, "{row:?}");
+    let stub = &row.not_counted[0];
+    assert_eq!((stub.kind, stub.pieces.len()), (Uncounted::Stub, 1), "{stub:?}");
+    assert!(close(stub.length, 1.0), "{stub:?}");
+    let runs: f64 = row.not_counted.iter().map(|r| r.length).sum();
+    assert!(close(runs, row.copper - row.length), "{row:?}");
+    assert!(t.text().contains("net L: 1.00 mm of its "), "{}", t.text());
+}
+
+#[test]
+fn a_short_track_that_leads_to_no_pad_is_one_stub_and_the_runs_add_up() {
+    // The short track of the test above, at a point no pad covers: it touches the long track's
+    // copper, so it is one dead stub, not a copy of itself on the long track.
+    let mut b = Pcb::new(2);
+    b.stub("L", 0.0, 0.0);
+    b.stub("L", 6.0, 0.0);
+    b.track("L", "F.Cu", (0.0, 0.0), (6.0, 0.0), 0.15);
+    b.track("L", "F.Cu", (3.0, 0.05), (3.0, 2.0), 0.15);
+    let t = NetTable::of(&Artwork::parse(&b.pcb()).unwrap(), &[], &[]);
+    let row = &t.nets[0];
+    assert!(close(row.length, 6.0) && close(row.copper, 7.95), "{row:?}");
+    assert_eq!(row.not_counted.len(), 1, "{row:?}");
+    assert!(close(row.not_counted[0].length, 1.95), "{row:?}");
+    let runs: f64 = row.not_counted.iter().map(|r| r.length).sum();
+    assert!(close(runs, row.copper - row.length), "{row:?}");
+}
