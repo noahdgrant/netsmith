@@ -155,12 +155,35 @@ impl Board {
         self.impedance_targets = targets;
     }
 
-    /// Whether a net is on a `TrackPath` whose corners are mitered (issue #1275): the router
-    /// draws no arc at its bends.
+    /// Whether a net's corners are mitered: the board's `.corner` is `Mitered` (issue #1508), or
+    /// the net is on a `TrackPath` whose corners are (issue #1275). The router draws no arc at
+    /// its bends, and `view pcb` draws an arc of it as the chamfer ([`Board::chamfered`]).
     pub fn mitered(&self, net: &str) -> bool {
-        self.track_paths.iter().any(|p| {
-            p.corner == netsmith_core::TrackCorner::Mitered && p.nets.iter().any(|n| n == net)
-        })
+        self.corner == netsmith_core::TrackCorner::Mitered
+            || self.track_paths.iter().any(|p| {
+                p.corner == netsmith_core::TrackCorner::Mitered && p.nets.iter().any(|n| n == net)
+            })
+    }
+
+    /// The board with each arc of a mitered net ([`Board::mitered`]) drawn as its chamfer, a
+    /// straight track from its start to its end (issue #1508): what `view pcb` draws, so a board
+    /// whose style is mitered reads as mitered even where its copper (an import, a hand-drawn
+    /// arc) has arcs. `None` when it has no such arc.
+    pub fn chamfered(&self) -> Option<Board> {
+        if !self
+            .tracks
+            .iter()
+            .any(|t| t.mid.is_some() && self.mitered(&t.net))
+        {
+            return None;
+        }
+        let mut board = self.clone();
+        for i in 0..board.tracks.len() {
+            if board.tracks[i].mid.is_some() && self.mitered(&board.tracks[i].net) {
+                board.tracks[i].mid = None;
+            }
+        }
+        Some(board)
     }
 
     /// The pair a net is one track of by a `PairImpedance` (issue #1025): its partner and the

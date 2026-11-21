@@ -13,6 +13,16 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+### A board's `.corner` is its corner style, a `TrackCorner` (issue #1508)
+
+A board's member `.corner` says how its tracks turn: `TrackCorner::Rounded` (the default) or `TrackCorner::Mitered` (no arcs). A board that has a member `.corner` of another type, for its own use, now stops with "`corner` is not a `TrackCorner`". Rename the board's own member:
+
+| Old spelling | New spelling |
+|---|---|
+| `.corner: Length` (a board's own member) | `.corner_radius: Length`, or any other name |
+
+`netsmith routes route` also rounds the bends of the copper it lays now, as `fab` rounds the router's, unless the board is mitered or the run says `--corner mitered`.
+
 ### The processes gain `.via_group_gap` (issue #1505)
 
 Every process of the standard library (`std::mfg::jlcpcb::TwoLayer`, `FourLayer` and the rest, and `std::mfg::acme`'s) declares `.via_group_gap: Length`, the most space between the copper of two vias of one net at which they stand side by side as one group: the group the check `via_current` counts, the router's groups and the quality report's via pairs. No process states it, and unstated it is the process's `.min_clearance`; a board states another with `.process.via_group_gap &= 0.15mm`, and `&= 0mm` keeps the old rule, that the copper of the vias of a group touch. A provider of yours (`interface MyProcess provides TwoLayer`) that declared a member `.via_group_gap` for itself now stops at the declaration:

@@ -386,3 +386,31 @@ fn a_ripped_net_rips_in_turn_to_the_depth_asked_and_the_tries_are_counted() {
     assert!(text.contains(&format!("{third} (by {wall}, depth 2)")), "{text}");
     assert!(text.contains("every ripped net put back"), "{text}");
 }
+
+/// The copper `routes route` lays takes the board's corner style (issue #1508): rounded, the
+/// default, its bends are arcs where they keep the rules' space, as `fab` rounds the router's
+/// (it never rounds a routes file's); mitered (`.corner`, or `--corner mitered` for one run),
+/// every bend keeps its 45 degree corner. Either way the check finds nothing.
+#[test]
+fn the_copper_laid_takes_the_boards_corner_style() {
+    let rounded = board();
+    let (target, _) = nets(&rounded);
+    let routes = Routes::default();
+    let arcs = |board: &Board| -> usize {
+        let said = route_net(board, &routes, &ask(board, &target, &[])).unwrap();
+        assert_eq!(said.refused, None, "{}", said.text());
+        let after = said.routes.unwrap();
+        let errors = drc_errors(&with_routes(board, &after).unwrap().0).unwrap();
+        assert!(errors.is_empty(), "{errors:#?}");
+        assert_eq!(open(board, &after, &target), 0);
+        after.boards[&board.name].nets[&target]
+            .tracks
+            .iter()
+            .filter(|t| t.mid.is_some())
+            .count()
+    };
+    assert!(arcs(&rounded) > 0, "a rounded board's bends are arcs");
+    let mut mitered = rounded.clone();
+    mitered.corner = netsmith_core::TrackCorner::Mitered;
+    assert_eq!(arcs(&mitered), 0, "a mitered board's bends keep their corners");
+}
