@@ -56,6 +56,16 @@ impl One {
 /// Route `nets` on `board` (placed, with the routes file's copper as its fixed copper and none of
 /// the router's) with every other net locked: the module's header.
 pub fn route_nets(board: &Board, nets: &BTreeSet<String>) -> One {
+    route_nets_weighed(board, nets, None)
+}
+
+/// [`route_nets`], with the weights of the quality objective ([`RouteOptions::weights`],
+/// issue #1517); `None` routes at the router's own costs.
+pub fn route_nets_weighed(
+    board: &Board,
+    nets: &BTreeSet<String>,
+    weights: Option<crate::route::Weights>,
+) -> One {
     if nets.is_empty() {
         return One::default();
     }
@@ -79,6 +89,7 @@ pub fn route_nets(board: &Board, nets: &BTreeSet<String>) -> One {
             share_vias: false,
             pour_pads: false,
             stitch: false,
+            weights,
             ..RouteOptions::default()
         },
     );

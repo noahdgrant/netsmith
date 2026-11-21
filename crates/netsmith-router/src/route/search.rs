@@ -203,7 +203,7 @@ pub(super) fn search(
                     } else {
                         a.min(b) * DIAGONAL + (a - b).abs() * STEP
                     };
-                    d * masks.estimate.0 / masks.estimate.1
+                    d * masks.estimate.0 * masks.length / (masks.estimate.1 * 100)
                 })
                 .min()
                 .unwrap_or(0),
@@ -356,12 +356,8 @@ pub(super) fn moves(
         relax(
             next,
             d,
-            masks.follow_cost(
-                layer,
-                next.0,
-                next.1,
-                if diagonal { DIAGONAL } else { STEP },
-            ) + turn
+            masks.follow_cost(layer, next.0, next.1, step_length(masks, diagonal))
+                + turn
                 + neck
                 + masks.history_cost(layer, next.0, next.1)
                 + masks.soft_cost(layer, next.0, next.1)
@@ -376,7 +372,8 @@ pub(super) fn moves(
     // #1015).
     let at = masks.at(i, j);
     if dir != AFTER_VIA {
-        let cost = VIA + masks.pour.1 + masks.soft_via_cost(i, j) + masks.lane_via_cost(i, j);
+        let cost =
+            masks.via_cost + masks.pour.1 + masks.soft_via_cost(i, j) + masks.lane_via_cost(i, j);
         for other in (0..masks.layers()).filter(|&l| l != layer) {
             if masks.via_open(i, j, layer, other)
                 && (!masks.track[other][at] || open((i, j, other)))
@@ -385,6 +382,14 @@ pub(super) fn moves(
             }
         }
     }
+}
+
+/// What a step's length costs: [`DIAGONAL`] or [`STEP`], times the masks' length weight,
+/// rounded up so that the estimate, which takes the same share of the octile distance, is never
+/// more than a path costs (issue #1517).
+pub(super) fn step_length(masks: &Masks, diagonal: bool) -> i64 {
+    let base = if diagonal { DIAGONAL } else { STEP };
+    (base * masks.length + 99) / 100
 }
 
 /// Whether a search with these masks, ends and moves can reach the goal at all: a flood over

@@ -82,6 +82,9 @@ pub struct Ask {
     pub depth: usize,
     /// The most orders of the ripped nets tried (`--tries`, [`TRIES`], at least 1).
     pub tries: usize,
+    /// The weights of the router's quality objective for this run (`--length-weight`,
+    /// `--via-weight`, `--layer-change-weight`, issue #1517); `None` is the router's own costs.
+    pub weights: Option<netsmith_router::Weights>,
 }
 
 impl Ask {
@@ -124,6 +127,7 @@ impl Ask {
             rip: set,
             depth: RIP_DEPTH,
             tries: TRIES,
+            weights: None,
         })
     }
 }
@@ -716,7 +720,11 @@ impl Runs<'_> {
         if cut {
             self.cut(&mut b, net);
         }
-        Ok(one::route_nets(&b, &BTreeSet::from([net.to_string()])))
+        Ok(one::route_nets_weighed(
+            &b,
+            &BTreeSet::from([net.to_string()]),
+            self.ask.weights,
+        ))
     }
 
     /// The nets of `cands` whose copper stands in the way of `net` (the module's header).

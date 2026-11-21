@@ -27,6 +27,7 @@ const FIRST_ONLY: RouteOptions = RouteOptions {
     pour_pads: true,
     rip_rounds: 0,
     stitch: true,
+    weights: None,
 };
 const RETRY_ONLY: RouteOptions = RouteOptions {
     retry_orders: true,
@@ -48,6 +49,7 @@ const RETRY_ONLY: RouteOptions = RouteOptions {
     pour_pads: true,
     rip_rounds: 0,
     stitch: true,
+    weights: None,
 };
 const RIP_UP_ONLY: RouteOptions = RouteOptions {
     retry_orders: false,
@@ -69,6 +71,7 @@ const RIP_UP_ONLY: RouteOptions = RouteOptions {
     pour_pads: true,
     rip_rounds: 0,
     stitch: true,
+    weights: None,
 };
 
 const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
@@ -91,6 +94,7 @@ const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
     pour_pads: true,
     rip_rounds: 0,
     stitch: true,
+    weights: None,
 };
 
 fn left(board: &Board, options: RouteOptions) -> usize {

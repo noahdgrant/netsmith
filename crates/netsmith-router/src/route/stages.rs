@@ -40,6 +40,7 @@ impl<'a> Router<'a> {
             self.off_the_pours(&mut state, attempt, attempts);
             self.to_the_pours(&mut state);
             self.fewer_vias(&mut state, attempt, attempts);
+            self.polish(&mut state, attempt, attempts);
             self.share_vias(&mut state);
         }
         self.snapshot(SnapshotStage::Final, &state);

@@ -774,6 +774,7 @@ dependencies = [
  "netsmith-netlist",
  "netsmith-pcb",
  "netsmith-pipeline",
+ "netsmith-router",
  "netsmith-solve",
  "netsmith-testkit",
  "netsmith-tools",

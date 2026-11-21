@@ -230,6 +230,10 @@ pub struct FabOptions {
     /// connections (`rip_rounds` in `netsmith.toml`, `--rip-rounds`; issue #1088): the router's
     /// own, [`netsmith_router::RIP_ROUNDS`], by default, and 0 runs none.
     pub rip_rounds: usize,
+    /// The weights of the router's quality objective (`--length-weight`, `--via-weight`,
+    /// `--layer-change-weight`; issue #1517); `None`, the default, routes at the router's own
+    /// costs with no polish pass.
+    pub weights: Option<netsmith_router::Weights>,
     /// Write the board's 3D scene as `<board>.glb` into the board's package folder, beside the
     /// pin map and `fab-notes.txt` and outside the Gerber zip: the scene of the board as routed,
     /// as `dev board3d --glb` writes it (docs/BOARD3D.md). The default is `true`; the command line
@@ -421,6 +425,7 @@ impl Default for FabOptions {
             pin_map_source: None,
             track_margin: DEFAULT_TRACK_MARGIN,
             rip_rounds: netsmith_router::RIP_ROUNDS,
+            weights: None,
             glb: true,
             save_placed: false,
             step: true,
@@ -1574,6 +1579,7 @@ fn fab_board(
                         options.route_timeout,
                         RouteOptions {
                             rip_rounds: options.rip_rounds,
+                            weights: options.weights,
                             ..RouteOptions::default()
                         },
                         options.track_margin,
@@ -1597,6 +1603,7 @@ fn fab_board(
                     options.route_timeout,
                     RouteOptions {
                         rip_rounds: options.rip_rounds,
+                        weights: options.weights,
                         ..RouteOptions::default()
                     },
                     options.track_margin,

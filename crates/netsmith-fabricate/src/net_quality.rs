@@ -102,11 +102,99 @@ pub struct NetQuality {
 }
 
 /// The quality of a board's copper: the totals and each net with a defect, the worst first.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct Quality {
     pub totals: Counts,
     /// The nets with at least one defect, the most defects first, then by name.
     pub nets: Vec<NetQuality>,
+    /// What the router's quality objective weighs, over the nets of the table (issue #1517):
+    /// `None` until [`Quality::with_objective`] gives it the table.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub objective: Option<Objective>,
+}
+
+/// How long a net may be against its straight length before the objective names it: twice.
+pub const DETOUR_LIMIT: f64 = 2.0;
+
+/// How many of the nets over [`DETOUR_LIMIT`] the objective names, the longest ratio first.
+pub const DETOUR_NAMED: usize = 5;
+
+/// What the router's quality objective weighs (issue #1517), over the routed nets of the board's
+/// table (`netsmith_fab::NetTable`: the nets no zone pours, with a track or a via): their length
+/// and straight length together and the ratio of the two (the detour), their vias and layer
+/// changes (a via where the net's tracks meet on two layers or more), and the nets routed over
+/// [`DETOUR_LIMIT`] times their straight length.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct Objective {
+    /// The nets' routed length and straight length, in mm, and the one over the other.
+    pub length: f64,
+    pub straight: f64,
+    pub detour: f64,
+    pub vias: usize,
+    pub layer_changes: usize,
+    /// How many nets are over [`DETOUR_LIMIT`] times their straight length.
+    pub over_twice: usize,
+    /// The first [`DETOUR_NAMED`] of them, the longest ratio first.
+    pub worst: Vec<Detour>,
+}
+
+/// A net routed long against its straight length.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Detour {
+    pub net: String,
+    pub ratio: f64,
+    pub vias: usize,
+    pub layer_changes: usize,
+}
+
+impl Objective {
+    /// The objective of the nets of `table`.
+    pub fn of_table(table: &netsmith_fab::NetTable) -> Objective {
+        let mut o = Objective::default();
+        let mut long = Vec::new();
+        for row in &table.nets {
+            o.length += row.length;
+            o.straight += row.straight;
+            o.vias += row.vias;
+            o.layer_changes += row.layer_changes;
+            if row.ratio > DETOUR_LIMIT {
+                long.push(Detour {
+                    net: row.net.clone(),
+                    ratio: row.ratio,
+                    vias: row.vias,
+                    layer_changes: row.layer_changes,
+                });
+            }
+        }
+        o.detour = if o.straight > 0.0 {
+            o.length / o.straight
+        } else {
+            0.0
+        };
+        long.sort_by(|a, b| b.ratio.total_cmp(&a.ratio).then_with(|| a.net.cmp(&b.net)));
+        o.over_twice = long.len();
+        long.truncate(DETOUR_NAMED);
+        o.worst = long;
+        o
+    }
+
+    /// The objective as a line of text for a person.
+    pub fn text(&self) -> String {
+        let mut out = format!(
+            "objective: {:.1} mm of track over a straight {:.1} mm ({:.2}x), {} via(s), {} layer change(s), {} net(s) over {DETOUR_LIMIT} times their straight length",
+            self.length, self.straight, self.detour, self.vias, self.layer_changes, self.over_twice
+        );
+        if !self.worst.is_empty() {
+            let named: Vec<String> = self
+                .worst
+                .iter()
+                .map(|d| format!("{} {:.2}x", d.net, d.ratio))
+                .collect();
+            out.push_str(&format!(" ({})", named.join(", ")));
+        }
+        out.push('\n');
+        out
+    }
 }
 
 /// A kind whose total is over its limit.
@@ -202,7 +290,19 @@ impl Quality {
                 .cmp(&a.counts.total())
                 .then_with(|| a.net.cmp(&b.net))
         });
-        Quality { totals, nets }
+        Quality {
+            totals,
+            nets,
+            objective: None,
+        }
+    }
+
+    /// The quality with the objective of the nets of `table` (the board's net table).
+    pub fn with_objective(self, table: &netsmith_fab::NetTable) -> Quality {
+        Quality {
+            objective: Some(Objective::of_table(table)),
+            ..self
+        }
     }
 
     /// The kinds whose total is over its limit in `limits`.
@@ -220,6 +320,9 @@ impl Quality {
     /// a defect, the worst first.
     pub fn text(&self) -> String {
         let mut out = format!("quality: {}\n", self.totals.words());
+        if let Some(o) = &self.objective {
+            out.push_str(&o.text());
+        }
         if self.nets.is_empty() {
             return out;
         }
@@ -404,6 +507,7 @@ mod tests {
                 ..Counts::default()
             },
             nets: Vec::new(),
+            objective: None,
         };
         let over = q.over(&Counts::LIMITS);
         assert_eq!(

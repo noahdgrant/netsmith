@@ -702,6 +702,7 @@ use netsmith_pcb::{Board, CopperLayer, Pt, Ratline, Ratsnest, Rect, Track, Via};
 mod clean;
 mod lines;
 mod order;
+mod polish;
 mod pours;
 mod realise;
 mod rip_rounds;
@@ -1177,6 +1178,8 @@ const MEMO_MOST: usize = 200_000;
 struct State {
     routed: Vec<Routed>,
     failed: Vec<usize>,
+    /// How many lines the polish pass gave cheaper copper ([`Router::polish`]).
+    polished: usize,
 }
 
 struct Router<'a> {
@@ -1244,6 +1247,8 @@ struct Router<'a> {
     last_glimpse: Cell<Option<Instant>>,
     /// What the search's moves cost.
     costs: Costs,
+    /// The weights of the quality objective, if stated ([`RouteOptions::weights`]).
+    weights: Option<Weights>,
     /// The stage the router is in, and for each line the stage of this try it last failed in.
     stage: Cell<Stage>,
     failed_in: RefCell<Vec<Stage>>,
@@ -1343,6 +1348,90 @@ pub struct RouteOptions {
     /// (`stitch.rs`); on by default. `netsmith routes route` routes one net and writes its
     /// copper to the routes file, which keeps no stitching (issue #1195).
     pub stitch: bool,
+    /// The weights of the quality objective for the signal nets ([`Weights`], issue #1517):
+    /// what a millimetre of track, a via and a change of layer cost their searches, and a
+    /// polish pass ([`Router::polish`]) on a try that routed every line. `None`, the default,
+    /// routes as the router always has, with no polish pass.
+    pub weights: Option<Weights>,
+}
+
+/// The weights of the router's quality objective (issue #1517): what the search of a line of a
+/// signal net pays for its length, its vias and its changes of layer, in millimetres of track.
+/// A signal net here is one the router draws track for that is no plane's, pour's or zone's
+/// net, and whose current needs no group of vias side by side ([`Router::weighs`]); the other
+/// nets route at the router's own costs. Stated, they also turn on the polish pass
+/// ([`Router::polish`]).
+///
+/// Each via of a line changes its layer once (a via from a cell takes the path to one other
+/// layer), so the search pays `via + layer_change` for one: the two are weighed apart because
+/// `board nets` reports them apart, where a via of a net with track on three layers is two
+/// changes of layer.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Weights {
+    /// What a millimetre of track costs, as a share of the router's own (1); at least
+    /// [`Weights::LEAST_LENGTH`] and at most [`Weights::MOST_LENGTH`].
+    pub length: f64,
+    /// What a via costs, in mm of track (the router's own is 15).
+    pub via: f64,
+    /// What a change of layer costs beyond its via, in mm of track (the router's own is 0).
+    pub layer_change: f64,
+}
+
+impl Weights {
+    /// The router's own weights: what it routes with when none are stated.
+    pub const DEFAULT: Weights = Weights {
+        length: 1.0,
+        via: VIA as f64 / STEP as f64,
+        layer_change: 0.0,
+    };
+    /// The least and the most share of the router's own cost of track `length` may be.
+    pub const LEAST_LENGTH: f64 = 0.1;
+    pub const MOST_LENGTH: f64 = 10.0;
+    /// The most a via or a change of layer may cost, in mm of track.
+    pub const MOST_VIA: f64 = 1000.0;
+
+    /// Whether the weights are in their ranges; the reason when not.
+    pub fn check(&self) -> Result<(), String> {
+        if !(Self::LEAST_LENGTH..=Self::MOST_LENGTH).contains(&self.length) {
+            return Err(format!(
+                "the length weight is {}, and must be from {} to {}",
+                self.length,
+                Self::LEAST_LENGTH,
+                Self::MOST_LENGTH
+            ));
+        }
+        for (what, v) in [("via", self.via), ("layer change", self.layer_change)] {
+            if !(0.0..=Self::MOST_VIA).contains(&v) {
+                return Err(format!(
+                    "the {what} weight is {v} mm, and must be from 0 to {} mm",
+                    Self::MOST_VIA
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// What a step's length costs, in hundredths of the router's own.
+    fn length_percent(&self) -> i64 {
+        (self.length * 100.0).round() as i64
+    }
+
+    /// What a via costs the search, in tenths of a millimetre of track.
+    fn via_cost(&self) -> i64 {
+        ((self.via + self.layer_change) * STEP as f64).round() as i64
+    }
+
+    /// What a line's copper costs by these weights, in mm of track: its length, its vias and
+    /// its changes of layer (one for each via of a line).
+    fn measure(&self, length: f64, vias: usize) -> f64 {
+        self.length * length + (self.via + self.layer_change) * vias as f64
+    }
+}
+
+impl Default for Weights {
+    fn default() -> Self {
+        Weights::DEFAULT
+    }
 }
 
 /// Which tries of the router route the lines by class, the most important first, and keep the
@@ -1394,6 +1483,7 @@ impl Default for RouteOptions {
             pour_pads: true,
             rip_rounds: RIP_ROUNDS,
             stitch: true,
+            weights: None,
         }
     }
 }
@@ -1601,6 +1691,9 @@ pub struct Routing {
     /// The diff pairs routed as two separate lines because routed as pairs they left
     /// connections (issue #1295); `None` when every pair was routed as a pair.
     pub separate: Option<Separate>,
+    /// How many lines the polish pass of the try that gave the result routed again cheaper by
+    /// the weights ([`RouteOptions::weights`], issue #1517); 0 when no weights are stated.
+    pub polished: usize,
 }
 
 /// The diff pairs a board routed as two separate lines ([`Routing::separate`], issue #1295):
@@ -1628,7 +1721,19 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     // A sense pin's tap is cut in two while the board is routed, so its track keeps apart from
     // the rest of its net (`crate::kelvin`, issue #1148); the board is put back at the end.
     let split = crate::kelvin::split(board);
-    let (best, stopped, tries, why, crowding, stages, drops, rip_rounds, line_vias, separate) = {
+    let (
+        best,
+        stopped,
+        tries,
+        why,
+        crowding,
+        stages,
+        drops,
+        rip_rounds,
+        line_vias,
+        separate,
+        polished,
+    ) = {
         let mut router = Router::new(board, &options);
         let mut orders = router.tries(&options);
         if options.plan != CoarsePlan::Off {
@@ -1727,6 +1832,7 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         let why = router.why(&best, &failed_in, late);
         // The copper drawn clean (issue #1486), once nothing more is searched for.
         let mut best = best;
+        let polished = best.polished;
         router.clean(&mut best);
         let drops = if options.pour_pads {
             router.pour_pad_vias(&best)
@@ -1740,6 +1846,7 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         let crowding = router.crowding.into_inner();
         (
             best, stopped, tries, why, crowding, stages, drops, rip_rounds, line_vias, separate,
+            polished,
         )
     };
     let complete = best.failed.is_empty();
@@ -1831,5 +1938,6 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         groups: lengths.groups,
         rip_rounds,
         separate,
+        polished,
     }
 }

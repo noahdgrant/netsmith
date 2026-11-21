@@ -447,6 +447,10 @@ impl<'a> Router<'a> {
             masks.pour = (self.pour_costs(net), POUR_VIA);
         }
         masks.pour.1 += self.via_price.get();
+        if let Some(w) = self.weighs(line) {
+            masks.via_cost = w.via_cost();
+            masks.length = w.length_percent();
+        }
         self.add_history(&mut masks);
         masks
     }

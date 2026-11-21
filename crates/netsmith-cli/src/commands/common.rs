@@ -50,6 +50,61 @@ impl Placing {
     }
 }
 
+/// The weights of the router's quality objective (issue #1517), of `board fab`, `routes route`
+/// and `dev route`: with none, the router routes at its own costs, as it always has.
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct Weighing {
+    /// What a millimetre of a signal net's track costs the router, as a share of its own (1).
+    ///
+    /// From 0.1 to 10. Any of the three weights turns on the router's polish pass, which routes
+    /// each signal line again on a finished board and keeps the cheaper copper; with none the
+    /// router routes as before. A signal net is one no plane, pour or zone fills and whose
+    /// current needs no vias side by side.
+    #[arg(long, value_name = "SHARE", value_parser = parse_weight)]
+    pub length_weight: Option<f64>,
+    /// What a via of a signal net costs the router, in mm of track (its own is 15).
+    ///
+    /// Raise it for fewer vias at the price of longer tracks; 0 to 1000.
+    #[arg(long, value_name = "MM", value_parser = parse_weight)]
+    pub via_weight: Option<f64>,
+    /// What a change of layer of a signal net costs the router beyond its via, in mm of track
+    /// (its own is 0).
+    ///
+    /// Each via of a line is one change of layer, so the router pays the two together; `board
+    /// nets` counts them apart. 0 to 1000.
+    #[arg(long, value_name = "MM", value_parser = parse_weight)]
+    pub layer_change_weight: Option<f64>,
+}
+
+impl Weighing {
+    /// The weights stated, the router's own for the ones not; `None` when none is stated.
+    pub fn weights(&self) -> Result<Option<netsmith_router::Weights>, String> {
+        if self.length_weight.is_none()
+            && self.via_weight.is_none()
+            && self.layer_change_weight.is_none()
+        {
+            return Ok(None);
+        }
+        let own = netsmith_router::Weights::DEFAULT;
+        let w = netsmith_router::Weights {
+            length: self.length_weight.unwrap_or(own.length),
+            via: self.via_weight.unwrap_or(own.via),
+            layer_change: self.layer_change_weight.unwrap_or(own.layer_change),
+        };
+        w.check()?;
+        Ok(Some(w))
+    }
+}
+
+/// A weight: a number that is not negative.
+fn parse_weight(s: &str) -> Result<f64, String> {
+    let v: f64 = s.parse().map_err(|_| format!("`{s}` is not a number"))?;
+    if !v.is_finite() || v < 0.0 {
+        return Err(format!("a weight is a number of 0 or more, not `{s}`"));
+    }
+    Ok(v)
+}
+
 /// `--progress` and `--to-editor`, of `fab` and `dev board3d` (issue #764).
 #[derive(Debug, PartialEq, ClapArgs)]
 pub struct Watching {
