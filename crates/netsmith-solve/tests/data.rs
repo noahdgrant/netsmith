@@ -196,7 +196,7 @@ fn lcscs(name: &str) -> Vec<String> {
     catalog(name)
         .candidates
         .iter()
-        .map(|c| c.lcsc.clone().unwrap())
+        .map(|c| c.sku.clone().unwrap())
         .collect()
 }
 
@@ -676,7 +676,7 @@ fn a_resistor_is_the_same_interval_a_source_would_write() {
     let c = cat
         .candidates
         .iter()
-        .find(|c| c.lcsc.as_deref() == Some("C25900"))
+        .find(|c| c.sku.as_deref() == Some("C25900"))
         .unwrap();
     assert_eq!(c.column("resistance"), Some(&Value::Quantity(source)));
     assert_eq!(c.label, "4.7k");
@@ -689,7 +689,7 @@ fn curve_of(lcsc: &str) -> Derating {
     let c = cat
         .candidates
         .iter()
-        .find(|c| c.lcsc.as_deref() == Some(lcsc))
+        .find(|c| c.sku.as_deref() == Some(lcsc))
         .unwrap();
     match c.column("effective_capacitance") {
         Some(Value::Derated(d)) => d.clone(),
@@ -707,7 +707,7 @@ fn capacitors_carry_tolerance_voltage_and_package() {
     let c = cat
         .candidates
         .iter()
-        .find(|c| c.lcsc.as_deref() == Some("C23733"))
+        .find(|c| c.sku.as_deref() == Some("C23733"))
         .unwrap();
     let source = tolerance(4.7, "uF", 20.0);
     assert_eq!(c.column("capacitance"), Some(&Value::Quantity(source)));
@@ -738,7 +738,7 @@ fn a_capacitor_without_a_curve_is_one_of_the_recorded_cases() {
     let mut without = Vec::new();
     for (c, row) in cat.candidates.iter().zip(&rows) {
         let Some(Value::Derated(d)) = c.column("effective_capacitance") else {
-            panic!("{:?}", c.lcsc);
+            panic!("{:?}", c.sku);
         };
         if !d.curve.is_empty() {
             continue;
@@ -820,7 +820,7 @@ fn led_by(lcsc: &str) -> Candidate {
     catalog("led")
         .candidates
         .iter()
-        .find(|c| c.lcsc.as_deref() == Some(lcsc))
+        .find(|c| c.sku.as_deref() == Some(lcsc))
         .unwrap_or_else(|| panic!("{lcsc} is not offered"))
         .clone()
 }
@@ -938,7 +938,7 @@ fn the_only_regulator_is_the_xc6206_in_sot23() {
     let cat = catalog("ldo");
     assert_eq!(cat.candidates.len(), 1);
     let c = &cat.candidates[0];
-    assert_eq!(c.lcsc.as_deref(), Some("C5446"));
+    assert_eq!(c.sku.as_deref(), Some("C5446"));
     assert_eq!(c.mpn.as_deref(), Some("XC6206P332MR-G"));
     assert_eq!(c.library, Some(Library::Basic));
     assert_eq!(
@@ -977,7 +977,7 @@ fn the_sample_catalogs_are_a_full_e24_set_and_ascending() {
     assert!(values.windows(2).all(|w| w[0] < w[1]), "ascending");
     assert!(values.contains(&300.0));
     assert_eq!(resistors.candidates.len(), 24 * 7);
-    assert!(resistors.candidates.iter().all(|c| c.lcsc.is_none()));
+    assert!(resistors.candidates.iter().all(|c| c.sku.is_none()));
     assert!(sample.resolve("led", &columns("led"), &[], &[]).is_none());
     // `3.3V +/- 2%` in source and the sample's 3.3 V regulator are the same interval, or the
     // regulator would never match.
@@ -1092,7 +1092,7 @@ fn row_of(name: &str, lcsc: &str) -> Candidate {
     catalog(name)
         .candidates
         .into_iter()
-        .find(|c| c.lcsc.as_deref() == Some(lcsc))
+        .find(|c| c.sku.as_deref() == Some(lcsc))
         .unwrap_or_else(|| panic!("{lcsc} is not in {name}"))
 }
 
@@ -1127,7 +1127,7 @@ fn the_schottky_diodes_carry_the_datasheet_ratings_and_the_ss_series_is_basic() 
         catalog("schottky")
             .candidates
             .iter()
-            .filter(|c| c.lcsc.as_deref() != Some("C467997"))
+            .filter(|c| c.sku.as_deref() != Some("C467997"))
             .all(|c| c.library == Some(Library::Basic))
     );
 }
@@ -1406,7 +1406,7 @@ fn only_the_smdj36a_states_a_breakdown_voltage() {
     let tvs = catalog("tvs");
     assert!(!tvs.candidates.is_empty());
     for c in &tvs.candidates {
-        if c.lcsc.as_deref() == Some("C108363") {
+        if c.sku.as_deref() == Some("C108363") {
             assert!(c.column("breakdown_voltage").is_some(), "{}", c.name);
         } else {
             assert_eq!(c.column("breakdown_voltage"), None, "{}", c.name);

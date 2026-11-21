@@ -1044,7 +1044,8 @@ impl Solver<'_> {
                                 catalog: job.catalog.name.clone(),
                                 candidate: c.name.clone(),
                                 label: c.label.clone(),
-                                lcsc: c.lcsc.clone(),
+                                sku: c.sku.clone(),
+                                channel: c.channel,
                                 manufacturer: c.manufacturer.clone(),
                                 mpn: c.mpn.clone(),
                                 library: c.library,
@@ -1252,7 +1253,7 @@ impl Solver<'_> {
     /// sku of the channel the part names for itself (`[supply.parts]`), which bought the row,
     /// or else the sku of each of the project's channels that has an offer of it.
     fn skus_of(&self, path: &str, c: &Candidate) -> Vec<(String, String)> {
-        match (self.named_channels.get(path), &c.lcsc) {
+        match (self.named_channels.get(path), &c.sku) {
             (Some(named), Some(sku)) => vec![(named.channel.word().to_string(), sku.clone())],
             (Some(_), None) => Vec::new(),
             (None, _) => self.catalogs.skus_of(c),

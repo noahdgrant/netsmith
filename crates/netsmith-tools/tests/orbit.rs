@@ -817,7 +817,7 @@ board SmallPartsFixture {
             ("led2", "C72041", "19-217/BHC-ZL1M2RY/3T"),
         ] {
             let row = sourced(path);
-            assert_eq!(row.lcsc.as_deref(), Some(lcsc), "{path}");
+            assert_eq!(row.sku.as_deref(), Some(lcsc), "{path}");
             assert_eq!(row.mpn.as_deref(), Some(mpn), "{path}");
         }
         // The headers have no number in ORBIT's schematic and are soldered by hand.
@@ -1796,7 +1796,7 @@ board Ics {
                 .iter()
                 .find(|s| s.kind == kind)
                 .unwrap_or_else(|| panic!("no sourcing for {kind}"));
-            assert_eq!(s.lcsc.as_deref(), Some(lcsc), "{kind}");
+            assert_eq!(s.sku.as_deref(), Some(lcsc), "{kind}");
             assert_eq!(s.mpn.as_deref(), Some(mpn), "{kind}");
             assert_eq!(s.package.as_deref(), Some(package), "{kind}");
             assert_eq!(format!("{:?}", s.library.unwrap()), "Extended", "{kind}");
@@ -2181,10 +2181,10 @@ mod board {
             checked += 1;
             let value = s.value.as_str();
             match by_value.get(value) {
-                Some(lcsc) if s.lcsc.as_deref() == Some(*lcsc) => {}
+                Some(lcsc) if s.sku.as_deref() == Some(*lcsc) => {}
                 other => wrong.push(format!(
                     "{} {value}: picked {:?}, ORBIT's schematic has {other:?}",
-                    s.refdes, s.lcsc
+                    s.refdes, s.sku
                 )),
             }
         }
@@ -2200,7 +2200,7 @@ mod board {
         let mut by_hand = Vec::new();
         for s in &built.sourcing {
             if s.assembled() {
-                if s.lcsc.is_none() || s.generic.is_some() {
+                if s.sku.is_none() || s.generic.is_some() {
                     unsourced.push(format!("{} {}", s.refdes, s.kind));
                 }
             } else {

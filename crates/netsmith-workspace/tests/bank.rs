@@ -63,7 +63,7 @@ fn the_bill_of_materials_lists_the_row_once_with_the_quantity_of_the_bank() {
     assert!(line.quantity >= 2, "{}", line.quantity);
     let expected: Vec<String> = (1..=line.quantity).map(|i| format!("C{i}")).collect();
     assert_eq!(line.designators, expected);
-    assert!(line.lcsc.is_some());
+    assert!(line.sku.is_some());
 }
 
 #[test]

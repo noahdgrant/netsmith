@@ -338,7 +338,7 @@ fn the_fixture_builds_with_no_kicad_and_every_part_is_sourced() {
             .iter()
             .find(|s| s.kind == kind)
             .unwrap_or_else(|| panic!("no sourcing row of {kind}"));
-        assert_eq!(row.lcsc.as_deref(), Some(lcsc), "{kind}");
+        assert_eq!(row.sku.as_deref(), Some(lcsc), "{kind}");
         assert_eq!(row.mpn.as_deref(), Some(mpn), "{kind}");
         assert_eq!(row.package.as_deref(), Some(package), "{kind}");
         assert_eq!(format!("{:?}", row.library.unwrap()), library, "{kind}");

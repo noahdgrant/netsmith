@@ -45,7 +45,7 @@ fn main() -> ExitCode {
 
         println!("  picked");
         for p in &solution.picks {
-            let sourcing = match (&p.lcsc, p.library) {
+            let sourcing = match (&p.sku, p.library) {
                 (Some(lcsc), Some(library)) => format!(" [{lcsc}, {library}]"),
                 _ => String::new(),
             };

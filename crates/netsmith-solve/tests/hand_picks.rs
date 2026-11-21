@@ -41,7 +41,7 @@ fn lcsc_of_r1(s: &Solution) -> Option<String> {
     s.picks
         .iter()
         .find(|p| s.model.path_of(p.part) == "r1")
-        .and_then(|p| p.lcsc.clone())
+        .and_then(|p| p.sku.clone())
 }
 
 /// The row the solver picks for `r1` with no hand pick, and one it does not that fits as well.

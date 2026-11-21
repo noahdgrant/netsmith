@@ -361,7 +361,11 @@ export type PartInfo = { refdes: string, kind: string, value: string, package: s
 /**
  * Where it is from the board: `stage.regulator`.
  */
-path: string, lcsc: string | null, assembled: boolean, 
+path: string, 
+/**
+ * The part's number in the supply channel that buys it (ADR 0143).
+ */
+sku: string | null, assembled: boolean, 
 /**
  * The declaration that made it (`.r1: Resistor`), in the file it is written in.
  */
@@ -511,16 +515,17 @@ catalog?: string,
  */
 mpn?: string, 
 /**
- * The LCSC number.
+ * The row's number in the supply channel that buys it (ADR 0143): LCSC's `C25104` for
+ * `jlcpcb-assembly` and `lcsc-retail`.
  */
-lcsc?: string, 
+sku?: string, 
 /**
  * `Basic`, `Extended` or `Preferred`.
  */
 library?: string, 
 /**
  * The solver chose only a value and a package (ADR 0047) and no row stands for the part
- * yet; `mpn`, `lcsc` and `library` are then absent.
+ * yet; `mpn`, `sku` and `library` are then absent.
  */
 generic: boolean, };
 
@@ -825,9 +830,26 @@ mates: Array<MateView>,
  */
 groundGroups: Array<GroundGroupView>, };
 
-export type BomLine = { designators: Array<string>, quantity: number, value: string, kind: string, package: string | null, footprint: string | null, lcsc: string | null, mpn: string | null, 
+export type BomLine = { designators: Array<string>, quantity: number, value: string, kind: string, package: string | null, footprint: string | null, 
 /**
- * `Basic` or `Extended`.
+ * The part's number in the supply channel that buys it (ADR 0143): LCSC's `C25104` for
+ * `jlcpcb-assembly` and `lcsc-retail`, Digi-Key's or Mouser's for theirs. `None` for a part
+ * no channel has an offer of.
+ */
+sku: string | null, 
+/**
+ * The word of the supply channel that buys the part (`jlcpcb-assembly`, `digikey-retail`):
+ * the first of the project's channels with an offer of it, or the one `[supply.parts]` of
+ * `netsmith.toml` names. `None` when no channel buys it.
+ */
+channel: string | null, 
+/**
+ * The part's manufacturer, as its datasheet spells it, if its row names one.
+ */
+manufacturer: string | null, mpn: string | null, 
+/**
+ * The class of the offer that buys it: JLCPCB's `Basic`, `Preferred` or `Extended` for an
+ * LCSC offer.
  */
 library: string | null, unitUsd: number | null, lineUsd: number | null, stock: number | null, 
 /**
@@ -864,6 +886,11 @@ unresolved: string | null,
  * Soldered by hand: the board house does not place it.
  */
 handSolder: boolean, 
+/**
+ * Consigned (ADR 0084): the owner buys it, in its `channel`, and ships it to the board
+ * house, which places it. `bom.csv` lists it with its manufacturer's number as the comment.
+ */
+consigned: boolean, 
 /**
  * The generic this part was picked to provide (`CoaxReceptacle`, ADR 0068): `kind` is
  * the provider's name. `None` for a part written by its own type.
@@ -939,7 +966,11 @@ name: string,
  * The name with how far it is from the value and its library, `240Ω 1% 0402 C25094 (-3.6%,
  * Extended)`.
  */
-line: string, lcsc: string | null, mpn: string | null, check: SwapCheck, 
+line: string, 
+/**
+ * The row's number in the supply channel that buys it.
+ */
+sku: string | null, mpn: string | null, check: SwapCheck, 
 /**
  * What fails, in one line, when `check` is `fails`.
  */
@@ -2350,7 +2381,11 @@ error?: string, };
 
 export type BoardStatus = "added" | "removed" | "changed" | "unchanged";
 
-export type ComparePart = { path: string, designator: string, kind: string, value: string, package?: string, lcsc?: string, mpn?: string, 
+export type ComparePart = { path: string, designator: string, kind: string, value: string, package?: string, 
+/**
+ * The number in the supply channel that buys the part (ADR 0143).
+ */
+sku?: string, mpn?: string, 
 /**
  * `fab`, `hand` or `none` (ADR 0024).
  */
@@ -2384,7 +2419,7 @@ kind: string,
  */
 baseKind?: string, 
 /**
- * In a fixed order: `path`, `kind`, `value`, `package`, `lcsc`, `mpn`, `assembly`,
+ * In a fixed order: `path`, `kind`, `value`, `package`, `sku`, `mpn`, `assembly`,
  * `designator`. Never empty; a part in `renumbered` has only `designator`.
  */
 fields: Array<CompareField>, 
@@ -2500,9 +2535,17 @@ export type CompareInstanceChange = { path: string, baseType: string, headType: 
 
 export type InstancesDiff = { added: Array<CompareInstance>, removed: Array<CompareInstance>, changed: Array<CompareInstanceChange>, };
 
-export type CompareBomLine = { kind: string, value: string, package?: string, footprint?: string, lcsc?: string, mpn?: string, handSolder: boolean, quantity: number, designators: Array<string>, unitUsd?: number, };
+export type CompareBomLine = { kind: string, value: string, package?: string, footprint?: string, 
+/**
+ * The number in the supply channel that buys the part (ADR 0143).
+ */
+sku?: string, mpn?: string, handSolder: boolean, quantity: number, designators: Array<string>, unitUsd?: number, };
 
-export type CompareBomChange = { kind: string, value: string, package?: string, footprint?: string, lcsc?: string, mpn?: string, handSolder: boolean, quantityBase: number, quantityHead: number, designatorsBase: Array<string>, designatorsHead: Array<string>, unitUsdBase?: number, unitUsdHead?: number, };
+export type CompareBomChange = { kind: string, value: string, package?: string, footprint?: string, 
+/**
+ * The number in the supply channel that buys the part (ADR 0143).
+ */
+sku?: string, mpn?: string, handSolder: boolean, quantityBase: number, quantityHead: number, designatorsBase: Array<string>, designatorsHead: Array<string>, unitUsdBase?: number, unitUsdHead?: number, };
 
 export type BomDiff = { added: Array<CompareBomLine>, removed: Array<CompareBomLine>, changed: Array<CompareBomChange>, unchanged: number, 
 /**

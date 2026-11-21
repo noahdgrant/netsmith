@@ -50,10 +50,13 @@ fn usd(amount: f64) -> String {
     format!("${amount:.4}")
 }
 
-/// What a line says apart from its price: a price that is old or unknown, a part no row stands
-/// for, the generic a part provides.
+/// What a line says apart from its price: a consigned part, a price that is old or unknown, a
+/// part no row stands for, the generic a part provides.
 fn remarks(line: &BomLine) -> String {
     let mut says = Vec::new();
+    if line.consigned {
+        says.push("consigned: you buy it and ship it to the board house".to_string());
+    }
     if let Some(wanted) = &line.unresolved {
         says.push(format!("unresolved: {wanted}"));
     }
@@ -76,8 +79,8 @@ fn lines(lines: &[BomLine]) -> String {
     let dash = || "-".to_string();
     let mut rows = vec![
         [
-            "QTY", "REFS", "VALUE", "PACKAGE", "LCSC", "LIBRARY", "UNIT", "LINE", "STOCK", "READ",
-            "NOTES",
+            "QTY", "REFS", "VALUE", "PACKAGE", "CHANNEL", "SKU", "LIBRARY", "UNIT", "LINE",
+            "STOCK", "READ", "NOTES",
         ]
         .map(String::from)
         .to_vec(),
@@ -88,7 +91,8 @@ fn lines(lines: &[BomLine]) -> String {
             line.designators.join(","),
             line.value.clone(),
             line.package.clone().unwrap_or_else(dash),
-            line.lcsc.clone().unwrap_or_else(dash),
+            line.channel.clone().unwrap_or_else(dash),
+            line.sku.clone().unwrap_or_else(dash),
             line.library.clone().unwrap_or_else(dash),
             line.unit_usd.map_or_else(dash, usd),
             line.line_usd.map_or_else(dash, usd),

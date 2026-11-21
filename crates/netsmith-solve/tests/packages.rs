@@ -28,7 +28,7 @@ fn messages(s: &Solution) -> Vec<String> {
 fn a_package_of_the_catalog_picks_a_row_in_it() {
     let (_, s) = led(".color &= Color::Green; .package &= \"0603\"", LEDS);
     assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
-    assert_eq!(s.picks[0].lcsc.as_deref(), Some("C900403"));
+    assert_eq!(s.picks[0].sku.as_deref(), Some("C900403"));
 }
 
 #[test]

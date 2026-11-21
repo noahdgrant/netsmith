@@ -182,8 +182,11 @@ pub struct Candidate {
     pub label: String,
     /// One entry per catalog column, keyed by the field's path inside the part.
     pub columns: Vec<(String, Value)>,
-    /// The supplier's part number (LCSC `C25104`), if this is a real part that can be bought.
-    pub lcsc: Option<String>,
+    /// The sku of the part in the supply channel that buys it ([`Candidate::channel`]): LCSC's
+    /// `C25104` for `jlcpcb-assembly` and `lcsc-retail`, Digi-Key's or Mouser's number for theirs
+    /// (ADR 0143). `None` for a part no channel buys. A candidate made in code may carry a
+    /// number here with no channel: it is bought by that number in JLCPCB's assembly.
+    pub sku: Option<String>,
     /// The part's manufacturer, as its datasheet spells it: the row's `manufacturer` cell. With
     /// the `mpn` it is the part's identity (ADR 0143); `None` when the row names none.
     pub manufacturer: Option<String>,
@@ -487,13 +490,13 @@ impl Catalogs {
         let mut out = c.clone();
         match bought {
             Some(b) if b.channel.is_some() => {
-                out.lcsc = b.lcsc;
+                out.sku = b.sku;
                 out.library = b.library;
                 out.channel = b.channel;
                 Some(out)
             }
             Some(b) if !b.skus.is_empty() => None,
-            _ if c.lcsc.is_some() && channel == Channel::JLCPCB_ASSEMBLY => {
+            _ if c.sku.is_some() && channel == Channel::JLCPCB_ASSEMBLY => {
                 out.channel = Some(channel);
                 Some(out)
             }
@@ -656,7 +659,7 @@ impl Catalogs {
             .into_iter()
             .filter(|(channel, _)| listed.contains(&channel.as_str()))
             .collect();
-        match (&c.lcsc, skus.is_empty()) {
+        match (&c.sku, skus.is_empty()) {
             (Some(lcsc), true) => vec![("jlcpcb-assembly".to_string(), lcsc.clone())],
             _ => skus,
         }

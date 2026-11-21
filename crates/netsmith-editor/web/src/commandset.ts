@@ -483,7 +483,7 @@ const sourceSwitches = (): Command[] => [
     id: 'source.hints.toggle',
     title: inlineHints.value ? 'Source: Hide inline hints' : 'Source: Show inline hints',
     group: 'Source',
-    aliases: ['values', 'lcsc', 'part numbers', 'annotations', 'hints'],
+    aliases: ['values', 'lcsc', 'sku', 'part numbers', 'annotations', 'hints'],
     run: () => {
       inlineHints.value = !inlineHints.peek();
     },

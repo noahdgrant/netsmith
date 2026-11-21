@@ -1958,6 +1958,9 @@ fn fab_board(
             extras.extend(model_notes(scene));
         }
         extras.extend(crate::no_supplier::note(&sourcing));
+        // What the owner buys, by channel (ADR 0143): the consigned and hand-soldered parts, each
+        // with its channel's sku.
+        extras.extend(crate::buying::notes(&crate::buying::lines(&sourcing)));
         if options.offline {
             extras.push(OFFLINE_NOTE.to_string());
         }
@@ -2255,7 +2258,7 @@ fn fab_board(
             summary: pkg.summary(),
             notes,
             files,
-            facts: BoardFacts::of(&board, &pkg),
+            facts: BoardFacts::of(&board, &pkg).bought_by(&sourcing),
             origins: board.origins(),
             requirements: pkg
                 .constraints
@@ -3350,6 +3353,24 @@ fn fab_panel(
             cell.count *= (spec.columns * spec.rows) as usize;
             cell
         },
+        // The panel's parts are its cells', named as bom.csv names them (`R1_3`).
+        bought: run
+            .fabricated
+            .facts
+            .bought
+            .iter()
+            .map(|l| crate::buying::BuyLine {
+                designators: (1..=(spec.columns * spec.rows) as usize)
+                    .flat_map(|k| {
+                        l.designators
+                            .iter()
+                            .map(move |d| netsmith_fab::panel_designator(d, k))
+                    })
+                    .collect(),
+                ..l.clone()
+            })
+            .collect(),
+        bom_channels: run.fabricated.facts.bom_channels.clone(),
     };
     Ok(Fabricated {
         board: spec.name.clone(),
@@ -3398,7 +3419,7 @@ fn alternate_notes(
     alternates
         .iter()
         .map(|a| {
-            let number = match (&a.sourcing.mpn, &a.sourcing.lcsc) {
+            let number = match (&a.sourcing.mpn, &a.sourcing.sku) {
                 (Some(mpn), Some(lcsc)) => format!(" ({mpn}, {lcsc})"),
                 (Some(n), None) | (None, Some(n)) => format!(" ({n})"),
                 (None, None) => String::new(),
@@ -3427,7 +3448,7 @@ fn alternate_entries(
         .map(|a| netsmith_fab::AlternateEntry {
             designator: a.refdes.clone(),
             part_number: a.sourcing.mpn.clone().unwrap_or_else(|| a.kind.clone()),
-            lcsc: a.sourcing.lcsc.clone(),
+            lcsc: a.sourcing.sku.clone(),
         })
         .collect()
 }
@@ -3488,9 +3509,13 @@ fn fit_of(sourcing: &[Sourced]) -> BTreeMap<String, Fit> {
 /// interface (the `prepare-fab-order` step). If
 /// JLCPCB documents a marker, the mark changes in this one function.
 ///
-/// Where it is not shown: the editor's bill of materials shows a consigned part as an ordinary
-/// line with no number and no price (its API has a `hand_solder` flag and no consigned one, and
-/// a new field changes the generated types; not built, issue #19).
+/// The supply channel (ADR 0143). The LCSC cell is filled from the part's sku only when the
+/// channel that buys it reads LCSC's offers (`jlcpcb-assembly`, `lcsc-retail`), so a project
+/// that buys from those alone gets the bill it got before, byte for byte. A consigned part bought
+/// in `digikey-retail` or `mouser-retail` keeps its manufacturer's number as the comment and an
+/// empty cell, and `fab-notes.txt` lists it with its channel and sku ([`crate::buying`]). A part
+/// the board house is to buy from such a channel is refused before anything is placed
+/// ([`crate::no_supplier`]): JLCPCB buys by LCSC's numbers.
 ///
 /// `paths` is the member path of each part of `sourcing`, in its order, so that a part a
 /// `[[member]]` row of `kicad.toml` gives its own footprint is listed with it; a part past its
@@ -3526,10 +3551,12 @@ pub fn bom_entries(
             _ => s.value.clone(),
         };
         // A part that is not fitted is a line of its own with no number to buy (issue #1273).
+        // The cell holds an LCSC number only: a part bought in another channel has none here
+        // (ADR 0143), and `fab-notes.txt` names its channel and sku.
         let lcsc = if s.not_fitted.is_some() {
             None
         } else {
-            s.lcsc.clone()
+            s.lcsc_number().map(str::to_string)
         };
         match entries
             .iter_mut()
@@ -4197,7 +4224,9 @@ mod tests {
             kind: kind.into(),
             value: value.into(),
             package: package.map(Into::into),
-            lcsc: lcsc.map(Into::into),
+            sku: lcsc.map(Into::into),
+            channel: None,
+            manufacturer: None,
             mpn: None,
             library: None,
             assembly,

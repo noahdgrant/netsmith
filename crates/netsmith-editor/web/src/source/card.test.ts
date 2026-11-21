@@ -11,7 +11,7 @@ const part = (refdes: string, path: string, kind: string, value: string, decl: n
   value,
   package: '0402',
   path,
-  lcsc: 'C100',
+  sku: 'C100',
   assembled: true,
   decl: loc('src/main.nsm', decl),
   scopes: scopes.map((l) => loc('src/main.nsm', l)),
@@ -83,7 +83,7 @@ describe('pinsOf', () => {
 describe('partCard', () => {
   it('names the part, its kind, value, package, module and pins', () => {
     const c = partCard(ctx(), detail.parts[1]);
-    expect(c).toMatchObject({ refdes: 'C1', partKind: 'Capacitor', value: '10u', package: '0402', module: 'stage', lcsc: 'C100', sel: { kind: 'part', key: 'stage.input_cap' } });
+    expect(c).toMatchObject({ refdes: 'C1', partKind: 'Capacitor', value: '10u', package: '0402', module: 'stage', sku: 'C100', sel: { kind: 'part', key: 'stage.input_cap' } });
     expect(c.pins.map((p) => `${p.pin}:${p.net}`)).toEqual(['1:VIN', '2:GND']);
   });
   it('has no module for a part of the board itself', () => {
@@ -253,7 +253,7 @@ describe('the solved block of a part', () => {
     bias: { lo: 5, hi: 5, text: '5V' },
     tolerance: { percent: 20, text: '+/- 20%' },
     ratings: [{ name: 'max_voltage', range: { lo: 0, hi: 16, text: '0V..16V' } }],
-    row: { catalog: 'capacitor', mpn: 'CL05A106MQ5NUNC', lcsc: 'C315248', library: 'Basic', generic: false },
+    row: { catalog: 'capacitor', mpn: 'CL05A106MQ5NUNC', sku: 'C315248', library: 'Basic', generic: false },
   };
   it('is on the part card when the server sent it, and null when it did not', () => {
     const c = partCard(ctx(), { ...detail.parts[1], solved });

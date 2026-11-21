@@ -28,7 +28,7 @@ const part = (refdes: string, path: string, scopes = 0): PartInfo => ({
   value: '1k',
   package: '0402',
   path,
-  lcsc: null,
+  sku: null,
   assembled: true,
   decl: at('src/m.nsm', 5),
   scopes: Array.from({ length: scopes }, (_, i) => at('src/main.nsm', 10 + i)),

@@ -65,7 +65,7 @@ const dirname = (p: string) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/'))
 export function buildIndex(detail: BoardDetail | null, project: Project | null, drawn: BusEntry[] = []): Index {
   const parts: Item[] = (detail?.parts ?? []).map((p) => {
     // The line under the name is made of the pieces that can be searched, each marked where it falls.
-    const pieces = [p.path, p.kind, p.package, p.lcsc].filter((x): x is string => !!x);
+    const pieces = [p.path, p.kind, p.package, p.sku].filter((x): x is string => !!x);
     const at: number[] = [];
     pieces.reduce((from, x) => (at.push(from), from + x.length + 3), 0);
     const shift = (text: string | null) => (text ? at[pieces.indexOf(text)] : 0);
@@ -81,7 +81,7 @@ export function buildIndex(detail: BoardDetail | null, project: Project | null, 
         { name: 'path', text: p.path, weight: 1, into: 'detail', shift: shift(p.path) },
         { name: 'kind', text: p.kind, weight: 0.8, into: 'detail', shift: shift(p.kind) },
         { name: 'package', text: p.package ?? '', weight: 0.4, into: 'detail', shift: shift(p.package) },
-        { name: 'lcsc', text: p.lcsc ?? '', weight: 0.5, into: 'detail', shift: shift(p.lcsc) },
+        { name: 'sku', text: p.sku ?? '', weight: 0.5, into: 'detail', shift: shift(p.sku) },
       ],
       target: { type: 'selection' as const, sel: partSel(p.path) },
     };

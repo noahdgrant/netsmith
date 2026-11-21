@@ -45,7 +45,7 @@ fn a_value_no_row_has_gives_a_generic_capacitor_with_no_curve_and_the_design_s_v
     );
     assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
     let pick = &s.picks[0];
-    assert!(pick.lcsc.is_none());
+    assert!(pick.sku.is_none());
     assert_eq!(pick.label, "130n");
     let g = pick.generic.as_ref().expect("a generic part");
     let Spec::Capacitor {
@@ -101,10 +101,10 @@ fn a_generic_capacitor_resolves_only_to_a_row_with_a_curve_and_enough_voltage() 
     // 120 nF, 10%: three rows have the value. The 50 V one has no curve and is skipped;
     // with no voltage asked the Basic one with a curve wins.
     let got = resolve(&generic_cap(Need::Nothing), &c, &never).unwrap();
-    assert_eq!(got.lcsc.as_deref(), Some("C900102"));
+    assert_eq!(got.sku.as_deref(), Some("C900102"));
     // 12 V asked: the 10 V row is out, the 50 V row has no curve, the 25 V row is left.
     let got = resolve(&generic_cap(Need::AtLeast(12.0)), &c, &never).unwrap();
-    assert_eq!(got.lcsc.as_deref(), Some("C900104"));
+    assert_eq!(got.sku.as_deref(), Some("C900104"));
 }
 
 #[test]
@@ -205,10 +205,10 @@ fn a_generic_inductor_resolves_to_a_row_with_the_saturation_current_and_resistan
     };
     // 2 A asked: only the 3 A row.
     let got = resolve(&g(Need::AtLeast(2.0), Need::Nothing), &c, &never).unwrap();
-    assert_eq!(got.lcsc.as_deref(), Some("C900201"));
+    assert_eq!(got.sku.as_deref(), Some("C900201"));
     // 0.5 A and at most 60 mohm: only the second.
     let got = resolve(&g(Need::AtLeast(0.5), Need::AtMost(0.06)), &c, &never).unwrap();
-    assert_eq!(got.lcsc.as_deref(), Some("C900202"));
+    assert_eq!(got.sku.as_deref(), Some("C900202"));
     // 2 A and at most 60 mohm: no row.
     let e = resolve(&g(Need::AtLeast(2.0), Need::AtMost(0.06)), &c, &never).unwrap_err();
     assert!(
@@ -329,7 +329,7 @@ fn a_generic_led_resolves_to_a_row_of_the_colour_inside_the_stated_range() {
         &never,
     )
     .unwrap();
-    assert_eq!(got.lcsc.as_deref(), Some("C900302"));
+    assert_eq!(got.sku.as_deref(), Some("C900302"));
     // A range the green row does not fit inside.
     let e = resolve(
         &g(
@@ -359,7 +359,7 @@ fn the_unchanged_catalogs_still_give_rows_first() {
         &catalogs("capacitor", CAPS),
     );
     assert!(s.picks[0].generic.is_none());
-    assert!(s.picks[0].lcsc.is_some());
+    assert!(s.picks[0].sku.is_some());
 }
 
 // ---- holding a part to one row ------------------------------------------------------
@@ -375,7 +375,7 @@ fn a_part_held_to_a_row_is_solved_with_that_row_and_its_stated_value_left_out() 
     assert!(free.picks[0].generic.is_some());
     let pinned = solved(&board, &c.with_pin("c", "120nF 10V curve"));
     assert!(pinned.diagnostics.is_empty(), "{:?}", pinned.diagnostics);
-    assert_eq!(pinned.picks[0].lcsc.as_deref(), Some("C900102"));
+    assert_eq!(pinned.picks[0].sku.as_deref(), Some("C900102"));
     assert!(pinned.picks[0].generic.is_none());
 }
 
@@ -425,5 +425,5 @@ fn a_generic_led_takes_a_row_that_allows_the_current_the_design_bounds() {
         ..g.clone()
     };
     let got = resolve(&red, &catalogs("led", LEDS), &never).unwrap();
-    assert_eq!(got.lcsc.as_deref(), Some("C900301"));
+    assert_eq!(got.sku.as_deref(), Some("C900301"));
 }
