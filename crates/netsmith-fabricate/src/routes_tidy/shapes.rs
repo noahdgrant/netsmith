@@ -519,7 +519,8 @@ impl Work<'_> {
                     dead_wires.push(i);
                 }
             }
-            let mut dead_holes = Vec::new();
+            // The layers each live via joins: the tracks that meet it and the pads it stands in.
+            let mut joins: Vec<usize> = vec![0; holes.len()];
             for (k, h) in holes.iter().enumerate() {
                 if !hole_alive[k] {
                     continue;
@@ -547,10 +548,36 @@ impl Work<'_> {
                         }
                     }
                 }
-                if layers.len() < 2 {
-                    dead_holes.push(k);
+                joins[k] = layers.len();
+            }
+            // A via whose copper overlaps a live via of its net that joins two layers is joined
+            // with it, through others that are: the vias side by side that carry a power net's
+            // current where it changes layer (`netsmith-router`'s `parallel.rs`, issue #1532),
+            // which no track meets but the first.
+            let mut grouped: Vec<bool> = joins.iter().map(|&n| n >= 2).collect();
+            let mut grew = true;
+            while grew {
+                grew = false;
+                for (k, h) in holes.iter().enumerate() {
+                    if !hole_alive[k] || grouped[k] {
+                        continue;
+                    }
+                    let overlaps = holes.iter().enumerate().any(|(j, o)| {
+                        grouped[j]
+                            && hole_alive[j]
+                            && o.via.net == h.via.net
+                            && o.via.at.distance(h.via.at)
+                                < (o.via.diameter + h.via.diameter) / 2.0 - NEAR
+                    });
+                    if overlaps {
+                        grouped[k] = true;
+                        grew = true;
+                    }
                 }
             }
+            let dead_holes: Vec<usize> = (0..holes.len())
+                .filter(|&k| hole_alive[k] && !grouped[k])
+                .collect();
             if dead_wires.is_empty() && dead_holes.is_empty() {
                 return out;
             }
