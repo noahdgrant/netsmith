@@ -41,7 +41,7 @@ pub struct Target {
 pub enum Command {
     /// Write the routes file (and the layout file's places) from a KiCad board.
     #[command(
-        after_long_help = "Every track, arc and through via of F.Cu, B.Cu and the inner signal layers becomes the copper of the design's net its pads are on: a KiCad net is the design's net that most of its pads are on, with the parts paired by a port's parts file (`--parts`, default `reference/parts.toml` of the project when there is one; without one, by reference designator). A KiCad net on no pad of a part the design has keeps its name if the design has a net of that name, and is left out otherwise; copper on an inner layer is left out unless the layer is one of the process's signal layers (an inner plane holds no track); each is said. Each zone of copper that is not the process's own plane or pour becomes a zone of its net's record, on its layers, with its outline, holes and the settings that change its copper (priority, clearance, minimum thickness, pad connection, thermal gap and spoke width, island removal); such a zone of the net of the design's pour or plane on its layer restates it, which is not drawn, and one of another net cuts it (`fab` writes the zones one priority above the pour, and the import takes that one off again). A zone that is the process's own plane or pour (the same net, layer and outline, and the same clearance, minimum width, pad connection and thermal relief as the process states, which is what `fab` writes) is left out and said, so that `fab` and then `routes import` of its board leaves a file of tracks and vias; one that differs from it is imported, as a hand zone. Rule areas, teardrops and hatched zones are left out and said.\n\nEach part of the design that the KiCad board has is written to the layout file at the KiCad board's place, turn and face, locked (`source = \"import\"`), unless `--no-places`, or the physical file pins it (its requirement places it). Places are from the top left corner of the KiCad board's Edge.Cuts box. Then the board is placed again and each net's record takes its pads as they are. Every net is locked (the router adds nothing to it) unless `--unlocked`. The routes file is written over; the layout file keeps its seed, keepouts and the parts the import does not place."
+        after_long_help = "Every track, arc and through via of F.Cu, B.Cu and the inner signal layers becomes the copper of the design's net its pads are on: a KiCad net is the design's net that most of its pads are on, with the parts paired by a port's parts file (`--parts`, default `reference/parts.toml` of the project when there is one; without one, by reference designator). A KiCad net on no pad of a part the design has keeps its name if the design has a net of that name, and is left out otherwise; copper on an inner layer is left out unless the layer is one of the process's signal layers (an inner plane holds no track); each is said. Each zone of copper that is not the process's own plane or pour becomes a zone of its net's record, on its layers, with its outline, holes and the settings that change its copper (priority, clearance, minimum thickness, pad connection, thermal gap and spoke width, island removal); such a zone of the net of the design's pour or plane on its layer restates it, which is not drawn, and one of another net cuts it (`fab` writes the zones one priority above the pour, and the import takes that one off again). A zone that is the process's own plane or pour (the same net, layer and outline, and the same clearance, minimum width, pad connection and thermal relief as the process states, which is what `fab` writes) is left out and said, so that `fab` and then `routes import` of its board leaves a file of tracks and vias; one that differs from it is imported, as a hand zone. Rule areas, teardrops and hatched zones are left out and said.\n\nEach part of the design that the KiCad board has is written to the layout file at the KiCad board's place, turn and face, locked (`source = \"import\"`), unless `--no-places` (which also leaves out the notes of how a part is placed, turned or moved, and prints `places not imported: N` instead), or the physical file pins it (its requirement places it). Places are from the top left corner of the KiCad board's Edge.Cuts box. Then the board is placed again and each net's record takes its pads as they are. Every net is locked (the router adds nothing to it) unless `--unlocked`. The routes file is written over; the layout file keeps its seed, keepouts and the parts the import does not place."
     )]
     Import(ImportArgs),
     /// Print the routes file's copper and what the router would still route.
@@ -129,7 +129,8 @@ pub struct ImportArgs {
     /// The port's parts file: the KiCad board's reference of each member path.
     #[arg(long, value_name = "PARTS.TOML")]
     pub parts: Option<PathBuf>,
-    /// Write no places to the layout file.
+    /// Write no places to the layout file, and say nothing of how each part would be placed (a
+    /// count of the places not imported instead).
     #[arg(long)]
     pub no_places: bool,
     /// Leave every net unlocked: the router may add copper to complete it.
@@ -975,7 +976,10 @@ fn import(args: &ImportArgs) -> ExitCode {
             "vias": vias,
             "zones": zones,
             "places": if args.no_places { 0 } else { import.places.len() },
-            "refitted": import.refitted,
+            "places_not_imported": if args.no_places { import.places.len() } else { 0 },
+            // The notes of how a part is placed concern places, which `--no-places` writes none of
+            // (issue 1515).
+            "refitted": if args.no_places { Vec::new() } else { import.refitted.clone() },
             "skipped": import.skipped,
         });
         println!(
@@ -993,8 +997,14 @@ fn import(args: &ImportArgs) -> ExitCode {
             println!("net {ours} is KiCad's {theirs} ({votes} pad(s))");
         }
     }
-    for said in &import.refitted {
-        println!("{said}");
+    // The notes of how each part is placed (turned, moved, its pads numbered the other way
+    // round) concern places, so with `--no-places` they give way to a count (issue 1515).
+    if args.no_places {
+        println!("places not imported: {}", import.places.len());
+    } else {
+        for said in &import.refitted {
+            println!("{said}");
+        }
     }
     for s in &import.skipped {
         println!("note: {s}");

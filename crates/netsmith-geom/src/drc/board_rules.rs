@@ -521,7 +521,7 @@ impl BoardRules {
         };
         line(format!("clearance: {:.4} mm least", self.clearance.least));
         line(format!(
-            "track width: {:.4} mm least (a track may neck down to it within {:.4} mm of its net's pads)",
+            "track width: {:.4} mm least (a track may neck down to it within {:.4} mm of the pad centres of a part on its net, not of the pads' edges)",
             self.widths.least, self.widths.neck_reach
         ));
         line(format!(
