@@ -180,6 +180,7 @@ impl<'a> Router<'a> {
             costs: options.costs,
             weights: options.weights,
             reroute: options.reroute,
+            power_groups: options.power_groups,
             stage: Cell::new(Stage::FirstPass),
             failed_in: RefCell::new(Vec::new()),
             crowding: RefCell::new(crowding),

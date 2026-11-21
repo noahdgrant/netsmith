@@ -1256,6 +1256,8 @@ struct Router<'a> {
     weights: Option<Weights>,
     /// The bounds of the reroute pass ([`RouteOptions::reroute`]).
     reroute: Reroute,
+    /// Whether a power net's search pays for each via of its group ([`RouteOptions::power_groups`]).
+    power_groups: bool,
     /// The stage the router is in, and for each line the stage of this try it last failed in.
     stage: Cell<Stage>,
     failed_in: RefCell<Vec<Stage>>,
@@ -1360,6 +1362,11 @@ pub struct RouteOptions {
     /// polish pass ([`Router::polish`]) on a try that routed every line. `None`, the default,
     /// routes as the router always has, with no polish pass.
     pub weights: Option<Weights>,
+    /// Whether the search of a line of a power net pays for each via of the group its current
+    /// needs where it changes layer, not for one ([`Router::is_power`], issue #1532): a power
+    /// net keeps to one layer where it can. On by default; off routes such a net as before, for
+    /// measuring.
+    pub power_groups: bool,
     /// The bounds of the reroute pass ([`Router::reroute`], issue #1538), which runs after the
     /// polish pass when [`RouteOptions::weights`] are stated: the nets it tries in a round and
     /// its rounds. [`Reroute::NONE`] runs none.
@@ -1543,6 +1550,7 @@ impl Default for RouteOptions {
             stitch: true,
             weights: None,
             reroute: Reroute::DEFAULT,
+            power_groups: true,
         }
     }
 }

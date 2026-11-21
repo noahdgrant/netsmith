@@ -174,8 +174,8 @@ pub use picture::{
 pub use pin_distance::PinNear;
 pub use placement::{
     CarriedZone, DESCRIBED, DoesNotFit, ESCAPE_ROOM, Ended, FaceKeepout, Fixed, HeightZone, ORIGIN,
-    OutsideAt, OverlapAt, Oversize, PartState, PlaceOptions, inside as fit_inside, is_mechanical,
-    oversize as check_oversize, short as short_mm,
+    OutsideAt, OverlapAt, Oversize, PartState, PlaceOptions, ROUTING_OBJECTIVE,
+    inside as fit_inside, is_mechanical, oversize as check_oversize, short as short_mm,
 };
 pub use polygon::{BoardEdge, Polygon};
 pub use protrusion::{Cover, Protrusion, Verdict, judge as judge_protrusion, may_be_covered};

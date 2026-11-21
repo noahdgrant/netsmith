@@ -310,6 +310,12 @@ impl Board {
         placement.offsets = plan.offsets;
         placement.pin_distances = crate::PinNear::of_design(design);
         placement.rf_nets = design.features.rf_nets();
+        placement.net_currents = design
+            .features
+            .net_currents
+            .iter()
+            .map(|c| (c.net.clone(), c.current))
+            .collect();
         for part in &mut parts {
             if let Some(&side) = plan.sides.get(&part.refdes) {
                 part.side = side;
