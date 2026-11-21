@@ -71,6 +71,10 @@ _Avoid_: global route (the general term, for any router), floor plan (where part
 A corner of an island in which a regulator's input falls to nothing because its output asks for more power than the source can give through the resistance in front of it (12 V through 10 ohm gives at most 3.6 W): the circuit has no operating point there, and the analysis reports an error that names the regulator, what it asks and the states (ADR 0076, amendment 3).
 _Avoid_: Brown-out, undervoltage (an input that is low but has an operating point is below the regulator's minimum, which its own relation reports), failure to start
 
+**Connection length**:
+The length of the copper that takes a net's pads to each other (issue #1487): for two pads the path from one to the other through tracks and vias, for more the branches its pads need. A **second way** (copper that joins pads the connection already joins by a shorter way, such as a duplicate track) and a **dead stub** (copper that leads to no pad) are not counted. The _Net table_ measures a net's length, a _Diff pair_'s _Skew_ and a _Length group_'s spread on it, and lists the copper it leaves out.
+_Avoid_: Track length (for the measure: a net's tracks may hold more copper than its connection), total copper
+
 **Connector**:
 A part that is a way in and out of a board: one that provides the standard generic `Connector` (`part MolexPicoBlade provides Connector { ... }`, ADR 0068; every standard header, socket, `Coax`, `UsbC*`, `Obd2M` and `ProgrammingPads6` does). The generic states the letters `J`. The schematic layout and the placer find connectors by it, so a project's own connector is one and an IC named `HeaderBuffer` is not (owner decision 2026-11-10, issue #166).
 _Avoid_: a connector by its name or its designator letters (`J`, `P`), a connector flag or kind list
