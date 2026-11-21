@@ -140,7 +140,7 @@ fn applying_an_alternative_writes_its_value_and_the_part_resolves() {
         .find(|l| l.designators.contains(&refdes))
         .unwrap();
     assert_eq!(line.unresolved, None);
-    assert!(line.lcsc.is_some());
+    assert!(line.sku.is_some());
     assert_eq!(
         editor.swap(&board, &refdes).unwrap_err().status,
         422,

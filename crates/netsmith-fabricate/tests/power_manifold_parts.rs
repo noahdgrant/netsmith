@@ -451,7 +451,7 @@ fn every_catalog_row_of_the_parts_is_offered_and_sourced() {
             .iter()
             .find(|s| s.kind == kind)
             .unwrap_or_else(|| panic!("{kind} is not in the bill of materials"));
-        assert_eq!(sourced.lcsc.as_deref(), Some(lcsc), "{kind}: {sourced:?}");
+        assert_eq!(sourced.sku.as_deref(), Some(lcsc), "{kind}: {sourced:?}");
     }
 }
 
@@ -461,7 +461,7 @@ fn the_card_edge_and_the_test_pad_are_assembled_by_nobody_and_have_no_lcsc_numbe
     for kind in ["PcieX1EdgeFingers", "ProgrammingPads6", "TestPoint"] {
         let sourced = built.sourcing.iter().find(|s| s.kind == kind);
         if let Some(sourced) = sourced {
-            assert_eq!(sourced.lcsc, None, "{kind}");
+            assert_eq!(sourced.sku, None, "{kind}");
             assert_eq!(sourced.assembly, netsmith_design::Assembly::None, "{kind}");
         }
     }
@@ -473,7 +473,7 @@ fn the_standard_kinds_take_the_projects_rows_where_the_standard_ones_have_none()
     let picked: BTreeSet<String> = built
         .sourcing
         .iter()
-        .filter_map(|s| s.lcsc.clone())
+        .filter_map(|s| s.sku.clone())
         .collect();
     let expected: BTreeSet<String> = [
         "C108342",

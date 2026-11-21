@@ -86,7 +86,7 @@ fn a_generic_capacitor_inductor_and_led_are_each_listed_unresolved_by_name() {
     };
 
     let c = line("Capacitor");
-    assert_eq!((c.lcsc.as_deref(), c.value.as_str()), (None, "130n"));
+    assert_eq!((c.sku.as_deref(), c.value.as_str()), (None, "130n"));
     let why = c.unresolved.as_deref().expect("an unresolved capacitor");
     assert!(
         why.starts_with("unresolved: no row of the `capacitor` catalog can be ordered for 130 nF 10% 0402, rated voltage at least 7.875 V"),

@@ -140,7 +140,7 @@ pub(crate) fn from_catalog_rows(
             refdes: part.refdes.clone(),
             path: part.path.clone(),
             height,
-            lcsc: s.lcsc.clone(),
+            lcsc: s.sku.clone(),
             mpn: s.mpn.clone(),
         });
     }

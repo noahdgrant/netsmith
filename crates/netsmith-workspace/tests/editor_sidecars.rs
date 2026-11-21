@@ -331,7 +331,7 @@ fn a_lock_that_is_stale_lists_what_lock_check_would_print() {
 /// The catalog row the board's part `u` is drawn with.
 fn row_of_u(editor: &Workspace) -> Option<String> {
     let detail = editor.board("Zz9Board").unwrap();
-    detail.parts.iter().find(|p| p.path == "u")?.lcsc.clone()
+    detail.parts.iter().find(|p| p.path == "u")?.sku.clone()
 }
 
 #[test]

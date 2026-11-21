@@ -87,7 +87,7 @@ fn a_part_the_board_marks_consigned_is_assembled_by_the_board_house_with_no_numb
     assert_eq!(consigned.len(), 1, "{:#?}", b.sourcing);
     assert!(consigned[0].assembled() && !consigned[0].needs_part_number());
     assert_eq!(consigned[0].mpn.as_deref(), Some("ZZR-1234"));
-    assert_eq!(consigned[0].lcsc, None);
+    assert_eq!(consigned[0].sku, None);
 }
 
 // ---- the build ----

@@ -397,7 +397,7 @@ fn class(supplier: &str, cell: Option<&str>) -> Result<Option<Library>, String> 
 /// the order of [`Channel::ALL`] (what a pick lock records).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct Bought {
-    pub lcsc: Option<String>,
+    pub sku: Option<String>,
     pub library: Option<Library>,
     pub channel: Option<Channel>,
     pub skus: Vec<(String, String)>,
@@ -437,7 +437,7 @@ pub(crate) fn bought_by(
     }
     for &channel in channels {
         if let Some(o) = offer_of(channel.supplier())?.filter(|o| channel.takes(o)) {
-            bought.lcsc = Some(o.sku.clone());
+            bought.sku = Some(o.sku.clone());
             bought.library = o.class;
             bought.channel = Some(channel);
             break;
@@ -574,7 +574,7 @@ mod tests {
         assert_eq!(
             bought("ZZ1"),
             Bought {
-                lcsc: Some("C1".into()),
+                sku: Some("C1".into()),
                 library: Some(Library::Extended),
                 channel: Some(Channel::JLCPCB_ASSEMBLY),
                 skus: vec![
@@ -587,7 +587,7 @@ mod tests {
         assert_eq!(
             bought("ZZ2"),
             Bought {
-                lcsc: Some("C2".into()),
+                sku: Some("C2".into()),
                 library: None,
                 channel: Some(Channel::LCSC_RETAIL),
                 skus: vec![("lcsc-retail".into(), "C2".into())],
@@ -613,9 +613,9 @@ mod tests {
         let bought = |mpn| bought_by(&offers, &channels, None, mpn).unwrap();
         // Digi-Key has no offer of ZZ1, so the second channel buys it.
         assert_eq!(bought("ZZ1").channel, Some(Channel::JLCPCB_ASSEMBLY));
-        assert_eq!(bought("ZZ1").lcsc.as_deref(), Some("C1"));
+        assert_eq!(bought("ZZ1").sku.as_deref(), Some("C1"));
         assert_eq!(bought("ZZ2").channel, Some(Channel::DIGIKEY_RETAIL));
-        assert_eq!(bought("ZZ2").lcsc.as_deref(), Some("ZZ2-ND"));
+        assert_eq!(bought("ZZ2").sku.as_deref(), Some("ZZ2-ND"));
         assert_eq!(bought("ZZ2").library, None);
         // `bought_by` lists the sku of every channel that has an offer; the lock keeps the
         // project's own (`Catalogs::skus_of`).
@@ -625,7 +625,7 @@ mod tests {
         );
         // A list with no channel that has an offer buys nothing, and records the skus still.
         let only = bought_by(&offers, &[Channel::MOUSER_RETAIL], None, "ZZ1").unwrap();
-        assert_eq!((only.lcsc, only.channel), (None, None));
+        assert_eq!((only.sku, only.channel), (None, None));
         assert_eq!(only.skus.len(), 2);
         // Digi-Key sorts its parts in no classes.
         let e = load("digikey", ",ZZ1,X,Basic,x,,\n").unwrap_err();

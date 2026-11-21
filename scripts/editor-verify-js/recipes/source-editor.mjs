@@ -420,7 +420,7 @@ export async function run({ page, shot, step, expect, project, section }) {
   await whenIdle(page);
   expect((await hints()) >= 3, `hints are shown (${await hints()})`);
   const hintTexts = await page.locator('[data-testid="inline-hint"]').allInnerTexts();
-  expect(hintTexts.some((t) => t.includes(r1.value) && (!r1.lcsc || t.includes(r1.lcsc))), `the hint of the resistor has its value and part number (${hintTexts.join(' | ')})`);
+  expect(hintTexts.some((t) => t.includes(r1.value) && (!r1.sku || t.includes(r1.sku))), `the hint of the resistor has its value and part number (${hintTexts.join(' | ')})`);
   expect(hintTexts.some((t) => /\d.*V/.test(t) && t.includes('..')), 'the rail of a net has its voltage range');
   await shot('hints-on');
 
@@ -431,7 +431,7 @@ export async function run({ page, shot, step, expect, project, section }) {
   await page.keyboard.press('Control+c');
   const copied = await page.evaluate(() => navigator.clipboard.readText());
   expect(copied === fs.readFileSync(file, 'utf8'), 'what is copied is the file, exactly');
-  expect(!copied.includes(r1.lcsc ?? 'C0000'), 'without the hints');
+  expect(!copied.includes(r1.sku ?? 'C0000'), 'without the hints');
   await page.keyboard.press('ArrowLeft');
 
   step('the palette hides the hints and shows them; the status bar menu does too');

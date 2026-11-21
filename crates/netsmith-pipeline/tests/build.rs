@@ -275,7 +275,7 @@ fn the_build_carries_the_sourcing_of_every_part() {
         built(src)[0]
             .sourcing
             .iter()
-            .map(|s| (s.refdes.clone(), s.lcsc.clone(), s.library, s.assembled()))
+            .map(|s| (s.refdes.clone(), s.sku.clone(), s.library, s.assembled()))
             .collect()
     };
     let part = |r: &str, l: &str, lib| (r.to_string(), Some(l.to_string()), Some(lib), true);

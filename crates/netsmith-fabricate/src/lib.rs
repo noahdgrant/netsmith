@@ -5,6 +5,7 @@
 //! file, the layout, the routes file, the project manifest) are here too.
 
 pub mod board3d;
+pub mod buying;
 pub mod case_fit;
 pub mod dependency_lock;
 pub mod drc;

@@ -762,13 +762,13 @@ board InterfaceBare {
             .iter()
             .find(|s| s.kind == "XunpuTs1088")
             .unwrap();
-        assert_eq!(sourced.lcsc.as_deref(), Some("C720477"));
+        assert_eq!(sourced.sku.as_deref(), Some("C720477"));
         let receptacle = built
             .sourcing
             .iter()
             .find(|s| s.kind == "ShouhanTypeC16Pin")
             .unwrap();
-        assert_eq!(receptacle.lcsc.as_deref(), Some("C2765186"));
+        assert_eq!(receptacle.sku.as_deref(), Some("C2765186"));
     }
 
     #[test]
@@ -779,7 +779,7 @@ board InterfaceBare {
             .iter()
             .find(|s| s.kind == "Esp32S3DevKitCHeaders")
             .unwrap();
-        assert_eq!(headers.lcsc, None);
+        assert_eq!(headers.sku, None);
         assert_eq!(headers.assembly, netsmith_design::Assembly::Hand);
     }
 
@@ -791,7 +791,7 @@ board InterfaceBare {
             .iter()
             .find(|s| s.kind == "Led")
             .expect("the LED is in the bill of materials");
-        assert_eq!(led.lcsc.as_deref(), Some("C434447"), "{led:?}");
+        assert_eq!(led.sku.as_deref(), Some("C434447"), "{led:?}");
     }
 
     /// The reference's must-match parts, with the number of pads each has.
@@ -1327,7 +1327,7 @@ board IcsFixture {
             ),
         ] {
             let row = by_kind(kind);
-            assert_eq!(row.lcsc.as_deref(), Some(lcsc), "{kind}");
+            assert_eq!(row.sku.as_deref(), Some(lcsc), "{kind}");
             assert_eq!(row.mpn.as_deref(), Some(mpn), "{kind}");
             assert_eq!(row.package.as_deref(), Some(package), "{kind}");
             assert_eq!(format!("{:?}", row.library.unwrap()), library, "{kind}");
@@ -2161,14 +2161,14 @@ mod board {
             let reference = &to_reference[&s.refdes];
             let bom_number = &theirs[reference];
             match reference.as_str() {
-                "U2" => assert_eq!(s.lcsc, None),
+                "U2" => assert_eq!(s.sku, None),
                 "U3" => assert_eq!(
-                    (s.lcsc.as_deref(), bom_number.as_str()),
+                    (s.sku.as_deref(), bom_number.as_str()),
                     (Some("C1550553"), "C6568")
                 ),
                 _ => {
-                    if s.lcsc.as_deref() != Some(bom_number.as_str()) {
-                        wrong.push(format!("{reference}: {:?} against {bom_number}", s.lcsc));
+                    if s.sku.as_deref() != Some(bom_number.as_str()) {
+                        wrong.push(format!("{reference}: {:?} against {bom_number}", s.sku));
                     }
                 }
             }
@@ -2186,7 +2186,7 @@ mod board {
         let mut by_hand = Vec::new();
         for s in &built.sourcing {
             if s.assembled() {
-                if s.lcsc.is_none() || s.generic.is_some() {
+                if s.sku.is_none() || s.generic.is_some() {
                     unsourced.push(format!("{} {}", s.refdes, s.kind));
                 }
             } else {

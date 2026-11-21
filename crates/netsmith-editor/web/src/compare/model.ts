@@ -163,12 +163,12 @@ export function renumberedRows(b: CompareBoard): ChangeRow[] {
   );
 }
 
-function partFields(p: { kind: string; value: string; package?: string; lcsc?: string; mpn?: string; assembly: string }): CompareField[] {
+function partFields(p: { kind: string; value: string; package?: string; sku?: string; mpn?: string; assembly: string }): CompareField[] {
   return [
     { field: 'kind', new: p.kind },
     { field: 'value', new: p.value },
     ...(p.package ? [{ field: 'package', new: p.package }] : []),
-    ...(p.lcsc ? [{ field: 'lcsc', new: p.lcsc }] : []),
+    ...(p.sku ? [{ field: 'sku', new: p.sku }] : []),
     ...(p.mpn ? [{ field: 'mpn', new: p.mpn }] : []),
     { field: 'assembly', new: p.assembly },
   ];
@@ -266,8 +266,8 @@ export function headroomTrend(base: number | undefined, head: number | undefined
 // ---- bill of materials ----
 
 /** How `GET /api/bom` groups a line: what the server's bill of materials identifies it by (ADR 0059). */
-export function bomKey(l: { kind: string; value: string; footprint?: string | null; lcsc?: string | null; mpn?: string | null; handSolder?: boolean | null }): string {
-  return [l.kind, l.value, l.footprint ?? '', l.lcsc ?? '', l.mpn ?? '', l.handSolder ? 'hand' : ''].join('|');
+export function bomKey(l: { kind: string; value: string; footprint?: string | null; sku?: string | null; mpn?: string | null; handSolder?: boolean | null }): string {
+  return [l.kind, l.value, l.footprint ?? '', l.sku ?? '', l.mpn ?? '', l.handSolder ? 'hand' : ''].join('|');
 }
 
 const priceText = (v: number | undefined) => (v === undefined ? 'unknown' : dollars(v));
@@ -297,7 +297,7 @@ function bomFields(l: CompareBomLine): CompareField[] {
   return [
     { field: 'quantity', new: String(l.quantity) },
     ...(l.package ? [{ field: 'package', new: l.package }] : []),
-    ...(l.lcsc ? [{ field: 'lcsc', new: l.lcsc }] : []),
+    ...(l.sku ? [{ field: 'sku', new: l.sku }] : []),
     ...(l.unitUsd !== undefined ? [{ field: 'unit price', new: dollars(l.unitUsd) }] : []),
   ];
 }
