@@ -931,6 +931,15 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
                     .collect()
             })
             .unwrap_or_default(),
+        named_channels: catalogs
+            .part_channels()
+            .entries
+            .iter()
+            .filter_map(|e| {
+                let named = catalogs.part_channels().of(unit, &e.path)?;
+                Some((e.path.clone(), named.clone()))
+            })
+            .collect(),
         chosen: hand_picks(model),
         diagnostics: Vec::new(),
         seen: HashSet::new(),
@@ -1434,6 +1443,10 @@ struct Solver<'a> {
     /// The rows a pick lock holds the parts of this board or system to, by path (see
     /// `PickLock`). A part held to a row by `Catalogs::with_pin` is not held by the lock.
     locked: BTreeMap<String, LockedRow>,
+    /// The supply channels parts of this board or system name for themselves, by path
+    /// (`[supply.parts]`, ADR 0143 item 4): such a part is offered only the rows its channel
+    /// has an offer of, each bought there.
+    named_channels: BTreeMap<String, crate::channel::NamedChannel>,
     /// The hand picks of the parts of this board or system, by path: a part whose `.mpn` the
     /// design narrows is held to the row with that number, before the lock's (ADR 0122).
     chosen: BTreeMap<String, HandPick>,

@@ -13,7 +13,7 @@ use std::sync::Arc;
 use netsmith_check::FieldKind;
 use netsmith_quantity::Quantity;
 
-use crate::channel::Channel;
+use crate::channel::{Channel, PartChannels};
 use crate::curve::Curve;
 use crate::generic::{Generic, Sense, Series};
 use crate::lock::{LockedRow, PickLock};
@@ -292,6 +292,8 @@ pub struct Catalogs {
     preferred: Option<Arc<Preferred>>,
     /// The project's supply channels in order; empty is [`Channel::DEFAULT`].
     channels: Vec<Channel>,
+    /// The channels parts name for themselves (`[supply.parts]`, ADR 0143 item 4).
+    part_channels: Arc<PartChannels>,
     pins: Vec<(String, String)>,
     pick_lock: Option<Arc<PickLock>>,
     search_budget: SearchBudget,
@@ -454,6 +456,48 @@ impl Catalogs {
             &Channel::DEFAULT
         } else {
             &self.channels
+        }
+    }
+
+    /// The channels parts of the project name for themselves (`[supply.parts]` of the
+    /// manifest, ADR 0143 item 4): such a part is bought by its channel only, and the project's
+    /// list ([`Self::channels`]) buys the rest. The build checks the entries against the
+    /// design (`netsmith_pipeline`); the solver reads them by the part's board and path.
+    pub fn with_part_channels(mut self, part_channels: PartChannels) -> Self {
+        self.part_channels = Arc::new(part_channels);
+        self
+    }
+
+    pub fn part_channels(&self) -> &PartChannels {
+        &self.part_channels
+    }
+
+    /// `c` as `channel` buys it: the row with that channel's sku and class, or `None` when the
+    /// channel has no offer of it. A generic part is bought by no channel until it is
+    /// resolved, so it is `None` too. A candidate made in code that carries its number in
+    /// `lcsc` and has no offer is bought by that number in JLCPCB's assembly only, as
+    /// [`Self::skus_of`] reads it.
+    pub fn bought_in(&self, c: &Candidate, channel: Channel) -> Option<Candidate> {
+        if c.generic.is_some() {
+            return None;
+        }
+        let bought = c.mpn.as_deref().and_then(|mpn| {
+            crate::offers::bought_by(&self.offers, &[channel], c.manufacturer.as_deref(), mpn).ok()
+        });
+        let mut out = c.clone();
+        match bought {
+            Some(b) if b.channel.is_some() => {
+                out.lcsc = b.lcsc;
+                out.library = b.library;
+                out.channel = b.channel;
+                Some(out)
+            }
+            Some(b) if !b.skus.is_empty() => None,
+            _ if c.lcsc.is_some() && channel == Channel::JLCPCB_ASSEMBLY => {
+                out.channel = Some(channel);
+                Some(out)
+            }
+            _ => None,
         }
     }
 

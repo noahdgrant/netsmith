@@ -6,6 +6,7 @@ mod bus_roles;
 pub mod constraints;
 pub mod heights;
 pub mod libraries;
+mod part_channels;
 pub mod pick_lock;
 pub mod pin_budget;
 pub mod portable;
@@ -453,6 +454,11 @@ pub fn outcome_observed(
             message.clone(),
             format!("{message}\n"),
         )]);
+    }
+    // A part that names its own channel must be a part of a board (`[supply.parts]`).
+    let named = part_channels::problems(&checked, catalogs);
+    if !named.is_empty() {
+        return Err(named);
     }
 
     let mut built = Vec::new();

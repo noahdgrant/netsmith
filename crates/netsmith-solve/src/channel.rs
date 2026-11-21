@@ -160,6 +160,73 @@ impl Channel {
     }
 }
 
+/// The channel a part names for itself (`[supply.parts]` of `netsmith.toml`, ADR 0143 item 4),
+/// with what a message calls the entry. The part is bought by that channel only: its offer
+/// there gives the sku and the class, its rule orders the rows that fit a generic part, and a
+/// part with no offer in it is unresolved by name.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct NamedChannel {
+    pub channel: Channel,
+    /// `netsmith.toml: [supply.parts.Board] "ldo.regulator"`: the file and the key.
+    pub key: String,
+}
+
+impl NamedChannel {
+    /// The clause a message adds: `` `digikey-retail`, the supply channel netsmith.toml names
+    /// for the part ([supply.parts.Board] "u3") ``.
+    pub fn named_by(&self) -> String {
+        match self.key.split_once(": ") {
+            Some((file, key)) => format!(
+                "`{}`, the supply channel {file} names for the part ({key})",
+                self.channel
+            ),
+            None => format!(
+                "`{}`, the supply channel the manifest names for the part ({})",
+                self.channel, self.key
+            ),
+        }
+    }
+}
+
+/// One entry of `[supply.parts]`: the part at `path` of the board or system `unit` (the table
+/// its pick lock entry is under) is bought by `named` only. `unit` is `None` for a bare path,
+/// which names a part of the project's only board; the build refuses it when the project has
+/// several.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PartChannel {
+    pub unit: Option<String>,
+    /// The part's path in its board or system, as a hand pick and the pick lock name it:
+    /// `ldo.regulator`, `decoupling[2]`, `power.stage.regulator` in a system.
+    pub path: String,
+    pub named: NamedChannel,
+}
+
+/// The `[supply.parts]` entries of a project, with the names of the boards and systems its
+/// top-level files declare: what the build checks an entry's board against, since one file's
+/// build sees only its own boards.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PartChannels {
+    pub entries: Vec<PartChannel>,
+    /// The boards and systems of every top-level file of the project, by name.
+    pub declared: Vec<String>,
+}
+
+impl PartChannels {
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// The channel the part at `path` of `unit` names for itself, if any: an entry under
+    /// `unit`, or a bare entry (which the build allows only when the project has one board).
+    pub fn of(&self, unit: &str, path: &str) -> Option<&NamedChannel> {
+        self.entries
+            .iter()
+            .filter(|e| e.path == path)
+            .find(|e| e.unit.as_deref().is_none_or(|u| u == unit))
+            .map(|e| &e.named)
+    }
+}
+
 impl fmt::Debug for Channel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.word)

@@ -419,12 +419,27 @@ provider = "file"
 file = "supply/quotes.csv"
 ```
 
-- **The first channel with an offer of a part buys it**: its number is that offer's `sku`, which the bill of materials and `fab` give, and its class that offer's `class`. A part that `jlcpcb-assembly` does not buy (its `lcsc` offer has no class, or it has none) is bought by the next channel that has an offer of it. `channel = "lcsc-retail"`, the spelling of a manifest from before the list, is a list of one; a table with both keys, a channel listed twice, an empty list and a channel netsmith does not know are refused. A part does not name its channel yet.
+- **The first channel with an offer of a part buys it**: its number is that offer's `sku`, which the bill of materials and `fab` give, and its class that offer's `class`. A part that `jlcpcb-assembly` does not buy (its `lcsc` offer has no class, or it has none) is bought by the next channel that has an offer of it. `channel = "lcsc-retail"`, the spelling of a manifest from before the list, is a list of one; a table with both keys, a channel listed twice, an empty list and a channel netsmith does not know are refused. A part may name its own channel (the next item).
+- **A part may name its channel** in `[supply.parts]`. The key names the part as its pick lock entry does, by the board or system it is solved in and its path there (a hand pick's path, never a designator, which moves): a table for each board, `[supply.parts.Board]`, with the path quoted when it has a dot in it, or the path alone in `[supply.parts]` for a part of the project's only board. The value is a channel's word, and the channel need not be in the list:
+
+  ```toml
+  [project]
+  name = "sensor"
+
+  [supply]
+  channels = ["jlcpcb-assembly"]
+
+  [supply.parts.Sensor]
+  "ldo.regulator" = "digikey-retail"
+  "decoupling[2]" = "lcsc-retail"
+  ```
+
+  That channel alone buys the part: its offer gives the sku and the class, its rule orders the rows that fit a generic part, and the project's list buys the rest of the board. A part none of whose rows has an offer in its channel is unresolved by name, and the message says the manifest named the channel: `` `ldo.regulator` cannot be bought: no row of the `ldo` catalog it could be has an offer in `digikey-retail`, the supply channel netsmith.toml names for the part ([supply.parts.Sensor] "ldo.regulator"); ... ``. A word that is no channel, a path that is no part of the board that picks from a catalog, a board or system no top-level file declares, a board of a system (its parts are named under the system, as its lock names them: `[supply.parts.Kit]` with `"sensor.ldo.regulator"`) and a path alone in a project with several boards are refused with `netsmith.toml` and the key. An unquoted dotted key is a table in TOML, so `ldo.regulator = ...` in `[supply.parts]` reads as the board `ldo`, and the message says to quote it.
 - **The rows that fit a generic part** are ordered by the channel that buys each: the rows the project's `preferred.csv` names first, then each channel's rows in the order of the list, by the channel's rule, then the rows no channel buys, then the order of the file. A retail channel reads stock and price from the supply provider, in that channel only: a row with stock comes before one whose stock is unknown, and among those the lowest price of one piece first (nothing converts a currency); with no provider, the order of the file decides. A row the provider says has no stock in its channel is passed over in every channel, and the message says which (`ZZR-249-B has no stock in digikey-retail`).
 - **A part no channel has an offer of** has no supplier part number. A part the board house is to assemble is then refused by `fab`, with the channels it tried: `2 part(s) have no offer in any of the project's supply channels (tried: jlcpcb-assembly, lcsc-retail), ...`, and what to write.
 - **`provider` is optional.** Without one nothing is quoted (every price and stock is unknown) and the channels still say which offers the project buys; `file` without `provider = "file"` is refused. The parser refuses a key the table does not have, so a credential cannot be written there by mistake: a credential is the name of an environment variable (ADR 0047), as `[supply.nexar]` has it (_Finding parts at a supplier_, below).
 - **The channel is not `.assembly`.** Who places a part (the board house, a person, or the board house with parts you send it, `AssemblyMode::Consigned`, ADR 0084) is the design's; which channel buys it is the project's list. A consigned part is bought by you and resolved by no channel.
-- **The pick lock** records the sku of each channel of the list that has an offer of a part (_The pick lock_ in the chapter on the shape of a board). An offer added for a supplier the project does not list never moves its lock; adding a channel to the list makes the lock not current until `netsmith project lock --update`, and the new skus are in the diff to review.
+- **The pick lock** records the sku of each channel of the list that has an offer of a part, and for a part that names its channel the sku of that channel alone (_The pick lock_ in the chapter on the shape of a board). An offer added for a supplier the project does not list never moves its lock; adding a channel to the list makes the lock not current until `netsmith project lock --update`, and the new skus are in the diff to review.
 
 #### Finding parts at a supplier
 

@@ -360,6 +360,65 @@ pub struct SupplyConfig {
     /// --from` (issue #1460), on only when the table is there and the variables it names are set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nexar: Option<NexarConfig>,
+    /// `[supply.parts]`: the parts that name their own supply channel (ADR 0143 item 4), each
+    /// bought by that channel only. A part is named as its pick lock entry names it: under the
+    /// table of its board or system, by its path (`[supply.parts.Board]` with
+    /// `"ldo.regulator" = "digikey-retail"`), or by its path alone for a part of the project's
+    /// only board (`"u3" = "digikey-retail"` in `[supply.parts]`).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "parts_table"
+    )]
+    pub parts: Option<BTreeMap<String, PartsEntry>>,
+}
+
+/// One key of `[supply.parts]`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum PartsEntry {
+    /// `"u3" = "digikey-retail"`: a part of the project's only board, by its path, and the
+    /// word of its channel.
+    Part(String),
+    /// `[supply.parts.Board]`: the parts of one board or system, each by its path there.
+    Board(BTreeMap<String, String>),
+}
+
+/// `[supply.parts]` as TOML gives it: a string is a part of the only board, a table is a board.
+/// A value of any other kind, and a table in a board's table (a path with a dot that is not
+/// quoted), is refused with how to write it.
+fn parts_table<'de, D>(d: D) -> Result<Option<BTreeMap<String, PartsEntry>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+    let table = toml::Table::deserialize(d)?;
+    let channel = |at: &str, value: &toml::Value| match value {
+        toml::Value::String(word) => Ok(word.clone()),
+        toml::Value::Table(_) => Err(D::Error::custom(format!(
+            "{at} holds a table, not a supply channel: a part's path with a dot in it is quoted, as in the pick lock (`\"ldo.regulator\" = \"digikey-retail\"`)"
+        ))),
+        other => Err(D::Error::custom(format!(
+            "{at} = {other} is not the word of a supply channel: {}",
+            Channel::words()
+        ))),
+    };
+    let mut out = BTreeMap::new();
+    for (key, value) in table {
+        let entry = match value {
+            toml::Value::Table(board) => {
+                let mut parts = BTreeMap::new();
+                for (path, value) in board {
+                    let word = channel(&format!("[supply.parts.{key}] {path:?}"), &value)?;
+                    parts.insert(path, word);
+                }
+                PartsEntry::Board(parts)
+            }
+            value => PartsEntry::Part(channel(&format!("[supply.parts] {key:?}"), &value)?),
+        };
+        out.insert(key, entry);
+    }
+    Ok(Some(out))
 }
 
 /// The `[supply.nexar]` table: the names of the environment variables that hold the client id and
@@ -467,7 +526,54 @@ impl SupplyConfig {
                 ));
             }
         }
+        for (key, value) in self.parts.iter().flatten() {
+            let entries: Vec<(String, &String)> = match value {
+                PartsEntry::Part(word) => vec![(format!("[supply.parts] {key:?}"), word)],
+                PartsEntry::Board(parts) => parts
+                    .iter()
+                    .map(|(path, word)| (format!("[supply.parts.{key}] {path:?}"), word))
+                    .collect(),
+            };
+            for (at, word) in entries {
+                if Channel::parse(word).is_none() {
+                    return Err(format!(
+                        "{MANIFEST}: {at} = {word:?} is not a supply channel netsmith knows: {}",
+                        Channel::words()
+                    ));
+                }
+            }
+        }
         Ok(())
+    }
+
+    /// The entries of `[supply.parts]` (ADR 0143 item 4), each with what a message calls it:
+    /// `netsmith.toml: [supply.parts.Board] "u3"`. The words were checked by `validate`.
+    pub fn part_channels(&self) -> Vec<netsmith_solve::PartChannel> {
+        let entry = |unit: Option<&str>, path: &str, word: &str| {
+            let table = unit.map_or("[supply.parts]".to_string(), |u| {
+                format!("[supply.parts.{u}]")
+            });
+            netsmith_solve::PartChannel {
+                unit: unit.map(str::to_string),
+                path: path.to_string(),
+                named: netsmith_solve::NamedChannel {
+                    channel: Channel::parse(word).expect("the manifest was validated"),
+                    key: format!("{MANIFEST}: {table} {path:?}"),
+                },
+            }
+        };
+        let mut out = Vec::new();
+        for (key, value) in self.parts.iter().flatten() {
+            match value {
+                PartsEntry::Part(word) => out.push(entry(None, key, word)),
+                PartsEntry::Board(parts) => {
+                    for (path, word) in parts {
+                        out.push(entry(Some(key), path, word));
+                    }
+                }
+            }
+        }
+        out
     }
 
     /// The channels the table names, in order: `channels`, or `channel` as a list of one; empty
@@ -1561,11 +1667,48 @@ impl Project {
         }
         if let Some(config) = &self.manifest.supply {
             catalogs = catalogs.with_channels(config.channel_list());
+            let entries = config.part_channels();
+            if !entries.is_empty() {
+                catalogs = catalogs.with_part_channels(netsmith_solve::PartChannels {
+                    entries,
+                    declared: self.declared_units(),
+                });
+            }
             if config.provider.is_some() {
                 catalogs = catalogs.with_availability(self.supply()?.into_availability());
             }
         }
         Ok(catalogs)
+    }
+
+    /// The names of the boards and systems the project's top-level files declare, read from
+    /// their syntax alone: what an entry of `[supply.parts]` is checked against by the build of
+    /// one file, which sees only its own. A file that cannot be read or parsed adds none; its
+    /// own build says why.
+    fn declared_units(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for file in &self.manifest.top_level {
+            let Ok(text) = fs::read_to_string(self.root.join(file)) else {
+                continue;
+            };
+            let Ok(parsed) = netsmith_lang::parse(&text) else {
+                continue;
+            };
+            out.extend(
+                parsed
+                    .definitions
+                    .iter()
+                    .filter(|d| {
+                        matches!(
+                            d.kind,
+                            netsmith_lang::ast::DefKind::Board
+                                | netsmith_lang::ast::DefKind::System
+                        )
+                    })
+                    .map(|d| d.name.name.clone()),
+            );
+        }
+        out
     }
 
     /// The project's preferred parts, `preferred.csv` beside the manifest (issue #802), or

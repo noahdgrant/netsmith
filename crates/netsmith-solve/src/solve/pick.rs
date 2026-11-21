@@ -204,6 +204,9 @@ impl Solver<'_> {
                     if !self.hold_to_lock(part, &path, &mut cat) {
                         continue;
                     }
+                    if !self.buy_in_named_channel(part, &path, &mut cat) {
+                        continue;
+                    }
                     let used = columns.iter().map(|(f, _)| self.mentioned(*f)).collect();
                     let count = self.model.bank_count(part);
                     jobs.push(Job {

@@ -258,6 +258,53 @@ impl Solver<'_> {
         false
     }
 
+    /// A part that names its own supply channel (`[supply.parts]`, ADR 0143 item 4) is offered
+    /// only the rows that channel has an offer of, each bought there: its sku and class are that
+    /// offer's. A generic part is kept and names the channel, so that only such rows stand for
+    /// it when it is resolved. Returns `false` when no row is left, which it has reported by
+    /// the part's name and the manifest's entry: the part is left unresolved.
+    pub(super) fn buy_in_named_channel(
+        &mut self,
+        part: InstId,
+        path: &str,
+        cat: &mut Catalog,
+    ) -> bool {
+        let Some(named) = self.named_channels.get(path).cloned() else {
+            return true;
+        };
+        let had_rows = cat.candidates.iter().any(|c| c.generic.is_none());
+        let candidates = std::mem::take(&mut cat.candidates);
+        cat.candidates = candidates
+            .into_iter()
+            .filter_map(|mut c| match c.generic.as_mut() {
+                Some(g) => {
+                    g.channel = Some(named.clone());
+                    Some(c)
+                }
+                None => self.catalogs.bought_in(&c, named.channel),
+            })
+            .collect();
+        if !had_rows || !cat.candidates.is_empty() {
+            return true;
+        }
+        let (source, span) = self.model.instance(part).at();
+        self.report(
+            source,
+            span,
+            format!(
+                "`{path}` cannot be bought: no row of the `{}` catalog it could be has an offer in {}; add the offer of its row to the project's `offers/{}.csv`, or remove the entry to buy it from the project's channels",
+                cat.name,
+                named.named_by(),
+                named.channel.supplier()
+            ),
+        );
+        self.unresolved.push(Unresolved {
+            part,
+            reason: format!("no row it could be has an offer in `{}`", named.channel),
+        });
+        false
+    }
+
     /// What a message calls the file of the pick lock.
     pub(super) fn lock_file(&self) -> String {
         self.catalogs
