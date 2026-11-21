@@ -345,14 +345,13 @@ impl<'a> Router<'a> {
                         && let Some(b) = meet(p, u, e, v)
                         && ahead(p, b, u) >= LEAST
                         && ahead(b, f, v) >= LEAST
-                        && !joints
-                            .iter()
-                            .any(|&j| !same(j, p) && self.in_end(net, routed, j, b, li))
+                        && !(at_joint(f) && self.in_end(net, routed, f, b, li))
                     {
-                        // (A bend moved into another pad or via of the line would leave a
-                        // track from its centre that ends inside it, which its own folds have
-                        // been made already: issue #1539. One moved into this end's pad is
-                        // folded again at the next turn.)
+                        // (A bend moved along the stub of the line's other end, into its pad
+                        // or via, would leave a track from that centre that ends inside it,
+                        // with the folds there made already: issue #1539. A bend moved into
+                        // copper whose stub is still to come, or into this end's, is folded
+                        // again at the next turn, issue #1568.)
                         // The run moved across to pass the centre, the bend along the next.
                         changes.push(Change {
                             moved: vec![(r, p, b), (n, b, f)],
