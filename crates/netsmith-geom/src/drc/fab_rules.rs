@@ -308,7 +308,7 @@ fn track_current(out: &mut Out<'_>) {
         out.push_carrying(
             Rule::TrackCurrent,
             format!(
-                "{} is {:.4} mm wide; {held} {needed:.4} mm ({basis}), and only within {:.2} mm of the pads of a part on the net may a track be narrower: widen it to {needed:.2} mm or more, or lower the current",
+                "{} is {:.4} mm wide; {held} {needed:.4} mm ({basis}), and only within {:.2} mm of the box round the pad centres of a part on the net (measured from the centres of its pads, not from their edges) may a track be narrower: widen it to {needed:.2} mm or more, or lower the current",
                 c.item.what, t.width, x.neck_reach
             ),
             c.item.at,
@@ -435,7 +435,7 @@ fn track_impedance(out: &mut Out<'_>) {
         out.push(
             Rule::TrackImpedance,
             format!(
-                "{} is {:.4} mm wide; its net's impedance target needs {:.4} mm on {}, and only within {:.2} mm of the pads of a part on the net may a track be another width",
+                "{} is {:.4} mm wide; its net's impedance target needs {:.4} mm on {}, and only within {:.2} mm of the box round the pad centres of a part on the net (measured from the centres of its pads, not from their edges) may a track be another width",
                 c.item.what, t.width, want, t.layer, x.neck_reach
             ),
             c.item.at,

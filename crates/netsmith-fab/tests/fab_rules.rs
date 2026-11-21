@@ -288,6 +288,8 @@ fn a_track_finding_names_the_width_the_width_needed_and_the_current_assumed() {
         "its net `P` carries 1 A (the sum of the currents on it with every load on at once: rail `a` 600 mA + rail `b` 400 mA)",
         "which needs 0.4000 mm",
         "IPC-2221, 35 \u{3bc}m outer copper, a 10 K temperature rise, the fabricator's 20% width tolerance",
+        // Issue 1514: the reach says what it is measured from.
+        "only within 1.00 mm of the box round the pad centres of a part on the net (measured from the centres of its pads, not from their edges) may a track be narrower",
         "widen it to 0.40 mm or more, or lower the current",
     ] {
         assert!(said.contains(part), "{part}: {said}");
