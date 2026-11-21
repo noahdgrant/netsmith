@@ -53,7 +53,7 @@ fn a_design_that_does_not_mention_it_is_offered_every_row_as_before() {
     assert!(messages(&s).is_empty(), "{:?}", messages(&s));
     assert_eq!(s.picks.len(), 1);
     assert!(
-        s.picks[0].lcsc.is_some(),
+        s.picks[0].sku.is_some(),
         "a standard row, not a made-up one"
     );
     // The field stays unset: nothing says what the picked row's coefficient is.

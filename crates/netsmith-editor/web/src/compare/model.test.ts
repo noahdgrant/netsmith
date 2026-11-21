@@ -67,7 +67,7 @@ describe('the rows of the parts tab', () => {
   it('a changed part shows the value first, with the other fields for the expanded row', () => {
     const [r] = partRows(led);
     expect(r).toMatchObject({ status: 'changed', before: '100', after: '150', field: 'value', desBase: 'R1', desHead: 'R1' });
-    expect(r.fields.map((f) => f.field)).toEqual(['value', 'lcsc']);
+    expect(r.fields.map((f) => f.field)).toEqual(['value', 'sku']);
     expect(r.base?.line).toBe(21);
     expect(r.head?.line).toBe(21);
   });
@@ -143,7 +143,7 @@ describe('the rows of the bill of materials', () => {
     expect(bomRows(board('X', { bom: undefined, bomError: 'no' }))).toEqual([]);
   });
   it('a line is identified as the server groups it', () => {
-    expect(bomKey({ kind: 'R', value: '1k', footprint: '0603', lcsc: 'C1', mpn: null, handSolder: false })).toBe('R|1k|0603|C1||');
+    expect(bomKey({ kind: 'R', value: '1k', footprint: '0603', sku: 'C1', mpn: null, handSolder: false })).toBe('R|1k|0603|C1||');
     expect(bomKey({ kind: 'R', value: '1k', handSolder: true })).toBe('R|1k||||hand');
   });
 });
@@ -409,7 +409,7 @@ describe('removed parts on a sheet', () => {
 describe('the bill of materials marks', () => {
   const d = bomMarks(led.bom);
   it('mark a line that is new, with its quantity and price, and keep the removed lines to show at the end', () => {
-    const key = bomKey({ kind: 'Resistor', value: '150', footprint: '0603', lcsc: 'C22775', handSolder: false });
+    const key = bomKey({ kind: 'Resistor', value: '150', footprint: '0603', sku: 'C22775', handSolder: false });
     expect(d.byKey.get(key)).toMatchObject({ status: 'added', quantityHead: 1, unitHead: 0.002 });
     expect(d.byKey.get(key)!.deltaUsd).toBeCloseTo(0.002);
     expect(d.removed.map((l) => l.value)).toEqual(['100']);

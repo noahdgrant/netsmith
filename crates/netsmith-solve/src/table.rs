@@ -267,7 +267,8 @@ struct Header {
 /// stock and price move, so these are for a person to read and not for the solver.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Supplier {
-    pub lcsc: String,
+    /// The sku the row is bought by.
+    pub sku: String,
     pub mpn: String,
     pub library: Option<Library>,
     /// Pieces in stock when the row was checked, if the row says.
@@ -372,10 +373,10 @@ impl Table {
             // A row whose offers are ambiguous is refused where a part reads the catalog; here
             // it is bought by nothing.
             let bought = r.bought(offers, channels).unwrap_or_default();
-            (bought.lcsc.as_deref() == Some(lcsc)).then_some((r, bought))
+            (bought.sku.as_deref() == Some(lcsc)).then_some((r, bought))
         })?;
         Some(Supplier {
-            lcsc: lcsc.to_string(),
+            sku: lcsc.to_string(),
             mpn: row.mpn.clone(),
             library: bought.library,
             stock: row.cell("stock").and_then(|s| s.parse().ok()),
@@ -679,7 +680,7 @@ impl Table {
                 name: row.name.clone(),
                 label: row.label.clone(),
                 columns: values,
-                lcsc: bought.lcsc,
+                sku: bought.sku,
                 manufacturer: (!row.manufacturer.is_empty()).then(|| row.manufacturer.clone()),
                 mpn: (!row.mpn.is_empty()).then(|| row.mpn.clone()),
                 library: bought.library,

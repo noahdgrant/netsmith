@@ -290,7 +290,7 @@ fn a_part_added_comes_with_its_nets_its_bom_line_and_renumbers_the_rest() {
         ("stage.bulk", "Capacitor")
     );
     assert_eq!(bulk.at.as_ref().unwrap().line, line_of(INPUT_CAP));
-    assert!(bulk.lcsc.is_some());
+    assert!(bulk.sku.is_some());
     // It is on the two nets of the stage's input, which gain its pins.
     let names: Vec<&str> = power.nets.changed.iter().map(|n| n.name.as_str()).collect();
     assert_eq!(names, ["GND", "VIN"]);

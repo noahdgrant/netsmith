@@ -908,7 +908,11 @@ pub(crate) fn leds(
 /// The part a generic part resolved to.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Orderable {
-    pub lcsc: Option<String>,
+    /// The sku of the row in the channel that buys it, and that channel (ADR 0143).
+    pub sku: Option<String>,
+    pub channel: Option<crate::Channel>,
+    /// The row's manufacturer, as its datasheet spells it, if it names one.
+    pub manufacturer: Option<String>,
     pub mpn: Option<String>,
     pub library: Option<Library>,
     /// What a message calls the row.
@@ -1124,7 +1128,7 @@ pub fn resolve(
     };
     let rows: Vec<&Candidate> = candidates
         .iter()
-        .filter(|c| c.lcsc.is_some() || c.mpn.is_some())
+        .filter(|c| c.sku.is_some() || c.mpn.is_some())
         .collect();
     let mut fits: Vec<&Candidate> = rows
         .iter()
@@ -1141,7 +1145,7 @@ pub fn resolve(
         None => catalogs.channels(),
     };
     fn quoted(c: &Candidate) -> Option<(Channel, &str)> {
-        c.channel.zip(c.lcsc.as_deref())
+        c.channel.zip(c.sku.as_deref())
     }
     let stock_of = |c: &Candidate| quoted(c).and_then(|(ch, sku)| stock(ch, sku));
     let price_of = |c: &Candidate| {
@@ -1190,7 +1194,9 @@ pub fn resolve(
             continue;
         }
         return Ok(Orderable {
-            lcsc: c.lcsc.clone(),
+            sku: c.sku.clone(),
+            channel: c.channel,
+            manufacturer: c.manufacturer.clone(),
             mpn: c.mpn.clone(),
             library: c.library,
             name: c.name.clone(),
@@ -1270,7 +1276,7 @@ pub fn alternatives(generic: &Generic, catalogs: &Catalogs) -> Vec<Alternative> 
     let rows: Vec<&Candidate> = catalog
         .candidates
         .iter()
-        .filter(|c| c.lcsc.is_some() || c.mpn.is_some())
+        .filter(|c| c.sku.is_some() || c.mpn.is_some())
         .collect();
     let fits: Vec<&Candidate> = rows
         .iter()
@@ -1285,7 +1291,8 @@ pub fn alternatives(generic: &Generic, catalogs: &Catalogs) -> Vec<Alternative> 
 pub struct Alternative {
     /// The row's name.
     pub name: String,
-    pub lcsc: Option<String>,
+    /// The row's sku in the channel that buys it.
+    pub sku: Option<String>,
     pub mpn: Option<String>,
     /// The row's value, in the base unit, if the kind has one.
     pub value: Option<f64>,
@@ -1349,7 +1356,7 @@ pub fn nearest(generic: &Generic, rows: &[&Candidate], fits: &[&Candidate]) -> V
             };
             Alternative {
                 name: c.name.clone(),
-                lcsc: c.lcsc.clone(),
+                sku: c.sku.clone(),
                 mpn: c.mpn.clone(),
                 value,
                 quantity,

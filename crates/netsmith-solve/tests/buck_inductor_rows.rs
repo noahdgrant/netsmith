@@ -101,7 +101,7 @@ fn a_buck_of_1a_from_12v_that_asks_for_6uh_picks_a_molded_inductor() {
         .iter()
         .find(|p| p.catalog == "inductor")
         .expect("the buck's inductor is picked");
-    let lcsc = pick.lcsc.as_deref().expect("a real part");
+    let lcsc = pick.sku.as_deref().expect("a real part");
     assert!(
         MOLDED_ABOVE_6UH.contains(&lcsc),
         "picked {lcsc} ({:?}), not one of the rows added for #703",

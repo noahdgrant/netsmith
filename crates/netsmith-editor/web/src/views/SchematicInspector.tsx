@@ -129,7 +129,7 @@ function PartPanel({ part, sticky, current, rows, openSheet, goNet, drawing }: I
               ]
             : []),
           { label: 'Package', value: part.package ?? '-' },
-          { label: 'LCSC', value: part.lcsc ?? (part.assembled ? '-' : 'hand-soldered'), mono: !!part.lcsc },
+          { label: 'SKU', value: part.sku ?? (part.assembled ? '-' : 'hand-soldered'), mono: !!part.sku },
         ]}
       />
       {part.decl && (

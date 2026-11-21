@@ -93,7 +93,7 @@ fn the_example_solves_and_every_connector_is_rated_from_its_datasheet() {
         .picks
         .iter()
         .filter(|p| p.catalog == "header")
-        .map(|p| p.lcsc.as_deref().unwrap())
+        .map(|p| p.sku.as_deref().unwrap())
         .collect();
     assert_eq!(
         picked,

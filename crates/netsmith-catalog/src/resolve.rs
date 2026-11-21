@@ -109,7 +109,7 @@ impl Rechecks {
         };
         let mut jobs = Vec::new();
         'picks: for pick in &solution.picks {
-            let Some(generic) = pick.generic.as_ref().filter(|_| pick.lcsc.is_none()) else {
+            let Some(generic) = pick.generic.as_ref().filter(|_| pick.sku.is_none()) else {
                 continue;
             };
             if resolve(generic, catalogs, &stock).is_ok() {
@@ -243,12 +243,14 @@ pub fn resolve_generics(
             if s.assembly == netsmith_design::Assembly::Consigned {
                 return s;
             }
-            let Some(generic) = s.generic.clone().filter(|_| s.lcsc.is_none()) else {
+            let Some(generic) = s.generic.clone().filter(|_| s.sku.is_none()) else {
                 return s;
             };
             match resolve(&generic, catalogs, &stock) {
                 Ok(row) => {
-                    s.lcsc = row.lcsc;
+                    s.sku = row.sku;
+                    s.channel = row.channel;
+                    s.manufacturer = row.manufacturer;
                     s.mpn = row.mpn;
                     s.library = row.library;
                     s.catalog_height = row.height;
@@ -371,7 +373,9 @@ mod tests {
             kind: "Resistor".into(),
             value: "249".into(),
             package: Some("0402".into()),
-            lcsc: None,
+            sku: None,
+            channel: None,
+            manufacturer: None,
             mpn: None,
             library: None,
             assembly: Assembly::Fab,
@@ -396,13 +400,13 @@ mod tests {
     #[test]
     fn basic_comes_first_and_a_part_that_already_has_a_number_is_untouched() {
         let mut numbered = generic_part("R2");
-        numbered.lcsc = Some("C900099".into());
+        numbered.sku = Some("C900099".into());
         let (resolved, unresolved) =
             resolve_generics(&[generic_part("R1"), numbered], &catalogs(None));
         assert!(unresolved.is_empty());
-        assert_eq!(resolved[0].lcsc.as_deref(), Some("C900001"));
+        assert_eq!(resolved[0].sku.as_deref(), Some("C900001"));
         assert_eq!(resolved[0].mpn.as_deref(), Some("ZZR-A"));
-        assert_eq!(resolved[1].lcsc.as_deref(), Some("C900099"));
+        assert_eq!(resolved[1].sku.as_deref(), Some("C900099"));
         assert_eq!(resolved[1].mpn, None);
     }
 
@@ -423,11 +427,11 @@ mod tests {
     fn a_row_with_no_stock_is_passed_over_and_unknown_stock_is_not() {
         let sold_out = Stock(vec![("C900001", 0)]);
         let (resolved, _) = resolve_generics(&[generic_part("R1")], &catalogs(Some(sold_out)));
-        assert_eq!(resolved[0].lcsc.as_deref(), Some("C900002"));
+        assert_eq!(resolved[0].sku.as_deref(), Some("C900002"));
         // The provider knows nothing of either row: Basic first, as with no provider.
         let other = Stock(vec![("C900077", 0)]);
         let (resolved, _) = resolve_generics(&[generic_part("R1")], &catalogs(Some(other)));
-        assert_eq!(resolved[0].lcsc.as_deref(), Some("C900001"));
+        assert_eq!(resolved[0].sku.as_deref(), Some("C900001"));
     }
 
     #[test]
@@ -436,7 +440,7 @@ mod tests {
         let list = netsmith_solve::Preferred::parse("preferred.csv", "mpn\nZZR-B\n").unwrap();
         let (resolved, _) =
             resolve_generics(&[generic_part("R1")], &catalogs(None).with_preferred(list));
-        assert_eq!(resolved[0].lcsc.as_deref(), Some("C900002"));
+        assert_eq!(resolved[0].sku.as_deref(), Some("C900002"));
         assert_eq!(resolved[0].catalog_height, Some(0.55));
     }
 
@@ -445,7 +449,7 @@ mod tests {
         let all_out = Stock(vec![("C900001", 0), ("C900002", 0)]);
         let catalogs = catalogs(Some(all_out));
         let (resolved, unresolved) = resolve_generics(&[generic_part("R7")], &catalogs);
-        assert_eq!(resolved[0].lcsc, None);
+        assert_eq!(resolved[0].sku, None);
         assert_eq!(unresolved.len(), 1);
         assert_eq!(unresolved[0].refdes, "R7");
         let line = unresolved[0].line(&Rechecks::none(), &catalogs);

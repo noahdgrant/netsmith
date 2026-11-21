@@ -462,7 +462,7 @@ fn the_bom_groups_parts_like_the_fab_bom_with_price_and_stock() {
     assert_eq!(bom.lines.len(), 2);
     let led = bom.lines.iter().find(|l| l.kind == "Led").unwrap();
     assert_eq!(led.designators, ["D1"]);
-    assert_eq!(led.lcsc.as_deref(), Some("C2286"));
+    assert_eq!(led.sku.as_deref(), Some("C2286"));
     assert_eq!(led.library.as_deref(), Some("Basic"));
     // The standard catalogs ship no price, stock or date: unknown, never zero, and no total.
     assert_eq!(
@@ -474,7 +474,7 @@ fn the_bom_groups_parts_like_the_fab_bom_with_price_and_stock() {
     assert_eq!(bom.hand[0].designators, ["J1"]);
     // The socket is soldered by hand and still sourced: the `header` catalog rates its contacts.
     assert!(bom.hand[0].hand_solder);
-    assert_eq!(bom.hand[0].lcsc.as_deref(), Some("C42431841"));
+    assert_eq!(bom.hand[0].sku.as_deref(), Some("C42431841"));
     assert_eq!(bom.total_usd, None);
     assert!(bom.note.contains("feeder fee"));
 
@@ -941,7 +941,7 @@ fn the_bom_reads_price_and_stock_from_the_projects_own_catalog_files_too() {
     assert_eq!(analysis.errors, 0, "{:?}", analysis.problems);
     let bom = editor.bom(&analysis.boards[0].name).unwrap();
     let resistor = bom.lines.iter().find(|l| l.kind == "Resistor").unwrap();
-    assert_eq!(resistor.lcsc.as_deref(), Some("C9999999"));
+    assert_eq!(resistor.sku.as_deref(), Some("C9999999"));
     assert_eq!(resistor.unit_usd, Some(0.0123));
     assert_eq!(resistor.stock, Some(42));
     assert_eq!(resistor.library.as_deref(), Some("Extended"));
@@ -950,7 +950,7 @@ fn the_bom_reads_price_and_stock_from_the_projects_own_catalog_files_too() {
     assert!(
         bom.lines
             .iter()
-            .any(|l| l.kind == "Led" && l.lcsc.is_some() && l.stock.is_none())
+            .any(|l| l.kind == "Led" && l.sku.is_some() && l.stock.is_none())
     );
     assert_eq!(bom.total_usd, Some(0.0123));
 
@@ -1000,7 +1000,7 @@ fn a_catalog_file_that_appears_or_goes_in_a_catalog_folder_builds_again_without_
     let name = second.boards[0].name.clone();
     let bom = editor.bom(&name).unwrap();
     let resistor = bom.lines.iter().find(|l| l.kind == "Resistor").unwrap();
-    assert_eq!(resistor.lcsc.as_deref(), Some("C9999999"));
+    assert_eq!(resistor.sku.as_deref(), Some("C9999999"));
     assert_eq!(bom.catalogs, ["catalogs/resistor.csv"]);
 
     fs::create_dir_all(root.join("shared")).unwrap();

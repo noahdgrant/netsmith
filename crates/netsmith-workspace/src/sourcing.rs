@@ -13,7 +13,7 @@ use netsmith_solve::Catalogs;
 use super::analysis::BoardData;
 use netsmith_catalog::refresh;
 use netsmith_catalog::resolve::resolve_generics;
-use netsmith_catalog::supply::{Lookup, PartKey, Quote, Supply};
+use netsmith_catalog::supply::{Channel, Lookup, PartKey, Quote, Supply};
 
 /// What the note of the bill of materials says of a run with `--offline` (issue #803).
 pub const OFFLINE_NOTE: &str = "Offline (--offline): no supplier was asked, so stock and price are not checked now; a price shown is an answer kept earlier or the project's own file, with the day it was read.";
@@ -44,10 +44,14 @@ pub fn bom(
             None => source.value.clone(),
         };
         // A part that is not fitted has no number to buy, and nothing to price.
-        let lcsc = match source.not_fitted {
-            Some(_) => None,
-            None => source.lcsc.clone(),
+        let (sku, channel) = match source.not_fitted {
+            Some(_) => (None, None),
+            None => (
+                source.sku.clone(),
+                source.channel.map(|c| c.word().to_string()),
+            ),
         };
+        let consigned = source.assembly == Assembly::Consigned;
         let footprint = libraries
             .mapping
             .map_part(&part.path, &source.kind, source.package.as_deref())
@@ -77,9 +81,11 @@ pub fn bom(
             l.via == via
                 && l.value == value
                 && l.footprint == footprint
-                && l.lcsc == lcsc
+                && l.sku == sku
+                && l.channel == channel
                 && l.kind == source.kind
                 && l.hand_solder == (source.assembly == Assembly::Hand)
+                && l.consigned == consigned
         });
         match existing {
             Some(line) => {
@@ -94,7 +100,9 @@ pub fn bom(
                     kind: source.kind.clone(),
                     package: source.package.clone(),
                     footprint,
-                    lcsc,
+                    sku,
+                    channel,
+                    manufacturer: source.manufacturer.clone(),
                     mpn: source.mpn.clone(),
                     library: source.library.map(|l| l.to_string()),
                     unit_usd: None,
@@ -110,6 +118,7 @@ pub fn bom(
                         .find(|u| u.refdes == part.refdes)
                         .map(|u| u.checked(&built.rechecks, catalogs)),
                     hand_solder: source.assembly == Assembly::Hand,
+                    consigned,
                     via,
                 });
             }
@@ -137,7 +146,7 @@ pub fn bom(
     };
     let unpriced = lines
         .iter()
-        .filter(|l| l.unit_usd.is_none() && (l.lcsc.is_some() || l.unresolved.is_some()))
+        .filter(|l| l.unit_usd.is_none() && (l.sku.is_some() || l.unresolved.is_some()))
         .count();
     let mut note = String::from(
         "Price and stock come from the supply provider the project configures ([supply] in \
@@ -218,7 +227,9 @@ fn alternate_lines(
                 kind: source.kind.clone(),
                 package: source.package.clone(),
                 footprint,
-                lcsc: source.lcsc.clone(),
+                sku: source.sku.clone(),
+                channel: source.channel.map(|c| c.word().to_string()),
+                manufacturer: source.manufacturer.clone(),
                 mpn: source.mpn.clone(),
                 library: source.library.map(|l| l.to_string()),
                 unit_usd: None,
@@ -234,6 +245,7 @@ fn alternate_lines(
                     .find(|u| u.refdes == source.refdes)
                     .map(|u| u.checked(&built.rechecks, catalogs)),
                 hand_solder: source.assembly == Assembly::Hand,
+                consigned: source.assembly == Assembly::Consigned,
                 via: None,
             };
             price(&mut line, catalogs, supply, today);
@@ -249,17 +261,22 @@ fn alternate_lines(
 /// and why.
 fn price(line: &mut BomLine, catalogs: &Catalogs, supply: &Supply, today: &str) {
     // A made-up part (no number) has nothing to look up and shows nothing.
-    let Some(lcsc) = line.lcsc.clone() else {
+    let Some(lcsc) = line.sku.clone() else {
         return;
     };
-    // The editor's line names no manufacturer: the quote is found by its `mpn` whoever makes it.
     let key = PartKey {
         lcsc: Some(lcsc.clone()),
-        manufacturer: None,
+        manufacturer: line.manufacturer.clone(),
         mpn: line.mpn.clone(),
     };
+    // The quote of the channel that buys the part (ADR 0143); where the provider has none
+    // there, the one it answers first for the project's channels, which names its channel.
+    let channel = line.channel.as_deref().and_then(Channel::parse);
     let reason = match supply.lookup(&key) {
-        Lookup::Quoted(quote) => {
+        Lookup::Quoted(first) => {
+            let quote = channel
+                .and_then(|c| supply.quote_in(&key, c))
+                .unwrap_or(first);
             if quote.currency == "USD" {
                 use_quote(line, &quote, today);
                 return;

@@ -93,6 +93,6 @@ fn the_inverter_is_picked_from_its_catalog_row() {
         .find(|p| s.model.path_of(p.part) == "u")
         .expect("the inverter is picked");
     assert_eq!(pick.catalog, "sn74lvc1g04");
-    assert_eq!(pick.lcsc.as_deref(), Some("C7827"));
+    assert_eq!(pick.sku.as_deref(), Some("C7827"));
     assert_eq!(pick.mpn.as_deref(), Some("SN74LVC1G04DBVR"));
 }

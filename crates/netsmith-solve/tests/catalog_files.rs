@@ -106,7 +106,7 @@ fn a_design_names_a_part_of_a_file_by_its_key_and_gets_that_row() {
     assert_eq!(s.picks[0].mpn.as_deref(), Some("ZZ9-33-D"));
     // No supplier offers the part (ADR 0143): it is bought by no number and sorted in no library.
     assert_eq!(s.picks[0].library, None);
-    assert_eq!(s.picks[0].lcsc, None);
+    assert_eq!(s.picks[0].sku, None);
     // The package is the row's, so the pinout of DFN-6 is the one used.
     match s.model.domain_at("u.package") {
         Some(netsmith_check::Domain::Text(t)) => assert_eq!(t, "DFN-6"),

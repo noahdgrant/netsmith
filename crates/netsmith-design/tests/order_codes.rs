@@ -37,7 +37,7 @@ fn a_part_with_no_catalog_is_listed_by_its_code() {
     let s = sourced("", "GNSS", &Catalogs::jlcpcb());
     assert_eq!(s.mpn.as_deref(), Some("MDM-100-G"));
     assert_eq!(s.value, "MDM-100-G");
-    assert_eq!(s.lcsc, None);
+    assert_eq!(s.sku, None);
 }
 
 #[test]
@@ -51,7 +51,7 @@ fn a_part_with_a_keyed_catalog_takes_the_row_of_its_code() {
         .unwrap();
     let s = sourced("catalog modem by .mpn { .mpn }", "GNSS", &catalogs);
     assert_eq!(s.mpn.as_deref(), Some("MDM-100-G"));
-    assert_eq!(s.lcsc.as_deref(), Some("C900002"));
+    assert_eq!(s.sku.as_deref(), Some("C900002"));
     let s = sourced("catalog modem by .mpn { .mpn }", "LTE\n    .u.mpn &= \"MDM-100\"", &catalogs);
-    assert_eq!(s.lcsc.as_deref(), Some("C900001"));
+    assert_eq!(s.sku.as_deref(), Some("C900001"));
 }

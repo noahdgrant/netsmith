@@ -59,7 +59,7 @@ Every part has a field `.assembly`, of the type `AssemblyMode`, that it does not
 | Value | Meaning |
 |---|---|
 | `AssemblyMode::Fab` | The board house places and solders it: a BOM line and a placement row. |
-| `AssemblyMode::Hand` | Soldered by hand: not in the BOM or the placement file, and listed in `fab-notes.txt` as `hand-solder:`. |
+| `AssemblyMode::Hand` | Soldered by hand: not in the BOM or the placement file, needs no JLCPCB number, and listed in `fab-notes.txt` as `hand-solder:` and, with the sku of the supply channel that buys it, on that channel's `buy from` line. |
 | `AssemblyMode::None` | Not fitted by anyone, such as a hole or a fiducial: in neither file, and listed in `fab-notes.txt` as `not fitted`. |
 | `AssemblyMode::Consigned` | The board house places and solders it, and you ship the part to the board house: a BOM line and a placement row, no supplier part number needed, and listed in `fab-notes.txt` as `consigned:` (ADR 0084). See Consigned parts, below. |
 
@@ -131,7 +131,7 @@ board Shipped {
 }
 ```
 
-`build` prints it as `consigned` in the bill-of-materials column. `fab` puts it in `cpl.csv`, so the board house places it, and in `bom.csv`, with the manufacturer's number as the comment and the LCSC cell empty (or the row's number, if it has one). JLCPCB's BOM format has no column that marks a consigned part: you register the parts on its site, ship them, and pick them in the order page's component matching, so `fab-notes.txt` lists them under `consigned:` with their manufacturer's number and quantity, and says that you ship them with the order. Look at the matching step of the order preview before you pay.
+`build` prints it as `consigned` in the bill-of-materials column. `fab` puts it in `cpl.csv`, so the board house places it, and in `bom.csv`, with the manufacturer's number as the comment and the LCSC cell empty (or its LCSC number, if a channel of LCSC's numbers buys it: a Digi-Key or Mouser number never goes in that cell). JLCPCB's BOM format has no column that marks a consigned part: you register the parts on its site, ship them, and pick them in the order page's component matching, so `fab-notes.txt` lists them under `consigned:` with their manufacturer's number and quantity, and says that you ship them with the order; a `buy from <channel>` line gives the sku to buy each by in the supply channel that buys it (_Supply channels_ in the chapter on catalogs). Look at the matching step of the order preview before you pay.
 
 A board may narrow a part inside a module (ADR 0116), but a module that wants the board to make one choice of who assembles all its parts offers the choice as a value of its own and ties its parts to it (ADR 0042). The value earns its place by tying several parts to one choice; a module with one part offers none, since the board narrows `.part.assembly` itself, and std has no module that forwards a value inward (issue #670). Declare a value of the type `AssemblyMode`, and narrow the part's `.assembly` by it inside the module:
 
