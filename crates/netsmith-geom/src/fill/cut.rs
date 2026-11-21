@@ -1,5 +1,5 @@
-//! A piece of a fill that a track of another net cut off from the rest of its fill, with pads
-//! of its net on it and no other way to them (issue #1509): the design rules check's
+//! A piece of a fill that copper of another net cut off from the rest of its fill, with pads of
+//! its net on it and no other way to them (issues #1509 and #1524): the design rules check's
 //! `pad_island_cut`.
 //!
 //! The check's connectivity joins every pad in a pour's outline to the pour (`drc/connect.rs`),
@@ -13,14 +13,17 @@
 //! - nothing else of its net leads off it: no via of its net, no plated hole among its pads, no
 //!   track of its net with an end off the piece and off its pads, and no piece of another fill
 //!   of its net touches it;
-//! - a track of another net runs within its zone's clearance (and the fill's least width) of it
-//!   and of another piece of the same fill: the track that cut it. The one nearest the two is
-//!   named.
+//! - something that keeps the fill away lies within its keep-away distance (the clearance the
+//!   fill keeps from it, and the fill's least width) of it and of another piece of the same
+//!   fill: what cut it. It is a track, a pad or a via of another net (or of no net), the hole of
+//!   a pad with no copper on the layer, a rule area that keeps the pour out, or the fill of a
+//!   pour of another net and a higher priority ([`By`]); the one nearest the two is named.
 //!
-//! A piece with pads and no way off it that no track parts from the rest of its fill (the pads
-//! of other nets round it cut it off, say) is not this rule's: it names a track to move.
+//! A piece with pads and no way off it that nothing parts from another piece of its fill (the
+//! zone's own outline narrows to nothing between them, say) is not this rule's: it names a thing
+//! to move.
 //!
-//! **A neighbourhood.** The check of an edit (`routes add-track`) cuts the board to the boxes
+//! **A neighbourhood.** The check of an edit (`routes add-track`, `routes add-via`) cuts the board to the boxes
 //! round its change and the zones to them ([`crate::DrcExtras::open`]): a piece that reaches the
 //! edge of a box may go on outside it, so it is not judged, and the pieces wholly inside are
 //! judged as on the whole board.
@@ -42,10 +45,201 @@ pub(crate) struct Cut {
     /// A corner of the piece, and its area in mm².
     pub at: Pt,
     pub area: f64,
-    /// The track of another net between the piece and the rest of the fill, by its index in
-    /// the board's tracks, and its point nearest the piece: where the cut is.
-    pub track: usize,
+    /// What lies between the piece and the rest of the fill, and its point nearest the piece:
+    /// where the cut is.
+    pub by: By,
     pub near: Pt,
+}
+
+/// What cut a piece of a fill off from the rest of it (issue #1524): copper of another net, a
+/// hole, a rule area or a pour of another net, each by its index in the board's list of it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum By {
+    Track(usize),
+    /// A pad of another net (or of no net) with copper on the layer.
+    Pad(usize),
+    /// The hole of a pad with no copper on the layer (a hole with no plating, say).
+    Hole(usize),
+    Via(usize),
+    /// A rule area that keeps the pour out, by its index in the board's zones.
+    RuleArea(usize),
+    /// The fill of a pour of another net on the layer, by its index in the board's zones.
+    Pour(usize),
+}
+
+/// The shape of one thing that keeps a fill away, and how far it keeps it.
+enum Shape {
+    /// Points (a track's, sampled; a via's centre) and the radius round each.
+    Points(Vec<Pt>, f64),
+    /// A closed outline.
+    Ring(Vec<Pt>),
+}
+
+impl Shape {
+    fn bounds(&self) -> Option<Bounds> {
+        match self {
+            Shape::Points(p, r) => Bounds::of(p.iter().copied()).map(|b| b.expanded(*r)),
+            Shape::Ring(p) => Bounds::of(p.iter().copied()),
+        }
+    }
+
+    /// How far the shape is from `piece`, and its point nearest the piece.
+    fn gap(&self, piece: &Area) -> (f64, Pt) {
+        let rings = || std::iter::once(&piece.outer).chain(&piece.holes);
+        let to = |q: Pt| {
+            if piece.contains(q) {
+                0.0
+            } else {
+                rings()
+                    .map(|r| ring_distance(r, q))
+                    .fold(f64::INFINITY, f64::min)
+            }
+        };
+        match self {
+            Shape::Points(points, r) => points
+                .iter()
+                .map(|&q| ((to(q) - r).max(0.0), q))
+                .min_by(|a, b| a.0.total_cmp(&b.0))
+                .unwrap_or((f64::INFINITY, Pt::new(0.0, 0.0))),
+            Shape::Ring(ring) => {
+                let (from_ring, at) = ring
+                    .iter()
+                    .map(|&q| (to(q), q))
+                    .min_by(|a, b| a.0.total_cmp(&b.0))
+                    .unwrap_or((f64::INFINITY, Pt::new(0.0, 0.0)));
+                // The piece's corners against the ring's sides: a ring wider than the gap.
+                let from_piece = rings()
+                    .flat_map(|r| r.iter())
+                    .map(|&q| {
+                        if crate::geom::contains(ring, q) {
+                            0.0
+                        } else {
+                            ring_distance(ring, q)
+                        }
+                    })
+                    .fold(f64::INFINITY, f64::min);
+                (from_ring.min(from_piece), at)
+            }
+        }
+    }
+}
+
+/// What cuts the piece `p` of the fill `j` (of the zone `z`, on `layer`, its box `b`) off from
+/// another piece of the same fill, and where (issue #1524): of each track, pad, hole, via, rule
+/// area and pour of another net that comes within its keep-away distance (the clearance the
+/// fill keeps from it, and the strip narrower than the least width that the trimming took out)
+/// of both pieces, the one nearest the two. Its order breaks a tie: tracks first, then pads,
+/// holes, vias, rule areas and pours.
+#[allow(clippy::too_many_arguments)]
+fn cutter(
+    art: &Artwork,
+    layer: &str,
+    z: &crate::artwork::Zone,
+    judged: &[Judged],
+    j: &Judged,
+    p: usize,
+    rules: &Rules,
+    b: &Bounds,
+) -> Option<(By, Pt)> {
+    let clearance = zone_clearance(z, rules);
+    let from = |net: &Option<String>| clearance.max(rules.class_clearance(net.as_deref()));
+    let slack = z.min_thickness + 0.05;
+    // Each candidate: what it is, its shape, and how far it keeps the fill.
+    let mut shapes: Vec<(By, Shape, f64)> = Vec::new();
+    for (t, track) in art.tracks.iter().enumerate() {
+        if track.layer == layer && !own_net(z, &track.net) {
+            let points = track_points(&track.shape);
+            shapes.push((
+                By::Track(t),
+                Shape::Points(points, track.width / 2.0),
+                from(&track.net),
+            ));
+        }
+    }
+    for (k, pad) in art.pads.iter().enumerate() {
+        if own_net(z, &pad.net) {
+            continue;
+        }
+        if art.pad_copper_on(pad, layer) {
+            let by = pad
+                .clearance
+                .map_or(from(&pad.net), |c| c.max(from(&pad.net)));
+            if let Some(poly) = pads::outline(pad).polygon() {
+                shapes.push((By::Pad(k), Shape::Ring(poly), by));
+            }
+        } else if let Some(d) = &pad.drill
+            && let Some(poly) = super::hole_outline(pad, d).polygon()
+        {
+            shapes.push((
+                By::Hole(k),
+                Shape::Ring(poly),
+                rules.hole_clearance.unwrap_or(clearance),
+            ));
+        }
+    }
+    for (v, via) in art.vias.iter().enumerate() {
+        if art.via_on(via, layer) && !own_net(z, &via.net) {
+            shapes.push((
+                By::Via(v),
+                Shape::Points(vec![via.at], via.diameter / 2.0),
+                from(&via.net),
+            ));
+        }
+    }
+    for (k, area) in art.zones.iter().enumerate() {
+        if area.keepout.as_ref().is_some_and(|k| k.copperpour)
+            && area.layers.iter().any(|l| l == layer)
+        {
+            for o in area.outlines.iter().filter(|o| o.len() >= 3) {
+                shapes.push((By::RuleArea(k), Shape::Ring(o.clone()), 0.0));
+            }
+        }
+    }
+    // The fill of a pour of another net and a higher priority on the layer, which this one
+    // keeps away from.
+    for o in judged {
+        let other = &art.zones[o.zone];
+        if o.zone == j.zone || other.net == z.net || other.priority <= z.priority {
+            continue;
+        }
+        let by = clearance.max(zone_clearance(other, rules));
+        for a in &o.fill {
+            shapes.push((By::Pour(o.zone), Shape::Ring(a.outer.clone()), by));
+        }
+    }
+    let piece = &j.fill[p];
+    let mut best: Option<(f64, By, Pt)> = None;
+    for (by, shape, keep) in &shapes {
+        let reach = keep + slack;
+        let Some(sb) = shape.bounds() else {
+            continue;
+        };
+        if !sb.overlaps(&b.expanded(reach + 1.0)) {
+            continue;
+        }
+        let (to_piece, at) = shape.gap(piece);
+        if to_piece > reach {
+            continue;
+        }
+        let to_other = j
+            .fill
+            .iter()
+            .enumerate()
+            .filter(|&(o, _)| o != p)
+            .filter(|(_, o)| {
+                Bounds::of(o.outer.iter().copied()).is_some_and(|q| q.overlaps(&sb.expanded(reach)))
+            })
+            .map(|(_, o)| shape.gap(o).0)
+            .fold(f64::INFINITY, f64::min);
+        if to_other > reach {
+            continue;
+        }
+        let score = to_piece + to_other;
+        if best.is_none_or(|(s, _, _)| score < s) {
+            best = Some((score, *by, at));
+        }
+    }
+    best.map(|(_, by, at)| (by, at))
 }
 
 /// The cut pieces of the fills `judged` of `layer` ([module](self)). A piece whose box is not
@@ -71,9 +265,6 @@ pub(crate) fn cuts(
             .filter(|o| o.zone != j.zone && art.zones[o.zone].net == z.net)
             .flat_map(|o| o.fill.iter())
             .collect();
-        // How near a track of another net comes to the fill it cuts: its clearance, and the
-        // strip narrower than the least width that the trimming took out.
-        let reach = zone_clearance(z, rules) + z.min_thickness + 0.05;
         for (p, piece) in j.fill.iter().enumerate() {
             let Some(b) = Bounds::of(piece.outer.iter().copied()) else {
                 continue;
@@ -163,57 +354,9 @@ pub(crate) fn cuts(
             }) {
                 continue;
             }
-            // The track of another net between it and another piece of the fill.
-            let gap = |piece: &Area, q: Pt| -> f64 {
-                std::iter::once(&piece.outer)
-                    .chain(&piece.holes)
-                    .map(|r| ring_distance(r, q))
-                    .fold(f64::INFINITY, f64::min)
-            };
-            let grown_b = b.expanded(reach + 1.0);
-            let mut best: Option<(f64, usize, Pt)> = None;
-            for (t, track) in art.tracks.iter().enumerate() {
-                if track.layer != layer || own_net(z, &track.net) {
-                    continue;
-                }
-                let points = track_points(&track.shape);
-                let Some(tb) = Bounds::of(points.iter().copied()) else {
-                    continue;
-                };
-                if !tb.overlaps(&grown_b) {
-                    continue;
-                }
-                let by = reach + track.width / 2.0;
-                let Some((to_piece, at)) = points
-                    .iter()
-                    .map(|&q| (gap(piece, q), q))
-                    .min_by(|a, b| a.0.total_cmp(&b.0))
-                else {
-                    continue;
-                };
-                if to_piece > by {
-                    continue;
-                }
-                let to_other = j
-                    .fill
-                    .iter()
-                    .enumerate()
-                    .filter(|&(o, _)| o != p)
-                    .filter(|(_, o)| {
-                        Bounds::of(o.outer.iter().copied())
-                            .is_some_and(|q| q.overlaps(&tb.expanded(by)))
-                    })
-                    .flat_map(|(_, o)| points.iter().map(move |&q| gap(o, q)))
-                    .fold(f64::INFINITY, f64::min);
-                if to_other > by {
-                    continue;
-                }
-                let score = to_piece + to_other;
-                if best.is_none_or(|(s, _, _)| score < s) {
-                    best = Some((score, t, at));
-                }
-            }
-            let Some((_, track, near)) = best else {
+            // The copper of another net (or the hole, rule area or pour) between it and another
+            // piece of the fill.
+            let Some((by, near)) = cutter(art, layer, z, judged, j, p, rules, &b) else {
                 continue;
             };
             out.push(Cut {
@@ -221,7 +364,7 @@ pub(crate) fn cuts(
                 pads,
                 at: piece.outer[0],
                 area: piece.size(),
-                track,
+                by,
                 near,
             });
         }
