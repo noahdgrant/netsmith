@@ -108,6 +108,7 @@ impl Board {
                         .copied()
                         .unwrap_or_default(),
                     reference_side: ReferenceSide::default(),
+                    designator: None,
                     silk: Silk::default(),
                     height: None,
                     standoff: 0.0,
@@ -163,6 +164,7 @@ impl Board {
                     .copied()
                     .unwrap_or_default(),
                 reference_side: ReferenceSide::default(),
+                designator: None,
                 silk: design
                     .features
                     .silks

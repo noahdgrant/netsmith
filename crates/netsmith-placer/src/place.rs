@@ -694,6 +694,7 @@ fn apply_fixed(parts: &mut [Placed], options: &PlaceOptions) -> Vec<bool> {
                 p.rotation = f.rotation;
                 p.side = f.side;
                 p.reference_side = f.text;
+                p.designator = f.designator;
                 true
             }
             None => {
@@ -3830,6 +3831,7 @@ mod tests {
                 rotation: 90.0,
                 side: Side::Front,
                 text: ReferenceSide::Above,
+                designator: None,
             },
         );
         options.fixed.insert(
@@ -3839,6 +3841,7 @@ mod tests {
                 rotation: 0.0,
                 side: Side::Front,
                 text: ReferenceSide::Above,
+                designator: None,
             },
         );
         let board = board_from(parts, nets, &options);
