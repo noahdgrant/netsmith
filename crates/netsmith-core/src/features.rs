@@ -148,7 +148,8 @@ pub struct LengthGroup {
     pub tolerance: f64,
 }
 
-/// How the tracks of a [`TrackPath`] turn (issue #1275): `std::sources::TrackCorner`.
+/// How the tracks of a [`TrackPath`] (issue #1275), or of every net of a board (its `.corner`,
+/// issue #1508), turn: `std::sources::TrackCorner`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TrackCorner {
@@ -160,6 +161,11 @@ pub enum TrackCorner {
 }
 
 impl TrackCorner {
+    /// Whether it is `Rounded`, the default (a field of it is left out of a file then).
+    pub fn is_rounded(&self) -> bool {
+        *self == TrackCorner::Rounded
+    }
+
     /// The corner a variant of `TrackCorner` names.
     pub fn of_variant(variant: &str) -> Option<TrackCorner> {
         match variant {
@@ -207,7 +213,7 @@ pub struct TrackPath {
 }
 
 fn is_rounded(c: &TrackCorner) -> bool {
-    *c == TrackCorner::Rounded
+    c.is_rounded()
 }
 
 /// `.ant within 8mm of .radio.ant` in a physical file (issue #1274): a part within a distance
@@ -321,6 +327,11 @@ pub struct Features {
     /// paths. Left out of a design file when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub track_paths: Vec<TrackPath>,
+    /// How the tracks of every net of the board turn: the board's `.corner`, a `TrackCorner`
+    /// (issue #1508). A net of a `TrackPath` that is `Mitered` is mitered whatever this says.
+    /// Left out of a design file when `Rounded`, the default.
+    #[serde(default, skip_serializing_if = "is_rounded")]
+    pub corner: TrackCorner,
     /// The current each net carries, where it is known, and the least width that carries it
     /// (IPC-2221 at the width tolerance, ADR 0036): what the router may not narrow a track of
     /// the net below, away from its pads, and what the design rules check holds the routed

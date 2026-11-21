@@ -846,9 +846,15 @@ pub struct Extras {
     /// wide, away from the net's pads as for `least_widths`, is a `track_impedance` warning.
     pub target_widths: Vec<(String, String, f64)>,
     pub neck_reach: f64,
-    /// How many vias side by side, their copper touching, each net needs where it changes layer,
-    /// for the nets that need more than one.
+    /// How many vias side by side each net needs where it changes layer, for the nets that need
+    /// more than one: vias of the net whose copper is no more than [`Extras::via_group_gap`]
+    /// apart, through others that are, count as one group.
     pub via_counts: Vec<(String, usize)>,
+    /// The most space, in mm, between the copper of two vias of one net, edge to edge, at which
+    /// they stand side by side as one group for `via_current` (issue #1505): the process's
+    /// least clearance, or the board's `.process.via_group_gap`. 0 (the default) is that the
+    /// copper touches.
+    pub via_group_gap: f64,
     /// Whether a corner of 90 degrees or sharper between two tracks is refused (issue #415):
     /// set by `fab` for the boards netsmith routes, which bend by 45 degrees only.
     pub track_angle: bool,

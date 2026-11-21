@@ -671,3 +671,32 @@ fn a_via_and_a_track_to_an_input_that_takes_no_current_stand_alone() {
         via.message
     );
 }
+
+#[test]
+fn vias_whose_copper_is_within_the_group_gap_count_as_one_group() {
+    // Issue #1505: two 0.45 mm vias of net P, which needs two side by side, at a 0.6 mm pitch
+    // (copper 0.15 mm apart). They are one group when the gap is at least 0.15 mm, two lone
+    // vias when it is less, or when the copper has to touch (a gap of 0).
+    let mut b = Pcb::new(2);
+    b.via("P", (10.0, 10.0), 0.45, 0.2);
+    b.via("P", (10.6, 10.0), 0.45, 0.2);
+    let count = |b: &mut Pcb, gap: f64| {
+        let extras = DrcExtras {
+            via_counts: vec![("P".to_string(), 2)],
+            via_group_gap: gap,
+            ..jlcpcb()
+        };
+        check(b, &extras).count(DrcRule::ViaCurrent)
+    };
+    assert_eq!(count(&mut b, 0.0), 2, "touching copper only");
+    assert_eq!(count(&mut b, 0.1), 2, "a gap under the copper's space");
+    assert_eq!(count(&mut b, 0.15), 0, "a gap of the copper's space");
+    // A third via 0.6 mm on joins the group through the second.
+    b.via("P", (11.2, 10.0), 0.45, 0.2);
+    let extras = DrcExtras {
+        via_counts: vec![("P".to_string(), 3)],
+        via_group_gap: 0.15,
+        ..jlcpcb()
+    };
+    assert_eq!(check(&mut b, &extras).count(DrcRule::ViaCurrent), 0);
+}

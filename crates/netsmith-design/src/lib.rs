@@ -905,6 +905,15 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
             },
             None => None,
         },
+        // Unstated in the library; a board may state it (issue #1505). An upper bound, so the
+        // top.
+        via_group_gap: match model.field_at("process.via_group_gap") {
+            Some(f) => match &model.field(f).domain {
+                Domain::Quantity(q) => Some((end("via_group_gap", q, true) * 1e12).round() / 1e9),
+                _ => None,
+            },
+            None => None,
+        },
         // Unstated where the board house publishes no figure. A lower bound, so the bottom.
         min_single_sided_assembly_size: optional_mm("process.min_single_sided_assembly_size"),
         min_double_sided_assembly_size: optional_mm("process.min_double_sided_assembly_size"),

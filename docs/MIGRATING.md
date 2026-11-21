@@ -13,6 +13,28 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+### A board's `.corner` is its corner style, a `TrackCorner` (issue #1508)
+
+A board's member `.corner` says how its tracks turn: `TrackCorner::Rounded` (the default) or `TrackCorner::Mitered` (no arcs). A board that has a member `.corner` of another type, for its own use, now stops with "`corner` is not a `TrackCorner`". Rename the board's own member:
+
+| Old spelling | New spelling |
+|---|---|
+| `.corner: Length` (a board's own member) | `.corner_radius: Length`, or any other name |
+
+`netsmith routes route` also rounds the bends of the copper it lays now, as `fab` rounds the router's, unless the board is mitered or the run says `--corner mitered`.
+
+### The processes gain `.via_group_gap` (issue #1505)
+
+Every process of the standard library (`std::mfg::jlcpcb::TwoLayer`, `FourLayer` and the rest, and `std::mfg::acme`'s) declares `.via_group_gap: Length`, the most space between the copper of two vias of one net at which they stand side by side as one group: the group the check `via_current` counts, the router's groups and the quality report's via pairs. No process states it, and unstated it is the process's `.min_clearance`; a board states another with `.process.via_group_gap &= 0.15mm`, and `&= 0mm` keeps the old rule, that the copper of the vias of a group touch. A provider of yours (`interface MyProcess provides TwoLayer`) that declared a member `.via_group_gap` for itself now stops at the declaration:
+
+```text
+error: `via_group_gap` is declared by `TwoLayer`, which this interface provides; do not declare it again: narrow it with `.via_group_gap &= ...`, or state it with a relation
+```
+
+Delete the declaration and keep its narrowing (`.via_group_gap &= ...`). There is no ADR: the owner decided it on the issue.
+
+A board whose vias of a net that needs several stood near one another, not touching, may now pass `via_current` where it failed, and the quality report counts via pairs within the least clearance where it counted them within 0.5 mm, leaving out a group the net's current needs.
+
 ### `routes tidy` counts `in_pad_tracks`, not `nudges` (issues #1485, #1492)
 
 The pass of `routes tidy` that removes a track from the centre of a pad or a via to a point still inside it is named for what it removes, a track inside a pad (_Nudge_ is a word the glossary avoids). A tool that reads the JSON of `netsmith routes tidy --format json` finds the key and the value renamed, and the text says `track(s) inside a pad` where it said `nudge(s)`:

@@ -147,8 +147,9 @@ fn track_angle(out: &mut Out<'_>) {
     }
 }
 
-/// A via of a net that needs more than one where it changes layer, in a cluster of touching
-/// vias of the net smaller than that.
+/// A via of a net that needs more than one where it changes layer, in a group of vias of the
+/// net side by side smaller than that: vias whose copper is no more than
+/// [`super::Extras::via_group_gap`] apart, edge to edge, through others that are (issue #1505).
 fn via_current(out: &mut Out<'_>) {
     let m = out.m;
     if m.extras.via_counts.is_empty() {
@@ -166,6 +167,7 @@ fn via_current(out: &mut Out<'_>) {
         let Some(&(_, needs)) = m.extras.via_counts.iter().find(|(n, _)| n == net) else {
             continue;
         };
+        let gap = m.extras.via_group_gap.max(0.0);
         let mut cluster = vec![start];
         seen[start] = true;
         let mut k = 0;
@@ -174,7 +176,7 @@ fn via_current(out: &mut Out<'_>) {
             for (j, w) in vias.iter().enumerate() {
                 if !seen[j]
                     && w.net.as_deref() == Some(net)
-                    && w.at.dist(v.at) <= (w.diameter + v.diameter) / 2.0 + EPS
+                    && w.at.dist(v.at) <= (w.diameter + v.diameter) / 2.0 + gap + EPS
                 {
                     seen[j] = true;
                     cluster.push(j);

@@ -7,10 +7,16 @@
 //! goes round everything else: pads, holes, keepouts, the edge, and the copper of every other
 //! net. It is the whole-board router ([`route_with`]) with its orders, rip-up, negotiation and
 //! rounds of rip-up among the lines of `nets` (the other nets have none of the router's copper to
-//! rip), and none of what is drawn on a finished board: no teardrops, arcs, meanders, shared vias,
+//! rip), and none of what is drawn on a finished board: no teardrops, meanders, shared vias,
 //! pour pads or stitching, which the routes file does not keep and `fab` draws again. The vias a
 //! net's current needs side by side and the vias a datasheet asks for in a pad are kept: they are
 //! the net's copper.
+//!
+//! **Corners** (issue #1508). The bends of the copper laid are rounded with arcs as `fab` rounds
+//! the router's ([`crate::arcs::round_bends`], each where it keeps the rules' space), because
+//! `fab` never rounds the copper of a routes file: a net that is mitered ([`Board::mitered`]: the
+//! board's `.corner`, which `routes route --corner` sets for one run, or a `TrackPath`'s) keeps
+//! its 45 degree corners.
 //!
 //! **Bounded work.** The router's own bounds, all counts ([`RouteOptions::rip_rounds`] and the
 //! orders it tries, [`One::tries`]); there is no time limit.
@@ -68,7 +74,7 @@ pub fn route_nets(board: &Board, nets: &BTreeSet<String>) -> One {
             plan: CoarsePlan::Off,
             classes: LineClasses::Off,
             teardrops: false,
-            arcs: 0.0,
+            arcs: crate::arcs::ARC_WIDTHS,
             meanders: false,
             share_vias: false,
             pour_pads: false,
