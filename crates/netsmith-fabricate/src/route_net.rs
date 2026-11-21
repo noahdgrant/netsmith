@@ -85,6 +85,10 @@ pub struct Ask {
     /// The weights of the router's quality objective for this run (`--length-weight`,
     /// `--via-weight`, `--layer-change-weight`, issue #1517); `None` is the router's own costs.
     pub weights: Option<netsmith_router::Weights>,
+    /// Lay the net again (`--reroute`, issue #1538): its unlocked copper and that of the nets
+    /// `rip` names are taken away, the net is routed first and they after it, and the change is
+    /// kept only when their total by the weights gets shorter (the module's header).
+    pub reroute: bool,
 }
 
 impl Ask {
@@ -128,6 +132,7 @@ impl Ask {
             depth: RIP_DEPTH,
             tries: TRIES,
             weights: None,
+            reroute: false,
         })
     }
 }
@@ -185,6 +190,8 @@ pub struct Routed {
     pub walls: Vec<Wall>,
     /// Why nothing is (or would be) written; `None` when the change is made.
     pub refused: Option<String>,
+    /// What `--reroute` found: the totals before and after, and whether the change is kept.
+    pub rerouted: Option<Total>,
     /// The runs of the router in all, and the rounds of routing ripped nets again (of the try
     /// kept, or the last).
     pub runs: usize,
@@ -193,6 +200,21 @@ pub struct Routed {
     #[serde(skip)]
     pub routes: Option<Routes>,
 }
+
+/// The totals of `--reroute` ([`Routed::rerouted`], the module's header): what the copper of
+/// the net and the nets `--rip` names costs by the weights, in mm of track, before it was laid
+/// again and after.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct Total {
+    pub before: f64,
+    pub after: f64,
+    /// Whether the change is made: every connection made, and the total shorter by more than
+    /// [`REROUTE_GAIN`].
+    pub kept: bool,
+}
+
+/// How much shorter, in mm of track by the weights, `--reroute` must make the total.
+pub const REROUTE_GAIN: f64 = 0.5;
 
 /// One try of routing the ripped nets again ([`Routed::tries`], the module's header).
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -307,6 +329,7 @@ pub fn route_net(board: &Board, routes: &Routes, ask: &Ask) -> Result<Routed, St
         narrowest: None,
         walls: Vec::new(),
         refused: None,
+        rerouted: None,
         runs: 0,
         rounds: 0,
         routes: None,
@@ -451,6 +474,9 @@ impl Runs<'_> {
             }
         }
         let (real, _) = with_routes(self.board, routes)?;
+        if self.ask.reroute {
+            return self.reroute(&real, routes, out);
+        }
         if self.open(&real, net, true).is_empty() {
             out.joined = true;
             return Ok(Ok(None));
@@ -509,7 +535,27 @@ impl Runs<'_> {
         out.in_the_way = set.iter().cloned().collect();
         state = strip(self.board, &state, &set);
         add(self.board, &mut state, net, &way);
-        // The ripped nets routed again, one try for each order (the module's header).
+        let state = match self.in_orders(&real, &state, &set, out)? {
+            Ok(state) => state,
+            Err(why) => return Ok(Err(why)),
+        };
+        let (after, _) = with_routes(self.board, &state)?;
+        if !self.open(&after, net, true).is_empty() {
+            return Ok(Err(no_way(net)));
+        }
+        Ok(Ok(Some(state)))
+    }
+
+    /// The ripped nets of `set` routed again on `state`, one try for each order (the module's
+    /// header): the routes with every one put back, or why none was.
+    fn in_orders(
+        &mut self,
+        real: &Board,
+        state: &Routes,
+        set: &BTreeSet<String>,
+        out: &mut Routed,
+    ) -> Result<Result<Routes, String>, Refusal> {
+        let net = self.ask.net.as_str();
         let mut order: Vec<String> = set.iter().cloned().collect();
         let mut tried: Vec<Vec<String>> = Vec::new();
         // A way that crosses no net's copper needs no net put back.
@@ -522,7 +568,7 @@ impl Runs<'_> {
                 self.limit = self.runs + MOST_RUNS;
             }
             tried.push(order.clone());
-            let (after, report) = self.put_back(&real, &state, &set, &order)?;
+            let (after, report) = self.put_back(real, state, set, &order)?;
             let failed = report.failed.clone();
             out.rounds = report.rounds;
             out.ripped = report.ripped.iter().map(|r| r.net.clone()).collect();
@@ -566,11 +612,67 @@ impl Runs<'_> {
             }
             return Ok(Err(why));
         };
-        let (after, _) = with_routes(self.board, &state)?;
-        if !self.open(&after, net, true).is_empty() {
-            return Ok(Err(no_way(net)));
+        Ok(Ok(state))
+    }
+
+    /// `--reroute` (the module's header): the net and the nets `--rip` names taken away, the
+    /// net routed first, they put back after it in turn, and the change kept only when their
+    /// total by the weights got shorter.
+    #[allow(clippy::type_complexity)]
+    fn reroute(
+        &mut self,
+        real: &Board,
+        routes: &Routes,
+        out: &mut Routed,
+    ) -> Result<Result<Option<Routes>, String>, Refusal> {
+        let net = self.ask.net.as_str();
+        if self.ask.connection.is_some() {
+            return Ok(Err(format!(
+                "`--reroute` lays the whole of net {net} again: name the net, not one connection"
+            )));
         }
-        Ok(Ok(Some(state)))
+        let only_net = BTreeSet::from([net.to_string()]);
+        let set = candidates(self.board, routes, &only_net, Some(&self.ask.rip));
+        let mut moved = set.clone();
+        moved.insert(net.to_string());
+        let w = self.ask.weights.unwrap_or_default();
+        let before = total(self.board, routes, &moved, &w);
+        let mut state = strip(self.board, routes, &moved);
+        let first = self.route(&state, net, false)?;
+        if !first.complete() {
+            out.walls = walls(self.board, &first.why);
+            return Ok(Err(format!(
+                "net {net} found no way with its copper and that of {} taken away, so nothing is written",
+                nets_said(&set)
+            )));
+        }
+        add(self.board, &mut state, net, &first);
+        out.in_the_way = set.iter().cloned().collect();
+        let state = if set.is_empty() {
+            state
+        } else {
+            match self.in_orders(real, &state, &set, out)? {
+                Ok(state) => state,
+                Err(why) => return Ok(Err(why)),
+            }
+        };
+        out.ripped = set.iter().cloned().collect();
+        let (after_board, _) = with_routes(self.board, &state)?;
+        let open = |b: &Board| {
+            Ratsnest::of(b)
+                .lines
+                .iter()
+                .filter(|l| moved.contains(&l.net))
+                .count()
+        };
+        let after = total(self.board, &state, &moved, &w);
+        let kept = open(&after_board) <= open(real) && after < before - REROUTE_GAIN;
+        out.rerouted = Some(Total {
+            before: (before * 1000.0).round() / 1000.0,
+            after: (after * 1000.0).round() / 1000.0,
+            kept,
+        });
+        Ok(Ok(kept.then_some(state)))
     }
 
     /// One try (the module's header): the nets of `set`, ripped for the net asked for, routed
@@ -828,6 +930,33 @@ fn candidates(
         .collect()
 }
 
+/// What the copper of `nets` in `routes` costs by `w`, in mm of track: its length and its vias
+/// ([`netsmith_router::Weights::measure`]).
+fn total(
+    board: &Board,
+    routes: &Routes,
+    nets: &BTreeSet<String>,
+    w: &netsmith_router::Weights,
+) -> f64 {
+    let Some(table) = routes.boards.get(&board.name) else {
+        return 0.0;
+    };
+    nets.iter()
+        .filter_map(|n| table.nets.get(n).map(|r| (n, r)))
+        .map(|(n, r)| {
+            let length: f64 = r
+                .tracks
+                .iter()
+                .map(|t| {
+                    let t = t.on(board, n);
+                    t.from.distance(t.to)
+                })
+                .sum();
+            w.measure(length, r.vias.len())
+        })
+        .sum()
+}
+
 /// `routes` with the unlocked tracks and vias of `nets` taken away.
 fn strip(board: &Board, routes: &Routes, nets: &BTreeSet<String>) -> Routes {
     let mut out = routes.clone();
@@ -965,6 +1094,28 @@ impl Routed {
                 ));
             }
             let _ = writeln!(s, "{line} ({} run(s), {} round(s))", t.runs, t.rounds);
+        }
+        if let Some(t) = &self.rerouted {
+            let set: BTreeSet<String> = self.ripped.iter().cloned().collect();
+            let with = if set.is_empty() {
+                String::new()
+            } else {
+                format!(" and {}", nets_said(&set))
+            };
+            let _ = writeln!(
+                s,
+                "laid again, {what}{with} cost {} mm of track by the weights where they cost {} mm: {}",
+                t.after,
+                t.before,
+                if t.kept {
+                    format!(
+                        "{} mm shorter, kept",
+                        ((t.before - t.after) * 1000.0).round() / 1000.0
+                    )
+                } else {
+                    "not shorter, so nothing is written".to_string()
+                }
+            );
         }
         for w in &self.walls {
             let mut by: Vec<String> = Vec::new();

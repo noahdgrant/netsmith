@@ -41,6 +41,7 @@ impl<'a> Router<'a> {
             self.to_the_pours(&mut state);
             self.fewer_vias(&mut state, attempt, attempts);
             self.polish(&mut state, attempt, attempts);
+            self.reroute(&mut state, attempt, attempts);
             self.share_vias(&mut state);
         }
         self.snapshot(SnapshotStage::Final, &state);
@@ -184,7 +185,7 @@ impl<'a> Router<'a> {
     /// `state` with the lines of `nets` routed again against all the other copper, the lines of
     /// each net in turn, shortest first, at the usual room and failing that at the least:
     /// `None` if a line finds no way.
-    fn route_again(&self, state: &State, nets: &[usize]) -> Option<State> {
+    pub(super) fn route_again(&self, state: &State, nets: &[usize]) -> Option<State> {
         let mut trial = state.clone();
         let (gone, kept): (Vec<Routed>, Vec<Routed>) = trial
             .routed

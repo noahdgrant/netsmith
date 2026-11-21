@@ -3587,7 +3587,7 @@ pub fn route_with_margin(
     track_margin: f64,
     say: &dyn Fn(String),
 ) -> netsmith_router::Routing {
-    with_margin(
+    let routing = with_margin(
         board,
         route_timeout,
         base,
@@ -3595,7 +3595,24 @@ pub fn route_with_margin(
         say,
         route_with,
         |routing| routing.left.len(),
-    )
+    );
+    say_rerouted(&board.name, &routing, say);
+    routing
+}
+
+/// The nets the router's reroute pass laid again (issue #1538), one line each.
+pub fn say_rerouted(board: &str, routing: &netsmith_router::Routing, say: &dyn Fn(String)) {
+    for r in &routing.rerouted {
+        let before = if r.with.is_empty() {
+            String::new()
+        } else {
+            format!(", laid before {}", r.with.join(", "))
+        };
+        say(format!(
+            "{board}: rerouted net {}{before}: {:.1} mm of track by the weights is now {:.1} mm",
+            r.net, r.before, r.after
+        ));
+    }
 }
 
 /// [`route_with_margin`], keeping the router's copper of `before` for every net the placement
@@ -3609,7 +3626,7 @@ pub fn reroute_with_margin(
     track_margin: f64,
     say: &dyn Fn(String),
 ) -> netsmith_router::carry::Rerouted {
-    with_margin(
+    let done = with_margin(
         board,
         route_timeout,
         base,
@@ -3617,7 +3634,9 @@ pub fn reroute_with_margin(
         say,
         |board, options| netsmith_router::carry::reroute(before, board, rip, options),
         |done| done.routing.left.len(),
-    )
+    );
+    say_rerouted(&board.name, &done.routing, say);
+    done
 }
 
 fn with_margin<T>(

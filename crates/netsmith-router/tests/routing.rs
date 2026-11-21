@@ -28,6 +28,7 @@ const FIRST_ONLY: RouteOptions = RouteOptions {
     rip_rounds: 0,
     stitch: true,
     weights: None,
+    reroute: netsmith_router::Reroute::DEFAULT,
     power_groups: true,
 };
 const RETRY_ONLY: RouteOptions = RouteOptions {
@@ -51,6 +52,7 @@ const RETRY_ONLY: RouteOptions = RouteOptions {
     rip_rounds: 0,
     stitch: true,
     weights: None,
+    reroute: netsmith_router::Reroute::DEFAULT,
     power_groups: true,
 };
 const RIP_UP_ONLY: RouteOptions = RouteOptions {
@@ -74,6 +76,7 @@ const RIP_UP_ONLY: RouteOptions = RouteOptions {
     rip_rounds: 0,
     stitch: true,
     weights: None,
+    reroute: netsmith_router::Reroute::DEFAULT,
     power_groups: true,
 };
 
@@ -98,6 +101,7 @@ const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
     rip_rounds: 0,
     stitch: true,
     weights: None,
+    reroute: netsmith_router::Reroute::DEFAULT,
     power_groups: true,
 };
 

@@ -414,3 +414,60 @@ fn the_copper_laid_takes_the_boards_corner_style() {
     mitered.corner = netsmith_core::TrackCorner::Mitered;
     assert_eq!(arcs(&mitered), 0, "a mitered board's bends keep their corners");
 }
+
+/// `--reroute` (issue #1538): a net that went round a wall of another net's copper, with a gap
+/// at the bottom, is laid again. With the wall kept it finds the same long way: not shorter, so
+/// nothing is written. With the wall's net ripped, the net is laid first, straight, the wall's
+/// net after it, and the total by the weights is shorter: the change is written with every
+/// connection made.
+#[test]
+fn reroute_lays_a_net_and_the_nets_ripped_again_and_keeps_it_only_when_shorter() {
+    let board = board();
+    let (target, wall) = nets(&board);
+    let mut routes = walled(&board, &target, &wall, false);
+    let h = board.outline.height();
+    for t in &mut routes.boards.get_mut(&board.name).unwrap().nets.get_mut(&wall).unwrap().tracks {
+        t.to[1] = h * 0.7;
+    }
+    let first = route_net(&board, &routes, &ask(&board, &target, &[])).unwrap();
+    assert_eq!(first.refused, None, "{}", first.text());
+    let looped = first.routes.clone().expect("the net goes round the wall");
+    assert_eq!(open(&board, &looped, &target), 0);
+
+    let alone = Ask {
+        reroute: true,
+        ..ask(&board, &target, &[])
+    };
+    let said = route_net(&board, &looped, &alone).unwrap();
+    let total = said.rerouted.clone().expect("a total");
+    assert!(!total.kept, "{}", said.text());
+    assert!(said.routes.is_none(), "{}", said.text());
+    assert!(said.text().contains("not shorter"), "{}", said.text());
+
+    let with_wall = Ask {
+        reroute: true,
+        ..ask(&board, &target, &[&wall])
+    };
+    let said = route_net(&board, &looped, &with_wall).unwrap();
+    let total = said.rerouted.clone().expect("a total");
+    assert!(total.kept, "{}", said.text());
+    assert!(total.after < total.before - netsmith_fabricate::route_net::REROUTE_GAIN);
+    assert_eq!(said.ripped, vec![wall.clone()]);
+    let after = said.routes.clone().expect("written");
+    assert_eq!(open(&board, &after, &target), 0, "{}", said.text());
+    assert!(
+        open(&board, &after, &wall) <= open(&board, &looped, &wall),
+        "{}",
+        said.text()
+    );
+    assert!(said.runs <= netsmith_fabricate::route_net::MOST_RUNS * with_wall.tries);
+
+    // One connection is not laid again alone.
+    let pads: Vec<String> = board.nets.iter().find(|n| n.name == target).unwrap().pads.iter().map(ToString::to_string).collect();
+    let connection = Ask {
+        reroute: true,
+        ..ask(&board, &format!("{target}:{}-{}", pads[0], pads[1]), &[])
+    };
+    let said = route_net(&board, &looped, &connection).unwrap();
+    assert!(said.refused.unwrap().contains("whole"));
+}
