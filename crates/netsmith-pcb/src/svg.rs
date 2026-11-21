@@ -733,6 +733,20 @@ fn draw(board: &Board, with_key: bool) -> String {
     out
 }
 
+/// The `transform` of a text turned `turn` degrees counterclockwise on screen round `at` (a
+/// designator the layout file turns, issue #1506); nothing for an upright text.
+pub(crate) fn turned(turn: f64, at: Pt) -> String {
+    if turn == 0.0 {
+        return String::new();
+    }
+    format!(
+        r#" transform="rotate({} {} {})""#,
+        n(-turn),
+        n(at.x),
+        n(at.y)
+    )
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -1040,18 +1054,4 @@ mod tests {
             None
         );
     }
-}
-
-/// The `transform` of a text turned `turn` degrees counterclockwise on screen round `at` (a
-/// designator the layout file turns, issue #1506); nothing for an upright text.
-pub(crate) fn turned(turn: f64, at: Pt) -> String {
-    if turn == 0.0 {
-        return String::new();
-    }
-    format!(
-        r#" transform="rotate({} {} {})""#,
-        n(-turn),
-        n(at.x),
-        n(at.y)
-    )
 }
