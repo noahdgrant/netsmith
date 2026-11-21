@@ -37,11 +37,42 @@
 //! It stops when no line is left, after [`Negotiation::rounds`] rounds, when its searches reach
 //! [`Negotiation::searches`] (each search, soft or for copper, of every step counts one, so the
 //! count is the same on every machine; the time limit stops it only as a hang guard), or after a
-//! round that spreads the lines left ([`spreads`]). The best state it sees, the fewest lines left,
-//! is kept, and the state it began with when no round did better: a try the negotiation cannot
-//! improve keeps its copper. A board the rip-ups route never gets here, so its copper is as it
-//! was. What it did is [`Routing::negotiation`] ([`Negotiated`]). After it come the rounds of
-//! whole nets (`rip_rounds.rs`).
+//! round that spreads the lines left ([`spreads`]). The best state it sees is kept: the fewest
+//! lines left, and of the states that leave as many the one cheaper by the weights
+//! ([`Router::state_cost`]: length and vias), at the end of each round; the state it began with
+//! when no round did better, so a try the negotiation cannot improve keeps its copper.
+//!
+//! 5. **Once no line is left, the cost** ([`Router::cheaper`], issue #1575): the history is
+//!    dropped, and each line whose copper the negotiation changed, the most vias first, is
+//!    routed again against all the other copper, at the usual room and failing that at the
+//!    least; its new copper is kept when the state costs less by the weights. At most
+//!    [`CHEAPER_SWEEPS`] sweeps, each while the last kept something, within the same searches.
+//!    No line is ripped up for it, so it never leaves a line. The history that finished the
+//!    board sent lines round the cells fought over, through vias, and once the board is done
+//!    most of that is no longer needed.
+//!
+//! A board the rip-ups route never gets here, so its copper is as it was. What it did is
+//! [`Routing::negotiation`] ([`Negotiated`]). After it come the rounds of whole nets
+//! (`rip_rounds.rs`).
+//!
+//! **What it keeps** (issue #1575, measured 2026-11-21 as the table below is: `measured`,
+//! `NETSMITH_SEEDS=0..8`, one try, release build). The negotiation used to keep the first
+//! state that left the fewest lines, which had 20 more vias in all than the chain from both
+//! ends, which kept the cheaper of its two ends:
+//!
+//! | | lines left | vias | layer changes | nets over twice their straight length |
+//! |---|---|---|---|---|
+//! | the chain from both ends (before #1574) | 2 | 1864 | 1831 | 177 |
+//! | the first best state (#1574) | 0 | 1884 | 1855 | 188 |
+//! | also an other end: each line left makes its way from the state it began with, no history | 0 | 1884 | 1855 | 188 |
+//! | **this: step 5** | **0** | **1860** | **1827** | **185** |
+//!
+//! The other end, as the chain's second run was, never won: where it was cheaper it left one or
+//! two lines (mixed 0, 2, 4, 5 and 7, tight 7), and where it finished, it was the same state as
+//! the negotiation's (its first round is that end). Step 5 took 4 vias off
+//! mixed 2, 6 off tight 6 and mixed 6, and none off mixed 5 (147, against 117 with the chain:
+//! routing one line again at a time finds no cheaper way there). No board spent more than
+//! 1760 of its 3000 searches.
 //!
 //! **The chain is gone** (issue #1570, measured 2026-11-21 with `measured`, `NETSMITH_SEEDS=0..8`:
 //! the six examples the router's tests read and the invented tight and mixed boards, 16 of them,
@@ -65,9 +96,9 @@
 //!
 //! It finishes every board, tight 4 and 7 too, which kept a line with the chain; the examples
 //! route before the negotiation and are the same. No board spent more than 1700 of its 3000
-//! searches, so the larger bound changed nothing. A board has a few more vias than with the chain
-//! from both ends, which kept the cheaper of two ends by the weights; the reroute pass is where
-//! the vias are worked on (issue #1538).
+//! searches, so the larger bound changed nothing. A board had a few more vias than with the chain
+//! from both ends, which kept the cheaper of two ends by the weights; step 5 took them off
+//! (issue #1575, "What it keeps" above).
 //!
 //! **Before** (2026-11-21, main at 9b9dc6ce, the same boards less the examples, with the chain):
 //! main's rounds never kept a state, 9 lines; ripping up single lines and learning the cells
@@ -82,7 +113,33 @@
 
 use super::*;
 
+/// The most sweeps of the step that makes a finished negotiation cheaper ([`Router::cheaper`]).
+const CHEAPER_SWEEPS: usize = 2;
+
+/// How much less, in mm of track by the weights, a line's new copper must cost to be kept.
+const CHEAPER_GAIN: f64 = 0.05;
+
 impl<'a> Router<'a> {
+    /// What the copper of `state` costs by the weights ([`RouteOptions::weights`], else the
+    /// router's own, [`Weights::DEFAULT`]), in mm of track: its length and its vias.
+    pub(super) fn state_cost(&self, state: &State) -> f64 {
+        let w = self.weights.unwrap_or(Weights::DEFAULT);
+        let length: f64 = state
+            .routed
+            .iter()
+            .flat_map(|r| &r.tracks)
+            .map(|t| t.from.distance(t.to))
+            .sum();
+        let vias: usize = state.routed.iter().map(|r| r.vias.len()).sum();
+        w.measure(length, vias)
+    }
+
+    /// Whether `a` is better than `b`: fewer lines left, or as many and cheaper by the weights.
+    fn better(&self, a: &State, b: &State) -> bool {
+        a.failed.len() < b.failed.len()
+            || (a.failed.len() == b.failed.len() && self.state_cost(a) < self.state_cost(b))
+    }
+
     /// The stage of the module's header, on `state` after the rip-ups of a try, at `room`.
     pub(super) fn negotiate(&self, state: &mut State, room: f64, attempt: usize, attempts: usize) {
         let bounds = self.negotiation;
@@ -92,6 +149,7 @@ impl<'a> Router<'a> {
         };
         let cells = self.grid.nx * self.grid.ny;
         *self.history.borrow_mut() = vec![vec![0; cells]; self.stack.len()];
+        let start = state.clone();
         let mut best = state.clone();
         let spent = |done: &Negotiated| done.searches >= bounds.searches;
         'rounds: for round in 1..=bounds.rounds {
@@ -172,22 +230,80 @@ impl<'a> Router<'a> {
                     }
                 }
             }
-            if state.failed.len() < best.failed.len() {
+            if self.better(state, &best) {
                 best = state.clone();
             }
             if spreads(best.failed.len(), state.failed.len()) {
                 break;
             }
         }
-        if state.failed.len() < best.failed.len() {
+        if self.better(state, &best) {
             best = state.clone();
         }
         self.soft_price.set(100);
         *self.history.borrow_mut() = vec![Vec::new(); self.stack.len()];
+        // Once no line is left, the cost: each line the negotiation moved is routed again with
+        // no history, and its new copper kept when the state costs less by the weights.
+        if best.failed.is_empty() && best.failed.len() < start.failed.len() {
+            self.cheaper(&mut best, &start, room, &mut done);
+        }
         done.left_after = best.failed.len();
         done.kept = done.left_after < done.left_before;
         *state = best;
         state.negotiated = done;
+    }
+
+    /// Step 5 of the module's header: on `state`, which leaves no line, each line whose copper
+    /// differs from `start`'s, the most vias first, is routed again against all the other
+    /// copper with no history, at the usual room and failing that at `room`; the new copper is
+    /// kept when `state` costs less by the weights. At most [`CHEAPER_SWEEPS`] sweeps, each while
+    /// the last kept something, within the negotiation's searches. A line is never left.
+    fn cheaper(&self, state: &mut State, start: &State, room: f64, done: &mut Negotiated) {
+        let was = |r: &Routed| {
+            start
+                .routed
+                .iter()
+                .any(|s| s.line == r.line && s.tracks == r.tracks && s.vias == r.vias)
+        };
+        let mut todo: Vec<(usize, usize)> = state
+            .routed
+            .iter()
+            .filter(|r| !was(r))
+            .map(|r| (r.line, r.vias.len()))
+            .collect();
+        todo.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        let mut cost = self.state_cost(state);
+        for _ in 0..CHEAPER_SWEEPS {
+            let mut kept = false;
+            for &(line, _) in &todo {
+                if done.searches + 2 > self.negotiation.searches || self.out_of_time() {
+                    return;
+                }
+                let mut trial = state.clone();
+                let Some(at) = trial.routed.iter().position(|r| r.line == line) else {
+                    continue;
+                };
+                trial.routed.remove(at);
+                done.searches += 1;
+                let found = self
+                    .try_line(line, &trial, &[], ROOM_LOOSE, false)
+                    .or_else(|| {
+                        done.searches += 1;
+                        self.try_line(line, &trial, &[], room, false)
+                    });
+                let Some((routed, _)) = found else { continue };
+                trial.routed.push(routed);
+                let after = self.state_cost(&trial);
+                if after < cost - CHEAPER_GAIN {
+                    *state = trial;
+                    cost = after;
+                    kept = true;
+                }
+            }
+            if !kept {
+                break;
+            }
+        }
     }
 
     /// The first step of the negotiation for a line (step 1 of the module's header): route it,
