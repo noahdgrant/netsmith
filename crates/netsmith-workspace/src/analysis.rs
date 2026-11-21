@@ -957,7 +957,7 @@ impl Workspace {
                     value: part.value.clone(),
                     package: part.package.clone(),
                     path,
-                    lcsc: source.lcsc.clone(),
+                    sku: source.sku.clone(),
                     assembled: source.assembled(),
                     decl: model
                         .instance(inst)

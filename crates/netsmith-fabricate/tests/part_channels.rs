@@ -106,7 +106,7 @@ fn bom(outcome: &Outcome) -> Vec<Option<String>> {
         .sourcing
         .iter()
         .filter(|s| s.mpn.as_deref() == Some("ZZR-1234"))
-        .map(|s| (s.refdes.clone(), s.lcsc.clone()))
+        .map(|s| (s.refdes.clone(), s.sku.clone()))
         .collect();
     lines.sort();
     lines.into_iter().map(|(_, lcsc)| lcsc).collect()

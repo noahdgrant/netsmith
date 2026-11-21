@@ -149,8 +149,9 @@ and stops it when the window closes. It needs WebKitGTK (`libwebkit2gtk-4.1-dev`
 
 **Read `fab-notes.txt` before you order.** It lists what netsmith could not verify, for
 example the pick-and-place rotation of a package that no board of yours has been assembled
-with, the parts you solder yourself (`hand-solder:`) and the parts you ship to the board house
-(`consigned:`, ADR 0084). Check JLCPCB's order preview for those.
+with, the parts you solder yourself (`hand-solder:`), the parts you ship to the board house
+(`consigned:`, ADR 0084) and, for each supply channel, the numbers to buy those by (`buy from`,
+ADR 0143). Check JLCPCB's order preview for those.
 
 ## Where to read next
 

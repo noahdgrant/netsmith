@@ -116,8 +116,9 @@ Each key is a board as its output folder is named: `Board`, or `System/member` f
 ```text
 fab/orders/devkit/
 ├── order.txt                  begins with the project's revision (when it has one); boards, layers, size, thickness, hand-solder parts, vias in pads, the combined bill of
-│                              materials (priced at the whole order's quantity when a [supply] provider
-│                              is set), "before you order" notes of each board, the unverified items
+│                              materials, the parts you buy by supply channel (consigned or hand-solder),
+│                              each priced from its channel at the whole order's quantity when a [supply]
+│                              provider is set, "before you order" notes of each board, the unverified items
 ├── order-bom.csv              LCSC number, value, footprint, quantity (copies x parts, no spares), used on
 ├── DevKit/carrier/            the package of that board: gerbers zip, bom.csv, cpl.csv, fab-notes.txt, ...
 ├── DevKit/power_card/

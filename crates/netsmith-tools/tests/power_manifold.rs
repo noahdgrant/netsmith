@@ -478,7 +478,7 @@ mod board {
         for s in &built.sourcing {
             let reference = &to_reference[&s.refdes];
             if let Some(number) = theirs.get(reference)
-                && s.lcsc.as_deref() != Some(number.as_str())
+                && s.sku.as_deref() != Some(number.as_str())
             {
                 other.push(reference.as_str());
             }

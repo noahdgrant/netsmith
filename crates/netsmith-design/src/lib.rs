@@ -1132,8 +1132,15 @@ pub struct Sourced {
     pub kind: String,
     pub value: String,
     pub package: Option<String>,
-    /// The LCSC number, such as `C25104`.
-    pub lcsc: Option<String>,
+    /// The sku of the part in the supply channel that buys it ([`Sourced::channel`], ADR
+    /// 0143): LCSC's `C25104` for `jlcpcb-assembly` and `lcsc-retail`, Digi-Key's or Mouser's
+    /// number for theirs. A part from a candidate made in code may have one with no channel: it
+    /// is then bought by that number in JLCPCB's assembly.
+    pub sku: Option<String>,
+    /// The supply channel that buys the part, `None` for a part no channel buys.
+    pub channel: Option<netsmith_solve::Channel>,
+    /// The part's manufacturer, as its datasheet spells it, if its row names one.
+    pub manufacturer: Option<String>,
     /// The manufacturer's part number.
     pub mpn: Option<String>,
     pub library: Option<Library>,
@@ -1187,6 +1194,19 @@ impl Sourced {
     /// a part it assembles from stock. A consigned part is the owner's to supply.
     pub fn needs_part_number(&self) -> bool {
         self.assembly == Assembly::Fab
+    }
+
+    /// The LCSC number JLCPCB's `bom.csv` takes for the part (ADR 0084, ADR 0143): its sku when
+    /// the channel that buys it reads LCSC's offers (`jlcpcb-assembly`, `lcsc-retail`), or when
+    /// no channel does and the part carries a number (a candidate made in code, bought by that
+    /// number in JLCPCB's assembly). A part bought in `digikey-retail` or `mouser-retail` has
+    /// none: JLCPCB assembles by LCSC's numbers, and a Digi-Key number in its cell would fail
+    /// its upload.
+    pub fn lcsc_number(&self) -> Option<&str> {
+        match self.channel {
+            Some(channel) if channel.supplier() != "lcsc" => None,
+            _ => self.sku.as_deref(),
+        }
     }
 }
 
@@ -1517,7 +1537,9 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
                 kind: kind.clone(),
                 value: value.clone(),
                 package: package.clone(),
-                lcsc: pick.and_then(|p| p.lcsc.clone()),
+                sku: pick.and_then(|p| p.sku.clone()),
+                channel: pick.and_then(|p| p.channel),
+                manufacturer: pick.and_then(|p| p.manufacturer.clone()),
                 mpn: pick
                     .and_then(|p| p.mpn.clone())
                     .or_else(|| order_code.clone()),

@@ -222,7 +222,7 @@ fn judge_rating_steps(
                     format!(
                         "the catalog row {}{} states `max_voltage` {}",
                         pick.candidate,
-                        pick.lcsc
+                        pick.sku
                             .as_deref()
                             .map_or(String::new(), |lcsc| format!(" ({lcsc})")),
                         steps.to_source()
@@ -398,7 +398,7 @@ fn judge_temperatures(model: &Model, parts: &[Fitted<'_>], errors: &mut Vec<Stri
                     fitted.pick.map_or("", |p| p.candidate.as_str()),
                     fitted
                         .pick
-                        .and_then(|p| p.lcsc.as_deref())
+                        .and_then(|p| p.sku.as_deref())
                         .map_or(String::new(), |lcsc| format!(" ({lcsc})"))
                 ),
                 (None, None) => class.map(|c| c.from_class()).unwrap_or_default(),

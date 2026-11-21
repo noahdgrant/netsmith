@@ -129,7 +129,7 @@ fn the_rd_resistors_are_5_1_kohm() {
             .iter()
             .zip(&built.design.parts)
             .filter(|(_, p)| p.kind == "Resistor")
-            .all(|(s, _)| s.lcsc.is_some()),
+            .all(|(s, _)| s.sku.is_some()),
         "every Rd has an LCSC number"
     );
 }
@@ -362,7 +362,7 @@ fn a_provider_the_project_adds_is_chosen_for_its_package_and_number() {
         .sourcing
         .iter()
         .find(|s| s.refdes == jack.refdes)
-        .and_then(|s| s.lcsc.as_deref());
+        .and_then(|s| s.sku.as_deref());
     assert_eq!(lcsc, Some("C0000001"));
     assert!(outcome.boards.iter().all(|b| {
         b.design

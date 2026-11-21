@@ -67,7 +67,7 @@ fn a_bank_is_one_part_for_each_capacitor_on_the_same_nets() {
     assert!(
         l.sourcing
             .iter()
-            .all(|s| s.lcsc == l.sourcing[0].lcsc && s.lcsc.is_some())
+            .all(|s| s.sku == l.sourcing[0].sku && s.sku.is_some())
     );
     assert!(l.origins.iter().all(|o| *o == l.origins[0]));
 }
