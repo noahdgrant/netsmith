@@ -4,10 +4,12 @@
 //! They are added after routing, in the places the routed copper, the pads, the holes, the
 //! board edge and the keepouts leave free. KiCad fills the pour round them. A via goes on
 //! the grid point, or the nearest free point within a third of the pitch of it, and a grid
-//! point with none is left without.
+//! point with none is left without. A grid point with a via of the pour's net that near already
+//! gets none (issue #1483): a stitching via a routes file brought back from an earlier export,
+//! or one the router laid, is that point's, so `fab` after `routes import` lays no second grid.
 //!
 //! The grid is at the pour's `.stitch_pitch`, read at the top of the range, every other row
-//! shifted by half a pitch. A via keeps from other nets' copper the space KiCad checks, and
+//! shifted by half a pitch (`netsmith_pcb::stitch_grid`). A via keeps from other nets' copper the space KiCad checks, and
 //! from the holes, the pads, the board edge, the cutouts and the keepouts that forbid vias.
 //! The vias the router drops beside the pads of a plane net are there while the stitching is
 //! placed. Where a pad sits on a pour of its own net, its via goes after the stitching
@@ -27,7 +29,7 @@
 //! gets no fence (`fab-notes.txt` says so, `Board::fence_ground`). The vias are placed after the
 //! stitching, before the teardrops and the arcs, which keep clear of them.
 
-use netsmith_pcb::{Board, CopperLayer, Pt, Rect, Via};
+use netsmith_pcb::{Board, Pt, Rect, Via};
 
 /// The grid the vias are put on, in mm.
 const STEP: f64 = 0.05;
@@ -174,25 +176,20 @@ impl<'a> Free<'a> {
     }
 }
 
-/// Whether a net has another layer to be stitched to: an inner plane, or the pour of the
-/// other outer layer.
-fn other_layers(board: &Board, net: &str, layer: CopperLayer) -> bool {
-    board.planes.iter().any(|p| p.net == net)
-        || board.pours.iter().any(|p| p.net == net && p.layer != layer)
-}
-
-/// Add stitching vias to every pour that states a pitch and has another layer on its net.
-pub fn stitch(board: &mut Board) {
-    let pours = board.pours.clone();
-    for pour in &pours {
-        let Some(pitch) = pour.stitch_pitch else {
-            continue;
-        };
+/// Add stitching vias to every pour that states a pitch and has another layer on its net. A grid
+/// point with a via of the pour's net within a third of the pitch of it already (a stitching via
+/// a routes file brought back from an earlier export, or a via the router laid) gets none beside
+/// it (issue #1483): that via is the point's. The vias of `spare` do not count, as they may yet
+/// go (the pads' own vias, `crate::pour_pads`).
+pub fn stitch(board: &mut Board, spare: &[Via]) {
+    let pours: Vec<(netsmith_pcb::BoardPour, f64)> = netsmith_pcb::stitched_pours(board)
+        .into_iter()
+        .map(|(p, pitch)| (p.clone(), pitch))
+        .collect();
+    for (pour, pitch) in &pours {
+        let pitch = *pitch;
         // A net a routes file locks gets no copper (`netsmith_pcb::Routes`).
         if board.fixed.is_locked(&pour.net) {
-            continue;
-        }
-        if !other_layers(board, &pour.net, pour.layer) {
             continue;
         }
         let rules = board.rules.clone();
@@ -201,32 +198,29 @@ pub fn stitch(board: &mut Board) {
                 pour_clearance: pour.clearance.unwrap_or(0.0),
                 ..Free::of(board, &pour.net)
             };
-            let o = board.outline;
-            let reach = rules.copper_to_edge + rules.via_diameter / 2.0 + MARGIN;
             let search = (pitch / 3.0 / STEP).floor() as i64;
             let mut found: Vec<Via> = Vec::new();
             // Two pours on one net would put a via on the grid twice; the first one's are
             // kept by the check against the vias already there.
             let all: Vec<Via> = board.vias.clone();
-            let (mut y, mut row) = (o.min.y + reach, 0);
-            while y <= o.max.y - reach + 1e-9 {
-                // Every other row is shifted by half a pitch, so the vias stagger.
-                let mut x = o.min.x + reach + if row % 2 == 1 { pitch / 2.0 } else { 0.0 };
-                while x <= o.max.x - reach + 1e-9 {
-                    let near = nearest_free(&free, Pt::new(x, y), search, &all, &found);
-                    if let Some(at) = near {
-                        found.push(Via {
-                            net: pour.net.clone(),
-                            at,
-                            diameter: rules.via_diameter,
-                            drill: rules.via_drill,
-                            span: None,
-                        });
-                    }
-                    x += pitch;
+            let own: Vec<Pt> = all
+                .iter()
+                .filter(|v| v.net == pour.net && !spare.contains(v))
+                .map(|v| v.at)
+                .collect();
+            for point in netsmith_pcb::stitch_grid(board, pitch) {
+                if own.iter().any(|v| v.distance(point) <= pitch / 3.0 + 1e-9) {
+                    continue;
                 }
-                y += pitch;
-                row += 1;
+                if let Some(at) = nearest_free(&free, point, search, &all, &found) {
+                    found.push(Via {
+                        net: pour.net.clone(),
+                        at,
+                        diameter: rules.via_diameter,
+                        drill: rules.via_drill,
+                        span: None,
+                    });
+                }
             }
             found
         };
@@ -336,7 +330,7 @@ fn nearest_free(free: &Free, p: Pt, search: i64, all: &[Via], found: &[Via]) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netsmith_pcb::{BoardPour, Track};
+    use netsmith_pcb::{BoardPour, CopperLayer, Track};
 
     /// The LED board with its parts taken away and a ground pour on the front, with a straight
     /// 8 mm track of `VCC` across its middle (the board is 15 mm by 7 mm) on a path fenced every `pitch` mm.
