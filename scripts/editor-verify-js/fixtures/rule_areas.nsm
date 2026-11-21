@@ -1,0 +1,27 @@
+//! An invented board for the PCB view's rule areas (issue 1543): a part whose own footprint
+//! (`rule_areas.libs/own.pretty/Antenna.kicad_mod`, mapped by `rule_areas.kicad.toml` beside
+//! this file, which the launcher copies into the scratch project) carries a keep-out zone that
+//! forbids tracks, vias and pours on both copper layers, as an RF module's antenna area does.
+//! Nothing here is a real part: it only states its pins.
+
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+
+part Antenna {
+    pins {
+        .feed passive "FEED" "1"
+        .gnd passive "GND" "2"
+    }
+}
+
+board RuleAreas {
+    .process: TwoLayer {
+        .stackup.thickness &= 1.6mm
+    }
+    .ant: Antenna {
+        .assembly &= AssemblyMode::Hand
+    }
+    .j: Header1x2
+    .ant.feed ~ .j.p1
+    .ant.gnd ~ .j.p2
+}

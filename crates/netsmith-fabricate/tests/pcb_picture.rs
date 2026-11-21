@@ -148,6 +148,7 @@ fn request(format: Format) -> Request {
         drc: false,
         islands: false,
         stitching: false,
+        rule_areas: false,
         format,
     }
 }
@@ -658,4 +659,100 @@ fn a_mitered_board_draws_an_arc_as_its_chamfer() {
     let mut chord = chord;
     chord.corner = netsmith_core::TrackCorner::Mitered;
     assert_eq!(svg(&board), svg(&chord), "a mitered board draws the chamfer");
+}
+
+/// The board of [`board`] with a keep-out zone in the footprint of its resistor, as a library
+/// has it (forbidding vias and pours on the top, in the footprint's frame), and a keepout of the
+/// physical file on the top (issue #1543).
+fn rule_area_board() -> (Board, String) {
+    let mut board = board();
+    let r = refdes(&board, 'R');
+    let part = board.parts.iter_mut().find(|p| p.refdes == r).unwrap();
+    let zone = r#"(zone (net 0) (net_name "") (layers "F.Cu") (name "antenna") (hatch full 0.508)
+        (connect_pads (clearance 0)) (min_thickness 0.254)
+        (keepout (tracks allowed) (vias not_allowed) (pads allowed)
+            (copperpour not_allowed) (footprints allowed))
+        (fill (thermal_gap 0.5) (thermal_bridge_width 0.5))
+        (polygon (pts (xy -1 -2) (xy 3 -2) (xy 3 1) (xy -1 1))))"#;
+    let netsmith_kicad::Sexp::List(fields) = &mut part.footprint.source else {
+        panic!("a footprint is a list");
+    };
+    fields.push(netsmith_kicad::Sexp::parse(zone).unwrap());
+    board.keepouts.push(netsmith_pcb::BoardKeepout {
+        name: "lid".into(),
+        part: None,
+        at: Some(Pt::new(1.0, 1.0)),
+        size: (2.0, 2.0),
+        layers: vec!["top".into()],
+        tracks: true,
+        vias: false,
+        copper: false,
+        parts: false,
+        max_height: None,
+        on_carrier_face: false,
+        polygon: None,
+    });
+    (board, r)
+}
+
+#[test]
+fn the_rule_areas_of_the_footprints_are_hatched_with_a_tip_naming_what_they_forbid() {
+    // Issue #1543: the rule areas of `board rules` are drawn on the layers they are on, the
+    // footprint's at its part, with a tip and a line naming the kinds; the physical file's
+    // keepout is drawn as a keepout, not again as a rule area; with no rule areas asked, none.
+    let (board, r) = rule_area_board();
+    let rules = netsmith_fabricate::drc::rules_of_board(&board).unwrap();
+    let area = rules
+        .rule_areas
+        .iter()
+        .find(|a| a.part.as_deref() == Some(r.as_str()))
+        .expect("the footprint's area is a rule area");
+    let drawn = draw(
+        &board,
+        &Request {
+            rule_areas: true,
+            ..request(Format::Svg)
+        },
+        None,
+    )
+    .unwrap();
+    let svg = String::from_utf8(drawn.bytes).unwrap();
+    assert_eq!(
+        svg.matches(r#"<g class="rule-area""#).count(),
+        1,
+        "only the footprint's: {svg}"
+    );
+    assert!(
+        svg.contains(&format!(
+            r#"data-rule-area="antenna" data-part="{r}" data-layers="F.Cu" data-forbids="vias copperpour""#
+        )),
+        "{svg}"
+    );
+    let said = format!("antenna of {r} forbids vias, copperpour on F.Cu");
+    assert!(svg.contains(&format!("<title>{said}</title>")), "{svg}");
+    assert_eq!(drawn.rule_areas, [said]);
+    assert!(svg.contains(r#"data-keepout="lid""#), "the keepout is drawn as one");
+    // The outline is where the export writes it: the first corner of the area's outline.
+    let [x, y] = area.outlines[0][0];
+    let at = netsmith_kicad::fmt_num;
+    assert!(
+        svg.contains(&format!("M{} {}", at(x), at(y))),
+        "the outline starts at ({x}, {y})"
+    );
+
+    // The bottom alone has none of it.
+    let bottom = draw(
+        &board,
+        &Request {
+            rule_areas: true,
+            layers: PictureLayers::One(CopperLayer::Back),
+            ..request(Format::Svg)
+        },
+        None,
+    )
+    .unwrap();
+    assert!(bottom.rule_areas.is_empty());
+    assert!(!String::from_utf8(bottom.bytes).unwrap().contains(r#"class="rule-area""#));
+    let plain = String::from_utf8(draw(&board, &request(Format::Svg), None).unwrap().bytes).unwrap();
+    assert!(!plain.contains(r#"class="rule-area""#));
 }

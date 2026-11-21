@@ -84,9 +84,9 @@ use netsmith_editor::{
         PcbFitPart, PcbFitPlace, PcbKeepout, PcbLive, PcbLivePart, PcbLiveTrack, PcbLiveVia,
         PcbNetWidth, PcbNets, PcbPad, PcbPart, PcbPoint, PcbRegenerate, PcbRegenerated,
         PcbRegeneratedPart, PcbReport, PcbRequirement, PcbRerouted, PcbRouteNet, PcbRouteTrack,
-        PcbRouteVia, PcbScene, PcbShapeRef, PcbShove, PcbShoveAnswer, PcbShoved, PcbShovedTrack,
-        PcbShovedVia, PcbSide, PcbStitching, PcbSummary, PcbTotals, PcbViaOffer, PcbWalk,
-        PcbWalked, RequiredPlace, RoutesChange, Severity, StitchingVia,
+        PcbRouteVia, PcbRuleAreas, PcbScene, PcbShapeRef, PcbShove, PcbShoveAnswer, PcbShoved,
+        PcbShovedTrack, PcbShovedVia, PcbSide, PcbStitching, PcbSummary, PcbTotals, PcbViaOffer,
+        PcbWalk, PcbWalked, RequiredPlace, RoutesChange, RuleArea, Severity, StitchingVia,
     },
 };
 use netsmith_pcb::{
@@ -1019,6 +1019,37 @@ impl Filling {
             routed: self.routed,
             vias,
         }
+    }
+
+    /// The rule areas of the board (issue 1543), as the entry has it placed (and routed): the
+    /// `rule_areas` of `netsmith board rules` less the keepouts of the physical file
+    /// ([`netsmith_fabricate::drc::rule_areas_to_draw`]), what `netsmith view pcb` hatches.
+    pub fn rule_areas(self, name: &str) -> Result<PcbRuleAreas, ApiError> {
+        let rings = |rings: &[Vec<[f64; 2]>]| -> Vec<Vec<PcbPoint>> {
+            rings
+                .iter()
+                .map(|r| r.iter().map(|&[x, y]| PcbPoint { x, y }).collect())
+                .collect()
+        };
+        let areas = netsmith_fabricate::drc::rule_areas_to_draw(&self.board)
+            .map_err(|e| ApiError::internal(format!("the rule areas of {name}: {e}")))?
+            .into_iter()
+            .map(|a| RuleArea {
+                outlines: rings(&a.outlines),
+                holes: rings(&a.holes),
+                name: a.name,
+                part: a.part,
+                layers: a.layers,
+                forbids: a.forbids.iter().map(|k| k.to_string()).collect(),
+            })
+            .collect();
+        Ok(PcbRuleAreas {
+            board: name.to_string(),
+            layout_stamp: self.layout_stamp,
+            routes_stamp: self.routes_stamp,
+            routed: self.routed,
+            areas,
+        })
     }
 
     /// The table of the board's nets and diff pairs (`netsmith board nets`, issue #1223), as the

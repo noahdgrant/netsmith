@@ -169,7 +169,8 @@ pub use part_layout::{
 pub use picture::{
     BACKGROUND as PICTURE_BACKGROUND, COPPER as PICTURE_COPPER, Island as PictureIsland,
     Layers as PictureLayers, Lit, MARGIN as PICTURE_MARGIN, Marker, Picture as PictureOptions,
-    STITCHING as PICTURE_STITCHING, picture as picture_svg, whole as picture_whole,
+    RuleArea as PictureRuleArea, STITCHING as PICTURE_STITCHING, picture as picture_svg,
+    whole as picture_whole,
 };
 pub use pin_distance::PinNear;
 pub use placement::{

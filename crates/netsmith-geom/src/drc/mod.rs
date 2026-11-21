@@ -215,7 +215,7 @@ mod waivers;
 
 use crate::artwork::Artwork;
 use crate::geom::Pt;
-pub use board_rules::BoardRules;
+pub use board_rules::{BoardRules, RuleArea};
 pub use model::outline_shapes;
 pub use room::Room;
 pub use rules::matches_pattern;
