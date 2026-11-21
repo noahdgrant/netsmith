@@ -33,6 +33,24 @@
 //! What it did is [`Routing::negotiation`] ([`Negotiated`]). The chain then has the lines it left,
 //! and after it the rounds of whole nets (`rip_rounds.rs`).
 //!
+//! **The chain stays** (issue #1566, measured 2026-11-21 with `measured`'s `no chain` setting,
+//! [`RouteOptions::chain`]; the same 16 boards, one try). The negotiation does not close what
+//! the chain does: it searches one path for a line and rips up what that path overlaps, where
+//! the chain tries several sets (what the path crosses, what it comes near) and goes down four
+//! levels, keeping a set only when every line it moved is routed again.
+//!
+//! | | lines left | vias |
+//! |---|---|---|
+//! | negotiation and the chain from both states (built) | **5** | 1883 |
+//! | the chain from the negotiation's end only | 6 | 1942 |
+//! | no chain | 30 | 1955 |
+//! | no chain, history halved between rounds | 26 | 1982 |
+//! | no chain, the lines routed in a round locked for the rest of it | 32 | 1975 |
+//! | no chain, 20 rounds, 12000 searches, no stop on a spread | 17 | 1990 |
+//! | the same with the lock and the halving | 15 | 1958 |
+//!
+//! The second run is tight 5 again (1 line left without it, none with it).
+//!
 //! The form before this one (2026-11-04 to 2026-11-21) ripped up the whole nets near the line's
 //! path, at one price in every round, and learnt every cell of the path; it had no bound but
 //! the time limit.
