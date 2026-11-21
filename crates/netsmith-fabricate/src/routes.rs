@@ -739,9 +739,9 @@ const CUT_REACH: f64 = 5.0;
 /// the copper that makes it (a fill's island, the current of a branch of a net) is left to the
 /// check of the whole board, `board drc` and `fab`, as the ends left open are ([`drc_errors`]).
 /// A piece of a fill with pads of its net that the edit's track cuts off from the rest of the
-/// fill (`pad_island_cut`, a warning, issue #1509) is refused too, when the piece lies wholly
-/// within [`CUT_REACH`] of the changed tracks: what would otherwise only `fab`'s router see, and
-/// join.
+/// fill (`pad_island_cut`, a warning, issue #1509), or that the edit's via cuts off (issue
+/// #1524), is refused too, when the piece lies wholly within [`CUT_REACH`] of the changed tracks
+/// and vias: what would otherwise only `fab`'s router see, and join.
 fn new_errors_near(
     before: &Board,
     after: &Board,
@@ -766,10 +766,11 @@ fn new_errors_near(
         hoods.iter().any(|h| near::holds(h, at))
     };
     // A track that cuts a pad's piece of a fill off from the rest of it (`pad_island_cut`, issue
-    // #1509) is judged on the board cut wider, [`CUT_REACH`] round the changed tracks, since the
-    // piece reaches further than the space round the track; a piece that reaches the edge of
-    // those boxes may go on outside them, and is not judged (`DrcExtras::open`).
-    // Only a track over a fill of another net on its layer can cut one.
+    // #1509), or a via that does (issue #1524), is judged on the board cut wider, [`CUT_REACH`]
+    // round the changed tracks and vias, since the piece reaches further than the space round
+    // them; a piece that reaches the edge of those boxes may go on outside them, and is not
+    // judged (`DrcExtras::open`).
+    // Only a track over a fill of another net on its layer, or a via over one, can cut one.
     let fills = near::zones_of(after);
     let over_fill = |t: &&netsmith_pcb::Track| {
         let r = near::track_box(t);
@@ -780,9 +781,23 @@ fn new_errors_near(
                     .is_some_and(|o| near::meets(&o, &r))
         })
     };
+    // A via of another net over a fill can cut one too, as a pad can (issue #1524).
+    let via_over_fill = |v: &&netsmith_pcb::Via| {
+        let r = near::via_box(v);
+        fills.iter().any(|z| {
+            z.net != v.net
+                && netsmith_pcb::Rect::around(z.outline.iter().copied())
+                    .is_some_and(|o| near::meets(&o, &r))
+        })
+    };
     let tracks: Vec<netsmith_pcb::Rect> = differ(&before.tracks, &after.tracks)
         .filter(over_fill)
         .map(near::track_box)
+        .chain(
+            differ(&before.vias, &after.vias)
+                .filter(via_over_fill)
+                .map(near::via_box),
+        )
         .map(|r| r.expanded(CUT_REACH + reach))
         .collect();
     let cut_wides = near::clusters(tracks.iter().map(|h| h.expanded(reach)).collect());
@@ -819,7 +834,10 @@ fn new_errors_near(
             found.extend(
                 drc_findings_with(&local, &netsmith_pcb::kicad_pro(whole), &extras, true)?
                     .into_iter()
-                    .filter(|f| f.rule == netsmith_geom::DrcRule::PadIslandCut && in_hood(f))
+                    // The finding's place is what cut the piece, which can be copper the edit
+                    // did not change (a pad that the new track closes the gap to, issue #1524);
+                    // `open` already keeps the pieces to the boxes round the change.
+                    .filter(|f| f.rule == netsmith_geom::DrcRule::PadIslandCut)
                     .map(|f| (f.to_string(), f)),
             );
         }
@@ -2062,6 +2080,53 @@ mod tests {
         // A track that goes only part of the way across leaves the via and the pad on one piece.
         let mut routes = kept;
         edit(&board, &mut routes, &track(11.5)).unwrap();
+    }
+
+    #[test]
+    fn a_via_that_cuts_a_pads_piece_of_a_zone_off_from_its_via_is_refused() {
+        // Issue #1524: the board of the test before, with a VCC track that goes part of the way
+        // across the GND zone; a VCC via in the gap left closes it.
+        let board = led();
+        let mut routes = Routes::default();
+        let track = Edit::AddTrack {
+            net: "VCC".into(),
+            layer: netsmith_pcb::CopperLayer::Front,
+            width: Some(0.2),
+            from: [10.0, 3.0],
+            mid: None,
+            to: [11.5, 3.0],
+            lock: false,
+        };
+        let via = |net: &str, at: [f64; 2]| Edit::AddVia {
+            net: net.into(),
+            at,
+            diameter: None,
+            drill: None,
+            layers: None,
+            lock: false,
+        };
+        edit_all(
+            &board,
+            &mut routes,
+            &[
+                zone("GND", rect(10.4, 1.0, 3.4, 5.5), 0),
+                via("GND", [13.3, 1.8]),
+            ],
+        )
+        .unwrap();
+        edit(&board, &mut routes, &track).unwrap();
+        let kept = routes.clone();
+        let e = refusal(edit(&board, &mut routes, &via("VCC", [12.2, 3.0])));
+        assert!(
+            e.contains("[pad_island_cut]")
+                && e.contains("cuts a piece of the pour of GND")
+                && e.contains("nothing else joins D1.1 on it to the net"),
+            "{e}"
+        );
+        assert_eq!(routes, kept, "a refused edit leaves the file as it was");
+        // A via of VCC away from the gap leaves the via and the pad on one piece.
+        let mut routes = kept;
+        edit(&board, &mut routes, &via("VCC", [11.0, 6.0])).unwrap();
     }
 
     #[test]
