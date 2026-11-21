@@ -6,7 +6,7 @@ use crate::common;
 
 use common::*;
 use netsmith_core::LengthGroup;
-use netsmith_fab::{NetRoutes, NetTable};
+use netsmith_fab::{NetRoutes, NetTable, Uncounted};
 use netsmith_geom::Artwork;
 
 /// A pair `P`/`N` from x = 10 to x = 30: `P` at y = 10, `N` at y = 10.3 (0.3 mm pitch, 0.1 mm
@@ -225,4 +225,87 @@ fn a_track_paths_loss_is_judged_against_its_loss_budget() {
     // No frequency: the budget asks for one.
     let t = NetTable::of(&art, &[], &[]).with_paths(&paths, &[None]);
     assert!(t.text().contains("its 0.5 dB loss budget needs a `.frequency`"), "{}", t.text());
+}
+
+/// The pair of [`board`] with a second way of `P` (issue #1487): from (12, 10) a track runs down
+/// to y = 8 on the front, 6 mm along and back up to (18, 10), beside `P`'s own run, as a person's
+/// duplicate of one connection does; and a dead stub of `N` of 1.5 mm from (15, 10.3) on the
+/// front, which leads to no pad.
+fn board_with_a_second_way() -> Pcb {
+    let mut b = board();
+    b.track("P", "F.Cu", (12.0, 10.0), (12.0, 8.0), 0.2);
+    b.track("P", "F.Cu", (12.0, 8.0), (18.0, 8.0), 0.2);
+    b.track("P", "F.Cu", (18.0, 8.0), (18.0, 10.0), 0.2);
+    b.track("N", "F.Cu", (15.0, 10.3), (15.0, 11.8), 0.2);
+    b
+}
+
+#[test]
+fn a_second_way_and_a_dead_stub_are_not_counted_in_a_nets_length_or_a_pairs_skew() {
+    let plain = table(&mut board(), 2.0);
+    let t = table(&mut board_with_a_second_way(), 2.0);
+    let p = t.nets.iter().find(|n| n.net == "P").unwrap();
+    // The connection is the 20 mm from pad to pad; the 10 mm way round is copper not counted.
+    assert!(close(p.length, 20.0) && close(p.copper, 30.0), "{p:?}");
+    assert_eq!(p.not_counted.len(), 1, "{p:?}");
+    let way = &p.not_counted[0];
+    assert_eq!((way.kind, way.layer.as_str()), (Uncounted::SecondWay, "F.Cu"));
+    assert!(close(way.length, 10.0), "{way:?}");
+    assert!(close(p.uncounted(Uncounted::SecondWay), 10.0));
+    let n = t.nets.iter().find(|n| n.net == "N").unwrap();
+    let plain_n = plain.nets.iter().find(|n| n.net == "N").unwrap();
+    assert!(close(n.length, plain_n.length), "{n:?}");
+    assert_eq!(n.not_counted.len(), 1, "{n:?}");
+    let stub = &n.not_counted[0];
+    assert_eq!(stub.kind, Uncounted::Stub);
+    assert!(close(stub.length, 1.5) && close(n.uncounted(Uncounted::Stub), 1.5));
+    // The pair is as it was: the second way and the stub change neither length, so the skew is
+    // that of the board without them, and the second way runs coupled with nothing.
+    let (pair, before) = (&t.pairs[0], &plain.pairs[0]);
+    assert!(close(pair.length_p, 20.0) && close(pair.skew, before.skew), "{pair:?}");
+    assert!(close(pair.coupled, before.coupled), "{pair:?} {before:?}");
+    // The text and the JSON say which copper is left out.
+    let text = t.text();
+    assert!(
+        text.contains("net P: 10.00 mm of its 30.00 mm of copper not counted in its length: a second way of 10.00 mm on F.Cu at ("),
+        "{text}"
+    );
+    assert!(text.contains("net N: 1.50 mm of its "), "{text}");
+    assert!(text.contains("a dead stub of 1.50 mm on F.Cu"), "{text}");
+    assert!(
+        text.contains("(the lengths leave out copper of P and N that is not part of its connection: see its net)"),
+        "{text}"
+    );
+    let json = serde_json::to_value(&t).unwrap();
+    let p = json["nets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["net"] == "P")
+        .unwrap();
+    assert_eq!(p["not_counted"][0]["kind"], "second_way");
+    assert_eq!(p["copper"], 30.0);
+    // A net with nothing left out says nothing of it.
+    assert!(plain.nets.iter().all(|n| n.not_counted.is_empty()));
+    assert!(!plain.text().contains("not counted"), "{}", plain.text());
+}
+
+#[test]
+fn a_net_of_three_pads_counts_the_branches_its_pads_need_joined_at_a_tee() {
+    // Pads at (0, 0), (10, 0) and (5, 6): a trunk from the first to the second on the front,
+    // and a branch that tees into the trunk's middle up to the third, through a via to the back.
+    let mut b = Pcb::new(2);
+    b.stub("T", 0.0, 0.0);
+    b.stub("T", 10.0, 0.0);
+    b.stub("T", 5.0, 6.0);
+    b.track("T", "F.Cu", (0.0, 0.0), (10.0, 0.0), 0.2);
+    b.track("T", "F.Cu", (5.0, 0.0), (5.0, 3.0), 0.2);
+    b.via("T", (5.0, 3.0), 0.5, 0.2);
+    b.track("T", "B.Cu", (5.0, 3.0), (5.0, 4.0), 0.2);
+    b.via("T", (5.0, 4.0), 0.5, 0.2);
+    b.track("T", "F.Cu", (5.0, 4.0), (5.0, 6.0), 0.2);
+    let t = NetTable::of(&Artwork::parse(&b.pcb()).unwrap(), &[], &[]);
+    let row = &t.nets[0];
+    assert!(close(row.length, 16.0) && close(row.copper, 16.0), "{row:?}");
+    assert!(row.not_counted.is_empty(), "{row:?}");
 }

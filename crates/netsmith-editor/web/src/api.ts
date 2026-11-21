@@ -1874,7 +1874,8 @@ unjoinable: Array<FillUnjoinable>, };
 
 export type NetsRow = { net: string, 
 /**
- * The length of all its tracks.
+ * The length of its connection: the copper that takes its pads to each other, not a
+ * second way of one connection or a dead stub (issue 1487).
  */
 length: number, 
 /**
