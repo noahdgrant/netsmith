@@ -179,6 +179,7 @@ impl<'a> Router<'a> {
             last_glimpse: Cell::new(None),
             costs: options.costs,
             weights: options.weights,
+            reroute: options.reroute,
             stage: Cell::new(Stage::FirstPass),
             failed_in: RefCell::new(Vec::new()),
             crowding: RefCell::new(crowding),
