@@ -164,3 +164,58 @@ fn outside_a_project_there_is_nothing_to_migrate() {
     assert_eq!(run.status.code(), Some(2));
     assert!(text(&run).1.contains("no netsmith.toml"), "{}", text(&run).1);
 }
+
+#[test]
+fn a_source_it_rewrites_is_formatted_and_one_it_does_not_is_left_as_it_is() {
+    // A hand pick on a line that is within the limit of 100 columns by its LCSC number and past
+    // it by the longer part number, as the formatter breaks it.
+    let catalog = OLD.replace("ZZR-316,ZZR-316,", "ZZR-316-0402-ONE-PERCENT-THICK-FILM,ZZR-316,");
+    let pick = ".r1: Resistor { .lcsc &= \"C9900316\"; .max_power &= 62.5mW; .resistance &= 316ohm +/- 1% }";
+    let source = LED.replace(".r1: Resistor {}", pick);
+    // A second source, which holds no hand pick and is not formatted: it is not touched.
+    let other = "// not formatted   on purpose\nboard   Other {}\n";
+    let root = project("migrate-offers-fmt", &catalog, &source);
+    fs::write(root.join("src/other.nsm"), other).unwrap();
+    let source_path = root.join("src/main.nsm");
+    fs::write(
+        &source_path,
+        netsmith_lang::format(&source).expect("the source formats"),
+    )
+    .unwrap();
+    let formatted_before = read(&root, "src/main.nsm");
+    assert!(formatted_before.contains(".lcsc &= \"C9900316\""));
+
+    // `--check` says the source would be formatted too, and writes nothing.
+    let check = netsmith(&root, &["project", "migrate-offers", "--check"]);
+    assert_eq!(check.status.code(), Some(1), "{}", text(&check).1);
+    let (out, _) = text(&check);
+    assert!(
+        out.contains("src/main.nsm\n  line 14:") && out.contains("  formatted, as `netsmith project fmt` does\n"),
+        "{out}"
+    );
+    assert!(!out.contains("src/other.nsm"), "{out}");
+    assert_eq!(read(&root, "src/main.nsm"), formatted_before);
+
+    let run = netsmith(&root, &["project", "migrate-offers"]);
+    assert!(run.status.success(), "{}", text(&run).1);
+    let after = read(&root, "src/main.nsm");
+    assert!(
+        after.contains(".mpn &= \"ZZR-316-0402-ONE-PERCENT-THICK-FILM\"") && !after.contains(".lcsc"),
+        "{after}"
+    );
+    assert!(
+        after.lines().all(|l| l.chars().count() <= 100),
+        "a line is past the limit:\n{after}"
+    );
+    assert_eq!(read(&root, "src/other.nsm"), other);
+
+    // The migrated source is formatted: `project fmt --check` names only the file it left.
+    let fmt = netsmith(&root, &["project", "fmt", "--check", "src/main.nsm"]);
+    assert!(fmt.status.success(), "{}", text(&fmt).1);
+    assert_eq!(read(&root, "src/main.nsm"), after);
+
+    // A second run changes nothing, and the file it did not rewrite is still as it was.
+    let again = netsmith(&root, &["project", "migrate-offers"]);
+    assert!(text(&again).0.starts_with("nothing to move"), "{}", text(&again).0);
+    assert_eq!(read(&root, "src/other.nsm"), other);
+}
