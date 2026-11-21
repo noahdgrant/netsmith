@@ -10,8 +10,14 @@
 //! point, not one per pour (issue 1482): a via of an earlier pour of the net within the search of
 //! a point stands for it, where this pour's own rules allow that via too.
 //!
+//! A grid point with a via of the pour's net within a third of the pitch of it before the
+//! stitching starts gets none either (issue #1483): a stitching via a routes file brought back
+//! from an earlier export, or one the router laid, is that point's, so `fab` after
+//! `routes import` lays no second grid. The pads' own vias, which may yet go
+//! (`crate::pour_pads`), do not count.
+//!
 //! The grid is at the pour's `.stitch_pitch`, read at the top of the range, every other row
-//! shifted by half a pitch. A via keeps from other nets' copper the space KiCad checks, and
+//! shifted by half a pitch (`netsmith_pcb::stitch_grid`, which `routes import` reads too). A via keeps from other nets' copper the space KiCad checks, and
 //! from the holes, the pads, the board edge, the cutouts and the keepouts that forbid vias.
 //! The vias the router drops beside the pads of a plane net are there while the stitching is
 //! placed. Where a pad sits on a pour of its own net, its via goes after the stitching
@@ -185,9 +191,18 @@ fn other_layers(board: &Board, net: &str, layer: CopperLayer) -> bool {
         || board.pours.iter().any(|p| p.net == net && p.layer != layer)
 }
 
-/// Add stitching vias to every pour that states a pitch and has another layer on its net.
-pub fn stitch(board: &mut Board) {
+/// Add stitching vias to every pour that states a pitch and has another layer on its net. The
+/// vias of `spare` (the pads' own, which may yet go) stand for no grid point (issue #1483).
+pub fn stitch(board: &mut Board, spare: &[Via]) {
     let pours = board.pours.clone();
+    // The vias on the board before the stitching, each of which stands for a grid point of a
+    // pour of its net within a third of the pitch of it (issue #1483).
+    let before: Vec<Via> = board
+        .vias
+        .iter()
+        .filter(|v| !spare.contains(v))
+        .cloned()
+        .collect();
     // The stitching vias put so far, with the net of the pour each is for.
     let mut stitched: Vec<(String, Via)> = Vec::new();
     for pour in &pours {
@@ -227,6 +242,13 @@ pub fn stitch(board: &mut Board) {
                 let mut x = o.min.x + reach + if row % 2 == 1 { pitch / 2.0 } else { 0.0 };
                 while x <= o.max.x - reach + 1e-9 {
                     let point = Pt::new(x, y);
+                    let there = before
+                        .iter()
+                        .any(|v| v.net == pour.net && v.at.distance(point) <= pitch / 3.0 + 1e-9);
+                    if there {
+                        x += pitch;
+                        continue;
+                    }
                     let stands = standing.iter().any(|v| {
                         v.span.is_none() && v.at.distance(point) <= reach_of_point && {
                             // It stands for the point only where this pour's own rules
@@ -482,10 +504,10 @@ mod tests {
         // Issue 1482: a through via joins both pours and the plane, so the second pour's grid
         // is the first's, not another set of vias beside it.
         let mut one = poured_on(&[CopperLayer::Front]);
-        stitch(&mut one);
+        stitch(&mut one, &[]);
         assert!(one.vias.len() > 4, "{:?}", one.vias);
         let mut both = poured_on(&[CopperLayer::Front, CopperLayer::Back]);
-        stitch(&mut both);
+        stitch(&mut both, &[]);
         assert_eq!(both.vias, one.vias);
         // And none touches another.
         for (i, a) in both.vias.iter().enumerate() {

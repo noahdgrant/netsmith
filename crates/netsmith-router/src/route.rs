@@ -1759,7 +1759,8 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     crate::pad_vias::add(board);
     // Pours are stitched to the other layers of their nets in what the routing left free.
     if options.stitch {
-        crate::stitch::stitch(board);
+        let spare: Vec<netsmith_pcb::Via> = drops.iter().map(|d| d.via.clone()).collect();
+        crate::stitch::stitch(board, &spare);
     }
     // Ground vias along the tracks of a `TrackPath` with a fence (issue #1275).
     crate::stitch::fence(board);
