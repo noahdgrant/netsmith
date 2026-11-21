@@ -159,7 +159,7 @@ impl<'a> Router<'a> {
         // A pad's centre is rarely on the grid, so join it to the first and last cell.
         for (pad_at, spot) in pads {
             let cell = self.grid.centre(spot.0, spot.1);
-            if pad_at != cell {
+            if pad_at.distance(cell) > 1e-9 {
                 tracks.push(Track {
                     net: l.net.clone(),
                     layer: self.stack.layer(spot.2),

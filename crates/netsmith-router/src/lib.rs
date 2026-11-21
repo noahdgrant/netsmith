@@ -5,7 +5,8 @@
 //! ```
 //!
 //! [`route`] and [`route_with`] draw the tracks and vias on the two outer layers (ADR 0031, the
-//! header of `route.rs`), then vias in parallel where one is too small for its current, the
+//! header of `route.rs`), draw them clean (`route/clean.rs`: ends at the pads' centres, no stair
+//! of short pieces) with no connection drawn twice (`loops.rs`, issue #1486), then vias in parallel where one is too small for its current, the
 //! stitching vias of the pours, then the pads that a pour of their net joins to the plane lose
 //! their own vias (`pour_pads.rs`), and an arc at each bend that has room for one (the header
 //! of `arcs.rs`). The meanders that match the lengths of a diff pair ([`meander`]) and the teardrops
@@ -34,6 +35,7 @@ pub mod carry;
 mod decouple;
 mod kelvin;
 pub mod kept;
+mod loops;
 pub mod meander;
 pub mod one;
 pub mod pad_vias;

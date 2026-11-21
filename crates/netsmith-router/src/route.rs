@@ -699,6 +699,7 @@ use std::time::{Duration, Instant};
 
 use netsmith_pcb::{Board, CopperLayer, Pt, Ratline, Ratsnest, Rect, Track, Via};
 
+mod clean;
 mod lines;
 mod order;
 mod pours;
@@ -718,6 +719,8 @@ mod pads;
 mod search;
 
 #[cfg(test)]
+mod clean_tests;
+#[cfg(test)]
 mod rip_rounds_tests;
 #[cfg(test)]
 mod search_tests;
@@ -726,6 +729,7 @@ mod settle_tests;
 #[cfg(test)]
 mod stage_tests;
 
+pub(crate) use clean::shortest;
 pub(crate) use grid::*;
 pub(crate) use obstacles::*;
 use pads::*;
@@ -1721,6 +1725,9 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
             router.stopped.set(false);
         }
         let why = router.why(&best, &failed_in, late);
+        // The copper drawn clean (issue #1486), once nothing more is searched for.
+        let mut best = best;
+        router.clean(&mut best);
         let drops = if options.pour_pads {
             router.pour_pad_vias(&best)
         } else {
@@ -1741,11 +1748,16 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
     // What each via needs beside it: the line's count for the router's own vias, the net's for
     // the copper the board had.
     let mut via_needs: Vec<Option<usize>> = vec![None; board.vias.len()];
+    let first = board.tracks.len();
     for r in routed {
         board.tracks.extend(r.tracks);
         via_needs.extend(r.vias.iter().map(|_| Some(line_vias[r.line])));
         board.vias.extend(r.vias);
     }
+    // No connection drawn twice: a line that ran where its net's copper already joins is cut
+    // back (issue #1486).
+    let keep: Vec<&Track> = drops.iter().flat_map(|d| d.tracks.iter()).collect();
+    crate::loops::drop_second_ways(board, first, &keep);
     // Diff pairs matched in length, on a board routed completely (issue #431, S11).
     let meanders = options.meanders && complete;
     let mut lengths = if meanders {

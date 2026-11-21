@@ -203,7 +203,7 @@ example_readers() {
         # The design files (`<stem>.design.json`) are what the tests of netsmith-core (a loader), the
         # placer and the router start from (issue #610).
         led) echo "$any_example netsmith-core netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-pipeline netsmith-placer netsmith-router netsmith-fabricate" ;;
-        status_indicator) echo "$any_example netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-pipeline netsmith-placer netsmith-router" ;;
+        status_indicator) echo "$any_example netsmith-lang netsmith-check netsmith-solve netsmith-design netsmith-pipeline netsmith-placer netsmith-router netsmith-fabricate" ;;
         linear_regulator) echo "$any_example netsmith-check netsmith-solve netsmith-design netsmith-pipeline netsmith-placer netsmith-router netsmith-fabricate" ;;
         two_boards) echo "$any_example netsmith-core netsmith-check netsmith-solve netsmith-design netsmith-pipeline netsmith-fabricate" ;;
         carrier_and_cards) echo "$any_example netsmith-check netsmith-solve" ;;
