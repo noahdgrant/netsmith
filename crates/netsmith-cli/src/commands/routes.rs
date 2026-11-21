@@ -758,6 +758,17 @@ fn add(args: &AddArgs) -> ExitCode {
 /// be tried.
 fn route(args: &RouteArgs) -> ExitCode {
     use netsmith_fabricate::route_net;
+    // The weights of the router's quality objective: the flags, else the project's keys.
+    let project = netsmith_fabricate::project::Target::resolve(args.target.file.as_deref())
+        .ok()
+        .and_then(|t| t.project);
+    let weights = match args.weighing.weights(project.as_ref()) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
     let done = with_board(&args.target, |layout, board| {
         let file = routes_file(layout);
         let routes = lib::load(&file)?;
@@ -765,7 +776,7 @@ fn route(args: &RouteArgs) -> ExitCode {
             Ok(ask) => route_net::Ask {
                 depth: args.rip_depth,
                 tries: args.tries,
-                weights: args.weighing.weights()?,
+                weights,
                 ..ask
             },
             Err(lib::Refusal::Refused(e)) => return Ok(Err(e)),

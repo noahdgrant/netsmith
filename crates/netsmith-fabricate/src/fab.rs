@@ -456,6 +456,64 @@ pub fn rip_rounds(project: Option<&crate::project::Project>) -> usize {
         .unwrap_or(netsmith_router::RIP_ROUNDS)
 }
 
+/// The weights of the router's quality objective the project's keys give (`length_weight`,
+/// `via_weight`, `layer_change_weight` of `netsmith.toml`, issue 1517), the router's own for a
+/// key not stated; `None` when none is stated, which routes as the router always has. The reason
+/// when a weight is out of its range.
+pub fn weights_of(
+    manifest: &crate::project::Manifest,
+) -> Result<Option<netsmith_router::Weights>, String> {
+    weights_with(Some(manifest), (None, None, None))
+}
+
+/// [`weights_of`] the project, for the editor and the orders, which have no flags: a project
+/// that parsed has weights in their ranges, so there is no error to tell here.
+pub fn project_weights(
+    project: Option<&crate::project::Project>,
+) -> Option<netsmith_router::Weights> {
+    weights(project, (None, None, None)).ok().flatten()
+}
+
+/// The line `fab` tells of the weights it routes with (issue 1536), so a run says which the flags
+/// and the project's keys gave.
+pub fn weights_line(w: &netsmith_router::Weights) -> String {
+    format!(
+        "with the weights of the quality objective: length {} of the router's own, via {} mm, layer change {} mm",
+        w.length, w.via, w.layer_change
+    )
+}
+
+/// The weights of a run: each of the three flags (`--length-weight`, `--via-weight`,
+/// `--layer-change-weight`) wins over the project's key of that name, and the router's own
+/// weight stands for one neither states; `None` when none is stated at all.
+pub fn weights(
+    project: Option<&crate::project::Project>,
+    flags: (Option<f64>, Option<f64>, Option<f64>),
+) -> Result<Option<netsmith_router::Weights>, String> {
+    weights_with(project.map(|p| &p.manifest), flags)
+}
+
+fn weights_with(
+    manifest: Option<&crate::project::Manifest>,
+    (length, via, layer_change): (Option<f64>, Option<f64>, Option<f64>),
+) -> Result<Option<netsmith_router::Weights>, String> {
+    let key = |f: fn(&crate::project::Manifest) -> Option<f64>| manifest.and_then(f);
+    let length = length.or(key(|m| m.length_weight));
+    let via = via.or(key(|m| m.via_weight));
+    let layer_change = layer_change.or(key(|m| m.layer_change_weight));
+    if length.is_none() && via.is_none() && layer_change.is_none() {
+        return Ok(None);
+    }
+    let own = netsmith_router::Weights::DEFAULT;
+    let w = netsmith_router::Weights {
+        length: length.unwrap_or(own.length),
+        via: via.unwrap_or(own.via),
+        layer_change: layer_change.unwrap_or(own.layer_change),
+    };
+    w.check()?;
+    Ok(Some(w))
+}
+
 /// How many times the process's least track a signal is drawn at where there is room, when the
 /// project does not say (`track_margin` in `netsmith.toml`, issue #431): JLCPCB's page says of its
 /// 0.1 mm least "stay well above if possible", and 1.5 times it is 0.15 mm.
@@ -1569,6 +1627,9 @@ fn fab_board(
                 None
             }
         });
+        if let Some(w) = options.weights {
+            say(format!("{}: routing {}", built.label(), weights_line(&w)));
+        }
         let routing = timings::stage("fab.route", &label, || {
             netsmith_core::job::reporting(sink, || match &from {
                 Some(from) => {
@@ -3814,6 +3875,45 @@ pub fn marks_of(board: &Board) -> netsmith_geom::DrcMarks {
 
 #[cfg(test)]
 mod tests {
+    use netsmith_router::Weights;
+
+    fn project_with(keys: &str) -> crate::project::Manifest {
+        crate::project::Manifest::parse(&format!("[project]\nname = \"a\"\n{keys}")).unwrap()
+    }
+
+    /// The weights of a run (issue 1536): none stated is the router's own routing; a key states
+    /// the weights it names and the router's own stand for the rest; a flag wins over its key.
+    #[test]
+    fn a_flag_wins_over_the_key_of_the_same_name() {
+        let none = (None, None, None);
+        assert_eq!(super::weights(None, none), Ok(None));
+        assert_eq!(super::weights_with(Some(&project_with("")), none), Ok(None));
+        let keyed = project_with("via_weight = 40\nlayer_change_weight = 2\n");
+        let own = Weights::DEFAULT;
+        assert_eq!(
+            super::weights_with(Some(&keyed), none),
+            Ok(Some(Weights {
+                via: 40.0,
+                layer_change: 2.0,
+                ..own
+            }))
+        );
+        assert_eq!(
+            super::weights_with(Some(&keyed), (Some(0.5), Some(8.0), None)),
+            Ok(Some(Weights {
+                length: 0.5,
+                via: 8.0,
+                layer_change: 2.0
+            }))
+        );
+        // A flag with no project, and a flag out of its range.
+        assert_eq!(
+            super::weights_with(None, (None, Some(45.0), None)),
+            Ok(Some(Weights { via: 45.0, ..own }))
+        );
+        let e = super::weights_with(Some(&keyed), (Some(0.01), None, None)).unwrap_err();
+        assert!(e.contains("the length weight is 0.01"), "{e}");
+    }
 
     fn moved_seed(stated: bool) -> crate::layout::Seeds {
         crate::layout::Seeds {

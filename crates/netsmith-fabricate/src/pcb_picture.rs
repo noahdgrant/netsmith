@@ -70,6 +70,8 @@ pub struct Route {
     pub timeout: Option<Duration>,
     pub rip_rounds: usize,
     pub track_margin: f64,
+    /// The weights of the router's quality objective (the project's keys), if any.
+    pub weights: Option<netsmith_router::Weights>,
 }
 
 /// What `netsmith view pcb` asks for.
@@ -168,6 +170,7 @@ pub fn put_copper(
     };
     let options = RouteOptions {
         rip_rounds: route.rip_rounds,
+        weights: route.weights,
         ..RouteOptions::default()
     };
     let routing = match &from {

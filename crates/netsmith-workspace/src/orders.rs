@@ -82,6 +82,7 @@ impl Workspace {
                 allow_drc_violations,
                 place_seeds: netsmith_fabricate::layout::place_seeds(target.project.as_ref()),
                 rip_rounds: netsmith_fabricate::fab::rip_rounds(target.project.as_ref()),
+                weights: netsmith_fabricate::fab::project_weights(target.project.as_ref()),
                 place_budget: netsmith_fabricate::layout::place_budget(
                     target.project.as_ref(),
                     None,

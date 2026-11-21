@@ -90,6 +90,9 @@ pub struct BoardData {
     /// The rounds of rip-up the router gives a try that leaves connections (`rip_rounds` in
     /// `netsmith.toml`, issue #1088).
     pub rip_rounds: usize,
+    /// The weights of the router's quality objective (`length_weight`, `via_weight` and
+    /// `layer_change_weight` in `netsmith.toml`, issue 1536), if the project states any.
+    pub weights: Option<netsmith_router::Weights>,
     /// The schematic layout file of the source file (ADR 0061) and what is not used of it for
     /// this board.
     pub hints: super::hints::Hints,
@@ -739,6 +742,9 @@ impl Workspace {
                                     target.project.as_ref(),
                                 ),
                                 rip_rounds: netsmith_fabricate::fab::rip_rounds(
+                                    target.project.as_ref(),
+                                ),
+                                weights: netsmith_fabricate::fab::project_weights(
                                     target.project.as_ref(),
                                 ),
                                 hints: hints::Hints {
