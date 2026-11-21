@@ -12,6 +12,7 @@
 //! board-fab`), which an agent reads when it needs it.
 
 use std::any::TypeId;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use clap::ArgAction;
@@ -64,6 +65,10 @@ pub struct Tool {
     params: Vec<Param>,
 }
 
+/// An argument that this many tools or more take with the same help is said once, in the
+/// server's instructions ([`shared_arguments`]), and not in each tool.
+const SHARED_MIN: usize = 6;
+
 /// One argument of a command.
 #[derive(Debug, Clone)]
 struct Param {
@@ -72,6 +77,8 @@ struct Param {
     /// `--place-seeds` (or `-x` for a flag with a short name only); `None` for a positional.
     flag: Option<String>,
     how: How,
+    /// The first line of the argument's help.
+    said: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -99,7 +106,58 @@ pub fn tools() -> Vec<Tool> {
     model.build();
     let mut all = Vec::new();
     walk(&[], &model, &mut all);
+    share(&mut all);
     all
+}
+
+/// Drops from each tool the help of an argument that [`SHARED_MIN`] tools or more take with the
+/// same help (`format`, `file`, `board`, the placer's flags): [`shared_arguments`] says it once.
+/// What stays on the argument is its type, its choices and its default.
+fn share(all: &mut [Tool]) {
+    let counts = counted(all);
+    for tool in all.iter_mut() {
+        for p in &tool.params {
+            if p.said.is_empty() || counts[&(p.key.clone(), p.said.clone())] < SHARED_MIN {
+                continue;
+            }
+            let schema = &mut tool.schema["properties"][p.key.as_str()];
+            let left = schema["description"]
+                .as_str()
+                .and_then(|d| d.strip_prefix(p.said.as_str()))
+                .unwrap_or_default()
+                .trim()
+                .to_string();
+            if left.is_empty() {
+                if let Some(o) = schema.as_object_mut() {
+                    o.remove("description");
+                }
+            } else {
+                schema["description"] = Value::String(left);
+            }
+        }
+    }
+}
+
+/// How many tools take each argument (its name and the first line of its help).
+fn counted(all: &[Tool]) -> BTreeMap<(String, String), usize> {
+    let mut counts = BTreeMap::new();
+    for tool in all {
+        for p in tool.params.iter().filter(|p| !p.said.is_empty()) {
+            *counts.entry((p.key.clone(), p.said.clone())).or_default() += 1;
+        }
+    }
+    counts
+}
+
+/// The arguments that [`share`] took out of the tools, one clause each, for the server's
+/// instructions.
+pub fn shared_arguments(all: &[Tool]) -> String {
+    counted(all)
+        .into_iter()
+        .filter(|(_, n)| *n >= SHARED_MIN)
+        .map(|((key, said), _)| format!("`{key}`: {}", said.trim_end_matches('.')))
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 fn walk(words: &[String], command: &clap::Command, all: &mut Vec<Tool>) {
@@ -419,7 +477,15 @@ fn param(arg: &clap::Arg) -> (Param, Value) {
     {
         schema["default"] = typed(default, &schema);
     }
-    (Param { key, flag, how }, schema)
+    (
+        Param {
+            key,
+            flag,
+            how,
+            said,
+        },
+        schema,
+    )
 }
 
 /// The schema of one value of `arg`: its choices, or the type its parser makes.

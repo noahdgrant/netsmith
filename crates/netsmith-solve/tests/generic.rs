@@ -47,7 +47,7 @@ fn with_a_series_the_solver_picks_a_generic_part_for_a_value_no_row_has() {
     assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
     assert_eq!(s.picks.len(), 1);
     let pick = &s.picks[0];
-    assert!(pick.lcsc.is_none() && pick.mpn.is_none());
+    assert!(pick.sku.is_none() && pick.mpn.is_none());
     let generic = pick.generic.as_ref().expect("a generic part");
     assert_eq!(generic.series(), Some(Series::E24));
     assert_eq!(
@@ -62,7 +62,7 @@ fn with_a_series_the_solver_picks_a_generic_part_for_a_value_no_row_has() {
 fn a_value_that_has_a_row_still_gets_the_row_and_the_rows_first_rule_is_unchanged() {
     let s = solved(&board("330ohm +/- 1%"), &catalogs(Some(Series::E24)));
     assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
-    assert_eq!(s.picks[0].lcsc.as_deref(), Some("C900002"));
+    assert_eq!(s.picks[0].sku.as_deref(), Some("C900002"));
     assert!(s.picks[0].generic.is_none());
 }
 
@@ -130,7 +130,7 @@ fn a_generic_part_resolves_to_a_row_that_is_at_least_as_good_basic_first() {
     set_resistor(&mut g, 330.0, 0.0625);
     let got = resolve(&g, &catalogs(Some(Series::E24)), &never).unwrap();
     // Two 0402 rows have the value; the Basic one is preferred though it is second.
-    assert_eq!(got.lcsc.as_deref(), Some("C900001"));
+    assert_eq!(got.sku.as_deref(), Some("C900001"));
     assert_eq!(got.library, Some(Library::Basic));
 }
 
@@ -142,7 +142,7 @@ fn a_package_and_a_power_rating_are_matched_too() {
     assert_eq!(
         resolve(&g, &catalogs(None), &never)
             .unwrap()
-            .lcsc
+            .sku
             .as_deref(),
         Some("C900004")
     );
@@ -158,11 +158,11 @@ fn a_row_the_provider_says_has_no_stock_is_passed_over_and_an_unknown_stock_is_n
     let c = catalogs(None);
     let sold_out = |_: netsmith_solve::Channel, lcsc: &str| (lcsc == "C900001").then_some(0);
     let got = resolve(&g, &c, &sold_out).unwrap();
-    assert_eq!(got.lcsc.as_deref(), Some("C900002"));
+    assert_eq!(got.sku.as_deref(), Some("C900002"));
     assert_eq!(got.passed_over, ["330Ω Basic has no stock in jlcpcb-assembly"]);
     // Unknown (None) never excludes a row.
     assert_eq!(
-        resolve(&g, &c, &never).unwrap().lcsc.as_deref(),
+        resolve(&g, &c, &never).unwrap().sku.as_deref(),
         Some("C900001")
     );
     // Every fitting row sold out: unresolved, and the message says why.
@@ -183,12 +183,12 @@ fn a_part_the_projects_preferred_list_names_is_taken_before_a_basic_one() {
     .unwrap();
     let c = catalogs(None).with_preferred(list);
     let got = resolve(&g, &c, &never).unwrap();
-    assert_eq!(got.lcsc.as_deref(), Some("C900002"));
+    assert_eq!(got.sku.as_deref(), Some("C900002"));
     assert_eq!(got.library, Some(Library::Extended));
     // A listed row with no stock is passed over, and the rule of the code decides the rest.
     let sold_out = |_: netsmith_solve::Channel, lcsc: &str| (lcsc == "C900002").then_some(0);
     let got = resolve(&g, &c, &sold_out).unwrap();
-    assert_eq!(got.lcsc.as_deref(), Some("C900001"));
+    assert_eq!(got.sku.as_deref(), Some("C900001"));
     assert_eq!(
         got.passed_over,
         ["330Ω Extended has no stock in jlcpcb-assembly"]
@@ -201,7 +201,7 @@ fn the_order_of_the_preferred_list_decides_between_two_listed_rows() {
     set_resistor(&mut g, 330.0, 0.0625);
     let first = |text: &str| {
         let c = catalogs(None).with_preferred(Preferred::parse("preferred.csv", text).unwrap());
-        resolve(&g, &c, &never).unwrap().lcsc
+        resolve(&g, &c, &never).unwrap().sku
     };
     assert_eq!(
         first("mpn\nZZR-330-B\nZZR-330-E\n").as_deref(),
@@ -251,7 +251,7 @@ fn the_preferred_list_does_not_change_what_the_solver_picks_from_rows() {
     let list = Preferred::parse("preferred.csv", "mpn\nZZR-330-B\n").unwrap();
     let s = solved(&board("330ohm +/- 1%"), &catalogs(None).with_preferred(list));
     // The first row of the file, as without the list (ADR 0022).
-    assert_eq!(s.picks[0].lcsc.as_deref(), Some("C900002"));
+    assert_eq!(s.picks[0].sku.as_deref(), Some("C900002"));
 }
 
 #[test]

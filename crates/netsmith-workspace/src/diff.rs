@@ -181,7 +181,7 @@ pub struct PartDigest {
     pub kind: String,
     pub value: String,
     pub package: Option<String>,
-    pub lcsc: Option<String>,
+    pub sku: Option<String>,
     pub mpn: Option<String>,
     pub assembly: String,
     pub at: Option<Location>,
@@ -502,7 +502,7 @@ fn parts(b: &BoardDigest, h: &BoardDigest) -> (PartsDiff, HashMap<String, String
         kind: p.kind.clone(),
         value: p.value.clone(),
         package: p.package.clone(),
-        lcsc: p.lcsc.clone(),
+        sku: p.sku.clone(),
         mpn: p.mpn.clone(),
         assembly: p.assembly.clone(),
         at: p.at.clone(),
@@ -538,7 +538,7 @@ fn part_fields(b: &PartDigest, h: &PartDigest) -> Vec<CompareField> {
     field("kind", Some(&b.kind), Some(&h.kind));
     field("value", Some(&b.value), Some(&h.value));
     field("package", b.package.as_ref(), h.package.as_ref());
-    field("lcsc", b.lcsc.as_ref(), h.lcsc.as_ref());
+    field("sku", b.sku.as_ref(), h.sku.as_ref());
     field("mpn", b.mpn.as_ref(), h.mpn.as_ref());
     field("assembly", Some(&b.assembly), Some(&h.assembly));
     field("designator", Some(&b.designator), Some(&h.designator));
@@ -903,7 +903,7 @@ fn bom_key(l: &BomLine) -> BomKey {
         l.kind.clone(),
         l.value.clone(),
         l.footprint.clone().or_else(|| l.package.clone()),
-        l.lcsc.clone(),
+        l.sku.clone(),
         l.hand_solder,
     )
 }
@@ -914,7 +914,7 @@ fn bom_line(l: &BomLine) -> CompareBomLine {
         value: l.value.clone(),
         package: l.package.clone(),
         footprint: l.footprint.clone(),
-        lcsc: l.lcsc.clone(),
+        sku: l.sku.clone(),
         mpn: l.mpn.clone(),
         hand_solder: l.hand_solder,
         quantity: l.quantity,
@@ -961,7 +961,7 @@ fn bom(b: &Bom, h: &Bom) -> BomDiff {
                     value: now.value.clone(),
                     package: now.package.clone(),
                     footprint: now.footprint.clone(),
-                    lcsc: now.lcsc.clone(),
+                    sku: now.sku.clone(),
                     mpn: now.mpn.clone(),
                     hand_solder: now.hand_solder,
                     quantity_base: was.quantity,
@@ -1855,7 +1855,7 @@ mod tests {
             kind: "Resistor".into(),
             value: value.into(),
             package: Some("0402".into()),
-            lcsc: Some("C1".into()),
+            sku: Some("C1".into()),
             mpn: None,
             assembly: "fab".into(),
             at: None,
@@ -2183,7 +2183,9 @@ mod tests {
             kind: "Resistor".into(),
             package: Some("0402".into()),
             footprint: Some("R_0402_1005Metric".into()),
-            lcsc: Some(lcsc.into()),
+            sku: Some(lcsc.into()),
+            channel: None,
+            manufacturer: None,
             mpn: None,
             library: None,
             unit_usd: unit,
@@ -2196,6 +2198,7 @@ mod tests {
             unknown: None,
             unresolved: None,
             hand_solder: false,
+            consigned: false,
             via: None,
         }
     }

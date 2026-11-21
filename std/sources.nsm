@@ -212,12 +212,12 @@ interface TrackImpedance {
     .impedance: Resistance
 }
 
-/// How the tracks of a `TrackPath` turn (issue #1275): the type of its `.corner`.
+/// How tracks turn: the type of a `TrackPath`'s `.corner` (issue #1275) and a board's (#1508).
 enum TrackCorner {
     /// Each bend of 45 degrees or less is rounded with an arc, as the router rounds the bends
     /// of every net it can.
     Rounded,
-    /// Each bend is cut at 45 degrees and keeps its corner: no arc is drawn on the path's nets.
+    /// Each bend is cut at 45 degrees and keeps its corner: no arc is drawn on the nets.
     Mitered,
 }
 

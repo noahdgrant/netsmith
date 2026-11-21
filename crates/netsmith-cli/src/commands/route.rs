@@ -79,6 +79,8 @@ pub struct Args {
     /// rules' space, and change nothing the search does.
     #[arg(long, value_name = "WIDTHS", value_parser = parse_arcs)]
     pub arcs: Option<f64>,
+    #[command(flatten)]
+    pub weighing: super::common::Weighing,
     /// Text for a person, or one JSON document on stdout.
     ///
     /// `json` prints one JSON document on stdout and nothing else there: `command` (`route`),
@@ -93,6 +95,14 @@ pub struct Args {
 
 /// Routes the saved board again, alone, the way `fab` does, and writes its board files.
 pub fn run(args: Args) -> ExitCode {
+    // `dev route` has no project: its weights are the flags'.
+    let weights = match args.weighing.weights(None) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
     let request = netsmith_fabricate::placed::RouteRequest {
         route_timeout: match args.route_timeout {
             Some(0) => None,
@@ -108,6 +118,7 @@ pub fn run(args: Args) -> ExitCode {
         classes: args.classes,
         arcs: args.arcs,
         rip_rounds: args.rip_rounds,
+        weights,
     };
     run_route(&args.file, args.out.as_deref(), request, args.format)
 }
@@ -205,7 +216,7 @@ fn parse_plan(given: &str) -> Result<netsmith_fabricate::placed::CoarsePlan, Str
     }
 }
 
-fn parse_tries(given: &str) -> Result<usize, String> {
+pub(crate) fn parse_tries(given: &str) -> Result<usize, String> {
     given
         .parse::<usize>()
         .ok()
@@ -274,6 +285,11 @@ mod tests {
                 plan: None,
                 classes: None,
                 arcs: None,
+                weighing: crate::commands::common::Weighing {
+                    length_weight: None,
+                    via_weight: None,
+                    layer_change_weight: None,
+                },
                 format: crate::commands::common::Format::Text,
             }))
         );
@@ -337,6 +353,11 @@ mod tests {
                 plan: None,
                 classes: None,
                 arcs: None,
+                weighing: crate::commands::common::Weighing {
+                    length_weight: None,
+                    via_weight: None,
+                    layer_change_weight: None,
+                },
                 format: crate::commands::common::Format::Text,
             }))
         );

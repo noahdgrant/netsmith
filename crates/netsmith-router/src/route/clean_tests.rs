@@ -166,3 +166,52 @@ fn a_stub_in_a_pad_is_folded_into_its_run_with_the_bend_moved_to_meet_it() {
         "{ends:?}"
     );
 }
+
+#[test]
+fn the_steps_of_the_grid_inside_a_via_are_folded_into_one_piece_from_its_centre() {
+    // Issue #1539: the last three steps of a path all lie inside the via it ends at (0.05, 0.07
+    // and 0.05 mm), and each was left as a crumb.
+    let board = led_board();
+    let router = Router::new(&board, &RouteOptions::default());
+    let line = &router.lines[0];
+    let p = line.from_at;
+    let net = router.nets[0];
+    let at = |dx: f64, dy: f64| Pt::new(p.x + dx, p.y + dy);
+    let v = at(3.0, 1.0);
+    let piece = |from: Pt, to: Pt| Track {
+        net: line.net.clone(),
+        layer: CopperLayer::Front,
+        from,
+        to,
+        width: 0.2,
+        mid: None,
+    };
+    let mut routed = Routed {
+        line: 0,
+        tracks: vec![
+            piece(p, at(2.7, 0.0)),
+            piece(at(2.7, 0.0), at(2.7, 0.7)),
+            piece(at(2.7, 0.7), at(2.9, 0.9)),
+            piece(at(2.9, 0.9), at(2.95, 0.9)),
+            piece(at(2.95, 0.9), at(3.0, 0.95)),
+            piece(at(3.0, 0.95), v),
+        ],
+        vias: vec![netsmith_pcb::Via {
+            net: line.net.clone(),
+            at: v,
+            diameter: 0.45,
+            drill: 0.2,
+            span: None,
+        }],
+    };
+    router.snap_ends(&mut routed, net, &|_, _, _, _| true);
+    let ends: Vec<(Pt, Pt)> = routed.tracks.iter().map(|t| (t.from, t.to)).collect();
+    assert_eq!(ends.len(), 3, "{ends:?}");
+    assert!(
+        ends.iter().any(
+            |&(a, b)| (a.distance(v) < 1e-9 && b.distance(at(2.7, 0.7)) < 1e-9)
+                || (b.distance(v) < 1e-9 && a.distance(at(2.7, 0.7)) < 1e-9)
+        ),
+        "{ends:?}"
+    );
+}

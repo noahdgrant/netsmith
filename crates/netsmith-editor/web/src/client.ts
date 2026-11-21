@@ -34,6 +34,7 @@ import type {
   PcbCopper,
   PcbFill,
   PcbStitching,
+  PcbRuleAreas,
   PcbNets,
   PcbFit,
   PcbPours,
@@ -217,6 +218,8 @@ export const api = {
   pcbFill: (board: string) => getJson<PcbFill>(`/api/pcb/fill?${q({ board })}`),
   /** The stitching vias the export will have that the routes file does not (`netsmith view pcb --stitching`), of the board as placed (and routed). */
   pcbStitching: (board: string) => getJson<PcbStitching>(`/api/pcb/stitching?${q({ board })}`),
+  /** The rule areas of the board, the footprints' and the board's, less the keepouts of the physical file (`netsmith board rules`'s `rule_areas`, what `netsmith view pcb` hatches), of the board as placed (and routed). */
+  pcbRuleAreas: (board: string) => getJson<PcbRuleAreas>(`/api/pcb/rule-areas?${q({ board })}`),
   /** The table of the board's nets and diff pairs (`netsmith board nets`): lengths, vias, layer changes, and each pair's skew, coupled length and vias side by side, of the board as placed (and routed). */
   pcbNets: (board: string) => getJson<PcbNets>(`/api/pcb/nets?${q({ board })}`),
   /** Where one part fits with every other part where it is (`netsmith layout fit`): `part` (a path or a designator), `near` (a part, or `X,Y` in mm), `step` (mm) and `side` (`top` or `bottom`), the last three optional. Nothing is written. `ApiFailure` 400 says what the board has none of or what is wrong with the query. */

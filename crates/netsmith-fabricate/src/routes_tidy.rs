@@ -20,6 +20,9 @@
 //!   and bend after it (the check's own advice, "make it a right angle"). The bend after is cut
 //!   as a corner is when it would bend by more than 45 degrees.
 //!
+//! - **tracks of no length and copies of a track** (issue #1539): a straight track whose ends
+//!   are one place is removed, and the narrower of two straight tracks of a net and layer with
+//!   the same two ends ([`shapes`]);
 //! - **tracks inside a pad, duplicate ways, overlapping copper and runs of tiny tracks** (issue #1485), the
 //!   defects of a routed board that the check finds nothing of: a track from a pad's or a via's
 //!   centre to a point still inside it is removed, the longer of two ways between the same two
@@ -151,6 +154,10 @@ pub enum Kind {
     Overlap,
     /// A run of tiny tracks made one track or one corner.
     TinyRun,
+    /// A track of no length removed.
+    ZeroLength,
+    /// A copy of a track removed.
+    Copy,
 }
 
 impl Kind {
@@ -166,6 +173,8 @@ impl Kind {
             Kind::Duplicate => "duplicate way",
             Kind::Overlap => "overlapping copper",
             Kind::TinyRun => "run of tiny tracks",
+            Kind::ZeroLength => "track of no length",
+            Kind::Copy => "copy of a track",
         }
     }
 }
@@ -216,6 +225,10 @@ pub struct Counts {
     pub overlaps: usize,
     /// Runs of tiny tracks made one track or one corner.
     pub tiny_runs: usize,
+    /// Tracks of no length, removed.
+    pub zero_length: usize,
+    /// Copies of a track, removed.
+    pub copies: usize,
 }
 
 /// What [`tidy`] did, or with `dry_run` would do.
@@ -264,7 +277,7 @@ impl Tidied {
         let c = &self.counts;
         let _ = write!(
             s,
-            "{}: {} {} corner(s), {} collinear pair(s), {} dangling via(s), {} stub(s), {} acid trap(s), {} track(s) inside a pad, {} duplicate way(s), {} overlapping track(s), {} run(s) of tiny tracks",
+            "{}: {} {} corner(s), {} collinear pair(s), {} dangling via(s), {} stub(s), {} acid trap(s), {} track(s) inside a pad, {} duplicate way(s), {} overlapping track(s), {} run(s) of tiny tracks, {} track(s) of no length, {} copie(s) of a track",
             self.board,
             if self.dry_run { "would tidy" } else { "tidied" },
             c.corners,
@@ -275,7 +288,9 @@ impl Tidied {
             c.in_pad_tracks,
             c.duplicates,
             c.overlaps,
-            c.tiny_runs
+            c.tiny_runs,
+            c.zero_length,
+            c.copies
         );
         if self.widen {
             let _ = write!(
@@ -494,6 +509,8 @@ pub fn tidy_passes(
             Kind::Duplicate => counts.duplicates += 1,
             Kind::Overlap => counts.overlaps += 1,
             Kind::TinyRun => counts.tiny_runs += 1,
+            Kind::ZeroLength => counts.zero_length += 1,
+            Kind::Copy => counts.copies += 1,
         }
     }
     let new_routes = work.routes_of(&work.copper);
@@ -635,8 +652,9 @@ pub(crate) struct Defect {
 pub(crate) fn shape_defects(board: &Board) -> Vec<Defect> {
     let routes = Routes::default();
     let work = Work::looking(board, &routes);
-    work.in_pad_tracks()
+    work.crumbs()
         .into_iter()
+        .chain(work.in_pad_tracks())
         .chain(work.duplicates())
         .chain(work.overlaps())
         .chain(work.dead_copper())
@@ -1318,11 +1336,12 @@ impl<'a> Work<'a> {
             };
             push(c, &mut out);
         }
-        // A merge, a track inside a pad, a duplicate way and an overlap have one form: refused once, each
+        // A track of no length, a copy, a merge, a track inside a pad, a duplicate way and an overlap have one form: refused once, each
         // is not tried again.
         let once = self
-            .merges()
+            .crumbs()
             .into_iter()
+            .chain(self.merges())
             .chain(self.in_pad_tracks())
             .chain(self.overlaps())
             .chain(self.duplicates());

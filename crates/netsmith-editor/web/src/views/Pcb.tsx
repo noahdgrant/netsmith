@@ -25,6 +25,8 @@ import { type Pt, unite } from '../pcb/geometry';
 import { POUR_HIDDEN, fills, poursMarkup } from '../pcb/pours';
 import { fillMarkup, fillOf } from '../pcb/fillMarks';
 import { stitchingMarkup, stitchingOf } from '../pcb/stitchMarks';
+import { ruleAreasMarkup, ruleAreasOf } from '../pcb/ruleAreas';
+import { netsOf, uncountedMarkup } from '../pcb/uncountedMarks';
 import { placingLine, placingSvg, routingMarkup } from '../pcb/live';
 import { livePlace, liveRoute, liveSeen, placingSaid } from '../pcb/liveState';
 import {
@@ -40,6 +42,8 @@ import {
   pours,
   fillReport,
   stitching,
+  ruleAreas,
+  netsReport,
   recheck,
   redo,
   scene,
@@ -73,6 +77,7 @@ const LAYERS: { id: string; label: string }[] = [
   { id: 'back-copper', label: 'Back copper' },
   { id: 'vias', label: 'Vias' },
   { id: 'stitching', label: 'Stitching' },
+  { id: 'uncounted', label: 'Not counted' },
   { id: 'pads', label: 'Pads' },
   { id: 'planes', label: 'Planes' },
   { id: 'islands', label: 'Removed islands' },
@@ -82,6 +87,7 @@ const LAYERS: { id: string; label: string }[] = [
   { id: 'fab', label: 'Fab' },
   { id: 'courtyard', label: 'Courtyard' },
   { id: 'keepouts', label: 'Keepouts' },
+  { id: 'rule-areas', label: 'Rule areas' },
   { id: 'limits', label: 'Height limits' },
   { id: 'requirements', label: 'Requirements' },
   { id: 'refs', label: 'References' },
@@ -215,7 +221,12 @@ export function Pcb() {
   const filledNow = fillOf(filled, sc);
   // The stitching vias the export will lay that the routes file does not hold (issue 1489), in a tone of their own.
   const stitched = stitching.value && stitching.value.board === name ? stitching.value : null;
-  const marks = stitchingMarkup(stitched, stitchingOf(stitched, sc)) + fillMarkup(filled, filledNow);
+  // The copper a net's length does not count (issue 1495), the dead stubs and second ways, dashed over their tracks.
+  const measured = netsReport.value && netsReport.value.board === name ? netsReport.value : null;
+  const uncounted = uncountedMarkup(measured, netsOf(measured, sc), sc?.routes ?? []);
+  // The rule areas, the footprints' and the board's that are not keepouts of the physical file (issue 1543), hatched as keepouts are.
+  const areas = ruleAreas.value && ruleAreas.value.board === name ? ruleAreas.value : null;
+  const marks = ruleAreasMarkup(areas, ruleAreasOf(areas, sc)) + uncounted + stitchingMarkup(stitched, stitchingOf(stitched, sc)) + fillMarkup(filled, filledNow);
   const drawing = useMemo(
     () => (sc ? prepare(sc.svg, poursMarkup(poured, pouredNow), laid + marks) : null),
     [sc?.svg, poured, pouredNow, laid, marks],

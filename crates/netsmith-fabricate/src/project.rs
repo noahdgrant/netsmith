@@ -39,6 +39,10 @@ pub const KICAD_VERSION: i64 = 9;
 /// is a whole placement, so a board no seed places costs this many times as long.
 pub const MAX_PLACE_SEEDS: u32 = 32;
 
+/// The most `routing_objective` may weigh (issue 1544): ten times the weight it was measured at
+/// ([`netsmith_pcb::ROUTING_OBJECTIVE`]).
+pub const MAX_ROUTING_OBJECTIVE: f64 = 10.0;
+
 /// The most characters of a project's `revision` (issue #1134): room for a letter, a version or
 /// a short tag, and a line of the title block.
 pub const MAX_REVISION: usize = 32;
@@ -159,6 +163,21 @@ pub struct Manifest {
     /// wins over it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rip_rounds: Option<usize>,
+    /// What a millimetre of a signal net's track costs the router, as a share of its own
+    /// (`length_weight = 1`, from 0.1 to 10), the weight of its quality objective (issue 1517).
+    /// Any of the three weights turns on the router's polish pass; `--length-weight` wins over
+    /// it. `fab`, `order`, `routes route` and the editor's routing read it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub length_weight: Option<f64>,
+    /// What a via of a signal net costs the router, in mm of track (`via_weight = 15`, the
+    /// router's own; from 0 to 1000). `--via-weight` wins over it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via_weight: Option<f64>,
+    /// What a change of layer of a signal net costs the router beyond its via, in mm of track
+    /// (`layer_change_weight = 0`, the router's own; from 0 to 1000). `--layer-change-weight`
+    /// wins over it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layer_change_weight: Option<f64>,
     /// How many seeds the placer tries for a board before it gives up (`place_seeds = 8`, the
     /// default; 1 tries only the layout file's, and [`MAX_PLACE_SEEDS`] is the most): the layout
     /// file's seed, or 0, then the ones after it. The seed that places the board is written to the layout file (issue #458).
@@ -170,6 +189,14 @@ pub struct Manifest {
     /// it. [`crate::layout::parse_place_budget`] reads it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub place_budget: Option<String>,
+    /// The weight of the placer's objective for routing (`routing_objective = 1`, issue 1544;
+    /// from 0 to [`MAX_ROUTING_OBJECTIVE`]; 0, the default, leaves it out, so every board places
+    /// as it did before): power nets weigh more by their current, a part on a bus of another
+    /// keeps the corridor between their pins clear, and no part on the other face stands under a
+    /// fine-pitch part's escape ring. `netsmith_pcb::ROUTING_OBJECTIVE` (1) is the weight it was
+    /// measured at. `--routing-objective` wins over it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routing_objective: Option<f64>,
     /// The E-series the solver may pick generic resistors from when no catalog row works:
     /// `"E12"`, `"E24"` (the default) or `"E96"` (ADR 0047). `"none"` offers
     /// only the catalog's rows.
@@ -734,8 +761,12 @@ impl Manifest {
             pdf: None,
             track_margin: None,
             rip_rounds: None,
+            length_weight: None,
+            via_weight: None,
+            layer_change_weight: None,
             place_seeds: None,
             place_budget: None,
+            routing_objective: None,
             environment: None,
             guidelines: None,
             constraints: None,
@@ -883,11 +914,21 @@ impl Manifest {
                 "{MANIFEST}: track_margin = {m} must be from 1 (the process's least track) to 4"
             ));
         }
+        if let Err(e) = crate::fab::weights_of(self) {
+            return Err(format!("{MANIFEST}: {e}"));
+        }
         if let Some(n) = self.place_seeds
             && !(1..=MAX_PLACE_SEEDS).contains(&n)
         {
             return Err(format!(
                 "{MANIFEST}: place_seeds = {n} must be from 1 (the layout file's seed only) to {MAX_PLACE_SEEDS}"
+            ));
+        }
+        if let Some(w) = self.routing_objective
+            && !(0.0..=MAX_ROUTING_OBJECTIVE).contains(&w)
+        {
+            return Err(format!(
+                "{MANIFEST}: routing_objective = {w} must be from 0 (off) to {MAX_ROUTING_OBJECTIVE}"
             ));
         }
         if let Some(text) = &self.place_budget {
@@ -2585,6 +2626,25 @@ mod tests {
     }
 
     #[test]
+    fn routing_weights_are_numbers_in_the_router_s_ranges() {
+        let m = parse(
+            "[project]\nname = \"a\"\nlength_weight = 0.5\nvia_weight = 40\nlayer_change_weight = 2\n",
+        )
+        .unwrap();
+        assert_eq!(
+            (m.length_weight, m.via_weight, m.layer_change_weight),
+            (Some(0.5), Some(40.0), Some(2.0))
+        );
+        let none = parse("[project]\nname = \"a\"\n").unwrap();
+        assert_eq!(none.via_weight, None);
+        let e = parse("[project]\nname = \"a\"\nlength_weight = 20\n").unwrap_err();
+        assert!(e.contains("the length weight is 20"), "{e}");
+        let e = parse("[project]\nname = \"a\"\nvia_weight = -1\n").unwrap_err();
+        assert!(e.contains("the via weight is -1"), "{e}");
+        assert!(parse("[project]\nname = \"a\"\nvia_weight = \"dear\"\n").is_err());
+    }
+
+    #[test]
     fn rip_rounds_is_a_count_and_zero_turns_the_rounds_off() {
         let m = parse("[project]\nname = \"a\"\nrip_rounds = 0\n").unwrap();
         assert_eq!(m.rip_rounds, Some(0));
@@ -2616,6 +2676,25 @@ mod tests {
             parse("[project]\nname = \"a\"\nlock = \"boards\"\n").unwrap_err(),
             "netsmith.toml: lock = \"boards\" is not one of \"all\", \"top_level\" or \"none\""
         );
+    }
+
+    #[test]
+    fn routing_objective_is_a_weight_from_zero_to_ten() {
+        let m = parse("[project]\nname = \"a\"\nrouting_objective = 1\n").unwrap();
+        assert_eq!(m.routing_objective, Some(1.0));
+        let none = parse("[project]\nname = \"a\"\n").unwrap();
+        assert_eq!(none.routing_objective, None);
+        for bad in ["-1", "10.5", "nan"] {
+            let e = parse(&format!(
+                "[project]\nname = \"a\"\nrouting_objective = {bad}\n"
+            ))
+            .unwrap_err();
+            assert!(
+                e.contains("netsmith.toml: routing_objective =") && e.contains("must be from 0"),
+                "{e}"
+            );
+        }
+        assert!(parse("[project]\nname = \"a\"\nrouting_objective = \"high\"\n").is_err());
     }
 
     #[test]

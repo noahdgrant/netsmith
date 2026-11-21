@@ -11,7 +11,10 @@
 //! copper on a layer drawn (the stitching vias the export will have that the routes file does
 //! not, when given, in a tone of their own, issue #1489), and every drilled hole, open to the
 //! background. Over the copper: the
-//! courtyards and the designators when asked, the copper islands the fill took out when given
+//! courtyards and the designators when asked, the rule areas when given (the footprints' and
+//! the board's that are not the physical file's keepouts, on a layer drawn: hatched and
+//! outlined, dashed, in the keepouts' red, each with a `<title>` naming what it forbids, issue
+//! #1543), the copper islands the fill took out when given
 //! (hatched and outlined, dashed, in near white, each with its number: copper the pour would have
 //! had and the Gerbers do not, issue #1188), the open connections (bright lines with a dot at
 //! each end) and the markers of the design rules check when given (a ring with its number).
@@ -20,6 +23,9 @@
 //! [`crate::copper_of`], the geometry `fab` plots: a pour is its fill with the clearances and
 //! the thermal reliefs, not its outline. A ring of a pour is simplified within 2 µm
 //! ([`crate::simplify_ring`]), as the editor's pours are.
+//! One exception: an arc of a net whose corners are mitered (the board's `.corner`, or a
+//! `TrackPath`'s, issue #1508) is drawn as its chamfer, straight from its start to its end
+//! ([`Board::chamfered`]), so a board whose style is mitered reads as mitered at every scale.
 //!
 //! **Colours** are the editor's dark theme (`themes.css`): the top layer copper-orange, the
 //! bottom teal, each inner layer one of four tones, by its number. A colour is a layer's, never
@@ -82,6 +88,49 @@ pub struct Picture {
     /// have that the routes file does not (issue #1489, `netsmith_router::stitching_vias`). A via
     /// of the board at one of them is drawn in [`STITCHING`], with `class="stitching"`.
     pub stitching: Vec<Pt>,
+    /// The rule areas drawn over the copper (issue #1543): those of `netsmith board rules` that
+    /// are not the physical file's keepouts, which are drawn as keepouts.
+    pub rule_areas: Vec<RuleArea>,
+}
+
+/// A rule area (a footprint's keep-out, or one of the board's): drawn on the layers it is on,
+/// hatched and outlined, with a tip naming what it forbids.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RuleArea {
+    pub name: String,
+    /// The part whose footprint carries it; `None` for the board's.
+    pub part: Option<String>,
+    /// KiCad's names of its copper layers (`F.Cu`).
+    pub layers: Vec<String>,
+    /// Its rings in the board's frame, its outlines then its holes.
+    pub rings: Vec<Vec<Pt>>,
+    /// What it forbids there: `tracks`, `vias`, `pads`, `copperpour`, `footprints`.
+    pub forbids: Vec<String>,
+}
+
+impl RuleArea {
+    /// What it is and what it forbids, as its tip and the line `view pcb` prints say it
+    /// (`antenna of U1 forbids tracks, vias, copperpour on F.Cu, B.Cu`).
+    pub fn said(&self) -> String {
+        let name = if self.name.is_empty() {
+            "rule area"
+        } else {
+            &self.name
+        };
+        let of = self
+            .part
+            .as_deref()
+            .map_or_else(|| " of the board".to_string(), |p| format!(" of {p}"));
+        format!(
+            "{name}{of} forbids {} on {}",
+            if self.forbids.is_empty() {
+                "nothing".to_string()
+            } else {
+                self.forbids.join(", ")
+            },
+            self.layers.join(", ")
+        )
+    }
 }
 
 /// Space round the outline when no region is given, in mm.
@@ -269,6 +318,8 @@ pub fn picture(
     markers: &[Marker],
     options: &Picture,
 ) -> Result<String, String> {
+    let chamfered = board.chamfered();
+    let board = chamfered.as_ref().unwrap_or(board);
     let copper = copper_of(board).map_err(|e| e.to_string())?;
     let names: Vec<&str> = copper.layers.iter().map(|l| l.layer.as_str()).collect();
     let shown: Vec<usize> = match options.layers {
@@ -523,6 +574,9 @@ pub fn picture(
     }
 
     let shown_names: Vec<&str> = shown.iter().map(|&i| names[i]).collect();
+    if !options.rule_areas.is_empty() {
+        rule_areas(&mut out, &f, &options.rule_areas, &shown_names);
+    }
     if !islands.is_empty() {
         removed_islands(&mut out, &f, islands, &shown_names);
     }
@@ -562,13 +616,22 @@ pub fn picture(
             let at = f.p(p.to_board(p.reference_at(&board.rules)));
             let _ = writeln!(
                 out,
-                r#"<text x="{}" y="{}" font-size="{}" font-family="sans-serif" text-anchor="middle" fill="{DESIGNATOR}" stroke="{BOARD}" stroke-width="{}" paint-order="stroke"{}>{}</text>"#,
+                r#"<text x="{}" y="{}" font-size="{}" font-family="sans-serif" text-anchor="middle" fill="{DESIGNATOR}" stroke="{BOARD}" stroke-width="{}" paint-order="stroke"{}{}>{}</text>"#,
                 n(at.x),
                 // The baseline, so that the letters stand round the point.
                 n(at.y + 0.35 * size),
                 n(size),
                 n(f.px(3.0)),
                 opacity("opacity", f.alpha(f.part(&p.path))),
+                // Seen from below, a turn counterclockwise from above is clockwise.
+                crate::svg::turned(
+                    if f.flip.is_some() {
+                        -p.text_turn()
+                    } else {
+                        p.text_turn()
+                    },
+                    at
+                ),
                 escape(text)
             );
         }
@@ -673,6 +736,63 @@ impl Frame<'_> {
             d.push('Z');
         }
     }
+}
+
+/// The rule areas on a layer drawn (`shown`), each hatched at 45° and outlined, dashed, in the
+/// keepouts' red, with a `<title>` that names what it forbids (issue #1543). The hatch is worked
+/// out here, as an island's is.
+fn rule_areas(out: &mut String, f: &Frame, areas: &[RuleArea], shown: &[&str]) {
+    let _ = writeln!(
+        out,
+        r#"<g class="rule-areas" fill="none" stroke="{KEEPOUT}" stroke-linejoin="round">"#
+    );
+    for area in areas
+        .iter()
+        .filter(|a| a.layers.iter().any(|l| shown.contains(&l.as_str())))
+    {
+        let rings: Vec<Vec<Pt>> = area
+            .rings
+            .iter()
+            .filter(|r| r.len() >= 3)
+            .map(|r| r.iter().map(|p| f.p(*p)).collect())
+            .collect();
+        if rings.is_empty() {
+            continue;
+        }
+        let mut outline = String::new();
+        for ring in &rings {
+            for (i, p) in ring.iter().enumerate() {
+                let _ = write!(
+                    outline,
+                    "{}{} {}",
+                    if i == 0 { 'M' } else { 'L' },
+                    n(p.x),
+                    n(p.y)
+                );
+            }
+            outline.push('Z');
+        }
+        let mut hatch = String::new();
+        for (a, b) in hatch_lines(&rings, f.px(8.0)) {
+            let _ = write!(hatch, "M{} {}L{} {}", n(a.x), n(a.y), n(b.x), n(b.y));
+        }
+        let _ = writeln!(
+            out,
+            r#"<g class="rule-area" data-rule-area="{}"{} data-layers="{}" data-forbids="{}"><title>{}</title><path d="{hatch}" stroke-width="{}" stroke-opacity="0.55"/><path d="{outline}" stroke-width="{}" stroke-dasharray="{} {}"/></g>"#,
+            escape(&area.name),
+            area.part
+                .as_deref()
+                .map_or_else(String::new, |p| format!(r#" data-part="{}""#, escape(p))),
+            escape(&area.layers.join(" ")),
+            escape(&area.forbids.join(" ")),
+            escape(&area.said()),
+            n(f.px(1.0)),
+            n(f.px(1.5)),
+            n(f.px(6.0)),
+            n(f.px(4.0)),
+        );
+    }
+    let _ = writeln!(out, "</g>");
 }
 
 /// The islands on a layer drawn (`shown`), each hatched at 45° and outlined, dashed, with its

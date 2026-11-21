@@ -494,12 +494,12 @@ fn a_part_says_what_the_solver_worked_out_for_it() {
     assert_eq!(ratings, [("max_voltage", "10V")]);
     let row = c1.row.expect("a catalog row");
     assert_eq!(row.catalog.as_deref(), Some("capacitor"));
-    assert_eq!(row.lcsc.as_deref(), Some("C315248"));
+    assert_eq!(row.sku.as_deref(), Some("C315248"));
     assert_eq!(row.mpn.as_deref(), Some("CL05A106MP5NUNC"));
     assert_eq!(row.library.as_deref(), Some("Extended"));
     assert!(!row.generic);
     // The row's number is also the part's own `lcsc`.
-    assert_eq!(part(&power, "C1").lcsc, row.lcsc);
+    assert_eq!(part(&power, "C1").sku, row.sku);
 
     // A regulator is not derated; it has ratings and a row.
     let u1 = part(&power, "U1").solved.unwrap();
@@ -524,7 +524,7 @@ fn a_part_says_what_the_solver_worked_out_for_it() {
     // A connector has no derived value, only its row.
     let j1 = part(&led, "J1").solved.unwrap();
     assert!(j1.tolerance.is_none() && j1.ratings.is_none() && j1.effective_capacitance.is_none());
-    assert_eq!(j1.row.unwrap().lcsc.as_deref(), Some("C42431841"));
+    assert_eq!(j1.row.unwrap().sku.as_deref(), Some("C42431841"));
 }
 
 #[test]
@@ -563,13 +563,13 @@ fn a_part_with_nothing_solved_leaves_the_key_out_of_the_json() {
     let row = netsmith_editor::api::SolvedRow {
         catalog: None,
         mpn: None,
-        lcsc: Some("C1".into()),
+        sku: Some("C1".into()),
         library: None,
         generic: true,
     };
     assert_eq!(
         serde_json::to_string(&row).unwrap(),
-        r#"{"lcsc":"C1","generic":true}"#
+        r#"{"sku":"C1","generic":true}"#
     );
 }
 

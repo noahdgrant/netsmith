@@ -635,7 +635,7 @@ impl Carry {
 }
 
 /// `R1` of cell 3 is `R1_3`.
-pub(crate) fn suffixed(designator: &str, cell: usize) -> String {
+pub fn suffixed(designator: &str, cell: usize) -> String {
     format!("{designator}_{cell}")
 }
 

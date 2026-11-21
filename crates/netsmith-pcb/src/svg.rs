@@ -680,9 +680,10 @@ fn draw(board: &Board, with_key: bool) -> String {
         let at = placed.to_board(placed.reference_at(&board.rules));
         let _ = writeln!(
             out,
-            r#"<text x="{}" y="{}" font-size="1" fill="{SILK}" text-anchor="middle" dominant-baseline="central" font-family="monospace">{}</text>"#,
+            r#"<text x="{}" y="{}" font-size="1" fill="{SILK}" text-anchor="middle" dominant-baseline="central" font-family="monospace"{}>{}</text>"#,
             n(at.x),
             n(at.y),
+            turned(placed.text_turn(), at),
             escape(text)
         );
     }
@@ -730,6 +731,20 @@ fn draw(board: &Board, with_key: bool) -> String {
     }
     out.push_str("</svg>\n");
     out
+}
+
+/// The `transform` of a text turned `turn` degrees counterclockwise on screen round `at` (a
+/// designator the layout file turns, issue #1506); nothing for an upright text.
+pub(crate) fn turned(turn: f64, at: Pt) -> String {
+    if turn == 0.0 {
+        return String::new();
+    }
+    format!(
+        r#" transform="rotate({} {} {})""#,
+        n(-turn),
+        n(at.x),
+        n(at.y)
+    )
 }
 
 #[cfg(test)]

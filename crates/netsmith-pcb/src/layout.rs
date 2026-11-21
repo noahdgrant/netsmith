@@ -148,6 +148,11 @@ pub struct PartPlace {
     /// Which side of the part its reference designator is written on.
     #[serde(default, skip_serializing_if = "TextSide::is_above")]
     pub text: TextSide,
+    /// Where its designator text is, when the entry says (issue #1506): `text` is then not
+    /// read. With none, the text is on its `text` side, or on another side when that one would
+    /// put it nearer the board edge than the silk to edge space.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub designator: Option<DesignatorEntry>,
     /// The placer leaves a locked part where it is.
     #[serde(default)]
     pub lock: bool,
@@ -155,6 +160,40 @@ pub struct PartPlace {
     /// parts placed by an import may share courtyard area). Kept as written.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+}
+
+/// The `designator` table of a part's entry (issue #1506): the centre of the designator's text
+/// as an offset from the footprint's origin, in mm on the board (x right, y down, the frame of
+/// `at`), and the turn of the text in degrees, counterclockwise on screen (0 is upright). A turn
+/// of the part moves neither: they are the board's.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesignatorEntry {
+    pub at: [f64; 2],
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub turn: f64,
+}
+
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
+}
+
+impl From<DesignatorEntry> for crate::board::DesignatorPlace {
+    fn from(d: DesignatorEntry) -> Self {
+        Self {
+            at: Pt::new(d.at[0], d.at[1]),
+            turn: d.turn,
+        }
+    }
+}
+
+impl From<crate::board::DesignatorPlace> for DesignatorEntry {
+    fn from(d: crate::board::DesignatorPlace) -> Self {
+        Self {
+            at: [d.at.x, d.at.y],
+            turn: d.turn,
+        }
+    }
 }
 
 /// The `source` of an entry that `netsmith routes import` wrote: the part stands where a KiCad
@@ -629,6 +668,7 @@ impl Layout {
                         Face::Top
                     },
                     text: part.reference_side.into(),
+                    designator: old.and_then(|o| o.designator),
                     lock: old.is_some_and(|o| o.lock),
                     source: old
                         .and_then(|o| o.source.clone())
@@ -867,6 +907,7 @@ pub fn place_options(design: &Design, layout: Option<&Layout>) -> PlaceOptions {
                             rotation: place.rotation,
                             side,
                             text: place.text.into(),
+                            designator: place.designator.map(Into::into),
                         },
                     );
                 }
@@ -1225,10 +1266,12 @@ pub fn apply_layout(board: &mut Board, layout: &Layout, file: &str) -> Result<()
         }
     }
     for (path, place) in &entries.parts {
+        let designator = place.designator.map(|d| [d.at[0], d.at[1], d.turn]);
         if !place
             .at
             .iter()
             .chain([&place.rotation])
+            .chain(designator.iter().flatten())
             .all(|v| v.is_finite())
         {
             return Err(LayoutError::NotFinite { part: path.clone() });
@@ -1246,10 +1289,19 @@ pub fn apply_layout(board: &mut Board, layout: &Layout, file: &str) -> Result<()
             part.at = origin + Pt::new(place.at[0], place.at[1]);
             part.rotation = place.rotation;
             part.reference_side = place.text.into();
+            part.designator = place.designator.map(Into::into);
             part.side = match place.side {
                 Face::Top => Side::Front,
                 Face::Bottom => Side::Back,
             };
+        }
+    }
+    // A text the entry does not place keeps off the edge, also after the entry turned the
+    // part (issue #1506).
+    let (edge, rules) = (board.edge(), board.rules.clone());
+    for part in &mut board.parts {
+        if entries.parts.contains_key(&part.path) {
+            part.reference_side = part.text_side_off_edge(&edge, &rules);
         }
     }
     for k in board.keepouts.iter_mut().filter(|k| k.part.is_none()) {
@@ -1596,6 +1648,7 @@ side = "bottom"
                 rotation: 90.0,
                 side: Side::Front,
                 text: ReferenceSide::Above,
+                designator: None,
             }
         );
         // D1 is on the back but not locked: the placer is told its face and nothing else.
@@ -1626,5 +1679,151 @@ side = "bottom"
             "{}",
             layout.to_text()
         );
+    }
+
+    #[test]
+    fn a_designator_table_survives_a_round_trip_and_keeps_the_comments_round_it() {
+        let text = "version = 1\n\n[Demo.parts.r1]\nat = [1.0, 2.0]\n\n# the text clears the screw\n[Demo.parts.r1.designator]\nat = [-1.5, 0.0]\nturn = 90.0\n";
+        let layout = Layout::parse(text, "demo.pcb.toml").unwrap();
+        assert_eq!(
+            layout.boards["Demo"].parts["r1"].designator,
+            Some(DesignatorEntry {
+                at: [-1.5, 0.0],
+                turn: 90.0
+            })
+        );
+        let out = layout.to_text();
+        assert!(out.contains("[Demo.parts.r1.designator]"), "{out}");
+        assert_eq!(Layout::parse(&out, "x").unwrap(), layout);
+        // A turn of 0 is left out, and an unknown key is refused.
+        let mut moved = layout.clone();
+        moved
+            .boards
+            .get_mut("Demo")
+            .unwrap()
+            .parts
+            .get_mut("r1")
+            .unwrap()
+            .designator = Some(DesignatorEntry {
+            at: [0.0, 2.0],
+            turn: 0.0,
+        });
+        let over = moved.to_text_over(text);
+        assert!(over.contains("# the text clears the screw"), "{over}");
+        assert!(!over.contains("turn ="), "{over}");
+        assert_eq!(Layout::part_lines(&over, "Demo")["r1"], 3);
+        let wrong = Layout::parse(
+            "version = 1\n[Demo.parts.r1]\nat = [1.0, 2.0]\ndesignator = { at = [0.0, 1.0], side = \"left\" }\n",
+            "demo.pcb.toml",
+        );
+        assert!(wrong.is_err());
+    }
+
+    /// The LED board with its first part laid out by `place`: its path, and the board after.
+    fn laid_out(place: impl Fn(&Board, &crate::Placed) -> PartPlace) -> (String, Board) {
+        let mut board = crate::board::tests::led_board();
+        let part = board.parts[0].clone();
+        let mut layout = Layout::default();
+        layout
+            .boards
+            .entry(board.name.clone())
+            .or_default()
+            .parts
+            .insert(part.path.clone(), place(&board, &part));
+        apply_layout(&mut board, &layout, "led.pcb.toml").unwrap();
+        (part.path, board)
+    }
+
+    /// An entry that puts the part's courtyard 0.1 mm below the top edge, in the middle, with
+    /// the text above it (the default) and the part turned `turn`.
+    fn at_the_top(board: &Board, part: &crate::Placed, turn: f64) -> PartPlace {
+        let mut probe = part.clone();
+        probe.at = Pt::new(0.0, 0.0);
+        probe.rotation = turn;
+        let court = probe.courtyard();
+        PartPlace {
+            at: [board.outline.width() / 2.0, 0.1 - court.min.y],
+            rotation: turn,
+            side: Face::Top,
+            text: TextSide::Above,
+            designator: None,
+            lock: false,
+            source: Some("hand".to_string()),
+        }
+    }
+
+    #[test]
+    fn a_designator_above_a_part_at_the_top_edge_goes_where_it_keeps_off_the_edge_also_after_a_turn()
+     {
+        for turn in [0.0, 90.0, 180.0, 270.0] {
+            let (path, board) = laid_out(|b, p| at_the_top(b, p, turn));
+            let part = board.parts.iter().find(|p| p.path == path).unwrap();
+            assert_ne!(part.reference_side, ReferenceSide::Above, "turn {turn}");
+            let text = part.text_rect(&board.rules).unwrap();
+            let depth = board.edge().box_depth(&text);
+            assert!(
+                depth >= board.rules.silk_to_silk,
+                "turn {turn}: the text is {depth} mm inside the edge"
+            );
+            // The side it took is the one the layout file is written with.
+            let captured = Layout::capture(&board, None);
+            assert_eq!(
+                ReferenceSide::from(captured.parts[&path].text),
+                part.reference_side
+            );
+        }
+    }
+
+    #[test]
+    fn a_designator_the_entry_places_is_where_it_says_whatever_the_turn_of_the_part() {
+        for turn in [0.0, 90.0, 180.0] {
+            let (path, board) = laid_out(|b, p| PartPlace {
+                designator: Some(DesignatorEntry {
+                    at: [0.0, -2.0],
+                    turn: 90.0,
+                }),
+                ..at_the_top(b, p, turn)
+            });
+            let part = board.parts.iter().find(|p| p.path == path).unwrap();
+            // The entry's place stands, even off the board: it is the entry's to say.
+            assert_eq!(part.reference_side, ReferenceSide::Above);
+            let text = part.text_rect(&board.rules).unwrap();
+            let centre = text.centre();
+            assert!(
+                (centre.x - part.at.x).abs() < 1e-9,
+                "turn {turn}: {centre:?}"
+            );
+            assert!(
+                (centre.y - (part.at.y - 2.0)).abs() < 1e-9,
+                "turn {turn}: {centre:?}"
+            );
+            // Turned a quarter, the text is taller than it is wide.
+            assert!(text.height() > text.width(), "{text:?}");
+            assert_eq!(part.text_turn(), 90.0);
+            // A capture keeps it.
+            let captured = Layout::capture(
+                &board,
+                Some(&BoardLayout {
+                    parts: [(path.clone(), at_the_top(&board, part, turn))]
+                        .into_iter()
+                        .map(|(k, mut v)| {
+                            v.designator = Some(DesignatorEntry {
+                                at: [0.0, -2.0],
+                                turn: 90.0,
+                            });
+                            (k, v)
+                        })
+                        .collect(),
+                    ..BoardLayout::default()
+                }),
+            );
+            assert_eq!(
+                captured.parts[&path].designator,
+                Some(DesignatorEntry {
+                    at: [0.0, -2.0],
+                    turn: 90.0
+                })
+            );
+        }
     }
 }

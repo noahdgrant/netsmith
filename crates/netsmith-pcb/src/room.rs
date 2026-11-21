@@ -256,6 +256,7 @@ mod tests {
                 rotation: 0.0,
                 side: Side::Front,
                 text: ReferenceSide::default(),
+                designator: None,
             },
         );
     }

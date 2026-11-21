@@ -333,8 +333,11 @@ impl Track {
         }
     }
 
-    /// How far `p` is from the track's centre line, in mm.
+    /// How far `p` is from the track's centre line, in mm: for an arc, from the arc itself.
     pub fn distance_to(&self, p: Pt) -> f64 {
+        if let Some(arc) = self.arc() {
+            return arc.distance_to(netsmith_geom::Pt::new(p.x, p.y));
+        }
         let to_piece = |a: Pt, b: Pt| {
             let ab = b - a;
             let len2 = ab.x * ab.x + ab.y * ab.y;

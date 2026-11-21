@@ -218,6 +218,24 @@ impl Arc {
         )
     }
 
+    /// How far `p` is from the arc itself (not the chords of [`Arc::points`]): from the circle
+    /// where `p` lies within the sweep, else from the nearer end.
+    pub fn distance_to(&self, p: Pt) -> f64 {
+        let sweep = self.sweep();
+        let a0 = self.angle_of(self.start);
+        let tau = std::f64::consts::TAU;
+        let along = if sweep >= 0.0 {
+            (self.angle_of(p) - a0).rem_euclid(tau) <= sweep
+        } else {
+            (a0 - self.angle_of(p)).rem_euclid(tau) <= -sweep
+        };
+        if along {
+            (self.centre.dist(p) - self.radius).abs()
+        } else {
+            self.start.dist(p).min(self.end.dist(p))
+        }
+    }
+
     /// The arc as points from start to end, no further than [`ARC_ERROR`] from the arc.
     pub fn points(&self) -> Vec<Pt> {
         let sweep = self.sweep();

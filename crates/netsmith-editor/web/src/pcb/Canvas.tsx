@@ -513,7 +513,7 @@ export function Canvas(props: {
         lines: [what, `from ${sc.routesFile}`, ...(shape?.lock ? ['locked shape'] : []), ...(record.lock ? ['net locked: the router adds no copper'] : [])],
       };
     }
-    const copper = target.closest('.l-front-copper [data-net], .l-back-copper [data-net], .l-vias [data-net]');
+    const copper = target.closest('.l-front-copper [data-net], .l-back-copper [data-net], .l-vias [data-net], .l-uncounted [data-net]');
     if (copper) return { ...at, title: `net ${copper.getAttribute('data-net')}`, lines: [] };
     if (part) {
       const how = part.locked ? 'locked' : part.placement === 'derived' ? 'placed by netsmith' : `placed by ${part.placement}`;

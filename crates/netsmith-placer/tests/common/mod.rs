@@ -914,3 +914,158 @@ pub fn write_measured(board: &Board, name: &str) {
     )
     .expect("the project file can be written");
 }
+
+/// A board made for the placement objective for routing (issue #1534), from a seed: a
+/// fine-pitch package U1 of 32 pads; a memory U2 of 8 pads on a bus of six nets to U1, one with
+/// a pull-up R2; an input power chain J1 (connector), R1 (protection), Q1 and Q2 (regulators)
+/// with C1 and C3 on VRAW, VIN and V5, whose currents the design's features state; and
+/// `extra` resistors on signal nets of U1, the odd ones on the back. GND and 3V3 are the inner
+/// planes. The seed decides which pads of U1 the nets take; `objective` is
+/// `PlaceOptions::routing_objective`.
+pub fn routing_board(seed: u64, extra: usize, objective: f64) -> Board {
+    let mut state = seed;
+    let mut next = move |bound: usize| {
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (state >> 33) as usize % bound
+    };
+    let part = |refdes: &str, kind: &str, value: &str, package: Option<&str>| Part {
+        provides: if kind == "Header1x2" {
+            vec!["Connector".to_string()]
+        } else {
+            Vec::new()
+        },
+        declared_kind: netsmith_testkit::std_kind(kind)
+            .and_then(netsmith_core::PartKind::from_word),
+        refdes: refdes.into(),
+        kind: kind.into(),
+        value: value.into(),
+        package: package.map(str::to_string),
+        path: String::new(),
+        pins: Vec::new(),
+    };
+    let mut parts = vec![
+        part("U1", "Quad", "QUAD", Some("QUAD")),
+        part("U2", "Quad", "MEM", Some("MEM8")),
+        part("J1", "Header1x2", "Conn_01x02", None),
+        part("R1", "Resistor", "0R", Some("0603")),
+        part("Q1", "LinearRegulator", "reg", Some("SOT-23")),
+        part("Q2", "LinearRegulator", "reg", Some("SOT-23")),
+        part("C1", "Capacitor", "10u", Some("0603")),
+        part("C3", "Capacitor", "10u", Some("0603")),
+        part("R2", "Resistor", "10k", Some("0402")),
+    ];
+    let pin = |refdes: &str, pin: &str| PinRef {
+        refdes: refdes.into(),
+        pin: pin.into(),
+    };
+    let net = |name: &str, pins: Vec<PinRef>| Net {
+        name: name.into(),
+        pins,
+    };
+    // U1's pads in an order the seed decides.
+    let mut pads: Vec<usize> = (1..=32).collect();
+    for k in (1..pads.len()).rev() {
+        pads.swap(k, next(k + 1));
+    }
+    let mut u1 = pads.into_iter().map(|p| p.to_string());
+    let mut take = || u1.next().expect("U1 has pads left");
+    let mut nets = vec![
+        net("VRAW", vec![pin("J1", "1"), pin("R1", "1")]),
+        net("VIN", vec![pin("R1", "2"), pin("Q1", "1"), pin("C1", "1")]),
+        net("V5", vec![pin("Q1", "3"), pin("Q2", "1"), pin("C3", "1")]),
+    ];
+    for k in 1..=6 {
+        let mut pins = vec![pin("U2", &k.to_string()), pin("U1", &take())];
+        if k == 6 {
+            pins.push(pin("R2", "1"));
+        }
+        nets.push(net(&format!("BUS{k}"), pins));
+    }
+    let mut gnd = vec![
+        pin("J1", "2"),
+        pin("Q1", "2"),
+        pin("Q2", "2"),
+        pin("C1", "2"),
+        pin("C3", "2"),
+        pin("U2", "8"),
+    ];
+    let mut rail = vec![pin("Q2", "3"), pin("U2", "7"), pin("R2", "2")];
+    let mut sides = std::collections::BTreeMap::new();
+    for k in 0..extra {
+        let refdes = format!("R{}", k + 10);
+        parts.push(part(&refdes, "Resistor", "1k", Some("0402")));
+        nets.push(net(
+            &format!("S{k}"),
+            vec![pin(&refdes, "1"), pin("U1", &take())],
+        ));
+        if k % 2 == 0 { &mut gnd } else { &mut rail }.push(pin(&refdes, "2"));
+        if k % 2 == 1 {
+            sides.insert(refdes, netsmith_pcb::Side::Back);
+        }
+    }
+    gnd.extend([pin("U1", &take()), pin("U1", &take())]);
+    rail.extend([pin("U1", &take()), pin("U1", &take())]);
+    nets.push(net("GND", gnd));
+    nets.push(net("3V3", rail));
+    let net_currents = [
+        ("VRAW", 1.0),
+        ("VIN", 1.0),
+        ("V5", 0.6),
+        ("GND", 1.0),
+        ("3V3", 0.4),
+    ]
+    .into_iter()
+    .map(|(net, current)| netsmith_core::NetCurrent {
+        net: net.into(),
+        current,
+        least_width: 0.25,
+        inner_least_width: None,
+        vias: 1,
+        source: String::new(),
+    })
+    .collect();
+    let features = netsmith_core::Features {
+        net_currents,
+        ..Default::default()
+    };
+    let design = Design {
+        modules: Vec::new(),
+        name: "RoutingBoard".into(),
+        process: Some(four_layer_process()),
+        features,
+        interfaces: Vec::new(),
+        notes: Vec::new(),
+        parts,
+        nets,
+    };
+    let placement = PlaceOptions {
+        sides,
+        seed,
+        routing_objective: objective,
+        ..PlaceOptions::default()
+    };
+    let folder = TempDir::new("routing-board");
+    std::fs::write(folder.join("QUAD.kicad_mod"), quad_footprint(8)).unwrap();
+    std::fs::write(
+        folder.join("MEM8.kicad_mod"),
+        quad_footprint(2).replace("\"QUAD\"", "\"MEM8\""),
+    )
+    .unwrap();
+    let mapping = netsmith_kicad::Mapping::parse(
+        "[[part]]\nkind = \"Quad\"\npackage = \"QUAD\"\nsymbol = \"synth:Q\"\nfootprint = \"synth:QUAD\"\n\
+         [[part]]\nkind = \"Quad\"\npackage = \"MEM8\"\nsymbol = \"synth:Q\"\nfootprint = \"synth:MEM8\"\n",
+        "routing",
+        std::path::Path::new("."),
+    )
+    .unwrap();
+    let mapping = netsmith_kicad::Mapping::standard().merged(mapping).unwrap();
+    netsmith_placer::board_from_design_placed(
+        &design,
+        &mapping,
+        &fixtures().with_library("synth", folder.path()),
+        &placement,
+    )
+    .unwrap_or_else(|e| panic!("{e}"))
+}

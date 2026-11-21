@@ -186,14 +186,14 @@ fn solved(catalogs: &Catalogs) -> Solution {
 #[test]
 fn a_project_offer_gives_its_row_the_number_and_the_class() {
     let without = solved(&project(&[]).unwrap());
-    assert_eq!(without.picks[0].lcsc, None);
+    assert_eq!(without.picks[0].sku, None);
     assert_eq!(without.picks[0].library, None);
 
     let with = project(&[("lcsc", ",ZZ9-33,C900001,Basic,https://example.invalid/jlc,,\n")])
         .unwrap();
     let s = solved(&with);
     assert_eq!(s.picks[0].mpn.as_deref(), Some("ZZ9-33"));
-    assert_eq!(s.picks[0].lcsc.as_deref(), Some("C900001"));
+    assert_eq!(s.picks[0].sku.as_deref(), Some("C900001"));
     assert_eq!(s.picks[0].library, Some(Library::Basic));
     // What the catalogs say of the number is the offer's too.
     let supplier = with.supplier("C900001").expect("the offer's number");
@@ -238,7 +238,7 @@ fn an_lcsc_offer_gives_the_number_and_no_class() {
         .iter()
         .find(|r| r.mpn.as_deref() == Some("ZZ9-50"))
         .unwrap();
-    assert_eq!(row.lcsc.as_deref(), Some("C900002"));
+    assert_eq!(row.sku.as_deref(), Some("C900002"));
     assert_eq!(row.library, None);
 }
 

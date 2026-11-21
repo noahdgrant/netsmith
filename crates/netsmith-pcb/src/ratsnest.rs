@@ -26,7 +26,10 @@
 //! edge, joins it, and a round end that only touches the edge does not (the design rules check
 //! says so: [`netsmith_geom::COPPER_JOIN`]); a track over a pad, two tracks of one layer whose copper
 //! meets (end to end, or an end on the other's middle, as a hand-routed board has them), and a
-//! via on a pad or on a track. A net a routes file locks ([`crate::routes`]) is joined by its
+//! via on a pad or on a track. An end on another track's middle joins it while it lies nearer
+//! to the other's centre line than the two half widths together, whatever the widths; an end that
+//! only touches an arc's edge joins it, as KiCad's hit test of an arc has it (issue #1542). A net a
+//! routes file locks ([`crate::routes`]) is joined by its
 //! pours on the outer layers too: the router adds nothing to it, so the pour is how its pads
 //! meet, and a pour joins the pads, tracks and vias of its net on its layer, as the design rules
 //! check takes it (its fill is not computed). Other nets are not: the router routes them to
@@ -57,6 +60,20 @@ const TOUCH: f64 = 1e-6;
 /// into it: KiCad joins it when the distance is less than the reach, strictly (issue #1334).
 fn runs_into(distance: f64, reach: f64) -> bool {
     distance < reach - netsmith_geom::COPPER_JOIN
+}
+
+/// Whether a track's end at `end`, its copper reaching `reach` round it, is joined to `other`:
+/// it lies nearer to the other's centre line than the two reaches together, so the round end
+/// runs into the other's copper, whatever the two widths (a T of a narrow track on a wide one),
+/// as KiCad 9 joins them. An arc's edge counts as on it, as KiCad's hit test of an arc has it,
+/// and a straight track's does not (issue #1542).
+fn end_on_track(other: &Track, end: Pt, reach: f64) -> bool {
+    let (d, reach) = (other.distance_to(end), reach + other.width / 2.0);
+    if other.arc().is_some() {
+        d <= reach + netsmith_geom::COPPER_ARC_TOUCH
+    } else {
+        runs_into(d, reach)
+    }
 }
 
 /// One line still to be routed.
@@ -163,11 +180,10 @@ fn near(a: Pt, b: Pt) -> bool {
 /// Whether the copper of two tracks of one layer meets: an end of one lies on the other's
 /// copper (a track that ends on another's middle), or their centre lines cross.
 fn tracks_touch(a: &Track, b: &Track) -> bool {
-    let reach = (a.width + b.width) / 2.0;
     let ends_on = |x: &Track, y: &Track| {
         [x.from, x.to]
             .iter()
-            .any(|&e| runs_into(y.distance_to(e), reach))
+            .any(|&e| end_on_track(y, e, x.width / 2.0))
     };
     if ends_on(a, b) || ends_on(b, a) {
         return true;
@@ -875,7 +891,7 @@ pub fn open_ends(board: &Board, net: &str, tracks: &[usize], vias: &[usize]) -> 
                         && other.layer == track.layer
                         && (near(end, other.from)
                             || near(end, other.to)
-                            || runs_into(other.distance_to(end), reach + other.width / 2.0))
+                            || end_on_track(other, end, reach))
                 })
                 || all_vias.iter().any(|&(_, via)| {
                     via.on(track.layer, layers)
@@ -1472,6 +1488,72 @@ mod tests {
         // On the other layer it does not.
         board.tracks[1].layer = CopperLayer::Back;
         assert!(Ratsnest::of(&board).lines.iter().any(|l| l.net == "VCC"));
+    }
+
+    #[test]
+    fn a_tee_of_two_widths_joins_while_the_round_end_runs_into_the_other_and_an_arcs_edge_counts() {
+        // Issue #1542: KiCad 9 joins the end of one track to another's middle when it lies
+        // nearer to the other's centre line than the two half widths together, whichever is
+        // the wider; a straight track's edge does not count, an arc's does.
+        let board = crate::board::tests::led_board();
+        let (a, b) = pad_centres(&board, "VCC");
+        let off = Pt::new(b.x, b.y + 3.0);
+        let middle = Pt::new((a.x + off.x) / 2.0, (a.y + off.y) / 2.0);
+        let len = a.distance(off);
+        // The normal of the run, towards `b`.
+        let mut n = Pt::new(-(off.y - a.y) / len, (off.x - a.x) / len);
+        if (b.x - middle.x) * n.x + (b.y - middle.y) * n.y < 0.0 {
+            n = Pt::new(-n.x, -n.y);
+        }
+        let open = |run: Track, at: Pt, towards: Pt, d: f64, end_w: f64| {
+            let mut board = board.clone();
+            board.tracks.push(run);
+            let end = Pt::new(at.x + towards.x * d, at.y + towards.y * d);
+            board
+                .tracks
+                .push(Track::straight("VCC", CopperLayer::Front, b, end, end_w));
+            Ratsnest::of(&board).lines.iter().any(|l| l.net == "VCC")
+        };
+        for (run_w, end_w) in [(0.5, 0.2), (0.2, 0.5)] {
+            let run = Track::straight("VCC", CopperLayer::Front, a, off, run_w);
+            let reach: f64 = (run_w + end_w) / 2.0;
+            for d in [0.0, run_w / 2.0, reach - 0.0005] {
+                assert!(
+                    !open(run.clone(), middle, n, d, end_w),
+                    "{run_w}/{end_w} at {d}"
+                );
+            }
+            for d in [reach, reach + 0.005] {
+                assert!(
+                    open(run.clone(), middle, n, d, end_w),
+                    "{run_w}/{end_w} at {d}"
+                );
+            }
+            // An arc that bows away from `b`: an end that only touches its edge is joined.
+            let bow = Pt::new(middle.x - n.x * 0.5, middle.y - n.y * 0.5);
+            let arc = Track {
+                mid: Some(bow),
+                ..Track::straight("VCC", CopperLayer::Front, a, off, run_w)
+            };
+            let geom = arc.arc().unwrap();
+            let centre = Pt::new(geom.centre.x, geom.centre.y);
+            assert!(
+                b.distance(centre) < geom.radius,
+                "`b` lies inside the arc's circle"
+            );
+            let inward = Pt::new(
+                (centre.x - bow.x) / geom.radius,
+                (centre.y - bow.y) / geom.radius,
+            );
+            assert!(
+                !open(arc.clone(), bow, inward, reach, end_w),
+                "{run_w}/{end_w} arc"
+            );
+            assert!(
+                open(arc, bow, inward, reach + 0.0005, end_w),
+                "{run_w}/{end_w} arc"
+            );
+        }
     }
 
     #[test]

@@ -9,8 +9,10 @@ import { useEffect, useState } from 'preact/hooks';
 import type { PcbBox, PcbCopper, PcbFill, PcbNets, PcbScene, PcbSummary } from '../api';
 import { api, ApiFailure } from '../client';
 import { EmptyState } from '../components/ui';
-import { select, selection } from '../pcbstore';
-import { copperLayerLine, copperZoneLine, fillAreaLine, fillCountsLine, fillPadLine, fillStarvedLine, fillWord, guidelineLine, mm, netGroupLine, netPairLine, netRowLine, padName, padProblem, padsLine, sheetBox, summaryQuery, teardropsLine } from './summary';
+import { pickRoute, select, selection } from '../pcbstore';
+import { pickNet } from '../store';
+import { routesTrackOf } from './uncountedMarks';
+import { copperLayerLine, copperZoneLine, fillAreaLine, fillCountsLine, fillPadLine, fillStarvedLine, fillWord, guidelineLine, mm, netGroupLine, netPairLine, netRowLine, netUncountedLine, padName, padProblem, padsLine, sheetBox, summaryQuery, teardropsLine, uncountedBox, uncountedRunLine } from './summary';
 
 /** How many of the longest nets the tab lists. */
 const LONGEST_NETS = 8;
@@ -296,6 +298,30 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
               <b>Group</b> {netGroupLine(g)}
             </div>
           ))}
+          {nets?.nets
+            .filter((n) => n.notCounted?.length)
+            .map((n) => (
+              <div key={`uncounted ${n.net}`} class="summary-line warn" data-testid="summary-nets-uncounted" data-net={n.net}>
+                <b>Not counted</b> {netUncountedLine(n)}
+                {n.notCounted.map((r, i) => (
+                  <button
+                    key={i}
+                    class="chip uncounted-run"
+                    data-kind={r.kind}
+                    title="Zoom to this copper and pick it: the track of the routes file under it, or its net"
+                    onClick={() => {
+                      const piece = r.pieces[0];
+                      const track = piece ? routesTrackOf(sc.routes.find((x) => x.net === n.net), r.layer, piece.from, piece.to) : null;
+                      if (track) pickRoute({ net: n.net, track });
+                      else pickNet(n.net);
+                      props.onFocus(uncountedBox(r));
+                    }}
+                  >
+                    {uncountedRunLine(r)}
+                  </button>
+                ))}
+              </div>
+            ))}
           {nets && nets.nets.length > 0 && (
             <details class="summary-line" data-testid="summary-nets" data-routed={nets.routed}>
               <summary>

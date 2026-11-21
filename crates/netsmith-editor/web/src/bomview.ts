@@ -52,8 +52,8 @@ export type Sourcing = 'found' | 'stale' | 'unchecked' | 'ambiguous' | 'missing'
 /** What the page can say about where a line's part comes from. */
 export function sourcing(l: BomLine): Sourcing {
   if (l.unresolved) return 'ambiguous';
-  if (l.handSolder && !l.lcsc) return 'hand';
-  if (!l.lcsc) return 'missing';
+  if (l.handSolder && !l.sku) return 'hand';
+  if (!l.sku) return 'missing';
   if (l.date == null || l.unitUsd == null) return 'unchecked';
   return l.stale ? 'stale' : 'found';
 }

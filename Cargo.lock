@@ -774,6 +774,7 @@ dependencies = [
  "netsmith-netlist",
  "netsmith-pcb",
  "netsmith-pipeline",
+ "netsmith-router",
  "netsmith-solve",
  "netsmith-testkit",
  "netsmith-tools",
@@ -902,6 +903,7 @@ version = "0.7.0"
 dependencies = [
  "i_overlay",
  "netsmith-sexp",
+ "serde",
  "serde_json",
 ]
 

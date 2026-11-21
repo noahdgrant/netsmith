@@ -2211,6 +2211,50 @@
           "current": 0.004790327517600245
         },
         {
+          "net": "GND",
+          "path": "mcu.a0",
+          "pins": [
+            {
+              "refdes": "U2",
+              "pin": "1"
+            }
+          ],
+          "current": 0.0
+        },
+        {
+          "net": "GND",
+          "path": "mcu.a1",
+          "pins": [
+            {
+              "refdes": "U2",
+              "pin": "2"
+            }
+          ],
+          "current": 0.0
+        },
+        {
+          "net": "GND",
+          "path": "mcu.a2",
+          "pins": [
+            {
+              "refdes": "U2",
+              "pin": "3"
+            }
+          ],
+          "current": 0.0
+        },
+        {
+          "net": "net-mcu.i2c.scl",
+          "path": "mcu.i2c.scl",
+          "pins": [
+            {
+              "refdes": "U2",
+              "pin": "6"
+            }
+          ],
+          "current": 0.0
+        },
+        {
           "net": "3V3",
           "path": "pullups.scl_pullup.a",
           "pins": [
