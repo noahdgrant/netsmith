@@ -177,6 +177,19 @@ pub struct RouteArgs {
     /// Nets whose unlocked tracks and vias may be removed and routed again after it, `A,B`.
     #[arg(long, value_name = "NET,...", value_delimiter = ',')]
     pub rip: Vec<String>,
+    /// How deep a ripped net may rip in turn (default 1).
+    ///
+    /// The nets `NET` rips are at depth 1, the nets one of them rips (when it finds no way back)
+    /// at depth 2, and so on; a ripped net rips in turn only while its depth is at most N, so 0
+    /// lets no ripped net rip, and 1 lets the nets `NET` rips rip once more.
+    #[arg(long, value_name = "N", default_value_t = netsmith_fabricate::route_net::RIP_DEPTH)]
+    pub rip_depth: usize,
+    /// The most orders the ripped nets are routed again in, at least 1 (default 3).
+    ///
+    /// When a ripped net cannot be put back, they are routed again from the start with the nets
+    /// that were not put back first; each try is reported, and each may run the router 64 times.
+    #[arg(long, value_name = "N", default_value_t = netsmith_fabricate::route_net::TRIES, value_parser = super::route::parse_tries)]
+    pub tries: usize,
     /// Say what it would do, and write nothing.
     #[arg(long)]
     pub dry_run: bool,
@@ -724,7 +737,11 @@ fn route(args: &RouteArgs) -> ExitCode {
         let file = routes_file(layout);
         let routes = lib::load(&file)?;
         let ask = match route_net::Ask::of(board, &args.net, &args.rip) {
-            Ok(ask) => ask,
+            Ok(ask) => route_net::Ask {
+                depth: args.rip_depth,
+                tries: args.tries,
+                ..ask
+            },
             Err(lib::Refusal::Refused(e)) => return Ok(Err(e)),
             Err(lib::Refusal::Failed(e)) => return Err(e),
         };
