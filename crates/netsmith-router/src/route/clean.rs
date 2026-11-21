@@ -13,6 +13,10 @@
 //! pad's centre, along its own direction, and the bend moves along the next run to meet it.
 //! Where that comes too near other copper, the stub is drawn on from the centre to meet the run
 //! just outside the pad, at a bend of 45 degrees or less, which `track_angle` allows.
+//! No change leaves a piece from a centre that ends inside the pad or the via (issue #1539):
+//! a run that ends still clearly inside it is folded too (the last steps of a path into a via
+//! may all lie inside it), no bend is moved into a pad or a via of the line, and a stub that no
+//! change can fold is taken off, so that the run ends clearly inside the pad, which joins it.
 //!
 //! **Steps.** The grid's paths step a cell at a time, and the cut of a right angle
 //! ([`Router::cut_corners`]) on a run of a cell or two leaves pieces of 0.05 to 0.14 mm. A
@@ -246,6 +250,28 @@ impl<'a> Router<'a> {
                 .any(|v| same(v.at, p) && v.at.distance(q) <= v.diameter / 2.0)
     }
 
+    /// Whether `q` is clearly inside the copper of the net at the line end `p` on `layer`, as
+    /// the design rules check finds a place inside a pad or a via, where tracks meet at any
+    /// angle: the pad's box less what a round pad of its size leaves out at a corner, the via
+    /// less a micrometre (as `crate::loops` judges it).
+    fn deep_in_end(&self, net: usize, routed: &Routed, p: Pt, q: Pt, layer: usize) -> bool {
+        let in_pad = self.fixed_by_net[net].iter().any(|&k| {
+            let o = &self.fixed.list[k];
+            let Form::Rect(r) = o.form else { return false };
+            let inset = r.width().min(r.height()) / 2.0 * (1.0 - std::f64::consts::FRAC_1_SQRT_2);
+            let deep = r.expanded(-inset - 1e-4);
+            o.copper
+                && o.layers[layer]
+                && r.contains(&Rect::new(p, p))
+                && deep.contains(&Rect::new(q, q))
+        });
+        in_pad
+            || routed
+                .vias
+                .iter()
+                .any(|v| same(v.at, p) && v.at.distance(q) <= v.diameter / 2.0 - 1e-3)
+    }
+
     /// The line's ends drawn to its pads' centres (the module's header).
     pub(super) fn snap_ends(&self, routed: &mut Routed, net: usize, clear: &Clear<'_>) {
         // The line's ends, and its vias: a track from a via's centre to a bend in the via is a
@@ -287,6 +313,17 @@ impl<'a> Router<'a> {
                 };
                 let li = self.stack.index(layer).unwrap_or(FRONT);
                 let mut changes: Vec<Change> = Vec::new();
+                let deep = self.deep_in_end(net, routed, p, e, li);
+                if deep && !at_joint(e) && (u.0 * w.1 - u.1 * w.0).abs() >= 1e-9 {
+                    // The run ends still clearly inside this pad or via, where the steps of the
+                    // grid may end in a row (issue #1539): drawn from the centre, and folded
+                    // again into the run after it.
+                    changes.push(Change {
+                        moved: vec![(r, p, e)],
+                        gone: vec![s],
+                        ..Change::default()
+                    });
+                }
                 if at_joint(e) || (u.0 * w.1 - u.1 * w.0).abs() < 1e-9 {
                     // The run ends inside copper of the net, or goes on in line with the stub.
                     changes.push(Change {
@@ -308,7 +345,14 @@ impl<'a> Router<'a> {
                         && let Some(b) = meet(p, u, e, v)
                         && ahead(p, b, u) >= LEAST
                         && ahead(b, f, v) >= LEAST
+                        && !joints
+                            .iter()
+                            .any(|&j| !same(j, p) && self.in_end(net, routed, j, b, li))
                     {
+                        // (A bend moved into another pad or via of the line would leave a
+                        // track from its centre that ends inside it, which its own folds have
+                        // been made already: issue #1539. One moved into this end's pad is
+                        // folded again at the next turn.)
                         // The run moved across to pass the centre, the bend along the next.
                         changes.push(Change {
                             moved: vec![(r, p, b), (n, b, f)],
@@ -340,6 +384,16 @@ impl<'a> Router<'a> {
                         break;
                     }
                     tau += GENTLE_STEP;
+                }
+                // Else, last, the stub taken off where the run leaves the copper: the run then
+                // ends clearly inside the pad or the via, which joins it as well, and no piece is
+                // left from the centre to a place still inside (issue #1539). Taking copper off
+                // comes nearer nothing.
+                if self.deep_in_end(net, routed, p, c, li) && !self.in_end(net, routed, p, e, li) {
+                    changes.push(Change {
+                        gone: vec![s],
+                        ..Change::default()
+                    });
                 }
                 let Some(change) = changes
                     .into_iter()

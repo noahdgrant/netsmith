@@ -2,6 +2,9 @@
 //! design rules check finds nothing (issue #1485): a routed board passes the check with all of
 //! them and still carries copper a person removes by hand.
 //!
+//! - **tracks of no length and copies** (issue #1539): a straight track whose two ends are one
+//!   place is removed, and of two straight tracks of a net and layer with the same two ends, the
+//!   narrower (of two as wide, the later) is removed: the other is that copper already;
 //! - **tracks inside a pad**: a straight track from the centre of a pad or a via of its net to
 //!   a point still inside that pad or via is removed: the copper there is the pad's or the
 //!   via's already. A pad is held to the circle of its shorter side round its centre, which
@@ -34,6 +37,9 @@ use super::{Candidate, Key, Kind, NEAR, Work, dot, length, segment_distance, uni
 
 /// A track shorter than this many of its widths is tiny.
 pub const TINY: f64 = 2.0;
+
+/// A straight track shorter than this (mm) has no length: its two ends are one place.
+const ZERO: f64 = 1e-6;
 
 /// The fewest tiny tracks in a row that make a run.
 pub const TINY_RUN: usize = 2;
@@ -152,6 +158,56 @@ impl Work<'_> {
             remove_holes: holes,
             add: Vec::new(),
         }
+    }
+
+    /// Each straight track of no length, and each straight track that is a copy of another of
+    /// its net and layer: the same two ends (either way round), as wide or narrower (issue 1539).
+    /// Of two copies as wide, the later goes.
+    pub(super) fn crumbs(&self) -> Vec<Candidate> {
+        let mut out = Vec::new();
+        // The editable tracks by their net, layer and two ends, the lesser end first.
+        let mut seen: BTreeMap<(Place, (i64, i64)), usize> = BTreeMap::new();
+        for i in 0..self.copper.wires.len() {
+            if !self.editable(i) {
+                continue;
+            }
+            let t = &self.copper.wires[i].track;
+            if length(t) < ZERO {
+                out.push(self.removal(
+                    Kind::ZeroLength,
+                    i,
+                    "removed a track of no length".to_string(),
+                    Vec::new(),
+                ));
+                continue;
+            }
+            let (a, b) = (q(t.from), q(t.to));
+            let key = ((t.net.clone(), t.layer.word(), a.min(b)), a.max(b));
+            match seen.get(&key).copied() {
+                None => {
+                    seen.insert(key, i);
+                }
+                Some(k) => {
+                    // The narrower of the two goes; of two as wide, the later.
+                    let (gone, kept) = if t.width <= self.copper.wires[k].track.width + 1e-9 {
+                        (i, k)
+                    } else {
+                        seen.insert(key, i);
+                        (k, i)
+                    };
+                    out.push(self.removal(
+                        Kind::Copy,
+                        gone,
+                        format!(
+                            "removed a copy of a track of {:.3} mm",
+                            length(&self.copper.wires[kept].track)
+                        ),
+                        Vec::new(),
+                    ));
+                }
+            }
+        }
+        out
     }
 
     /// Each track inside a pad: a track from the centre of a pad or a via of its net to a point still in it.
@@ -907,6 +963,29 @@ mod tests {
                 .any(|t| t.from == [10.16, 3.0] && t.to == [12.8875, 3.0]),
             "{tracks:#?}"
         );
+    }
+
+    #[test]
+    fn a_track_of_no_length_and_a_copy_of_a_track_are_removed() {
+        // The straight track along y = 3 twice, the second drawn the other way round, and a
+        // track of no length at its end.
+        let along = path(TOP, &[[10.16, 3.0], [12.8875, 3.0]])
+            .into_iter()
+            .chain(path(TOP, &[[12.8875, 3.0], [10.16, 3.0]]))
+            .chain(path(TOP, &[[12.8875, 3.0], [12.8875, 3.0]]))
+            .collect();
+        let (counts, tracks, said) = tidy_anode(anode(&[[9.61, 4.4], [9.61, 3.55]], along));
+        assert_eq!(
+            only(counts),
+            Counts {
+                zero_length: 1,
+                copies: 1,
+                ..Counts::default()
+            },
+            "{said:?}"
+        );
+        assert_eq!(tracks.len(), 5, "{tracks:#?}");
+        assert!(tracks.iter().all(|t| !same(t.from, t.to)), "{tracks:#?}");
     }
 
     #[test]
