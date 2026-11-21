@@ -633,6 +633,49 @@ fn the_easyduino_reproduction_has_the_originals_copper() {
     assert_eq!(made.zones.matched, 5);
 }
 
+/// Issue 1515: with `--no-places` the import writes no place, so it says nothing of how a part
+/// would be placed (turned, moved, its pads numbered the other way round): a count line instead.
+/// ORBIT's two pull-ups are placed turned by half a turn when the places are written (the
+/// reproduction test above checks that note).
+#[test]
+fn the_import_without_places_says_nothing_of_how_a_part_is_placed() {
+    let port = &ORBIT;
+    let folder = TempDir::new("reproduce-no-places");
+    copy_tree(&example(port), &folder);
+    let _ = fs::remove_file(folder.join("src/main.routes.toml"));
+    let layout = folder.join("src/main.pcb.toml");
+    let before = fs::read(&layout).ok();
+    let original = format!("reference/{}", port.original);
+    let run = netsmith(&folder, &["routes", "import", &original, "--no-places"]);
+    assert!(run.status.success(), "routes import:\n{}", text(&run));
+    let said = text(&run);
+    assert!(
+        !said.lines().any(|l| l.starts_with("part ") && l.contains("is placed")),
+        "{said}"
+    );
+    assert!(!said.contains("drawn in another frame"), "{said}");
+    assert!(!said.contains("the other way round"), "{said}");
+    let counted = said
+        .lines()
+        .find_map(|l| l.strip_prefix("places not imported: "))
+        .unwrap_or_else(|| panic!("no count line:\n{said}"));
+    assert!(counted.parse::<usize>().unwrap() > 0, "{said}");
+    // The notes about copper stay, and no place was written.
+    assert!(said.contains("wrote "), "{said}");
+    assert!(!said.contains("part place(s) in the layout file"), "{said}");
+    assert_eq!(before, fs::read(&layout).ok(), "the layout file changed");
+    // JSON: no per-part notes and the count.
+    let json = netsmith(
+        &folder,
+        &["routes", "import", &original, "--no-places", "--format", "json"],
+    );
+    assert!(json.status.success(), "{}", text(&json));
+    let doc: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+    assert_eq!(doc["refitted"], serde_json::json!([]), "{doc}");
+    assert_eq!(doc["places"], 0, "{doc}");
+    assert!(doc["places_not_imported"].as_u64().unwrap() > 0, "{doc}");
+}
+
 /// Segments, arcs, vias and the length of the tracks of a board's copper.
 fn summary(shapes: &[Shape]) -> String {
     let n = |k: Kind| shapes.iter().filter(|s| s.kind == k).count();

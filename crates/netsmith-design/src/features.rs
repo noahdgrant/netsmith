@@ -637,6 +637,39 @@ fn margin_of(model: &Model, inst: InstId, errors: &mut Vec<String>) -> Option<f6
     }
 }
 
+/// How the tracks of the board turn (issue #1508): its own `.corner`, a member of the enum
+/// `std::sources::TrackCorner` the board declares (`.corner: TrackCorner`) and narrows to a
+/// variant (`.corner &= TrackCorner::Mitered`); `Rounded`, the default, when it declares none
+/// or leaves it unset. A `.corner` of another type is an error that says what to write.
+fn board_corner(model: &Model, errors: &mut Vec<String>) -> netsmith_core::TrackCorner {
+    use netsmith_check::FieldKind;
+    let fix = "a board's `.corner` says how its tracks turn: `import std::sources::TrackCorner`, then `.corner: TrackCorner` and `.corner &= TrackCorner::Mitered`";
+    match model.member(model.root, "corner") {
+        None => netsmith_core::TrackCorner::Rounded,
+        Some(Member::Field(f)) => {
+            let field = model.field(f);
+            match field.kind {
+                FieldKind::Enum(e) if model.enum_info(e).name == "TrackCorner" => {
+                    match &field.domain {
+                        Domain::Text(v) => {
+                            netsmith_core::TrackCorner::of_variant(v).unwrap_or_default()
+                        }
+                        _ => netsmith_core::TrackCorner::Rounded,
+                    }
+                }
+                _ => {
+                    errors.push(format!("`corner` is not a `TrackCorner`: {fix}"));
+                    netsmith_core::TrackCorner::Rounded
+                }
+            }
+        }
+        Some(_) => {
+            errors.push(format!("`corner` is not a `TrackCorner`: {fix}"));
+            netsmith_core::TrackCorner::Rounded
+        }
+    }
+}
+
 /// The room for routing each part keeps round its courtyard (`.routing_margin`, issue #1313),
 /// by path: the part's own, or the board's for a part that states none. A part whose margin is
 /// 0 is not listed, so a board that states none has an empty list.
@@ -1618,6 +1651,7 @@ pub(crate) fn features_of(
         height_growths: height_growths(model, errors),
         routing_margins: routing_margins(model, errors),
         silks: silks(model, errors),
+        corner: board_corner(model, errors),
         ..Features::default()
     };
 

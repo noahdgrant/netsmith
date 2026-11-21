@@ -3,9 +3,12 @@
 //! The design stage rates the process's via for current (`netsmith_design::guidelines::
 //! via_current`) and says how many of them a net needs where a track changes layer
 //! ([`netsmith_core::NetCurrent::vias`]). The router draws one via at each change of layer; this
-//! pass, after routing, puts more beside it until the cluster has as many. A via of the cluster
-//! stands so near the one before that their copper overlaps on both layers (their holes keep the
-//! process's via-to-via space, `via_hole_to_hole`), so the vias are joined with no track. A place
+//! pass, after routing, puts more beside it until the cluster has as many. Vias of the net whose
+//! copper is no more than the group gap apart count as one cluster, as the design rules check
+//! counts them (`Rules::group_gap`: the process's least clearance, or the board's
+//! `.process.via_group_gap`, issue #1505). A via this pass adds stands so near the one before
+//! that their copper overlaps on both layers (their holes keep the process's via-to-via space,
+//! `via_hole_to_hole`), so the vias are joined with no track. A place
 //! is tried in a fixed order of eight directions round each via of the cluster, and taken only
 //! where the via keeps the rules' space from every other net's copper, from every hole, from the
 //! board edge, the cutouts and the keepouts that forbid vias; where none is free the cluster
@@ -111,10 +114,13 @@ fn allows(board: &Board, net: &str, p: Pt) -> bool {
     })
 }
 
-/// The vias of `net` whose copper touches the via at `index`, through others that touch,
-/// as indices into the board's vias.
+/// The vias of `net` that stand side by side with the via at `index`, through others that do,
+/// as indices into the board's vias: vias whose copper is no more than the rules' group gap
+/// apart, edge to edge (`Rules::group_gap`, the process's least clearance unless the board
+/// states `.process.via_group_gap`, issue #1505), as the design rules check groups them.
 fn cluster(board: &Board, index: usize) -> Vec<usize> {
     let net = &board.vias[index].net;
+    let gap = board.rules.group_gap();
     let mut found = vec![index];
     let mut k = 0;
     while k < found.len() {
@@ -122,7 +128,7 @@ fn cluster(board: &Board, index: usize) -> Vec<usize> {
         for (j, v) in board.vias.iter().enumerate() {
             if &v.net == net
                 && !found.contains(&j)
-                && v.at.distance(at) <= (v.diameter + size) / 2.0 + 1e-9
+                && v.at.distance(at) <= (v.diameter + size) / 2.0 + gap + 1e-9
             {
                 found.push(j);
             }

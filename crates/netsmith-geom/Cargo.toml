@@ -9,6 +9,7 @@ license.workspace = true
 # crate but netsmith-sexp.
 [dependencies]
 netsmith-sexp = { path = "../netsmith-sexp" }
+serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 # Polygon unions and differences, for the copper as polygons (`polygons`, ADR 0105).
 i_overlay = "9.1.0"

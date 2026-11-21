@@ -637,3 +637,25 @@ fn the_stitching_drawn_is_the_stitching_the_router_lays_as_fab_routes() {
     );
     assert_eq!(stitching_drawn(&routed), (said, said));
 }
+
+/// A board whose tracks are mitered (its `.corner`, issue #1508) is drawn with each arc as its
+/// chamfer, a straight track from the arc's start to its end; a rounded board draws the arc.
+#[test]
+fn a_mitered_board_draws_an_arc_as_its_chamfer() {
+    let mut board = board();
+    let (from, to) = (board.tracks[1].from, board.tracks[1].to);
+    let half = Pt::new((from.x + to.x) / 2.0, (from.y + to.y) / 2.0);
+    let (dx, dy) = (to.x - from.x, to.y - from.y);
+    let length = dx.hypot(dy);
+    let chord = board.clone();
+    board.tracks[1].mid = Some(Pt::new(
+        half.x - dy / length * 0.4,
+        half.y + dx / length * 0.4,
+    ));
+    let svg = |b: &Board| draw(b, &request(Format::Svg), None).unwrap().bytes;
+    assert_ne!(svg(&board), svg(&chord), "a rounded board draws its arc");
+    board.corner = netsmith_core::TrackCorner::Mitered;
+    let mut chord = chord;
+    chord.corner = netsmith_core::TrackCorner::Mitered;
+    assert_eq!(svg(&board), svg(&chord), "a mitered board draws the chamfer");
+}

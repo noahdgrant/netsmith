@@ -288,6 +288,8 @@ fn a_track_finding_names_the_width_the_width_needed_and_the_current_assumed() {
         "its net `P` carries 1 A (the sum of the currents on it with every load on at once: rail `a` 600 mA + rail `b` 400 mA)",
         "which needs 0.4000 mm",
         "IPC-2221, 35 \u{3bc}m outer copper, a 10 K temperature rise, the fabricator's 20% width tolerance",
+        // Issue 1514: the reach says what it is measured from.
+        "only within 1.00 mm of the box round the pad centres of a part on the net (measured from the centres of its pads, not from their edges) may a track be narrower",
         "widen it to 0.40 mm or more, or lower the current",
     ] {
         assert!(said.contains(part), "{part}: {said}");
@@ -634,4 +636,67 @@ fn a_branch_carries_the_sum_of_the_currents_of_the_pins_past_it() {
     assert_eq!(tracks(1e-5, 1e-5), 0);
     assert_eq!(tracks(0.4, 0.4), 2, "the two tracks before J1 carry 0.8 A");
     assert_eq!(tracks(0.0, 2.0), 3, "all three carry J2's 2 A");
+}
+
+#[test]
+fn a_via_and_a_track_to_an_input_that_takes_no_current_stand_alone() {
+    // Issue #1504: the branch of `branch_board` feeds J1's pin, an input the design stage says
+    // takes no current (an enable pin tied to a converter's input), on a net that needs 0.4 mm
+    // and three vias. Its 0.2 mm tracks and its one via are held to what J1 takes, and the
+    // finding of a branch that needs more names the current it assumed.
+    let mut b = branch_board(0.2, false);
+    let extras = DrcExtras {
+        pin_currents: vec![pin_current("J1", 0.0)],
+        ..branch_extras(None)
+    };
+    let r = check(&mut b, &extras);
+    assert_eq!(
+        (r.count(DrcRule::TrackCurrent), r.count(DrcRule::ViaCurrent)),
+        (0, 0)
+    );
+    let extras = DrcExtras {
+        pin_currents: vec![pin_current("J1", 2.0)],
+        ..branch_extras(None)
+    };
+    let r = check(&mut b, &extras);
+    let via = r
+        .findings
+        .iter()
+        .find(|v| v.rule == DrcRule::ViaCurrent)
+        .unwrap();
+    assert!(
+        via.message.contains("only feeds branches of net `P` and carries at most 2 A")
+            && via.message.contains("`j1.p1`"),
+        "{}",
+        via.message
+    );
+}
+
+#[test]
+fn vias_whose_copper_is_within_the_group_gap_count_as_one_group() {
+    // Issue #1505: two 0.45 mm vias of net P, which needs two side by side, at a 0.6 mm pitch
+    // (copper 0.15 mm apart). They are one group when the gap is at least 0.15 mm, two lone
+    // vias when it is less, or when the copper has to touch (a gap of 0).
+    let mut b = Pcb::new(2);
+    b.via("P", (10.0, 10.0), 0.45, 0.2);
+    b.via("P", (10.6, 10.0), 0.45, 0.2);
+    let count = |b: &mut Pcb, gap: f64| {
+        let extras = DrcExtras {
+            via_counts: vec![("P".to_string(), 2)],
+            via_group_gap: gap,
+            ..jlcpcb()
+        };
+        check(b, &extras).count(DrcRule::ViaCurrent)
+    };
+    assert_eq!(count(&mut b, 0.0), 2, "touching copper only");
+    assert_eq!(count(&mut b, 0.1), 2, "a gap under the copper's space");
+    assert_eq!(count(&mut b, 0.15), 0, "a gap of the copper's space");
+    // A third via 0.6 mm on joins the group through the second.
+    b.via("P", (11.2, 10.0), 0.45, 0.2);
+    let extras = DrcExtras {
+        via_counts: vec![("P".to_string(), 3)],
+        via_group_gap: 0.15,
+        ..jlcpcb()
+    };
+    assert_eq!(check(&mut b, &extras).count(DrcRule::ViaCurrent), 0);
 }

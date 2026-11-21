@@ -585,4 +585,37 @@ mod tests {
         board.track_paths[0].corner = netsmith_core::TrackCorner::Rounded;
         assert_eq!(round_bends(&mut board, ARC_WIDTHS), 1);
     }
+
+    #[test]
+    fn a_mitered_board_keeps_every_corner_and_its_picture_draws_an_arc_as_the_chamfer() {
+        // The board's `.corner` (issue #1508): no net of it takes an arc.
+        let mut board = open_board();
+        let points = bend_at(&board);
+        bent(&mut board, "VCC", points, 0.2);
+        board.corner = netsmith_core::TrackCorner::Mitered;
+        assert!(board.mitered("VCC"));
+        assert_eq!(round_bends(&mut board, ARC_WIDTHS), 0);
+        assert!(
+            board.chamfered().is_none(),
+            "no arc, nothing to draw otherwise"
+        );
+        board.corner = netsmith_core::TrackCorner::Rounded;
+        assert_eq!(round_bends(&mut board, ARC_WIDTHS), 1);
+        assert!(
+            board.chamfered().is_none(),
+            "a rounded board draws its arcs"
+        );
+        // An arc a mitered board has (an import, a hand-drawn one) is drawn as its chamfer, a
+        // straight track from its start to its end, and nothing else of it changes.
+        board.corner = netsmith_core::TrackCorner::Mitered;
+        let drawn = board.chamfered().expect("an arc of a mitered net");
+        assert_eq!(drawn.tracks.len(), board.tracks.len());
+        for (a, b) in board.tracks.iter().zip(&drawn.tracks) {
+            assert!(b.mid.is_none());
+            assert_eq!(
+                (a.from, a.to, a.width, &a.net),
+                (b.from, b.to, b.width, &b.net)
+            );
+        }
+    }
 }

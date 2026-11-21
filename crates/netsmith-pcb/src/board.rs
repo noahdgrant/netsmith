@@ -230,6 +230,14 @@ pub struct Board {
     /// table its budget.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub track_paths: Vec<netsmith_core::TrackPath>,
+    /// How the tracks of every net turn (the board's `.corner`, issue #1508): the router rounds
+    /// no bend of a board that is `Mitered`, and `view pcb` draws its arcs as the chamfer
+    /// ([`Board::mitered`]). `routes route --corner` changes it for one run.
+    #[serde(
+        default,
+        skip_serializing_if = "netsmith_core::TrackCorner::is_rounded"
+    )]
+    pub corner: netsmith_core::TrackCorner,
     /// How the physical file says nets are routed (issue #1274): with the RF nets of
     /// `impedance_targets`, what [`Board::one_layer_nets`] routes on one layer with no via.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

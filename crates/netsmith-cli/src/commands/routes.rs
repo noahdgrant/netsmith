@@ -41,7 +41,7 @@ pub struct Target {
 pub enum Command {
     /// Write the routes file (and the layout file's places) from a KiCad board.
     #[command(
-        after_long_help = "Every track, arc and through via of F.Cu, B.Cu and the inner signal layers becomes the copper of the design's net its pads are on: a KiCad net is the design's net that most of its pads are on, with the parts paired by a port's parts file (`--parts`, default `reference/parts.toml` of the project when there is one; without one, by reference designator). A KiCad net on no pad of a part the design has keeps its name if the design has a net of that name, and is left out otherwise; copper on an inner layer is left out unless the layer is one of the process's signal layers (an inner plane holds no track); each is said. Each zone of copper that is not the process's own plane or pour becomes a zone of its net's record, on its layers, with its outline, holes and the settings that change its copper (priority, clearance, minimum thickness, pad connection, thermal gap and spoke width, island removal); such a zone of the net of the design's pour or plane on its layer restates it, which is not drawn, and one of another net cuts it (`fab` writes the zones one priority above the pour, and the import takes that one off again). A zone that is the process's own plane or pour (the same net, layer and outline, and the same clearance, minimum width, pad connection and thermal relief as the process states, which is what `fab` writes) is left out and said, so that `fab` and then `routes import` of its board leaves a file of tracks and vias; one that differs from it is imported, as a hand zone. Rule areas, teardrops and hatched zones are left out and said.\n\nEach part of the design that the KiCad board has is written to the layout file at the KiCad board's place, turn and face, locked (`source = \"import\"`), unless `--no-places`, or the physical file pins it (its requirement places it). Places are from the top left corner of the KiCad board's Edge.Cuts box. Then the board is placed again and each net's record takes its pads as they are. Every net is locked (the router adds nothing to it) unless `--unlocked`. The routes file is written over; the layout file keeps its seed, keepouts and the parts the import does not place."
+        after_long_help = "Every track, arc and through via of F.Cu, B.Cu and the inner signal layers becomes the copper of the design's net its pads are on: a KiCad net is the design's net that most of its pads are on, with the parts paired by a port's parts file (`--parts`, default `reference/parts.toml` of the project when there is one; without one, by reference designator). A KiCad net on no pad of a part the design has keeps its name if the design has a net of that name, and is left out otherwise; copper on an inner layer is left out unless the layer is one of the process's signal layers (an inner plane holds no track); each is said. Each zone of copper that is not the process's own plane or pour becomes a zone of its net's record, on its layers, with its outline, holes and the settings that change its copper (priority, clearance, minimum thickness, pad connection, thermal gap and spoke width, island removal); such a zone of the net of the design's pour or plane on its layer restates it, which is not drawn, and one of another net cuts it (`fab` writes the zones one priority above the pour, and the import takes that one off again). A zone that is the process's own plane or pour (the same net, layer and outline, and the same clearance, minimum width, pad connection and thermal relief as the process states, which is what `fab` writes) is left out and said, so that `fab` and then `routes import` of its board leaves a file of tracks and vias; one that differs from it is imported, as a hand zone. Rule areas, teardrops and hatched zones are left out and said.\n\nEach part of the design that the KiCad board has is written to the layout file at the KiCad board's place, turn and face, locked (`source = \"import\"`), unless `--no-places` (which also leaves out the notes of how a part is placed, turned or moved, and prints `places not imported: N` instead), or the physical file pins it (its requirement places it). Places are from the top left corner of the KiCad board's Edge.Cuts box. Then the board is placed again and each net's record takes its pads as they are. Every net is locked (the router adds nothing to it) unless `--unlocked`. The routes file is written over; the layout file keeps its seed, keepouts and the parts the import does not place."
     )]
     Import(ImportArgs),
     /// Print the routes file's copper and what the router would still route.
@@ -58,7 +58,7 @@ pub enum Command {
     /// Add a via, or a group of vias side by side, to a net, refused if it breaks the design rules.
     #[command(
         name = "add-via",
-        after_long_help = "One via is checked alone: for a net whose current needs several vias side by side where it changes layer, a lone via is refused by the design rules check (`via_current`). A group is added and checked together, as the router's own group is, and is accepted or refused as a whole (the file is then as it was). Name the places of a group with `--at X,Y` once for each via, or give `--count N --pitch MM` with one `--at`: N vias in a row along x, PITCH mm between their centres, centred on that place. The vias of a group count as side by side when they touch, so a pitch above the via's diameter leaves them apart (and the check says so). All vias of a group share the net, `--diameter`, `--drill`, `--layers` and `--lock`; a group has at most 64 vias."
+        after_long_help = "One via is checked alone: for a net whose current needs several vias side by side where it changes layer, a lone via is refused by the design rules check (`via_current`). A group is added and checked together, as the router's own group is, and is accepted or refused as a whole (the file is then as it was). Name the places of a group with `--at X,Y` once for each via, or give `--count N --pitch MM` with one `--at`: N vias in a row along x, PITCH mm between their centres, centred on that place. The vias of a group count as side by side when their copper is no more than the group gap apart (the process's least clearance, or the board's `.process.via_group_gap`), so a pitch above the via's diameter and that gap leaves them apart (and the check says so). All vias of a group share the net, `--diameter`, `--drill`, `--layers` and `--lock`; a group has at most 64 vias."
     )]
     AddVia(AddViaArgs),
     /// Add a zone (copper area) of a net on a layer, refused if it breaks the design rules.
@@ -84,7 +84,7 @@ pub enum Command {
     Delete(ShapeArgs),
     /// Lock a net (the router adds no copper to it) or one shape (kept when the net's pads move).
     #[command(
-        after_long_help = "Lock also writes the net's record again with its pads as they are now, so a record whose pads moved (fab's warning, which keeps its copper and says where it is open) is current again and its net lock holds; it is refused only when the design rules check finds an error of that net's own copper in the routes file (a track that ran to a moved pad now crossing another net's pad, say), whatever errors other copper has."
+        after_long_help = "Lock also writes the net's record again with its pads as they are now, so a record whose pads moved (fab's warning, which keeps its copper and says where it is open) is current again and its net lock holds; it is refused only when the design rules check finds an error of that record's own copper where it ran to a pad that moved (an error that names a track, via or zone of the net and lies within the moved pad's size and the board's largest clearance of where fab's warning says the copper is open: a track that ran to a moved pad now crossing another net's pad, say), and the refusal lists those errors; other errors of the net or the board do not stop it, and a record whose pads did not move is never refused for errors."
     )]
     Lock(ShapeArgs),
     /// Unlock a net or one shape.
@@ -129,7 +129,8 @@ pub struct ImportArgs {
     /// The port's parts file: the KiCad board's reference of each member path.
     #[arg(long, value_name = "PARTS.TOML")]
     pub parts: Option<PathBuf>,
-    /// Write no places to the layout file.
+    /// Write no places to the layout file, and say nothing of how each part would be placed (a
+    /// count of the places not imported instead).
     #[arg(long)]
     pub no_places: bool,
     /// Leave every net unlocked: the router may add copper to complete it.
@@ -177,12 +178,47 @@ pub struct RouteArgs {
     /// Nets whose unlocked tracks and vias may be removed and routed again after it, `A,B`.
     #[arg(long, value_name = "NET,...", value_delimiter = ',')]
     pub rip: Vec<String>,
+    /// How deep a ripped net may rip in turn (default 1).
+    ///
+    /// The nets `NET` rips are at depth 1, the nets one of them rips (when it finds no way back)
+    /// at depth 2, and so on; a ripped net rips in turn only while its depth is at most N, so 0
+    /// lets no ripped net rip, and 1 lets the nets `NET` rips rip once more.
+    #[arg(long, value_name = "N", default_value_t = netsmith_fabricate::route_net::RIP_DEPTH)]
+    pub rip_depth: usize,
+    /// The most orders the ripped nets are routed again in, at least 1 (default 3).
+    ///
+    /// When a ripped net cannot be put back, they are routed again from the start with the nets
+    /// that were not put back first; each try is reported, and each may run the router 64 times.
+    #[arg(long, value_name = "N", default_value_t = netsmith_fabricate::route_net::TRIES, value_parser = super::route::parse_tries)]
+    pub tries: usize,
+    /// How the bends of the copper it lays turn, for this run: `rounded` (arcs, where they keep
+    /// the rules' space) or `mitered` (45 degree corners). Default: the board's `.corner`.
+    ///
+    /// A net of a `TrackPath` whose `.corner` is `Mitered` is mitered whatever this says.
+    #[arg(long, value_enum, value_name = "STYLE")]
+    pub corner: Option<Corner>,
     /// Say what it would do, and write nothing.
     #[arg(long)]
     pub dry_run: bool,
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+}
+
+/// How tracks turn (`--corner`, issue #1508): the variants of `std::sources::TrackCorner`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Corner {
+    Rounded,
+    Mitered,
+}
+
+impl Corner {
+    fn track_corner(self) -> netsmith_core::TrackCorner {
+        match self {
+            Corner::Rounded => netsmith_core::TrackCorner::Rounded,
+            Corner::Mitered => netsmith_core::TrackCorner::Mitered,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -724,9 +760,24 @@ fn route(args: &RouteArgs) -> ExitCode {
         let file = routes_file(layout);
         let routes = lib::load(&file)?;
         let ask = match route_net::Ask::of(board, &args.net, &args.rip) {
-            Ok(ask) => ask,
+            Ok(ask) => route_net::Ask {
+                depth: args.rip_depth,
+                tries: args.tries,
+                ..ask
+            },
             Err(lib::Refusal::Refused(e)) => return Ok(Err(e)),
             Err(lib::Refusal::Failed(e)) => return Err(e),
+        };
+        // `--corner` is the style of this run's copper (issue #1508).
+        let styled;
+        let board = match args.corner {
+            Some(c) => {
+                let mut b = board.clone();
+                b.corner = c.track_corner();
+                styled = b;
+                &styled
+            }
+            None => board,
         };
         let routed = route_net::route_net(board, &routes, &ask)?;
         let written = match (&routed.routes, args.dry_run) {
@@ -925,7 +976,10 @@ fn import(args: &ImportArgs) -> ExitCode {
             "vias": vias,
             "zones": zones,
             "places": if args.no_places { 0 } else { import.places.len() },
-            "refitted": import.refitted,
+            "places_not_imported": if args.no_places { import.places.len() } else { 0 },
+            // The notes of how a part is placed concern places, which `--no-places` writes none of
+            // (issue 1515).
+            "refitted": if args.no_places { Vec::new() } else { import.refitted.clone() },
             "skipped": import.skipped,
         });
         println!(
@@ -943,8 +997,14 @@ fn import(args: &ImportArgs) -> ExitCode {
             println!("net {ours} is KiCad's {theirs} ({votes} pad(s))");
         }
     }
-    for said in &import.refitted {
-        println!("{said}");
+    // The notes of how each part is placed (turned, moved, its pads numbered the other way
+    // round) concern places, so with `--no-places` they give way to a count (issue 1515).
+    if args.no_places {
+        println!("places not imported: {}", import.places.len());
+    } else {
+        for said in &import.refitted {
+            println!("{said}");
+        }
     }
     for s in &import.skipped {
         println!("note: {s}");

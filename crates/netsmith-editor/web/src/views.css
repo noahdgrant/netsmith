@@ -542,7 +542,7 @@ button.chip.findings-pill:hover { border-color: var(--border-strong); filter: br
 .lsw-pads { --c: var(--pcb-thru); } .lsw-planes { --c: var(--net-1); } .lsw-ratsnest { --c: var(--pcb-ratsnest); }
 .lsw-silk { --c: var(--pcb-silk); } .lsw-fab { --c: var(--pcb-fab); } .lsw-courtyard { --c: var(--pcb-courtyard); }
 .lsw-refs { --c: var(--pcb-silk); } .lsw-key { --c: var(--pcb-key); }
-.lsw-stitching { --c: var(--pcb-stitching); } .lsw-islands { --c: var(--pcb-island); } .lsw-starved { --c: var(--pcb-starved); }
+.lsw-stitching { --c: var(--pcb-stitching); } .lsw-uncounted { --c: var(--pcb-uncounted); } .lsw-islands { --c: var(--pcb-island); } .lsw-starved { --c: var(--pcb-starved); }
 .lsw-keepouts { --c: var(--pcb-keepout); } .lsw-limits { --c: var(--pcb-height-limit); } .lsw-requirements { --c: var(--info); }
 button.chip.findings-pill, .toolbar button.chip { font-family: var(--sans); letter-spacing: inherit; }
 
