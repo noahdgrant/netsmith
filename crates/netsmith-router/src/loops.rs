@@ -11,8 +11,9 @@
 //! #1518). Taking copper away never
 //! comes nearer other copper, and a piece on a loop joins nothing the rest does not.
 //! Before the loops, a piece that lies on another, end to end the same, goes (the narrower, or
-//! of two as wide the one of the track cut into fewer pieces): two tracks of a net that overlap
-//! on one line leave no copy of a track behind (issue #1539).
+//! of two as wide the one of the track cut into fewer pieces, else the other), where what it
+//! leaves bends as the rest must: two tracks of a net that overlap on one line leave no copy of
+//! a track behind (issue #1539) and no bend too sharp (issue #1568).
 //!
 //! A net's copper is a graph: its pads and vias are places (a track that ends anywhere in one
 //! joins it), and so is each other end of a track; a track is cut where another of its net ends
@@ -99,7 +100,58 @@ pub(crate) fn drop_second_ways(board: &mut Board, first: usize, keep: &[&Track])
     for net in nets {
         dropped += drop_in(board, &net, first, keep);
     }
-    dropped
+    dropped + drop_exact_copies(board, first, keep)
+}
+
+/// A track by its net, layer and two ends, the lesser end first.
+type CopyKey = (String, CopperLayer, (i64, i64), (i64, i64));
+
+/// Each straight track drawn from track `first` on (but those in `keep`) that is a copy of
+/// another of its net and layer, the same two ends and as wide or narrower, taken off (issue
+/// #1568): taking two pieces off a loop may leave what is left of one track the same as another.
+/// The other has the same ends, going the same ways, so taking the copy off changes no copper
+/// and no bend. Returns how many were taken off.
+fn drop_exact_copies(board: &mut Board, first: usize, keep: &[&Track]) -> usize {
+    let fixed = first.max(board.fixed.tracks);
+    let key = |t: &Track| {
+        let q = |p: Pt| ((p.x / SAME).round() as i64, (p.y / SAME).round() as i64);
+        let (a, b) = (q(t.from), q(t.to));
+        (t.net.clone(), t.layer, a.min(b), a.max(b))
+    };
+    let mut seen: HashMap<CopyKey, usize> = HashMap::new();
+    let mut gone = vec![false; board.tracks.len()];
+    for k in 0..board.tracks.len() {
+        let t = &board.tracks[k];
+        if t.mid.is_some() {
+            continue;
+        }
+        let may_go = |k: usize| {
+            let t = &board.tracks[k];
+            k >= fixed && !board.fixed.is_locked(&t.net) && !keep.contains(&t)
+        };
+        match seen.get(&key(t)).copied() {
+            None => {
+                seen.insert(key(t), k);
+            }
+            Some(j) => {
+                let wider = t.width > board.tracks[j].width + 1e-9;
+                let (goes, stays) = if wider { (j, k) } else { (k, j) };
+                if may_go(goes) {
+                    gone[goes] = true;
+                    seen.insert(key(t), stays);
+                }
+            }
+        }
+    }
+    let count = gone.iter().filter(|g| **g).count();
+    if count > 0 {
+        let mut k = 0;
+        board.tracks.retain(|_| {
+            k += 1;
+            !gone[k - 1]
+        });
+    }
+    count
 }
 
 fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize {
@@ -167,16 +219,11 @@ fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize
     let count = places.len() + free.len();
     let is_free = |n: usize| n >= places.len();
     let mut kept = vec![true; pieces.len()];
-    let copies = drop_copies(board, &pieces, &mut kept);
-    // A net with no loop has nothing to take off: most nets, and each is looked at once.
+    // A net with no loop has nothing to take off: most nets, and each is looked at once. (Two
+    // pieces that lie one on the other are a loop too.)
     let mut sets: Vec<usize> = (0..count).collect();
     let mut looped = false;
-    for p in pieces
-        .iter()
-        .zip(&kept)
-        .filter(|(_, k)| **k)
-        .map(|(p, _)| p)
-    {
+    for p in &pieces {
         let (a, b) = (find(&mut sets, p.a), find(&mut sets, p.b));
         if a == b {
             looped = true;
@@ -184,7 +231,7 @@ fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize
             sets[a] = b;
         }
     }
-    if !looped && copies == 0 {
+    if !looped {
         return 0;
     }
     // The pieces at each place.
@@ -287,12 +334,42 @@ fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize
         let length = |k: usize| pieces[k].from.distance(pieces[k].to);
         length(y).total_cmp(&length(x)).then(x.cmp(&y))
     });
-    let mut dropped = copies;
+    let mut dropped = 0;
     let mut faulty = faults(
         &rebuilt(&board.tracks, &pieces, &kept, &tracks),
         net,
         &places,
     );
+    // First each piece that lies on another (issue #1539), the one [`copies`] names first, then
+    // the other, where what it leaves bends as `track_angle` asks: the copper is the same, but
+    // the track that loses it may then end where the other bends (issue #1568).
+    for choices in copies(board, &pieces) {
+        for goes in choices {
+            if !pieces[goes].new || choices.iter().any(|&k| !kept[k]) {
+                continue;
+            }
+            let mut trial = kept.clone();
+            trial[goes] = false;
+            let bends = [pieces[goes].a, pieces[goes].b]
+                .iter()
+                .all(|&n| !is_free(n) || degree(&trial, n) == 0 || bends_well(&trial, n));
+            if !bends {
+                continue;
+            }
+            let left = faults(
+                &rebuilt(&board.tracks, &pieces, &trial, &tracks),
+                net,
+                &places,
+            );
+            if left > faulty {
+                continue;
+            }
+            faulty = left;
+            dropped += 1;
+            kept = trial;
+            break;
+        }
+    }
     for k in order {
         if !kept[k] || pieces[k].a == pieces[k].b {
             continue;
@@ -351,13 +428,12 @@ fn drop_in(board: &mut Board, net: &str, first: usize, keep: &[&Track]) -> usize
     dropped
 }
 
-/// Each piece that lies on another of its layer, end to end the same (two tracks of the net that
-/// overlap on one line are cut into such pieces where they lie one on the other), taken off
-/// `kept` when the router drew it (issue #1539): its copper is the other's, so taking it off
-/// changes no copper and leaves no copy of a track. Of two, the narrower goes; of two as wide,
-/// the one of the track cut into fewer pieces (a track wholly on another goes whole), then the
-/// later. Returns how many were taken off.
-fn drop_copies(board: &Board, pieces: &[Piece], kept: &mut [bool]) -> usize {
+/// Each two pieces that lie one on the other on their layer, end to end the same (two tracks of
+/// the net that overlap on one line are cut into such pieces where they lie one on the other),
+/// the one to take off first (issue #1539): its copper is the other's, so taking it off changes
+/// no copper and leaves no copy of a track. Of two, the narrower; of two as wide, the one of the
+/// track cut into fewer pieces (a track wholly on another goes whole), then the later.
+fn copies(board: &Board, pieces: &[Piece]) -> Vec<[usize; 2]> {
     let mut by_places: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
     for (k, p) in pieces.iter().enumerate() {
         by_places
@@ -369,15 +445,12 @@ fn drop_copies(board: &Board, pieces: &[Piece], kept: &mut [bool]) -> usize {
     for p in pieces {
         *cut_into.entry(p.track).or_default() += 1;
     }
-    let mut dropped = 0;
+    let mut out = Vec::new();
     let mut groups: Vec<&Vec<usize>> = by_places.values().filter(|g| g.len() > 1).collect();
     groups.sort_unstable();
     for group in groups {
         for (i, &x) in group.iter().enumerate() {
             for &y in &group[i + 1..] {
-                if !kept[x] || !kept[y] {
-                    continue;
-                }
                 let (px, py) = (&pieces[x], &pieces[y]);
                 let (tx, ty) = (&board.tracks[px.track], &board.tracks[py.track]);
                 let one = (px.from.distance(py.from) < SAME && px.to.distance(py.to) < SAME)
@@ -390,7 +463,7 @@ fn drop_copies(board: &Board, pieces: &[Piece], kept: &mut [bool]) -> usize {
                 {
                     continue;
                 }
-                let goes = if (tx.width - ty.width).abs() > 1e-9 {
+                let first = if (tx.width - ty.width).abs() > 1e-9 {
                     if tx.width < ty.width { x } else { y }
                 } else if cut_into[&px.track] != cut_into[&py.track] {
                     if cut_into[&px.track] < cut_into[&py.track] {
@@ -401,14 +474,17 @@ fn drop_copies(board: &Board, pieces: &[Piece], kept: &mut [bool]) -> usize {
                 } else {
                     y
                 };
-                if pieces[goes].new {
-                    kept[goes] = false;
-                    dropped += 1;
+                let wider = (tx.width - ty.width).abs() > 1e-9;
+                // The wider of two is never taken off: the narrower's copper is not all of it.
+                if wider {
+                    out.push([first, first]);
+                } else {
+                    out.push([first, if first == x { y } else { x }]);
                 }
             }
         }
     }
-    dropped
+    out
 }
 
 fn find(sets: &mut [usize], mut a: usize) -> usize {
