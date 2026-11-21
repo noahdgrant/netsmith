@@ -205,7 +205,7 @@ fn parse_plan(given: &str) -> Result<netsmith_fabricate::placed::CoarsePlan, Str
     }
 }
 
-fn parse_tries(given: &str) -> Result<usize, String> {
+pub(crate) fn parse_tries(given: &str) -> Result<usize, String> {
     given
         .parse::<usize>()
         .ok()
