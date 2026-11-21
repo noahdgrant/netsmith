@@ -194,6 +194,7 @@
 //! in issue #10).
 
 mod acid;
+mod board_rules;
 mod branches;
 mod checks;
 mod connect;
@@ -214,10 +215,11 @@ mod waivers;
 
 use crate::artwork::Artwork;
 use crate::geom::Pt;
+pub use board_rules::BoardRules;
 pub use model::outline_shapes;
 pub use room::Room;
 pub use rules::matches_pattern;
-pub use rules::{Class, Rules};
+pub use rules::{Class, ClassSizes, Rules};
 pub use rules_file::{PREFIX as RULES_FILE_PREFIX, kicad_dru, rules_file_of};
 pub use silk::FONT_MARGIN;
 pub use teardrop::{Teardrop, teardrops};
@@ -874,6 +876,31 @@ pub struct Extras {
     pub waivers: Vec<Waiver>,
 }
 
+impl Extras {
+    /// The least width a track of `net` is held to by its current (`track_current`), on an
+    /// inner layer when `inner`: its `inner_least_widths` entry there, else its
+    /// `least_widths` entry; `None` when its current asks no more than the process's least
+    /// track.
+    pub fn least_width(&self, net: &str, inner: bool) -> Option<f64> {
+        self.inner_least_widths
+            .iter()
+            .filter(|_| inner)
+            .chain(&self.least_widths)
+            .find(|(n, _)| n == net)
+            .map(|&(_, w)| w)
+    }
+
+    /// The least space from a hole to a track (`hole_to_track`): of a plated pad's hole when
+    /// `plated_pad`, else of a via's or a non-plated hole; `None` when it is not checked.
+    pub fn hole_to_track_of(&self, plated_pad: bool) -> Option<f64> {
+        if plated_pad {
+            self.plated_hole_clearance
+        } else {
+            self.hole_to_track
+        }
+    }
+}
+
 /// A pin of a part that states the current of its branch (issue #1113): its pads, by the
 /// footprint's designator and the pad numbers, and the most it carries, in amperes.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -1011,6 +1038,26 @@ impl From<crate::artwork::ArtworkError> for Error {
 /// Checks the board in `pcb` (the text of a `.kicad_pcb`) to the rules in `project` (the
 /// text of the `.kicad_pro` beside it; KiCad's defaults without one).
 pub fn check(pcb: &str, project: Option<&str>, extras: &Extras) -> Result<Report, Error> {
+    let read = read(pcb, project, extras)?;
+    Ok(check_artwork(
+        &read.art,
+        &read.rules,
+        extras,
+        read.bridges_in_footprints,
+    ))
+}
+
+/// What the check reads its numbers from, the one place [`check`] and [`rules_of`] read them.
+pub(crate) struct Read {
+    pub art: Artwork,
+    pub rules: Rules,
+    /// The board's setup lets the mask between pads of one footprint run together.
+    pub bridges_in_footprints: bool,
+}
+
+/// The board in `pcb` and the rules it is checked to: the project's, the mask web of the
+/// board's setup (or the caller's), and whether the setup allows mask bridges in footprints.
+pub(crate) fn read(pcb: &str, project: Option<&str>, extras: &Extras) -> Result<Read, Error> {
     let art = Artwork::parse(pcb)?;
     let mut rules = match project {
         Some(p) => Rules::from_project(p).map_err(Error::Project)?,
@@ -1041,7 +1088,23 @@ pub fn check(pcb: &str, project: Option<&str>, extras: &Extras) -> Result<Report
                 .map(|t| t == "yes")
         })
         .unwrap_or(false);
-    Ok(check_artwork(&art, &rules, extras, bridges_in_footprints))
+    Ok(Read {
+        art,
+        rules,
+        bridges_in_footprints,
+    })
+}
+
+/// The rules the check holds the board in `pcb` to, as data ([`BoardRules`], `netsmith board
+/// rules`, issue #1513): read as [`check`] reads them, from the same project text and extras.
+pub fn rules_of(pcb: &str, project: Option<&str>, extras: &Extras) -> Result<BoardRules, Error> {
+    let read = read(pcb, project, extras)?;
+    Ok(BoardRules::of(
+        &read.art,
+        &read.rules,
+        extras,
+        read.bridges_in_footprints,
+    ))
 }
 
 /// Checks a board already read, to rules already known.

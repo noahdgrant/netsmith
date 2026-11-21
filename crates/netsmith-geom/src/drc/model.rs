@@ -535,7 +535,7 @@ impl<'a> Model<'a> {
         if !pad.layers.iter().any(|l| l == layer) {
             return Vec::new();
         }
-        let margin = pad.mask_margin.unwrap_or(self.art.mask_margin);
+        let margin = self.art.pad_mask_margin(pad);
         let mut outline = pads::outline(pad);
         if pad.shape == PadShape::Custom && margin < 0.0 {
             return Vec::new();

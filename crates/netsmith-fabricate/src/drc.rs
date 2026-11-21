@@ -12,12 +12,19 @@
 use std::path::Path;
 
 use netsmith_fab::{Checked, Options};
-use netsmith_geom::Constraints;
+use netsmith_geom::{Constraints, DrcBoardRules};
 use netsmith_pcb::{Board, kicad_pcb, kicad_pro};
 
 /// The check of `board` as it is, with the design's `constraints` (`None` when it states none).
 pub fn of_board(board: &Board, constraints: Option<Constraints>) -> Result<Checked, String> {
-    let options = Options {
+    let options = options_of(board, constraints);
+    netsmith_fab::check(&kicad_pcb(board), Some(&kicad_pro(board)), &options)
+        .map_err(|e| e.to_string())
+}
+
+/// The options [`of_board`] checks `board` with.
+fn options_of(board: &Board, constraints: Option<Constraints>) -> Options {
+    Options {
         drc: crate::fab::drc_extras(board),
         constraints,
         pairs: board.diff_pairs_with_skew(),
@@ -29,9 +36,39 @@ pub fn of_board(board: &Board, constraints: Option<Constraints>) -> Result<Check
             .map(|p| board.track_path_loss(p))
             .collect(),
         ..Options::default()
-    };
-    netsmith_fab::check(&kicad_pcb(board), Some(&kicad_pro(board)), &options)
+    }
+}
+
+/// The rules [`of_board`] holds `board` to, as data (`netsmith board rules`, issue #1513): read
+/// from the same board file, project file and extras, by the function the check reads them with
+/// ([`netsmith_geom::drc_rules_of`]).
+pub fn rules_of_board(board: &Board) -> Result<DrcBoardRules, String> {
+    let options = options_of(board, None);
+    netsmith_geom::drc_rules_of(&kicad_pcb(board), Some(&kicad_pro(board)), &options.drc)
         .map_err(|e| e.to_string())
+}
+
+/// The rules [`of_kicad_pcb`] holds the KiCad board `pcb` to, as data.
+pub fn rules_of_kicad_pcb(pcb: &Path) -> Result<DrcBoardRules, String> {
+    let (src, options) = kicad_options(pcb)?;
+    netsmith_geom::drc_rules_of(
+        &src,
+        netsmith_geom::drc_project_of(pcb).as_deref(),
+        &options.drc,
+    )
+    .map_err(|e| format!("{}: {e}", pcb.display()))
+}
+
+/// The text of the KiCad board `pcb` and the options it is checked with: the rules of the
+/// `.kicad_dru` beside it.
+fn kicad_options(pcb: &Path) -> Result<(String, Options), String> {
+    let src =
+        std::fs::read_to_string(pcb).map_err(|e| format!("cannot read {}: {e}", pcb.display()))?;
+    let mut options = Options::default();
+    if let Some(text) = netsmith_geom::drc_rules_file_of(pcb) {
+        options.drc = options.drc.with_rules_file(&text);
+    }
+    Ok((src, options))
 }
 
 /// The check of the KiCad board `pcb`, with the `.kicad_pro` beside it when there is one, and
@@ -41,12 +78,7 @@ pub fn of_board(board: &Board, constraints: Option<Constraints>) -> Result<Check
 /// was made for, so none of `fab`'s other extras (the via rules, the fiducials, the stackup) and
 /// no requirement of a design.
 pub fn of_kicad_pcb(pcb: &Path) -> Result<Checked, String> {
-    let src =
-        std::fs::read_to_string(pcb).map_err(|e| format!("cannot read {}: {e}", pcb.display()))?;
-    let mut options = Options::default();
-    if let Some(text) = netsmith_geom::drc_rules_file_of(pcb) {
-        options.drc = options.drc.with_rules_file(&text);
-    }
+    let (src, options) = kicad_options(pcb)?;
     netsmith_fab::check(
         &src,
         netsmith_geom::drc_project_of(pcb).as_deref(),
