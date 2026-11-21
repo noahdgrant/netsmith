@@ -443,7 +443,7 @@ file = "supply/quotes.csv"
 
 #### Finding parts at a supplier
 
-A part the catalogs lack is found with a **search provider** (issue #1460): `netsmith catalog search` lists the parts that match words, a manufacturer's number or parametric filters, and `netsmith catalog add --from <supplier> <sku or mpn> --to catalogs/<file>.csv` writes one of them as a row and its offers. The one provider is Nexar (Octopart's API), and it is off unless the project names it in a `[supply.nexar]` table and the environment variables that table names are set:
+A part the catalogs lack is found with a **search provider** (issue #1460): `netsmith catalog search` lists the parts that match words, a manufacturer's number or parametric filters, and `netsmith catalog add --from <supplier> <sku or mpn> --to catalogs/<file>.csv` writes one of them as a row and its offers. There are two providers, Nexar (Octopart's API, issue #1460), which lists the offers of LCSC, Digi-Key and Mouser, and Digi-Key's own Product Information API (issue #1477), which has Digi-Key's offers only. Each is off unless the project names it in its table, `[supply.nexar]` or `[supply.digikey]`, and the environment variables that table names are set:
 
 ```toml
 [project]
@@ -452,12 +452,18 @@ name = "sensor"
 [supply.nexar]
 client_id_env = "NEXAR_CLIENT_ID"
 client_secret_env = "NEXAR_CLIENT_SECRET"
+
+[supply.digikey]
+client_id_env = "DIGIKEY_CLIENT_ID"
+client_secret_env = "DIGIKEY_CLIENT_SECRET"
+account_id_env = "DIGIKEY_ACCOUNT_ID"
 ```
 
-- **The names, never the values.** The table holds the names of two environment variables; their values (the client id and secret of an application made at portal.nexar.com) are read from the environment when a request goes out and are written nowhere: not in the manifest, a project file, the cache or a message. A name that is not one (capital letters, digits and `_`) is refused, as it may be the value, and so is any other key. A person must read the terms of use of Nexar and of the sellers it lists before using it (issue #10).
-- **A found part** is the manufacturer and the `mpn` as the provider spells them, and for each supplier netsmith has an offers file of (`lcsc`, `digikey`, `mouser`) its sku, its stock and its price breaks. A stock with no count says why (`not stocked`, `in stock, no quantity given`, `on request`, `unknown`) and is never 0 or a guess, and no currency is converted. `--details` also asks for the package, the values and the datasheet, which Nexar gives to a plan that includes them. `--format json` is for an agent.
+- **The names, never the values.** A table holds the names of environment variables; their values (the client id and secret of an application made at portal.nexar.com or developer.digikey.com, and Digi-Key's account id) are read from the environment when a request goes out and are written nowhere: not in the manifest, a project file, the cache or a message. A name that is not one (capital letters, digits and `_`) is refused, as it may be the value, and so is any other key. `account_id_env` is optional: with it, `catalog add --from digikey` asks Digi-Key's product details of the number, which Digi-Key's documentation says needs the account id; without it, a keyword search for the number, of which only a part with exactly that Digi-Key number or `mpn` is taken. A person must read the terms of use of the provider and of the sellers it lists (Digi-Key's API User Agreement) before using it (issue #10).
+- **Which provider.** `--provider nexar` or `--provider digikey` says which. Without it, the one the project names; with both, Nexar, except that `catalog add --from digikey` asks Digi-Key's own record. Digi-Key's API has no other supplier's offers, so `catalog add --from lcsc` or `--from mouser` needs Nexar.
+- **A found part** is the manufacturer and the `mpn` as the provider spells them, and for each supplier netsmith has an offers file of (`lcsc`, `digikey`, `mouser`) its sku, its stock and its price breaks. A stock with no count says why (`not stocked`, `in stock, no quantity given`, `on request`, `unknown`) and is never 0 or a guess, and no currency is converted. `--details` also asks Nexar for the package, the values and the datasheet, which Nexar gives to a plan that includes them. Digi-Key gives its values (its parameters) and the datasheet always and names no package, so a row from its record lists `package` to fill; each of its packagings is an offer, and its parametric filters are by its own ids, so `--filter` is Nexar's. `--format json` is for an agent.
 - **A found part is not a row.** `catalog add --from` asks for the record again, writes nothing unless it names exactly one part that the supplier offers under that sku (or whose `mpn` is exactly that number) with one offer of that supplier, and then appends the row (`manufacturer`, `mpn`, `package` when the record states it, a `source` naming the record and the day) and the offers of the suppliers the record names, each in the project's `offers/<supplier>.csv` with a `source` and the day in `checked`. A supplier with two offers of the part (cut tape and a reel) is listed, not written. Every other cell stays empty, and the command lists them as needing the datasheet: a row's ratings never come from a search.
-- **Polite.** One request at a time with a pause (`--delay`), and the answers kept for the table's `cache_hours` (24): the same search twice in a day asks once, and `--offline` uses a kept answer. No build, `fab` or test asks a provider.
+- **Polite.** One request at a time with a pause (`--delay`; Digi-Key allows 120 requests a minute and 1000 a day), and the answers kept for the table's `cache_hours` (24): the same search twice in a day asks once, and `--offline` uses a kept answer. No build, `fab` or test asks a provider.
 
 #### Curve files
 

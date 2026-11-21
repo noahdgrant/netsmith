@@ -273,7 +273,7 @@ fn with_no_provider_or_no_credential_nothing_is_asked_and_the_command_says_how_t
     assert_eq!(out.status.code(), Some(2));
     let err = String::from_utf8_lossy(&out.stderr);
     for words in [
-        "names no search provider ([supply.nexar])",
+        "names no search provider ([supply.nexar] or [supply.digikey])",
         "read the terms of use of Nexar",
         "client_id_env = \"NEXAR_CLIENT_ID\"",
         "never in a file of the project",

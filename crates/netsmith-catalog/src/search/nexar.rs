@@ -34,17 +34,14 @@
 //! Nexar's terms of use have not been read for netsmith (issue #10): a person must read them, and
 //! those of the sellers, before the feature is advertised.
 
-use std::{
-    fs,
-    path::PathBuf,
-    thread,
-    time::{Duration, Instant},
-};
+use std::{path::PathBuf, time::Duration};
 
 use serde_json::{Value as Json, json};
 
+use super::http::{Cache, Client, Failure, TOKEN_ENDPOINT, access_token, read};
+pub use super::http::{Credentials, USER_AGENT, check};
 use super::{Answer, FoundPart, PriceBreak, Query, SearchProvider, Stock, SupplierOffer, Value};
-use crate::refresh::{cache_base, check_endpoint, now_secs};
+use crate::refresh::{cache_base, now_secs};
 use crate::supply::SupplyError;
 
 /// The name of the provider, as the manifest's table names it (`[supply.nexar]`).
@@ -72,13 +69,6 @@ pub const TOKEN_URL_VAR: &str = "NETSMITH_NEXAR_TOKEN_URL";
 /// The most parts one search asks for (Nexar's maximum `limit`).
 pub const MAX_LIMIT: u32 = 100;
 
-/// What netsmith calls itself to Nexar.
-pub const USER_AGENT: &str = concat!(
-    "netsmith-catalog-search/",
-    env!("CARGO_PKG_VERSION"),
-    " (opt-in part search for an electronics design tool; one request at a time)"
-);
-
 /// The sellers whose offers a found part keeps, by Octopart's company id, with the supplier whose
 /// offers file holds their numbers (<https://octopart.com/api/v4/values>, read 2026-11-20).
 pub const SELLERS: [(&str, &str); 3] = [("11779", "lcsc"), ("459", "digikey"), ("2401", "mouser")];
@@ -89,20 +79,6 @@ pub fn seller_id(supplier: &str) -> Option<&'static str> {
         .iter()
         .find(|(_, s)| *s == supplier)
         .map(|(id, _)| *id)
-}
-
-/// A client id and secret, read from the environment. Never written anywhere, and never shown:
-/// its `Debug` says only that it is there.
-#[derive(Clone)]
-pub struct Credentials {
-    pub client_id: String,
-    pub client_secret: String,
-}
-
-impl std::fmt::Debug for Credentials {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Credentials(..)")
-    }
 }
 
 /// Where the provider asks, how politely, and what it keeps.
@@ -156,70 +132,38 @@ pub fn default_cache_dir() -> Option<PathBuf> {
     Some(cache_base()?.join("search").join(NAME))
 }
 
-/// Refuse an address a credential or a token must not go to: one of JLCPCB's or under `/api`
-/// (as `catalog refresh` refuses, ADR 0039), and one that is not `https`, unless it is this
-/// machine's (a proxy of your own, or a test's server).
-pub fn check(url: &str) -> Result<(), String> {
-    check_endpoint(url)?;
-    let Some((scheme, rest)) = url.split_once("://") else {
-        return Err(format!("`{url}` is not an address like https://host/path"));
-    };
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
-    let host = authority.rsplit('@').next().unwrap_or(authority);
-    let host = if let Some(v6) = host.strip_prefix('[') {
-        v6.split(']').next().unwrap_or("")
-    } else {
-        host.split(':').next().unwrap_or("")
-    }
-    .to_ascii_lowercase();
-    let local = matches!(host.as_str(), "127.0.0.1" | "localhost" | "::1");
-    match scheme.to_ascii_lowercase().as_str() {
-        "https" => Ok(()),
-        "http" if local => Ok(()),
-        _ => Err(format!(
-            "`{url}` is not an https address: a client secret and a token are sent only over https, or to this machine"
-        )),
-    }
-}
-
-/// Why one attempt failed.
-enum Failure {
-    /// May pass: try again after at least this long.
-    Later(String, Duration),
-    /// The token was refused: ask for a new one, once.
-    Unauthorized,
-    /// Will not pass.
-    No(String),
-}
-
 /// The Nexar provider: the settings, the credentials, and the token of this run (kept in memory
 /// only).
 pub struct Nexar {
     settings: Settings,
     credentials: Credentials,
-    agent: ureq::Agent,
+    client: Client,
+    cache: Cache,
     token: Option<String>,
-    last_request: Option<Instant>,
-    /// Requests that went out, the token's included.
-    pub requests: u32,
 }
+
+/// What a 400 of the token endpoint means.
+const REFUSED: &str =
+    "check the application at portal.nexar.com and the variables [supply.nexar] names";
 
 impl Nexar {
     pub fn new(settings: Settings, credentials: Credentials) -> Nexar {
-        let agent: ureq::Agent = ureq::Agent::config_builder()
-            .user_agent(USER_AGENT)
-            .timeout_global(Some(Duration::from_secs(30)))
-            .http_status_as_error(false)
-            .build()
-            .into();
+        let client = Client::new(settings.delay, settings.retries, settings.backoff);
+        let cache = Cache {
+            dir: settings.cache_dir.clone(),
+        };
         Nexar {
             settings,
             credentials,
-            agent,
+            client,
+            cache,
             token: None,
-            last_request: None,
-            requests: 0,
         }
+    }
+
+    /// Requests that went out, the token's included.
+    pub fn requests(&self) -> u32 {
+        self.client.requests
     }
 
     fn now(&self) -> u64 {
@@ -229,13 +173,13 @@ impl Nexar {
     /// The answer to a GraphQL request: kept, or asked. `Ok((data, secs, cached))`.
     fn ask(&mut self, body: &Json, details: bool) -> Result<(Json, u64, bool), SupplyError> {
         let text = body.to_string();
-        let key = format!("{:016x}", fnv1a(text.as_bytes()));
+        let key = Cache::key(&text);
         let ttl = if self.settings.offline {
             u64::MAX
         } else {
             self.settings.ttl.as_secs()
         };
-        if let Some((secs, kept)) = self.kept(&key)
+        if let Some((secs, kept)) = self.cache.kept(&key)
             && self.now().saturating_sub(secs) <= ttl
             && let Ok(data) = data_of(&kept, details)
         {
@@ -268,73 +212,8 @@ impl Nexar {
         };
         let data = data_of(&answer, details).map_err(unavailable)?;
         let secs = self.now();
-        self.keep(&key, secs, &answer);
+        self.cache.keep(&key, secs, &answer);
         Ok((data, secs, false))
-    }
-
-    fn cache_file(&self, key: &str) -> Option<PathBuf> {
-        Some(
-            self.settings
-                .cache_dir
-                .as_ref()?
-                .join(format!("{key}.json")),
-        )
-    }
-
-    /// A kept answer: the first line is the Unix time it was got.
-    fn kept(&self, key: &str) -> Option<(u64, String)> {
-        let text = fs::read_to_string(self.cache_file(key)?).ok()?;
-        let (first, body) = text.split_once('\n')?;
-        Some((first.trim().parse().ok()?, body.to_string()))
-    }
-
-    /// Keep the answer of a query. It holds what Nexar said of the parts and nothing of the
-    /// credentials or the token.
-    fn keep(&self, key: &str, secs: u64, body: &str) {
-        let Some(path) = self.cache_file(key) else {
-            return;
-        };
-        if let Some(dir) = path.parent() {
-            let _ = fs::create_dir_all(dir);
-        }
-        let _ = fs::write(path, format!("{secs}\n{body}"));
-    }
-
-    fn pause(&self) {
-        if let Some(last) = self.last_request {
-            let since = last.elapsed();
-            if since < self.settings.delay {
-                thread::sleep(self.settings.delay - since);
-            }
-        }
-    }
-
-    /// One request with the pause before it and the retries after a failure that may pass.
-    fn with_retries(
-        &mut self,
-        mut send: impl FnMut(&Nexar) -> Result<String, Failure>,
-    ) -> Result<String, Failure> {
-        let mut wait = self.settings.backoff;
-        for attempt in 0..=self.settings.retries {
-            self.pause();
-            let outcome = send(self);
-            self.last_request = Some(Instant::now());
-            self.requests += 1;
-            match outcome {
-                Err(Failure::Later(why, asked)) => {
-                    if attempt == self.settings.retries {
-                        return Err(Failure::No(format!(
-                            "{why}; gave up after {} tries",
-                            attempt + 1
-                        )));
-                    }
-                    thread::sleep(wait.max(asked.min(Duration::from_secs(60))));
-                    wait *= 2;
-                }
-                other => return other,
-            }
-        }
-        unreachable!("the last attempt returns")
     }
 
     /// A token for this run, from the identity service. The secret goes in the form and nowhere
@@ -346,9 +225,9 @@ impl Nexar {
             self.credentials.client_secret.clone(),
         );
         let body = self
-            .with_retries(|me| {
-                let response = me
-                    .agent
+            .client
+            .with_retries(|agent| {
+                let response = agent
                     .post(&url)
                     .header("Accept", "application/json")
                     .send_form([
@@ -357,83 +236,30 @@ impl Nexar {
                         ("client_secret", secret.as_str()),
                         ("scope", SCOPE),
                     ]);
-                read(response, "the identity service")
+                read(response, TOKEN_ENDPOINT, REFUSED)
             })
             .map_err(|f| match f {
-                Failure::Unauthorized => "the identity service refused the client id and secret (answered 401): check the application at portal.nexar.com and the variables [supply.nexar] names".to_string(),
+                Failure::Unauthorized => format!(
+                    "{TOKEN_ENDPOINT} refused the client id and secret (answered 401): {REFUSED}"
+                ),
                 Failure::No(why) | Failure::Later(why, _) => why,
             })?;
-        let json: Json = serde_json::from_str(&body)
-            .map_err(|_| "the identity service answered something that is not JSON".to_string())?;
-        json.get("access_token")
-            .and_then(Json::as_str)
-            .filter(|t| !t.is_empty())
-            .map(str::to_string)
-            .ok_or_else(|| {
-                "the identity service's answer has no `access_token` of the kind it had when netsmith was written".to_string()
-            })
+        access_token(&body)
     }
 
     fn post_query(&mut self, text: &str) -> Result<String, Failure> {
         let url = self.settings.graphql.clone();
         let token = self.token.clone().unwrap_or_default();
-        let text = text.to_string();
-        self.with_retries(|me| {
-            let response = me
-                .agent
+        self.client.with_retries(|agent| {
+            let response = agent
                 .post(&url)
                 .header("Authorization", &format!("Bearer {token}"))
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
-                .send(text.as_str());
-            read(response, "the GraphQL endpoint")
+                .send(text);
+            read(response, "the GraphQL endpoint", REFUSED)
         })
     }
-}
-
-/// Read an answer: its body on 200, and what a status means otherwise.
-fn read(
-    response: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
-    what: &str,
-) -> Result<String, Failure> {
-    let mut response =
-        response.map_err(|e| Failure::Later(format!("{what}: no answer ({e})"), Duration::ZERO))?;
-    let status = response.status().as_u16();
-    let asked = response
-        .headers()
-        .get("retry-after")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .map_or(Duration::ZERO, Duration::from_secs);
-    match status {
-        200 => {
-            let body = response.body_mut().read_to_string().map_err(|e| {
-                Failure::Later(format!("{what}: the answer broke off ({e})"), asked)
-            })?;
-            if body.trim_start().starts_with('<') {
-                return Err(Failure::No(format!("{what} answered a web page, not JSON")));
-            }
-            Ok(body)
-        }
-        401 => Err(Failure::Unauthorized),
-        400 if what == "the identity service" => Err(Failure::No(format!(
-            "{what} refused the client id and secret (answered 400): check the application at portal.nexar.com and the variables [supply.nexar] names"
-        ))),
-        429 | 500..=599 => Err(Failure::Later(format!("{what} answered {status}"), asked)),
-        _ => Err(Failure::No(format!(
-            "{what} answered {status}: it refuses this client, or the address has moved"
-        ))),
-    }
-}
-
-/// 64-bit FNV-1a: the name of a kept answer, from the request's text (which holds no credential).
-fn fnv1a(bytes: &[u8]) -> u64 {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in bytes {
-        hash ^= u64::from(*b);
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    hash
 }
 
 /// The `data` of a GraphQL answer; an answer with `errors` is not one (it may be a field the
@@ -738,7 +564,7 @@ impl SearchProvider for Nexar {
     }
 
     fn search(&mut self, query: &Query) -> Result<Answer, SupplyError> {
-        let before = self.requests;
+        let before = self.requests();
         let (data, read, cached) = self.ask(&search_request(query), query.details)?;
         let (hits, parts) = parse_search(&data)
             .map_err(|why| SupplyError::Unavailable(format!("{DESCRIBED}: {why}")))?;
@@ -751,7 +577,7 @@ impl SearchProvider for Nexar {
             read,
             cached,
             details: query.details,
-            requests: self.requests - before,
+            requests: self.requests() - before,
         })
     }
 
@@ -761,7 +587,7 @@ impl SearchProvider for Nexar {
         number: &str,
         details: bool,
     ) -> Result<Answer, SupplyError> {
-        let before = self.requests;
+        let before = self.requests();
         let (data, read, cached) = self.ask(&record_request(supplier, number, details), details)?;
         let (hits, parts) = parse_record(&data)
             .map_err(|why| SupplyError::Unavailable(format!("{DESCRIBED}: {why}")))?;
@@ -774,7 +600,7 @@ impl SearchProvider for Nexar {
             read,
             cached,
             details,
-            requests: self.requests - before,
+            requests: self.requests() - before,
         })
     }
 }
@@ -782,46 +608,6 @@ impl SearchProvider for Nexar {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_secret_goes_only_over_https_or_to_this_machine_and_never_to_jlcpcb() {
-        for ok in [
-            "https://api.nexar.com/graphql",
-            "https://identity.nexar.com/connect/token",
-            "http://127.0.0.1:8080/graphql",
-            "http://localhost/connect/token",
-            "http://[::1]:9/graphql",
-        ] {
-            assert!(check(ok).is_ok(), "{ok}");
-        }
-        for (bad, says) in [
-            ("http://api.nexar.com/graphql", "not an https address"),
-            (
-                "http://127.0.0.2.example.com/graphql",
-                "not an https address",
-            ),
-            ("ftp://127.0.0.1/x", "not an https address"),
-            ("https://jlcpcb.com/graphql", "does not fetch JLCPCB data"),
-            ("https://example.com/api/graphql", "is under /api"),
-            ("api.nexar.com/graphql", "not an address"),
-        ] {
-            let e = check(bad).unwrap_err();
-            assert!(e.contains(says), "{bad}: {e}");
-        }
-    }
-
-    #[test]
-    fn the_credentials_are_never_shown() {
-        let c = Credentials {
-            client_id: "the-id".into(),
-            client_secret: "the-secret".into(),
-        };
-        let shown = format!("{c:?}");
-        assert!(
-            !shown.contains("the-id") && !shown.contains("the-secret"),
-            "{shown}"
-        );
-    }
 
     #[test]
     fn a_part_keeps_the_offers_of_the_suppliers_netsmith_reads_and_says_what_a_stock_code_means() {

@@ -15,8 +15,8 @@
 //! datasheet.
 //!
 //! The rules are those of ADR 0047 for a provider that asks a supplier:
-//! - *Off unless named.* A provider is used only when the project names it (`[supply.nexar]` in
-//!   `netsmith.toml`) and the environment variables that table names are set. The manifest holds
+//! - *Off unless named.* A provider is used only when the project names it (`[supply.nexar]` or
+//!   `[supply.digikey]` in `netsmith.toml`) and the environment variables that table names are set. The manifest holds
 //!   the variables' *names*, never their values; the values are read from the environment when a
 //!   request must go out and are kept in memory only: never in the manifest, a project file, the
 //!   cache or a message. No test and no default path asks a supplier.
@@ -34,10 +34,12 @@
 //! - *Terms of use.* A person must read the supplier's and the provider's terms of use before the
 //!   feature is advertised (issue #10); the help of the commands says so.
 //!
-//! The one provider is Nexar's (Octopart's) GraphQL API ([`nexar`]). Digi-Key's own API as a
-//! second provider is a follow-up.
+//! The providers are Nexar's (Octopart's) GraphQL API ([`nexar`]) and Digi-Key's own Product
+//! Information API ([`digikey`], issue #1477), on what [`http`] shares.
 
 pub mod add;
+pub mod digikey;
+pub mod http;
 pub mod nexar;
 
 use serde_json::{Value as Json, json};
