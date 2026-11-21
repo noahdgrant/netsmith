@@ -30,6 +30,7 @@ const FIRST_ONLY: RouteOptions = RouteOptions {
     weights: None,
     reroute: netsmith_router::Reroute::DEFAULT,
     power_groups: true,
+    negotiation: netsmith_router::Negotiation::DEFAULT,
 };
 const RETRY_ONLY: RouteOptions = RouteOptions {
     retry_orders: true,
@@ -54,6 +55,7 @@ const RETRY_ONLY: RouteOptions = RouteOptions {
     weights: None,
     reroute: netsmith_router::Reroute::DEFAULT,
     power_groups: true,
+    negotiation: netsmith_router::Negotiation::DEFAULT,
 };
 const RIP_UP_ONLY: RouteOptions = RouteOptions {
     retry_orders: false,
@@ -78,6 +80,7 @@ const RIP_UP_ONLY: RouteOptions = RouteOptions {
     weights: None,
     reroute: netsmith_router::Reroute::DEFAULT,
     power_groups: true,
+    negotiation: netsmith_router::Negotiation::DEFAULT,
 };
 
 const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
@@ -103,6 +106,7 @@ const NEGOTIATE_ONLY: RouteOptions = RouteOptions {
     weights: None,
     reroute: netsmith_router::Reroute::DEFAULT,
     power_groups: true,
+    negotiation: netsmith_router::Negotiation::DEFAULT,
 };
 
 fn left(board: &Board, options: RouteOptions) -> usize {

@@ -361,6 +361,8 @@ pub(super) struct Masks {
 pub(super) struct Soft {
     pub(super) track: Vec<Vec<bool>>,
     pub(super) via: Vec<bool>,
+    /// What crossing costs, in hundredths of [`SOFT`] and [`SOFT_VIA`] ([`Router::soft_price`]).
+    pub(super) price: i64,
 }
 
 impl Masks {
@@ -448,7 +450,9 @@ impl Masks {
     /// keeps tracks from.
     pub(super) fn soft_cost(&self, layer: usize, i: usize, j: usize) -> i64 {
         match &self.soft {
-            Some(soft) if soft.track.get(layer).is_some_and(|t| t[self.at(i, j)]) => SOFT,
+            Some(soft) if soft.track.get(layer).is_some_and(|t| t[self.at(i, j)]) => {
+                SOFT * soft.price / 100
+            }
             _ => 0,
         }
     }
@@ -456,7 +460,7 @@ impl Masks {
     /// The same for a via.
     pub(super) fn soft_via_cost(&self, i: usize, j: usize) -> i64 {
         match &self.soft {
-            Some(soft) if soft.via[self.at(i, j)] => SOFT_VIA,
+            Some(soft) if soft.via[self.at(i, j)] => SOFT_VIA * soft.price / 100,
             _ => 0,
         }
     }

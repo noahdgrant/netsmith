@@ -1,4 +1,5 @@
-//! Ripping up lines for a line that does not fit: the chain, the negotiation and the history.
+//! Ripping up lines for a line that does not fit: the rip-ups, the chain and the history the
+//! negotiation (`negotiation.rs`) and the rounds learn.
 
 use super::*;
 
@@ -316,72 +317,6 @@ impl<'a> Router<'a> {
             let h = &mut history[layer][j * self.grid.nx + i];
             *h = (*h + 1).min(HISTORY_MOST);
         }
-    }
-
-    /// Lines the router could not place are negotiated for: each is routed where it would go
-    /// if no other net were in the way, and the nets it then comes near are ripped up. The
-    /// cells they fought over are made dearer for all, so the lines ripped up find another
-    /// way round, and the ones that find none are the next to be negotiated for. This goes
-    /// on for a few rounds, or until a round spreads the lines left ([`spreads`]), and the best
-    /// state seen is kept.
-    pub(super) fn negotiate(&self, state: &mut State, room: f64, attempt: usize, attempts: usize) {
-        let cells = self.grid.nx * self.grid.ny;
-        *self.history.borrow_mut() = vec![vec![0; cells]; self.stack.len()];
-        let mut best = state.clone();
-        for round in 1..=NEGOTIATION_ROUNDS {
-            if state.failed.is_empty() || self.out_of_time() {
-                break;
-            }
-            for line in state.failed.clone() {
-                if self.out_of_time() {
-                    break;
-                }
-                self.report(false, Some(&*state), || {
-                    format!(
-                        "routing, try {attempt} of {attempts}: negotiating for {} (round {round} of {NEGOTIATION_ROUNDS}), {} not routed",
-                        self.lines[line],
-                        state.failed.len()
-                    )
-                });
-                let Some((path, blockers)) = self.contested(line, state, room) else {
-                    continue;
-                };
-                self.learn(&path);
-                let (gone, kept): (Vec<Routed>, Vec<Routed>) = state
-                    .routed
-                    .drain(..)
-                    .partition(|r| blockers.contains(&self.nets[r.line]));
-                state.routed = kept;
-                let mut again: Vec<usize> = gone.iter().map(|r| r.line).collect();
-                again.sort_by(|&a, &b| self.lines[a].length().total_cmp(&self.lines[b].length()));
-                // The line first, and then what was ripped up for it.
-                match self.try_line(line, state, &[], room, false) {
-                    Some((routed, _)) => {
-                        state.routed.push(routed);
-                        state.failed.retain(|&f| f != line);
-                    }
-                    None => {
-                        // Nothing came of it: put back what was taken up.
-                        state.routed.extend(gone);
-                        continue;
-                    }
-                }
-                for l in again {
-                    match self.try_line(l, state, &[], room, false) {
-                        Some((routed, _)) => state.routed.push(routed),
-                        None => state.failed.push(l),
-                    }
-                }
-            }
-            if state.failed.len() < best.failed.len() {
-                best = state.clone();
-            }
-            if spreads(best.failed.len(), state.failed.len()) {
-                break;
-            }
-        }
-        *state = best;
-        *self.history.borrow_mut() = vec![Vec::new(); self.stack.len()];
     }
 
     /// Try to get a failed line routed by ripping up the nets in its way, routing it, and

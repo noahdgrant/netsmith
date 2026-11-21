@@ -408,6 +408,7 @@ fn soft_wall(grid: &Grid, masks: &mut Masks, i: usize, gap: std::ops::Range<usiz
     let mut soft = Soft {
         track: vec![vec![false; cells], vec![false; cells]],
         via: vec![false; cells],
+        price: 100,
     };
     for j in (0..grid.ny).filter(|j| !gap.contains(j)) {
         for i in [i, i + 1] {

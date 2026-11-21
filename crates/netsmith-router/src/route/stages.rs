@@ -319,11 +319,28 @@ impl<'a> Router<'a> {
         self.snapshot(SnapshotStage::RipUp, &state);
         if self.negotiate && !state.failed.is_empty() {
             self.stage.set(Stage::Negotiation);
+            let start = state.clone();
             self.negotiate(&mut state, ROOM_TIGHT, attempt, attempts);
             self.snapshot(SnapshotStage::Negotiation, &state);
+            self.stage.set(Stage::Chain);
             if !state.failed.is_empty() {
-                self.stage.set(Stage::Chain);
                 self.finish(&mut state, ROOM_TIGHT, attempt, attempts);
+            }
+            // The chain from the state the negotiation began with too, when the negotiation
+            // changed it: the try keeps the end with fewer lines left, and of two that leave as
+            // many the one the weights find cheaper, so no try routes less than without it.
+            if state.negotiated.left_after < state.negotiated.left_before {
+                let mut other = start;
+                self.finish(&mut other, ROOM_TIGHT, attempt, attempts);
+                let ours = (state.failed.len(), self.state_cost(&state));
+                let theirs = (other.failed.len(), self.state_cost(&other));
+                if theirs.0 < ours.0 || (theirs.0 == ours.0 && theirs.1 < ours.1) {
+                    other.negotiated = Negotiated {
+                        kept: false,
+                        ..std::mem::take(&mut state.negotiated)
+                    };
+                    state = other;
+                }
             }
         }
         // Whole nets ripped up for the lines still left, and routed again after them (issue

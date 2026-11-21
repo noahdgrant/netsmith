@@ -119,13 +119,14 @@
 //! 4. Where the board draws a track wider than the process's least, the tight try also looks
 //!    for cells where a track of the least width fits, and a track through them is **necked
 //!    down** to the least width there and full width elsewhere.
-//! 5. Lines still left are **negotiated** for (PathFinder in a small form): each is routed
-//!    where it would go if no other net were in the way, the nets it comes near are ripped up,
-//!    the cells they fought over cost more from then on, and what was ripped up is routed
-//!    again. At most six rounds, fewer when a round spreads the lines left (see "What a try
-//!    costs"), and the best state is kept. The earlier
-//!    rip-up put the nets back if the line did not fit; this one lets lines fail for a round so
-//!    the others can move.
+//! 5. Lines still left are **negotiated** for (PathFinder, `route/negotiation.rs`, issue #1533):
+//!    each is routed allowing overlaps with other nets' copper at a present price that grows each
+//!    round, the cells where it overlaps get dearer for the rest of the try (the history), the
+//!    single lines it overlaps are ripped up, and they are routed again after it. Bounded by
+//!    counts, [`RouteOptions::negotiation`]: at most six rounds and 3000 searches a try, fewer
+//!    when a round spreads the lines left (see "What a try costs"), and the best state is kept.
+//!    The earlier rip-up put the nets back if the line did not fit; this one lets lines fail for
+//!    a round so the others can move. The chain (below) has what it leaves.
 //!
 //! There is no fan-out stage that puts a via beside each pad of a dense footprint before
 //! routing: the search already puts a via on any free cell next to a pad, and a pad with no
@@ -616,7 +617,7 @@
 //!   named nothing because the time ran out gave a person nothing to move.
 //! - **Crowding** ([`Routing::crowding`], [`Crowding`]): squares of 1 mm (ten cells), counting
 //!   each soft path (every search for the nets in a line's way: rip-up, negotiation, whose
-//!   `learn` is of the same path and is not counted again, and the chain) once in each square it
+//!   `learn` is of the cells of that path it overlaps and is not counted again, and the chain) once in each square it
 //!   passes through, over all tries of a run. A counter a path cell; the searches for `why`
 //!   are not counted.
 //! - **Snapshots** ([`RouteOptions::snapshots`], off by default): the copper and the lines left
@@ -701,6 +702,7 @@ use netsmith_pcb::{Board, CopperLayer, Pt, Ratline, Ratsnest, Rect, Track, Via};
 
 mod clean;
 mod lines;
+mod negotiation;
 mod order;
 mod polish;
 mod pours;
@@ -767,9 +769,13 @@ const GLIMPSE_EVERY: Duration = Duration::from_millis(250);
 /// How many of the lines a try left its progress line names ([`Router::try_ended`]).
 const TRY_ENDED_NAMES: usize = 3;
 
-/// How many rounds of negotiation the lines left over get, and what a cell the lines fought
-/// over costs for each time they did, and the most it counts.
+/// How many rounds of negotiation the lines left over get, and how many searches its rounds
+/// may make in a try ([`Negotiation::DEFAULT`]); what a cell the lines fought over costs for
+/// each time they did, and the most it counts; and how much dearer crossing other copper
+/// becomes each round, as a fraction ([`present_price`]).
 const NEGOTIATION_ROUNDS: usize = 6;
+const NEGOTIATION_SEARCHES: usize = 3000;
+const PRESENT_GROWTH: (i64, i64) = (3, 2);
 
 /// A negotiation stops after a round that leaves more than twice the lines of the best state it
 /// has seen and this many more ([`spreads`]): its rounds spread the lines left instead of
@@ -784,6 +790,17 @@ const HISTORY_MOST: u8 = 25;
 /// costs" in the module's header).
 fn spreads(best: usize, left: usize) -> bool {
     left > 2 * best + SPREAD_BEYOND
+}
+
+/// What crossing other nets' copper costs a soft search in round `round` of the negotiation
+/// (from 1), in hundredths of [`SOFT`]: 100 in the first, [`PRESENT_GROWTH`] times more each
+/// round after (PathFinder's present-congestion factor).
+fn present_price(round: usize) -> i64 {
+    let mut price = 100;
+    for _ in 1..round {
+        price = price * PRESENT_GROWTH.0 / PRESENT_GROWTH.1;
+    }
+    price
 }
 
 /// The last resort for a line that is still left ([`Router::rip_up_chain`]): how many levels of
@@ -1146,6 +1163,8 @@ struct MemoKey {
     pouring: bool,
     /// What a via costs beyond the usual ([`Router::fewer_vias`]).
     via_price: i64,
+    /// What a soft search pays for crossing ([`Router::soft_price`]).
+    soft_price: i64,
     window: Window,
     print: u128,
     /// 0 for the flood ([`link`]), and 1 on for the searches in turn.
@@ -1185,6 +1204,8 @@ struct State {
     /// and how many nets it tried.
     rerouted: Vec<Rerouted>,
     reroute_tried: usize,
+    /// What the negotiation of the try did ([`Router::negotiate`]).
+    negotiated: Negotiated,
 }
 
 struct Router<'a> {
@@ -1227,6 +1248,11 @@ struct Router<'a> {
     /// negotiation has learnt.
     negotiate: bool,
     history: RefCell<Vec<Vec<u8>>>,
+    /// The bounds of the negotiation ([`RouteOptions::negotiation`]).
+    negotiation: Negotiation,
+    /// What a soft search pays for crossing other nets' copper, in hundredths of [`SOFT`] and
+    /// [`SOFT_VIA`]: 100, or the present price of the negotiation's round.
+    soft_price: Cell<i64>,
     /// The layers the router draws on.
     stack: Stack,
     /// For each net, whether it is kept to the outer layers: a net with a known current, whose
@@ -1306,11 +1332,11 @@ pub struct RouteOptions {
     pub retry_orders: bool,
     /// Rip up the nets in the way of a line that failed, and route it first.
     pub rip_up: bool,
-    /// Negotiate for lines that are still left after that: route each where it would go
-    /// if nothing stood in its way, rip up what it comes near, make the cells they fought
-    /// over dearer, and route what was ripped up again, for a few rounds; and then give each
-    /// line still left a bounded chain of rip-ups of single lines ([`Router::rip_up_chain`]).
-    /// Only used with `rip_up`.
+    /// Negotiate for lines that are still left after that ([`Router::negotiate`], bounded by
+    /// [`RouteOptions::negotiation`]): route each allowing overlaps at a price that grows each
+    /// round, make the cells they overlap dearer, rip up the lines they overlap and route those
+    /// again; and then give each line still left a bounded chain of rip-ups of single lines
+    /// ([`Router::rip_up_chain`]). Only used with `rip_up`.
     pub negotiate: bool,
     /// Give up after this long, leaving the lines not yet routed in the ratsnest. `None` is
     /// no limit.
@@ -1371,6 +1397,59 @@ pub struct RouteOptions {
     /// polish pass when [`RouteOptions::weights`] are stated: the nets it tries in a round and
     /// its rounds. [`Reroute::NONE`] runs none.
     pub reroute: Reroute,
+    /// The bounds of the negotiation ([`Router::negotiate`], issue #1533), which a try that
+    /// leaves lines after its rip-ups gets before the chain: its rounds and its searches, counts
+    /// both. [`Negotiation::NONE`] runs none, and the chain has the lines alone. Only used with
+    /// `negotiate`.
+    pub negotiation: Negotiation,
+}
+
+/// The bounds of the negotiation ([`RouteOptions::negotiation`], issue #1533), counts both:
+/// at most `rounds` rounds, and at most `searches` searches in all, soft and for copper, over
+/// the rounds of one try.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Negotiation {
+    /// The most rounds.
+    pub rounds: usize,
+    /// The most searches.
+    pub searches: usize,
+}
+
+impl Negotiation {
+    /// The router's own bounds.
+    pub const DEFAULT: Negotiation = Negotiation {
+        rounds: NEGOTIATION_ROUNDS,
+        searches: NEGOTIATION_SEARCHES,
+    };
+    /// No negotiation: the chain has the lines the rip-ups leave.
+    pub const NONE: Negotiation = Negotiation {
+        rounds: 0,
+        searches: 0,
+    };
+}
+
+impl Default for Negotiation {
+    fn default() -> Self {
+        Negotiation::DEFAULT
+    }
+}
+
+/// What the negotiation of the try that gave the result did ([`Routing::negotiation`], issue
+/// #1533): counts of work, the same on every machine.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+pub struct Negotiated {
+    /// The rounds run.
+    pub rounds: usize,
+    /// The searches made, soft and for copper; at most [`Negotiation::searches`].
+    pub searches: usize,
+    /// The lines ripped up for others, counted each time.
+    pub ripped: usize,
+    /// The lines left when the negotiation began, and when it ended (the best state it saw).
+    pub left_before: usize,
+    pub left_after: usize,
+    /// Whether the try kept the negotiation's end: it left fewer lines, and the chain from it
+    /// did no worse than the chain from the state the negotiation began with.
+    pub kept: bool,
 }
 
 /// The bounds of the reroute pass ([`RouteOptions::reroute`], issue #1538), counts both: in
@@ -1551,6 +1630,7 @@ impl Default for RouteOptions {
             weights: None,
             reroute: Reroute::DEFAULT,
             power_groups: true,
+            negotiation: Negotiation::DEFAULT,
         }
     }
 }
@@ -1766,6 +1846,9 @@ pub struct Routing {
     /// no weights are stated.
     pub rerouted: Vec<Rerouted>,
     pub reroute_tried: usize,
+    /// What the negotiation of the try that gave the result did ([`RouteOptions::negotiation`],
+    /// issue #1533); the default when it did not run.
+    pub negotiation: Negotiated,
 }
 
 /// The diff pairs a board routed as two separate lines ([`Routing::separate`], issue #1295):
@@ -1807,6 +1890,7 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         polished,
         rerouted,
         reroute_tried,
+        negotiation,
     ) = {
         let mut router = Router::new(board, &options);
         let mut orders = router.tries(&options);
@@ -1909,6 +1993,7 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         let polished = best.polished;
         let rerouted = std::mem::take(&mut best.rerouted);
         let reroute_tried = best.reroute_tried;
+        let negotiation = std::mem::take(&mut best.negotiated);
         router.clean(&mut best);
         let drops = if options.pour_pads {
             router.pour_pad_vias(&best)
@@ -1934,6 +2019,7 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
             polished,
             rerouted,
             reroute_tried,
+            negotiation,
         )
     };
     let complete = best.failed.is_empty();
@@ -2028,5 +2114,6 @@ pub fn route_with(board: &mut Board, options: RouteOptions) -> Routing {
         polished,
         rerouted,
         reroute_tried,
+        negotiation,
     }
 }
