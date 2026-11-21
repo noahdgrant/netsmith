@@ -51,7 +51,10 @@ pub use drc::constraints::{
     Relation as ConstraintRelation, RelationEnd as ConstraintRelationEnd, SideRule,
     body_of as constraint_body_of, outcome_findings as constraint_outcome_findings,
 };
-pub use drc::shape::{Gap as ShapeGap, JOIN as COPPER_JOIN, Shape as DrcShape, gap as shape_gap};
+pub use drc::shape::{
+    ARC_TOUCH as COPPER_ARC_TOUCH, Gap as ShapeGap, JOIN as COPPER_JOIN, Shape as DrcShape,
+    gap as shape_gap,
+};
 pub use drc::{
     BoardRules as DrcBoardRules, Branch as DrcBranch, Carrying as DrcCarrying, Class as DrcClass,
     ClassSizes as DrcClassSizes, Counts as DrcCounts, Error as DrcError, Extras as DrcExtras,

@@ -142,7 +142,7 @@ pub struct FitArgs {
     #[arg(long, value_enum)]
     pub side: Option<Side>,
     /// Place nothing: query the board exactly as the layout file has it.
-    #[arg(long, conflicts_with_all = ["place_seeds", "place_budget"])]
+    #[arg(long, conflicts_with_all = ["place_seeds", "place_budget", "routing_objective"])]
     pub as_laid_out: bool,
     #[command(flatten)]
     pub placing: common::Placing,
@@ -218,7 +218,7 @@ pub struct PartsArgs {
     #[command(flatten)]
     pub target: Target,
     /// Place nothing: give the parts that have an entry exactly as the layout file has them, and list the others as having none.
-    #[arg(long, conflicts_with_all = ["place_seeds", "place_budget"])]
+    #[arg(long, conflicts_with_all = ["place_seeds", "place_budget", "routing_objective"])]
     pub as_laid_out: bool,
     #[command(flatten)]
     pub placing: common::Placing,
