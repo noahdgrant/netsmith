@@ -1962,7 +1962,11 @@ fn fab_board(
             for_review,
             waived: waived.iter().map(Waived::line).collect(),
             pictures: pictures.iter().map(|(file, _)| file.clone()).collect(),
-            drc: drc_extras(&board),
+            drc: netsmith_geom::DrcExtras {
+                // A guideline of the check that a strict run makes an error (issue #1509).
+                strict_guidelines: catalogs.strict_guidelines(),
+                ..drc_extras(&board)
+            },
             trim: board.trims().iter().map(Trim::note).collect(),
             process: Some(board.process_note()),
             extras,
@@ -3672,6 +3676,8 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
             .collect(),
         // The layout file's waivers of findings of a part's own footprint (issue #1196).
         waivers: board.drc_waivers(),
+        strict_guidelines: false,
+        open: Vec::new(),
         // The rules the `.kicad_dru` beside the board holds for KiCad too (issue #1185).
         ..board.rules.process_rules()
     }

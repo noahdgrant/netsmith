@@ -16,9 +16,18 @@ use netsmith_geom::Constraints;
 use netsmith_pcb::{Board, kicad_pcb, kicad_pro};
 
 /// The check of `board` as it is, with the design's `constraints` (`None` when it states none).
-pub fn of_board(board: &Board, constraints: Option<Constraints>) -> Result<Checked, String> {
+/// With `strict_guidelines` (`guidelines = "error"` in netsmith.toml), a guideline of the check
+/// that `fab --strict` makes an error is one here too (`pad_island_cut`, issue #1509).
+pub fn of_board(
+    board: &Board,
+    constraints: Option<Constraints>,
+    strict_guidelines: bool,
+) -> Result<Checked, String> {
     let options = Options {
-        drc: crate::fab::drc_extras(board),
+        drc: netsmith_geom::DrcExtras {
+            strict_guidelines,
+            ..crate::fab::drc_extras(board)
+        },
         constraints,
         pairs: board.diff_pairs_with_skew(),
         length_groups: board.length_groups.clone(),

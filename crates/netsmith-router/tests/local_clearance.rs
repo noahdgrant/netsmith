@@ -190,6 +190,8 @@ fn check(board: &Board) -> DrcReport {
         sizing: None,
         net_currents: Vec::new(),
         waivers: Vec::new(),
+        strict_guidelines: false,
+        open: Vec::new(),
     };
     drc_check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras).unwrap()
 }

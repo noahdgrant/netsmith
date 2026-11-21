@@ -148,20 +148,28 @@ fn drc_findings(board: &Board) -> Result<Vec<netsmith_geom::DrcFinding>, String>
         board,
         &netsmith_pcb::kicad_pro(board),
         &crate::fab::drc_extras(board),
+        false,
     )
 }
 
 /// [`drc_findings`] of `board` to the rules of `project` and `extras` (the whole board's, for a
-/// board cut to a neighbourhood).
+/// board cut to a neighbourhood). With `cuts`, a `pad_island_cut` warning too (issue #1509): the
+/// check of an edit refuses a track that cuts a pad's piece of a fill off from the rest of it.
 fn drc_findings_with(
     board: &Board,
     project: &str,
     extras: &netsmith_geom::DrcExtras,
+    cuts: bool,
 ) -> Result<Vec<netsmith_geom::DrcFinding>, String> {
     let report = netsmith_geom::drc_check(&netsmith_pcb::kicad_pcb(board), Some(project), extras)
         .map_err(|e| format!("the design rules check: {e}"))?;
     Ok(report
-        .errors()
+        .findings
+        .iter()
+        .filter(|f| {
+            f.severity == netsmith_geom::DrcSeverity::Error
+                || cuts && f.rule == netsmith_geom::DrcRule::PadIslandCut
+        })
         .filter(|f| {
             !matches!(
                 f.rule,
@@ -657,6 +665,11 @@ pub(crate) fn edit_all_with(
     Ok(said)
 }
 
+/// How far round a changed track the check of an edit looks for a piece of a fill it cut off
+/// (`pad_island_cut`, issue #1509), in mm: the reach of `routes join-pad`'s tries, so a pad that
+/// command could join is in view.
+const CUT_REACH: f64 = 5.0;
+
 /// The errors of the design rules check that `after` has and `before` does not, as
 /// [`new_errors`] finds them, checked where the boards differ (issue #1471, [`near`]): the
 /// tracks, vias and zones one has and the other does not, their boxes grown by the board's
@@ -665,6 +678,10 @@ pub(crate) fn edit_all_with(
 /// edit costs what its neighbourhood holds, not the board. A rule whose finding can lie far from
 /// the copper that makes it (a fill's island, the current of a branch of a net) is left to the
 /// check of the whole board, `board drc` and `fab`, as the ends left open are ([`drc_errors`]).
+/// A piece of a fill with pads of its net that the edit's track cuts off from the rest of the
+/// fill (`pad_island_cut`, a warning, issue #1509) is refused too, when the piece lies wholly
+/// within [`CUT_REACH`] of the changed tracks: what would otherwise only `fab`'s router see, and
+/// join.
 fn new_errors_near(
     before: &Board,
     after: &Board,
@@ -688,18 +705,65 @@ fn new_errors_near(
         let at = Pt::new(f.at.x, f.at.y) + before.outline.min;
         hoods.iter().any(|h| near::holds(h, at))
     };
+    // A track that cuts a pad's piece of a fill off from the rest of it (`pad_island_cut`, issue
+    // #1509) is judged on the board cut wider, [`CUT_REACH`] round the changed tracks, since the
+    // piece reaches further than the space round the track; a piece that reaches the edge of
+    // those boxes may go on outside them, and is not judged (`DrcExtras::open`).
+    // Only a track over a fill of another net on its layer can cut one.
+    let fills = near::zones_of(after);
+    let over_fill = |t: &&netsmith_pcb::Track| {
+        let r = near::track_box(t);
+        fills.iter().any(|z| {
+            z.net != t.net
+                && z.layers.iter().any(|l| l == t.layer.name())
+                && netsmith_pcb::Rect::around(z.outline.iter().copied())
+                    .is_some_and(|o| near::meets(&o, &r))
+        })
+    };
+    let tracks: Vec<netsmith_pcb::Rect> = differ(&before.tracks, &after.tracks)
+        .filter(over_fill)
+        .map(near::track_box)
+        .map(|r| r.expanded(CUT_REACH + reach))
+        .collect();
+    let cut_wides = near::clusters(tracks.iter().map(|h| h.expanded(reach)).collect());
     let errors = |whole: &Board, counts: &mut EditCounts| -> Result<Vec<_>, String> {
         let local = near::local(whole, &near::zones_of(whole), &wides);
         counts.count(&local);
-        Ok(drc_findings_with(
+        let mut found: Vec<(String, netsmith_geom::DrcFinding)> = drc_findings_with(
             &local,
             &netsmith_pcb::kicad_pro(whole),
             &crate::fab::drc_extras(whole),
+            false,
         )?
         .into_iter()
         .filter(|f| in_hood(f))
         .map(|f| (f.to_string(), f))
-        .collect())
+        .collect();
+        if !cut_wides.is_empty() {
+            let local = near::local(whole, &near::zones_of(whole), &cut_wides);
+            // Its items are counted with the edit's check; it is not a check of shapes of its
+            // own.
+            let checks = counts.checks;
+            counts.count(&local);
+            counts.checks = checks;
+            let extras = netsmith_geom::DrcExtras {
+                open: cut_wides
+                    .iter()
+                    .map(|w| netsmith_geom::Bounds {
+                        min: netsmith_geom::Pt::new(w.min.x, w.min.y),
+                        max: netsmith_geom::Pt::new(w.max.x, w.max.y),
+                    })
+                    .collect(),
+                ..crate::fab::drc_extras(whole)
+            };
+            found.extend(
+                drc_findings_with(&local, &netsmith_pcb::kicad_pro(whole), &extras, true)?
+                    .into_iter()
+                    .filter(|f| f.rule == netsmith_geom::DrcRule::PadIslandCut && in_hood(f))
+                    .map(|f| (f.to_string(), f)),
+            );
+        }
+        Ok(found)
     };
     let mut old: Vec<String> = errors(before, counts)?
         .into_iter()
@@ -1795,6 +1859,52 @@ mod tests {
         )
         .unwrap();
         assert_eq!(said, "added a zone to net GND on top");
+    }
+
+    #[test]
+    fn a_track_that_cuts_a_pads_piece_of_a_zone_off_from_its_via_is_refused() {
+        // Issue #1509: a GND zone round D1's GND pad (D1.1 at 11.8, 4.2) with a GND via above
+        // it; a VCC track across the zone between the two cuts the pad's piece off from the via,
+        // which the check's connectivity (a pad joined by the zone's outline) does not see.
+        let board = led();
+        let mut routes = Routes::default();
+        edit_all(
+            &board,
+            &mut routes,
+            &[
+                zone("GND", rect(10.4, 1.0, 3.4, 5.5), 0),
+                Edit::AddVia {
+                    net: "GND".into(),
+                    at: [13.3, 1.8],
+                    diameter: None,
+                    drill: None,
+                    layers: None,
+                    lock: false,
+                },
+            ],
+        )
+        .unwrap();
+        let track = |to: f64| Edit::AddTrack {
+            net: "VCC".into(),
+            layer: netsmith_pcb::CopperLayer::Front,
+            width: Some(0.2),
+            from: [10.0, 3.0],
+            mid: None,
+            to: [to, 3.0],
+            lock: false,
+        };
+        let kept = routes.clone();
+        let e = refusal(edit(&board, &mut routes, &track(14.2)));
+        assert!(
+            e.contains("[pad_island_cut]")
+                && e.contains("a track of VCC cuts a piece of the pour of GND")
+                && e.contains("nothing else joins D1.1 on it to the net"),
+            "{e}"
+        );
+        assert_eq!(routes, kept, "a refused edit leaves the file as it was");
+        // A track that goes only part of the way across leaves the via and the pad on one piece.
+        let mut routes = kept;
+        edit(&board, &mut routes, &track(11.5)).unwrap();
     }
 
     #[test]
