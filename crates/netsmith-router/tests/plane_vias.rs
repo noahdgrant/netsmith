@@ -253,3 +253,60 @@ fn a_pad_the_pour_joins_with_one_spoke_keeps_its_via() {
     assert_eq!(starved(&bare), ["R1.1"]);
     assert_eq!(own_findings(&b), Vec::<String>::new());
 }
+
+/// The poured board with R1 moved into a ring of track of a net of its own (issue 1484): the
+/// ring cuts an island of the pour round R1, and the island holds a point of the stitching grid.
+fn island() -> Board {
+    let mut b = board(true);
+    b.parts[0].at = Pt::new(5.6, 8.8);
+    b.parts[1].at = Pt::new(9.0, 7.2);
+    b.nets.push(netsmith_pcb::BoardNet {
+        name: "RING".into(),
+        pads: Vec::new(),
+    });
+    let corners = [
+        Pt::new(3.6, 6.4),
+        Pt::new(7.6, 6.4),
+        Pt::new(7.6, 10.5),
+        Pt::new(3.6, 10.5),
+    ];
+    for k in 0..4 {
+        b.tracks.push(netsmith_pcb::Track::straight(
+            "RING",
+            netsmith_pcb::CopperLayer::Front,
+            corners[k],
+            corners[(k + 1) % 4],
+            0.25,
+        ));
+    }
+    b
+}
+
+#[test]
+fn a_pad_on_an_island_of_the_pour_is_left_to_the_stitching_via_there() {
+    let mut b = island();
+    let options = RouteOptions {
+        share_vias: false,
+        ..RouteOptions::default()
+    };
+    let routing = route_with(&mut b, options);
+    assert!(routing.left.is_empty(), "{:?}", routing.left);
+    assert_eq!(Ratsnest::of(&b).len(), 0);
+    let r1 = gnd_pad(&b, "R1");
+    // The island's stitching via, and no other via of the net in the ring.
+    let inside: Vec<Pt> = b
+        .vias
+        .iter()
+        .filter(|v| v.net == "GND" && v.at.x > 3.6 && v.at.x < 7.6 && v.at.y > 6.4 && v.at.y < 10.5)
+        .map(|v| v.at)
+        .collect();
+    assert_eq!(inside.len(), 1, "{:?}", b.vias);
+    let own = b
+        .tracks
+        .iter()
+        .filter(|t| t.net == "GND")
+        .filter(|t| t.from.distance(r1) < 0.01 || t.to.distance(r1) < 0.01)
+        .count();
+    assert_eq!(own, 0, "R1's GND pad keeps a track of its own");
+    assert_eq!(own_findings(&b), Vec::<String>::new());
+}
