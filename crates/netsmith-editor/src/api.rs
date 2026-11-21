@@ -49,6 +49,7 @@ mod fit;
 mod gerber;
 mod hints;
 mod nets;
+mod stitching;
 mod summary;
 mod view;
 
@@ -59,6 +60,7 @@ pub use fit::*;
 pub use gerber::*;
 pub use hints::*;
 pub use nets::*;
+pub use stitching::*;
 pub use summary::*;
 pub use view::*;
 
@@ -2584,6 +2586,8 @@ pub fn typescript() -> String {
         FillStarved,
         FillUnjoinable,
         PcbFill,
+        StitchingVia,
+        PcbStitching,
         NetsRow,
         NetsPair,
         NetsGroupNet,

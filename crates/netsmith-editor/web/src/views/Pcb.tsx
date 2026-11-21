@@ -24,6 +24,7 @@ import { SIDES, type Side } from '../pcb/side';
 import { type Pt, unite } from '../pcb/geometry';
 import { POUR_HIDDEN, fills, poursMarkup } from '../pcb/pours';
 import { fillMarkup, fillOf } from '../pcb/fillMarks';
+import { stitchingMarkup, stitchingOf } from '../pcb/stitchMarks';
 import { placingLine, placingSvg, routingMarkup } from '../pcb/live';
 import { livePlace, liveRoute, liveSeen, placingSaid } from '../pcb/liveState';
 import {
@@ -38,6 +39,7 @@ import {
   pickedFinding,
   pours,
   fillReport,
+  stitching,
   recheck,
   redo,
   scene,
@@ -70,6 +72,7 @@ const LAYERS: { id: string; label: string }[] = [
   { id: 'front-copper', label: 'Front copper' },
   { id: 'back-copper', label: 'Back copper' },
   { id: 'vias', label: 'Vias' },
+  { id: 'stitching', label: 'Stitching' },
   { id: 'pads', label: 'Pads' },
   { id: 'planes', label: 'Planes' },
   { id: 'islands', label: 'Removed islands' },
@@ -210,7 +213,9 @@ export function Pcb() {
   // What the fill took out and the pads it starves (issue 1188) go over everything, from the report of the fill.
   const filled = fillReport.value && fillReport.value.board === name ? fillReport.value : null;
   const filledNow = fillOf(filled, sc);
-  const marks = fillMarkup(filled, filledNow);
+  // The stitching vias the export will lay that the routes file does not hold (issue 1489), in a tone of their own.
+  const stitched = stitching.value && stitching.value.board === name ? stitching.value : null;
+  const marks = stitchingMarkup(stitched, stitchingOf(stitched, sc)) + fillMarkup(filled, filledNow);
   const drawing = useMemo(
     () => (sc ? prepare(sc.svg, poursMarkup(poured, pouredNow), laid + marks) : null),
     [sc?.svg, poured, pouredNow, laid, marks],

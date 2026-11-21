@@ -61,6 +61,10 @@
 .pcb-host svg .l-islands > .removed-island { fill: url(#pcb-hatch-island); stroke: var(--pcb-island); stroke-width: calc(1.25 * var(--px, .04)); stroke-dasharray: calc(5 * var(--px, .04)) calc(3 * var(--px, .04)); stroke-linejoin: round; fill-rule: evenodd; }
 .pcb-host svg .l-starved > .starved-pad > .starved-ring { fill: none; stroke: var(--pcb-starved); stroke-width: calc(2 * var(--px, .04)); }
 .pcb-host svg .l-starved > .starved-pad > .starved-dot { fill: var(--pcb-starved); }
+/* The stitching vias the export will lay that the routes file does not hold (pcb/stitchMarks.ts, issue 1489): a disc in --pcb-stitching with a
+ * dashed ring, a tone apart from the vias of the copper drawn; the Layers menu's Stitching hides them. */
+.pcb-host svg .l-stitching > .stitching-via { fill: var(--pcb-stitching); fill-opacity: .75; stroke: var(--pcb-stitching); stroke-width: calc(1.25 * var(--px, .04)); stroke-dasharray: calc(3 * var(--px, .04)) calc(2 * var(--px, .04)); }
+.pcb-host svg .l-stitching[data-current="false"] { opacity: .4; }
 .pcb-host svg :is(.l-islands, .l-starved)[data-current="false"] { opacity: .4; }
 .pcb-host .side-front svg :is(.l-islands > .island-back, .l-starved > .starved-back),
 .pcb-host .side-back svg :is(.l-islands > .island-front, .l-starved > .starved-front) { opacity: .22; }

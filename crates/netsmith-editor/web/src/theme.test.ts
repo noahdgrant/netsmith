@@ -178,7 +178,7 @@ function pairs(): Pair[] {
   list.push({ fg: '--pcb-refdes', bg: BOARD, what: 'board reference text' });
   list.push({ fg: '--pcb-silk', bg: BOARD, min: 3, what: 'board silkscreen (a graphic)' });
   for (const n of NETS) list.push({ fg: n, bg: ['--pcb-bg'], min: 3, what: 'net colour on the board (a plane border, a graphic)' });
-  for (const k of ['--pcb-front', '--pcb-back', '--pcb-inner', '--pcb-thru', '--pcb-via', '--pcb-outline', '--pcb-ratsnest', '--pcb-courtyard', '--pcb-fab', '--pcb-keepout', '--pcb-height-limit', '--pcb-select', '--pcb-island', '--pcb-starved']) {
+  for (const k of ['--pcb-front', '--pcb-back', '--pcb-inner', '--pcb-thru', '--pcb-via', '--pcb-outline', '--pcb-ratsnest', '--pcb-courtyard', '--pcb-fab', '--pcb-keepout', '--pcb-height-limit', '--pcb-select', '--pcb-island', '--pcb-starved', '--pcb-stitching']) {
     list.push({ fg: k, bg: BOARD, min: 3, what: `${k.slice(6)} on the board (a graphic)` });
   }
   // The number of a pad with a hole is not drawn over the hole, so only the surface pads carry one.

@@ -9,6 +9,7 @@ import type {
   PcbCrossed,
   PcbFindings,
   PcbFill,
+  PcbStitching,
   PcbPours,
   PcbRegenerated,
   PcbRoutesEdited,
@@ -46,6 +47,9 @@ export const pours = signal<PcbPours | null>(null);
 /** How the fill joins the pads, its removed islands and its starved pads (`GET /api/pcb/fill`, issue 1188), as the server filled
  * the placement it names: the 2D view marks the islands and the pads (`pcb/fillMarks.ts`). */
 export const fillReport = signal<PcbFill | null>(null);
+/** The stitching vias the export will have that the routes file does not (`GET /api/pcb/stitching`, issue 1489), of the placement
+ * it names: the 2D view draws them in a tone of their own (`pcb/stitchMarks.ts`). */
+export const stitching = signal<PcbStitching | null>(null);
 /** Why the board could not be placed, if it could not. */
 export const sceneError = signal<string | null>(null);
 /** The parts picked, by their path in the design. */
@@ -217,7 +221,9 @@ function show(next: PcbScene) {
   // What is wrong with it may have changed with where things are.
   void loadFindings(next.board);
   // So may the pours and zones, which come after the board is drawn.
-  void loadPours(next.board).then(() => loadFill(next.board));
+  void loadPours(next.board)
+    .then(() => loadFill(next.board))
+    .then(() => loadStitching(next.board));
 }
 
 let poursAsked = 0;
@@ -248,6 +254,21 @@ export async function loadFill(board: string): Promise<void> {
     if (mine === fillAsked) fillReport.value = answer;
   } catch {
     if (mine === fillAsked) fillReport.value = null;
+  }
+}
+
+let stitchingAsked = 0;
+
+/** Ask the server for the stitching vias of the board as it is placed now, after its fill (one at a time on the server's time); the
+ * answer of the last ask is kept. A board that cannot be placed has none. */
+export async function loadStitching(board: string): Promise<void> {
+  const mine = ++stitchingAsked;
+  if (stitching.peek()?.board !== board) stitching.value = null;
+  try {
+    const answer = await api.pcbStitching(board);
+    if (mine === stitchingAsked) stitching.value = answer;
+  } catch {
+    if (mine === stitchingAsked) stitching.value = null;
   }
 }
 

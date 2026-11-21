@@ -336,6 +336,7 @@ pub fn check_board(board: &netsmith_pcb::Board, gerber_zip: &[u8]) -> Result<Boa
             only_open: false,
             drc: false,
             islands: false,
+            stitching: false,
             format: crate::pcb_picture::Format::Svg,
         };
         let model =

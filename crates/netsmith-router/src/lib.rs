@@ -59,4 +59,4 @@ pub use route::{
     CoarsePlan, Costs, Crowding, LineClasses, LineReport, RIP_MOST, RIP_ROUNDS, RipRounds,
     RouteOptions, Routing, Separate, Snapshot, SnapshotStage, Stage, WallVia, route, route_with,
 };
-pub use stitch::{fence, stitch};
+pub use stitch::{fence, stitch, stitching_vias};
