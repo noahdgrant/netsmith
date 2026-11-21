@@ -139,8 +139,8 @@
 //! touches the network is a fact of the code and not a rule in `docs/DESIGN-RULES.md`; it is not
 //! planned as one until a board needs it.
 
-mod add;
-mod csvfile;
+pub(crate) mod add;
+pub(crate) mod csvfile;
 mod date;
 mod http;
 mod records;
@@ -628,7 +628,7 @@ fn refresh_offer(
 }
 
 /// Write by renaming a finished file over the old one, so a crash leaves one or the other.
-fn write_atomically(path: &Path, text: &str) -> Result<(), String> {
+pub(crate) fn write_atomically(path: &Path, text: &str) -> Result<(), String> {
     let mut temp = path.as_os_str().to_owned();
     temp.push(".refresh-tmp");
     let temp = std::path::PathBuf::from(temp);

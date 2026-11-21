@@ -40,6 +40,7 @@ pub mod route_net;
 pub mod routes;
 pub mod routes_tidy;
 pub mod schematic;
+pub mod search;
 pub mod system3d;
 pub mod system_areas;
 pub mod track_drop;

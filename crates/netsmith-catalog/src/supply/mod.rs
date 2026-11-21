@@ -7,7 +7,8 @@
 //! never guessed from a neighbouring row and never 0.
 //!
 //! The one provider built reads a local file ([`file`]); it is how the tests work. No
-//! provider here talks to a supplier: their terms of use are unread (ADR 0039, ADR 0047).
+//! provider here talks to a supplier: their terms of use are unread (ADR 0039, ADR 0047). Finding
+//! parts a catalog lacks is the search provider's ([`crate::search`]), which a project turns on.
 //! The solver, the checker and the language know nothing of this module.
 //!
 //! **The decision** (ADR 0047; accepted by the owner, 2026-11-11). A catalog row keeps what a part is (`lcsc`, `mpn`,
@@ -85,9 +86,11 @@
 //!
 //! **Credentials.** There is no user-level credentials file for now (owner, 2026-11-11). A
 //! credential is the name of an environment variable, written in the `[supply]` table of
-//! `netsmith.toml`; the spelling of that manifest field (for example `key_env =
-//! "NETSMITH_LCSC_KEY"`) is decided together with the first real provider (issue #30). Neither
-//! is built.
+//! `netsmith.toml`. The first provider that uses one is the search provider of
+//! [`crate::search`] (issue #1460): `[supply.nexar]` with `client_id_env` and
+//! `client_secret_env`, the names of the variables that hold a Nexar application's client id and
+//! secret (the spelling is proposed with it and is the owner's to confirm). No supply provider
+//! that quotes a price uses a credential yet.
 //!
 //! **Not built:**
 //! - Which real providers, and in which order (the LCSC API, JLCAPI, an aggregator such as the

@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::{env, time::Duration};
 
-use clap::{Args as ClapArgs, Subcommand};
+use clap::{ArgGroup, Args as ClapArgs, Subcommand};
 use netsmith_pipeline::supply::Supply;
 use netsmith_tools::findings::{Finding, Severity};
 
@@ -19,10 +19,12 @@ pub struct Args {
 pub enum Command {
     /// Check LCSC's offers of the catalogs' parts against its record and write the day in `checked` (ADR 0039, ADR 0143).
     Refresh(RefreshArgs),
-    /// Append a row and its LCSC offer made from LCSC's record of a number, or print the record.
+    /// Append a row and its offers made from a supplier's record of a number (LCSC's, or a search provider's), or print the record.
     Add(AddArgs),
     /// List the catalog rows whose price and stock are older than `--days` days, and the unknown ones.
     Age(AgeArgs),
+    /// Find parts by words, a manufacturer's number or parametric filters, with each supplier's sku, stock and price (Nexar; opt-in).
+    Search(super::catalog_search::Args),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, ClapArgs)]
@@ -63,14 +65,24 @@ pub struct RefreshArgs {
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
+#[command(group(ArgGroup::new("record").required(true).args(["lcsc", "from"])))]
 #[command(
-    after_long_help = "`catalog add --lcsc <C123> --to <catalog.csv>` asks LCSC's record of the number (never JLCPCB's) and appends a row with `mpn`, `package` and a `source` that names the record and the day, and `manufacturer` as LCSC spells it when the file has that column (check it against the datasheet), leaving every other cell empty and listing the columns that need the datasheet; the number itself is an offer (ADR 0143), appended to the project's `offers/lcsc.csv` (the first folder of `offer_dirs`, or `offers/` beside the folder the command runs in outside a project; the file is made when there is none) with the same `source` and the day in `checked`. A part JLCPCB assembles also needs the offer's `class`, the library from JLCPCB's page, which the command does not write (an offer with no `class` is not in the `jlcpcb-assembly` channel). Without `--to` it prints the record and writes nothing."
+    after_long_help = concat!("`catalog add --lcsc <C123> --to <catalog.csv>` asks LCSC's record of the number (never JLCPCB's) and appends a row with `mpn`, `package` and a `source` that names the record and the day, and `manufacturer` as LCSC spells it when the file has that column (check it against the datasheet), leaving every other cell empty and listing the columns that need the datasheet; the number itself is an offer (ADR 0143), appended to the project's `offers/lcsc.csv` (the first folder of `offer_dirs`, or `offers/` beside the folder the command runs in outside a project; the file is made when there is none) with the same `source` and the day in `checked`. A part JLCPCB assembles also needs the offer's `class`, the library from JLCPCB's page, which the command does not write (an offer with no `class` is not in the `jlcpcb-assembly` channel). Without `--to` it prints the record and writes nothing.\n\n`catalog add --from <supplier> <sku or mpn> --to <catalog.csv>` asks the project's search provider (Nexar, as `catalog search` does) for the record of the part that `supplier` (`lcsc`, `digikey` or `mouser`) offers under that sku, or whose manufacturer's number is exactly that, and writes nothing unless the record names one such part with one offer of that supplier (two packagings of one supplier, two manufacturers of one number: give the sku). It appends a row with `mpn`, `manufacturer` when the file has the column, `package` when the record states it (with `--details`, which needs a Nexar plan that includes it), a `source` that names the record and the day, and `notes`; and an offer for the named supplier and for each other supplier with one offer in the record, in the project's `offers/<supplier>.csv` (made when there is none), each with a `source` and the day in `checked`. A supplier with several offers is listed and not written. Every other cell stays empty and is listed as needing the datasheet, with the `class` of an LCSC offer (JLCPCB's library, which no record read here gives).\n\n", super::catalog_search::terms!())
 )]
 #[command(args_override_self = true)]
 pub struct AddArgs {
-    /// The LCSC number to add, such as C25104.
+    /// The LCSC number to add, such as C25104 (asks LCSC's record).
     #[arg(long, value_name = "C123")]
-    pub lcsc: String,
+    pub lcsc: Option<String>,
+    /// A supplier and its sku, or a manufacturer's number, to add from the search provider's record.
+    #[arg(long, num_args = 2, value_names = ["SUPPLIER", "SKU|MPN"])]
+    pub from: Option<Vec<String>>,
+    /// With `--from`, also ask for the package, the values and the datasheet (a Nexar plan that includes them).
+    #[arg(long, conflicts_with = "lcsc")]
+    pub details: bool,
+    /// With `--from`, the pause between requests, in milliseconds (default 500).
+    #[arg(long = "delay", value_name = "MS", conflicts_with = "lcsc")]
+    pub delay_ms: Option<u64>,
     /// The catalog file to append the row to; without it the record is printed.
     #[arg(long, value_name = "CATALOG.CSV")]
     pub to: Option<PathBuf>,
@@ -114,6 +126,7 @@ pub fn run(args: Args) -> ExitCode {
         Command::Refresh(a) => run_catalog_refresh(&a),
         Command::Add(a) => run_catalog_add(&a),
         Command::Age(a) => run_catalog_age(&a),
+        Command::Search(a) => super::catalog_search::run(a),
     }
 }
 
@@ -123,6 +136,13 @@ pub fn run(args: Args) -> ExitCode {
 /// when LCSC has no record or the file already has the number, 2 when the run could not be made.
 fn run_catalog_add(request: &AddArgs) -> ExitCode {
     use netsmith_fabricate::refresh::{self, AddError, Network};
+    if let Some(from) = &request.from {
+        return run_catalog_add_from(request, (&from[0], &from[1]));
+    }
+    let lcsc = request
+        .lcsc
+        .as_deref()
+        .expect("clap requires --lcsc or --from");
     let mut network = Network {
         offline: request.offline,
         ..Network::default()
@@ -143,7 +163,7 @@ fn run_catalog_add(request: &AddArgs) -> ExitCode {
     let files = to
         .zip(shown.as_deref())
         .zip(offers.as_ref().map(|(p, s)| (p.as_path(), s.as_str())));
-    match refresh::add(&request.lcsc, files, network) {
+    match refresh::add(lcsc, files, network) {
         Ok(added) => {
             if request.format == Format::Json {
                 print_json(&refresh::json_added(&added));
@@ -171,18 +191,78 @@ fn run_catalog_add(request: &AddArgs) -> ExitCode {
     }
 }
 
+/// `netsmith catalog add --from <supplier> <number>`: exit 0 when the row is written (or the record
+/// printed), 1 when the record does not name the part or the files already have it, 2 when the
+/// run could not be made (no provider set up, the network, a file).
+fn run_catalog_add_from(request: &AddArgs, (supplier, number): (&str, &str)) -> ExitCode {
+    use netsmith_fabricate::refresh::AddError;
+    use netsmith_fabricate::search::add;
+    let fail = |e: String| {
+        eprintln!("error: {e}");
+        ExitCode::from(2)
+    };
+    let mut nexar = match super::catalog_search::provider(
+        request.offline,
+        request.delay_ms,
+        None,
+        request.no_cache,
+    ) {
+        Ok(p) => p,
+        Err(e) => return fail(e),
+    };
+    let to: Option<&Path> = request.to.as_deref();
+    let shown = to.map(|p| p.display().to_string());
+    let offers = |supplier: &str| offers_file(supplier);
+    match add::add_from(
+        &mut nexar,
+        (supplier, number),
+        request.details,
+        to.zip(shown.as_deref()),
+        &offers,
+    ) {
+        Ok(added) => {
+            if request.format == Format::Json {
+                print_json(&add::json_added_from(&added));
+            } else {
+                print!("{}", add::render_added_from(&added));
+            }
+            ExitCode::SUCCESS
+        }
+        Err(AddError::Refused(why)) if request.format == Format::Json => {
+            print_json(&serde_json::json!({
+                "command": "catalog add",
+                "ok": false,
+                "findings": [Finding::plain(Severity::Error, "catalog", why)],
+            }));
+            ExitCode::FAILURE
+        }
+        Err(AddError::Refused(why)) => {
+            eprintln!("error: {why}");
+            ExitCode::FAILURE
+        }
+        Err(AddError::Stopped(why)) => fail(why),
+    }
+}
+
+/// Where `catalog add` writes an offer of `supplier`: the offers file of that supplier of the
+/// project that contains the current directory ([`Project::offer_file_of`]), or
+/// `offers/<supplier>.csv` in the current directory outside a project.
+fn offers_file(supplier: &str) -> Result<(PathBuf, String), String> {
+    let cwd = env::current_dir().map_err(|e| e.to_string())?;
+    if let Some(project) = Project::find(&cwd)?
+        && let Some((path, file)) = project.offer_file_of(supplier)?
+    {
+        return Ok((path, file));
+    }
+    let file = format!("offers/{supplier}.csv");
+    Ok((cwd.join(&file), file))
+}
+
 /// Where `catalog add` writes the LCSC offer: the offers file of LCSC of the project that
 /// contains the current directory ([`Project::offer_file_of`]), or `offers/lcsc.csv` in the
 /// current directory outside a project.
 fn lcsc_offers_file() -> Result<(PathBuf, String), String> {
-    let cwd = env::current_dir().map_err(|e| e.to_string())?;
-    if let Some(project) = Project::find(&cwd)?
-        && let Some((path, file)) = project.offer_file_of("lcsc")?
-    {
-        return Ok((path, file));
-    }
-    let file = "offers/lcsc.csv".to_string();
-    Ok((cwd.join(&file), file))
+    offers_file("lcsc")
 }
 
 fn run_catalog_refresh(request: &RefreshArgs) -> ExitCode {
@@ -295,7 +375,10 @@ mod tests {
             ]),
             Ok(Leaf::Catalog(catalog::Args {
                 command: catalog::Command::Add(catalog::AddArgs {
-                    lcsc: "C2286".into(),
+                    lcsc: Some("C2286".into()),
+                    from: None,
+                    details: false,
+                    delay_ms: None,
                     to: Some(PathBuf::from("catalogs/led.csv")),
                     offline: false,
                     no_cache: false,
@@ -323,6 +406,41 @@ mod tests {
         ));
         let e = parse(&["catalog", "add", "--to", "x.csv"]).unwrap_err();
         assert!(e.contains("--lcsc <C123>"), "{e}");
+        // A record of a search provider: a supplier and its sku or a manufacturer's number.
+        let Ok(Leaf::Catalog(catalog::Args {
+            command: catalog::Command::Add(a),
+        })) = parse(&[
+            "catalog",
+            "add",
+            "--from",
+            "digikey",
+            "TEST-DK-1",
+            "--to",
+            "x.csv",
+            "--details",
+        ])
+        else {
+            panic!()
+        };
+        assert_eq!(
+            a.from,
+            Some(vec!["digikey".to_string(), "TEST-DK-1".to_string()])
+        );
+        assert!(a.details && a.lcsc.is_none());
+        assert_eq!(
+            kind(&["catalog", "add", "--from", "digikey"]),
+            ErrorKind::WrongNumberOfValues
+        );
+        assert_eq!(
+            kind(&["catalog", "add", "--lcsc", "C1", "--from", "lcsc", "C1"]),
+            ErrorKind::ArgumentConflict
+        );
+        // --details and --delay are of a search provider's record.
+        for flag in [&["--details"][..], &["--delay", "9"]] {
+            let mut args = vec!["catalog", "add", "--lcsc", "C1"];
+            args.extend_from_slice(flag);
+            assert_eq!(kind(&args), ErrorKind::ArgumentConflict, "{flag:?}");
+        }
         assert_eq!(
             kind(&["catalog", "add", "--lcsc", "C1", "--dry-run"]),
             ErrorKind::UnknownArgument
