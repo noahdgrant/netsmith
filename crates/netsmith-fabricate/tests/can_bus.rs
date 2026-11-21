@@ -237,8 +237,21 @@ fn a_can_pair_60_mm_long_is_routed_as_one_coupled_with_its_lengths_matched() {
     // The table's numbers are the router's.
     let matched = routing.pairs.iter().find(|m| m.p == h).unwrap();
     assert!((matched.after - pair.skew).abs() < 0.01, "{matched:?} {pair:?}");
+    // The pair's lengths are its nets' connections; the tracks add up to each net's copper,
+    // which also has what the length leaves out (issue #1511: a dead stub at a pad).
     let ((lh, vh), (ll, vl)) = (length_and_vias(&board, &h), length_and_vias(&board, &l));
-    assert!((lh - pair.length_p).abs() < 0.01 && (ll - pair.length_n).abs() < 0.01);
+    let row = |net: &str| table.nets.iter().find(|r| r.net == net).unwrap();
+    let (rh, rl) = (row(&h), row(&l));
+    assert!(
+        (rh.length - pair.length_p).abs() < 0.01 && (rl.length - pair.length_n).abs() < 0.01,
+        "{pair:?}"
+    );
+    assert!(
+        (lh - rh.copper).abs() < 0.01 && (ll - rl.copper).abs() < 0.01,
+        "{lh:.3} and {ll:.3} mm of track, {:.3} and {:.3} mm of copper",
+        rh.copper,
+        rl.copper
+    );
     assert_eq!((vh, vl), (pair.vias_p, pair.vias_n));
     assert!(pair.length_p > 55.0, "{pair:?}");
     assert_eq!(pair.limit, CAN_SKEW, "{pair:?}");
