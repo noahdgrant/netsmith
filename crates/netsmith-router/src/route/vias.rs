@@ -5,13 +5,14 @@ use super::*;
 impl<'a> Router<'a> {
     /// Whether [`Self::fewer_vias`] may take vias out of a line: not a decoupling capacitor's
     /// via to the pour ([`Self::to_the_pours`]), not a line to a plane, not a line of a net that
-    /// is a plane or a pour (its vias join it), not a net whose current needs vias side by side,
-    /// and not a net of a diff pair, whose copper the pairs' pass shaped.
+    /// is a plane or a pour (its vias join it), not a net whose current needs vias side by side
+    /// unless it is a power net whose search pays for its groups ([`Self::power_group`], issue
+    /// #1532: each via it gives up is a group and a change of layer), and not a net of a diff pair, whose copper the pairs' pass shaped.
     pub(super) fn may_lose_vias(&self, line: usize) -> bool {
         let net = &self.lines[line].net;
         line < self.routed_lines
             && !self.lines[line].to_plane
-            && self.vias_needed(line) <= 1
+            && (self.vias_needed(line) <= 1 || self.power_group(line).is_some())
             && self.partners[self.nets[line]].is_none()
             && !self.board.pours.iter().any(|p| &p.net == net)
             && !self.board.planes.iter().any(|p| &p.net == net)

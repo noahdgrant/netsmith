@@ -450,6 +450,8 @@ impl<'a> Router<'a> {
         if let Some(w) = self.weighs(line) {
             masks.via_cost = w.via_cost();
             masks.length = w.length_percent();
+        } else if let Some(group) = self.power_group(line) {
+            masks.via_cost = self.power_via_cost(group);
         }
         self.add_history(&mut masks);
         masks
