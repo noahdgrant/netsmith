@@ -127,7 +127,9 @@
 //!    the try (the history), the single lines it overlaps are ripped up, and they are routed again
 //!    after it. Bounded by
 //!    counts, [`RouteOptions::negotiation`]: at most six rounds and 3000 searches a try, fewer
-//!    when a round spreads the lines left (see "What a try costs"), and the best state is kept.
+//!    when a round spreads the lines left (see "What a try costs"), and the best state is kept:
+//!    the fewest lines left, of those the cheapest by the weights; once none is left, each line
+//!    it moved is routed again with no history and kept where that costs less (issue #1575).
 //!    The earlier rip-up put the nets back if the line did not fit; this one lets lines fail for
 //!    a round so the others can move. The rounds of whole nets have what it leaves.
 //!
