@@ -38,6 +38,8 @@ pub struct Args {
     /// netsmith.toml sets it for a project, and this wins. It runs inside `--route-timeout`.
     #[arg(long, value_name = "N")]
     pub rip_rounds: Option<usize>,
+    #[command(flatten)]
+    pub weighing: common::Weighing,
     /// Package a board that fails the design rules check (never an unmet `[constraint]`).
     ///
     /// `fab-notes.txt` then says the board is not clean. It never waives a `[constraint]` finding:
@@ -203,12 +205,19 @@ pub fn run(args: Args) -> ExitCode {
 /// `fab` of the files or the project's boards.
 fn run_chosen(args: &Args, format: Format) -> ExitCode {
     let (constraints_warn, pins_locked) = (args.constraints_warn(), args.pins_locked());
+    let weights = match args.weighing.weights() {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
     timings::stage("fab.total", "", || {
         run_fab(
             args.file.as_deref(),
             args.out.as_deref(),
             args.route_timeout,
-            args.rip_rounds,
+            (args.rip_rounds, weights),
             args.allow_drc_violations,
             (args.for_review, !args.no_pictures),
             args.cross_check,
@@ -335,7 +344,7 @@ fn run_fab(
     file: Option<&str>,
     out: Option<&Path>,
     route_timeout: Option<u64>,
-    rip_rounds: Option<usize>,
+    (rip_rounds, weights): (Option<usize>, Option<netsmith_router::Weights>),
     allow_drc_violations: bool,
     (for_review, review_pictures): (bool, bool),
     cross_check: bool,
@@ -408,6 +417,7 @@ fn run_fab(
         pin_map_source: None,
         track_margin: track_margin(&target),
         rip_rounds: rip_rounds_of(&target, rip_rounds),
+        weights,
         glb: glb_wanted(&target, no_glb),
         step: step_wanted(&target, no_step),
         pdf: pdf_wanted(&target, no_pdf),
@@ -798,6 +808,8 @@ pub(super) fn run_order(
         pin_map_source: None,
         track_margin: track_margin(&target),
         rip_rounds: rip_rounds_of(&target, rip_rounds),
+        // An order routes at the router's own costs (issue #1517).
+        weights: None,
         glb: glb_wanted(&target, no_glb),
         step: step_wanted(&target, no_step),
         pdf: pdf_wanted(&target, no_pdf),
@@ -945,6 +957,11 @@ mod tests {
                 out: Some("x".into()),
                 route_timeout: None,
                 rip_rounds: None,
+                weighing: crate::commands::common::Weighing {
+                    length_weight: None,
+                    via_weight: None,
+                    layer_change_weight: None,
+                },
                 allow_drc_violations: false,
                 for_review: false,
                 no_pictures: false,

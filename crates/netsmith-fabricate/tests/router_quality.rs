@@ -7,7 +7,7 @@ use netsmith_pcb::Board;
 
 // The placer's synthetic boards and the examples' design files, as the router's tests have them.
 #[path = "../../netsmith-placer/tests/common/mod.rs"]
-mod placer_common;
+pub(crate) mod placer_common;
 
 fn routed(name: &str, mut board: Board) -> Board {
     assert!(netsmith_router::route(&mut board).is_empty(), "{name}");

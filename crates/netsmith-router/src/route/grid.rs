@@ -326,6 +326,12 @@ pub(super) struct Masks {
     pub(super) soft: Option<Soft>,
     /// What a bend of 45 degrees costs ([`Costs::turn`]).
     pub(super) turn: i64,
+    /// What a via costs, before what the passes add ([`VIA`], or the weights of a signal net,
+    /// [`Weights`]).
+    pub(super) via_cost: i64,
+    /// What a step's length costs, in hundredths of [`STEP`] and [`DIAGONAL`]: 100, or the
+    /// length weight of a signal net ([`Weights`]).
+    pub(super) length: i64,
     /// The cells of other nets' escape lanes, which a track or a via of this line pays
     /// [`LANE_TRACK`] or [`LANE_VIA`] to use. `None` when there are none.
     pub(super) lane: Option<LaneCost>,
@@ -377,6 +383,8 @@ impl Masks {
             history: vec![Vec::new(); layers],
             soft: None,
             turn: TURN,
+            via_cost: VIA,
+            length: 100,
             lane: None,
             off_plan: None,
             follow: vec![Vec::new(); layers],

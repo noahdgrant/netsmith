@@ -120,6 +120,9 @@ pub struct RouteRequest {
     /// The rounds of rip-up and re-route of whole nets ([`RouteOptions::rip_rounds`]); `None` is
     /// the router's own, 0 runs none.
     pub rip_rounds: Option<usize>,
+    /// The weights of the quality objective ([`RouteOptions::weights`]); `None` is the router's
+    /// own costs.
+    pub weights: Option<netsmith_router::Weights>,
 }
 
 /// What `route` made of a placed board.
@@ -170,6 +173,7 @@ pub fn route(
         rip_rounds: request
             .rip_rounds
             .unwrap_or(RouteOptions::default().rip_rounds),
+        weights: request.weights,
         ..RouteOptions::default()
     };
     let routing = route_with_margin(&mut board, request.route_timeout, base, margin, say);

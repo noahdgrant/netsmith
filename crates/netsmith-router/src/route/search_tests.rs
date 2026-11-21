@@ -301,6 +301,69 @@ fn the_turn_cost_of_the_masks_is_what_a_bend_costs() {
     );
 }
 
+/// The router's own weights (issue #1517) cost the search what it cost before there were
+/// weights: a board routed without weights, or with the defaults, searches as it did.
+#[test]
+fn the_default_weights_are_the_routers_own_costs() {
+    let own = Weights::DEFAULT;
+    assert_eq!(own.via_cost(), VIA);
+    assert_eq!(own.length_percent(), 100);
+    let masks = Masks::open(Window::full(&open_grid().0));
+    assert_eq!((masks.via_cost, masks.length), (VIA, 100));
+    assert_eq!(step_length(&masks, false), STEP);
+    assert_eq!(step_length(&masks, true), DIAGONAL);
+    // A share rounds up, so the estimate never says more than a step costs.
+    let mut cheap = Masks::open(Window::full(&open_grid().0));
+    cheap.length = 37;
+    assert_eq!(
+        (step_length(&cheap, false), step_length(&cheap, true)),
+        (4, 6)
+    );
+}
+
+/// The via and length weights move the search's choice between a via and a way round: the wall
+/// of [`the_turn_cost_of_the_masks_is_what_a_bend_costs`] is gone round on the front at the
+/// router's own costs, and through the back when bends are dear, unless a via costs 300 mm;
+/// with free bends, track at ten times its cost and free vias go through the back, and vias of
+/// 300 mm round again.
+#[test]
+fn the_weights_choose_between_a_via_and_a_way_round() {
+    let (_, mut masks) = open_grid();
+    for j in 0..9 {
+        let at = masks.at(15, j);
+        masks.track[FRONT][at] = true;
+    }
+    let ends = ([(0, 4, FRONT)], [(30, 4, FRONT)]);
+    let vias = |masks: &Masks| -> usize {
+        let path = find(masks, &ends.0, Goal::Spots(&ends.1)).unwrap();
+        path.windows(2).filter(|w| w[0].2 != w[1].2).count()
+    };
+    assert_eq!(vias(&masks), 0, "the router's own costs go round");
+    masks.turn = 1000;
+    assert_eq!(vias(&masks), 2, "with dear bends, through the back");
+    let dear = Weights {
+        via: 300.0,
+        ..Weights::DEFAULT
+    };
+    masks.via_cost = dear.via_cost();
+    assert_eq!(vias(&masks), 0, "a dear via goes round again");
+    masks.turn = 0;
+    let long = Weights {
+        length: 10.0,
+        via: 0.0,
+        layer_change: 0.0,
+    };
+    masks.length = long.length_percent();
+    masks.via_cost = long.via_cost();
+    assert_eq!(
+        vias(&masks),
+        2,
+        "dear track and free vias go through the back"
+    );
+    masks.via_cost = Weights { via: 300.0, ..long }.via_cost();
+    assert_eq!(vias(&masks), 0, "vias dearer than the way round go round");
+}
+
 /// A grid of 3 mm by 1 mm with one escape lane on the front, of net 7: the cells of row 5
 /// from column 10 to 20, and a via's place at its end.
 fn one_lane() -> (Grid, Lanes) {

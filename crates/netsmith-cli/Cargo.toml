@@ -27,6 +27,7 @@ netsmith-lang = { path = "../netsmith-lang" }
 netsmith-lint = { path = "../netsmith-lint" }
 netsmith-pcb = { path = "../netsmith-pcb" }
 netsmith-pipeline = { path = "../netsmith-pipeline" }
+netsmith-router = { path = "../netsmith-router" }
 netsmith-3d = { path = "../netsmith-3d" }
 netsmith-solve = { path = "../netsmith-solve" }
 netsmith-tools = { path = "../netsmith-tools" }

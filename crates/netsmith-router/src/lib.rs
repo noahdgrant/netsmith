@@ -59,6 +59,7 @@ use netsmith_placer::board_from_design;
 
 pub use route::{
     CoarsePlan, Costs, Crowding, LineClasses, LineReport, RIP_MOST, RIP_ROUNDS, RipRounds,
-    RouteOptions, Routing, Separate, Snapshot, SnapshotStage, Stage, WallVia, route, route_with,
+    RouteOptions, Routing, Separate, Snapshot, SnapshotStage, Stage, WallVia, Weights, route,
+    route_with,
 };
 pub use stitch::{OnSpare, fence, stitch, stitching_vias};

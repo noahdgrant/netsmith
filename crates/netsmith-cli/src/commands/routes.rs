@@ -197,6 +197,8 @@ pub struct RouteArgs {
     /// A net of a `TrackPath` whose `.corner` is `Mitered` is mitered whatever this says.
     #[arg(long, value_enum, value_name = "STYLE")]
     pub corner: Option<Corner>,
+    #[command(flatten)]
+    pub weighing: common::Weighing,
     /// Say what it would do, and write nothing.
     #[arg(long)]
     pub dry_run: bool,
@@ -763,6 +765,7 @@ fn route(args: &RouteArgs) -> ExitCode {
             Ok(ask) => route_net::Ask {
                 depth: args.rip_depth,
                 tries: args.tries,
+                weights: args.weighing.weights()?,
                 ..ask
             },
             Err(lib::Refusal::Refused(e)) => return Ok(Err(e)),
