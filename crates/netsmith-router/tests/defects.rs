@@ -10,13 +10,13 @@ use netsmith_router::route;
 
 use crate::common;
 
-/// A straight piece shorter than this, or than [`TINY_WIDTHS`] of its widths, outside a pad or
-/// via, is a stair step.
+/// A straight piece shorter than this, outside a pad or via, is a stair step: the issue's 0.01
+/// to 0.14 mm. What the quality report counts as short (two widths) is the fabricate crate's
+/// `router_quality` test's.
 const TINY: f64 = 0.14;
-const TINY_WIDTHS: f64 = 2.0;
 
 fn tiny(t: &Track) -> bool {
-    t.mid.is_none() && t.from.distance(t.to) < TINY.max(TINY_WIDTHS * t.width)
+    t.mid.is_none() && t.from.distance(t.to) < TINY
 }
 /// How near a via a T-join may be and still be one beside it.
 const NEAR_VIA: f64 = 1.0;

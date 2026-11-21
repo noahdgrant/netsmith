@@ -11,7 +11,7 @@
 //! the board edge is drawn. It runs after the teardrops and keeps them as they are: an arc never
 //! cuts into the part of a track a teardrop lies along. An arc takes at most half of each straight
 //! track it joins, so two arcs at the two ends of one track never meet; of a track with a bend at
-//! each end it leaves at least the router's shortest piece (0.14 mm or two widths, `shortest`) straight between the
+//! each end it leaves the router's shortest piece (two widths, `shortest`, or 0.14 mm where an arc would not fit then) straight between the
 //! two arcs, so no straight piece of a hundredth of a millimetre is left (issue #1486), and the short
 //! diagonal of a cut right angle (0.05 to 0.3 mm, `CHAMFERS` in `route.rs`) takes two small arcs
 //! where it is long enough for both. Only a bend
@@ -38,7 +38,9 @@ use std::collections::HashMap;
 use netsmith_geom::ARC_ERROR;
 use netsmith_pcb::{Board, CopperLayer, Pt, Rect, Track};
 
-use crate::route::{EXACT_SLACK, Form, MARGIN, Obstacle, Stack, initial_obstacles, shortest};
+use crate::route::{
+    EXACT_SLACK, Form, MARGIN, Obstacle, SHORT, Stack, initial_obstacles, shortest,
+};
 
 /// The largest radius of an arc at a bend, in widths of its track.
 pub const ARC_WIDTHS: f64 = 4.0;
@@ -213,7 +215,15 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
         // Nor into a teardrop at a track's other end.
         let room = |k: usize, far_is_to: bool, t: &Track, far: Pt, length: f64| {
             let share = if bend_ends[k][usize::from(far_is_to)] {
-                (length - shortest(t.width)) / 2.0
+                // Two widths straight where an arc of one width still fits so, else 0.14 mm:
+                // a bend keeps its arc rather than a straight piece of two widths.
+                let least = t.width * half_turn + 0.005;
+                let wide = (length - shortest(t.width)) / 2.0;
+                if wide >= least {
+                    wide
+                } else {
+                    (length - SHORT) / 2.0
+                }
             } else {
                 length / 2.0
             };
