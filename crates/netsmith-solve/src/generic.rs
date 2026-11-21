@@ -82,7 +82,7 @@ use netsmith_check::FieldKind;
 use netsmith_quantity::{Dimension, Quantity};
 
 use crate::catalog::{Candidate, Catalogs, Derating, Library, Value};
-use crate::channel::{Channel, Rule};
+use crate::channel::{Channel, NamedChannel, Rule};
 use crate::standard::{Fill, Standard};
 
 /// An E-series: the values of one decade that a tolerance class is built on.
@@ -376,6 +376,10 @@ pub struct Generic {
     pub catalog: String,
     pub package: String,
     pub spec: Spec,
+    /// The supply channel the part names for itself (`[supply.parts]`, ADR 0143 item 4): only
+    /// the rows with an offer in it stand for the part, by its rule. `None` for a part the
+    /// project's list of channels buys.
+    pub channel: Option<NamedChannel>,
 }
 
 impl Generic {
@@ -669,6 +673,7 @@ fn series_values(
         let generic = Generic {
             catalog: catalog.to_string(),
             package: String::new(),
+            channel: None,
             spec: Spec::Series {
                 series,
                 column: column.clone(),
@@ -707,6 +712,7 @@ pub(crate) fn resistors(
             let generic = Generic {
                 catalog: standard.catalog.to_string(),
                 package: package.to_string(),
+                channel: None,
                 spec: Spec::Resistor {
                     series,
                     nominal: ohms,
@@ -761,6 +767,7 @@ pub(crate) fn capacitors(
                 let generic = Generic {
                     catalog: standard.catalog.to_string(),
                     package: package.to_string(),
+                    channel: None,
                     spec: Spec::Capacitor {
                         series,
                         nominal: farads,
@@ -820,6 +827,7 @@ pub(crate) fn inductors(
                 let generic = Generic {
                     catalog: standard.catalog.to_string(),
                     package: package.to_string(),
+                    channel: None,
                     spec: Spec::Inductor {
                         series,
                         nominal: henries,
@@ -863,6 +871,7 @@ pub(crate) fn leds(
         let generic = Generic {
             catalog: standard.catalog.to_string(),
             package: package.to_string(),
+            channel: None,
             spec: Spec::Led {
                 color: Need::Nothing,
                 forward_voltage: Need::Nothing,
@@ -1098,8 +1107,22 @@ pub fn resolve(
             generic.describe()
         ));
     };
-    let rows: Vec<&Candidate> = catalog
-        .candidates
+    // A part that names its own channel is stood for only by the rows that channel has an
+    // offer of, each bought there (ADR 0143 item 4).
+    let named = generic.channel.as_ref();
+    let bought: Vec<Candidate>;
+    let candidates: &[Candidate] = match named {
+        Some(n) => {
+            bought = catalog
+                .candidates
+                .iter()
+                .filter_map(|c| catalogs.bought_in(c, n.channel))
+                .collect();
+            &bought
+        }
+        None => &catalog.candidates,
+    };
+    let rows: Vec<&Candidate> = candidates
         .iter()
         .filter(|c| c.lcsc.is_some() || c.mpn.is_some())
         .collect();
@@ -1112,7 +1135,11 @@ pub fn resolve(
     // in the order of the project's list and by the channel's rule; the sort is stable, so the
     // file order of the catalog decides the rest.
     let preferred = catalogs.preferred();
-    let channels = catalogs.channels();
+    let own = named.map(|n| [n.channel]);
+    let channels: &[Channel] = match &own {
+        Some(one) => one,
+        None => catalogs.channels(),
+    };
     fn quoted(c: &Candidate) -> Option<(Channel, &str)> {
         c.channel.zip(c.lcsc.as_deref())
     }
@@ -1182,6 +1209,13 @@ pub fn resolve(
         generic.catalog,
         generic.describe()
     );
+    if let Some(n) = named {
+        message.push_str(&format!(
+            " Only the rows with an offer in {}, stand for it: add the offer of a row that fits to the project's `offers/{}.csv`, or remove the entry to buy the part from the project's channels.",
+            n.named_by(),
+            n.channel.supplier()
+        ));
+    }
     if !passed_over.is_empty() {
         message.push_str(&format!(
             " Rows that fit were passed over: {}.",

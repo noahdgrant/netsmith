@@ -382,6 +382,7 @@ mod tests {
             generic: Some(Generic {
                 catalog: "resistor".into(),
                 package: "0402".into(),
+                channel: None,
                 spec: Spec::Resistor {
                     series: Series::E96,
                     nominal: 249.0,

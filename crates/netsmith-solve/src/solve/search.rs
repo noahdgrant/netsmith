@@ -1048,7 +1048,7 @@ impl Solver<'_> {
                                 manufacturer: c.manufacturer.clone(),
                                 mpn: c.mpn.clone(),
                                 library: c.library,
-                                skus: self.catalogs.skus_of(c),
+                                skus: self.skus_of(&job.path, c),
                                 assembly: c.assembly.clone(),
                                 height: c.height,
                                 temp_min: c.temp_min,
@@ -1248,6 +1248,17 @@ fn explained(unfit: &[(usize, Passed)], at: usize, tried: &[Passed]) -> Vec<Pass
 }
 
 impl Solver<'_> {
+    /// The skus a pick of `c` for the part at `path` records in the lock (ADR 0143 item 6): the
+    /// sku of the channel the part names for itself (`[supply.parts]`), which bought the row,
+    /// or else the sku of each of the project's channels that has an offer of it.
+    fn skus_of(&self, path: &str, c: &Candidate) -> Vec<(String, String)> {
+        match (self.named_channels.get(path), &c.lcsc) {
+            (Some(named), Some(sku)) => vec![(named.channel.word().to_string(), sku.clone())],
+            (Some(_), None) => Vec::new(),
+            (None, _) => self.catalogs.skus_of(c),
+        }
+    }
+
     /// What held a part to one row, if anything did, in the order `hold_to_lock` asks.
     fn held_by(&self, path: &str) -> Option<String> {
         if self.catalogs.pinned(path).is_some() {

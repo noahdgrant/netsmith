@@ -6,7 +6,7 @@
 use netsmith_catalog::resolve::resolve_generics;
 use netsmith_catalog::supply::*;
 use netsmith_design::{Assembly, Sourced};
-use netsmith_solve::{Catalogs, Generic, Series, Spec, resolve};
+use netsmith_solve::{Catalogs, Generic, NamedChannel, Series, Spec, resolve};
 
 /// 2026-11-02 00:00 UTC.
 const NOW: u64 = 1_793_577_600;
@@ -40,6 +40,7 @@ fn generic() -> Generic {
     Generic {
         catalog: "resistor".into(),
         package: "0402".into(),
+        channel: None,
         spec: Spec::Resistor {
             series: Series::E96,
             nominal: 249.0,
@@ -296,4 +297,38 @@ fn assembly_is_independent_of_the_channel() {
     let modes: Vec<Assembly> = sourcing.iter().map(|s| s.assembly).collect();
     assert_eq!(modes, [Assembly::Fab, Assembly::Hand, Assembly::Consigned]);
     assert_eq!(sourcing[0].lcsc.as_deref(), Some("C9900249"));
+}
+
+#[test]
+fn a_generic_part_that_names_its_channel_is_stood_for_only_by_that_channels_rows() {
+    // The list buys A from LCSC first; the part names Digi-Key, which offers B alone.
+    let c = catalogs(
+        &[Channel::LCSC_RETAIL, Channel::DIGIKEY_RETAIL],
+        &[
+            ("lcsc", ",ZZR-249-A,C9900249,,https://example.invalid/lcsc,,\n"),
+            (
+                "digikey",
+                ",ZZR-249-B,ZZR-249-B-ND,,https://example.invalid/digikey,,\n",
+            ),
+        ],
+    );
+    assert_eq!(resolved(&c).0, "ZZR-249-A");
+    let named = |channel: Channel| Generic {
+        channel: Some(NamedChannel {
+            channel,
+            key: "netsmith.toml: [supply.parts.Board] \"r1\"".into(),
+        }),
+        ..generic()
+    };
+    let got = resolve(&named(Channel::DIGIKEY_RETAIL), &c, &|_, _| None).unwrap();
+    assert_eq!(
+        (got.name.as_str(), got.lcsc.as_deref()),
+        ("ZZR-249-B", Some("ZZR-249-B-ND"))
+    );
+    // Mouser offers neither: the part is unresolved, and the message names the manifest's key.
+    let e = resolve(&named(Channel::MOUSER_RETAIL), &c, &|_, _| None).unwrap_err();
+    assert!(
+        e.contains("Only the rows with an offer in `mouser-retail`, the supply channel netsmith.toml names for the part ([supply.parts.Board] \"r1\"), stand for it"),
+        "{e}"
+    );
 }

@@ -85,6 +85,7 @@ fn generic_cap(voltage: Need) -> netsmith_solve::Generic {
     netsmith_solve::Generic {
         catalog: "capacitor".into(),
         package: "0402".into(),
+        channel: None,
         spec: Spec::Capacitor {
             series: Series::E24,
             nominal: 120e-9,
@@ -193,6 +194,7 @@ fn a_generic_inductor_resolves_to_a_row_with_the_saturation_current_and_resistan
     let g = |isat: Need, dcr: Need| netsmith_solve::Generic {
         catalog: "inductor".into(),
         package: "1210".into(),
+        channel: None,
         spec: Spec::Inductor {
             series: Series::E24,
             nominal: 2.7e-6,
@@ -228,6 +230,7 @@ fn the_nearest_rows_are_those_nearest_the_need_that_fails_and_not_the_nearest_in
     let generic = netsmith_solve::Generic {
         catalog: "inductor".into(),
         package: "0402".into(),
+        channel: None,
         spec: Spec::Inductor {
             series: Series::E24,
             nominal: 1e-6,
@@ -310,6 +313,7 @@ fn a_generic_led_resolves_to_a_row_of_the_colour_inside_the_stated_range() {
     let g = |color: Need, vf: Need| netsmith_solve::Generic {
         catalog: "led".into(),
         package: "0603".into(),
+        channel: None,
         spec: Spec::Led {
             color,
             forward_voltage: vf,
