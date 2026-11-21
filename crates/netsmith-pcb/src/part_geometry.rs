@@ -17,9 +17,11 @@ use serde::Serialize;
 
 use crate::board::{Board, Placed};
 use crate::conflict::{Conflict, PlacementFault};
+use crate::copper::{areas, artwork};
 use crate::footprint::{Pad, PadKind, PadShape};
 use crate::geometry::{Pt, Rect};
 use crate::summary::{SummaryBox, no_part};
+use netsmith_geom::{Polygons, pad_outline};
 
 /// A number to 0.001 mm: the places of a pad and the size of a courtyard shape to a micron.
 fn round(v: f64) -> f64 {
@@ -107,7 +109,9 @@ pub struct PadGeometry {
     pub net: Option<String>,
     /// `smd`, `thru_hole` or `np_thru_hole`.
     pub kind: &'static str,
-    /// `rect`, `round_rect`, `oval` or `circle`.
+    /// `rect`, `round_rect`, `oval`, `circle` or `custom` (a pad drawn from an anchor and
+    /// primitives, which `polygons` gives as it is; issue 1516). For a custom pad `width` and
+    /// `height` are its anchor's size, not its copper's.
     pub shape: &'static str,
     /// The centre of the copper on the board: `[x, y]`.
     pub at: [f64; 2],
@@ -121,11 +125,25 @@ pub struct PadGeometry {
     pub turn: f64,
     /// The box the copper spans on the board.
     pub bounds: SummaryBox,
+    /// The copper of a custom pad as it is on the board (the anchor and its primitives, the
+    /// part's turn and face applied, the places as `at`'s): one polygon for each piece of
+    /// copper, with the holes it has. Left out for every other shape, whose copper `at`,
+    /// `width`, `height`, `turn` and `shape` give.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub polygons: Option<Vec<PadPolygon>>,
     /// The faces with copper: `top`, `bottom`, or both for a through-hole pad.
     pub copper: Vec<&'static str>,
     /// The hole's size in mm (`[width, height]`, a slot's two sides), for a pad with one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drill: Option<[f64; 2]>,
+}
+
+/// A piece of a custom pad's copper on the board: its outer ring and the holes in it, each a
+/// list of points `[x, y]` in mm in the layout file's frame.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PadPolygon {
+    pub outer: Vec<[f64; 2]>,
+    pub holes: Vec<Vec<[f64; 2]>>,
 }
 
 impl PartGeometries {
@@ -178,10 +196,43 @@ impl PartGeometries {
                     .map(move |p| ((p.refdes.as_str(), p.number.as_str()), n.name.as_str()))
             })
             .collect();
+        // The copper of the custom pads, drawn as the Gerbers draw it, from the board as `fab`
+        // writes it; made only for a board with a custom pad among the parts asked for.
+        let customs = if wanted
+            .iter()
+            .any(|p| p.footprint.pads.iter().any(is_custom))
+        {
+            let art = artwork(board).map_err(|e| format!("the pads' copper: {e}"))?;
+            let mut by_pad: HashMap<(String, String), Vec<Vec<PadPolygon>>> = HashMap::new();
+            for pad in &art.pads {
+                let mut pen = Polygons::new();
+                pad_outline(pad).draw(&mut pen, None, &[]);
+                let polygons = areas(&pen)
+                    .into_iter()
+                    .map(|a| PadPolygon {
+                        outer: a.outer.iter().map(|q| point(*q, origin)).collect(),
+                        holes: a
+                            .holes
+                            .iter()
+                            .map(|h| h.iter().map(|q| point(*q, origin)).collect())
+                            .collect(),
+                    })
+                    .collect();
+                by_pad
+                    .entry((pad.part.clone(), pad.number.clone()))
+                    .or_default()
+                    .push(polygons);
+            }
+            by_pad
+        } else {
+            HashMap::new()
+        };
         let parts = wanted
             .into_iter()
             .map(|p| {
                 let court = p.courtyard();
+                // Several pads of a part can share a number: the nth of them is the nth drawn.
+                let mut seen: HashMap<&str, usize> = HashMap::new();
                 PartGeometry {
                     refdes: p.refdes.clone(),
                     path: p.path.clone(),
@@ -213,7 +264,19 @@ impl PartGeometries {
                         .footprint
                         .pads
                         .iter()
-                        .map(|pad| pad_geometry(p, pad, &net_of, origin))
+                        .map(|pad| {
+                            let nth = seen.entry(pad.number.as_str()).or_default();
+                            let polygons = is_custom(pad)
+                                .then(|| {
+                                    customs
+                                        .get(&(p.refdes.clone(), pad.number.clone()))
+                                        .and_then(|drawn| drawn.get(*nth))
+                                        .cloned()
+                                })
+                                .flatten();
+                            *nth += 1;
+                            pad_geometry(p, pad, &net_of, origin, polygons)
+                        })
                         .collect(),
                 }
             })
@@ -320,11 +383,22 @@ fn path_names(path: &str, refdes: &str, name: &str) -> bool {
             .is_some_and(|rest| rest.starts_with('.') || rest.starts_with('['))
 }
 
+/// Whether the pad is a custom one: a `custom` pad with primitives, which the footprint reader
+/// keeps as its anchor's shape and the box the primitives span ([`Pad::extent`]).
+fn is_custom(pad: &Pad) -> bool {
+    pad.extent.is_some()
+}
+
+fn point(p: Pt, origin: Pt) -> [f64; 2] {
+    [round(p.x - origin.x), round(p.y - origin.y)]
+}
+
 fn pad_geometry(
     p: &Placed,
     pad: &Pad,
     net_of: &HashMap<(&str, &str), &str>,
     origin: Pt,
+    polygons: Option<Vec<PadPolygon>>,
 ) -> PadGeometry {
     let at = p.pad_centre(pad);
     let bounds = p.pad_bounds(pad);
@@ -347,6 +421,7 @@ fn pad_geometry(
             PadKind::NpThruHole => "np_thru_hole",
         },
         shape: match pad.shape {
+            _ if is_custom(pad) => "custom",
             PadShape::Rect => "rect",
             PadShape::RoundRect => "round_rect",
             PadShape::Oval => "oval",
@@ -367,6 +442,7 @@ fn pad_geometry(
                 round(bounds.max.y - origin.y),
             ],
         },
+        polygons,
         copper,
         drill: pad.drill.map(|d| [round(d.width), round(d.height)]),
     }
@@ -438,5 +514,141 @@ mod tests {
             assert_eq!(pad.at, want, "pad {}", pad.number);
             assert_eq!(pad.local, [round(own.at.x), round(own.at.y)]);
         }
+    }
+}
+
+#[cfg(test)]
+mod custom_pad_tests {
+    use super::*;
+    use crate::footprint::Footprint;
+
+    /// A footprint whose first pad is a custom one (a 0.4 mm square anchor and a polygon that
+    /// reaches 1.5 mm to the right and 1 mm down, with a hole's worth of nothing) and whose
+    /// second is a plain rectangle.
+    fn corner_footprint() -> Footprint {
+        Footprint::parse(
+            "L:CORNER",
+            r#"(footprint "CORNER"
+                (property "Reference" "REF**" (at 0 -2 0) (layer "F.SilkS"))
+                (pad "1" smd custom (at 0 0) (size 0.4 0.4) (layers "F.Cu" "F.Mask" "F.Paste")
+                    (options (clearance outline) (anchor rect))
+                    (primitives
+                        (gr_poly (pts (xy -0.2 -0.2) (xy 1.5 -0.2) (xy 1.5 0.2) (xy 0.2 0.2)
+                            (xy 0.2 1) (xy -0.2 1)) (width 0) (fill yes))))
+                (pad "2" smd rect (at 3 0) (size 1 1) (layers "F.Cu" "F.Mask" "F.Paste")))"#,
+        )
+        .unwrap()
+    }
+
+    fn board_with_corner_pad(turn: f64, side: crate::board::Side) -> Board {
+        let mut board = crate::board::tests::led_board();
+        board.parts[0].footprint = corner_footprint();
+        board.parts[0].at = Pt::new(20.0, 20.0);
+        board.parts[0].rotation = turn;
+        board.parts[0].side = side;
+        board
+    }
+
+    fn corners(polygon: &PadPolygon) -> Vec<[f64; 2]> {
+        let mut c = polygon.outer.clone();
+        c.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        c.dedup();
+        c
+    }
+
+    #[test]
+    fn a_custom_pad_gives_its_shape_and_its_copper_as_a_polygon_on_the_board() {
+        let board = board_with_corner_pad(0.0, crate::board::Side::Front);
+        let origin = board.outline.min;
+        let part = &PartGeometries::of(&board, std::slice::from_ref(&board.parts[0].refdes))
+            .unwrap()
+            .parts[0];
+        let custom = &part.pads[0];
+        assert_eq!(custom.shape, "custom");
+        let polygons = custom.polygons.as_ref().expect("a custom pad has polygons");
+        assert_eq!(polygons.len(), 1, "{polygons:?}");
+        assert!(polygons[0].holes.is_empty());
+        // The L's six corners, in the board's frame with the part at (20, 20).
+        let (x, y) = (20.0 - origin.x, 20.0 - origin.y);
+        let mut want: Vec<[f64; 2]> = [
+            (-0.2, -0.2),
+            (1.5, -0.2),
+            (1.5, 0.2),
+            (0.2, 0.2),
+            (0.2, 1.0),
+            (-0.2, 1.0),
+        ]
+        .iter()
+        .map(|(dx, dy)| [round(x + dx), round(y + dy)])
+        .collect();
+        want.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let got = corners(&polygons[0]);
+        assert_eq!(got, want, "{got:?}");
+        // `bounds` is the box of that copper, and not the 0.4 mm anchor's.
+        assert_eq!(custom.bounds.min, [round(x - 0.2), round(y - 0.2)]);
+        assert_eq!(custom.bounds.max, [round(x + 1.5), round(y + 1.0)]);
+        assert_eq!((custom.width, custom.height), (0.4, 0.4));
+        // A pad that is not custom has no polygons.
+        assert_eq!(part.pads[1].shape, "rect");
+        assert_eq!(part.pads[1].polygons, None);
+    }
+
+    #[test]
+    fn a_custom_pads_polygon_follows_the_parts_turn_and_face() {
+        for (turn, side) in [
+            (90.0, crate::board::Side::Front),
+            (0.0, crate::board::Side::Back),
+            (90.0, crate::board::Side::Back),
+        ] {
+            let board = board_with_corner_pad(turn, side);
+            let origin = board.outline.min;
+            let part = &PartGeometries::of(&board, std::slice::from_ref(&board.parts[0].refdes))
+                .unwrap()
+                .parts[0];
+            let polygon = &part.pads[0].polygons.as_ref().unwrap()[0];
+            // Each corner is the footprint's point taken to the board by the part's frame
+            // (the rule in the module's text), and the box of the corners is the pad's bounds.
+            let placed = &board.parts[0];
+            let mut want: Vec<[f64; 2]> = [
+                (-0.2, -0.2),
+                (1.5, -0.2),
+                (1.5, 0.2),
+                (0.2, 0.2),
+                (0.2, 1.0),
+                (-0.2, 1.0),
+            ]
+            .iter()
+            .map(|(x, y)| {
+                let q = placed.to_board(Pt::new(*x, *y));
+                [round(q.x - origin.x), round(q.y - origin.y)]
+            })
+            .collect();
+            want.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            assert_eq!(corners(polygon), want, "turn {turn} {side:?}");
+            let xs = want.iter().map(|p| p[0]);
+            let ys = want.iter().map(|p| p[1]);
+            assert_eq!(
+                part.pads[0].bounds.min,
+                [
+                    xs.clone().fold(f64::MAX, f64::min),
+                    ys.clone().fold(f64::MAX, f64::min)
+                ],
+                "turn {turn} {side:?}"
+            );
+            assert_eq!(
+                part.pads[0].bounds.max,
+                [xs.fold(f64::MIN, f64::max), ys.fold(f64::MIN, f64::max)],
+                "turn {turn} {side:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_board_with_no_custom_pad_has_no_polygons_in_its_json() {
+        let board = crate::board::tests::led_board();
+        let all = PartGeometries::of(&board, &[]).unwrap();
+        let json = serde_json::to_string(&all).unwrap();
+        assert!(!json.contains("polygons"), "{json}");
+        assert!(!json.contains("\"custom\""), "{json}");
     }
 }
