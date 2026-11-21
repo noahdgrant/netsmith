@@ -164,6 +164,13 @@ interface EightLayer {
     /// (`.process.min_round_track_angle &= 60`). It is a lower bound: `&= 60..` allows 60
     /// and over. Unstated, round copper is not judged.
     .min_round_track_angle: Number
+    /// The most space between the copper of two vias of one net, edge to edge, at which they
+    /// still stand side by side as one group (issue #1505): the group `via_current` counts,
+    /// the via pairs of the quality report and the groups the router lays. Not a number the
+    /// fabricator publishes: unstated, it is the process's `.min_clearance`, so a row laid at
+    /// the least clearance is one group. A board states another as an upper bound
+    /// (`.process.via_group_gap &= 0.15mm`); `0mm` asks that the copper touch.
+    .via_group_gap: Length
     /// The least side of a single board that the assembly house places parts on one face
     /// of, and on both (`.min_single_sided_assembly_size`, issue 1285), for the
     /// `assembly_size` rule. The fictional house publishes no figure and leaves both
@@ -380,6 +387,13 @@ interface TenLayer {
     /// (`.process.min_round_track_angle &= 60`). It is a lower bound: `&= 60..` allows 60
     /// and over. Unstated, round copper is not judged.
     .min_round_track_angle: Number
+    /// The most space between the copper of two vias of one net, edge to edge, at which they
+    /// still stand side by side as one group (issue #1505): the group `via_current` counts,
+    /// the via pairs of the quality report and the groups the router lays. Not a number the
+    /// fabricator publishes: unstated, it is the process's `.min_clearance`, so a row laid at
+    /// the least clearance is one group. A board states another as an upper bound
+    /// (`.process.via_group_gap &= 0.15mm`); `0mm` asks that the copper touch.
+    .via_group_gap: Length
     /// The least side of a single board that the assembly house places parts on one face
     /// of, and on both (`.min_single_sided_assembly_size`, issue 1285), for the
     /// `assembly_size` rule. The fictional house publishes no figure and leaves both

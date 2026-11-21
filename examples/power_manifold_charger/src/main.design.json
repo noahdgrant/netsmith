@@ -5884,6 +5884,30 @@
           "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.000000001 mA"
         }
       ],
+      "pin_currents": [
+        {
+          "net": "net-comparator.in_b_pos",
+          "path": "comparator.in_b_pos",
+          "pins": [
+            {
+              "refdes": "U1",
+              "pin": "5"
+            }
+          ],
+          "current": 0.0
+        },
+        {
+          "net": "net-converter.mode",
+          "path": "converter.mode",
+          "pins": [
+            {
+              "refdes": "U2",
+              "pin": "15"
+            }
+          ],
+          "current": 0.0
+        }
+      ],
       "outline": {
         "width": [
           101.2,

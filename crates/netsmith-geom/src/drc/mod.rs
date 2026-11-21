@@ -194,6 +194,7 @@
 //! in issue #10).
 
 mod acid;
+mod board_rules;
 mod branches;
 mod checks;
 mod connect;
@@ -214,10 +215,11 @@ mod waivers;
 
 use crate::artwork::Artwork;
 use crate::geom::Pt;
+pub use board_rules::BoardRules;
 pub use model::outline_shapes;
 pub use room::Room;
 pub use rules::matches_pattern;
-pub use rules::{Class, Rules};
+pub use rules::{Class, ClassSizes, Rules};
 pub use rules_file::{PREFIX as RULES_FILE_PREFIX, kicad_dru, rules_file_of};
 pub use silk::FONT_MARGIN;
 pub use teardrop::{Teardrop, teardrops};
@@ -369,6 +371,11 @@ pub enum Rule {
     /// A piece of a pour's fill that touches no copper of its net, which the zone's island
     /// setting keeps (issue #838).
     IsolatedCopper,
+    /// A piece of a pour's fill with pads of its net on it and no other way to them, which a
+    /// track of another net cut off from the rest of the fill (netsmith's, issue #1509;
+    /// `fill/cut.rs`): the check's connectivity, which joins a pad by the pour's outline, does
+    /// not see it.
+    PadIslandCut,
     /// A track that meets a pad's straight edge or another track of its net at an acute angle,
     /// a wedge that traps etchant (netsmith's, issue #838).
     AcidTrap,
@@ -392,7 +399,7 @@ pub enum Rule {
 }
 
 impl Rule {
-    pub const ALL: [Rule; 58] = [
+    pub const ALL: [Rule; 59] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -445,6 +452,7 @@ impl Rule {
         Rule::StarvedThermal,
         Rule::UnjoinableThermal,
         Rule::IsolatedCopper,
+        Rule::PadIslandCut,
         Rule::AcidTrap,
         Rule::CopperSliver,
         Rule::Stackup,
@@ -508,6 +516,7 @@ impl Rule {
             Rule::StarvedThermal => "starved_thermal",
             Rule::UnjoinableThermal => "unjoinable_thermal",
             Rule::IsolatedCopper => "isolated_copper",
+            Rule::PadIslandCut => "pad_island_cut",
             Rule::AcidTrap => "acid_trap",
             Rule::CopperSliver => "copper_sliver",
             Rule::Stackup => "stackup",
@@ -550,6 +559,7 @@ impl Rule {
                 | Rule::TestPointEdge
                 | Rule::AcidTrap
                 | Rule::UnjoinableThermal
+                | Rule::PadIslandCut
                 | Rule::Stackup
                 | Rule::ViaSpan
                 | Rule::ViaAspectRatio
@@ -586,6 +596,7 @@ impl Rule {
             | Rule::StarvedThermal
             | Rule::UnjoinableThermal
             | Rule::IsolatedCopper
+            | Rule::PadIslandCut
             | Rule::AcidTrap
             | Rule::CopperSliver => Severity::Warning,
             _ => Severity::Error,
@@ -835,9 +846,15 @@ pub struct Extras {
     /// wide, away from the net's pads as for `least_widths`, is a `track_impedance` warning.
     pub target_widths: Vec<(String, String, f64)>,
     pub neck_reach: f64,
-    /// How many vias side by side, their copper touching, each net needs where it changes layer,
-    /// for the nets that need more than one.
+    /// How many vias side by side each net needs where it changes layer, for the nets that need
+    /// more than one: vias of the net whose copper is no more than [`Extras::via_group_gap`]
+    /// apart, through others that are, count as one group.
     pub via_counts: Vec<(String, usize)>,
+    /// The most space, in mm, between the copper of two vias of one net, edge to edge, at which
+    /// they stand side by side as one group for `via_current` (issue #1505): the process's
+    /// least clearance, or the board's `.process.via_group_gap`. 0 (the default) is that the
+    /// copper touches.
+    pub via_group_gap: f64,
     /// Whether a corner of 90 degrees or sharper between two tracks is refused (issue #415):
     /// set by `fab` for the boards netsmith routes, which bend by 45 degrees only.
     pub track_angle: bool,
@@ -872,6 +889,38 @@ pub struct Extras {
     /// The layout file's waivers of findings of a part's own footprint (issue #1196, `waivers.rs`):
     /// a finding one covers is moved to [`Report::waived`], and one that covers none is an error.
     pub waivers: Vec<Waiver>,
+    /// Whether guidelines are errors for this run (`fab --strict`, `guidelines = "error"`):
+    /// `pad_island_cut` is then an error, where it is otherwise a warning (issue #1509).
+    pub strict_guidelines: bool,
+    /// The boxes a board cut to a neighbourhood was cut to, in the frame of the board file
+    /// (the check of an edit, `routes add-track`): a piece of a fill that reaches the edge of
+    /// one may go on outside it, so `pad_island_cut` does not judge it. Empty for a whole board.
+    pub open: Vec<crate::geom::Bounds>,
+}
+
+impl Extras {
+    /// The least width a track of `net` is held to by its current (`track_current`), on an
+    /// inner layer when `inner`: its `inner_least_widths` entry there, else its
+    /// `least_widths` entry; `None` when its current asks no more than the process's least
+    /// track.
+    pub fn least_width(&self, net: &str, inner: bool) -> Option<f64> {
+        self.inner_least_widths
+            .iter()
+            .filter(|_| inner)
+            .chain(&self.least_widths)
+            .find(|(n, _)| n == net)
+            .map(|&(_, w)| w)
+    }
+
+    /// The least space from a hole to a track (`hole_to_track`): of a plated pad's hole when
+    /// `plated_pad`, else of a via's or a non-plated hole; `None` when it is not checked.
+    pub fn hole_to_track_of(&self, plated_pad: bool) -> Option<f64> {
+        if plated_pad {
+            self.plated_hole_clearance
+        } else {
+            self.hole_to_track
+        }
+    }
 }
 
 /// A pin of a part that states the current of its branch (issue #1113): its pads, by the
@@ -1011,6 +1060,26 @@ impl From<crate::artwork::ArtworkError> for Error {
 /// Checks the board in `pcb` (the text of a `.kicad_pcb`) to the rules in `project` (the
 /// text of the `.kicad_pro` beside it; KiCad's defaults without one).
 pub fn check(pcb: &str, project: Option<&str>, extras: &Extras) -> Result<Report, Error> {
+    let read = read(pcb, project, extras)?;
+    Ok(check_artwork(
+        &read.art,
+        &read.rules,
+        extras,
+        read.bridges_in_footprints,
+    ))
+}
+
+/// What the check reads its numbers from, the one place [`check`] and [`rules_of`] read them.
+pub(crate) struct Read {
+    pub art: Artwork,
+    pub rules: Rules,
+    /// The board's setup lets the mask between pads of one footprint run together.
+    pub bridges_in_footprints: bool,
+}
+
+/// The board in `pcb` and the rules it is checked to: the project's, the mask web of the
+/// board's setup (or the caller's), and whether the setup allows mask bridges in footprints.
+pub(crate) fn read(pcb: &str, project: Option<&str>, extras: &Extras) -> Result<Read, Error> {
     let art = Artwork::parse(pcb)?;
     let mut rules = match project {
         Some(p) => Rules::from_project(p).map_err(Error::Project)?,
@@ -1041,7 +1110,23 @@ pub fn check(pcb: &str, project: Option<&str>, extras: &Extras) -> Result<Report
                 .map(|t| t == "yes")
         })
         .unwrap_or(false);
-    Ok(check_artwork(&art, &rules, extras, bridges_in_footprints))
+    Ok(Read {
+        art,
+        rules,
+        bridges_in_footprints,
+    })
+}
+
+/// The rules the check holds the board in `pcb` to, as data ([`BoardRules`], `netsmith board
+/// rules`, issue #1513): read as [`check`] reads them, from the same project text and extras.
+pub fn rules_of(pcb: &str, project: Option<&str>, extras: &Extras) -> Result<BoardRules, Error> {
+    let read = read(pcb, project, extras)?;
+    Ok(BoardRules::of(
+        &read.art,
+        &read.rules,
+        extras,
+        read.bridges_in_footprints,
+    ))
 }
 
 /// Checks a board already read, to rules already known.

@@ -20,6 +20,9 @@
 //! [`crate::copper_of`], the geometry `fab` plots: a pour is its fill with the clearances and
 //! the thermal reliefs, not its outline. A ring of a pour is simplified within 2 µm
 //! ([`crate::simplify_ring`]), as the editor's pours are.
+//! One exception: an arc of a net whose corners are mitered (the board's `.corner`, or a
+//! `TrackPath`'s, issue #1508) is drawn as its chamfer, straight from its start to its end
+//! ([`Board::chamfered`]), so a board whose style is mitered reads as mitered at every scale.
 //!
 //! **Colours** are the editor's dark theme (`themes.css`): the top layer copper-orange, the
 //! bottom teal, each inner layer one of four tones, by its number. A colour is a layer's, never
@@ -269,6 +272,8 @@ pub fn picture(
     markers: &[Marker],
     options: &Picture,
 ) -> Result<String, String> {
+    let chamfered = board.chamfered();
+    let board = chamfered.as_ref().unwrap_or(board);
     let copper = copper_of(board).map_err(|e| e.to_string())?;
     let names: Vec<&str> = copper.layers.iter().map(|l| l.layer.as_str()).collect();
     let shown: Vec<usize> = match options.layers {

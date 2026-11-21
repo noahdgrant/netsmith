@@ -96,6 +96,7 @@ fn errors(board: &Board) -> Vec<String> {
         target_widths: board.target_track_widths(),
         neck_reach: netsmith_router::route::NECK_REACH,
         via_counts: board.via_counts(),
+        via_group_gap: board.rules.group_gap(),
         track_angle: true,
         round_track_angle: None,
         marks: None,
@@ -106,6 +107,8 @@ fn errors(board: &Board) -> Vec<String> {
         sizing: None,
         net_currents: Vec::new(),
         waivers: Vec::new(),
+        strict_guidelines: false,
+        open: Vec::new(),
     };
     drc_check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras)
         .unwrap()

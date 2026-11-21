@@ -381,7 +381,7 @@ fn markers_of(
     constraints: Option<Constraints>,
     layers: PictureLayers,
 ) -> Result<(Vec<Marker>, Vec<String>), String> {
-    let checked = crate::drc::of_board(board, constraints)?;
+    let checked = crate::drc::of_board(board, constraints, false)?;
     let on = |layer: Option<&str>| match (layers, layer) {
         (PictureLayers::One(l), Some(at)) if at.ends_with(".Cu") => l.name() == at,
         _ => true,
