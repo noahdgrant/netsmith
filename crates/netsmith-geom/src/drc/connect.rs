@@ -7,7 +7,12 @@
 //! nearer than half its width; a round end that only touches the edge is not, in KiCad as here.
 //! A track's end is held when its round end runs into copper of its net, so such a track is not
 //! dangling either. Copper that only touches, or misses by less than [`NEAR_MISS`], is said so in
-//! the finding, so a near miss is never silent. A pour joins every pad,
+//! the finding, so a near miss is never silent. An arc track is the exception (issue #1542):
+//! KiCad's hit test of an arc counts a point on its edge as on it, so a track's end whose round
+//! end only touches an arc's copper is joined to it, and the distance is the arc's own, not its
+//! chords' ([`ARC_TOUCH`]). Tracks of different widths are joined by the same rule as any two:
+//! an end joins the other track when it lies nearer to its centre line than the two half widths
+//! together (the round ends run into each other), as KiCad 9 has it. A pour joins every pad,
 //! via and track of its net that touches its outline on its layer (the pour's fill is not
 //! computed, so copper the fill would cut off is not seen: ADR 0037). Each net's separate
 //! pieces are then joined, in the finding, by the shortest connections between their
@@ -15,12 +20,10 @@
 
 use super::checks::{EPS, Out};
 use super::model::{Copper, Kind, Model};
-#[cfg(doc)]
-use super::shape::JOIN;
-use super::shape::{Shape, gap, joined, near_pairs};
+use super::shape::{ARC_TOUCH, JOIN, Shape, gap, joined, near_pairs};
 use super::{Finding, Rule};
-use crate::artwork::Connect;
-use crate::geom::{Bounds, Pt};
+use crate::artwork::{Connect, TrackShape};
+use crate::geom::{ARC_ERROR, Arc, Bounds, Pt};
 use std::collections::BTreeMap;
 
 struct Sets(Vec<usize>);
@@ -63,10 +66,53 @@ fn near_miss(gap: f64, what: &str) -> String {
     }
 }
 
-fn touches(a: &Copper, b: &Copper) -> bool {
-    a.shapes
-        .iter()
-        .any(|sa| b.shapes.iter().any(|sb| joined(sa, sb)))
+/// The item's arc and half width, when it is an arc track.
+fn arc_of<'a>(m: &'a Model<'_>, c: &Copper) -> Option<(&'a Arc, f64)> {
+    match c.kind {
+        Kind::Track(t) => match &m.art.tracks[t].shape {
+            TrackShape::Arc(arc) => Some((arc, m.art.tracks[t].width / 2.0)),
+            TrackShape::Line(..) => None,
+        },
+        _ => None,
+    }
+}
+
+/// Whether the round end of a track at `end`, of half width `h`, is joined to the item `o`.
+fn end_on(m: &Model<'_>, o: &Copper, end: Pt, h: f64) -> bool {
+    match arc_of(m, o) {
+        Some((arc, r)) => arc.distance_to(end) <= h + r + ARC_TOUCH,
+        None => {
+            let at = Shape::disc(end, h);
+            o.shapes.iter().any(|s| joined(s, &at))
+        }
+    }
+}
+
+fn touches(m: &Model<'_>, a: &Copper, b: &Copper) -> bool {
+    let shapes = |depth: f64| {
+        a.shapes.iter().any(|sa| {
+            b.shapes.iter().any(|sb| {
+                if depth <= JOIN {
+                    return joined(sa, sb);
+                }
+                let g = gap(sa, sb);
+                g.d == 0.0 && g.depth > depth
+            })
+        })
+    };
+    let track = |c: &Copper| matches!(c.kind, Kind::Track(_));
+    if !(track(a) && track(b)) || (arc_of(m, a).is_none() && arc_of(m, b).is_none()) {
+        return shapes(JOIN);
+    }
+    // A track and an arc: KiCad joins them where an end of either lies on the other (the arc's
+    // edge included), and where their copper runs into each other further than the arc's
+    // chords can be wrong (the paths cross, or overlap along their middles).
+    let half = |c: &Copper| match c.kind {
+        Kind::Track(t) => m.art.tracks[t].width / 2.0,
+        _ => 0.0,
+    };
+    let ends_on = |x: &Copper, y: &Copper| x.anchors.iter().any(|&e| end_on(m, y, e, half(x)));
+    ends_on(a, b) || ends_on(b, a) || shapes(2.0 * ARC_ERROR)
 }
 
 /// The least gap between the copper of two items.
@@ -108,12 +154,13 @@ pub(crate) fn run(m: &Model<'_>, findings: &mut Vec<Finding>) {
     // Items of one net that touch on a layer they share.
     let boxes: Vec<Bounds> = m.items.iter().map(|c| c.bounds).collect();
     let mut neighbours: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for (i, j) in near_pairs(&boxes, 0.0) {
+    // An arc's box is its chords', which may fall short of the arc by the chords' error.
+    for (i, j) in near_pairs(&boxes, 2.0 * ARC_ERROR) {
         let (a, b) = (&m.items[i], &m.items[j]);
         if a.net.is_none() || a.net != b.net || !a.layers.iter().any(|l| b.layers.contains(l)) {
             continue;
         }
-        if touches(a, b) {
+        if touches(m, a, b) {
             sets.join(i, j);
             neighbours[i].push(j);
             neighbours[j].push(i);
@@ -158,9 +205,9 @@ pub(crate) fn net_graph(m: &Model<'_>, net: &str) -> NetGraph {
         .collect();
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); items.len() + pours.len()];
     let boxes: Vec<Bounds> = items.iter().map(|&i| m.items[i].bounds).collect();
-    for (a, b) in near_pairs(&boxes, 0.0) {
+    for (a, b) in near_pairs(&boxes, 2.0 * ARC_ERROR) {
         let (x, y) = (&m.items[items[a]], &m.items[items[b]]);
-        if x.layers.iter().any(|l| y.layers.contains(l)) && touches(x, y) {
+        if x.layers.iter().any(|l| y.layers.contains(l)) && touches(m, x, y) {
             adj[a].push(b);
             adj[b].push(a);
         }
@@ -350,7 +397,7 @@ fn dangling(out: &mut Out<'_>, neighbours: &[Vec<usize>], poured: &[Vec<usize>])
                     let at = Shape::disc(end, track.width / 2.0);
                     let held = neighbours[i].iter().any(|&j| {
                         let o = &m.items[j];
-                        o.layers.contains(&layer) && o.shapes.iter().any(|s| joined(s, &at))
+                        o.layers.contains(&layer) && end_on(m, o, end, track.width / 2.0)
                     }) || poured[i].iter().any(|&p| {
                         m.pours[p].layer == layer
                             && m.pours[p].polygons.iter().any(|poly| {

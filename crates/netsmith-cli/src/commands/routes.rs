@@ -199,6 +199,15 @@ pub struct RouteArgs {
     pub corner: Option<Corner>,
     #[command(flatten)]
     pub weighing: common::Weighing,
+    /// Lay the net again, with the nets `--rip` names, the net first.
+    ///
+    /// Its unlocked tracks and vias and those of the nets `--rip` names are taken away, the net
+    /// is routed first and they after it (in other orders, as `--tries` says, when one is not put
+    /// back), and the change is written only when every connection is made and their total by
+    /// the weights (length, vias and layer changes) gets shorter by more than 0.5 mm. For a net
+    /// that went round its neighbour because the neighbour was laid first.
+    #[arg(long)]
+    pub reroute: bool,
     /// Say what it would do, and write nothing.
     #[arg(long)]
     pub dry_run: bool,
@@ -777,6 +786,7 @@ fn route(args: &RouteArgs) -> ExitCode {
                 depth: args.rip_depth,
                 tries: args.tries,
                 weights,
+                reroute: args.reroute,
                 ..ask
             },
             Err(lib::Refusal::Refused(e)) => return Ok(Err(e)),

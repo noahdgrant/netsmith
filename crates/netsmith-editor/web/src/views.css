@@ -326,7 +326,8 @@ button.chip.pin-chip.cur, button.chip.cur { border-color: var(--sel-line); backg
 .bom-table td.num.unknown, .bom-table td .checked { color: var(--text-faint); }
 .bom-table td .checked { font-size: var(--fs-sm); }
 .bom-table td .checked.stale { color: var(--warning-text); font-weight: var(--fw-medium); }
-.bom-table td.lcsc { color: var(--text-muted); font-size: var(--fs-sm); }
+.bom-table td.sku,
+.bom-table td.channel { color: var(--text-muted); font-size: var(--fs-sm); }
 .bom-table td.des { font-weight: var(--fw-semibold); white-space: normal; min-width: 9.375rem; max-width: 17.5rem; }
 .des-cell { display: flex; flex-wrap: wrap; align-items: center; gap: 0.1875rem; padding: 0.25rem 0; }
 .dchip { height: var(--h-xs); padding: 0 0.375rem; background: var(--surface-3); border: 1px solid transparent; border-radius: var(--r-xs); color: var(--text); font-family: var(--mono); font-size: var(--fs-sm); font-weight: var(--fw-medium); letter-spacing: 0; cursor: pointer; }
@@ -543,7 +544,7 @@ button.chip.findings-pill:hover { border-color: var(--border-strong); filter: br
 .lsw-silk { --c: var(--pcb-silk); } .lsw-fab { --c: var(--pcb-fab); } .lsw-courtyard { --c: var(--pcb-courtyard); }
 .lsw-refs { --c: var(--pcb-silk); } .lsw-key { --c: var(--pcb-key); }
 .lsw-stitching { --c: var(--pcb-stitching); } .lsw-uncounted { --c: var(--pcb-uncounted); } .lsw-islands { --c: var(--pcb-island); } .lsw-starved { --c: var(--pcb-starved); }
-.lsw-keepouts { --c: var(--pcb-keepout); } .lsw-limits { --c: var(--pcb-height-limit); } .lsw-requirements { --c: var(--info); }
+.lsw-keepouts { --c: var(--pcb-keepout); } .lsw-rule-areas { --c: var(--pcb-keepout); } .lsw-limits { --c: var(--pcb-height-limit); } .lsw-requirements { --c: var(--info); }
 button.chip.findings-pill, .toolbar button.chip { font-family: var(--sans); letter-spacing: inherit; }
 
 /* the board's side panel */

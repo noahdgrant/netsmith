@@ -49,7 +49,7 @@ export async function run({ page, shot, step, expect, section, project }) {
   await whenIdle(page);
   expect((await panel.count()) === 0, 'the panel closed');
   expect((await page.locator('.swap-btn').count()) === 0, 'nothing left to swap');
-  const lcsc = await page.locator(`tr.dr[data-hv-ref="${refdes}"] td.lcsc`).innerText();
+  const lcsc = await page.locator(`tr.dr[data-hv-ref="${refdes}"] td.sku`).innerText();
   expect(/^C\d+$/.test(lcsc.trim()), `the line has an LCSC number (${lcsc})`);
   await shot('swapped');
 

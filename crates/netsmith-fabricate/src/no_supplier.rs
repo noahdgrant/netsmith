@@ -25,6 +25,11 @@ pub struct Unnumbered {
     /// For a part inside a module: the module's member in the board, its definition, and
     /// where that is.
     pub module: Option<Module>,
+    /// The channel that buys the part and its sku there, when that channel's numbers are not
+    /// the board house's (`digikey-retail`, `mouser-retail`, ADR 0143): JLCPCB assembles by
+    /// LCSC's numbers, so the part has none to be assembled by. `None` for a part no channel
+    /// buys.
+    pub bought_in: Option<(Channel, String)>,
 }
 
 /// The module that holds a part that the board cannot reach.
@@ -59,7 +64,7 @@ pub fn find(built: &Built, sourcing: &[Sourced]) -> Vec<Unnumbered> {
     let mut found = Vec::new();
     for (i, s) in sourcing.iter().enumerate() {
         let unresolved = s.generic.is_some() && s.resolved_row.is_none();
-        if !s.needs_part_number() || s.lcsc.is_some() || unresolved {
+        if !s.needs_part_number() || s.lcsc_number().is_some() || unresolved {
             continue;
         }
         let (Some(part), Some(origin)) = (built.design.parts.get(i), trace.origins.get(i)) else {
@@ -100,6 +105,7 @@ pub fn find(built: &Built, sourcing: &[Sourced]) -> Vec<Unnumbered> {
             mpn: s.mpn.clone(),
             declared,
             module,
+            bought_in: s.channel.zip(s.sku.clone()),
         });
     }
     found
@@ -116,19 +122,36 @@ fn describe(u: &Unnumbered) -> String {
         Some(_) => "its module is at",
         None => "at",
     };
-    format!("{} `{}`: {what}, {at} {}", u.refdes, u.path, u.declared)
+    let bought = match &u.bought_in {
+        Some((channel, sku)) => format!(", bought in {channel} as {sku}"),
+        None => String::new(),
+    };
+    format!(
+        "{} `{}`: {what}{bought}, {at} {}",
+        u.refdes, u.path, u.declared
+    )
 }
 
 /// The error `fab` prints for `parts`, the project's supply channels being `channels` (the ones
 /// tried). It says what to write for each, and where.
 pub fn message(board: &str, parts: &[Unnumbered], channels: &[Channel]) -> String {
+    let what = if parts.iter().any(|u| u.bought_in.is_some()) {
+        "have no LCSC offer in the project's supply channels"
+    } else {
+        "have no offer in any of the project's supply channels"
+    };
     let mut out = format!(
-        "{} part(s) have no offer in any of the project's supply channels (tried: {}), so there is no supplier part number to assemble them by, and `fab` does not package a board that says it will:\n",
+        "{} part(s) {what} (tried: {}), so there is no supplier part number to assemble them by, and `fab` does not package a board that says it will:\n",
         parts.len(),
         Channel::list(channels)
     );
     for u in parts {
         out.push_str(&format!("  {}\n", describe(u)));
+    }
+    if parts.iter().any(|u| u.bought_in.is_some()) {
+        out.push_str(
+            "A part bought in a channel of another supplier (`digikey-retail`, `mouser-retail`) has no number for the board house: JLCPCB buys the parts it assembles by LCSC's numbers (the offers of `offers/lcsc.csv`), so a part you buy elsewhere is consigned (you ship it to the board house, which places it) or soldered by hand (ADR 0084, ADR 0143).\n",
+        );
     }
     out.push_str(
         "To get past it, say that the board house is not to assemble these parts (they stay out of bom.csv and cpl.csv, and `fab-notes.txt` lists them as `hand-solder:` and as having no part number), or give the part an offer that a channel of the project buys. `fab` has no flag for this; the design says it (`.assembly`, \"Who assembles a part\" in docs/LANGUAGE.md):\n",
@@ -180,7 +203,7 @@ pub fn note(sourcing: &[Sourced]) -> Option<String> {
     let left: Vec<String> = sourcing
         .iter()
         .filter(|s| s.assembly == netsmith_design::Assembly::Hand)
-        .filter(|s| s.lcsc.is_none() && s.mpn.is_some() && s.generic.is_none())
+        .filter(|s| s.sku.is_none() && s.mpn.is_some() && s.generic.is_none())
         .map(|s| s.refdes.clone())
         .collect();
     if left.is_empty() {

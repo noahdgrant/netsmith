@@ -169,7 +169,8 @@ pub use part_layout::{
 pub use picture::{
     BACKGROUND as PICTURE_BACKGROUND, COPPER as PICTURE_COPPER, Island as PictureIsland,
     Layers as PictureLayers, Lit, MARGIN as PICTURE_MARGIN, Marker, Picture as PictureOptions,
-    STITCHING as PICTURE_STITCHING, picture as picture_svg, whole as picture_whole,
+    RuleArea as PictureRuleArea, STITCHING as PICTURE_STITCHING, picture as picture_svg,
+    whole as picture_whole,
 };
 pub use pin_distance::PinNear;
 pub use placement::{
@@ -208,7 +209,7 @@ pub use summary::{
 };
 pub use svg::{render as render_svg, render_view as render_svg_view};
 pub use track_drop::{
-    COPPER_RESISTIVITY, DEFAULT_DROP_BUDGET, NetPad, TrackDrop, in_outer_copper,
+    COPPER_RESISTIVITY, DEFAULT_DROP_BUDGET, DropRun, NetPad, PinDraw, TrackDrop, in_outer_copper,
     net_drop as track_drop_of,
 };
 pub use validate::{Subject, footprint_pitch, validate_pinout, validate_table};

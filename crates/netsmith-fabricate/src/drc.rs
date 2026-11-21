@@ -12,7 +12,7 @@
 use std::path::Path;
 
 use netsmith_fab::{Checked, Options};
-use netsmith_geom::{Constraints, DrcBoardRules};
+use netsmith_geom::{Constraints, DrcBoardRules, DrcRuleArea};
 use netsmith_pcb::{Board, kicad_pcb, kicad_pro};
 
 /// The check of `board` as it is, with the design's `constraints` (`None` when it states none).
@@ -53,6 +53,26 @@ pub fn rules_of_board(board: &Board) -> Result<DrcBoardRules, String> {
     let options = options_of(board, None);
     netsmith_geom::drc_rules_of(&kicad_pcb(board), Some(&kicad_pro(board)), &options.drc)
         .map_err(|e| e.to_string())
+}
+
+/// The rule areas of `board` that a picture of it draws (issue #1543, `netsmith view pcb` and
+/// the editor's Rule areas layer): the `rule_areas` of [`rules_of_board`], the footprints' (a
+/// library's keep-out, an RF module's antenna area) and the board's, less the keepouts of the
+/// physical file, which the picture and the 2D view already draw as keepouts. A board rule area
+/// is such a keepout when it has the name of one of [`Board::keepout_areas`] that forbids
+/// something.
+pub fn rule_areas_to_draw(board: &Board) -> Result<Vec<DrcRuleArea>, String> {
+    let keepouts: Vec<String> = board
+        .keepout_areas()
+        .into_iter()
+        .filter(|k| k.forbids_anything())
+        .map(|k| k.name)
+        .collect();
+    Ok(rules_of_board(board)?
+        .rule_areas
+        .into_iter()
+        .filter(|a| a.part.is_some() || !keepouts.contains(&a.name))
+        .collect())
 }
 
 /// The rules [`of_kicad_pcb`] holds the KiCad board `pcb` to, as data.

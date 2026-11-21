@@ -202,7 +202,8 @@ pub struct ComparePart {
     pub package: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub lcsc: Option<String>,
+    /// The number in the supply channel that buys the part (ADR 0143).
+    pub sku: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub mpn: Option<String>,
@@ -214,7 +215,7 @@ pub struct ComparePart {
     pub at: Option<Location>,
 }
 
-/// One field that differs. `field` is `kind`, `value`, `package`, `lcsc`, `mpn`, `assembly`,
+/// One field that differs. `field` is `kind`, `value`, `package`, `sku`, `mpn`, `assembly`,
 /// `designator` or `path`; an absent side is a part that did not have it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -250,7 +251,7 @@ pub struct ComparePartChange {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub base_kind: Option<String>,
-    /// In a fixed order: `path`, `kind`, `value`, `package`, `lcsc`, `mpn`, `assembly`,
+    /// In a fixed order: `path`, `kind`, `value`, `package`, `sku`, `mpn`, `assembly`,
     /// `designator`. Never empty; a part in `renumbered` has only `designator`.
     pub fields: Vec<CompareField>,
     /// Its declaration on the head side.
@@ -471,7 +472,8 @@ pub struct CompareBomLine {
     pub footprint: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub lcsc: Option<String>,
+    /// The number in the supply channel that buys the part (ADR 0143).
+    pub sku: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub mpn: Option<String>,
@@ -483,7 +485,7 @@ pub struct CompareBomLine {
     pub unit_usd: Option<f64>,
 }
 
-/// A line on both sides (same kind, value, footprint, LCSC number, MPN and assembly) whose
+/// A line on both sides (same kind, value, footprint, sku, MPN and assembly) whose
 /// quantity or unit price differs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -498,7 +500,8 @@ pub struct CompareBomChange {
     pub footprint: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub lcsc: Option<String>,
+    /// The number in the supply channel that buys the part (ADR 0143).
+    pub sku: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub mpn: Option<String>,

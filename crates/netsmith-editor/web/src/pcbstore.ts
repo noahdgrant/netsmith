@@ -10,6 +10,7 @@ import type {
   PcbFindings,
   PcbFill,
   PcbStitching,
+  PcbRuleAreas,
   PcbNets,
   PcbPours,
   PcbRegenerated,
@@ -51,6 +52,9 @@ export const fillReport = signal<PcbFill | null>(null);
 /** The stitching vias the export will have that the routes file does not (`GET /api/pcb/stitching`, issue 1489), of the placement
  * it names: the 2D view draws them in a tone of their own (`pcb/stitchMarks.ts`). */
 export const stitching = signal<PcbStitching | null>(null);
+/** The rule areas of the board, the footprints' and the board's that are not keepouts of the physical file (`GET /api/pcb/rule-areas`,
+ * issue 1543), of the placement it names: the 2D view hatches them (`pcb/ruleAreas.ts`). */
+export const ruleAreas = signal<PcbRuleAreas | null>(null);
 /** The table of the board's nets (`GET /api/pcb/nets`, issue 1495), of the placement it names: the 2D view marks the copper a
  * net's length does not count, the dead stubs and second ways (`pcb/uncountedMarks.ts`). */
 export const netsReport = signal<PcbNets | null>(null);
@@ -228,6 +232,7 @@ function show(next: PcbScene) {
   void loadPours(next.board)
     .then(() => loadFill(next.board))
     .then(() => loadStitching(next.board))
+    .then(() => loadRuleAreas(next.board))
     .then(() => loadNets(next.board));
 }
 
@@ -289,6 +294,21 @@ export async function loadNets(board: string): Promise<void> {
     if (mine === netsAsked) netsReport.value = answer;
   } catch {
     if (mine === netsAsked) netsReport.value = null;
+  }
+}
+
+let ruleAreasAsked = 0;
+
+/** Ask the server for the rule areas of the board as it is placed now, after its stitching (one at a time on the server's time); the
+ * answer of the last ask is kept. A board that cannot be placed has none. */
+export async function loadRuleAreas(board: string): Promise<void> {
+  const mine = ++ruleAreasAsked;
+  if (ruleAreas.peek()?.board !== board) ruleAreas.value = null;
+  try {
+    const answer = await api.pcbRuleAreas(board);
+    if (mine === ruleAreasAsked) ruleAreas.value = answer;
+  } catch {
+    if (mine === ruleAreasAsked) ruleAreas.value = null;
   }
 }
 

@@ -54,7 +54,7 @@ fn a_part_not_fitted_that_states_no_value_is_given_no_row_and_takes_its_range() 
     let shunt = &d.sourcing[i];
     assert_eq!(shunt.assembly, Assembly::None);
     assert_eq!(shunt.value, "1pF..10pF");
-    assert_eq!(shunt.lcsc, None);
+    assert_eq!(shunt.sku, None);
     assert_eq!(d.design.parts[i].value, "DNP 1pF..10pF");
     let dnp = shunt.not_fitted.as_ref().expect("marked not fitted");
     assert_eq!(dnp.tune.as_deref(), Some("1pF..10pF"));

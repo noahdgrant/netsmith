@@ -189,7 +189,7 @@ export async function run({ page, shot, step, expect, section, project, resetRep
   step('expand a row: the fields that changed, each with its old and new value');
   await r1.locator('.cr-chev').click();
   const fields = await r1.locator('.cr-field dt').allInnerTexts();
-  expect(fields.includes('value') && fields.includes('lcsc'), `the changed fields (${fields.join(', ')})`);
+  expect(fields.includes('value') && fields.includes('sku'), `the changed fields (${fields.join(', ')})`);
   await shot('parts-expanded');
   await r1.locator('.cr-chev').click();
 

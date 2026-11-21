@@ -93,7 +93,7 @@ fn quoted(catalogs: Catalogs, quotes: Vec<(&'static str, Channel, Option<u64>, f
 fn resolved(c: &Catalogs) -> (String, Option<String>, Vec<String>) {
     let stock = |channel: Channel, sku: &str| c.availability().and_then(|a| a.stock(channel, sku));
     let got = resolve(&generic(), c, &stock).unwrap_or_else(|e| panic!("{e}"));
-    (got.name, got.lcsc, got.passed_over)
+    (got.name, got.sku, got.passed_over)
 }
 
 #[test]
@@ -118,7 +118,7 @@ fn a_part_is_bought_from_the_second_channel_when_the_first_has_no_offer() {
     let bought: Vec<(Option<Channel>, Option<&str>)> = rows
         .candidates
         .iter()
-        .map(|r| (r.channel, r.lcsc.as_deref()))
+        .map(|r| (r.channel, r.sku.as_deref()))
         .collect();
     assert_eq!(
         bought,
@@ -237,7 +237,9 @@ fn part(refdes: &str, assembly: Assembly) -> Sourced {
         kind: "Resistor".into(),
         value: "249".into(),
         package: Some("0402".into()),
-        lcsc: None,
+        sku: None,
+        channel: None,
+        manufacturer: None,
         mpn: None,
         library: None,
         assembly,
@@ -277,13 +279,13 @@ fn assembly_is_independent_of_the_channel() {
     // its rule (A has no stock, so B); each keeps who places it.
     for s in &sourcing[..2] {
         assert_eq!(s.mpn.as_deref(), Some("ZZR-249-B"), "{}", s.refdes);
-        assert_eq!(s.lcsc.as_deref(), Some("C9900249"), "{}", s.refdes);
+        assert_eq!(s.sku.as_deref(), Some("C9900249"), "{}", s.refdes);
     }
     assert_eq!(sourcing[0].assembly, Assembly::Fab);
     assert_eq!(sourcing[1].assembly, Assembly::Hand);
     // The owner supplies a consigned part: no channel buys it, and it stays as it was.
     assert_eq!(sourcing[2].assembly, Assembly::Consigned);
-    assert_eq!((sourcing[2].lcsc.as_deref(), sourcing[2].mpn.as_deref()), (None, None));
+    assert_eq!((sourcing[2].sku.as_deref(), sourcing[2].mpn.as_deref()), (None, None));
     // The channels say nothing of assembly: the same parts with the default channels (no
     // offer is in JLCPCB's assembly library, so LCSC's retail buys) keep their modes too.
     let default = quoted(
@@ -296,7 +298,7 @@ fn assembly_is_independent_of_the_channel() {
     let (sourcing, _) = resolve_generics(&parts, &default);
     let modes: Vec<Assembly> = sourcing.iter().map(|s| s.assembly).collect();
     assert_eq!(modes, [Assembly::Fab, Assembly::Hand, Assembly::Consigned]);
-    assert_eq!(sourcing[0].lcsc.as_deref(), Some("C9900249"));
+    assert_eq!(sourcing[0].sku.as_deref(), Some("C9900249"));
 }
 
 #[test]
@@ -322,7 +324,7 @@ fn a_generic_part_that_names_its_channel_is_stood_for_only_by_that_channels_rows
     };
     let got = resolve(&named(Channel::DIGIKEY_RETAIL), &c, &|_, _| None).unwrap();
     assert_eq!(
-        (got.name.as_str(), got.lcsc.as_deref()),
+        (got.name.as_str(), got.sku.as_deref()),
         ("ZZR-249-B", Some("ZZR-249-B-ND"))
     );
     // Mouser offers neither: the part is unresolved, and the message names the manifest's key.

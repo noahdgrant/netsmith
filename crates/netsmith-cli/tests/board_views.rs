@@ -106,7 +106,7 @@ fn the_bill_of_materials_prints_the_lines_and_the_total() {
     let output = netsmith(&root, &["board", "bom", "--offline"]);
     assert!(output.status.success(), "{}", stderr(&output));
     let text = stdout(&output);
-    for want in ["LedExample: bill of materials", "QTY", "LCSC", "R1", "Total: no line has a price"] {
+    for want in ["LedExample: bill of materials", "QTY", "CHANNEL", "SKU", "jlcpcb-assembly", "R1", "Total: no line has a price"] {
         assert!(text.contains(want), "missing {want:?} in\n{text}");
     }
 }

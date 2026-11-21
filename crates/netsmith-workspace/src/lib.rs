@@ -50,8 +50,8 @@ use netsmith_editor::{
         Analysis, BoardDetail, Bom, BuildReport, CatalogRefresh, Changed, Compare, Definition,
         FabReport, FileContent, GerberView, GitInfo, KeepoutPlacement, OrderInfo, OrderReport,
         PanelView, PcbChange, PcbCopper, PcbEdit, PcbEdited, PcbFill, PcbFindings, PcbFit, PcbNets,
-        PcbReport, PcbScene, PcbStitching, PcbSummary, PinLock, PinMove, PinWritten, PowerTree,
-        Project, Saved, SchematicHints, SystemView,
+        PcbReport, PcbRuleAreas, PcbScene, PcbStitching, PcbSummary, PinLock, PinMove, PinWritten,
+        PowerTree, Project, Saved, SchematicHints, SystemView,
     },
 };
 
@@ -1627,6 +1627,10 @@ impl Backend for Workspace {
 
     fn pcb_stitching(&self, board: &str) -> Result<PcbStitching, ApiError> {
         self.with_filling(board, |filling| Ok(filling.stitching(board)))
+    }
+
+    fn pcb_rule_areas(&self, board: &str) -> Result<PcbRuleAreas, ApiError> {
+        self.with_filling(board, |filling| filling.rule_areas(board))
     }
 
     fn pcb_nets(&self, board: &str) -> Result<PcbNets, ApiError> {

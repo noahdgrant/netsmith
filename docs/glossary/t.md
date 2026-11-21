@@ -39,7 +39,7 @@ A square of the board, 1 mm a side (ten cells of the router's grid), that the co
 _Avoid_: region, bin, gcell
 
 **Track drop**:
-The voltage a power net's routed tracks drop at its worst-case current: the current through the largest resistance, along its tracks, between two of the net's pads (issue #652). `fab` measures it once the board is routed and warns, as the guideline `track drop`, when it is more than 1 % of the voltage of the net's rail.
+The voltage a power net's routed tracks drop: the most any of its pads sees from a source pad, each run of track at the current the pins past it draw, the net's worst-case current where a pin of no known current is among them (issues #652 and #1541). `fab` measures it once the board is routed (and `board nets` and `board drc` on the copper a board has, issue #1540) and warns, as the guideline `track drop`, when it is more than 1 % of the voltage of the net's rail.
 _Avoid_: IR drop, voltage loss, track loss
 
 **Track impedance**:

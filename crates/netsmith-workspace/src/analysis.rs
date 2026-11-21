@@ -87,6 +87,9 @@ pub struct BoardData {
     pub constraints_warn: bool,
     /// How many seeds the placer tries (`place_seeds` in `netsmith.toml`, issue #458).
     pub place_seeds: u32,
+    /// The weight of the placer's objective for routing (`routing_objective` in
+    /// `netsmith.toml`, issue 1544); 0 leaves it out.
+    pub routing_objective: f64,
     /// The rounds of rip-up the router gives a try that leaves connections (`rip_rounds` in
     /// `netsmith.toml`, issue #1088).
     pub rip_rounds: usize,
@@ -741,6 +744,10 @@ impl Workspace {
                                 place_seeds: netsmith_fabricate::layout::place_seeds(
                                     target.project.as_ref(),
                                 ),
+                                routing_objective: netsmith_fabricate::layout::routing_objective(
+                                    target.project.as_ref(),
+                                    None,
+                                ),
                                 rip_rounds: netsmith_fabricate::fab::rip_rounds(
                                     target.project.as_ref(),
                                 ),
@@ -963,7 +970,7 @@ impl Workspace {
                     value: part.value.clone(),
                     package: part.package.clone(),
                     path,
-                    lcsc: source.lcsc.clone(),
+                    sku: source.sku.clone(),
                     assembled: source.assembled(),
                     decl: model
                         .instance(inst)

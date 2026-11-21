@@ -92,6 +92,14 @@ lcsc -> sku: the file records each part's `lcsc`, and the lock now records the s
 
 Run `netsmith project lock --update` once and commit the lock. Its diff is the `version` line, each `lcsc` line replaced by a `sku` line of the same number, and a `manufacturer` line for a part whose catalog row names one; the parts are the same.
 
+### The bill of materials names each line's supply channel, and its JSON says `sku` (issue #1461, ADR 0143)
+
+Nothing that built stops building, and `bom.csv` and `order-bom.csv` of a project that buys in `jlcpcb-assembly` and `lcsc-retail` alone are the same bytes. What changes:
+
+- The JSON of `netsmith board bom --format json` and `netsmith board show --format json` (the editor's `GET /api/bom` and `GET /api/board`), and of the editor's compare and swap, name a part's number `sku` in place of `lcsc`: it is the number of the supply channel that buys the part, and Digi-Key's or Mouser's for theirs. A line of the bill of materials also has `channel`, `manufacturer` and `consigned`, and the field the compare reports a changed number in is `sku`. A program that read `lcsc` reads `sku`. The text of `board bom` has the columns `CHANNEL` and `SKU` in place of `LCSC`, and `board show` writes `sku C25104` in place of `LCSC C25104`.
+- `fab-notes.txt` has a `buy from <channel> (...)` line for each channel that buys a consigned or hand-soldered part, and `order.txt` a section _parts you buy, by supply channel_; `order.txt` prices each line from the channel that buys it.
+- A part the board house is to assemble (`AssemblyMode::Fab`) that the project buys in `digikey-retail` or `mouser-retail` is refused by `fab` by name, as a part with no offer is: JLCPCB assembles by LCSC's numbers. Before, its Digi-Key number went into the `LCSC Part #` cell and the package failed. Mark it `AssemblyMode::Consigned` or `AssemblyMode::Hand`, or give it an LCSC offer.
+
 ## 0.7.0: changes since 0.6.0
 
 ### A provider or a use does not declare a member std now declares (issues #1258, #1324, #1405)

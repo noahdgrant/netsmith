@@ -31,7 +31,7 @@ fn resistor(ohms: f64) -> Candidate {
                 Value::Quantity(Quantity::literal(1.0, Some("kW")).unwrap().quantity),
             ),
         ],
-        lcsc: None,
+        sku: None,
         manufacturer: None,
         mpn: None,
         library: None,

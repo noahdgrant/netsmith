@@ -10,7 +10,9 @@ const line = (over: Partial<BomLine>): BomLine => ({
   kind: 'Capacitor',
   package: '0402',
   footprint: null,
-  lcsc: 'C1',
+  sku: 'C1',
+  channel: 'jlcpcb-assembly',
+  manufacturer: null,
   mpn: null,
   library: 'Basic',
   unitUsd: 0.01,
@@ -23,6 +25,7 @@ const line = (over: Partial<BomLine>): BomLine => ({
   unknown: null,
   unresolved: null,
   handSolder: false,
+  consigned: false,
   via: null,
   ...over,
 });
@@ -60,15 +63,15 @@ describe('sourcing', () => {
     expect(sourcing(line({ unitUsd: null, date: null }))).toBe('unchecked');
   });
   it('says ambiguous for a generic part with no row of its own, and missing for no number at all', () => {
-    expect(sourcing(line({ lcsc: null, unresolved: 'a 10 k resistor: nearest rows are ...' }))).toBe('ambiguous');
-    expect(sourcing(line({ lcsc: null }))).toBe('missing');
+    expect(sourcing(line({ sku: null, unresolved: 'a 10 k resistor: nearest rows are ...' }))).toBe('ambiguous');
+    expect(sourcing(line({ sku: null }))).toBe('missing');
   });
   it('says by hand for a part soldered by hand with no number', () => {
-    expect(sourcing(line({ lcsc: null, handSolder: true }))).toBe('hand');
+    expect(sourcing(line({ sku: null, handSolder: true }))).toBe('hand');
   });
   it('counts ambiguous, missing and stale as problems and nothing else', () => {
-    expect([line({}), line({ unitUsd: null, date: null }), line({ lcsc: null, handSolder: true })].some(isProblem)).toBe(false);
-    expect([line({ stale: true }), line({ lcsc: null }), line({ lcsc: null, unresolved: 'x' })].every(isProblem)).toBe(true);
+    expect([line({}), line({ unitUsd: null, date: null }), line({ sku: null, handSolder: true })].some(isProblem)).toBe(false);
+    expect([line({ stale: true }), line({ sku: null }), line({ sku: null, unresolved: 'x' })].every(isProblem)).toBe(true);
   });
 });
 

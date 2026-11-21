@@ -12,7 +12,7 @@ const part = (refdes: string, path: string, value: string, kind = 'Capacitor') =
   value,
   package: '0402',
   path,
-  lcsc: null,
+  sku: null,
   assembled: true,
   decl: loc,
   scopes: path.includes('.') ? [loc] : [],
@@ -89,7 +89,7 @@ describe('go to anything', () => {
     expect(k.marks.detail![0]).toBe('stage1.regulator · '.length);
   });
   it('shows the LCSC number it matched', () => {
-    const withLcsc = buildIndex({ ...detail, parts: [{ ...detail.parts[0], lcsc: 'C25804' }] }, project);
+    const withLcsc = buildIndex({ ...detail, parts: [{ ...detail.parts[0], sku: 'C25804' }] }, project);
     const hit = search(withLcsc, commands, 'c25804')[0].hits[0];
     expect(hit.item.detail.endsWith('C25804')).toBe(true);
     expect(hit.marks.detail!.length).toBe(6);

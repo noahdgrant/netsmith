@@ -277,6 +277,10 @@ pub struct FabOptions {
     /// try (`--place-budget`, `place_budget` in `netsmith.toml`, issue #764). The default is
     /// no limit.
     pub place_budget: netsmith_core::job::Limit,
+    /// The weight of the placer's objective for routing (`--routing-objective`,
+    /// `routing_objective` in `netsmith.toml`, issue 1544). The default is 0: the objective is
+    /// left out, and every board places as it did before.
+    pub routing_objective: f64,
     /// Whether a seed that places the board and is not the layout file's may be written to the
     /// file (issue #458): `fab` writes it; an order and the editor's release never change a
     /// choice by themselves, and stop instead.
@@ -435,6 +439,7 @@ impl Default for FabOptions {
             models: None,
             place_seeds: crate::layout::DEFAULT_PLACE_SEEDS,
             place_budget: netsmith_core::job::Limit::default(),
+            routing_objective: 0.0,
             seed_writes: SeedWrites::Write,
             offline: false,
             reuse: Reuse::Off,
@@ -1336,6 +1341,7 @@ fn fab_board(
                     crate::layout::Seeding {
                         seeds: options.place_seeds,
                         budget: options.place_budget,
+                        routing_objective: options.routing_objective,
                         progress: None,
                     },
                 )
@@ -1807,10 +1813,10 @@ fn fab_board(
             })
             .collect();
         if incomplete.is_none() {
-            let voltages = netsmith_design::guidelines::net_voltages(&built.trace.model);
             drops.extend(
-                crate::track_drop::findings(&board, &voltages)
-                    .into_iter()
+                crate::track_drop::drops_of(&board, &built.trace.model)
+                    .iter()
+                    .filter_map(crate::track_drop::NetDrop::finding)
                     .map(|m| {
                         format!(
                             "{}: {} guideline: {m}",
@@ -1952,6 +1958,9 @@ fn fab_board(
             extras.extend(model_notes(scene));
         }
         extras.extend(crate::no_supplier::note(&sourcing));
+        // What the owner buys, by channel (ADR 0143): the consigned and hand-soldered parts, each
+        // with its channel's sku.
+        extras.extend(crate::buying::notes(&crate::buying::lines(&sourcing)));
         if options.offline {
             extras.push(OFFLINE_NOTE.to_string());
         }
@@ -2249,7 +2258,7 @@ fn fab_board(
             summary: pkg.summary(),
             notes,
             files,
-            facts: BoardFacts::of(&board, &pkg),
+            facts: BoardFacts::of(&board, &pkg).bought_by(&sourcing),
             origins: board.origins(),
             requirements: pkg
                 .constraints
@@ -2410,6 +2419,7 @@ pub fn review_picture_request(layer: netsmith_pcb::CopperLayer) -> crate::pcb_pi
         drc: true,
         islands: true,
         stitching: false,
+        rule_areas: true,
         format: crate::pcb_picture::Format::Png,
     }
 }
@@ -3343,6 +3353,24 @@ fn fab_panel(
             cell.count *= (spec.columns * spec.rows) as usize;
             cell
         },
+        // The panel's parts are its cells', named as bom.csv names them (`R1_3`).
+        bought: run
+            .fabricated
+            .facts
+            .bought
+            .iter()
+            .map(|l| crate::buying::BuyLine {
+                designators: (1..=(spec.columns * spec.rows) as usize)
+                    .flat_map(|k| {
+                        l.designators
+                            .iter()
+                            .map(move |d| netsmith_fab::panel_designator(d, k))
+                    })
+                    .collect(),
+                ..l.clone()
+            })
+            .collect(),
+        bom_channels: run.fabricated.facts.bom_channels.clone(),
     };
     Ok(Fabricated {
         board: spec.name.clone(),
@@ -3391,7 +3419,7 @@ fn alternate_notes(
     alternates
         .iter()
         .map(|a| {
-            let number = match (&a.sourcing.mpn, &a.sourcing.lcsc) {
+            let number = match (&a.sourcing.mpn, &a.sourcing.sku) {
                 (Some(mpn), Some(lcsc)) => format!(" ({mpn}, {lcsc})"),
                 (Some(n), None) | (None, Some(n)) => format!(" ({n})"),
                 (None, None) => String::new(),
@@ -3420,7 +3448,7 @@ fn alternate_entries(
         .map(|a| netsmith_fab::AlternateEntry {
             designator: a.refdes.clone(),
             part_number: a.sourcing.mpn.clone().unwrap_or_else(|| a.kind.clone()),
-            lcsc: a.sourcing.lcsc.clone(),
+            lcsc: a.sourcing.sku.clone(),
         })
         .collect()
 }
@@ -3481,9 +3509,13 @@ fn fit_of(sourcing: &[Sourced]) -> BTreeMap<String, Fit> {
 /// interface (the `prepare-fab-order` step). If
 /// JLCPCB documents a marker, the mark changes in this one function.
 ///
-/// Where it is not shown: the editor's bill of materials shows a consigned part as an ordinary
-/// line with no number and no price (its API has a `hand_solder` flag and no consigned one, and
-/// a new field changes the generated types; not built, issue #19).
+/// The supply channel (ADR 0143). The LCSC cell is filled from the part's sku only when the
+/// channel that buys it reads LCSC's offers (`jlcpcb-assembly`, `lcsc-retail`), so a project
+/// that buys from those alone gets the bill it got before, byte for byte. A consigned part bought
+/// in `digikey-retail` or `mouser-retail` keeps its manufacturer's number as the comment and an
+/// empty cell, and `fab-notes.txt` lists it with its channel and sku ([`crate::buying`]). A part
+/// the board house is to buy from such a channel is refused before anything is placed
+/// ([`crate::no_supplier`]): JLCPCB buys by LCSC's numbers.
 ///
 /// `paths` is the member path of each part of `sourcing`, in its order, so that a part a
 /// `[[member]]` row of `kicad.toml` gives its own footprint is listed with it; a part past its
@@ -3519,10 +3551,12 @@ pub fn bom_entries(
             _ => s.value.clone(),
         };
         // A part that is not fitted is a line of its own with no number to buy (issue #1273).
+        // The cell holds an LCSC number only: a part bought in another channel has none here
+        // (ADR 0143), and `fab-notes.txt` names its channel and sku.
         let lcsc = if s.not_fitted.is_some() {
             None
         } else {
-            s.lcsc.clone()
+            s.lcsc_number().map(str::to_string)
         };
         match entries
             .iter_mut()
@@ -3581,7 +3615,7 @@ pub fn route_with_margin(
     track_margin: f64,
     say: &dyn Fn(String),
 ) -> netsmith_router::Routing {
-    with_margin(
+    let routing = with_margin(
         board,
         route_timeout,
         base,
@@ -3589,7 +3623,24 @@ pub fn route_with_margin(
         say,
         route_with,
         |routing| routing.left.len(),
-    )
+    );
+    say_rerouted(&board.name, &routing, say);
+    routing
+}
+
+/// The nets the router's reroute pass laid again (issue #1538), one line each.
+pub fn say_rerouted(board: &str, routing: &netsmith_router::Routing, say: &dyn Fn(String)) {
+    for r in &routing.rerouted {
+        let before = if r.with.is_empty() {
+            String::new()
+        } else {
+            format!(", laid before {}", r.with.join(", "))
+        };
+        say(format!(
+            "{board}: rerouted net {}{before}: {:.1} mm of track by the weights is now {:.1} mm",
+            r.net, r.before, r.after
+        ));
+    }
 }
 
 /// [`route_with_margin`], keeping the router's copper of `before` for every net the placement
@@ -3603,7 +3654,7 @@ pub fn reroute_with_margin(
     track_margin: f64,
     say: &dyn Fn(String),
 ) -> netsmith_router::carry::Rerouted {
-    with_margin(
+    let done = with_margin(
         board,
         route_timeout,
         base,
@@ -3611,7 +3662,9 @@ pub fn reroute_with_margin(
         say,
         |board, options| netsmith_router::carry::reroute(before, board, rip, options),
         |done| done.routing.left.len(),
-    )
+    );
+    say_rerouted(&board.name, &done.routing, say);
+    done
 }
 
 fn with_margin<T>(
@@ -4171,7 +4224,9 @@ mod tests {
             kind: kind.into(),
             value: value.into(),
             package: package.map(Into::into),
-            lcsc: lcsc.map(Into::into),
+            sku: lcsc.map(Into::into),
+            channel: None,
+            manufacturer: None,
             mpn: None,
             library: None,
             assembly,

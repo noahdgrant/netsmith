@@ -88,7 +88,7 @@ fn picked(s: &Solution) -> Vec<String> {
                 "{} = {} {:?} (rejected {}, count {})",
                 s.model.path_of(p.part),
                 p.candidate,
-                p.lcsc,
+                p.sku,
                 p.rejected,
                 p.count
             )

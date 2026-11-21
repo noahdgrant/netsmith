@@ -34,14 +34,14 @@ export function changed(): Compare {
       added: [],
       removed: [],
       changed: [
-        { path: 'r1', designatorBase: 'R1', designatorHead: 'R1', kind: 'Resistor', fields: [{ field: 'value', old: '100', new: '150' }, { field: 'lcsc', old: 'C25076', new: 'C22775' }], at: at(21), baseAt: at(21) },
+        { path: 'r1', designatorBase: 'R1', designatorHead: 'R1', kind: 'Resistor', fields: [{ field: 'value', old: '100', new: '150' }, { field: 'sku', old: 'C25076', new: 'C22775' }], at: at(21), baseAt: at(21) },
       ],
       renumbered: [],
       unchanged: 2,
     },
     bom: {
-      added: [{ kind: 'Resistor', value: '150', footprint: '0603', lcsc: 'C22775', handSolder: false, quantity: 1, designators: ['R1'], unitUsd: 0.002 }],
-      removed: [{ kind: 'Resistor', value: '100', footprint: '0603', lcsc: 'C25076', handSolder: false, quantity: 1, designators: ['R1'], unitUsd: 0.001 }],
+      added: [{ kind: 'Resistor', value: '150', footprint: '0603', sku: 'C22775', handSolder: false, quantity: 1, designators: ['R1'], unitUsd: 0.002 }],
+      removed: [{ kind: 'Resistor', value: '100', footprint: '0603', sku: 'C25076', handSolder: false, quantity: 1, designators: ['R1'], unitUsd: 0.001 }],
       changed: [],
       unchanged: 1,
       totalUsdBase: 0.01,
@@ -53,7 +53,7 @@ export function changed(): Compare {
     status: 'changed',
     summary: '1 part added',
     parts: {
-      added: [{ path: 'stage.bulk', designator: 'C1', kind: 'Capacitor', value: '47u', package: '0805', lcsc: 'C16780', assembly: 'fab', at: at(24) }],
+      added: [{ path: 'stage.bulk', designator: 'C1', kind: 'Capacitor', value: '47u', package: '0805', sku: 'C16780', assembly: 'fab', at: at(24) }],
       removed: [{ path: 'stage.snubber', designator: 'C9', kind: 'Capacitor', value: '100n', assembly: 'fab', at: at(30) }],
       changed: [{ path: 'stage.regulator', basePath: 'ldo.regulator', designatorBase: 'U1', designatorHead: 'U1', kind: 'LinearRegulator', fields: [{ field: 'path', old: 'ldo.regulator', new: 'stage.regulator' }], at: at(12), baseAt: at(12) }],
       renumbered: [

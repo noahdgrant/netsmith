@@ -237,7 +237,7 @@ fn each_part_carries_the_sourcing_the_solver_picked() {
         .map(|s| {
             (
                 s.refdes.as_str(),
-                s.lcsc.as_deref(),
+                s.sku.as_deref(),
                 s.mpn.as_deref(),
                 s.library,
                 s.assembled(),
@@ -287,7 +287,7 @@ fn only_the_headers_are_left_for_hand_soldering() {
         for s in designed_with_sourcing(src).unwrap().sourcing {
             assert_eq!(s.assembled(), !s.kind.starts_with("Header"), "{}", s.refdes);
             if s.assembled() {
-                assert!(s.lcsc.is_some(), "{} has no LCSC number", s.refdes);
+                assert!(s.sku.is_some(), "{} has no LCSC number", s.refdes);
             }
         }
     }
@@ -461,7 +461,7 @@ fn a_catalog_rows_assembly_beats_the_projects_default() {
                 ),
                 ("package".into(), Value::Text("0402".into())),
             ],
-            lcsc: Some("C1".into()),
+            sku: Some("C1".into()),
             assembly: Some("fab".into()),
             ..Default::default()
         }],
@@ -497,7 +497,7 @@ fn a_catalog_row_may_state_who_assembles_its_part_and_the_design_overrides_it() 
                     ),
                     ("package".into(), Value::Text("0402".into())),
                 ],
-                lcsc: Some("C1".into()),
+                sku: Some("C1".into()),
                 manufacturer: None,
                 mpn: None,
                 library: None,
@@ -538,7 +538,7 @@ fn the_regulator_board_is_sourced_from_the_catalog() {
     let lcsc: Vec<_> = l
         .sourcing
         .iter()
-        .map(|s| (s.refdes.as_str(), s.lcsc.as_deref()))
+        .map(|s| (s.refdes.as_str(), s.sku.as_deref()))
         .collect();
     assert_eq!(
         lcsc,
@@ -559,7 +559,7 @@ fn a_part_the_sample_catalog_picked_has_no_sourcing() {
     let l = design_board(&c.boards[0], &s).unwrap();
     let u1 = l.sourcing.iter().find(|s| s.refdes == "U1").unwrap();
     assert_eq!(
-        (u1.lcsc.as_deref(), u1.mpn.as_deref(), u1.library),
+        (u1.sku.as_deref(), u1.mpn.as_deref(), u1.library),
         (None, None, None)
     );
     assert!(

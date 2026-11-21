@@ -233,6 +233,9 @@ pub fn place_seeds(project: Option<&crate::project::Project>) -> u32 {
 pub struct Seeding {
     pub seeds: u32,
     pub budget: netsmith_core::job::Limit,
+    /// The weight of the placer's objective for routing (`--routing-objective`,
+    /// `routing_objective` in `netsmith.toml`, issue 1544); 0 leaves it out.
+    pub routing_objective: f64,
     /// Where a caller that places through `dev board3d` wants the placer's progress lines
     /// ([`place_progress`]); `fab` tells its own. `None` tells nothing.
     pub progress: Option<fn(&str)>,
@@ -243,9 +246,18 @@ impl From<u32> for Seeding {
         Seeding {
             seeds,
             budget: netsmith_core::job::Limit::default(),
+            routing_objective: 0.0,
             progress: None,
         }
     }
+}
+
+/// The weight of the placer's objective for routing for a board of `project`: `--routing-objective`
+/// (`flag`), else its `routing_objective` (checked when the manifest was read), else 0, which
+/// leaves the objective out and places every board as before (issue 1544).
+pub fn routing_objective(project: Option<&crate::project::Project>, flag: Option<f64>) -> f64 {
+    flag.or_else(|| project.and_then(|p| p.manifest.routing_objective))
+        .unwrap_or(0.0)
 }
 
 /// The place budget of a board of `project`, from `--place-budget` (`flag`) or else its
@@ -770,8 +782,10 @@ pub fn place(
     lines_warn: bool,
     seeds: impl Into<Seeding>,
 ) -> Result<Placing, PlaceFailure> {
+    let seeds = seeds.into();
     let mut base = netsmith_pcb::place_options(design, layout.map(|l| &l.0));
     base.lines_warn = lines_warn;
+    base.routing_objective = seeds.routing_objective;
     let stated = layout
         .and_then(|l| l.0.boards.get(&design.name))
         .and_then(|b| b.seed)
@@ -1113,6 +1127,7 @@ mod tests {
                 Seeding {
                     seeds: 8,
                     budget,
+                    routing_objective: 0.0,
                     progress: None,
                 },
                 |seed| {
