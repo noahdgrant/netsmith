@@ -10,8 +10,11 @@
 //! rules' space from every other net's copper, the pads, the holes, the keepouts, the teardrops and
 //! the board edge is drawn. It runs after the teardrops and keeps them as they are: an arc never
 //! cuts into the part of a track a teardrop lies along. An arc takes at most half of each straight
-//! track it joins, so two arcs at the two ends of one track never meet, and the short diagonal of a
-//! cut right angle (0.05 to 0.3 mm, `CHAMFERS` in `route.rs`) takes two small arcs. Only a bend
+//! track it joins, so two arcs at the two ends of one track never meet; of a track with a bend at
+//! each end it leaves at least the router's shortest piece (`SHORT`, 0.14 mm) straight between the
+//! two arcs, so no straight piece of a hundredth of a millimetre is left (issue #1486), and the short
+//! diagonal of a cut right angle (0.05 to 0.3 mm, `CHAMFERS` in `route.rs`) takes two small arcs
+//! where it is long enough for both. Only a bend
 //! where exactly two straight tracks of one width end is rounded, outside the net's pads and vias,
 //! and where no other track of the net joins the corner it takes away, so an arc never breaks a
 //! join. A net of a `TrackPath` whose `.corner` is `TrackCorner::Mitered` (issue #1275) keeps
@@ -35,7 +38,7 @@ use std::collections::HashMap;
 use netsmith_geom::ARC_ERROR;
 use netsmith_pcb::{Board, CopperLayer, Pt, Rect, Track};
 
-use crate::route::{EXACT_SLACK, Form, MARGIN, Obstacle, Stack, initial_obstacles};
+use crate::route::{EXACT_SLACK, Form, MARGIN, Obstacle, SHORT, Stack, initial_obstacles};
 
 /// The largest radius of an arc at a bend, in widths of its track.
 pub const ARC_WIDTHS: f64 = 4.0;
@@ -161,6 +164,13 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
         .collect();
     // The same board gives the same copper.
     bends.sort();
+    // The places where a bend may get an arc: a track with one at its other end too keeps a
+    // straight piece of at least `SHORT` between the two, or none (issue #1486).
+    let mut bend_ends = vec![[false; 2]; board.tracks.len()];
+    for [(a, a_to), (b, b_to)] in &bends {
+        bend_ends[*a][usize::from(*a_to)] = true;
+        bend_ends[*b][usize::from(*b_to)] = true;
+    }
     let lengths: Vec<f64> = board.tracks.iter().map(Track::length).collect();
     let mut drawn = 0;
     for [(a, a_to), (b, b_to)] in bends {
@@ -201,11 +211,16 @@ pub fn round_bends(board: &mut Board, widths: f64) -> usize {
         // At most half of each track, less a few micrometres, so the arcs at its two ends stay
         // apart and neither is taken for a join on the other's corner.
         // Nor into a teardrop at a track's other end.
-        let room = |t: &Track, far: Pt, length: f64| {
-            (length / 2.0).min(length - teardrop_on(t, far)) - 0.005
+        let room = |k: usize, far_is_to: bool, t: &Track, far: Pt, length: f64| {
+            let share = if bend_ends[k][usize::from(far_is_to)] {
+                (length - SHORT) / 2.0
+            } else {
+                length / 2.0
+            };
+            share.min(length - teardrop_on(t, far)) - 0.005
         };
-        let reach = room(ta, a_far, lengths[a])
-            .min(room(tb, b_far, lengths[b]))
+        let reach = room(a, !a_to, ta, a_far, lengths[a])
+            .min(room(b, !b_to, tb, b_far, lengths[b]))
             .min(widths * width * half_turn);
         // The corner the arc takes away: no other track of the net may join it there, nor a pad
         // or a via of the net cover it, so the arc breaks no join.
@@ -421,11 +436,11 @@ mod tests {
         assert!(board.tracks.iter().all(|t| t.mid.is_none()));
     }
 
-    #[test]
-    fn a_short_track_between_two_bends_takes_two_smaller_arcs() {
+    /// A right angle cut by a diagonal of 0.3 mm (two bends of 45 degrees), in tracks `width`
+    /// wide, rounded: how many arcs, and the diagonal's straight length left.
+    fn cut_corner_rounded(width: f64) -> (usize, f64) {
         let mut board = open_board();
         let c = board.outline.centre();
-        // A right angle cut by a diagonal of 0.3 mm: two bends of 45 degrees.
         let d = 0.3 * std::f64::consts::FRAC_1_SQRT_2;
         for (a, b) in [
             (Pt::new(c.x - 3.0, c.y), c),
@@ -434,11 +449,25 @@ mod tests {
         ] {
             board
                 .tracks
-                .push(Track::straight("GND", CopperLayer::Front, a, b, 0.2));
+                .push(Track::straight("GND", CopperLayer::Front, a, b, width));
         }
-        assert_eq!(round_bends(&mut board, ARC_WIDTHS), 2);
-        // The diagonal keeps a piece: each arc takes at most half of it.
-        assert!(board.tracks[1].length() > 1e-6);
+        (
+            round_bends(&mut board, ARC_WIDTHS),
+            board.tracks[1].length(),
+        )
+    }
+
+    #[test]
+    fn a_short_track_between_two_bends_takes_two_smaller_arcs_and_keeps_a_straight_piece() {
+        // Each arc takes at most half of what is past the shortest piece the router draws.
+        let (arcs, left) = cut_corner_rounded(0.1);
+        assert_eq!(arcs, 2);
+        assert!(left >= SHORT, "{left}");
+        // Where an arc of a track's width does not fit so, the bends keep their corners
+        // rather than leave a piece of a hundredth of a millimetre between two arcs (issue #1486).
+        let (arcs, left) = cut_corner_rounded(0.2);
+        assert_eq!(arcs, 0);
+        assert!((left - 0.3).abs() < 1e-9, "{left}");
     }
 
     #[test]
