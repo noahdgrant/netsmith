@@ -106,6 +106,12 @@ pub struct Process {
     /// rule (`acid_trap`, a warning). Not written to the design file when unstated.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_round_track_angle: Option<f64>,
+    /// The most space, in mm, between the copper of two vias of one net at which they stand
+    /// side by side as one group, if the board states it (`.process.via_group_gap`, issue
+    /// #1505). `None`, what every process leaves it, is the process's `min_clearance`. Not
+    /// written to the design file when unstated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via_group_gap: Option<f64>,
     /// The least side, in mm, of a single board that the assembly house places parts on one
     /// side of, if the process states it (`.process.min_single_sided_assembly_size`, issue
     /// 1285). `None`, what a process leaves it where its house publishes no figure, is that the

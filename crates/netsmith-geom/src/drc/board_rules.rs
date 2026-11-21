@@ -182,6 +182,9 @@ pub struct Vias {
     pub drill: Option<f64>,
     /// The widest via the process fills and caps, so that it may sit in a pad.
     pub in_pad: Option<f64>,
+    /// The most space between the copper of two vias of one net at which they stand side by
+    /// side as one group for `via_current` (issue #1505).
+    pub group_gap: f64,
     /// The blind and buried vias the process makes, by their first and last copper layer.
     pub spans: Vec<ViaSpan>,
 }
@@ -484,6 +487,7 @@ impl BoardRules {
                 diameter: rules.default_sizes.via_diameter,
                 drill: rules.default_sizes.via_drill,
                 in_pad: extras.via_in_pad,
+                group_gap: extras.via_group_gap,
                 spans,
             },
             rule_areas,
@@ -544,13 +548,14 @@ impl BoardRules {
         ));
         let v = &self.vias;
         line(format!(
-            "vias: {} / {} drawn, {:.4} mm / {:.4} mm least, ring {:.4} mm, in a pad up to {}",
+            "vias: {} / {} drawn, {:.4} mm / {:.4} mm least, ring {:.4} mm, in a pad up to {}, side by side within {:.4} mm",
             mm(v.diameter),
             mm(v.drill),
             v.least_diameter,
             v.least_drill,
             v.least_ring,
-            mm(v.in_pad)
+            mm(v.in_pad),
+            v.group_gap
         ));
         for span in &v.spans {
             line(format!(
