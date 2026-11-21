@@ -46,7 +46,7 @@ pub(crate) fn judge(model: &Model, parts: &[Fitted<'_>], errors: &mut Vec<String
             Some(pick) if field.narrowed_at.is_empty() => format!(
                 "its catalog row {}{} states `soldering` {method}",
                 pick.candidate,
-                pick.lcsc
+                pick.sku
                     .as_deref()
                     .map_or(String::new(), |lcsc| format!(" ({lcsc})"))
             ),

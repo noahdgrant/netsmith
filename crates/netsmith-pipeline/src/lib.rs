@@ -1728,7 +1728,7 @@ fn report(heading: &str, design: &Design, sourcing: &[Sourced], mapping: &Mappin
                 .map(|m| m.footprint)
                 .unwrap_or_else(|e| format!("({e})"))
         };
-        let supplier = match (&source.lcsc, source.library) {
+        let supplier = match (&source.sku, source.library) {
             _ if source.assembly == Assembly::Hand => "hand-soldered".to_string(),
             _ if source.assembly == Assembly::None => "not fitted".to_string(),
             _ if source.assembly == Assembly::Consigned => "consigned".to_string(),

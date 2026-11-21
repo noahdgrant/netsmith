@@ -106,7 +106,7 @@ pub use board::{Board, BoardError as FabBoardError, BoardPart, Fit, Side};
 pub use bom::{
     AlternateEntry, BomEntry, BomError, from_board as bom_from_board, parse_csv as parse_bom_csv,
 };
-pub use connection::{NotCounted, Uncounted};
+pub use connection::{NotCounted, Piece, Uncounted};
 pub use cpl::CplError;
 pub use crosscheck::{
     Error as CrossCheckError, LayerResult as CrossCheckLayerResult, Limits as CrossCheckLimits,
@@ -131,7 +131,7 @@ pub use panel::{
     Cell as PanelCell, CellFacts as PanelCellFacts, CellInput as PanelCellInput,
     Finding as PanelFinding, Geometry as PanelGeometry, PanelPackage, Rules as PanelBuildRules,
     Spec as PanelBuildSpec, build as build_panel, check as check_panel, geometry as panel_geometry,
-    mm as panel_mm, svg as panel_svg,
+    mm as panel_mm, suffixed as panel_designator, svg as panel_svg,
 };
 pub use raster::{
     Canvas, Diff as RasterDiff, Hole as ExcellonHole, Image as RasterImage, Point as RasterPoint,

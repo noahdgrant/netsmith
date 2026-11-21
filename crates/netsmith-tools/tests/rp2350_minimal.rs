@@ -527,7 +527,7 @@ board Fixture {
             ("SW1", "C5504987", "434133025816"),
         ] {
             let row = sourced(refdes);
-            assert_eq!(row.lcsc.as_deref(), Some(lcsc), "{refdes}");
+            assert_eq!(row.sku.as_deref(), Some(lcsc), "{refdes}");
             assert_eq!(row.mpn.as_deref(), Some(mpn), "{refdes}");
         }
     }
@@ -1397,12 +1397,12 @@ board FlashAndCrystal {
         }
         let by_kind = |kind: &str| built.sourcing.iter().find(|s| s.kind == kind).unwrap();
         let flash = by_kind("W25Q128Jv");
-        assert_eq!(flash.lcsc.as_deref(), Some("C97521"));
+        assert_eq!(flash.sku.as_deref(), Some("C97521"));
         assert_eq!(flash.mpn.as_deref(), Some("W25Q128JVSIQ"));
         assert_eq!(flash.package.as_deref(), Some("SOIC-8-208mil"));
         assert_eq!(format!("{:?}", flash.library.unwrap()), "Basic");
         let crystal = by_kind("Abm8272T3");
-        assert_eq!(crystal.lcsc.as_deref(), Some("C20625731"));
+        assert_eq!(crystal.sku.as_deref(), Some("C20625731"));
         assert_eq!(crystal.mpn.as_deref(), Some("ABM8-272-T3"));
         assert_eq!(format!("{:?}", crystal.library.unwrap()), "Extended");
         // Raspberry Pi's board calls the crystal X1 (the standard crystal is Y).
@@ -1604,15 +1604,15 @@ fn the_header_is_soldered_by_hand_and_has_its_lcsc_number_like_the_others() {
             .collect::<Vec<_>>()
     };
     for header in sourced("SamtecTsw11807LD") {
-        assert_eq!(header.lcsc.as_deref(), Some("C6887963"));
+        assert_eq!(header.sku.as_deref(), Some("C6887963"));
         assert_eq!(header.assembly, netsmith_design::Assembly::Hand);
     }
     assert_eq!(
-        sourced("Amphenol10103594")[0].lcsc.as_deref(),
+        sourced("Amphenol10103594")[0].sku.as_deref(),
         Some("C428495")
     );
     assert_eq!(
-        sourced("JstSm03bSrssTb")[0].lcsc.as_deref(),
+        sourced("JstSm03bSrssTb")[0].sku.as_deref(),
         Some("C160403")
     );
 }

@@ -54,7 +54,7 @@ fn a_25_mhz_crystal_is_the_basic_3225_row_with_its_case_pads_on_ground() {
     let y = b
         .sourcing
         .iter()
-        .find(|s| s.lcsc.as_deref() == Some("C9006"))
+        .find(|s| s.sku.as_deref() == Some("C9006"))
         .unwrap_or_else(|| panic!("the Basic 3225 row is picked: {:#?}", b.sourcing));
     assert_eq!(y.mpn.as_deref(), Some("X322525MOB4SI"));
     assert!(
@@ -74,7 +74,7 @@ fn a_25_mhz_crystal_is_the_basic_3225_row_with_its_case_pads_on_ground() {
 #[test]
 fn the_case_pin_may_be_left_open() {
     let b = build(&board("", "")).unwrap_or_else(|e| panic!("{e}"));
-    assert!(b.sourcing.iter().any(|s| s.lcsc.as_deref() == Some("C9006")));
+    assert!(b.sourcing.iter().any(|s| s.sku.as_deref() == Some("C9006")));
 }
 
 #[test]

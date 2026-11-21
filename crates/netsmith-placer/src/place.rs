@@ -694,6 +694,7 @@ fn apply_fixed(parts: &mut [Placed], options: &PlaceOptions) -> Vec<bool> {
                 p.rotation = f.rotation;
                 p.side = f.side;
                 p.reference_side = f.text;
+                p.designator = f.designator;
                 true
             }
             None => {
@@ -887,11 +888,30 @@ pub(crate) fn arrange_best(
         load[usize::from(p.side == Side::Back)] += area(i, p);
     }
     movable.sort_by(|&a, &b| area(b, &parts[b]).total_cmp(&area(a, &parts[a])));
+    // With the objective for routing (issue #1534) the power chain keeps to one face: the face
+    // of a chain part that stays where it is (the input connector), else the face its largest
+    // movable part takes, while that face has the room.
+    let chain = if options.routing_objective > 0.0 {
+        anneal::routing::chain_parts(parts, nets, &options.net_currents, context.planes)
+    } else {
+        vec![false; parts.len()]
+    };
+    let faces = [Side::Front, Side::Back];
+    let mut chain_face: Option<usize> = (0..parts.len())
+        .find(|&i| chain[i] && !free(i, &parts[i]))
+        .map(|i| usize::from(parts[i].side == Side::Back));
+    let (_, inside) = face_loads(parts, fit, options);
     for i in movable {
         let mut face = usize::from(load[1] < load[0]);
+        if chain[i] {
+            match chain_face {
+                Some(f) if load[f] + area(i, &parts[i]) <= inside => face = f,
+                Some(_) => {}
+                None => chain_face = Some(face),
+            }
+        }
         // A face whose height limit leaves no room for the part is not its to take, when the
         // other is (B1, PROVISIONAL).
-        let faces = [Side::Front, Side::Back];
         if face_forbidden(&parts[i], faces[face], options)
             && !face_forbidden(&parts[i], faces[1 - face], options)
         {
@@ -1450,6 +1470,8 @@ fn refine(
         escape_room: options.escape_room,
         pin_distances: &options.pin_distances,
         rf_nets: &options.rf_nets,
+        net_currents: &options.net_currents,
+        routing: options.routing_objective,
     };
     if options.fit.is_some() {
         netsmith_core::job::spend_try();
@@ -1576,6 +1598,8 @@ pub(crate) fn anneal_within(
         escape_room: options.escape_room,
         pin_distances: &options.pin_distances,
         rf_nets: &options.rf_nets,
+        net_currents: &options.net_currents,
+        routing: options.routing_objective,
     };
     let outcome = anneal::anneal(parts, &problem, 1.0);
     if !outcome.feasible {
@@ -1738,6 +1762,8 @@ pub fn place_subset(
         escape_room: 0.0,
         pin_distances: &[],
         rf_nets: &[],
+        net_currents: &[],
+        routing: 0.0,
     };
     // The parts are kept in the region by a keepout round it.
     let mut walls = keepouts.clone();
@@ -3830,6 +3856,7 @@ mod tests {
                 rotation: 90.0,
                 side: Side::Front,
                 text: ReferenceSide::Above,
+                designator: None,
             },
         );
         options.fixed.insert(
@@ -3839,6 +3866,7 @@ mod tests {
                 rotation: 0.0,
                 side: Side::Front,
                 text: ReferenceSide::Above,
+                designator: None,
             },
         );
         let board = board_from(parts, nets, &options);

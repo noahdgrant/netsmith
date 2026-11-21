@@ -10,7 +10,7 @@ const part = (refdes: string, path: string, value: string, line: number, extra: 
   value,
   package: '0402',
   path,
-  lcsc: 'C1',
+  sku: 'C1',
   assembled: true,
   decl: at('src/main.nsm', line),
   scopes: [],
@@ -21,13 +21,13 @@ const detail = (parts: PartInfo[]): BoardDetail => ({ name: 'B', file: 'src/main
 describe('partText', () => {
   it('joins value, package and the supplier number, leaving out what is missing', () => {
     expect(partText(part('C1', 'c', '10u', 1))).toBe('10u · 0402 · C1');
-    expect(partText(part('J1', 'j', 'Conn', 1, { package: null, lcsc: null }))).toBe('Conn');
+    expect(partText(part('J1', 'j', 'Conn', 1, { package: null, sku: null }))).toBe('Conn');
   });
 });
 
 describe('partHints', () => {
   it('gives one hint for each declared part of the file, on its line', () => {
-    const d = detail([part('C1', 'a.c', '10u', 24), part('R1', 'r', '1k', 91, { lcsc: null })]);
+    const d = detail([part('C1', 'a.c', '10u', 24), part('R1', 'r', '1k', 91, { sku: null })]);
     expect(partHints(d, 'src/main.nsm').map((h) => [h.line, h.text])).toEqual([
       [24, '10u · 0402 · C1'],
       [91, '1k · 0402'],

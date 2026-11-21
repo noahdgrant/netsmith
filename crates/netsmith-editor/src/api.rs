@@ -49,6 +49,7 @@ mod fit;
 mod gerber;
 mod hints;
 mod nets;
+mod rule_areas;
 mod stitching;
 mod summary;
 mod view;
@@ -60,6 +61,7 @@ pub use fit::*;
 pub use gerber::*;
 pub use hints::*;
 pub use nets::*;
+pub use rule_areas::*;
 pub use stitching::*;
 pub use summary::*;
 pub use view::*;
@@ -544,7 +546,8 @@ pub struct PartInfo {
     pub package: Option<String>,
     /// Where it is from the board: `stage.regulator`.
     pub path: String,
-    pub lcsc: Option<String>,
+    /// The part's number in the supply channel that buys it (ADR 0143).
+    pub sku: Option<String>,
     pub assembled: bool,
     /// The declaration that made it (`.r1: Resistor`), in the file it is written in.
     pub decl: Option<Location>,
@@ -713,16 +716,17 @@ pub struct SolvedRow {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub mpn: Option<String>,
-    /// The LCSC number.
+    /// The row's number in the supply channel that buys it (ADR 0143): LCSC's `C25104` for
+    /// `jlcpcb-assembly` and `lcsc-retail`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub lcsc: Option<String>,
+    pub sku: Option<String>,
     /// `Basic`, `Extended` or `Preferred`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub library: Option<String>,
     /// The solver chose only a value and a package (ADR 0047) and no row stands for the part
-    /// yet; `mpn`, `lcsc` and `library` are then absent.
+    /// yet; `mpn`, `sku` and `library` are then absent.
     pub generic: bool,
 }
 
@@ -1075,9 +1079,19 @@ pub struct BomLine {
     pub kind: String,
     pub package: Option<String>,
     pub footprint: Option<String>,
-    pub lcsc: Option<String>,
+    /// The part's number in the supply channel that buys it (ADR 0143): LCSC's `C25104` for
+    /// `jlcpcb-assembly` and `lcsc-retail`, Digi-Key's or Mouser's for theirs. `None` for a part
+    /// no channel has an offer of.
+    pub sku: Option<String>,
+    /// The word of the supply channel that buys the part (`jlcpcb-assembly`, `digikey-retail`):
+    /// the first of the project's channels with an offer of it, or the one `[supply.parts]` of
+    /// `netsmith.toml` names. `None` when no channel buys it.
+    pub channel: Option<String>,
+    /// The part's manufacturer, as its datasheet spells it, if its row names one.
+    pub manufacturer: Option<String>,
     pub mpn: Option<String>,
-    /// `Basic` or `Extended`.
+    /// The class of the offer that buys it: JLCPCB's `Basic`, `Preferred` or `Extended` for an
+    /// LCSC offer.
     pub library: Option<String>,
     pub unit_usd: Option<f64>,
     pub line_usd: Option<f64>,
@@ -1103,6 +1117,9 @@ pub struct BomLine {
     pub unresolved: Option<String>,
     /// Soldered by hand: the board house does not place it.
     pub hand_solder: bool,
+    /// Consigned (ADR 0084): the owner buys it, in its `channel`, and ships it to the board
+    /// house, which places it. `bom.csv` lists it with its manufacturer's number as the comment.
+    pub consigned: bool,
     /// The generic this part was picked to provide (`CoaxReceptacle`, ADR 0068): `kind` is
     /// the provider's name. `None` for a part written by its own type.
     pub via: Option<String>,
@@ -1141,7 +1158,8 @@ pub struct SwapAlternative {
     /// The name with how far it is from the value and its library, `240Ω 1% 0402 C25094 (-3.6%,
     /// Extended)`.
     pub line: String,
-    pub lcsc: Option<String>,
+    /// The row's number in the supply channel that buys it.
+    pub sku: Option<String>,
     pub mpn: Option<String>,
     pub check: SwapCheck,
     /// What fails, in one line, when `check` is `fails`.
@@ -2588,6 +2606,11 @@ pub fn typescript() -> String {
         PcbFill,
         StitchingVia,
         PcbStitching,
+        RuleArea,
+        PcbRuleAreas,
+        NetsUncountedKind,
+        NetsPiece,
+        NetsUncounted,
         NetsRow,
         NetsPair,
         NetsGroupNet,

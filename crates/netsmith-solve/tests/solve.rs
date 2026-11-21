@@ -344,7 +344,7 @@ fn resistor(label: &str, ohms: f64) -> Candidate {
                 Value::Quantity(Quantity::literal(1.0, Some("kW")).unwrap().quantity),
             ),
         ],
-        lcsc: None,
+        sku: None,
         manufacturer: None,
         mpn: None,
         library: None,
@@ -362,7 +362,7 @@ fn resistor(label: &str, ohms: f64) -> Candidate {
 fn resistor_in(label: &str, ohms: f64, package: &str, lcsc: &str) -> Candidate {
     let mut c = resistor(label, ohms);
     c.columns[1] = ("package".into(), Value::Text(package.into()));
-    c.lcsc = Some(lcsc.into());
+    c.sku = Some(lcsc.into());
     c
 }
 
@@ -422,7 +422,7 @@ fn a_part_whose_every_column_is_narrowed_is_still_sourced_from_the_catalog() {
     );
     assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
     assert_eq!(s.picks.len(), 1);
-    assert_eq!(s.picks[0].lcsc.as_deref(), Some("C2"));
+    assert_eq!(s.picks[0].sku.as_deref(), Some("C2"));
 }
 
 #[test]
@@ -731,7 +731,7 @@ fn sourced(s: &Solution) -> Vec<(String, String, Library)> {
         .map(|p| {
             (
                 s.model.path_of(p.part),
-                p.lcsc.clone().expect("a real part has an LCSC number"),
+                p.sku.clone().expect("a real part has an LCSC number"),
                 p.library.expect("a real part has a library"),
             )
         })
@@ -956,7 +956,7 @@ fn capacitor(label: &str, farads: f64, rated: f64, curve: &[(f64, f64)]) -> Cand
             ),
             ("package".into(), Value::Text("0402".into())),
         ],
-        lcsc: None,
+        sku: None,
         manufacturer: None,
         mpn: None,
         library: None,
@@ -1188,7 +1188,7 @@ fn the_real_catalog_picks_the_cheapest_part_whose_effective_value_is_enough() {
         &Catalogs::jlcpcb(),
     );
     assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
-    assert_eq!(s.picks[0].lcsc.as_deref(), Some("C315248"));
+    assert_eq!(s.picks[0].sku.as_deref(), Some("C315248"));
     assert!(range(&s, "c.effective_capacitance").0 >= 1e-6);
 }
 
@@ -1202,7 +1202,7 @@ fn a_4u7_part_passes_as_a_marked_value_but_fails_as_an_effective_one_at_3v3() {
         &Catalogs::jlcpcb(),
     );
     assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
-    assert_eq!(s.picks[0].lcsc.as_deref(), Some("C23733"));
+    assert_eq!(s.picks[0].sku.as_deref(), Some("C23733"));
     let (lo, _) = range(&s, "c.capacitance");
     assert!(lo >= 3.7e-6, "{lo}");
 
@@ -1211,7 +1211,7 @@ fn a_4u7_part_passes_as_a_marked_value_but_fails_as_an_effective_one_at_3v3() {
         &Catalogs::jlcpcb(),
     );
     assert!(s.diagnostics.is_empty(), "{:?}", messages(&s));
-    assert_ne!(s.picks[0].lcsc.as_deref(), Some("C23733"));
+    assert_ne!(s.picks[0].sku.as_deref(), Some("C23733"));
     assert!(range(&s, "c.effective_capacitance").0 >= 4.7e-6);
 }
 
@@ -2434,7 +2434,7 @@ fn the_leds_stated_window_becomes_the_current_the_resistor_lets_through() {
     let power = drop.1 * current.1;
     assert!(power > 0.035 && power < 0.038, "{power}");
     assert_eq!(picked(&s)[1].1, "330");
-    assert_eq!(s.picks[1].lcsc.as_deref(), Some("C25104"));
+    assert_eq!(s.picks[1].sku.as_deref(), Some("C25104"));
 }
 
 #[test]

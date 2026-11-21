@@ -65,8 +65,8 @@
 //!   issue #842) and the solder mask colour where the board states one (`, solder mask Black`,
 //!   issue #771), the parts the board house assembles and on how many BOM lines, the hand-solder
 //!   parts, and its vias in pads (`3 vias in pads: the board house's filled and capped option is
-//!   needed (extra cost): U1, U4`, issue #1118); the combined bill of materials; with a
-//!   `[supply]` provider, its `prices`
+//!   needed (extra cost): U1, U4`, issue #1118); the combined bill of materials; the parts the
+//!   owner buys, by supply channel (below); with a `[supply]` provider, its `prices`
 //!   (below); "before you order", each board's
 //!   `fab-notes.txt` lines; and the total of unverified items, counted once for each board and not
 //!   once for each copy because the check is of the design (`Package::unverified`).
@@ -83,6 +83,15 @@
 //!   quote is "no known price" with the reason, and the total counts the priced lines and says how
 //!   many are left out. The section is there only when the project configures a provider (ADR
 //!   0047); `order-bom.csv` has no prices.
+//! - **The parts the owner buys, by supply channel** (ADR 0143, issue #1461): the consigned and
+//!   hand-soldered parts of the boards that a channel has an offer of ([`crate::buying`]), under
+//!   a heading for each channel in the order of `Channel::ALL`, each sku with the quantity of the
+//!   whole order, what the part is, who places it and where it is used, summed as the board
+//!   house's bill is ([`combined_buys`]). They are priced as its lines are, and every line, the
+//!   board house's too, from the price ladder of the channel that buys it (`price_of`); where
+//!   the provider quotes the part in no such channel, the stock it answers first, which the line
+//!   names. No file a supplier's upload reads is written for them: the formats of Digi-Key's and
+//!   Mouser's uploads were not read from their documentation.
 //! - **`order-bom.csv`**: `Comment,Footprint,LCSC Part #,Quantity,Used on`, one row for each LCSC
 //!   number. The quantity is the copies of each board times the parts of that number on one board,
 //!   summed over the boards, with **no spares or overage**: how many spares to buy is a decision
@@ -122,7 +131,7 @@ use crate::fab::{FabOptions, Fabricated, fab_with_options};
 use crate::project::{MANIFEST, Target, is_project_name};
 use crate::refresh;
 use netsmith_pipeline::pick_lock::{self, Use};
-use netsmith_pipeline::supply::{Lookup, PartKey, Supply};
+use netsmith_pipeline::supply::{Channel, Lookup, PartKey, Supply};
 use netsmith_pipeline::{Built, Libraries, outcome_with, render_problems};
 
 /// The directory of `fab` that holds the orders: `fab/orders/<name>/`.
@@ -384,6 +393,16 @@ pub struct BoardFacts {
     /// cost is accepted ([`refuse_vias_in_pads`]).
     #[serde(default)]
     pub vias_in_pads: ViasInPads,
+    /// The parts the owner buys, by supply channel (ADR 0143): the consigned and hand-soldered
+    /// ones that a channel has an offer of ([`crate::buying`]). For a panel, those of all its
+    /// cells.
+    #[serde(default)]
+    pub bought: Vec<crate::buying::BuyLine>,
+    /// The supply channel that buys each line of `bom` the board house buys, by its LCSC number
+    /// (`C25744` to `jlcpcb-assembly`): a line is priced from that channel's price ladder. A
+    /// number with no entry (a part made in code) is priced as the provider answers first.
+    #[serde(default)]
+    pub bom_channels: BTreeMap<String, String>,
 }
 
 /// What a panel is made of, for an order's summary.
@@ -435,7 +454,24 @@ impl BoardFacts {
             unverified: package.unverified.clone(),
             panel: None,
             vias_in_pads: board.filled_vias_in_pads(),
+            bought: Vec::new(),
+            bom_channels: BTreeMap::new(),
         }
+    }
+
+    /// These facts with what `sourcing` (the board's, after generic parts were resolved) says of
+    /// who buys each part where: [`BoardFacts::bought`] and [`BoardFacts::bom_channels`].
+    pub fn bought_by(mut self, sourcing: &[netsmith_design::Sourced]) -> Self {
+        self.bought = crate::buying::lines(sourcing);
+        self.bom_channels = sourcing
+            .iter()
+            .filter(|s| s.needs_part_number() && s.not_fitted.is_none())
+            .filter_map(|s| {
+                let channel = s.channel?;
+                Some((s.lcsc_number()?.to_string(), channel.word().to_string()))
+            })
+            .collect();
+        self
     }
 }
 
@@ -443,6 +479,10 @@ impl BoardFacts {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BomLine {
     pub lcsc: String,
+    /// The supply channel that buys it (`jlcpcb-assembly` or `lcsc-retail`, ADR 0143), whose
+    /// price ladder prices the line; `None` for a number no board says the channel of (a part
+    /// made in code).
+    pub channel: Option<Channel>,
     pub value: String,
     pub footprint: String,
     /// The quantity of the order: the sum over boards of copies x parts on one board.
@@ -486,6 +526,7 @@ pub fn combined_bom(boards: &[(Selected, &BoardFacts)]) -> Vec<BomLine> {
                 None => {
                     lines.push(BomLine {
                         lcsc: lcsc.clone(),
+                        channel: facts.bom_channels.get(lcsc).and_then(|w| Channel::parse(w)),
                         value: entry.value.clone(),
                         footprint: entry.footprint.clone(),
                         quantity: 0,
@@ -524,30 +565,127 @@ pub fn price_bom(bom: &mut [BomLine], supply: &Supply) {
         return;
     }
     for line in bom {
-        line.price = Some(match supply.lookup(&PartKey::lcsc(&line.lcsc)) {
-            Lookup::Quoted(quote) if quote.currency != "USD" => Price::Unknown(format!(
-                "{} answered in {}, and only US dollars are shown",
-                quote.provider, quote.currency
-            )),
-            Lookup::Quoted(quote) => match quote.price_for(line.quantity) {
-                Some((unit_usd, from)) => Price::Quoted {
-                    unit_usd,
-                    from,
-                    source: quote.source(),
-                    day: refresh::date_of(quote.fetched),
-                },
-                None => Price::Unknown(format!("{} gave no price", quote.provider)),
-            },
-            Lookup::Unknown(why) => Price::Unknown(why),
-        });
+        line.price = Some(price_of(
+            supply,
+            &PartKey::lcsc(&line.lcsc),
+            line.channel,
+            line.quantity,
+        ));
+    }
+}
+
+/// What `supply` says `quantity` pieces of `key` cost (ADR 0143): the quote of `channel`, the
+/// channel that buys the line, from its price ladder. With no channel, or where the provider
+/// quotes none in it, the quote the provider answers first for the project's channels, whose
+/// source names its channel (ADR 0047: a stock is never shown as another).
+fn price_of(supply: &Supply, key: &PartKey, channel: Option<Channel>, quantity: u64) -> Price {
+    let quote = match supply.lookup(key) {
+        Lookup::Unknown(why) => return Price::Unknown(why),
+        Lookup::Quoted(first) => channel
+            .and_then(|c| supply.quote_in(key, c))
+            .unwrap_or(first),
+    };
+    if quote.currency != "USD" {
+        return Price::Unknown(format!(
+            "{} answered in {}, and only US dollars are shown",
+            quote.provider, quote.currency
+        ));
+    }
+    match quote.price_for(quantity) {
+        Some((unit_usd, from)) => Price::Quoted {
+            unit_usd,
+            from,
+            source: quote.source(),
+            day: refresh::date_of(quote.fetched),
+        },
+        None => Price::Unknown(format!("{} gave no price", quote.provider)),
+    }
+}
+
+/// One part number the owner buys for the whole order in one supply channel (ADR 0143): the
+/// consigned and hand-soldered parts of its boards ([`crate::buying`]), summed as the bill of
+/// the board house is.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BuyTotal {
+    pub channel: Channel,
+    pub sku: String,
+    /// What the part is: `Acme ZZR-1234`.
+    pub what: String,
+    /// Shipped to the board house (ADR 0084); otherwise soldered by hand.
+    pub consigned: bool,
+    /// The copies of each board times its parts of this number, summed over the boards, with no
+    /// spares.
+    pub quantity: u64,
+    /// `(board, copies, parts on one board)`.
+    pub used_on: Vec<(String, u32, usize)>,
+    /// What the channel's price ladder says the line costs at `quantity`; `None` until
+    /// [`price_buys`] asks, and when the project configures no provider.
+    pub price: Option<Price>,
+}
+
+/// The parts the owner buys for the whole order, a line for each channel, sku and way of
+/// placing, by the order of the channels ([`netsmith_solve::Channel::ALL`]) and then by sku.
+pub fn combined_buys(boards: &[(Selected, &BoardFacts)]) -> Vec<BuyTotal> {
+    let mut lines: Vec<BuyTotal> = Vec::new();
+    for (selected, facts) in boards {
+        for bought in &facts.bought {
+            let Some(channel) = bought.channel() else {
+                continue;
+            };
+            let per_board = bought.designators.len();
+            let position = match lines.iter().position(|l| {
+                l.channel == channel && l.sku == bought.sku && l.consigned == bought.consigned
+            }) {
+                Some(i) => i,
+                None => {
+                    lines.push(BuyTotal {
+                        channel,
+                        sku: bought.sku.clone(),
+                        what: bought.what(),
+                        consigned: bought.consigned,
+                        quantity: 0,
+                        used_on: Vec::new(),
+                        price: None,
+                    });
+                    lines.len() - 1
+                }
+            };
+            let line = &mut lines[position];
+            line.quantity += u64::from(selected.quantity) * per_board as u64;
+            line.used_on
+                .push((selected.label.clone(), selected.quantity, per_board));
+        }
+    }
+    lines.sort_by(|a, b| {
+        crate::buying::channel_rank(a.channel.word())
+            .cmp(&crate::buying::channel_rank(b.channel.word()))
+            .then_with(|| a.sku.cmp(&b.sku))
+            .then_with(|| a.consigned.cmp(&b.consigned))
+    });
+    lines
+}
+
+/// Ask `supply` for the price of each line the owner buys, in the line's own channel, at the
+/// quantity of the whole order (issue #804), as [`price_bom`] does for the board house's.
+pub fn price_buys(lines: &mut [BuyTotal], supply: &Supply) {
+    if !supply.is_configured() {
+        return;
+    }
+    for line in lines {
+        line.price = Some(price_of(
+            supply,
+            &PartKey::lcsc(&line.sku),
+            Some(line.channel),
+            line.quantity,
+        ));
     }
 }
 
 /// The `prices` section of `order.txt`: each priced line at the quantity of the whole order, the
 /// total of the priced lines, and how many lines have no known price. Empty when no line was
 /// asked (no provider).
-fn prices_text(bom: &[BomLine]) -> String {
-    if bom.iter().all(|l| l.price.is_none()) {
+fn prices_text(bom: &[BomLine], buys: &[BuyTotal]) -> String {
+    if bom.iter().all(|l| l.price.is_none()) && buys.iter().all(|l| l.price.is_none()) {
         return String::new();
     }
     let mut s = String::from(
@@ -556,30 +694,33 @@ fn prices_text(bom: &[BomLine]) -> String {
     let mut total = 0.0;
     let mut priced = 0usize;
     let mut unknown = 0usize;
-    for l in bom {
-        match &l.price {
+    // The board house's lines, then the owner's, each by its sku and in its own channel.
+    let rows = bom
+        .iter()
+        .map(|l| (&l.lcsc, l.quantity, &l.price))
+        .chain(buys.iter().map(|l| (&l.sku, l.quantity, &l.price)));
+    for (sku, quantity, price) in rows {
+        match price {
             Some(Price::Quoted {
                 unit_usd,
                 from,
                 source,
                 day,
             }) => {
-                let line = unit_usd * l.quantity as f64;
+                let line = unit_usd * quantity as f64;
                 total += line;
                 priced += 1;
                 let from = from.map_or(String::new(), |n| {
                     format!("; the price is for {n} pieces or more")
                 });
                 s.push_str(&format!(
-                    "  {:<10} {:>6} x {unit_usd:.4} = {line:.2} USD  ({source}, read {day}{from})\n",
-                    l.lcsc, l.quantity
+                    "  {sku:<10} {quantity:>6} x {unit_usd:.4} = {line:.2} USD  ({source}, read {day}{from})\n",
                 ));
             }
             Some(Price::Unknown(why)) => {
                 unknown += 1;
                 s.push_str(&format!(
-                    "  {:<10} {:>6}  no known price: {why}\n",
-                    l.lcsc, l.quantity
+                    "  {sku:<10} {quantity:>6}  no known price: {why}\n",
                 ));
             }
             None => {}
@@ -596,6 +737,43 @@ fn prices_text(bom: &[BomLine]) -> String {
         ));
     }
     s.push('\n');
+    s
+}
+
+/// The section of `order.txt` that lists what the owner buys, by supply channel (ADR 0143):
+/// under each channel, each sku with its quantity for the whole order, what it is, who places
+/// it and where it is used. Empty when the owner buys nothing in a channel.
+fn buys_text(buys: &[BuyTotal]) -> String {
+    if buys.is_empty() {
+        return String::new();
+    }
+    let mut s = String::from(
+        "\nparts you buy, by supply channel (consigned: you ship them to the board house, which places them; hand-solder: you solder them; copies x parts on one board, no spares)\n",
+    );
+    let mut last: Option<Channel> = None;
+    for l in buys {
+        if last != Some(l.channel) {
+            s.push_str(&format!("  {} ({})\n", l.channel, l.channel.describe()));
+            last = Some(l.channel);
+        }
+        let used: Vec<String> = l
+            .used_on
+            .iter()
+            .map(|(board, copies, parts)| format!("{copies} x {parts} {board}"))
+            .collect();
+        s.push_str(&format!(
+            "    {:<10} {:>6}  {}, {} ({})\n",
+            l.sku,
+            l.quantity,
+            l.what,
+            if l.consigned {
+                "consigned"
+            } else {
+                "hand-solder"
+            },
+            used.join("; ")
+        ));
+    }
     s
 }
 
@@ -635,11 +813,23 @@ pub fn bom_csv(lines: &[BomLine]) -> String {
     out
 }
 
-/// The text of `order.txt`.
+/// The text of `order.txt`, for an order whose boards have no part the owner buys in a channel.
 pub fn summary_text(
     order: &str,
     boards: &[(Selected, &BoardFacts, &str)],
     bom: &[BomLine],
+) -> String {
+    summary_with_buys(order, boards, bom, &[])
+}
+
+/// The text of `order.txt`: the boards, the bill of materials of the board house, the parts the
+/// owner buys by supply channel (`buys`, [`combined_buys`]), the prices of both, the notes of
+/// each board and the unverified items.
+pub fn summary_with_buys(
+    order: &str,
+    boards: &[(Selected, &BoardFacts, &str)],
+    bom: &[BomLine],
+    buys: &[BuyTotal],
 ) -> String {
     let pieces: u64 = boards
         .iter()
@@ -796,7 +986,8 @@ pub fn summary_text(
         ));
     }
 
-    s.push_str(&prices_text(bom));
+    s.push_str(&buys_text(buys));
+    s.push_str(&prices_text(bom, buys));
 
     s.push_str("\nbefore you order\n");
     for (selected, _, notes) in boards {
@@ -1136,11 +1327,13 @@ pub fn fab_order(
         made.iter().map(|(s, f)| (s.clone(), &f.facts)).collect();
     let mut bom = combined_bom(&rows);
     price_bom(&mut bom, &supply);
+    let mut buys = combined_buys(&rows);
+    price_buys(&mut buys, &supply);
     let listed: Vec<(Selected, &BoardFacts, &str)> = made
         .iter()
         .map(|(s, f)| (s.clone(), &f.facts, f.notes.as_str()))
         .collect();
-    let mut summary = summary_text(&order.name, &listed, &bom);
+    let mut summary = summary_with_buys(&order.name, &listed, &bom, &buys);
     // The project's revision comes first (issue #1134): it is one for all the boards of the order.
     if let Some(project) = &target.project
         && let Some(revision) = &project.manifest.revision
@@ -1379,6 +1572,8 @@ mod tests {
             assembled_parts: bom.iter().map(|e| e.designators.len()).sum(),
             bom,
             consigned: vec![],
+            bought: vec![],
+            bom_channels: BTreeMap::new(),
             hand_solder: vec!["J1".into(), "J2".into()],
             not_fitted: vec![],
             unassembled: vec![],

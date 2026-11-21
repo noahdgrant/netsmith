@@ -200,7 +200,7 @@ fn chosen<'a>(swap: &'a Swap, want: &str) -> Result<&'a SwapAlternative, Failed>
     let all = &swap.alternatives;
     let by_name = all.iter().find(|a| a.name == want);
     let by_lcsc = || {
-        let mut found = all.iter().filter(|a| a.lcsc.as_deref() == Some(want));
+        let mut found = all.iter().filter(|a| a.sku.as_deref() == Some(want));
         found.next().filter(|_| found.next().is_none())
     };
     let by_number = || {
@@ -261,7 +261,7 @@ fn listing(swap: &Swap) -> String {
         }
     }
     if let Some(first) = swap.alternatives.iter().find(|a| a.edit.is_some()) {
-        let pick = first.lcsc.clone().unwrap_or_else(|| "1".to_string());
+        let pick = first.sku.clone().unwrap_or_else(|| "1".to_string());
         out += &format!(
             "Write one into the source with `netsmith board swap {} --apply {pick}`.\n",
             swap.path

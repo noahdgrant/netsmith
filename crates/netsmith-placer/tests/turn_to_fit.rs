@@ -206,6 +206,7 @@ fn locked() -> PlaceOptions {
                 rotation: 0.0,
                 side: Side::Front,
                 text: ReferenceSide::Above,
+                designator: None,
             },
         )]
         .into(),

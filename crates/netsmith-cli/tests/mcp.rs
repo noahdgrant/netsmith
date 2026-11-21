@@ -340,6 +340,13 @@ fn the_projects_files_and_the_guide_are_resources_and_the_skills_prompts() {
 /// The listed tools are short (issue #1133): a host sends the whole list to its model. The limit
 /// counts the bytes of the list, not a time; the list was about 140 KB with each command's
 /// whole help, and is under half of that now.
+///
+/// A PR that adds a flag and trips this limit cuts text; it does not raise the limit. An argument
+/// that many tools take with one help (`format`, `file`, `board`, the placer's flags) is said
+/// once in the server's instructions (`tools::share`), so give a new flag that is common to many
+/// commands one shared help line (a `#[command(flatten)]` struct, as `Placing`), and keep the
+/// first line of a flag's help short: its detail goes in the line after it, which the tool does
+/// not carry, and in the command's help resource.
 const MOST_BYTES: usize = 90_000;
 
 #[test]
@@ -350,13 +357,21 @@ fn the_tool_list_is_short() {
     let tools = listed["result"]["tools"].as_array().unwrap();
     let bytes = serde_json::to_string(tools).unwrap().len();
     eprintln!("{} tools, {bytes} bytes", tools.len());
-    assert!(bytes < MOST_BYTES, "the tool list is {bytes} bytes");
+    assert!(
+        bytes < MOST_BYTES,
+        "the tool list is {bytes} bytes, over the {MOST_BYTES} it may have: cut text, do not raise \
+         the limit. Find the biggest tools with `netsmith mcp` and tools/list; shorten the first \
+         line of the help of the commands and flags you added (a tool has only that line); a flag \
+         that many commands take, with one help, is stated once in the server's instructions \
+         already (`tools::share`), so give it the same help in each command"
+    );
     for tool in tools {
         // The first line of the command's help, and one line for each argument.
         let description = tool["description"].as_str().unwrap();
         assert!(!description.contains('\n'), "{description}");
         for (key, property) in tool["inputSchema"]["properties"].as_object().unwrap() {
-            let help = property["description"].as_str().unwrap();
+            // An argument many tools share has its help in the instructions, not here.
+            let help = property["description"].as_str().unwrap_or_default();
             assert!(!help.contains('\n'), "{}: {key}: {help}", tool["name"]);
         }
     }

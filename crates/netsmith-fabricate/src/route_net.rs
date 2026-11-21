@@ -23,10 +23,24 @@
 //! **Rip and route again** (`--rip NET,...`): only the nets named may be ripped. Their copper is
 //! removed, the net is routed through the room it left, and each ripped net is routed again
 //! after it, by name. A ripped net that finds no way may rip in turn, from the nets named, never
-//! the net asked for. **Bounds, all counts**, those of the router's rounds of rip-up (issue
-//! #1088): at most [`netsmith_router::RIP_ROUNDS`] rounds of routing ripped nets again,
-//! [`netsmith_router::RIP_MOST`] rips of one net, and [`MOST_RUNS`] runs of the router in all.
-//! A ripped net left with more connections open than it had is a refusal: nothing is written.
+//! the net asked for, while it is no deeper than [`Ask::depth`] (`--rip-depth`, issue #1488): the
+//! nets the asked net rips are at depth 1, the nets one of them rips at depth 2, and so on, so
+//! the default, [`RIP_DEPTH`] (1), lets the nets the asked net rips rip once more and no deeper.
+//!
+//! **Tries in other orders** (issue #1488). A ripped net left with more connections open than it
+//! had has not been put back. Then the ripped nets are routed again from the start, from the copper
+//! as it was after the asked net was routed, in another order: the nets that were not put back
+//! first, then the rest in the order before ([`next_order`]), or, when that order was tried, the
+//! order before turned by one. At most [`Ask::tries`] tries (`--tries`, default [`TRIES`]), and
+//! none in an order already tried. Each try is reported ([`Try`]): its order, each net it
+//! ripped, by which net and at what depth, in the order they were ripped, what was not put back,
+//! and the nets that could have ripped in turn but for the depth. When no try puts every net
+//! back, it is a refusal: nothing is written.
+//!
+//! **Bounds, all counts**, those of the router's rounds of rip-up (issue #1088): in each try at
+//! most [`netsmith_router::RIP_ROUNDS`] rounds of routing ripped nets again,
+//! [`netsmith_router::RIP_MOST`] rips of one net, and [`MOST_RUNS`] runs of the router (the first
+//! try's count includes the search for the nets in the way), so at most `MOST_RUNS * tries` runs.
 //!
 //! **Checked as an edit.** The records that change are put in the file together as one edit
 //! ([`crate::routes::edit_all`]), so the design rules check is applied as `routes add-track`
@@ -45,9 +59,16 @@ use netsmith_router::{RIP_MOST, RIP_ROUNDS};
 
 use crate::routes::{Edit, Refusal, edit_all, with_routes};
 
-/// The most times one `routes route` runs the router (each run routes one net): what bounds the
-/// search for the nets in the way and the rounds of ripped nets together.
+/// The most times one try of `routes route` runs the router (each run routes one net): what
+/// bounds the search for the nets in the way and the rounds of ripped nets together.
 pub const MOST_RUNS: usize = 64;
+
+/// How deep a net may be ripped by default (`--rip-depth`): the nets the asked net rips may rip
+/// once more (the module's header).
+pub const RIP_DEPTH: usize = 1;
+
+/// How many orders of the ripped nets are tried by default (`--tries`, the module's header).
+pub const TRIES: usize = 3;
 
 /// What to route: a net, or one connection of it, and the nets that may be ripped.
 #[derive(Debug, Clone, PartialEq)]
@@ -57,11 +78,23 @@ pub struct Ask {
     pub connection: Option<[PadRef; 2]>,
     /// The nets whose unlocked copper may be removed and routed again (`--rip`).
     pub rip: BTreeSet<String>,
+    /// How deep a ripped net may be and still rip in turn (`--rip-depth`, [`RIP_DEPTH`]).
+    pub depth: usize,
+    /// The most orders of the ripped nets tried (`--tries`, [`TRIES`], at least 1).
+    pub tries: usize,
+    /// The weights of the router's quality objective for this run (`--length-weight`,
+    /// `--via-weight`, `--layer-change-weight`, issue #1517); `None` is the router's own costs.
+    pub weights: Option<netsmith_router::Weights>,
+    /// Lay the net again (`--reroute`, issue #1538): its unlocked copper and that of the nets
+    /// `rip` names are taken away, the net is routed first and they after it, and the change is
+    /// kept only when their total by the weights gets shorter (the module's header).
+    pub reroute: bool,
 }
 
 impl Ask {
-    /// The ask for `target` (`NET`, or `NET:REF.PAD-REF.PAD`) and `rip` on `board`; refused when
-    /// the board has no such net or pads, or `rip` names the net itself.
+    /// The ask for `target` (`NET`, or `NET:REF.PAD-REF.PAD`) and `rip` on `board`, with the
+    /// default depth and tries; refused when the board has no such net or pads, or `rip` names
+    /// the net itself.
     pub fn of(board: &Board, target: &str, rip: &[String]) -> Result<Ask, Refusal> {
         let has = |n: &str| board.nets.iter().any(|x| x.name == n);
         let no_net =
@@ -96,6 +129,10 @@ impl Ask {
             net,
             connection,
             rip: set,
+            depth: RIP_DEPTH,
+            tries: TRIES,
+            weights: None,
+            reroute: false,
         })
     }
 }
@@ -141,8 +178,10 @@ pub struct Routed {
     pub joined: bool,
     /// The nets whose copper stood in the way, when the net had no way round the copper there.
     pub in_the_way: Vec<String>,
-    /// The nets ripped up and routed again.
+    /// The nets ripped up and routed again (by the try kept, or the last).
     pub ripped: Vec<String>,
+    /// Each try of routing the ripped nets again, in turn (the module's header).
+    pub tries: Vec<Try>,
     /// Each record that changes, the net asked for first.
     pub nets: Vec<NetChange>,
     /// The narrowest place of the new way of the net asked for.
@@ -151,12 +190,84 @@ pub struct Routed {
     pub walls: Vec<Wall>,
     /// Why nothing is (or would be) written; `None` when the change is made.
     pub refused: Option<String>,
-    /// The runs of the router, and the rounds of routing ripped nets again.
+    /// What `--reroute` found: the totals before and after, and whether the change is kept.
+    pub rerouted: Option<Total>,
+    /// The runs of the router in all, and the rounds of routing ripped nets again (of the try
+    /// kept, or the last).
     pub runs: usize,
     pub rounds: usize,
     /// The routes file with the change, when it is made.
     #[serde(skip)]
     pub routes: Option<Routes>,
+}
+
+/// The totals of `--reroute` ([`Routed::rerouted`], the module's header): what the copper of
+/// the net and the nets `--rip` names costs by the weights, in mm of track, before it was laid
+/// again and after.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct Total {
+    pub before: f64,
+    pub after: f64,
+    /// Whether the change is made: every connection made, and the total shorter by more than
+    /// [`REROUTE_GAIN`].
+    pub kept: bool,
+}
+
+/// How much shorter, in mm of track by the weights, `--reroute` must make the total.
+pub const REROUTE_GAIN: f64 = 0.5;
+
+/// One try of routing the ripped nets again ([`Routed::tries`], the module's header).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct Try {
+    /// The order the ripped nets were routed again in: in each round, the nets of this list
+    /// first, in its order, then the rest by name.
+    pub order: Vec<String>,
+    /// Each net ripped, in the order it was ripped.
+    pub ripped: Vec<Rip>,
+    /// The ripped nets left with more connections open than they had, and how many.
+    pub failed: Vec<String>,
+    pub failed_how: Vec<String>,
+    /// The ripped nets that found no way and could have ripped in turn but for the depth.
+    pub depth_stopped: Vec<String>,
+    /// The runs of the router in this try, and its rounds of routing ripped nets again.
+    pub runs: usize,
+    pub rounds: usize,
+}
+
+/// One net ripped ([`Try::ripped`]).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct Rip {
+    pub net: String,
+    /// The net it was ripped for: the net asked for, or a ripped net that ripped in turn.
+    pub by: String,
+    /// 1 when the net asked for ripped it, one more than its ripper's otherwise.
+    pub depth: usize,
+}
+
+/// The next order to try after `order` left `failed` not put back, none of `tried` (the
+/// module's header): `failed` first, then the rest of `order`; or, when that was tried,
+/// `order` turned by one, two, ...; `None` when every one of those was tried.
+pub fn next_order(
+    order: &[String],
+    failed: &[String],
+    tried: &[Vec<String>],
+) -> Option<Vec<String>> {
+    let mut first: Vec<String> = Vec::new();
+    for n in failed.iter().chain(order) {
+        if !first.contains(n) {
+            first.push(n.clone());
+        }
+    }
+    if !tried.contains(&first) {
+        return Some(first);
+    }
+    (1..order.len())
+        .map(|k| {
+            let mut o = order.to_vec();
+            o.rotate_left(k);
+            o
+        })
+        .find(|o| !tried.contains(o))
 }
 
 /// One record that changes ([`Routed::nets`]), in the routes file's places.
@@ -204,6 +315,7 @@ pub fn route_net(board: &Board, routes: &Routes, ask: &Ask) -> Result<Routed, St
         board,
         ask,
         runs: 0,
+        limit: MOST_RUNS,
     };
     let mut out = Routed {
         board: board.name.clone(),
@@ -212,10 +324,12 @@ pub fn route_net(board: &Board, routes: &Routes, ask: &Ask) -> Result<Routed, St
         joined: false,
         in_the_way: Vec::new(),
         ripped: Vec::new(),
+        tries: Vec::new(),
         nets: Vec::new(),
         narrowest: None,
         walls: Vec::new(),
         refused: None,
+        rerouted: None,
         runs: 0,
         rounds: 0,
         routes: None,
@@ -332,6 +446,8 @@ struct Runs<'a> {
     board: &'a Board,
     ask: &'a Ask,
     runs: usize,
+    /// The count of runs at which the try under way stops ([`MOST_RUNS`] a try).
+    limit: usize,
 }
 
 impl Runs<'_> {
@@ -358,6 +474,9 @@ impl Runs<'_> {
             }
         }
         let (real, _) = with_routes(self.board, routes)?;
+        if self.ask.reroute {
+            return self.reroute(&real, routes, out);
+        }
         if self.open(&real, net, true).is_empty() {
             out.joined = true;
             return Ok(Ok(None));
@@ -416,17 +535,196 @@ impl Runs<'_> {
         out.in_the_way = set.iter().cloned().collect();
         state = strip(self.board, &state, &set);
         add(self.board, &mut state, net, &way);
-        // The ripped nets routed again, round after round.
-        let mut rips: BTreeMap<String, usize> = set.iter().map(|n| (n.clone(), 1)).collect();
-        let mut queue: Vec<String> = set.into_iter().collect();
-        for round in 1..=RIP_ROUNDS {
-            if queue.is_empty() || self.runs >= MOST_RUNS {
+        let state = match self.in_orders(&real, &state, &set, out)? {
+            Ok(state) => state,
+            Err(why) => return Ok(Err(why)),
+        };
+        let (after, _) = with_routes(self.board, &state)?;
+        if !self.open(&after, net, true).is_empty() {
+            return Ok(Err(no_way(net)));
+        }
+        Ok(Ok(Some(state)))
+    }
+
+    /// The ripped nets of `set` routed again on `state`, one try for each order (the module's
+    /// header): the routes with every one put back, or why none was.
+    fn in_orders(
+        &mut self,
+        real: &Board,
+        state: &Routes,
+        set: &BTreeSet<String>,
+        out: &mut Routed,
+    ) -> Result<Result<Routes, String>, Refusal> {
+        let net = self.ask.net.as_str();
+        let mut order: Vec<String> = set.iter().cloned().collect();
+        let mut tried: Vec<Vec<String>> = Vec::new();
+        // A way that crosses no net's copper needs no net put back.
+        let mut kept = set.is_empty().then(|| state.clone());
+        for k in 0..self.ask.tries.max(1) {
+            if kept.is_some() {
                 break;
             }
-            out.rounds = round;
+            if k > 0 {
+                self.limit = self.runs + MOST_RUNS;
+            }
+            tried.push(order.clone());
+            let (after, report) = self.put_back(real, state, set, &order)?;
+            let failed = report.failed.clone();
+            out.rounds = report.rounds;
+            out.ripped = report.ripped.iter().map(|r| r.net.clone()).collect();
+            out.tries.push(report);
+            if failed.is_empty() {
+                kept = Some(after);
+                break;
+            }
+            match next_order(&order, &failed, &tried) {
+                Some(o) => order = o,
+                None => break,
+            }
+        }
+        let Some(state) = kept else {
+            let last = out.tries.last().expect("one try at least");
+            let m = &last.failed[0];
+            let mut why = format!(
+                "net {m}, ripped up for net {net}, could not be routed again in {} order(s) of the ripped nets: {}, so nothing is written",
+                out.tries.len(),
+                last.failed_how.join("; ")
+            );
+            let stopped: BTreeSet<String> = out
+                .tries
+                .iter()
+                .flat_map(|t| t.depth_stopped.iter().cloned())
+                .collect();
+            if !stopped.is_empty() {
+                why.push_str(&format!(
+                    "; `--rip-depth {}` lets {} rip in turn",
+                    self.ask.depth + 1,
+                    nets_said(&stopped)
+                ));
+            }
+            if out.tries.len() == self.ask.tries
+                && next_order(&order, &last.failed, &tried).is_some()
+            {
+                why.push_str(&format!(
+                    "; `--tries {}` tries another order",
+                    self.ask.tries + 1
+                ));
+            }
+            return Ok(Err(why));
+        };
+        Ok(Ok(state))
+    }
+
+    /// `--reroute` (the module's header): the net and the nets `--rip` names taken away, the
+    /// net routed first, they put back after it in turn, and the change kept only when their
+    /// total by the weights got shorter.
+    #[allow(clippy::type_complexity)]
+    fn reroute(
+        &mut self,
+        real: &Board,
+        routes: &Routes,
+        out: &mut Routed,
+    ) -> Result<Result<Option<Routes>, String>, Refusal> {
+        let net = self.ask.net.as_str();
+        if self.ask.connection.is_some() {
+            return Ok(Err(format!(
+                "`--reroute` lays the whole of net {net} again: name the net, not one connection"
+            )));
+        }
+        let only_net = BTreeSet::from([net.to_string()]);
+        let set = candidates(self.board, routes, &only_net, Some(&self.ask.rip));
+        let mut moved = set.clone();
+        moved.insert(net.to_string());
+        let w = self.ask.weights.unwrap_or_default();
+        let before = total(self.board, routes, &moved, &w);
+        let mut state = strip(self.board, routes, &moved);
+        let first = self.route(&state, net, false)?;
+        if !first.complete() {
+            out.walls = walls(self.board, &first.why);
+            return Ok(Err(format!(
+                "net {net} found no way with its copper and that of {} taken away, so nothing is written",
+                nets_said(&set)
+            )));
+        }
+        add(self.board, &mut state, net, &first);
+        out.in_the_way = set.iter().cloned().collect();
+        let state = if set.is_empty() {
+            state
+        } else {
+            match self.in_orders(real, &state, &set, out)? {
+                Ok(state) => state,
+                Err(why) => return Ok(Err(why)),
+            }
+        };
+        out.ripped = set.iter().cloned().collect();
+        let (after_board, _) = with_routes(self.board, &state)?;
+        let open = |b: &Board| {
+            Ratsnest::of(b)
+                .lines
+                .iter()
+                .filter(|l| moved.contains(&l.net))
+                .count()
+        };
+        let after = total(self.board, &state, &moved, &w);
+        let kept = open(&after_board) <= open(real) && after < before - REROUTE_GAIN;
+        out.rerouted = Some(Total {
+            before: (before * 1000.0).round() / 1000.0,
+            after: (after * 1000.0).round() / 1000.0,
+            kept,
+        });
+        Ok(Ok(kept.then_some(state)))
+    }
+
+    /// One try (the module's header): the nets of `set`, ripped for the net asked for, routed
+    /// again on `start` in `order`, round after round, each one that finds no way ripping in turn
+    /// while it is no deeper than the ask's depth; `real` is the board as it was, to count each
+    /// ripped net's open connections against.
+    fn put_back(
+        &mut self,
+        real: &Board,
+        start: &Routes,
+        set: &BTreeSet<String>,
+        order: &[String],
+    ) -> Result<(Routes, Try), Refusal> {
+        let net = self.ask.net.as_str();
+        let only_net = BTreeSet::from([net.to_string()]);
+        let first_run = self.runs;
+        let rank = |n: &String| {
+            (
+                order.iter().position(|o| o == n).unwrap_or(usize::MAX),
+                n.clone(),
+            )
+        };
+        let mut queue: Vec<String> = set.iter().cloned().collect();
+        queue.sort_by_key(rank);
+        let mut report = Try {
+            order: order.to_vec(),
+            ripped: queue
+                .iter()
+                .map(|n| Rip {
+                    net: n.clone(),
+                    by: net.to_string(),
+                    depth: 1,
+                })
+                .collect(),
+            failed: Vec::new(),
+            failed_how: Vec::new(),
+            depth_stopped: Vec::new(),
+            runs: 0,
+            rounds: 0,
+        };
+        let mut state = start.clone();
+        // Each ripped net: how often it was ripped, and its depth.
+        let mut rips: BTreeMap<String, (usize, usize)> =
+            set.iter().map(|n| (n.clone(), (1, 1))).collect();
+        for round in 1..=RIP_ROUNDS {
+            if queue.is_empty() || self.runs >= self.limit {
+                break;
+            }
+            report.rounds = round;
             let mut next: BTreeSet<String> = BTreeSet::new();
             for m in std::mem::take(&mut queue) {
-                if self.runs >= MOST_RUNS {
+                if self.runs >= self.limit {
                     break;
                 }
                 let again = self.route(&state, &m, false)?;
@@ -440,16 +738,32 @@ impl Runs<'_> {
                 exclude.insert(m.clone());
                 exclude.extend(
                     rips.iter()
-                        .filter(|&(_, &n)| n >= RIP_MOST)
+                        .filter(|&(_, &(n, _))| n >= RIP_MOST)
                         .map(|(k, _)| k.clone()),
                 );
                 let cands = candidates(self.board, &state, &exclude, Some(&self.ask.rip));
+                let depth = rips[&m].1;
+                if depth > self.ask.depth {
+                    if !cands.is_empty() && !report.depth_stopped.contains(&m) {
+                        report.depth_stopped.push(m.clone());
+                    }
+                    add(self.board, &mut state, &m, &again);
+                    continue;
+                }
                 match self.in_the_way(&state, &m, false, &cands)? {
                     Found::Way(more, way) => {
                         state = strip(self.board, &state, &more);
                         add(self.board, &mut state, &m, &way);
                         for n in more {
-                            *rips.entry(n.clone()).or_default() += 1;
+                            let e = rips.entry(n.clone()).or_insert((0, depth + 1));
+                            e.0 += 1;
+                            if !report.ripped.iter().any(|r| r.net == n) {
+                                report.ripped.push(Rip {
+                                    net: n.clone(),
+                                    by: m.clone(),
+                                    depth: depth + 1,
+                                });
+                            }
                             next.insert(n);
                         }
                     }
@@ -457,24 +771,24 @@ impl Runs<'_> {
                 }
             }
             queue = next.into_iter().collect();
+            queue.sort_by_key(rank);
         }
-        out.ripped = rips.keys().cloned().collect();
         // A ripped net is left no more open than it was.
         let (after, _) = with_routes(self.board, &state)?;
-        let (was, now) = (Ratsnest::of(&real), Ratsnest::of(&after));
+        let (was, now) = (Ratsnest::of(real), Ratsnest::of(&after));
         let count = |r: &Ratsnest, n: &str| r.lines.iter().filter(|l| l.net == n).count();
-        for m in &out.ripped {
-            let (a, b) = (count(&was, m), count(&now, m));
+        for r in &report.ripped {
+            let (a, b) = (count(&was, &r.net), count(&now, &r.net));
             if b > a {
-                return Ok(Err(format!(
-                    "net {m}, ripped up for net {net}, could not be routed again: {b} of its connections would be open where {a} were, so nothing is written"
-                )));
+                report.failed.push(r.net.clone());
+                report.failed_how.push(format!(
+                    "{b} of the connections of net {} open where {a} were",
+                    r.net
+                ));
             }
         }
-        if !self.open(&after, net, true).is_empty() {
-            return Ok(Err(no_way(net)));
-        }
-        Ok(Ok(Some(state)))
+        report.runs = self.runs - first_run;
+        Ok((state, report))
     }
 
     /// The connections of `net` open on `board` (the asked connection's alone, when `cut`).
@@ -508,7 +822,11 @@ impl Runs<'_> {
         if cut {
             self.cut(&mut b, net);
         }
-        Ok(one::route_nets(&b, &BTreeSet::from([net.to_string()])))
+        Ok(one::route_nets_weighed(
+            &b,
+            &BTreeSet::from([net.to_string()]),
+            self.ask.weights,
+        ))
     }
 
     /// The nets of `cands` whose copper stands in the way of `net` (the module's header).
@@ -519,7 +837,7 @@ impl Runs<'_> {
         cut: bool,
         cands: &BTreeSet<String>,
     ) -> Result<Found, Refusal> {
-        if cands.is_empty() || self.runs >= MOST_RUNS {
+        if cands.is_empty() || self.runs >= self.limit {
             return Ok(Found::NoWay(None));
         }
         let way = self.route(&strip(self.board, routes, cands), net, cut)?;
@@ -529,7 +847,7 @@ impl Runs<'_> {
         let mut set = self.crossed(routes, cands, net, &way)?;
         let mut best = way;
         for m in set.clone() {
-            if self.runs >= MOST_RUNS {
+            if self.runs >= self.limit {
                 break;
             }
             if !set.contains(&m) {
@@ -610,6 +928,33 @@ fn candidates(
         })
         .map(|(n, _)| n.clone())
         .collect()
+}
+
+/// What the copper of `nets` in `routes` costs by `w`, in mm of track: its length and its vias
+/// ([`netsmith_router::Weights::measure`]).
+fn total(
+    board: &Board,
+    routes: &Routes,
+    nets: &BTreeSet<String>,
+    w: &netsmith_router::Weights,
+) -> f64 {
+    let Some(table) = routes.boards.get(&board.name) else {
+        return 0.0;
+    };
+    nets.iter()
+        .filter_map(|n| table.nets.get(n).map(|r| (n, r)))
+        .map(|(n, r)| {
+            let length: f64 = r
+                .tracks
+                .iter()
+                .map(|t| {
+                    let t = t.on(board, n);
+                    t.from.distance(t.to)
+                })
+                .sum();
+            w.measure(length, r.vias.len())
+        })
+        .sum()
 }
 
 /// `routes` with the unlocked tracks and vias of `nets` taken away.
@@ -716,6 +1061,61 @@ impl Routed {
         if !self.in_the_way.is_empty() {
             let set: BTreeSet<String> = self.in_the_way.iter().cloned().collect();
             let _ = writeln!(s, "in the way of {what}: the copper of {}", nets_said(&set));
+        }
+        for (k, t) in self.tries.iter().enumerate() {
+            let ripped: Vec<String> = t
+                .ripped
+                .iter()
+                .map(|r| {
+                    if r.depth == 1 {
+                        r.net.clone()
+                    } else {
+                        format!("{} (by {}, depth {})", r.net, r.by, r.depth)
+                    }
+                })
+                .collect();
+            let mut line = format!(
+                "try {} of {}, routing again {}: ripped {}",
+                k + 1,
+                self.tries.len(),
+                t.order.join(", "),
+                ripped.join(", ")
+            );
+            if t.failed_how.is_empty() {
+                line.push_str("; every ripped net put back");
+            } else {
+                line.push_str(&format!("; not put back: {}", t.failed_how.join("; ")));
+            }
+            if !t.depth_stopped.is_empty() {
+                let set: BTreeSet<String> = t.depth_stopped.iter().cloned().collect();
+                line.push_str(&format!(
+                    "; {} found no way and may rip no deeper",
+                    nets_said(&set)
+                ));
+            }
+            let _ = writeln!(s, "{line} ({} run(s), {} round(s))", t.runs, t.rounds);
+        }
+        if let Some(t) = &self.rerouted {
+            let set: BTreeSet<String> = self.ripped.iter().cloned().collect();
+            let with = if set.is_empty() {
+                String::new()
+            } else {
+                format!(" and {}", nets_said(&set))
+            };
+            let _ = writeln!(
+                s,
+                "laid again, {what}{with} cost {} mm of track by the weights where they cost {} mm: {}",
+                t.after,
+                t.before,
+                if t.kept {
+                    format!(
+                        "{} mm shorter, kept",
+                        ((t.before - t.after) * 1000.0).round() / 1000.0
+                    )
+                } else {
+                    "not shorter, so nothing is written".to_string()
+                }
+            );
         }
         for w in &self.walls {
             let mut by: Vec<String> = Vec::new();

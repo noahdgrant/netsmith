@@ -101,12 +101,14 @@ fn a_board_imported_from_its_own_fab_is_drawn_again_with_nothing_routed() {
     assert!(!said.contains("warning: led.routes.toml"), "{said}");
     let board = |out: &str| dir.join(out).join("LedExample/LedExample.kicad_pcb");
     let (first, second) = (copper(&board("first")), copper(&board("second")));
-    assert_eq!(first.len(), 12, "{first:#?}");
+    // The router draws each net of the LED board as one track between its pads' centres
+    // (issue #1486).
+    assert_eq!(first.len(), 3, "{first:#?}");
     assert_eq!(first, second);
 
     // `show` lists the records and says the router has nothing left.
     let shown = ok(&netsmith(&dir, &["routes", "show", "--file", "led.nsm"]));
-    assert!(shown.contains("net GND (locked): 4 track(s)"), "{shown}");
+    assert!(shown.contains("net GND (locked): 1 track(s)"), "{shown}");
     assert!(shown.contains("the router would route 0 connection(s)"), "{shown}");
 }
 
@@ -114,7 +116,7 @@ fn a_board_imported_from_its_own_fab_is_drawn_again_with_nothing_routed() {
 fn a_track_that_shorts_another_net_is_refused_and_the_file_kept() {
     let dir = imported("routes-short");
     let before = fs::read_to_string(dir.join("led.routes.toml")).unwrap();
-    // Down from the VCC track, across the GND track that runs at y = 5.4.
+    // Down from the VCC track, across the GND track that runs at y = 5.24 to 5.39.
     let run = netsmith(
         &dir,
         &[
@@ -168,37 +170,39 @@ fn a_locked_shape_or_net_is_not_deleted_until_unlocked() {
     ok(&routes(&["unlock", "--track", "1"]));
     ok(&routes(&["delete", "--track", "1"]));
     let shown = ok(&netsmith(&dir, &["routes", "show", "--file", "led.nsm"]));
-    assert!(shown.contains("net VCC: 3 track(s)"), "{shown}");
+    assert!(!shown.contains("net VCC ("), "{shown}");
+    assert!(shown.contains("net VCC: J1.1 to R1.1"), "{shown}");
 }
 
 #[test]
 fn a_record_whose_pads_moved_keeps_its_copper_and_says_where_it_is_open() {
-    // Issue #1328: the LED moved down 0.75 mm after its copper was imported.
+    // Issue #1328: the LED moved down by its pads' pitch after its copper was imported, so the
+    // GND track that ran to its first pad now ends on its second, the anode's.
     let dir = imported("routes-stale");
     let layout = dir.join("led.pcb.toml");
     let text_of = fs::read_to_string(&layout).unwrap();
-    let moved = text_of.replace("at = [9.85, 4.6]", "at = [9.85, 5.35]");
+    let moved = text_of.replace("at = [9.85, 4.6]", "at = [9.85, 6.175]");
     assert_ne!(moved, text_of);
     fs::write(&layout, moved).unwrap();
 
-    // Every shape is kept; the short track into the LED's old pad is open at it.
+    // Every shape is kept; the track into the LED's old pad is open at it.
     let shown = ok(&netsmith(&dir, &["routes", "show", "--file", "led.nsm"]));
     assert!(
         shown.contains(
-            "the pads of net `GND` are not where the routes file's record was written: its 4 shape(s) are kept"
+            "the pads of net `GND` are not where the routes file's record was written: its 1 shape(s) are kept"
         ),
         "{shown}"
     );
-    assert!(shown.contains("open at D1.1 (track 3's end at 9.9, 5.4)"), "{shown}");
+    assert!(shown.contains("open at D1.1 (track 1's end at 9.85, 5.3875)"), "{shown}");
     assert!(shown.contains("net GND: D1.1 to J1.2"), "{shown}");
 
-    // `fab` routes what the kept copper leaves; the corner the kept copper now has outside
-    // the moved pad is the design rules check's to find.
+    // `fab` routes what the kept copper leaves, and the kept track on the anode's pad leaves
+    // the anode's connection unrouted.
     let run = netsmith(&dir, &["board", "fab", "led.nsm", "--locked", "--out", "moved"]);
     let said = text(&run);
-    assert!(said.contains("its 4 shape(s) are kept"), "{said}");
+    assert!(said.contains("its 1 shape(s) are kept"), "{said}");
     assert!(said.contains("LedExample: routing: 2 connections"), "{said}");
-    assert!(said.contains("[track_angle] two tracks of net GND"), "{said}");
+    assert!(said.contains("INCOMPLETE"), "{said}");
 
     // Lock is refused for that error of GND's own copper...
     let file = dir.join("led.routes.toml");
@@ -213,7 +217,7 @@ fn a_record_whose_pads_moved_keeps_its_copper_and_says_where_it_is_open() {
     // With the track into the old pad deleted, GND locks.
     ok(&netsmith(
         &dir,
-        &["routes", "delete", "--net", "GND", "--track", "3", "--file", "led.nsm"],
+        &["routes", "delete", "--net", "GND", "--track", "1", "--file", "led.nsm"],
     ));
     ok(&netsmith(&dir, &["routes", "lock", "--net", "GND", "--file", "led.nsm"]));
     let shown = ok(&netsmith(&dir, &["routes", "show", "--file", "led.nsm"]));
@@ -247,7 +251,7 @@ fn routes_delete_deletes_a_record_of_a_net_the_board_no_longer_has() {
     // The record was locked: it goes all the same, and the command says what it deleted.
     let said = ok(&routes(&dir, &["delete", "--net", "OLD"]));
     assert!(
-        said.contains("deleted net OLD's record (4 shape(s)), a net the board does not have"),
+        said.contains("deleted net OLD's record (1 shape(s)), a net the board does not have"),
         "{said}"
     );
     assert!(said.contains("was locked"), "{said}");
@@ -556,8 +560,9 @@ fn a_refusal_of_a_track_quotes_the_routes_files_places() {
     );
     let said = text(&run);
     assert_eq!(run.status.code(), Some(1), "{said}");
-    // The crossing is at (5.0, 5.4) from the outline's corner, not (25.0, 25.4) on KiCad's page.
-    assert!(said.contains("at (5.000, 5.400) on F.Cu"), "{said}");
+    // The crossing is at (5.0, 5.288) from the outline's corner, not (25.0, 25.288) on KiCad's
+    // page.
+    assert!(said.contains("at (5.000, 5.288) on F.Cu"), "{said}");
 }
 
 /// The six-layer example (its second and third inner layers signal layers) in a folder of its own.
@@ -822,7 +827,7 @@ fn netsmith_with_input(dir: &Path, args: &[&str], input: &str) -> Output {
 fn routes_add_makes_a_batch_skips_a_refused_shape_and_writes_the_file_once() {
     let dir = imported("routes-add-batch");
     // The first via is on the VCC track; the track runs down from it across the GND track
-    // that runs at y = 5.4 (refused, `tracks_crossing`); the second via is on VCC too.
+    // that runs at y = 5.24 to 5.39 (refused, `tracks_crossing`); the second via is on VCC too.
     let doc = r#"{
         "track": [{"net": "VCC", "from": [5.0, 2.7], "to": [5.0, 6.0]}],
         "via": [{"net": "VCC", "at": [5.0, 2.7]}, {"net": "NOPE", "at": [1, 1]}]
@@ -897,7 +902,7 @@ fn routes_import_says_each_net_as_data_and_unlocked_locks_none() {
     assert_eq!(nets.len(), 3, "{said}");
     let gnd = nets.iter().find(|n| n["net"] == "GND").unwrap();
     assert_eq!(gnd["locked"], false, "{said}");
-    assert_eq!(gnd["tracks"], 4, "{said}");
+    assert_eq!(gnd["tracks"], 1, "{said}");
     // The board fab made has no error of its copper.
     assert!(
         nets.iter().all(|n| n["refusals"].as_array().unwrap().is_empty()),

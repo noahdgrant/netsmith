@@ -410,6 +410,12 @@ pub struct StackupLayer {
 }
 
 impl Artwork {
+    /// How far the solder mask opening over `pad` reaches past its copper: the pad's own
+    /// margin, else its footprint's, else the board's.
+    pub fn pad_mask_margin(&self, pad: &Pad) -> f64 {
+        pad.mask_margin.unwrap_or(self.mask_margin)
+    }
+
     pub fn parse(src: &str) -> Result<Artwork, ArtworkError> {
         let root = Sexp::parse(src).map_err(|e| ArtworkError::Parse(e.to_string()))?;
         Self::from_sexp(&root)

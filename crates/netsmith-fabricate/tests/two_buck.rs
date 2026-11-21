@@ -57,7 +57,7 @@ fn the_board_builds_with_no_kicad_and_has_about_sixty_parts() {
     let unsourced: Vec<_> = board
         .sourcing
         .iter()
-        .filter(|s| s.lcsc.is_none() && s.kind != "Header1x2" && s.kind != "TestPoint")
+        .filter(|s| s.sku.is_none() && s.kind != "Header1x2" && s.kind != "TestPoint")
         .map(|s| s.kind.as_str())
         .collect();
     assert_eq!(unsourced, ["BenchBuck", "BenchBuck"], "{unsourced:?}");

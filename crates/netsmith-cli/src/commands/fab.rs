@@ -38,6 +38,8 @@ pub struct Args {
     /// netsmith.toml sets it for a project, and this wins. It runs inside `--route-timeout`.
     #[arg(long, value_name = "N")]
     pub rip_rounds: Option<usize>,
+    #[command(flatten)]
+    pub weighing: common::Weighing,
     /// Package a board that fails the design rules check (never an unmet `[constraint]`).
     ///
     /// `fab-notes.txt` then says the board is not clean. It never waives a `[constraint]` finding:
@@ -208,7 +210,7 @@ fn run_chosen(args: &Args, format: Format) -> ExitCode {
             args.file.as_deref(),
             args.out.as_deref(),
             args.route_timeout,
-            args.rip_rounds,
+            (args.rip_rounds, &args.weighing),
             args.allow_drc_violations,
             (args.for_review, !args.no_pictures),
             args.cross_check,
@@ -335,7 +337,7 @@ fn run_fab(
     file: Option<&str>,
     out: Option<&Path>,
     route_timeout: Option<u64>,
-    rip_rounds: Option<usize>,
+    (rip_rounds, weighing): (Option<usize>, &common::Weighing),
     allow_drc_violations: bool,
     (for_review, review_pictures): (bool, bool),
     cross_check: bool,
@@ -385,6 +387,14 @@ fn run_fab(
             netsmith_fabricate::fab::no_kicad_note(&netsmith_kicad::Search::machine())
         );
     }
+    // The weights of the router's quality objective: the flags, else the project's keys.
+    let weights = match weighing.weights(target.project.as_ref()) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
     let options = FabOptions {
         route_timeout: match route_timeout {
             Some(0) => None,
@@ -408,6 +418,7 @@ fn run_fab(
         pin_map_source: None,
         track_margin: track_margin(&target),
         rip_rounds: rip_rounds_of(&target, rip_rounds),
+        weights,
         glb: glb_wanted(&target, no_glb),
         step: step_wanted(&target, no_step),
         pdf: pdf_wanted(&target, no_pdf),
@@ -418,6 +429,7 @@ fn run_fab(
         models: Some(netsmith_fabricate::models::Places::of(&target)),
         place_seeds: placing.seeds(&target),
         place_budget: placing.budget(&target),
+        routing_objective: placing.objective(&target),
         seed_writes: netsmith_fabricate::fab::SeedWrites::Write,
         offline,
         portable,
@@ -570,6 +582,7 @@ fn run_fab(
                             group_spreads: Vec::new(),
                             long_paths: Vec::new(),
                             quality: None,
+                            track_drops: Vec::new(),
                         });
                         continue;
                     }
@@ -777,6 +790,15 @@ pub(super) fn run_order(
         Err(code) => return code,
     };
     let kicad = KicadCliExe::locate();
+    // An order routes with the weights of the project's keys, as `fab` does (issue #1536).
+    let weights =
+        match netsmith_fabricate::fab::weights(target.project.as_ref(), (None, None, None)) {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::from(2);
+            }
+        };
     let options = FabOptions {
         route_timeout: match route_timeout {
             Some(0) => None,
@@ -798,6 +820,7 @@ pub(super) fn run_order(
         pin_map_source: None,
         track_margin: track_margin(&target),
         rip_rounds: rip_rounds_of(&target, rip_rounds),
+        weights,
         glb: glb_wanted(&target, no_glb),
         step: step_wanted(&target, no_step),
         pdf: pdf_wanted(&target, no_pdf),
@@ -809,6 +832,7 @@ pub(super) fn run_order(
         models: Some(netsmith_fabricate::models::Places::of(&target)),
         place_seeds: placing.seeds(&target),
         place_budget: placing.budget(&target),
+        routing_objective: placing.objective(&target),
         // An order is a release: a seed that would change stops it (issue #458).
         seed_writes: netsmith_fabricate::fab::SeedWrites::Order,
         offline,
@@ -945,6 +969,11 @@ mod tests {
                 out: Some("x".into()),
                 route_timeout: None,
                 rip_rounds: None,
+                weighing: crate::commands::common::Weighing {
+                    length_weight: None,
+                    via_weight: None,
+                    layer_change_weight: None,
+                },
                 allow_drc_violations: false,
                 for_review: false,
                 no_pictures: false,
@@ -964,6 +993,7 @@ mod tests {
                 placing: crate::commands::common::Placing {
                     place_seeds: None,
                     place_budget: None,
+                    routing_objective: None,
                 },
                 watching: crate::commands::common::Watching {
                     progress: crate::progress::Print::Text,

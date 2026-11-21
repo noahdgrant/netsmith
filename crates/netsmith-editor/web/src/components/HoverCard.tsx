@@ -70,7 +70,7 @@ function catalogRows(card: PartCard, line: BomLine | undefined) {
     );
     rows.push({ label: 'Package', value, mono: true });
   }
-  const cat = [card.lcsc, line?.library].filter(Boolean).join(' · ');
+  const cat = [card.sku, line?.library].filter(Boolean).join(' · ');
   if (cat) rows.push({ label: 'Catalog', value: cat, mono: true });
   if (line?.mpn) rows.push({ label: 'MPN', value: line.mpn, mono: true });
   if (line?.unitUsd != null) rows.push({ label: 'Price', value: `${dollars(line.unitUsd)} each${line.stock != null ? `, ${line.stock.toLocaleString('en-US')} in stock` : ''}` });

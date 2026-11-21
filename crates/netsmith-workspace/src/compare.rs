@@ -816,7 +816,7 @@ fn board_digest(
             kind: part.kind.clone(),
             value: part.value.clone(),
             package: part.package.clone(),
-            lcsc: source.lcsc.clone(),
+            sku: source.sku.clone(),
             mpn: source.mpn.clone(),
             assembly: source.assembly.word().to_string(),
             at: model.instance(inst).declared.map(|_| at(inst)),

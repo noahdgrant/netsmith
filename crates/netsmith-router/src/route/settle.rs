@@ -101,9 +101,19 @@ impl<'a> Router<'a> {
         own: &[&Routed],
         check: bool,
     ) -> Result<Routed, Unsettled> {
-        if !check || own.is_empty() {
-            return Ok(routed);
+        if !check || own.is_empty() || self.bends_well(&routed, own, false) {
+            Ok(routed)
+        } else {
+            Err(Unsettled::Corner)
         }
+    }
+
+    /// Whether every place where `routed`'s tracks end meets the tracks of its net there (its
+    /// own and those of `own`) as [`Self::joins_cleanly`] asks. Not `strict`, only the places
+    /// where a track of `own` ends too are judged, and a place on a via's edge is in it; `strict`
+    /// (the clean-up's, issue #1486), every place is, and a place is in a via only when it is
+    /// clearly inside, as the design rules check finds it.
+    pub(super) fn bends_well(&self, routed: &Routed, own: &[&Routed], strict: bool) -> bool {
         let net = self.nets[routed.line];
         let pads = self.own_pad_squares(net);
         let vias: Vec<&Via> = own
@@ -111,6 +121,7 @@ impl<'a> Router<'a> {
             .flat_map(|r| r.vias.iter())
             .chain(routed.vias.iter())
             .collect();
+        let inset = if strict { 1e-3 } else { 0.0 };
         let tracks: Vec<&Track> = own.iter().flat_map(|r| r.tracks.iter()).collect();
         let same = |p: Pt, q: Pt| p.distance(q) < 1e-3;
         for t in &routed.tracks {
@@ -119,13 +130,15 @@ impl<'a> Router<'a> {
                 if pads
                     .iter()
                     .any(|(r, layers)| layers[layer] && r.contains(&Rect::new(at, at)))
-                    || vias.iter().any(|v| v.at.distance(at) <= v.diameter / 2.0)
+                    || vias
+                        .iter()
+                        .any(|v| v.at.distance(at) <= v.diameter / 2.0 - inset)
                 {
                     continue;
                 }
                 // The directions out of `at` of every track of the net that ends there.
                 let mut dirs: Vec<(f64, f64)> = Vec::new();
-                let mut met = false;
+                let mut met = strict;
                 for (s, theirs) in routed
                     .tracks
                     .iter()
@@ -162,11 +175,11 @@ impl<'a> Router<'a> {
                     .fold(180.0, f64::min);
                 let limit = if dirs.len() == 2 { 134.0 } else { 89.0 };
                 if least < limit {
-                    return Err(Unsettled::Corner);
+                    return false;
                 }
             }
         }
-        Ok(routed)
+        true
     }
 
     /// Cut each right angle between two tracks of the line on one layer into two bends of 45

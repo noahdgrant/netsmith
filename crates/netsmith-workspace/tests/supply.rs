@@ -104,7 +104,7 @@ fn the_bom_takes_price_stock_and_day_from_the_provider_and_says_which_stock_it_i
     let (_root, editor) = open(&priced("quoted"));
     let bom = bom_of(&editor);
     let r = bom.lines.iter().find(|l| l.kind == "Resistor").unwrap();
-    assert_eq!(r.lcsc.as_deref(), Some("C9999999"));
+    assert_eq!(r.sku.as_deref(), Some("C9999999"));
     assert_eq!((r.unit_usd, r.stock), (Some(0.0123), Some(42)));
     assert_eq!(r.supply.as_deref(), Some("file, JLCPCB assembly stock"));
     assert_eq!(r.date.as_deref(), Some("2026-10-31"));
@@ -286,7 +286,7 @@ fn a_generic_resistor_no_row_stands_for_is_unresolved_with_the_nearest_rows() {
     let (_root, editor) = open(&generic("unresolved"));
     let bom = bom_of(&editor);
     let r = bom.lines.iter().find(|l| l.kind == "Resistor").unwrap();
-    assert_eq!(r.lcsc, None);
+    assert_eq!(r.sku, None);
     assert_eq!(r.value, "249");
     let why = r.unresolved.as_deref().expect("an unresolved part");
     assert!(
@@ -315,7 +315,7 @@ fn a_row_added_to_the_catalog_resolves_the_generic_resistor_to_it() {
     let (_root, editor) = open(&setup);
     let bom = bom_of(&editor);
     let r = bom.lines.iter().find(|l| l.kind == "Resistor").unwrap();
-    assert_eq!(r.lcsc.as_deref(), Some("C9999998"));
+    assert_eq!(r.sku.as_deref(), Some("C9999998"));
     assert_eq!(r.library.as_deref(), Some("Extended"));
     assert_eq!(r.unresolved, None);
     assert_eq!((r.unit_usd, r.stock), (Some(0.002), Some(10)));
@@ -343,7 +343,7 @@ fn a_row_the_solver_picked_is_shown_with_its_stock_even_when_that_is_0() {
         .into_iter()
         .find(|l| l.kind == "Resistor")
         .unwrap();
-    assert_eq!((r.lcsc.as_deref(), r.stock), (Some("C9999998"), Some(0)));
+    assert_eq!((r.sku.as_deref(), r.stock), (Some("C9999998"), Some(0)));
 }
 
 #[test]
@@ -356,7 +356,7 @@ fn a_value_a_row_has_is_picked_as_before_and_series_none_turns_generics_off() {
             .iter()
             .find(|l| l.kind == "Resistor")
             .unwrap()
-            .lcsc
+            .sku
             .as_deref(),
         Some("C9999999")
     );

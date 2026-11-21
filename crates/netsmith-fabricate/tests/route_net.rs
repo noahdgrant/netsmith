@@ -256,3 +256,218 @@ fn an_ask_names_a_net_and_two_of_its_pads() {
     assert_eq!(asked.connection, None);
     assert_eq!(asked.rip, BTreeSet::from(["VCC".to_string()]));
 }
+
+/// Issue #1488: the order after a try is the nets not put back first, then the rest; an order
+/// tried is not tried again, and with no order left there is no next try.
+#[test]
+fn the_next_order_puts_the_nets_not_put_back_first_and_never_repeats() {
+    use netsmith_fabricate::route_net::next_order;
+    let v = |s: &[&str]| s.iter().map(ToString::to_string).collect::<Vec<_>>();
+    let order = v(&["A", "B", "C"]);
+    let tried = vec![order.clone()];
+    assert_eq!(next_order(&order, &v(&["C"]), &tried), Some(v(&["C", "A", "B"])));
+    // A net ripped in turn that was not put back goes first too.
+    assert_eq!(next_order(&order, &v(&["D"]), &tried), Some(v(&["D", "A", "B", "C"])));
+    // The first net failed again: that order is the one tried, so the order turns by one.
+    assert_eq!(next_order(&order, &v(&["A"]), &tried), Some(v(&["B", "C", "A"])));
+    let all = vec![order.clone(), v(&["B", "C", "A"]), v(&["C", "A", "B"])];
+    assert_eq!(next_order(&order, &v(&["A"]), &all), None);
+    // One net has one order.
+    assert_eq!(next_order(&v(&["A"]), &v(&["A"]), &[v(&["A"])]), None);
+}
+
+/// Tracks of `net` from the top edge to the bottom on both layers at `x` on the board, in the
+/// routes file's places.
+fn wall_at(board: &Board, net: &str, x: f64) -> Vec<RouteTrack> {
+    let x = x - board.outline.min.x;
+    let edge = board.rules.copper_to_edge + 0.2;
+    let h = board.outline.height();
+    let width = board.track_width(net);
+    [CopperLayer::Front, CopperLayer::Back]
+        .into_iter()
+        .map(|layer| RouteTrack {
+            layer,
+            width,
+            from: [x, edge],
+            mid: None,
+            to: [x, h - edge],
+            lock: false,
+        })
+        .collect()
+}
+
+/// Issue #1488: a ripped net is put back only by ripping a third net in turn. The net asked
+/// for (the one whose pads are nearest along x) is walled off by the copper of a net that is
+/// joined (its pads are on both sides), and that net's pads are walled apart by the third net's
+/// tracks, which leave the asked net's pads and the third net's own on one side. At
+/// `--rip-depth 0` the ripped net may not rip, the one order there is is tried once and the
+/// refusal names the depth; at the default depth it rips the third net at depth 2 and every net
+/// is put back.
+#[test]
+fn a_ripped_net_rips_in_turn_to_the_depth_asked_and_the_tries_are_counted() {
+    let board = board();
+    let span = |n: &str| {
+        let p = pads_of(&board, n);
+        let xs = p.iter().map(|p| p.x);
+        (xs.clone().fold(f64::MAX, f64::min), xs.fold(f64::MIN, f64::max))
+    };
+    let mut names: Vec<String> = board.nets.iter().map(|n| n.name.clone()).collect();
+    names.sort_by(|a, b| {
+        let w = |n: &str| span(n).1 - span(n).0;
+        w(a).total_cmp(&w(b))
+    });
+    let target = names[0].clone();
+    let (t0, t1) = span(&target);
+    let wall = names
+        .iter()
+        .find(|n| span(n).0 < t0 && span(n).1 > t1)
+        .expect("a net whose pads are on both sides of the asked net's")
+        .clone();
+    let third = names
+        .iter()
+        .find(|n| **n != target && **n != wall)
+        .unwrap()
+        .clone();
+    let (w0, _) = span(&wall);
+    let x = (w0 + t0) / 2.0;
+    assert!(span(&third).0 > x, "the third net's pads are on one side of its wall");
+
+    // The wall's net joined, then its wall between the asked net's pads, then the third
+    // net's wall between the wall's net's pads.
+    let joined = route_net(&board, &Routes::default(), &ask(&board, &wall, &[])).unwrap();
+    let mut routes = joined
+        .routes
+        .clone()
+        .unwrap_or_else(|| panic!("{}", joined.text()));
+    let table = &mut routes.boards.get_mut(&board.name).unwrap().nets;
+    table
+        .get_mut(&wall)
+        .unwrap()
+        .tracks
+        .extend(wall_at(&board, &wall, (t0 + t1) / 2.0));
+    table.insert(
+        third.clone(),
+        NetRoutes {
+            pads: pad_hash(&board, &third).unwrap(),
+            tracks: wall_at(&board, &third, x),
+            ..NetRoutes::default()
+        },
+    );
+    assert_eq!(open(&board, &routes, &wall), 0);
+
+    let mut shallow = ask(&board, &target, &[&wall, &third]);
+    shallow.depth = 0;
+    let said = route_net(&board, &routes, &shallow).unwrap();
+    assert!(said.routes.is_none(), "{}", said.text());
+    assert_eq!(said.in_the_way, vec![wall.clone()], "{}", said.text());
+    assert_eq!(said.tries.len(), 1, "one order of one net: {}", said.text());
+    assert_eq!(said.tries[0].depth_stopped, vec![wall.clone()], "{}", said.text());
+    assert_eq!(said.tries[0].failed, vec![wall.clone()], "{}", said.text());
+    let why = said.refused.clone().unwrap();
+    assert!(why.contains("`--rip-depth 1`"), "{why}");
+    assert!(said.runs <= netsmith_fabricate::route_net::MOST_RUNS * shallow.tries);
+
+    let said = route_net(&board, &routes, &ask(&board, &target, &[&wall, &third])).unwrap();
+    assert_eq!(said.refused, None, "{}", said.text());
+    assert_eq!(said.tries.len(), 1, "{}", said.text());
+    let rips = &said.tries[0].ripped;
+    assert_eq!(rips[0].net, wall);
+    assert_eq!((rips[0].by.as_str(), rips[0].depth), (target.as_str(), 1));
+    let deeper = rips
+        .iter()
+        .find(|r| r.net == third)
+        .unwrap_or_else(|| panic!("{rips:?}"));
+    assert_eq!((deeper.by.as_str(), deeper.depth), (wall.as_str(), 2));
+    let after = said.routes.clone().unwrap();
+    for n in [&target, &wall, &third] {
+        assert_eq!(open(&board, &after, n), 0, "{n}: {}", said.text());
+    }
+    let text = said.text();
+    assert!(text.contains(&format!("{third} (by {wall}, depth 2)")), "{text}");
+    assert!(text.contains("every ripped net put back"), "{text}");
+}
+
+/// The copper `routes route` lays takes the board's corner style (issue #1508): rounded, the
+/// default, its bends are arcs where they keep the rules' space, as `fab` rounds the router's
+/// (it never rounds a routes file's); mitered (`.corner`, or `--corner mitered` for one run),
+/// every bend keeps its 45 degree corner. Either way the check finds nothing.
+#[test]
+fn the_copper_laid_takes_the_boards_corner_style() {
+    let rounded = board();
+    let (target, _) = nets(&rounded);
+    let routes = Routes::default();
+    let arcs = |board: &Board| -> usize {
+        let said = route_net(board, &routes, &ask(board, &target, &[])).unwrap();
+        assert_eq!(said.refused, None, "{}", said.text());
+        let after = said.routes.unwrap();
+        let errors = drc_errors(&with_routes(board, &after).unwrap().0).unwrap();
+        assert!(errors.is_empty(), "{errors:#?}");
+        assert_eq!(open(board, &after, &target), 0);
+        after.boards[&board.name].nets[&target]
+            .tracks
+            .iter()
+            .filter(|t| t.mid.is_some())
+            .count()
+    };
+    assert!(arcs(&rounded) > 0, "a rounded board's bends are arcs");
+    let mut mitered = rounded.clone();
+    mitered.corner = netsmith_core::TrackCorner::Mitered;
+    assert_eq!(arcs(&mitered), 0, "a mitered board's bends keep their corners");
+}
+
+/// `--reroute` (issue #1538): a net that went round a wall of another net's copper, with a gap
+/// at the bottom, is laid again. With the wall kept it finds the same long way: not shorter, so
+/// nothing is written. With the wall's net ripped, the net is laid first, straight, the wall's
+/// net after it, and the total by the weights is shorter: the change is written with every
+/// connection made.
+#[test]
+fn reroute_lays_a_net_and_the_nets_ripped_again_and_keeps_it_only_when_shorter() {
+    let board = board();
+    let (target, wall) = nets(&board);
+    let mut routes = walled(&board, &target, &wall, false);
+    let h = board.outline.height();
+    for t in &mut routes.boards.get_mut(&board.name).unwrap().nets.get_mut(&wall).unwrap().tracks {
+        t.to[1] = h * 0.7;
+    }
+    let first = route_net(&board, &routes, &ask(&board, &target, &[])).unwrap();
+    assert_eq!(first.refused, None, "{}", first.text());
+    let looped = first.routes.clone().expect("the net goes round the wall");
+    assert_eq!(open(&board, &looped, &target), 0);
+
+    let alone = Ask {
+        reroute: true,
+        ..ask(&board, &target, &[])
+    };
+    let said = route_net(&board, &looped, &alone).unwrap();
+    let total = said.rerouted.clone().expect("a total");
+    assert!(!total.kept, "{}", said.text());
+    assert!(said.routes.is_none(), "{}", said.text());
+    assert!(said.text().contains("not shorter"), "{}", said.text());
+
+    let with_wall = Ask {
+        reroute: true,
+        ..ask(&board, &target, &[&wall])
+    };
+    let said = route_net(&board, &looped, &with_wall).unwrap();
+    let total = said.rerouted.clone().expect("a total");
+    assert!(total.kept, "{}", said.text());
+    assert!(total.after < total.before - netsmith_fabricate::route_net::REROUTE_GAIN);
+    assert_eq!(said.ripped, vec![wall.clone()]);
+    let after = said.routes.clone().expect("written");
+    assert_eq!(open(&board, &after, &target), 0, "{}", said.text());
+    assert!(
+        open(&board, &after, &wall) <= open(&board, &looped, &wall),
+        "{}",
+        said.text()
+    );
+    assert!(said.runs <= netsmith_fabricate::route_net::MOST_RUNS * with_wall.tries);
+
+    // One connection is not laid again alone.
+    let pads: Vec<String> = board.nets.iter().find(|n| n.name == target).unwrap().pads.iter().map(ToString::to_string).collect();
+    let connection = Ask {
+        reroute: true,
+        ..ask(&board, &format!("{target}:{}-{}", pads[0], pads[1]), &[])
+    };
+    let said = route_net(&board, &looped, &connection).unwrap();
+    assert!(said.refused.unwrap().contains("whole"));
+}

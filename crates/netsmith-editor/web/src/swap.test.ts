@@ -7,7 +7,7 @@ const at = { file: 'src/main.nsm', line: 3, column: 5, endLine: 3, endColumn: 5 
 const alt = (edit: SwapAlternative['edit']): SwapAlternative => ({
   name: '240Ω 1% 0402 C25094',
   line: '240Ω 1% 0402 C25094 (-3.6%, Extended)',
-  lcsc: 'C25094',
+  sku: 'C25094',
   mpn: null,
   check: 'passes',
   why: null,

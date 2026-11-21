@@ -6,13 +6,40 @@ use super::{Rule, Severity};
 use std::collections::BTreeMap;
 
 /// A net class: the clearance its nets keep and the nets it holds.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Class {
     pub name: String,
     pub clearance: Option<f64>,
     pub priority: i64,
     /// Net name patterns: `*` matches any run of characters.
     pub patterns: Vec<String>,
+    /// The width the class's tracks are drawn at, its vias' copper and hole, and its diff
+    /// pairs' gap and width, as the project file states them (`netsmith board rules`, issue
+    /// #1513). The check holds no track to them; they are what a net wants.
+    pub sizes: ClassSizes,
+}
+
+/// What a net class of the project file says its copper is drawn at (issue #1513): `None`
+/// where it says nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct ClassSizes {
+    pub track_width: Option<f64>,
+    pub via_diameter: Option<f64>,
+    pub via_drill: Option<f64>,
+    pub diff_pair_gap: Option<f64>,
+    pub diff_pair_width: Option<f64>,
+}
+
+impl ClassSizes {
+    fn of(c: &serde_json::Value) -> ClassSizes {
+        ClassSizes {
+            track_width: c["track_width"].as_f64(),
+            via_diameter: c["via_diameter"].as_f64(),
+            via_drill: c["via_drill"].as_f64(),
+            diff_pair_gap: c["diff_pair_gap"].as_f64(),
+            diff_pair_width: c["diff_pair_width"].as_f64(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -40,6 +67,8 @@ pub struct Rules {
     pub classes: Vec<Class>,
     /// The class every net not named belongs to.
     pub default_clearance: f64,
+    /// What the default class says its copper is drawn at (issue #1513).
+    pub default_sizes: ClassSizes,
     /// The widest via a fabricator fills and caps, so that a via in a pad is not a problem
     /// (see [`Extras`](super::Extras)).
     pub severities: BTreeMap<String, Severity>,
@@ -65,6 +94,7 @@ impl Default for Rules {
             mask_web: 0.0,
             classes: Vec::new(),
             default_clearance: 0.2,
+            default_sizes: ClassSizes::default(),
             severities: BTreeMap::new(),
         }
     }
@@ -114,6 +144,7 @@ impl Rules {
                     if let Some(c) = clearance {
                         r.default_clearance = c;
                     }
+                    r.default_sizes = ClassSizes::of(c);
                     continue;
                 }
                 r.classes.push(Class {
@@ -121,6 +152,7 @@ impl Rules {
                     clearance,
                     priority: c["priority"].as_i64().unwrap_or(i64::MAX),
                     patterns: Vec::new(),
+                    sizes: ClassSizes::of(c),
                 });
             }
         }
@@ -141,16 +173,49 @@ impl Rules {
     /// The clearance a net keeps: its class's (the class with the lowest priority number
     /// that names it), or the default class's, and never less than the board's least.
     pub fn net_clearance(&self, net: Option<&str>) -> f64 {
-        let class = net.and_then(|n| {
+        self.class_clearance(self.class_of(net))
+    }
+
+    /// The class a net is in: the class with the lowest priority number whose pattern names it,
+    /// or `None` for the default class.
+    pub fn class_of(&self, net: Option<&str>) -> Option<&Class> {
+        net.and_then(|n| {
             self.classes
                 .iter()
                 .filter(|c| c.patterns.iter().any(|p| matches_pattern(p, n)))
                 .min_by_key(|c| c.priority)
-        });
+        })
+    }
+
+    /// The clearance the nets of a class keep (`None`, the default class): its own, or the
+    /// default class's, and never less than the board's least.
+    pub fn class_clearance(&self, class: Option<&Class>) -> f64 {
         let own = class
             .and_then(|c| c.clearance)
             .unwrap_or(self.default_clearance);
         own.max(self.clearance)
+    }
+
+    /// The clearance between copper of two nets: the larger of their classes'. A pad's own
+    /// clearance, when it is larger, counts on top of it.
+    pub fn pair_clearance(&self, a: Option<&str>, b: Option<&str>) -> f64 {
+        self.net_clearance(a).max(self.net_clearance(b))
+    }
+
+    /// What a net's class says its copper is drawn at, the default class's where its own
+    /// says nothing.
+    pub fn net_sizes(&self, net: Option<&str>) -> ClassSizes {
+        let d = self.default_sizes;
+        match self.class_of(net) {
+            None => d,
+            Some(c) => ClassSizes {
+                track_width: c.sizes.track_width.or(d.track_width),
+                via_diameter: c.sizes.via_diameter.or(d.via_diameter),
+                via_drill: c.sizes.via_drill.or(d.via_drill),
+                diff_pair_gap: c.sizes.diff_pair_gap.or(d.diff_pair_gap),
+                diff_pair_width: c.sizes.diff_pair_width.or(d.diff_pair_width),
+            },
+        }
     }
 
     /// How a rule that is broken is reported: the project file's choice, else KiCad's.

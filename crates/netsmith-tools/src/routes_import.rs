@@ -455,6 +455,7 @@ pub fn import(
                 // The reference text above the part, whatever side the placer gave it before:
                 // the import's places do not depend on an earlier arrangement.
                 text: Default::default(),
+                designator: None,
                 lock: true,
                 source: Some(netsmith_pcb::IMPORT_SOURCE.to_string()),
             },

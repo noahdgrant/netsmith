@@ -59,10 +59,9 @@ pub(crate) fn judge_resolved(built: &Built, sourcing: &[Sourced]) -> Result<Reso
                 .map_or_else(String::new, |g| g.catalog.clone()),
             candidate: row.name.clone(),
             label: s.value.clone(),
-            lcsc: s.lcsc.clone(),
-            // The design's sourcing of a resolved generic names no manufacturer, and the check of
-            // the environment does not read it.
-            manufacturer: None,
+            sku: s.sku.clone(),
+            channel: s.channel,
+            manufacturer: s.manufacturer.clone(),
             mpn: s.mpn.clone(),
             library: s.library,
             // The check of the environment does not read the skus either.
@@ -210,7 +209,7 @@ C99001,ACME-R1,31.6kohm +/- 1%,62.5mW,0402,253.15K,343.15K,Basic,https://example
     fn the_solver_keeps_a_generic_part_when_the_only_row_is_outside_the_environment() {
         let b = built(&board(WARM));
         let r1 = b.sourcing.iter().find(|s| s.kind == "Resistor").unwrap();
-        assert!(r1.generic.is_some() && r1.lcsc.is_none(), "{r1:?}");
+        assert!(r1.generic.is_some() && r1.sku.is_none(), "{r1:?}");
         let tally = b
             .environment
             .as_ref()

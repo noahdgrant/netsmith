@@ -1,4 +1,4 @@
-// The bill of materials, grouped as the fab BOM is, with the LCSC number and library of each part. The standard catalogs ship no price or stock
+// The bill of materials, grouped as the fab BOM is, with the supply channel, the sku (the LCSC number) and library of each part. The standard catalogs ship no price or stock
 // and the fixture has no [supply] table, so the price and stock are unknown (ADR 0047), not 0 and not "no date".
 export const fixture = 'two_boards';
 
@@ -10,6 +10,8 @@ export async function run({ page, shot, step, expect, section }) {
   const text = await page.locator('table.grid').innerText();
   expect(text.includes('C2286') && text.includes('C25076'), 'the LCSC numbers of the LED and the resistor');
   expect(text.includes('Basic'), 'the library of each part');
+  // The fixture names no [supply] channels, so a part JLCPCB's library lists is bought in jlcpcb-assembly (ADR 0143).
+  expect(text.includes('jlcpcb-assembly'), 'the supply channel of each part');
   // The header is soldered by hand and has an LCSC number (the `header` catalog), so it is listed
   // under its own heading (the page shows it in capitals) with the number.
   expect(/soldered by hand/i.test(text) && text.includes('C42431841'), 'the header listed as soldered by hand');

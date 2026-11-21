@@ -13,6 +13,28 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+### A board's `.corner` is its corner style, a `TrackCorner` (issue #1508)
+
+A board's member `.corner` says how its tracks turn: `TrackCorner::Rounded` (the default) or `TrackCorner::Mitered` (no arcs). A board that has a member `.corner` of another type, for its own use, now stops with "`corner` is not a `TrackCorner`". Rename the board's own member:
+
+| Old spelling | New spelling |
+|---|---|
+| `.corner: Length` (a board's own member) | `.corner_radius: Length`, or any other name |
+
+`netsmith routes route` also rounds the bends of the copper it lays now, as `fab` rounds the router's, unless the board is mitered or the run says `--corner mitered`.
+
+### The processes gain `.via_group_gap` (issue #1505)
+
+Every process of the standard library (`std::mfg::jlcpcb::TwoLayer`, `FourLayer` and the rest, and `std::mfg::acme`'s) declares `.via_group_gap: Length`, the most space between the copper of two vias of one net at which they stand side by side as one group: the group the check `via_current` counts, the router's groups and the quality report's via pairs. No process states it, and unstated it is the process's `.min_clearance`; a board states another with `.process.via_group_gap &= 0.15mm`, and `&= 0mm` keeps the old rule, that the copper of the vias of a group touch. A provider of yours (`interface MyProcess provides TwoLayer`) that declared a member `.via_group_gap` for itself now stops at the declaration:
+
+```text
+error: `via_group_gap` is declared by `TwoLayer`, which this interface provides; do not declare it again: narrow it with `.via_group_gap &= ...`, or state it with a relation
+```
+
+Delete the declaration and keep its narrowing (`.via_group_gap &= ...`). There is no ADR: the owner decided it on the issue.
+
+A board whose vias of a net that needs several stood near one another, not touching, may now pass `via_current` where it failed, and the quality report counts via pairs within the least clearance where it counted them within 0.5 mm, leaving out a group the net's current needs.
+
 ### `routes tidy` counts `in_pad_tracks`, not `nudges` (issues #1485, #1492)
 
 The pass of `routes tidy` that removes a track from the centre of a pad or a via to a point still inside it is named for what it removes, a track inside a pad (_Nudge_ is a word the glossary avoids). A tool that reads the JSON of `netsmith routes tidy --format json` finds the key and the value renamed, and the text says `track(s) inside a pad` where it said `nudge(s)`:
@@ -69,6 +91,14 @@ lcsc -> sku: the file records each part's `lcsc`, and the lock now records the s
 ```
 
 Run `netsmith project lock --update` once and commit the lock. Its diff is the `version` line, each `lcsc` line replaced by a `sku` line of the same number, and a `manufacturer` line for a part whose catalog row names one; the parts are the same.
+
+### The bill of materials names each line's supply channel, and its JSON says `sku` (issue #1461, ADR 0143)
+
+Nothing that built stops building, and `bom.csv` and `order-bom.csv` of a project that buys in `jlcpcb-assembly` and `lcsc-retail` alone are the same bytes. What changes:
+
+- The JSON of `netsmith board bom --format json` and `netsmith board show --format json` (the editor's `GET /api/bom` and `GET /api/board`), and of the editor's compare and swap, name a part's number `sku` in place of `lcsc`: it is the number of the supply channel that buys the part, and Digi-Key's or Mouser's for theirs. A line of the bill of materials also has `channel`, `manufacturer` and `consigned`, and the field the compare reports a changed number in is `sku`. A program that read `lcsc` reads `sku`. The text of `board bom` has the columns `CHANNEL` and `SKU` in place of `LCSC`, and `board show` writes `sku C25104` in place of `LCSC C25104`.
+- `fab-notes.txt` has a `buy from <channel> (...)` line for each channel that buys a consigned or hand-soldered part, and `order.txt` a section _parts you buy, by supply channel_; `order.txt` prices each line from the channel that buys it.
+- A part the board house is to assemble (`AssemblyMode::Fab`) that the project buys in `digikey-retail` or `mouser-retail` is refused by `fab` by name, as a part with no offer is: JLCPCB assembles by LCSC's numbers. Before, its Digi-Key number went into the `LCSC Part #` cell and the package failed. Mark it `AssemblyMode::Consigned` or `AssemblyMode::Hand`, or give it an LCSC offer.
 
 ## 0.7.0: changes since 0.6.0
 

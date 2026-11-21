@@ -84,9 +84,9 @@ use netsmith_editor::{
         PcbFitPart, PcbFitPlace, PcbKeepout, PcbLive, PcbLivePart, PcbLiveTrack, PcbLiveVia,
         PcbNetWidth, PcbNets, PcbPad, PcbPart, PcbPoint, PcbRegenerate, PcbRegenerated,
         PcbRegeneratedPart, PcbReport, PcbRequirement, PcbRerouted, PcbRouteNet, PcbRouteTrack,
-        PcbRouteVia, PcbScene, PcbShapeRef, PcbShove, PcbShoveAnswer, PcbShoved, PcbShovedTrack,
-        PcbShovedVia, PcbSide, PcbStitching, PcbSummary, PcbTotals, PcbViaOffer, PcbWalk,
-        PcbWalked, RequiredPlace, RoutesChange, Severity, StitchingVia,
+        PcbRouteVia, PcbRuleAreas, PcbScene, PcbShapeRef, PcbShove, PcbShoveAnswer, PcbShoved,
+        PcbShovedTrack, PcbShovedVia, PcbSide, PcbStitching, PcbSummary, PcbTotals, PcbViaOffer,
+        PcbWalk, PcbWalked, RequiredPlace, RoutesChange, RuleArea, Severity, StitchingVia,
     },
 };
 use netsmith_pcb::{
@@ -145,6 +145,8 @@ pub struct Entry {
     /// The rounds of rip-up the router gives a try that leaves connections (`rip_rounds` in
     /// `netsmith.toml`, issue #1088).
     rip_rounds: usize,
+    /// The weights of the router's quality objective (the project's keys, issue 1536).
+    weights: Option<netsmith_router::Weights>,
     /// Where the placer refused the layout file and the board is shown where it ended (issue
     /// #779): that it was refused and the lines and locks that cannot all hold. Empty for a
     /// board that was placed.
@@ -476,7 +478,10 @@ pub fn place_with(
         layout.as_ref(),
         libraries,
         data.constraints_warn,
-        data.place_seeds,
+        netsmith_fabricate::layout::Seeding {
+            routing_objective: data.routing_objective,
+            ..data.place_seeds.into()
+        },
     );
     // A layout file the placer cannot keep (two locks that overlap, locks that leave the free
     // parts no room) is shown where the placer ended, with its findings, and not refused: the
@@ -561,6 +566,7 @@ impl Entry {
         Ok(Entry {
             case_findings,
             rip_rounds: data.rip_rounds,
+            weights: data.weights,
             refusal: Vec::new(),
             place_options: netsmith_pcb::PlaceOptions::default(),
             refused: None,
@@ -683,6 +689,7 @@ impl Entry {
             progress: Some(forward),
             cancel: Some(&CANCEL),
             rip_rounds: self.rip_rounds,
+            weights: self.weights,
             ..RouteOptions::default()
         };
         let routing = match before {
@@ -1012,6 +1019,37 @@ impl Filling {
             routed: self.routed,
             vias,
         }
+    }
+
+    /// The rule areas of the board (issue 1543), as the entry has it placed (and routed): the
+    /// `rule_areas` of `netsmith board rules` less the keepouts of the physical file
+    /// ([`netsmith_fabricate::drc::rule_areas_to_draw`]), what `netsmith view pcb` hatches.
+    pub fn rule_areas(self, name: &str) -> Result<PcbRuleAreas, ApiError> {
+        let rings = |rings: &[Vec<[f64; 2]>]| -> Vec<Vec<PcbPoint>> {
+            rings
+                .iter()
+                .map(|r| r.iter().map(|&[x, y]| PcbPoint { x, y }).collect())
+                .collect()
+        };
+        let areas = netsmith_fabricate::drc::rule_areas_to_draw(&self.board)
+            .map_err(|e| ApiError::internal(format!("the rule areas of {name}: {e}")))?
+            .into_iter()
+            .map(|a| RuleArea {
+                outlines: rings(&a.outlines),
+                holes: rings(&a.holes),
+                name: a.name,
+                part: a.part,
+                layers: a.layers,
+                forbids: a.forbids.iter().map(|k| k.to_string()).collect(),
+            })
+            .collect();
+        Ok(PcbRuleAreas {
+            board: name.to_string(),
+            layout_stamp: self.layout_stamp,
+            routes_stamp: self.routes_stamp,
+            routed: self.routed,
+            areas,
+        })
     }
 
     /// The table of the board's nets and diff pairs (`netsmith board nets`, issue #1223), as the
@@ -2240,7 +2278,7 @@ fn turn_between(a: f64, b: f64) -> f64 {
 }
 
 /// The entry for a part as the page describes it. What the page does not show (which side
-/// the reference text is on) is kept from the entry it replaces.
+/// the reference text is on, and the designator's place) is kept from the entry it replaces.
 fn part_place(after: &PartPlacement, old: Option<&PartPlace>) -> Result<PartPlace, ApiError> {
     if ![after.x, after.y, after.rotation]
         .iter()
@@ -2259,6 +2297,7 @@ fn part_place(after: &PartPlacement, old: Option<&PartPlace>) -> Result<PartPlac
             LayoutFace::Top
         },
         text: old.map(|o| o.text).unwrap_or_default(),
+        designator: old.and_then(|o| o.designator),
         lock: after.locked,
         source: after.source.clone().or_else(|| Some("hand".to_string())),
     })

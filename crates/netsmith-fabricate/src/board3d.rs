@@ -562,10 +562,10 @@ pub fn report(
                 refdes: p.refdes.clone(),
                 path: p.path.clone(),
                 height: 0.0,
-                lcsc: s.lcsc.clone(),
+                lcsc: s.sku.clone(),
                 mpn: s.mpn.clone(),
             };
-            (s.lcsc.is_some() || s.mpn.is_some()).then(|| (p.path.as_str(), row.row()))
+            (s.sku.is_some() || s.mpn.is_some()).then(|| (p.path.as_str(), row.row()))
         })
         .collect();
     let catalog: BTreeMap<&str, String> = built

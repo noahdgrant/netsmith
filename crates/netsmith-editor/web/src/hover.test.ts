@@ -25,7 +25,7 @@ const part = (refdes: string, path: string, file = 'src/main.nsm', line = 5): Pa
   value: '1k',
   package: '0402',
   path,
-  lcsc: null,
+  sku: null,
   assembled: true,
   decl: at(file, line),
   scopes: [],

@@ -10,6 +10,8 @@ import type {
   PcbFindings,
   PcbFill,
   PcbStitching,
+  PcbRuleAreas,
+  PcbNets,
   PcbPours,
   PcbRegenerated,
   PcbRoutesEdited,
@@ -50,6 +52,12 @@ export const fillReport = signal<PcbFill | null>(null);
 /** The stitching vias the export will have that the routes file does not (`GET /api/pcb/stitching`, issue 1489), of the placement
  * it names: the 2D view draws them in a tone of their own (`pcb/stitchMarks.ts`). */
 export const stitching = signal<PcbStitching | null>(null);
+/** The rule areas of the board, the footprints' and the board's that are not keepouts of the physical file (`GET /api/pcb/rule-areas`,
+ * issue 1543), of the placement it names: the 2D view hatches them (`pcb/ruleAreas.ts`). */
+export const ruleAreas = signal<PcbRuleAreas | null>(null);
+/** The table of the board's nets (`GET /api/pcb/nets`, issue 1495), of the placement it names: the 2D view marks the copper a
+ * net's length does not count, the dead stubs and second ways (`pcb/uncountedMarks.ts`). */
+export const netsReport = signal<PcbNets | null>(null);
 /** Why the board could not be placed, if it could not. */
 export const sceneError = signal<string | null>(null);
 /** The parts picked, by their path in the design. */
@@ -223,7 +231,9 @@ function show(next: PcbScene) {
   // So may the pours and zones, which come after the board is drawn.
   void loadPours(next.board)
     .then(() => loadFill(next.board))
-    .then(() => loadStitching(next.board));
+    .then(() => loadStitching(next.board))
+    .then(() => loadRuleAreas(next.board))
+    .then(() => loadNets(next.board));
 }
 
 let poursAsked = 0;
@@ -269,6 +279,36 @@ export async function loadStitching(board: string): Promise<void> {
     if (mine === stitchingAsked) stitching.value = answer;
   } catch {
     if (mine === stitchingAsked) stitching.value = null;
+  }
+}
+
+let netsAsked = 0;
+
+/** Ask the server for the table of the nets of the board as it is placed now, after its stitching; the answer of the last ask is
+ * kept. A board that cannot be measured has none. */
+export async function loadNets(board: string): Promise<void> {
+  const mine = ++netsAsked;
+  if (netsReport.peek()?.board !== board) netsReport.value = null;
+  try {
+    const answer = await api.pcbNets(board);
+    if (mine === netsAsked) netsReport.value = answer;
+  } catch {
+    if (mine === netsAsked) netsReport.value = null;
+  }
+}
+
+let ruleAreasAsked = 0;
+
+/** Ask the server for the rule areas of the board as it is placed now, after its stitching (one at a time on the server's time); the
+ * answer of the last ask is kept. A board that cannot be placed has none. */
+export async function loadRuleAreas(board: string): Promise<void> {
+  const mine = ++ruleAreasAsked;
+  if (ruleAreas.peek()?.board !== board) ruleAreas.value = null;
+  try {
+    const answer = await api.pcbRuleAreas(board);
+    if (mine === ruleAreasAsked) ruleAreas.value = answer;
+  } catch {
+    if (mine === ruleAreasAsked) ruleAreas.value = null;
   }
 }
 

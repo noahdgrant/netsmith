@@ -20,6 +20,8 @@ pub struct NetsRow {
     /// The length of its connection: the copper that takes its pads to each other, not a
     /// second way of one connection or a dead stub (issue 1487).
     pub length: f64,
+    /// The length of all its tracks.
+    pub copper: f64,
     /// The shortest tree of straight lines between its pads' centres.
     pub straight: f64,
     /// `length` over `straight`; 0 for pads on one point.
@@ -29,6 +31,42 @@ pub struct NetsRow {
     pub layer_changes: u32,
     /// The copper layers its tracks are on, front to back, as the board file names them.
     pub layers: Vec<String>,
+    /// The copper `length` does not count, longest first (issue 1495): none for most nets.
+    #[serde(default)]
+    pub not_counted: Vec<NetsUncounted>,
+}
+
+/// What a run of copper not counted in a net's length is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum NetsUncountedKind {
+    /// Copper that leads to no pad: a dead stub.
+    Stub,
+    /// Copper that joins pads the connection already joins by a shorter way.
+    SecondWay,
+}
+
+/// One straight piece of a run not counted, in mm, in the board file's frame.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct NetsPiece {
+    pub from: (f64, f64),
+    pub to: (f64, f64),
+    pub width: f64,
+}
+
+/// A run of a net's copper its length does not count (`netsmith_fab::NotCounted`): joined
+/// pieces of one kind on one layer, in mm.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct NetsUncounted {
+    pub kind: NetsUncountedKind,
+    /// The copper layer, as the board file names it (`F.Cu`).
+    pub layer: String,
+    pub length: f64,
+    /// A point at one end of it.
+    pub at: (f64, f64),
+    pub pieces: Vec<NetsPiece>,
 }
 
 /// One diff pair's numbers, in mm.

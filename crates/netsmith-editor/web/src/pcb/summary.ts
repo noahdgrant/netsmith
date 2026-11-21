@@ -2,7 +2,7 @@
 // reads the answer. The numbers are the server's (`netsmith layout summary` has the same); this
 // file only turns them into the words and boxes the tab shows.
 
-import type { CopperLayer, CopperPour, CopperZone, FillArea, FillCounts, FillPad, FillStarved, NetsGroup, NetsPair, NetsRow, PcbBox, PcbCopper, PcbScene, SummaryBox, SummaryGuideline, SummaryPads } from '../api';
+import type { CopperLayer, CopperPour, CopperZone, FillArea, FillCounts, FillPad, FillStarved, NetsGroup, NetsPair, NetsRow, NetsUncounted, PcbBox, PcbCopper, PcbScene, SummaryBox, SummaryGuideline, SummaryPads } from '../api';
 
 /** A number to the hundredth, without trailing zeros: `3.5`, `12`. */
 export function mm(v: number): string {
@@ -156,4 +156,23 @@ export function netPairLine(p: NetsPair): string {
 export function netGroupLine(g: NetsGroup): string {
   const nets = g.nets.map((n) => `${n.net} ${mm(n.length)}`).join(', ');
   return `${g.path}: ${nets} mm, spread ${mm(g.spread)} mm (${g.over ? 'over' : 'within'} ${mm(g.tolerance)} mm)`;
+}
+
+/** What a net's length leaves out (issue 1495), as `board nets` says it: `P: 10 mm of its 30 mm of copper not counted in its length`; empty for a net with nothing left out. */
+export function netUncountedLine(n: NetsRow): string {
+  if (!n.notCounted?.length) return '';
+  return `${n.net}: ${mm(n.copper - n.length)} mm of its ${mm(n.copper)} mm of copper not counted in its length`;
+}
+
+/** One run a net's length leaves out: `a second way of 10 mm on F.Cu at (12, 10)`. */
+export function uncountedRunLine(r: NetsUncounted): string {
+  return `${r.kind === 'stub' ? 'a dead stub' : 'a second way'} of ${mm(r.length)} mm on ${r.layer} at (${mm(r.at[0])}, ${mm(r.at[1])})`;
+}
+
+/** The box round a run's pieces, with a millimetre round it, to zoom to: the board file's frame is the sheet's. */
+export function uncountedBox(r: NetsUncounted): PcbBox {
+  const xs = r.pieces.flatMap((p) => [p.from[0], p.to[0]]).concat(r.at[0]);
+  const ys = r.pieces.flatMap((p) => [p.from[1], p.to[1]]).concat(r.at[1]);
+  const [x0, y0] = [Math.min(...xs) - 1, Math.min(...ys) - 1];
+  return { x: x0, y: y0, width: Math.max(...xs) + 1 - x0, height: Math.max(...ys) + 1 - y0 };
 }

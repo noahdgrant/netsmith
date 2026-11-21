@@ -106,7 +106,7 @@ fn the_note_does_not_change_the_pick() {
         b.sourcing
             .iter()
             .filter(|s| s.kind == "Resistor")
-            .map(|s| (s.refdes.clone(), s.lcsc.clone(), s.mpn.clone()))
+            .map(|s| (s.refdes.clone(), s.sku.clone(), s.mpn.clone()))
             .collect::<Vec<_>>()
     };
     let zero = picked("0");

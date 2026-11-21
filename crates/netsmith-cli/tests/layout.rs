@@ -249,6 +249,78 @@ fn set_refuses_what_is_wrong_and_leaves_the_file_as_it_was() {
 }
 
 #[test]
+fn set_places_the_designator_and_auto_takes_the_place_away_again() {
+    // Issue #1506: the designator's text at an offset from the part, turned.
+    let dir = project("layout-set-designator", Some(HAND));
+    let run = netsmith(&dir, &["set", "led", "--designator", "-2.5,0,90"]);
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    assert!(
+        stdout(&run).contains("designator at -2.5, 0 mm turn 90"),
+        "{}",
+        stdout(&run)
+    );
+    let file = layout_file(&dir);
+    assert!(file.contains("[Widget.parts.led.designator]"), "{file}");
+    assert!(file.contains("at = [-2.5, 0.0]") && file.contains("turn = 90.0"), "{file}");
+    // A turn of the part keeps the designator's place.
+    let run = netsmith(&dir, &["set", "led", "--turn", "180"]);
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    let run = netsmith(&dir, &["show", "led", "--format", "json"]);
+    let json: serde_json::Value = serde_json::from_str(&stdout(&run)).unwrap();
+    let entry = &json["parts"][0]["entry"];
+    assert_eq!(entry["turn"], 180.0);
+    assert_eq!(
+        entry["designator"],
+        serde_json::json!({"at": [-2.5, 0.0], "turn": 90.0})
+    );
+    // Without a turn the text is upright, and the file leaves the turn out.
+    let run = netsmith(&dir, &["set", "led", "--designator", "0,-2"]);
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    let file = layout_file(&dir);
+    assert!(file.contains("at = [0.0, -2.0]") && !file.contains("turn = 90.0"), "{file}");
+    // `auto` removes it: the text is placed by itself again.
+    let run = netsmith(&dir, &["set", "led", "--designator", "auto"]);
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    assert!(!layout_file(&dir).contains("designator"), "{}", layout_file(&dir));
+    // A turn of the text that is not from 0 up to 360, or a value that is not one, is a usage
+    // mistake, and the file is as it was.
+    let before = layout_file(&dir);
+    for wrong in ["1,2,360", "1", "1,2,3,4", "left"] {
+        let run = netsmith(&dir, &["set", "led", "--designator", wrong]);
+        assert_eq!(code(&run), 2, "{wrong}: {}", stderr(&run));
+    }
+    assert_eq!(layout_file(&dir), before);
+}
+
+#[test]
+fn check_says_a_designator_turn_that_is_not_one() {
+    let file = "\
+version = 1
+
+[Widget.parts.led]
+at = [30.0, 12.0]
+
+[Widget.parts.led.designator]
+at = [0.0, -2.0]
+turn = 400
+";
+    let dir = project("layout-check-designator", Some(file));
+    let run = netsmith(&dir, &["check", "--format", "json"]);
+    assert_eq!(code(&run), 1, "{}{}", stdout(&run), stderr(&run));
+    let json: serde_json::Value = serde_json::from_str(&stdout(&run)).unwrap();
+    let found = json["findings"].as_array().unwrap();
+    assert!(
+        found.iter().any(|f| f["kind"] == "bad_designator"
+            && f["line"] == 3
+            && f["message"]
+                .as_str()
+                .unwrap()
+                .contains("the designator's turn: a turn is from 0 up to 360")),
+        "{found:?}"
+    );
+}
+
+#[test]
 fn set_says_when_a_locked_entry_breaks_a_requirement() {
     let dir = project("layout-set-warns", None);
     let run = netsmith(&dir, &["set", "power_in", "--at", "30,12", "--lock"]);

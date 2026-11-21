@@ -1,7 +1,8 @@
 //! The `track drop` guideline (issue #652): a power net whose routed tracks drop more than
 //! [`DEFAULT_DROP_BUDGET`] of its rail's voltage at the net's worst-case current. `fab` runs it
-//! once the board is routed, since the drop depends on the length the router draws; how the
-//! drop is measured is in `netsmith_pcb`'s `track_drop.rs`.
+//! once the board is routed, since the drop depends on the length the router draws, and `board
+//! nets` and `board drc` measure the copper a board has with the same [`drops`] (issue #1540);
+//! how the drop is measured is in `netsmith_pcb`'s `track_drop.rs`.
 //!
 //! **A guideline, as the track width against current is (ADR 0036, ADR 0030).** It warns: a
 //! `warning:` line from `fab` and a line in `fab-notes.txt`. With `guidelines = "error"` or
@@ -15,16 +16,138 @@ use netsmith_pcb::{Board, DEFAULT_DROP_BUDGET, TrackDrop};
 /// The rule's name, as a guideline's message names it: `Board: track drop guideline: ...`.
 pub const RULE: &str = "track drop";
 
+/// The drop of one power net's routed tracks against its budget (issue #1540): what `board
+/// nets` lists and `board drc` notes, and what `fab`'s finding says.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct NetDrop {
+    pub net: String,
+    /// The rail's voltage, in volts.
+    pub volts: f64,
+    /// What the path drops, in volts.
+    pub drop: f64,
+    /// What the budget allows, in volts: [`DEFAULT_DROP_BUDGET`] of `volts`.
+    pub allowed: f64,
+    /// `drop` over `allowed`: more than 1 is over the budget.
+    pub share: f64,
+    /// Whether the drop is over the budget, the guideline's finding.
+    pub over: bool,
+    /// The most current a run of the path carries, in amperes.
+    pub current: f64,
+    /// Whether every run of the path carries that current, the net's whole current.
+    pub whole_current: bool,
+    /// The two pads of the path, as `J1.1`: the source and the load.
+    pub from: String,
+    pub to: String,
+    /// The length of track on the path, in mm, its narrowest track, and the copper's thickness.
+    pub length: f64,
+    pub narrowest: f64,
+    pub thickness: f64,
+    /// The least `.min_track` that brings the path within the budget, in mm, or `None` when no
+    /// width does. Left out of the JSON for a net within it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width_for: Option<f64>,
+    #[serde(skip)]
+    measured: TrackDrop,
+}
+
+/// The drop of each net of the routed `board` whose rail has a voltage in `voltages` (by net
+/// name; `netsmith_design::guidelines::net_voltages`), the largest share of its budget first:
+/// the one measure `fab`, `board nets` and `board drc` read (issue #1540).
+pub fn drops(board: &Board, voltages: &[(String, f64)]) -> Vec<NetDrop> {
+    let mut drops: Vec<NetDrop> = board
+        .track_drops()
+        .into_iter()
+        .filter_map(|d| {
+            let &(_, volts) = voltages.iter().find(|(n, _)| *n == d.net)?;
+            net_drop(d, volts, DEFAULT_DROP_BUDGET)
+        })
+        .collect();
+    drops.sort_by(|a, b| b.share.total_cmp(&a.share).then(a.net.cmp(&b.net)));
+    drops
+}
+
+/// [`drops`] of the routed `board` of a design whose checked model is `model`, its rails'
+/// voltages read from it: what `fab`, `board nets` and `board drc` call.
+pub fn drops_of(board: &Board, model: &netsmith_check::Model) -> Vec<NetDrop> {
+    drops(board, &netsmith_design::guidelines::net_voltages(model))
+}
+
+/// The drop of `d` against `budget` of `volts`, or `None` for a rail of no voltage.
+pub fn net_drop(d: TrackDrop, volts: f64, budget: f64) -> Option<NetDrop> {
+    if volts <= 0.0 {
+        return None;
+    }
+    let allowed = volts * budget;
+    let drop = d.drop();
+    let over = drop > allowed * (1.0 + 1e-9);
+    Some(NetDrop {
+        net: d.net.clone(),
+        volts,
+        drop,
+        allowed,
+        share: drop / allowed,
+        over,
+        current: d.current,
+        whole_current: d.whole_current(),
+        from: d.from.to_string(),
+        to: d.to.to_string(),
+        length: d.length,
+        narrowest: d.narrowest,
+        thickness: d.thickness,
+        width_for: if over { d.width_for(allowed) } else { None },
+        measured: d,
+    })
+}
+
+impl NetDrop {
+    /// The line of `board nets`' `track drop` section: the drop in mV, the share of the budget
+    /// and the path.
+    pub fn line(&self) -> String {
+        format!(
+            "{}: {} mV of {} mV ({} of the budget){}: {} to {}, {} mm of track, {} mm at its narrowest, up to {}",
+            self.net,
+            sig(self.drop * 1e3),
+            sig(self.allowed * 1e3),
+            percent(self.share),
+            if self.over { ", over" } else { "" },
+            self.from,
+            self.to,
+            number(self.length),
+            number(self.narrowest),
+            amps(self.current),
+        )
+    }
+
+    /// The guideline's message when the drop is over the budget, as `fab` reports it.
+    pub fn finding(&self) -> Option<String> {
+        self.over
+            .then(|| finding(&self.measured, self.volts, self.allowed / self.volts))
+            .flatten()
+    }
+}
+
+/// The text of `board nets`' `track drop` section (issue #1540): a line for each net, worst
+/// first, or nothing when no net is measured.
+pub fn text(drops: &[NetDrop]) -> String {
+    if drops.is_empty() {
+        return String::new();
+    }
+    let mut out = format!(
+        "track drop (the budget is {} of the rail's voltage):\n",
+        percent(DEFAULT_DROP_BUDGET)
+    );
+    for d in drops {
+        out.push_str(&format!("  {}\n", d.line()));
+    }
+    out
+}
+
 /// A finding for each net of the routed `board` whose tracks drop more than the budget of its
 /// rail's voltage, from `voltages` (by net name; `netsmith_design::guidelines::net_voltages`).
 pub fn findings(board: &Board, voltages: &[(String, f64)]) -> Vec<String> {
-    board
-        .track_drops()
+    drops(board, voltages)
         .iter()
-        .filter_map(|d| {
-            let &(_, volts) = voltages.iter().find(|(n, _)| *n == d.net)?;
-            finding(d, volts, DEFAULT_DROP_BUDGET)
-        })
+        .filter_map(NetDrop::finding)
         .collect()
 }
 
@@ -41,8 +164,17 @@ pub fn finding(d: &TrackDrop, volts: f64, budget: f64) -> Option<String> {
         ),
         None => "no width brings that path within it: give the net an outer pour or a plane, or put the parts nearer".to_string(),
     };
+    let current = if d.whole_current() {
+        "with the whole current between the two pads with the most resistance between them"
+            .to_string()
+    } else {
+        format!(
+            "each run at what the pins past it draw, up to {}",
+            amps(d.current)
+        )
+    };
     Some(format!(
-        "net `{}` drops up to {} V on its tracks at {} ({} of its {} V; the budget is {}): from {} to {} through {} mm of track, {} mm at its narrowest, in {} mm copper, with the whole current between the two pads with the most resistance between them; {fix}",
+        "net `{}` drops up to {} V on its tracks at {} ({} of its {} V; the budget is {}): from {} to {} through {} mm of track, {} mm at its narrowest, in {} mm copper, {current}; {fix}",
         d.net,
         sig(d.drop()),
         amps(d.current),
@@ -125,7 +257,11 @@ mod tests {
             },
             length,
             narrowest: width,
-            runs: vec![(length, width)],
+            runs: vec![netsmith_pcb::DropRun {
+                length,
+                width,
+                current,
+            }],
             thickness,
         }
     }
