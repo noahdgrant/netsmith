@@ -13,6 +13,18 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+### `routes tidy` counts `in_pad_tracks`, not `nudges` (issues #1485, #1492)
+
+The pass of `routes tidy` that removes a track from the centre of a pad or a via to a point still inside it is named for what it removes, a track inside a pad (_Nudge_ is a word the glossary avoids). A tool that reads the JSON of `netsmith routes tidy --format json` finds the key and the value renamed, and the text says `track(s) inside a pad` where it said `nudge(s)`:
+
+| Where | Old spelling | New spelling |
+|---|---|---|
+| `counts` | `"nudges": 1` | `"in_pad_tracks": 1` |
+| a change's `kind` (`changes`, `refused`) | `"kind": "nudge"` | `"kind": "in_pad"` |
+| the text's count | `1 nudge(s)` | `1 track(s) inside a pad` |
+
+The pass was added after the last release (issue #1485), so only a tool that reads a development build has the old spelling.
+
 ### A catalog row holds no supplier's number, and a hand pick is by `.mpn` (issues #1458, #1459, ADR 0143)
 
 A part is its manufacturer's number now, and what a supplier calls it is an **offer**, a row of `offers/<supplier>.csv` beside the catalogs (`offers/lcsc.csv` for LCSC's numbers; the manifest's `offer_dirs`, default `["offers"]`). JLCPCB's parts library assembles by LCSC's numbers, so its sorting of a part (Basic, Extended or Preferred) is the `class` of the part's `lcsc` offer, empty when its library does not list the part: the `jlcpcb-assembly` supply channel buys the `lcsc` offers that have a class, and `lcsc-retail` any of them. The `lcsc` and `library` columns of a catalog file and the `.lcsc` hand pick are gone:

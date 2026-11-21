@@ -2,10 +2,10 @@
 //! design rules check finds nothing (issue #1485): a routed board passes the check with all of
 //! them and still carries copper a person removes by hand.
 //!
-//! - **nudges**: a straight track from the centre of a pad or a via of its net to a point still
-//!   inside that pad or via is removed: the copper there is the pad's or the via's already. A
-//!   pad is held to the circle of its shorter side round its centre, which lies inside every
-//!   shape of pad however it is turned; a via to its round copper;
+//! - **tracks inside a pad**: a straight track from the centre of a pad or a via of its net to
+//!   a point still inside that pad or via is removed: the copper there is the pad's or the
+//!   via's already. A pad is held to the circle of its shorter side round its centre, which
+//!   lies inside every shape of pad however it is turned; a via to its round copper;
 //! - **duplicate ways**: the copper of a net is taken as ways, each a run of tracks, and the
 //!   vias it changes layer by, between two stops: a pad, or a place where other than two tracks
 //!   and vias meet. Two ways between the same two stops join what one of them joins, and no pad
@@ -154,8 +154,8 @@ impl Work<'_> {
         }
     }
 
-    /// Each nudge: a track from the centre of a pad or a via of its net to a point still in it.
-    pub(super) fn nudges(&self) -> Vec<Candidate> {
+    /// Each track inside a pad: a track from the centre of a pad or a via of its net to a point still in it.
+    pub(super) fn in_pad_tracks(&self) -> Vec<Candidate> {
         let mut out = Vec::new();
         for i in 0..self.copper.wires.len() {
             if !self.editable(i) {
@@ -186,7 +186,7 @@ impl Work<'_> {
             }
             if let Some(said) = said {
                 out.push(self.removal(
-                    Kind::Nudge,
+                    Kind::InPad,
                     i,
                     format!("{said} ({:.3} mm)", length(t)),
                     Vec::new(),
@@ -197,10 +197,13 @@ impl Work<'_> {
     }
 
     /// Each track whose copper lies inside another's, and each pair of collinear tracks of one
-    /// width that overlap along their line.
+    /// width that overlap along their line. A track is compared with the tracks of its net and
+    /// layer that the board's grid lists near it, so the work grows with the neighbourhood and
+    /// not with the length of the net (issue 1492).
     pub(super) fn overlaps(&self) -> Vec<Candidate> {
+        let wires = &self.copper.wires;
         let mut by: BTreeMap<(String, &'static str), Vec<usize>> = BTreeMap::new();
-        for (i, w) in self.copper.wires.iter().enumerate() {
+        for (i, w) in wires.iter().enumerate() {
             if w.alive && w.track.mid.is_none() {
                 by.entry((w.track.net.clone(), w.track.layer.word()))
                     .or_default()
@@ -210,12 +213,33 @@ impl Work<'_> {
         let mut out = Vec::new();
         let mut gone = std::collections::BTreeSet::new();
         for list in by.values() {
-            for (n, &a) in list.iter().enumerate() {
-                for &b in &list[n + 1..] {
+            for &a in list {
+                let ta = &wires[a].track;
+                let hood = super::near::track_box(ta).expanded(NEAR);
+                // (The grid lists a track by the box it was drawn in, to the micrometre.)
+                let mut others: Vec<usize> = self
+                    .grid
+                    .near(&hood)
+                    .into_iter()
+                    .filter_map(|item| match item {
+                        super::near::Item::Wire(b) if b > a && b < wires.len() => Some(b),
+                        _ => None,
+                    })
+                    .filter(|&b| {
+                        let tb = &wires[b].track;
+                        wires[b].alive
+                            && tb.mid.is_none()
+                            && tb.net == ta.net
+                            && tb.layer == ta.layer
+                    })
+                    .collect();
+                others.sort_unstable();
+                for b in others {
                     if gone.contains(&a) || gone.contains(&b) {
                         continue;
                     }
-                    let (ta, tb) = (&self.copper.wires[a].track, &self.copper.wires[b].track);
+                    self.compared.set(self.compared.get() + 1);
+                    let (ta, tb) = (&wires[a].track, &wires[b].track);
                     if !super::near::meets(&super::near::track_box(ta), &super::near::track_box(tb))
                     {
                         continue;
@@ -451,6 +475,114 @@ impl Work<'_> {
             }
         }
         out
+    }
+
+    /// The copper no pad needs that ends in nothing (issue #1481): a track with an end that
+    /// touches no pad of its net on its layer, no via of its net and no other copper of its net
+    /// on its layer, and a via whose copper meets its net (its tracks and a pad it stands in) on
+    /// fewer than two layers, each taken away and the rest looked at again, so that a dead
+    /// branch of several tracks is all of it. Each is one change, of [`Kind::Stub`] or
+    /// [`Kind::Via`]. Only the quality report counts by it: `routes tidy` removes a stub and a
+    /// dangling via from the check's findings, when the net is complete.
+    pub(super) fn dead_copper(&self) -> Vec<Candidate> {
+        let wires = &self.copper.wires;
+        let holes = &self.copper.holes;
+        let mut wire_alive: Vec<bool> = wires.iter().map(|w| w.alive).collect();
+        let mut hole_alive: Vec<bool> = holes.iter().map(|h| h.alive).collect();
+        let mut out = Vec::new();
+        loop {
+            let mut dead_wires = Vec::new();
+            for (i, w) in wires.iter().enumerate() {
+                if !wire_alive[i] {
+                    continue;
+                }
+                let t = &w.track;
+                let joined = |p: Pt| {
+                    self.spots_of(&t.net)
+                        .iter()
+                        .any(|s| s.on(t.layer) && super::near::holds(&s.bounds, p))
+                        || holes.iter().enumerate().any(|(k, h)| {
+                            hole_alive[k]
+                                && h.via.net == t.net
+                                && h.via.at.distance(p) <= h.via.diameter / 2.0 + NEAR
+                        })
+                        || wires.iter().enumerate().any(|(j, o)| {
+                            j != i
+                                && wire_alive[j]
+                                && o.track.net == t.net
+                                && o.track.layer == t.layer
+                                && segment_distance(p, o.track.from, o.track.to)
+                                    <= o.track.width / 2.0 + NEAR
+                        })
+                };
+                if !joined(t.from) || !joined(t.to) {
+                    dead_wires.push(i);
+                }
+            }
+            let mut dead_holes = Vec::new();
+            for (k, h) in holes.iter().enumerate() {
+                if !hole_alive[k] {
+                    continue;
+                }
+                let v = &h.via;
+                let mut layers: Vec<&'static str> = Vec::new();
+                for (i, w) in wires.iter().enumerate() {
+                    let t = &w.track;
+                    if wire_alive[i]
+                        && t.net == v.net
+                        && segment_distance(v.at, t.from, t.to) <= (v.diameter + t.width) / 2.0
+                        && !layers.contains(&t.layer.word())
+                    {
+                        layers.push(t.layer.word());
+                    }
+                }
+                for s in self.spots_of(&v.net) {
+                    if super::near::holds(&s.bounds, v.at) {
+                        for (on, word) in
+                            [(s.front, CopperLayer::Front), (s.back, CopperLayer::Back)]
+                        {
+                            if on && !layers.contains(&word.word()) {
+                                layers.push(word.word());
+                            }
+                        }
+                    }
+                }
+                if layers.len() < 2 {
+                    dead_holes.push(k);
+                }
+            }
+            if dead_wires.is_empty() && dead_holes.is_empty() {
+                return out;
+            }
+            for i in dead_wires {
+                wire_alive[i] = false;
+                let t = &wires[i].track;
+                out.push(self.removal(
+                    Kind::Stub,
+                    i,
+                    format!("a track of {:.3} mm that ends in nothing", length(t)),
+                    Vec::new(),
+                ));
+            }
+            for k in dead_holes {
+                hole_alive[k] = false;
+                let v = &holes[k].via;
+                out.push(Candidate {
+                    key: self.key(Kind::Via, &v.net, None, v.at),
+                    change: self.change(
+                        Kind::Via,
+                        &v.net,
+                        None,
+                        v.at,
+                        holes[k].owner,
+                        "a via joined to its net on fewer than two layers".to_string(),
+                    ),
+                    remove_wires: Vec::new(),
+                    remove_holes: vec![k],
+                    add: Vec::new(),
+                });
+            }
+        }
     }
 
     /// Each run of tiny tracks, in the form after those `attempt` says were refused.
@@ -691,7 +823,7 @@ mod tests {
     }
 
     #[test]
-    fn a_nudge_inside_a_pad_is_removed() {
+    fn a_track_inside_a_pad_is_removed() {
         // From R1's pad 2's centre a step to (9.66, 4.35), still in the pad, then out of it.
         let (counts, tracks, said) = tidy_anode(path(
             TOP,
@@ -708,7 +840,7 @@ mod tests {
         assert_eq!(
             only(counts),
             Counts {
-                nudges: 1,
+                in_pad_tracks: 1,
                 ..Counts::default()
             },
             "{said:?}"
@@ -812,5 +944,109 @@ mod tests {
                 .any(|t| same(t.from, [12.8, 3.0]) && same(t.to, [13.3875, 3.5875])),
             "{tracks:#?}"
         );
+    }
+
+    /// The quality of the anode (issue #1481) of the board with `routes` on it.
+    fn quality(routes: &Routes) -> crate::net_quality::Counts {
+        let board = crate::routes::with_routes(&led(), routes).unwrap().0;
+        let q = crate::net_quality::Quality::of_board(&board);
+        q.nets
+            .iter()
+            .find(|n| n.net == ANODE)
+            .map(|n| n.counts)
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn the_quality_report_counts_what_tidy_removes_and_nothing_once_tidied() {
+        use crate::net_quality::Counts as Q;
+        let duplicate = {
+            let mut along = path(TOP, &[[10.16, 3.0], [12.8875, 3.0]]);
+            along.extend(path(
+                TOP,
+                &[[10.16, 3.0], [10.66, 2.5], [12.3875, 2.5], [12.8875, 3.0]],
+            ));
+            anode(&[[9.61, 4.4], [9.61, 3.55]], along)
+        };
+        let nudge = path(
+            TOP,
+            &[
+                [9.61, 4.4],
+                [9.66, 4.35],
+                [9.66, 3.5],
+                [10.16, 3.0],
+                [12.8875, 3.0],
+                [13.3875, 3.5],
+                [13.3875, 4.2],
+            ],
+        );
+        // A dead branch of two tracks off the middle of the way along y = 3.
+        let mut dead = anode(
+            &[[9.61, 4.4], [9.61, 3.55]],
+            path(TOP, &[[10.16, 3.0], [11.5, 3.0], [12.8875, 3.0]]),
+        );
+        dead.extend(path(TOP, &[[11.5, 3.0], [11.5, 2.0], [12.0, 1.5]]));
+        // The way along y = 3 crossed by a loop of its own net, down and back up through it.
+        let mut crossing = anode(
+            &[[9.61, 4.4], [9.61, 3.55]],
+            path(TOP, &[[10.16, 3.0], [11.0, 3.0], [12.8875, 3.0]]),
+        );
+        crossing.extend(path(
+            TOP,
+            &[
+                [11.0, 3.0],
+                [11.5, 2.5],
+                [12.0, 2.5],
+                [12.0, 3.5],
+                [11.0, 3.0],
+            ],
+        ));
+        for (name, tracks, want) in [
+            (
+                "duplicate",
+                duplicate,
+                Q {
+                    duplicates: 1,
+                    ..Q::default()
+                },
+            ),
+            (
+                "nudge",
+                nudge,
+                Q {
+                    unneeded: 1,
+                    ..Q::default()
+                },
+            ),
+            (
+                "dead",
+                dead,
+                Q {
+                    unneeded: 2,
+                    ..Q::default()
+                },
+            ),
+            (
+                "crossing",
+                crossing,
+                Q {
+                    crossings: 1,
+                    ..Q::default()
+                },
+            ),
+        ] {
+            let board = led();
+            let routes = routes_of(&board, vec![(ANODE, false, tracks, Vec::new())]);
+            assert_eq!(quality(&routes), want, "{name}");
+            if name == "duplicate" || name == "nudge" {
+                let tidied = tidy(&board, &routes, None).unwrap();
+                assert_eq!(
+                    quality(&tidied.routes),
+                    Q::default(),
+                    "{name}: {}",
+                    tidied.text()
+                );
+            }
+        }
     }
 }

@@ -9,10 +9,16 @@
 //! it, and the table judges nothing; and of `layout summary`, which reads the placement with no
 //! copper. It reads the copper as `view pcb` draws it and takes its `--route`, as `board fill`
 //! reads the pours.
+//!
+//! Its `quality` section (issue #1481) counts, for each net, the defects of routed copper that
+//! the design rules check finds nothing of (`netsmith_fabricate::net_quality`), the worst nets
+//! first; `--gate` makes the exit code 1 when a count is over its limit (`--max-<kind>`, 0 each
+//! by default).
 
 use std::process::ExitCode;
 
 use clap::Args as ClapArgs;
+use netsmith_fabricate::net_quality::{Counts, Quality};
 use netsmith_fabricate::pcb_picture;
 
 use super::common;
@@ -20,7 +26,7 @@ use super::common;
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`board nets` measures a board's routed copper and prints a table of it, so that a person or an agent reads each line's length, vias and skew with no KiCad and no picture. The board is placed (the layout file read, the placer run for the rest) and has the copper `view pcb` draws on it: the routes file beside the source, the router's copper the editor keeps (`.netsmith/routes/`) for every net whose pads have not moved since it was routed, and the teardrops. With `--route` the router runs first, from that copper, as `board fab --reuse-routes` does (`--route-timeout` as for `view pcb`). Nothing is written.\n\nFor each net that no zone pours and that has a track or a via (a poured net's tracks are no connection) it prints the routed length (all its tracks, an arc by its chords), the straight length (the shortest tree of straight lines between the centres of its pads), their ratio, its vias, its layer changes (the vias where its tracks meet on two layers or more) and the layers its tracks are on; the nets by name, or longest first with `--lengths`. Then for each diff pair of the board (two nets whose names differ by a suffix pair such as `dp`/`dm`, the nets of a `PairImpedance` or a `DiffPair`, the lines of a `Can`): both lengths, the skew and whether it is within the pair's limit (its `.skew`, or the router's 0.1 mm), the length of the first net that runs coupled (the other's track on its layer within 0.5 mm, centre to centre, sampled every 0.05 mm) and its share, the least and the largest gap edge to edge over that length (equal for a pair at one pitch), both nets' vias and how many stand side by side (copper no more than 0.5 mm apart). Then for each group of nets matched in length: each net's length and the group's spread against its tolerance. These are the numbers the router matches a pair and a group by, and `board drc` notes a pair whose skew is over its limit and a group whose spread is over its tolerance. Lengths are in mm.\n\nWith `--format json` one JSON document is printed on stdout: `board`, `nets` (each with `net`, `length`, `straight`, `ratio`, `vias`, `layer_changes`, `layers`) and `pairs` (each with `p`, `n`, `length_p`, `length_n`, `skew`, `limit`, `over`, `coupled`, `share`, `gaps` (the least and the largest, or null), `vias_p`, `vias_n`, `via_pairs`) and `groups` (each with `path`, `nets` (each with `net`, `length`, `short_by`), `spread`, `tolerance`, `over`). The exit code is 0 when it is printed (a pair over its skew too: `board drc` is the check), 1 when the board does not build, place or route, and 2 when the command cannot run."
+    after_long_help = "`board nets` measures a board's routed copper and prints a table of it, so that a person or an agent reads each line's length, vias and skew with no KiCad and no picture. The board is placed (the layout file read, the placer run for the rest) and has the copper `view pcb` draws on it: the routes file beside the source, the router's copper the editor keeps (`.netsmith/routes/`) for every net whose pads have not moved since it was routed, and the teardrops. With `--route` the router runs first, from that copper, as `board fab --reuse-routes` does (`--route-timeout` as for `view pcb`). Nothing is written.\n\nFor each net that no zone pours and that has a track or a via (a poured net's tracks are no connection) it prints the routed length (all its tracks, an arc by its chords), the straight length (the shortest tree of straight lines between the centres of its pads), their ratio, its vias, its layer changes (the vias where its tracks meet on two layers or more) and the layers its tracks are on; the nets by name, or longest first with `--lengths`. Then for each diff pair of the board (two nets whose names differ by a suffix pair such as `dp`/`dm`, the nets of a `PairImpedance` or a `DiffPair`, the lines of a `Can`): both lengths, the skew and whether it is within the pair's limit (its `.skew`, or the router's 0.1 mm), the length of the first net that runs coupled (the other's track on its layer within 0.5 mm, centre to centre, sampled every 0.05 mm) and its share, the least and the largest gap edge to edge over that length (equal for a pair at one pitch), both nets' vias and how many stand side by side (copper no more than 0.5 mm apart). Then for each group of nets matched in length: each net's length and the group's spread against its tolerance. These are the numbers the router matches a pair and a group by, and `board drc` notes a pair whose skew is over its limit and a group whose spread is over its tolerance. Lengths are in mm.\n\nWith `--format json` one JSON document is printed on stdout: `board`, `nets` (each with `net`, `length`, `straight`, `ratio`, `vias`, `layer_changes`, `layers`) and `pairs` (each with `p`, `n`, `length_p`, `length_n`, `skew`, `limit`, `over`, `coupled`, `share`, `gaps` (the least and the largest, or null), `vias_p`, `vias_n`, `via_pairs`) and `groups` (each with `path`, `nets` (each with `net`, `length`, `short_by`), `spread`, `tolerance`, `over`). Then the `quality` section: the totals, and for each net with a defect, the most first, its own-net crossings (two straight tracks of the net on one layer whose centre lines cross away from their ends: a loop), its duplicate ways (a second way between the same two places, as `routes tidy` finds it), its unneeded copper (each track and via that ends in nothing, a dead stub or branch or a dangling via, a nudge from a pad's or a via's centre to a point still inside it, and a track inside or overlapping another of its net and layer), its short tracks (straight tracks shorter than two of their widths) and its vias side by side (two vias of the net whose copper is no more than 0.5 mm apart, each via taken once), of the nets no zone pours; `board drc` notes the totals. In JSON it is `quality`, with `totals` and `nets` (each with `net`, `crossings`, `duplicates`, `unneeded`, `short`, `via_pairs`), the `limits` it is judged by and the kinds `over` them (each with `kind`, `count`, `limit`). The exit code is 0 when it is printed (a pair over its skew too: `board drc` is the check), 1 when the board does not build, place or route, or with `--gate` when a total is over its limit (0 of each, or the `--max-<kind>` flag's: `--max-crossings`, `--max-duplicates`, `--max-unneeded`, `--max-short`, `--max-via-pairs`), each kind over said on stderr, and 2 when the command cannot run."
 )]
 pub struct Args {
     /// The source file; with none, the project's boards.
@@ -39,6 +45,24 @@ pub struct Args {
     /// Seconds the router may take with `--route`; 0 is no limit (default 300).
     #[arg(long, value_name = "SECS", requires = "route")]
     pub route_timeout: Option<u64>,
+    /// Fail (exit code 1) when a count of the quality section is over its limit.
+    #[arg(long)]
+    pub gate: bool,
+    /// The most own-net crossings `--gate` allows (default 0).
+    #[arg(long, value_name = "N", requires = "gate")]
+    pub max_crossings: Option<usize>,
+    /// The most duplicate ways `--gate` allows (default 0).
+    #[arg(long, value_name = "N", requires = "gate")]
+    pub max_duplicates: Option<usize>,
+    /// The most unneeded tracks and vias `--gate` allows (default 0).
+    #[arg(long, value_name = "N", requires = "gate")]
+    pub max_unneeded: Option<usize>,
+    /// The most short tracks `--gate` allows (default 0).
+    #[arg(long, value_name = "N", requires = "gate")]
+    pub max_short: Option<usize>,
+    /// The most pairs of vias side by side `--gate` allows (default 0).
+    #[arg(long, value_name = "N", requires = "gate")]
+    pub max_via_pairs: Option<usize>,
     #[command(flatten)]
     pub placing: common::Placing,
     /// Text for a person, or one JSON document on stdout.
@@ -71,21 +95,44 @@ pub fn run(args: Args) -> ExitCode {
                         table.by_length();
                     }
                     table.board = label;
-                    Ok(table)
+                    Ok((table, Quality::of_board(&board)))
                 })?
             },
         )
     });
+    let limits = Counts {
+        crossings: args.max_crossings.unwrap_or(Counts::LIMITS.crossings),
+        duplicates: args.max_duplicates.unwrap_or(Counts::LIMITS.duplicates),
+        unneeded: args.max_unneeded.unwrap_or(Counts::LIMITS.unneeded),
+        short: args.max_short.unwrap_or(Counts::LIMITS.short),
+        via_pairs: args.max_via_pairs.unwrap_or(Counts::LIMITS.via_pairs),
+    };
     match made {
-        Ok(table) => {
+        Ok((table, quality)) => {
+            let over = quality.over(&limits);
             match args.format {
                 common::Format::Json => {
-                    println!("{}", serde_json::to_string(&table).expect("plain data"))
+                    let mut out = serde_json::to_value(&table).expect("plain data");
+                    let mut q = serde_json::to_value(&quality).expect("plain data");
+                    q["limits"] = serde_json::to_value(limits).expect("plain data");
+                    q["over"] = serde_json::to_value(&over).expect("plain data");
+                    out["quality"] = q;
+                    println!("{}", serde_json::to_string(&out).expect("plain data"))
                 }
                 common::Format::Text => {
                     println!("{}:", table.board);
                     print!("{}", table.text());
+                    print!("{}", quality.text());
                 }
+            }
+            if args.gate && !over.is_empty() {
+                for o in &over {
+                    eprintln!(
+                        "{}: quality gate: {} {} over the limit of {}",
+                        table.board, o.count, o.kind, o.limit
+                    );
+                }
+                return ExitCode::FAILURE;
             }
             ExitCode::SUCCESS
         }
@@ -130,6 +177,36 @@ mod tests {
             (a.file, a.board, a.lengths, a.route, a.format),
             (None, None, false, false, common::Format::Text)
         );
+        let Ok(Leaf::Nets(a)) = parse(&[
+            "board",
+            "nets",
+            "--gate",
+            "--max-crossings",
+            "1",
+            "--max-duplicates",
+            "2",
+            "--max-unneeded",
+            "3",
+            "--max-short",
+            "4",
+            "--max-via-pairs",
+            "5",
+        ]) else {
+            panic!("nets should parse");
+        };
+        assert!(a.gate);
+        assert_eq!(
+            (
+                a.max_crossings,
+                a.max_duplicates,
+                a.max_unneeded,
+                a.max_short,
+                a.max_via_pairs
+            ),
+            (Some(1), Some(2), Some(3), Some(4), Some(5))
+        );
+        // A limit is for the gate.
+        assert!(parse(&["board", "nets", "--max-short", "3"]).is_err());
         // A timeout is for the router.
         assert!(parse(&["board", "nets", "--route-timeout", "30"]).is_err());
     }
