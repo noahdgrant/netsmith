@@ -85,8 +85,8 @@ use netsmith_editor::{
         PcbNetWidth, PcbNets, PcbPad, PcbPart, PcbPoint, PcbRegenerate, PcbRegenerated,
         PcbRegeneratedPart, PcbReport, PcbRequirement, PcbRerouted, PcbRouteNet, PcbRouteTrack,
         PcbRouteVia, PcbScene, PcbShapeRef, PcbShove, PcbShoveAnswer, PcbShoved, PcbShovedTrack,
-        PcbShovedVia, PcbSide, PcbSummary, PcbTotals, PcbViaOffer, PcbWalk, PcbWalked,
-        RequiredPlace, RoutesChange, Severity,
+        PcbShovedVia, PcbSide, PcbStitching, PcbSummary, PcbTotals, PcbViaOffer, PcbWalk,
+        PcbWalked, RequiredPlace, RoutesChange, Severity, StitchingVia,
     },
 };
 use netsmith_pcb::{
@@ -990,6 +990,28 @@ impl Filling {
         value["routed"] = self.routed.into();
         serde_json::from_value(camel_keys(value))
             .map_err(|e| ApiError::internal(format!("the fill of {name}: {e}")))
+    }
+
+    /// The stitching vias the export will have that the routes file does not (`netsmith view
+    /// pcb --stitching`, issue #1489), as the entry has it placed (and routed):
+    /// [`netsmith_router::stitching_vias`], the stitching `fab` runs.
+    pub fn stitching(self, name: &str) -> PcbStitching {
+        let vias = netsmith_router::stitching_vias(&self.board)
+            .into_iter()
+            .map(|v| StitchingVia {
+                net: v.net,
+                x: v.at.x,
+                y: v.at.y,
+                diameter: v.diameter,
+            })
+            .collect();
+        PcbStitching {
+            board: name.to_string(),
+            layout_stamp: self.layout_stamp,
+            routes_stamp: self.routes_stamp,
+            routed: self.routed,
+            vias,
+        }
     }
 
     /// The table of the board's nets and diff pairs (`netsmith board nets`, issue #1223), as the

@@ -20,7 +20,7 @@
 //!   and bend after it (the check's own advice, "make it a right angle"). The bend after is cut
 //!   as a corner is when it would bend by more than 45 degrees.
 //!
-//! - **nudges, duplicate ways, overlapping copper and runs of tiny tracks** (issue #1485), the
+//! - **tracks inside a pad, duplicate ways, overlapping copper and runs of tiny tracks** (issue #1485), the
 //!   defects of a routed board that the check finds nothing of: a track from a pad's or a via's
 //!   centre to a point still inside it is removed, the longer of two ways between the same two
 //!   places of a net is removed, a track inside another is removed and two that overlap on one
@@ -144,7 +144,7 @@ pub enum Kind {
     /// A track narrower than its net wants widened (`--widen`).
     Widen,
     /// A track from a pad's or a via's centre to a point still inside it removed.
-    Nudge,
+    InPad,
     /// A second way between two places of a net removed.
     Duplicate,
     /// A track inside another removed, or two overlapping on one line made one.
@@ -162,7 +162,7 @@ impl Kind {
             Kind::Stub => "stub",
             Kind::AcidTrap => "acid trap",
             Kind::Widen => "narrow track",
-            Kind::Nudge => "nudge",
+            Kind::InPad => "track inside a pad",
             Kind::Duplicate => "duplicate way",
             Kind::Overlap => "overlapping copper",
             Kind::TinyRun => "run of tiny tracks",
@@ -209,7 +209,7 @@ pub struct Counts {
     /// Narrow tracks widened (`--widen`).
     pub widened: usize,
     /// Tracks from a pad's or a via's centre to a point still inside it, removed.
-    pub nudges: usize,
+    pub in_pad_tracks: usize,
     /// Second ways between two places of a net, removed.
     pub duplicates: usize,
     /// Tracks inside another removed, and pairs overlapping on one line made one.
@@ -240,6 +240,10 @@ pub struct Tidied {
     pub checks: usize,
     /// How many items (tracks, vias, pads and zones) those checks looked at, in all.
     pub items_checked: usize,
+    /// How many pairs of tracks the overlap pass compared, in all its rounds: the work done, which
+    /// grows with the tracks near each track and not with the tracks of its net.
+    #[serde(skip)]
+    pub overlap_compared: usize,
     /// What else there is to know: a kept file not used, or made stale.
     pub notes: Vec<String>,
     /// The files written (none for a dry run, or when nothing changed).
@@ -260,7 +264,7 @@ impl Tidied {
         let c = &self.counts;
         let _ = write!(
             s,
-            "{}: {} {} corner(s), {} collinear pair(s), {} dangling via(s), {} stub(s), {} acid trap(s), {} nudge(s), {} duplicate way(s), {} overlapping track(s), {} run(s) of tiny tracks",
+            "{}: {} {} corner(s), {} collinear pair(s), {} dangling via(s), {} stub(s), {} acid trap(s), {} track(s) inside a pad, {} duplicate way(s), {} overlapping track(s), {} run(s) of tiny tracks",
             self.board,
             if self.dry_run { "would tidy" } else { "tidied" },
             c.corners,
@@ -268,7 +272,7 @@ impl Tidied {
             c.vias,
             c.stubs,
             c.acid_traps,
-            c.nudges,
+            c.in_pad_tracks,
             c.duplicates,
             c.overlaps,
             c.tiny_runs
@@ -486,7 +490,7 @@ pub fn tidy_passes(
             Kind::Stub => counts.stubs += 1,
             Kind::AcidTrap => counts.acid_traps += 1,
             Kind::Widen => counts.widened += 1,
-            Kind::Nudge => counts.nudges += 1,
+            Kind::InPad => counts.in_pad_tracks += 1,
             Kind::Duplicate => counts.duplicates += 1,
             Kind::Overlap => counts.overlaps += 1,
             Kind::TinyRun => counts.tiny_runs += 1,
@@ -509,6 +513,7 @@ pub fn tidy_passes(
         findings_after: look.keys.len(),
         connections_left: look.lines.len(),
         checks: work.checks,
+        overlap_compared: work.compared.get(),
         items_checked: work.items,
         notes: Vec::new(),
         wrote: Vec::new(),
@@ -608,9 +613,89 @@ struct Work<'a> {
     spots: BTreeMap<String, Vec<shapes::Spot>>,
     checks: usize,
     items: usize,
+    /// The pairs of tracks the overlap pass compared ([`Tidied::overlap_compared`]).
+    compared: std::cell::Cell<usize>,
+}
+
+/// A defect that the passes of [`shapes`] find in the copper of a board as it stands, for the
+/// quality report of `board nets` (issue #1481): its kind, its net and how many tracks and vias
+/// of the copper it is, by their places in the board's `tracks` and `vias` (the tracks and vias
+/// of a duplicate way, the one track of a nudge).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Defect {
+    pub kind: Kind,
+    pub net: String,
+    pub wires: Vec<usize>,
+    pub holes: Vec<usize>,
+}
+
+/// The nudges, the duplicate ways, the overlapping copper and the copper that ends in nothing
+/// of `board`'s tracks and vias, as `routes tidy` finds them (each detector once, nothing checked or changed): the measure the
+/// quality report counts by, so that what tidy removes is what the report counts.
+pub(crate) fn shape_defects(board: &Board) -> Vec<Defect> {
+    let routes = Routes::default();
+    let work = Work::looking(board, &routes);
+    work.nudges()
+        .into_iter()
+        .chain(work.duplicates())
+        .chain(work.overlaps())
+        .chain(work.dead_copper())
+        .map(|c| Defect {
+            kind: c.change.kind,
+            net: c.change.net,
+            wires: c.remove_wires,
+            holes: c.remove_holes,
+        })
+        .collect()
 }
 
 impl<'a> Work<'a> {
+    /// The copper of `board` as it stands, its tracks and vias, every one of them open to the
+    /// detectors of [`shapes`], with nothing to check a change by: for [`shape_defects`].
+    fn looking(board: &'a Board, routes: &'a Routes) -> Self {
+        let mut copper = Copper::default();
+        for (n, t) in board.tracks.iter().enumerate() {
+            copper.wires.push(Wire {
+                owner: Owner::RoutesFile,
+                track: t.clone(),
+                drawn: t.clone(),
+                was: None,
+                fixed: false,
+                alive: true,
+                widened: false,
+                rank: (n, 0),
+            });
+        }
+        for v in &board.vias {
+            copper.holes.push(Hole {
+                owner: Owner::RoutesFile,
+                via: v.clone(),
+                was: None,
+                fixed: false,
+                alive: true,
+            });
+        }
+        Work {
+            board,
+            routes,
+            copper,
+            rebuilt: BTreeSet::new(),
+            shell: board.clone(),
+            parts: Vec::new(),
+            part_boxes: Vec::new(),
+            zones: Vec::new(),
+            project: String::new(),
+            extras: netsmith_geom::DrcExtras::default(),
+            grid: near::Grid::new(board.outline, 1.0),
+            reach: 0.0,
+            lines: Vec::new(),
+            widen: false,
+            spots: shapes::spots(board),
+            checks: 0,
+            items: 0,
+        }
+    }
+
     fn new(
         board: &'a Board,
         routes: &'a Routes,
@@ -730,6 +815,7 @@ impl<'a> Work<'a> {
             spots: shapes::spots(board),
             checks: 0,
             items: 0,
+            compared: std::cell::Cell::new(0),
         })
     }
 
@@ -1231,12 +1317,12 @@ impl<'a> Work<'a> {
             };
             push(c, &mut out);
         }
-        // A merge, a nudge, a duplicate way and an overlap have one form: refused once, each
+        // A merge, a track inside a pad, a duplicate way and an overlap have one form: refused once, each
         // is not tried again.
         let once = self
             .merges()
             .into_iter()
-            .chain(self.nudges())
+            .chain(self.in_pad_tracks())
             .chain(self.overlaps())
             .chain(self.duplicates());
         for c in once {

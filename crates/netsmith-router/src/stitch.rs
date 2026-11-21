@@ -321,6 +321,34 @@ pub fn stitch(board: &mut Board, spare: &[Via]) -> Vec<OnSpare> {
     on_spare
 }
 
+/// The stitching vias the export of `board` will have that its routes file does not (issue
+/// #1489, `netsmith view pcb --stitching` and the editor's Stitching layer): the vias already on
+/// it past the routes file's ([`netsmith_pcb::FixedCopper::vias`]) that are stitching vias as
+/// `routes import` knows them (a through via that no track of its net ends on and that
+/// [`netsmith_pcb::is_stitching_via`] says the grid lays), then the vias [`stitch`] would add
+/// to it now, as `fab` stitches the copper it routed. Of a board not routed yet, that is the grid
+/// as it stands round the copper there; the router's tracks may move a via of it within its
+/// third of the pitch, or take its point.
+pub fn stitching_vias(board: &Board) -> Vec<Via> {
+    let mut vias: Vec<Via> = board
+        .vias
+        .iter()
+        .skip(board.fixed.vias)
+        .filter(|v| {
+            v.span.is_none()
+                && !board.tracks.iter().any(|t| {
+                    t.net == v.net && (t.from.distance(v.at) < 1e-3 || t.to.distance(v.at) < 1e-3)
+                })
+                && netsmith_pcb::is_stitching_via(board, v)
+        })
+        .cloned()
+        .collect();
+    let mut stitched = board.clone();
+    stitch(&mut stitched, &[]);
+    vias.extend(stitched.vias.into_iter().skip(board.vias.len()));
+    vias
+}
+
 /// Add the ground vias of every `TrackPath` with a fence (the module's header). Returns how many
 /// were placed.
 pub fn fence(board: &mut Board) -> usize {

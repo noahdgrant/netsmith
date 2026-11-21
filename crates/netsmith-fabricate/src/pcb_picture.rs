@@ -29,6 +29,14 @@
 //! there. Each is hatched and outlined on its layer and labelled `I1`, `I2`, ... in the order of
 //! the report, apart from the numbers of the markers.
 //!
+//! **The stitching** (`--stitching`, issue #1489) is the grid of stitching vias the export will
+//! have and the routes file does not ([`netsmith_router::stitching_vias`], the function `fab`
+//! stitches with): the stitching vias the router already laid on the copper drawn, then the
+//! vias the stitching would add to it. They are put on the board drawn, so the fill clears round
+//! them and `--drc` checks them, and drawn in a tone of their own. On copper that is not routed
+//! yet (no `--route`) the router's tracks may still move a via within a third of the pitch, or
+//! take its point.
+//!
 //! **The PNG** is the SVG filled by `netsmith-draw` (ADR 0142) at the scale asked, so the two
 //! are the same drawing, and the same board gives the same bytes.
 
@@ -86,6 +94,9 @@ pub struct Request {
     pub drc: bool,
     /// Hatch and number the copper islands the fill took out.
     pub islands: bool,
+    /// Draw the stitching vias the export will have that the routes file does not, in a tone of
+    /// their own (issue #1489).
+    pub stitching: bool,
     pub format: Format,
 }
 
@@ -104,6 +115,9 @@ pub struct Drawn {
     /// The removed islands drawn, each with its label (`I1: bottom GND at (12.000, 3.500), 2.150
     /// mm2`), places in the frame of the layout file.
     pub islands: Vec<String>,
+    /// The stitching vias drawn (`--stitching`): those the export will have that the routes
+    /// file does not.
+    pub stitching: usize,
 }
 
 /// Put on `board`, placed and with no copper, the copper the picture draws (the module's
@@ -249,6 +263,27 @@ pub fn draw(
     constraints: Option<Constraints>,
 ) -> Result<Drawn, String> {
     let (mut lit, region) = check(board, request)?;
+    // The stitching the export will have (issue #1489), on the board drawn: the fill clears
+    // round the vias as the Gerbers' does, and the check sees them.
+    let stitching = if request.stitching {
+        netsmith_router::stitching_vias(board)
+    } else {
+        Vec::new()
+    };
+    let with_stitching;
+    let board = if stitching.iter().any(|v| !board.vias.contains(v)) {
+        let mut b = board.clone();
+        let laid: Vec<_> = stitching
+            .iter()
+            .filter(|v| !board.vias.contains(v))
+            .cloned()
+            .collect();
+        b.vias.extend(laid);
+        with_stitching = b;
+        &with_stitching
+    } else {
+        board
+    };
     let (width, height) = pixels(region, request.scale);
     let open: Vec<Ratline> = Ratsnest::of(board).lines;
     if request.only_open {
@@ -274,6 +309,7 @@ pub fn draw(
         courtyards: request.courtyards,
         designators: request.designators,
         lit,
+        stitching: stitching.iter().map(|v| v.at).collect(),
     };
     let svg = picture_svg(board, &open, &islands, &markers, &options)?;
     let bytes = match request.format {
@@ -301,6 +337,7 @@ pub fn draw(
             .collect(),
         markers: listed,
         islands: island_lines,
+        stitching: stitching.len(),
     })
 }
 
