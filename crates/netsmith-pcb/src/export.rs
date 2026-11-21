@@ -307,7 +307,31 @@ fn footprint(board: &Board, part: &Placed, nets: &NetNumbers) -> Sexp {
         uuid_for(&key),
         Sexp::node("at", at),
     ];
-    for (index, child) in part.footprint.source.args().iter().enumerate().skip(1) {
+    // A library file with no `Reference` or `Value` property (a project's own footprint may have
+    // none, issue #1552) gets them, so the board names the footprint's designator: a keep-out
+    // zone of the footprint, and every reader that takes the designator from the board file,
+    // needs it. They come first, as KiCad writes them.
+    let source = part.footprint.source.args();
+    let has = |name: &str| {
+        source.iter().any(|c| {
+            c.head() == Some("property") && c.args().first().and_then(Sexp::text) == Some(name)
+        })
+    };
+    let mut children: Vec<(String, &Sexp)> = Vec::new();
+    let made: Vec<(&str, Sexp)> = [("Reference", "F.SilkS", -2.0), ("Value", "F.Fab", 2.0)]
+        .into_iter()
+        .filter(|(name, ..)| !has(name))
+        .map(|(name, layer, y)| (name, missing_property(name, layer, y)))
+        .collect();
+    children.extend(made.iter().map(|(name, p)| (format!("{key}/{name}"), p)));
+    children.extend(
+        source
+            .iter()
+            .enumerate()
+            .skip(1)
+            .map(|(i, c)| (format!("{key}/{i}"), c)),
+    );
+    for (child_key, child) in children {
         // Skip what only a library file has, and what was just written above.
         if matches!(
             child.head(),
@@ -316,7 +340,6 @@ fn footprint(board: &Board, part: &Placed, nets: &NetNumbers) -> Sexp {
         {
             continue;
         }
-        let child_key = format!("{key}/{index}");
         let written = match child.head() {
             Some("property") => property(child, part, &board.rules, &child_key),
             Some("pad") => pad(board, child, part, nets, &child_key),
@@ -392,6 +415,30 @@ fn footprint(board: &Board, part: &Placed, nets: &NetNumbers) -> Sexp {
         );
     }
     Sexp::List(items)
+}
+
+/// A `Reference` or `Value` property for a footprint whose library file has none: the text of
+/// the property is filled in by [`property`], so only its place and look are made here.
+fn missing_property(name: &str, layer: &str, y: f64) -> Sexp {
+    Sexp::node(
+        "property",
+        vec![
+            Sexp::string(name),
+            Sexp::string(""),
+            Sexp::node("at", vec![Sexp::num(0.0), Sexp::num(y), Sexp::num(0.0)]),
+            Sexp::node("layer", vec![Sexp::string(layer)]),
+            Sexp::node(
+                "effects",
+                vec![Sexp::node(
+                    "font",
+                    vec![
+                        Sexp::node("size", vec![Sexp::num(1.0), Sexp::num(1.0)]),
+                        Sexp::node("thickness", vec![Sexp::num(0.15)]),
+                    ],
+                )],
+            ),
+        ],
+    )
 }
 
 /// The name of the hidden property that holds a footprint's member path in the design.
@@ -1912,6 +1959,44 @@ mod tests {
             ),
             (local.x, local.y)
         );
+    }
+
+    /// A footprint of a project's own library with no properties at all (issue #1552): the board
+    /// file still names its designator and value, so a keep-out zone it carries is read back with
+    /// its part, not as the board's.
+    #[test]
+    fn a_footprint_with_no_properties_is_written_with_a_reference_and_a_value() {
+        let mut board = led();
+        board.parts[1].footprint = crate::footprint::Footprint::parse(
+            "T:Bare",
+            r#"(footprint "Bare"
+                (pad "1" smd rect (at -1 0) (size 1 1) (layers "F.Cu" "F.Mask"))
+                (pad "2" smd rect (at 1 0) (size 1 1) (layers "F.Cu" "F.Mask"))
+                (zone (net 0) (net_name "") (layers "F.Cu") (name "bare keepout")
+                    (hatch edge 0.5) (connect_pads (clearance 0)) (min_thickness 0.25)
+                    (keepout (tracks not_allowed) (vias not_allowed) (pads allowed)
+                        (copperpour not_allowed) (footprints allowed))
+                    (fill (thermal_gap 0.5) (thermal_bridge_width 0.5))
+                    (polygon (pts (xy -2 -2) (xy 2 -2) (xy 2 2) (xy -2 2)))))"#,
+        )
+        .unwrap();
+        let refdes = board.parts[1].refdes.clone();
+        let value = board.parts[1].value.clone();
+        let text = kicad_pcb(&board);
+        let pcb = Sexp::parse(&text).unwrap();
+        let fp = footprint_of(&pcb, &refdes);
+        let value_property = fp
+            .find_all("property")
+            .find(|p| p.args().first().and_then(Sexp::text) == Some("Value"))
+            .expect("a Value property");
+        assert_eq!(value_property.args()[1].text(), Some(value.as_str()));
+        let art = netsmith_geom::Artwork::parse(&text).unwrap();
+        let zone = art
+            .zones
+            .iter()
+            .find(|z| z.name == "bare keepout")
+            .expect("the footprint's keep-out zone");
+        assert_eq!(zone.owner, refdes);
     }
 
     /// The reference property of a footprint and its `fp_text user` items.
