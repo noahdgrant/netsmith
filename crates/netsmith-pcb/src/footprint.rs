@@ -720,6 +720,42 @@ impl Pad {
             .rotated(self.angle)
             .translated(self.at)
     }
+
+    /// How far a point of the footprint's frame is from the pad's copper, in mm: 0 on its edge
+    /// or inside it. The copper is the pad's own shape, turned with the pad: a rectangle, a
+    /// rectangle with round corners of [`Pad::corner_ratio`], an oval (a capsule) or a circle
+    /// of the pad's width; a custom pad's is its anchor and the box its primitives span
+    /// ([`Pad::extent`], the primitives themselves are not kept), so a point in that box
+    /// counts as on the copper. Not the pad's bounds: a round pad, a rounded corner and a pad
+    /// turned off the right angles have less copper than their box (issue #1578).
+    pub fn copper_distance(&self, p: Pt) -> f64 {
+        let local = (p - self.at).rotate(-self.angle);
+        let (w, h) = (self.width, self.height);
+        let radius = match self.shape {
+            PadShape::Rect => 0.0,
+            PadShape::RoundRect => self.corner_ratio * w.min(h),
+            PadShape::Oval | PadShape::Circle => w.min(h) / 2.0,
+        };
+        let anchor = rounded_rect_distance(local, w / 2.0, h / 2.0, radius);
+        match self.extent {
+            Some(e) => {
+                let dx = (e.min.x - local.x).max(local.x - e.max.x).max(0.0);
+                let dy = (e.min.y - local.y).max(local.y - e.max.y).max(0.0);
+                anchor.min(dx.hypot(dy))
+            }
+            None => anchor,
+        }
+    }
+}
+
+/// How far `p` is from a rectangle centred on the origin, `hx` by `hy` from its centre to its
+/// sides, whose corners are quarter circles of `radius` (at most half the shorter side): 0 on or
+/// inside it.
+fn rounded_rect_distance(p: Pt, hx: f64, hy: f64, radius: f64) -> f64 {
+    let r = radius.clamp(0.0, hx.min(hy));
+    let dx = (p.x.abs() - (hx - r)).max(0.0);
+    let dy = (p.y.abs() - (hy - r)).max(0.0);
+    (dx.hypot(dy) - r).max(0.0)
 }
 
 impl Shape {

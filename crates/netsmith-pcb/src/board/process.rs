@@ -487,21 +487,53 @@ impl Board {
             .collect()
     }
 
-    /// Each via that stands in a surface-mount pad (its centre is on the pad's copper, and the
-    /// via is on the pad's face): the via's place in [`Board::vias`] and the pad. A via in a pad
-    /// has to be filled and capped by the fabricator, or the solder runs down the hole.
+    /// Each via that stands in a surface-mount pad: its centre is on the pad's copper (its
+    /// shape, not its box: [`Placed::pad_copper_distance`], issue #1578), the edge included,
+    /// and the via is on the pad's face. The via's place in [`Board::vias`] and the pad. A via in
+    /// a pad has to be filled and capped by the fabricator, or the solder runs down the hole.
     pub fn vias_in_pads(&self) -> Vec<(usize, PadRef)> {
+        self.vias_by_pads(|_, distance| distance <= IN_PAD_TOLERANCE)
+    }
+
+    /// Each via whose hole reaches into a surface-mount pad on its face while its centre is on
+    /// no such pad (issue #1578): the drill's circle crosses the pad's edge, so part of the hole
+    /// opens in the pad. It is not a via in a pad ([`Board::vias_in_pads`]) and is not filled;
+    /// `fab-notes.txt` lists them so that a person can decide. A hole that only meets the edge
+    /// at a point is not one. The via's place in [`Board::vias`] and each pad it reaches.
+    pub fn vias_touching_pads(&self) -> Vec<(usize, PadRef)> {
+        let inside: std::collections::HashSet<usize> =
+            self.vias_in_pads().into_iter().map(|(k, _)| k).collect();
+        self.vias_by_pads(|via, distance| {
+            distance > IN_PAD_TOLERANCE && distance < via.drill / 2.0 - IN_PAD_TOLERANCE
+        })
+        .into_iter()
+        .filter(|(k, _)| !inside.contains(k))
+        .collect()
+    }
+
+    /// Each via and surface-mount pad on its face, the via's centre `distance` mm from the
+    /// pad's copper, that `takes` says yes to.
+    fn vias_by_pads(&self, takes: impl Fn(&Via, f64) -> bool) -> Vec<(usize, PadRef)> {
         let n = self.copper_count();
         let mut found = Vec::new();
         for (k, via) in self.vias.iter().enumerate() {
-            let at = Rect::new(via.at, via.at);
             for part in &self.parts {
                 for pad in &part.footprint.pads {
                     let (front, back) = part.pad_layers(pad);
                     let surface = pad.drill.is_none() && (front || back);
                     let met = (front && via.on(CopperLayer::Front, n))
                         || (back && via.on(CopperLayer::Back, n));
-                    if surface && met && part.pad_bounds(pad).contains(&at) {
+                    // The box first: a via far from the pad is not measured.
+                    if !surface
+                        || !met
+                        || !part
+                            .pad_bounds(pad)
+                            .expanded(via.drill)
+                            .contains(&Rect::new(via.at, via.at))
+                    {
+                        continue;
+                    }
+                    if takes(via, part.pad_copper_distance(pad, via.at)) {
                         found.push((
                             k,
                             PadRef {
@@ -516,18 +548,21 @@ impl Board {
         found
     }
 
+    /// Whether the `k`th via is a laser-drilled blind via of an HDI process, which the process
+    /// fills and planarizes by plating as it makes every one (issue #1071).
+    fn laser_via(&self, offers: &[ViaOffer], k: usize) -> bool {
+        let span = self.vias[k].span;
+        span.is_some() && offers.iter().any(|o| o.laser && o.span == span)
+    }
+
     /// [`Board::vias_in_pads`] split in two: the laser-drilled blind vias of an HDI process, which
     /// the process fills and planarizes by plating as it makes every one (issue #1071), and the
     /// drilled vias, which the board house fills with epoxy and caps at extra cost.
     fn vias_in_pads_split(&self) -> (ViasAt, ViasAt) {
         let offers = self.via_offers();
-        let laser = |k: usize| {
-            let span = self.vias[k].span;
-            span.is_some() && offers.iter().any(|o| o.laser && o.span == span)
-        };
         self.vias_in_pads()
             .into_iter()
-            .partition(|(k, _)| laser(*k))
+            .partition(|(k, _)| self.laser_via(&offers, *k))
     }
 
     /// The drilled vias that stand in pads, which the board house has to fill and cap (issue
@@ -535,16 +570,22 @@ impl Board {
     /// HDI process is not one of them.
     pub fn filled_vias_in_pads(&self) -> ViasInPads {
         let (_, in_pad) = self.vias_in_pads_split();
-        let mut parts: Vec<String> = in_pad.iter().map(|(_, p)| p.refdes.clone()).collect();
-        parts.sort();
-        parts.dedup();
-        let mut pads: Vec<String> = in_pad.iter().map(|(_, p)| p.to_string()).collect();
-        pads.dedup();
-        ViasInPads {
-            count: in_pad.len(),
-            parts,
-            pads,
-        }
+        ViasInPads::of(in_pad.len(), &in_pad)
+    }
+
+    /// The drilled vias whose hole touches a pad's edge, their centre outside every pad
+    /// ([`Board::vias_touching_pads`], issue #1578): how many vias, and the parts and pads. A
+    /// laser-drilled blind via of an HDI process, filled by plating, is not one of them.
+    pub fn drilled_vias_touching_pads(&self) -> ViasInPads {
+        let offers = self.via_offers();
+        let touching: ViasAt = self
+            .vias_touching_pads()
+            .into_iter()
+            .filter(|(k, _)| !self.laser_via(&offers, *k))
+            .collect();
+        let mut vias: Vec<usize> = touching.iter().map(|(k, _)| *k).collect();
+        vias.dedup();
+        ViasInPads::of(vias.len(), &touching)
     }
 
     /// What the board needs of the fabricator beyond its standard process, one line each for
@@ -563,6 +604,10 @@ impl Board {
         let in_pad = self.filled_vias_in_pads();
         if in_pad.count > 0 {
             extras.push(in_pad.line(&self.process.fabricator, self.process.via_in_pad));
+        }
+        let touching = self.drilled_vias_touching_pads();
+        if touching.count > 0 {
+            extras.push(touching.touching_line(&self.process.fabricator));
         }
         let blind_in_pad = self.vias_in_pads_split().0;
         if !blind_in_pad.is_empty() {
@@ -768,6 +813,9 @@ impl Board {
     }
 }
 
+/// How near a via's centre must be to a pad's copper to stand in it, in mm: on its edge counts.
+const IN_PAD_TOLERANCE: f64 = 1e-6;
+
 /// The impedance `fab-notes.txt` gives a track's width for, in ohms: the usual impedance of a
 /// single-ended line (an RF receptacle's `.impedance`, a coaxial cable). A board states no
 /// target here: a design that states one (a `TrackImpedance` or a `PairImpedance`, issue
@@ -789,6 +837,47 @@ pub struct ViasInPads {
 }
 
 impl ViasInPads {
+    /// `count` vias at `at` (each via with a pad it is in or touches): the parts sorted, each
+    /// once, and the pads each once in the order of the board's vias.
+    fn of(count: usize, at: &[(usize, PadRef)]) -> ViasInPads {
+        let mut parts: Vec<String> = at.iter().map(|(_, p)| p.refdes.clone()).collect();
+        parts.sort();
+        parts.dedup();
+        let mut pads: Vec<String> = Vec::new();
+        for (_, p) in at {
+            let pad = p.to_string();
+            if !pads.contains(&pad) {
+                pads.push(pad);
+            }
+        }
+        ViasInPads { count, parts, pads }
+    }
+
+    /// `3 vias whose hole touches a pad's edge` (`1 via whose ...`): the first words of the line
+    /// of the vias whose hole touches a pad (issue #1578), which an order's summary repeats.
+    pub fn touching_headline(&self) -> String {
+        format!(
+            "{} {} hole touches a pad's edge",
+            self.count,
+            if self.count == 1 {
+                "via whose"
+            } else {
+                "vias whose"
+            }
+        )
+    }
+
+    /// The line of `fab-notes.txt` for the vias whose hole touches a pad's edge (issue #1578):
+    /// the headline, the parts and pads, and why a person may want to look. It stops nothing.
+    pub fn touching_line(&self, fabricator: &str) -> String {
+        format!(
+            "{}: on {} (pads {}); each centre is off the pad's copper, so it is not counted as a via in a pad and is not filled, but part of its hole opens in the pad and may draw solder down it; whether {fabricator} takes it for a via in a pad is not known (the guide's chapter 21, `.via_in_pad`, quotes what JLCPCB's pages say): move it off the pad, or ask the board house",
+            self.touching_headline(),
+            self.parts.join(", "),
+            self.pads.join(", "),
+        )
+    }
+
     /// `21 vias in pads: the board house's filled and capped option is needed (extra cost)` (`1 via
     /// in a pad: ...`): the first words of the line, which an order's summary repeats.
     pub fn headline(&self) -> String {

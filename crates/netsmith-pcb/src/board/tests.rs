@@ -1556,3 +1556,186 @@ fn a_track_path_with_no_loss_tangent_or_no_frequency_says_why_its_loss_is_not_ju
         "{line}"
     );
 }
+
+/// The LED board with R1 alone at (30, 20) on the front, unturned, its footprint two pads: `1` a
+/// 1.0 by 0.6 mm rectangle at (-1, 0) and `2` a 0.8 mm circle at (1, 0), and the other parts
+/// far off.
+fn two_pad_board() -> Board {
+    let mut board = led_board();
+    board.vias.clear();
+    for part in &mut board.parts {
+        part.at = Pt::new(-100.0, -100.0);
+    }
+    let r1 = board.parts.iter_mut().find(|p| p.refdes == "R1").unwrap();
+    r1.at = Pt::new(30.0, 20.0);
+    r1.rotation = 0.0;
+    r1.side = Side::Front;
+    let template = r1.footprint.pads[0].clone();
+    let pad = |number: &str, shape, x: f64, w: f64, h: f64| crate::footprint::Pad {
+        number: number.into(),
+        shape,
+        at: Pt::new(x, 0.0),
+        angle: 0.0,
+        width: w,
+        height: h,
+        drill: None,
+        extent: None,
+        ..template.clone()
+    };
+    r1.footprint.pads = vec![
+        pad("1", crate::footprint::PadShape::Rect, -1.0, 1.0, 0.6),
+        pad("2", crate::footprint::PadShape::Circle, 1.0, 0.8, 0.8),
+    ];
+    board
+}
+
+fn via_at(board: &Board, x: f64, y: f64) -> Via {
+    Via {
+        net: board.nets[0].name.clone(),
+        at: Pt::new(30.0 + x, 20.0 + y),
+        diameter: 0.4,
+        drill: 0.2,
+        span: None,
+    }
+}
+
+#[test]
+fn a_via_is_in_a_pad_when_its_centre_is_on_the_copper_and_touches_it_when_its_hole_does() {
+    // Issue #1578. Pad 1 spans x from -1.5 to -0.5; pad 2 is a circle of radius 0.4 at x = 1.
+    let mut board = two_pad_board();
+    let vias = [
+        (-1.0, 0.0),  // 0: the middle of pad 1: in it
+        (-0.5, 0.0),  // 1: on pad 1's edge: in it
+        (-0.45, 0.0), // 2: 0.05 mm outside pad 1's edge: its 0.1 mm hole touches it
+        (-0.35, 0.0), // 3: 0.15 mm outside: neither
+        (-0.4, 0.0),  // 4: 0.1 mm outside: the hole meets the edge at a point, neither
+        (1.35, 0.35), // 5: in the corner of pad 2's box, 0.095 mm off its circle: touches
+        (1.0, 0.3),   // 6: on pad 2's circle, inside: in it
+        (10.0, 10.0), // 7: far off
+    ];
+    board.vias = vias.iter().map(|&(x, y)| via_at(&board, x, y)).collect();
+    let r1 = |n: &str| PadRef {
+        refdes: "R1".into(),
+        number: n.into(),
+    };
+    assert_eq!(
+        board.vias_in_pads(),
+        vec![(0, r1("1")), (1, r1("1")), (6, r1("2"))]
+    );
+    assert_eq!(board.vias_touching_pads(), vec![(2, r1("1")), (5, r1("2"))]);
+    // The box of the round pad holds via 5's centre: its copper does not.
+    let part = board.parts.iter().find(|p| p.refdes == "R1").unwrap();
+    let round = &part.footprint.pads[1];
+    assert!(
+        part.pad_bounds(round)
+            .contains(&Rect::new(board.vias[5].at, board.vias[5].at))
+    );
+    let extras = board.process_extras();
+    assert!(
+        extras.iter().any(|l| l.starts_with(
+            "3 vias in pads: the board house's filled and capped option is needed (extra cost); on R1 (pads R1.1, R1.2)"
+        )),
+        "{extras:?}"
+    );
+    assert!(
+        extras.iter().any(|l| l.starts_with(
+            "2 vias whose hole touches a pad's edge: on R1 (pads R1.1, R1.2); each centre is off the pad's copper"
+        )),
+        "{extras:?}"
+    );
+    let touching = board.drilled_vias_touching_pads();
+    assert_eq!(
+        (touching.count, touching.parts),
+        (2, vec!["R1".to_string()])
+    );
+
+    // Turned by 45 degrees with its part, pad 1's box grows past its copper: a via in the
+    // box's corner is on neither.
+    let r1_part = board.parts.iter_mut().find(|p| p.refdes == "R1").unwrap();
+    r1_part.rotation = 45.0;
+    let pad1 = r1_part.footprint.pads[0].clone();
+    let corner = r1_part.pad_bounds(&pad1).max;
+    let at = Pt::new(corner.x - 0.05, corner.y - 0.05);
+    assert!(r1_part.pad_copper_distance(&pad1, at) > 0.2);
+    board.vias = vec![Via {
+        at,
+        ..via_at(&board, 0.0, 0.0)
+    }];
+    assert!(board.vias_in_pads().is_empty());
+    assert!(board.vias_touching_pads().is_empty());
+    // The pad's centre, turned, is still on it.
+    let centre = board
+        .parts
+        .iter()
+        .find(|p| p.refdes == "R1")
+        .unwrap()
+        .pad_centre(&pad1);
+    board.vias = vec![Via {
+        at: centre,
+        ..via_at(&board, 0.0, 0.0)
+    }];
+    assert_eq!(board.vias_in_pads(), vec![(0, r1("1"))]);
+    // On the back, mirrored, the same.
+    let r1_part = board.parts.iter_mut().find(|p| p.refdes == "R1").unwrap();
+    r1_part.side = Side::Back;
+    let centre = r1_part.pad_centre(&pad1);
+    board.vias = vec![Via {
+        at: centre,
+        ..via_at(&board, 0.0, 0.0)
+    }];
+    assert_eq!(board.vias_in_pads(), vec![(0, r1("1"))]);
+}
+
+#[test]
+fn a_pads_copper_distance_follows_its_shape() {
+    let base = crate::footprint::Pad {
+        number: "1".into(),
+        kind: crate::footprint::PadKind::Smd,
+        shape: crate::footprint::PadShape::RoundRect,
+        at: Pt::new(0.0, 0.0),
+        angle: 0.0,
+        width: 2.0,
+        height: 1.0,
+        drill: None,
+        layers: vec!["F.Cu".into()],
+        corner_ratio: 0.25,
+        extent: None,
+        clearance: None,
+        mask_margin: None,
+    };
+    let near = |a: f64, b: f64| (a - b).abs() < 1e-9;
+    // A rounded corner of radius 0.25: the box's corner is off the copper.
+    let corner = base.copper_distance(Pt::new(1.0, 0.5));
+    assert!(near(corner, 0.25 * 2f64.sqrt() - 0.25), "{corner}");
+    assert!(near(base.copper_distance(Pt::new(1.1, 0.0)), 0.1));
+    assert!(near(base.copper_distance(Pt::new(0.9, 0.0)), 0.0));
+    // An oval is a capsule; a rectangle has square corners.
+    let oval = crate::footprint::Pad {
+        shape: crate::footprint::PadShape::Oval,
+        ..base.clone()
+    };
+    assert!(near(
+        oval.copper_distance(Pt::new(1.0, 0.5)),
+        0.5 * 2f64.sqrt() - 0.5
+    ));
+    let rect = crate::footprint::Pad {
+        shape: crate::footprint::PadShape::Rect,
+        ..base.clone()
+    };
+    assert!(near(rect.copper_distance(Pt::new(1.0, 0.5)), 0.0));
+    // A custom pad's primitives are their box.
+    let custom = crate::footprint::Pad {
+        shape: crate::footprint::PadShape::Rect,
+        extent: Some(Rect::new(Pt::new(0.0, 0.0), Pt::new(3.0, 1.0))),
+        ..base.clone()
+    };
+    assert!(near(custom.copper_distance(Pt::new(2.5, 0.8)), 0.0));
+    assert!(near(custom.copper_distance(Pt::new(3.2, 0.5)), 0.2));
+    // The pad's own turn: 90 degrees stands it up.
+    let turned = crate::footprint::Pad {
+        angle: 90.0,
+        ..rect
+    };
+    assert!(near(turned.copper_distance(Pt::new(0.0, 0.9)), 0.0));
+    assert!(near(turned.copper_distance(Pt::new(0.9, 0.0)), 0.4));
+}

@@ -3353,6 +3353,11 @@ fn fab_panel(
             cell.count *= (spec.columns * spec.rows) as usize;
             cell
         },
+        vias_touching_pads: {
+            let mut cell = run.board.drilled_vias_touching_pads();
+            cell.count *= (spec.columns * spec.rows) as usize;
+            cell
+        },
         // The panel's parts are its cells', named as bom.csv names them (`R1_3`).
         bought: run
             .fabricated
