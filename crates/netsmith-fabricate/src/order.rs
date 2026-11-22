@@ -393,6 +393,10 @@ pub struct BoardFacts {
     /// cost is accepted ([`refuse_vias_in_pads`]).
     #[serde(default)]
     pub vias_in_pads: ViasInPads,
+    /// The drilled vias whose hole touches a pad's edge, their centre outside it (issue #1578);
+    /// for a panel, those of all its boards. Said for a person to decide; it stops nothing.
+    #[serde(default)]
+    pub vias_touching_pads: ViasInPads,
     /// The parts the owner buys, by supply channel (ADR 0143): the consigned and hand-soldered
     /// ones that a channel has an offer of ([`crate::buying`]). For a panel, those of all its
     /// cells.
@@ -454,6 +458,7 @@ impl BoardFacts {
             unverified: package.unverified.clone(),
             panel: None,
             vias_in_pads: board.filled_vias_in_pads(),
+            vias_touching_pads: board.drilled_vias_touching_pads(),
             bought: Vec::new(),
             bom_channels: BTreeMap::new(),
         }
@@ -943,6 +948,19 @@ pub fn summary_with_buys(
                 "    {}: {} (on each {})\n",
                 in_pads.headline(),
                 in_pads.parts.join(", "),
+                if facts.panel.is_some() {
+                    "panel"
+                } else {
+                    "board"
+                },
+            ));
+        }
+        let touching = &facts.vias_touching_pads;
+        if touching.count > 0 {
+            s.push_str(&format!(
+                "    {}: {} (on each {}; see fab-notes.txt)\n",
+                touching.touching_headline(),
+                touching.parts.join(", "),
                 if facts.panel.is_some() {
                     "panel"
                 } else {
@@ -1580,6 +1598,7 @@ mod tests {
             unverified: vec!["D1".into()],
             panel: None,
             vias_in_pads: ViasInPads::default(),
+            vias_touching_pads: ViasInPads::default(),
         }
     }
 
@@ -1633,6 +1652,34 @@ mod tests {
                 && text.contains("    1 via in a pad: the board house's filled and capped option is needed (extra cost): U1 (on each board)\n"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn vias_whose_hole_touches_a_pad_are_said_in_the_summary_and_stop_no_order() {
+        // Issue #1578: the order goes on, and `order.txt` says them under the board.
+        let mut board = facts(vec![entry(&["C1"], "100n", "C1525")]);
+        board.vias_touching_pads = ViasInPads {
+            count: 2,
+            parts: vec!["U1".into()],
+            pads: vec!["U1.5".into(), "U1.6".into()],
+        };
+        let boards = [("Unit", &board)];
+        assert_eq!(refuse_vias_in_pads(&order(DEVKIT), &boards), Ok(()));
+        let bom = combined_bom(&[(pick("Unit", 1), &board)]);
+        let text = summary_text("devkit", &[(pick("Unit", 1), &board, "")], &bom);
+        assert!(
+            text.contains(
+                "    2 vias whose hole touches a pad's edge: U1 (on each board; see fab-notes.txt)\n"
+            ),
+            "{text}"
+        );
+        // The order's JSON carries them, and an older one without them still reads.
+        let json = serde_json::to_value(&board).unwrap();
+        assert_eq!(json["vias_touching_pads"]["count"], 2);
+        let mut old = json.clone();
+        old.as_object_mut().unwrap().remove("vias_touching_pads");
+        let back: BoardFacts = serde_json::from_value(old).unwrap();
+        assert_eq!(back.vias_touching_pads, ViasInPads::default());
     }
 
     #[test]

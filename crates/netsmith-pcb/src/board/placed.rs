@@ -629,6 +629,22 @@ impl Placed {
         self.rect_to_board(pad.bounds())
     }
 
+    /// A point of the board in the footprint's own frame: [`Placed::to_board`] undone.
+    pub fn from_board(&self, at: Pt) -> Pt {
+        let local = (at - self.at).rotate(-self.rotation);
+        if self.mirrored() {
+            Pt::new(-local.x, local.y)
+        } else {
+            local
+        }
+    }
+
+    /// How far a point of the board is from the pad's copper, in mm, 0 on it
+    /// ([`Pad::copper_distance`]): what judges a via to stand in a pad, or its hole to touch one.
+    pub fn pad_copper_distance(&self, pad: &Pad, at: Pt) -> f64 {
+        pad.copper_distance(self.from_board(at))
+    }
+
     /// The pad's hole on the board as a capsule: the two ends of its axis and its radius.
     /// A round hole has both ends at its centre, which is off the pad's centre by the
     /// drill's offset. A slot lies along the pad's own x or y axis and turns with the pad
