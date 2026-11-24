@@ -1640,6 +1640,7 @@ mod tests {
     fn whole_board_zone(board: &Board, net: &str, layer: &str) -> crate::board::BoardZone {
         let r = board.outline.expanded(-0.3);
         crate::board::BoardZone {
+            patch: false,
             net: net.into(),
             layers: vec![layer.into()],
             outline: r.corners().to_vec(),

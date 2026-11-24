@@ -52,7 +52,9 @@
 //! `thermal`, the default, `none` or `thru_hole_only`), `thermal_gap` and `spoke_width` of a
 //! thermal relief, and `islands` (`remove`, the default, `keep`, or `remove_below` with
 //! `island_min_area` in mm²). A zone of the net of the design's pour or plane on its layer
-//! restates it, which is not drawn ([`Board::replaced`]); a zone of another net is above it and
+//! restates it, which is not drawn ([`Board::replaced`]), unless it says `patch = true` (issue
+//! #1608): then the pour is drawn and the zone, raised above it, holds its own settings inside
+//! its outline alone (a pad joined solid in a thermal pour); a zone of another net is above it and
 //! the pour is drawn round it (issue #1314, [`Board::zone_lift`]); the other layers
 //! keep theirs. The board file holds each zone as KiCad's, unfilled, so that KiCad's fill
 //! makes the copper KiCad's own board has; netsmith's own fill, for the Gerbers, the check and
@@ -157,6 +159,13 @@ pub struct RouteZone {
     pub outline: Vec<[f64; 2]>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub holes: Vec<Vec<[f64; 2]>>,
+    /// Whether a zone of the net of the design's pour or plane on its layer is a patch of it
+    /// (issue #1608): the pour is kept and the zone's settings (`pads`, `clearance`,
+    /// `thermal_gap`, `spoke_width`) hold inside its outline alone. Without it, such a zone
+    /// replaces the pour on its layer (issue #1314). It changes nothing for a zone of another
+    /// net, or on a layer with no pour or plane.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub patch: bool,
     #[serde(default)]
     pub lock: bool,
 }
@@ -411,6 +420,9 @@ impl Routes {
                             let _ = writeln!(out, "  {},", ring(h));
                         }
                         out.push_str("]\n");
+                    }
+                    if z.patch {
+                        out.push_str("patch = true\n");
                     }
                     if z.lock {
                         out.push_str("lock = true\n");
@@ -696,6 +708,7 @@ impl RouteZone {
             && near(self.thermal_gap, other.thermal_gap)
             && near(self.spoke_width, other.spoke_width)
             && self.islands == other.islands
+            && self.patch == other.patch
             && match (self.island_min_area, other.island_min_area) {
                 (None, None) => true,
                 (Some(a), Some(b)) => near(a, b),
@@ -729,6 +742,7 @@ impl RouteZone {
             spoke_width: self.spoke_width,
             islands: self.islands,
             island_min_area: self.island_min_area,
+            patch: self.patch,
         }
     }
 
@@ -754,6 +768,7 @@ impl RouteZone {
                 .iter()
                 .map(|h| h.iter().map(at).collect())
                 .collect(),
+            patch: zone.patch,
             lock: false,
         }
     }
@@ -775,6 +790,7 @@ impl RouteZone {
             island_min_area: None,
             outline,
             holes: Vec::new(),
+            patch: false,
             lock: false,
         }
     }
@@ -1011,6 +1027,7 @@ mod tests {
 
     fn zone() -> RouteZone {
         RouteZone {
+            patch: false,
             layers: vec!["top".into(), "bottom".into()],
             priority: 2,
             clearance: 0.2,
@@ -1062,6 +1079,42 @@ mod tests {
         assert_eq!(
             (z.priority, z.pads, z.islands, z.lock),
             (0, ZonePads::Thermal, ZoneIslands::Remove, false)
+        );
+        assert!(!z.patch, "a zone is no patch unless it says so");
+    }
+
+    #[test]
+    fn a_patch_zone_is_written_and_read_back_with_its_mark_and_onto_the_board() {
+        // Issue #1608: `patch = true` is written after the outline and holes, read back, and
+        // carried to the board's zone and back; a zone without it writes no line.
+        let mut routes = sample();
+        let plain = routes.to_text();
+        assert!(!plain.contains("patch"), "{plain}");
+        let record = routes
+            .boards
+            .get_mut("Led")
+            .unwrap()
+            .nets
+            .get_mut("mcu.usb.dp")
+            .unwrap();
+        record.zones[0].patch = true;
+        let text = routes.to_text();
+        assert!(
+            text.contains("]\npatch = true\n"),
+            "the mark follows the holes: {text}"
+        );
+        assert_eq!(Routes::parse(&text, "f").unwrap(), routes);
+        let mut z = zone();
+        z.patch = true;
+        let board = crate::board::tests::led_board();
+        let on = z.on(&board, "GND");
+        assert!(on.patch);
+        assert_eq!(RouteZone::of(&board, &on), z);
+        let mut unmarked = z.clone();
+        unmarked.patch = false;
+        assert!(
+            !z.same_copper(&unmarked),
+            "a patch and a replacement make other copper"
         );
     }
 

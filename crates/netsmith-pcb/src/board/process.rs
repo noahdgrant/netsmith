@@ -399,8 +399,10 @@ impl Board {
                         )
                     } else if self.zoned(&pl.layer) {
                         format!(
-                            "{} is a plane on {}, cut by the routes file's zones",
-                            pl.layer, pl.net
+                            "{} is a plane on {}, {} the routes file's zones",
+                            pl.layer,
+                            pl.net,
+                            self.cut_by(&pl.layer, &pl.net)
                         )
                     } else {
                         format!("{} is a plane on {}", pl.layer, pl.net)
@@ -436,8 +438,9 @@ impl Board {
                         )
                     } else if self.zoned(layer) {
                         format!(
-                            "{layer} is a pour on {}, cut by the routes file's zones",
-                            po.net
+                            "{layer} is a pour on {}, {} the routes file's zones",
+                            po.net,
+                            self.cut_by(layer, &po.net)
                         )
                     } else {
                         format!("{layer} is a pour on {}", po.net)

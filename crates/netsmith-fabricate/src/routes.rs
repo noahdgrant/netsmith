@@ -383,6 +383,9 @@ pub enum Edit {
         spoke_width: Option<f64>,
         priority: u32,
         pads: ZonePads,
+        /// A patch of the pour or plane of `net` on a layer (issue #1608, [`RouteZone::patch`]):
+        /// the pour is kept and the zone's settings hold inside its outline.
+        patch: bool,
         lock: bool,
     },
     /// The net's whole record (`shape` `None`), or one shape of it. A locked one is refused.
@@ -1068,7 +1071,8 @@ pub fn record_of_text(
         .ok_or_else(|| format!("the text holds no record of net {net} of {board}"))
 }
 
-/// `board`'s KiCad layers that a zone of the routes file's table is on, each with the zone's net.
+/// `board`'s KiCad layers that a zone of the routes file's table is on, each with the zone's net,
+/// of the zones that are not patches (a patch restates no pour, issue #1608).
 fn zoned_layers(table: &netsmith_pcb::BoardRoutes) -> Vec<(String, String)> {
     table
         .nets
@@ -1076,6 +1080,7 @@ fn zoned_layers(table: &netsmith_pcb::BoardRoutes) -> Vec<(String, String)> {
         .flat_map(|(net, r)| {
             r.zones
                 .iter()
+                .filter(|z| !z.patch)
                 .flat_map(|z| z.layers.iter())
                 .filter_map(|l| netsmith_pcb::routes_kicad_layer(l))
                 .map(move |l| (l, net.clone()))
@@ -1160,9 +1165,11 @@ fn change_record(
             spoke_width,
             priority,
             pads,
+            patch,
             lock,
         } => {
             let mut zone = RouteZone::new(board, layers.clone(), outline.clone());
+            zone.patch = *patch;
             zone.clearance = clearance.unwrap_or(zone.clearance);
             zone.min_width = min_width.unwrap_or(zone.min_width);
             zone.thermal_gap = thermal_gap.unwrap_or(zone.thermal_gap);
@@ -1199,10 +1206,13 @@ fn change_record(
             }
             let words = layers.join(" and ");
             record.zones.push(zone);
-            // A zone of the pour's or the plane's own net restates it; one of another net cuts
-            // it (issue #1314).
+            // A zone of the pour's or the plane's own net restates it, unless it is a patch of it
+            // (issue #1608); one of another net cuts it (issue #1314).
             let mut replaced: Vec<String> = Vec::new();
+            let mut patched: Vec<String> = Vec::new();
             let mut cut: Vec<String> = Vec::new();
+            // The layers where `patch` changes nothing: no pour or plane of the zone's net.
+            let mut idle: Vec<String> = Vec::new();
             for l in layers.iter() {
                 let Some(kicad) = netsmith_pcb::routes_kicad_layer(l) else {
                     continue;
@@ -1221,15 +1231,25 @@ fn change_record(
                     )
                     .next();
                 let Some(theirs) = process else {
+                    if *patch {
+                        idle.push(l.clone());
+                    }
                     continue;
                 };
                 let restated = zoned.iter().any(|(k, n)| *k == kicad && n == theirs);
                 if theirs == net.as_str() {
-                    if !restated {
+                    if *patch {
+                        patched.push(l.clone());
+                    } else if !restated {
                         replaced.push(l.clone());
                     }
-                } else if !restated {
-                    cut.push(format!("{l} ({theirs})"));
+                } else {
+                    if *patch {
+                        idle.push(l.clone());
+                    }
+                    if !restated {
+                        cut.push(format!("{l} ({theirs})"));
+                    }
                 }
             }
             let mut said = format!("added a zone to net {net} on {words}");
@@ -1239,10 +1259,22 @@ fn change_record(
                     replaced.join(" and ")
                 ));
             }
+            if !patched.is_empty() {
+                said.push_str(&format!(
+                    "; it patches the design's pour or plane on {}: the pour is kept, and the zone's settings hold inside its outline",
+                    patched.join(" and ")
+                ));
+            }
             if !cut.is_empty() {
                 said.push_str(&format!(
                     "; the design's pour or plane on {} is drawn round it: the zone has the area it covers",
                     cut.join(" and ")
+                ));
+            }
+            if !idle.is_empty() {
+                said.push_str(&format!(
+                    "; `patch` changes nothing on {}: no pour or plane of net {net} is there",
+                    idle.join(" and ")
                 ));
             }
             Ok(said)
@@ -1574,13 +1606,14 @@ impl Shown {
             for (i, z) in n.zones.iter().enumerate() {
                 let _ = writeln!(
                     s,
-                    "  zone {}: {}, priority {}, {} corners from {}, {} hole(s){}",
+                    "  zone {}: {}, priority {}, {} corners from {}, {} hole(s){}{}",
                     i + 1,
                     z.layers.join(" and "),
                     z.priority,
                     z.outline.len(),
                     pt(z.outline.first().copied().unwrap_or_default()),
                     z.holes.len(),
+                    if z.patch { ", a patch of the pour" } else { "" },
                     if z.lock { " (locked)" } else { "" }
                 );
             }
@@ -1649,6 +1682,7 @@ mod tests {
             spoke_width: None,
             priority,
             pads: ZonePads::Thermal,
+            patch: false,
             lock: false,
         }
     }

@@ -520,6 +520,7 @@ fn on_a_net_with_a_zone_of_the_routes_file_the_zone_is_carved_round_the_sense_tr
         spoke_width: 0.5,
         islands: ZoneIslands::Remove,
         island_min_area: None,
+        patch: false,
     });
     route(&mut board);
     let space = clearance.max(board.clearance("GND"));

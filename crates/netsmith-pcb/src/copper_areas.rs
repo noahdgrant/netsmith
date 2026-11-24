@@ -14,7 +14,8 @@
 //! - a **hand zone**: a zone of the routes file (`netsmith routes add-zone`, or imported from a
 //!   KiCad board), counted apart from the process's pours. One of the net of the layer's plane
 //!   or pour restates it, and the process's copper there is not drawn
-//!   ([`AreaLayer::replaced_by_zones`]); one of another net has the area it covers, and the
+//!   ([`AreaLayer::replaced_by_zones`]), unless it is a patch (`patch = true`, issue #1608),
+//!   which keeps it and holds its own settings inside its outline; one of another net has the area it covers, and the
 //!   plane or pour is drawn round it (issue #1314);
 //! - a **teardrop fill**: the copper that widens a track where it meets a pad or a via. The
 //!   router makes it after it has routed the board, so the source holds none and
@@ -98,6 +99,9 @@ pub struct AreaLayer {
     /// other nets cut the plane or the pour where they are and leave it drawn round them (issue
     /// #1314).
     pub replaced_by_zones: bool,
+    /// Whether a patch of the plane's or the pour's own net is among them (`patch = true`, issue
+    /// #1608): the plane or pour is drawn, and the patch holds its settings inside its outline.
+    pub patched_by_zones: bool,
 }
 
 /// A zone of the routes file, counted apart from the process's pours.
@@ -117,6 +121,9 @@ pub struct AreaZone {
     pub area: f64,
     /// Whether the record keeps it when the net's pads have moved.
     pub locked: bool,
+    /// A patch of the plane or pour of its net (`patch = true`, issue #1608): it keeps the
+    /// process's copper and holds its own settings inside its outline alone.
+    pub patch: bool,
 }
 
 /// The teardrop fills of the routed board.
@@ -169,17 +176,23 @@ impl CopperAreas {
             zones
                 .iter()
                 .filter(|z| z.layers.iter().any(|l| l == word))
-                .filter(|z| net.is_none_or(|n| z.net == n))
+                .filter(|z| net.is_none_or(|n| z.net == n && !z.patch))
                 .count() as u32
         };
         let mut layers = Vec::with_capacity(inner + 2);
         let mut push = |layer: String, kind: AreaKind, net: Option<String>, pour| {
+            let patches = net.as_deref().is_some_and(|n| {
+                zones
+                    .iter()
+                    .any(|z| z.patch && z.net == n && z.layers.contains(&layer))
+            });
             let zones = on(&layer, None);
-            // A zone of the layer's own net restates its pour or plane; one of another net cuts
-            // it (issue #1314).
+            // A zone of the layer's own net restates its pour or plane, unless it is a patch of it
+            // (issue #1608); one of another net cuts it (issue #1314).
             let own = net.as_deref().map_or(0, |n| on(&layer, Some(n)));
             layers.push(AreaLayer {
                 replaced_by_zones: own > 0 && kind != AreaKind::Signal,
+                patched_by_zones: patches && own == 0 && kind != AreaKind::Signal,
                 layer,
                 kind,
                 net,
@@ -270,8 +283,18 @@ impl CopperAreas {
                 ));
             } else if l.zones > 0 && l.kind != AreaKind::Signal {
                 out.push_str(&format!(
-                    " (cut by {} hand zone(s) of other nets, drawn round them)",
-                    l.zones
+                    " ({} {} hand zone(s){}, drawn round them)",
+                    if l.patched_by_zones {
+                        "cut or patched by"
+                    } else {
+                        "cut by"
+                    },
+                    l.zones,
+                    if l.patched_by_zones {
+                        ""
+                    } else {
+                        " of other nets"
+                    },
                 ));
             } else if l.zones > 0 {
                 out.push_str(&format!(" ({} hand zone(s))", l.zones));
@@ -281,7 +304,7 @@ impl CopperAreas {
         out.push_str(&format!("hand zones (routes file): {}\n", self.zones.len()));
         for z in &self.zones {
             out.push_str(&format!(
-                "  {} on {}: {} mm2, priority {}, clearance {} mm, min width {} mm, pads {}, thermal gap {} mm, spoke {} mm{}{}\n",
+                "  {} on {}: {} mm2, priority {}, clearance {} mm, min width {} mm, pads {}, thermal gap {} mm, spoke {} mm{}{}{}\n",
                 z.net,
                 z.layers.join(", "),
                 round(z.area),
@@ -296,6 +319,7 @@ impl CopperAreas {
                     ZoneIslands::Keep => ", islands kept",
                     ZoneIslands::RemoveBelow => ", small islands removed",
                 },
+                if z.patch { ", a patch of the pour" } else { "" },
                 if z.locked { ", locked" } else { "" },
             ));
         }
@@ -351,6 +375,7 @@ fn zone(net: &str, z: &RouteZone, record_lock: bool) -> AreaZone {
         islands: z.islands,
         area: ring_area(&z.outline) - z.holes.iter().map(|h| ring_area(h)).sum::<f64>(),
         locked: z.lock || record_lock,
+        patch: z.patch,
     }
 }
 
@@ -395,6 +420,7 @@ mod tests {
 
     fn routes_with_zone(board: &str, net: &str, layer: &str, lock: bool) -> Routes {
         let zone = RouteZone {
+            patch: false,
             layers: vec![layer.into()],
             priority: 2,
             clearance: 0.2,
@@ -524,6 +550,26 @@ mod tests {
         );
         assert!(
             areas.text().contains("cut by 1 hand zone(s) of other nets"),
+            "{}",
+            areas.text()
+        );
+        // A patch of the pour's own net keeps it too (issue #1608).
+        let mut routes = routes_with_zone(&design.name, "GND", "top", false);
+        for record in routes.boards.values_mut().flat_map(|b| b.nets.values_mut()) {
+            record.zones[0].patch = true;
+        }
+        let areas = CopperAreas::of(&design, Some(&routes)).unwrap();
+        let top = &areas.layers[0];
+        assert_eq!(
+            (top.kind, top.zones, top.replaced_by_zones),
+            (AreaKind::Pour, 1, false)
+        );
+        assert!(areas.zones[0].patch && top.patched_by_zones);
+        assert!(
+            areas
+                .text()
+                .contains("(cut or patched by 1 hand zone(s), drawn round them)")
+                && areas.text().contains(", a patch of the pour"),
             "{}",
             areas.text()
         );

@@ -13,16 +13,33 @@ impl Board {
     /// Whether a zone of the routes file of `net` is on `layer`: then the routes file restates
     /// the design's pour or plane of `net` there, which is not drawn, nor counted as joining
     /// its net. A zone of another net does not replace it: it has the area it covers, and the
-    /// pour fills round it (issue #1314; [`Board::zone_lift`]).
+    /// pour fills round it (issue #1314; [`Board::zone_lift`]). Nor does a patch of `net`
+    /// (`BoardZone::patch`, issue #1608): the pour is drawn, and the zone, above it, has the
+    /// area it covers.
     pub fn replaced(&self, layer: &str, net: &str) -> bool {
         self.zones
             .iter()
-            .any(|z| z.net == net && z.layers.iter().any(|l| l == layer))
+            .any(|z| !z.patch && z.net == net && z.layers.iter().any(|l| l == layer))
+    }
+
+    /// How the fab notes say what the zones of the routes file on `layer` do to its pour or plane
+    /// of `net`, when they do not replace it: `cut by`, or `cut or patched by` when one is a
+    /// patch of `net` (issue #1608).
+    pub fn cut_by(&self, layer: &str, net: &str) -> &'static str {
+        let patched = self
+            .zones
+            .iter()
+            .any(|z| z.patch && z.net == net && z.layers.iter().any(|l| l == layer));
+        if patched {
+            "cut or patched by"
+        } else {
+            "cut by"
+        }
     }
 
     /// How far the zones of the routes file are raised above their own priorities in the board
     /// file: 1 when a pour or a plane of the process is drawn on a layer that has one (of
-    /// another net, [`Board::replaced`]), so that each has the area it covers and the pour,
+    /// another net, or a patch of its own, [`Board::replaced`]), so that each has the area it covers and the pour,
     /// written at priority 0, fills round it as KiCad's fill does (issue #1314); 0 otherwise.
     /// Every zone is raised alike, so their order among themselves is the routes file's.
     /// `routes import` takes the 1 off again.

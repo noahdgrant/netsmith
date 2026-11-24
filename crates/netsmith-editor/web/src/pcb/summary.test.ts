@@ -72,7 +72,7 @@ describe('a datasheet guideline of the summary', () => {
 
 describe('the copper areas', () => {
   const pour = { stitchPitch: 7, thermalGap: null, spokeWidth: null, clearance: 0.3, minWidth: null, pads: 'solid' };
-  const layer = (over: Partial<CopperLayer>): CopperLayer => ({ layer: 'top', kind: 'signal', net: null, pour: null, zones: 0, replacedByZones: false, ...over });
+  const layer = (over: Partial<CopperLayer>): CopperLayer => ({ layer: 'top', kind: 'signal', net: null, pour: null, zones: 0, replacedByZones: false, patchedByZones: false, ...over });
   it('say a pour field the design does not state is the default', () => {
     expect(pourFields(pour)).toBe('stitch pitch 7 mm, thermal gap default, spoke width default, clearance 0.3 mm, min width default, pads solid');
   });
@@ -82,10 +82,11 @@ describe('the copper areas', () => {
     expect(copperLayerLine(layer({ kind: 'pour', net: 'GND', pour }))).toMatch(/^pour on GND: stitch pitch 7 mm/);
     expect(copperLayerLine(layer({ kind: 'signal', zones: 2 }))).toBe('signal (2 hand zones)');
     expect(copperLayerLine(layer({ kind: 'pour', net: 'GND', zones: 1 }))).toBe('pour on GND (cut by 1 hand zone of other nets, drawn round them)');
+    expect(copperLayerLine(layer({ kind: 'pour', net: 'GND', zones: 1, patchedByZones: true }))).toBe('pour on GND (cut or patched by 1 hand zone, drawn round them)');
     expect(copperLayerLine(layer({ kind: 'plane', net: 'GND', zones: 1, replacedByZones: true }))).toBe('plane on GND (not drawn: 1 zone of the routes file replaces it)');
   });
   it('write a zone of the routes file on one line', () => {
-    const zone: CopperZone = { net: 'GND', layers: ['top'], priority: 0, clearance: 0.2, minWidth: 0.25, pads: 'thermal', thermalGap: 0.5, spokeWidth: 0.5, islands: 'remove', area: 24, locked: true };
+    const zone: CopperZone = { net: 'GND', layers: ['top'], priority: 0, clearance: 0.2, minWidth: 0.25, pads: 'thermal', thermalGap: 0.5, spokeWidth: 0.5, islands: 'remove', area: 24, locked: true, patch: false };
     expect(copperZoneLine(zone)).toBe('GND on top: 24 mm², priority 0, clearance 0.2 mm, min width 0.25 mm, pads thermal, locked');
   });
   it('count the teardrop fills only for a routed board', () => {
