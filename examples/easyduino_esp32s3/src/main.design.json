@@ -3460,14 +3460,18 @@
           "current": 0.511,
           "least_width": 0.14873472849391914,
           "vias": 1,
-          "source": "rail `regulator.vin`: 0 mA to 511 mA; the current of rail `vbus`, part `usb_uart_diode`, part `usb_native_diode`, part `bridge_reset_pullup.resistor`, part `power_led_resistor` is not known, so it may be more"
+          "source": "rail `regulator.vin`: 0 mA to 511 mA; the current of rail `vbus`, part `usb_uart_diode`, part `usb_native_diode`, part `bridge_reset_pullup.resistor`, part `power_led_resistor` is not known, so it may be more",
+          "from": "sum",
+          "lower_bound": true
         },
         {
           "net": "net-auto_reset.q_en.emitter",
           "current": 0.00034333333333333335,
           "least_width": 6.255581026994644e-6,
           "vias": 1,
-          "source": "part `en_pullup.resistor`: 0 mA to 0.343 mA; the current of part `reset` is not known, so it may be more"
+          "source": "part `en_pullup.resistor`: 0 mA to 0.343 mA; the current of part `reset` is not known, so it may be more",
+          "from": "sum",
+          "lower_bound": true
         }
       ],
       "pin_currents": [

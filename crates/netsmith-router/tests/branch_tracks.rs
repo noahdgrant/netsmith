@@ -43,6 +43,7 @@ fn with_a_branch(seed: u64) -> Option<(Board, String, PinRef)> {
         inner_least_width: None,
         vias: SIZING.vias(2.0),
         source: String::new(),
+        ..Default::default()
     });
     let centre = |p: &netsmith_pcb::PadRef| {
         let part = board.part(&p.refdes).unwrap();

@@ -2560,126 +2560,144 @@
           "current": 1.5020976720399046,
           "least_width": 0.6581305815939394,
           "vias": 3,
-          "source": "part `buck_3v3.stage.inductor`: 1.07 mA to 1.5 A"
+          "source": "part `buck_3v3.stage.inductor`: 1.07 mA to 1.5 A",
+          "from": "sum"
         },
         {
           "net": "3V3A",
           "current": 0.05168181818181818,
           "least_width": 0.006307887639662521,
           "vias": 1,
-          "source": "the sum of the currents on it with every load on at once: rail `out_3v3a` 50 mA + part `ldo_light_resistor` 1.68 mA"
+          "source": "the sum of the currents on it with every load on at once: rail `out_3v3a` 50 mA + part `ldo_light_resistor` 1.68 mA",
+          "from": "sum"
         },
         {
           "net": "5V",
           "current": 1.5560555156436622,
           "least_width": 0.6909595809587175,
           "vias": 3,
-          "source": "part `buck_5v.stage.inductor`: 3.82 mA to 1.56 A"
+          "source": "part `buck_5v.stage.inductor`: 3.82 mA to 1.56 A",
+          "from": "sum"
         },
         {
           "net": "GND",
           "current": 8.008529131452518,
           "least_width": 6.620184945537908,
           "vias": 15,
-          "source": "the sum of the currents on it with every load on at once: rail `input` 3 A + rail `vin` 1.9 A + rail `buck_5v.stage.ic.sw` 1.56 A + rail `buck_3v3.stage.ic.sw` 1.5 A and 1 more"
+          "source": "the sum of the currents on it with every load on at once: rail `input` 3 A + rail `vin` 1.9 A + rail `buck_5v.stage.ic.sw` 1.56 A + rail `buck_3v3.stage.ic.sw` 1.5 A and 1 more",
+          "from": "sum"
         },
         {
           "net": "VIN",
           "current": 4.898694125587133,
           "least_width": 3.360666230472865,
           "vias": 9,
-          "source": "the sum of the currents on it with every load on at once: part `reverse_diode` 3 A + rail `vin` 1.9 A"
+          "source": "the sum of the currents on it with every load on at once: part `reverse_diode` 3 A + rail `vin` 1.9 A",
+          "from": "sum"
         },
         {
           "net": "VIN_RAW",
           "current": 3.0,
           "least_width": 1.708790166598937,
           "vias": 6,
-          "source": "part `reverse_diode`: 0 mA to 3 A"
+          "source": "part `reverse_diode`: 0 mA to 3 A",
+          "from": "sum"
         },
         {
           "net": "net-buck_3v3.light.anode",
           "current": 0.0016818181844999998,
           "least_width": 0.000055985916264529405,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 1.68 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 1.68 mA",
+          "from": "analysis"
         },
         {
           "net": "net-buck_3v3.pg_pullup.resistor.b",
           "current": 0.000035000000000000004,
           "least_width": 2.6821151020723907e-7,
           "vias": 1,
-          "source": "part `buck_3v3.pg_pullup.resistor`: 0 mA to 0.035 mA"
+          "source": "part `buck_3v3.pg_pullup.resistor`: 0 mA to 0.035 mA",
+          "from": "sum"
         },
         {
           "net": "net-buck_3v3.stage.divider.rbottom.a",
           "current": 0.0003808538594669273,
           "least_width": 7.217637889438527e-6,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.381 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.381 mA",
+          "from": "analysis"
         },
         {
           "net": "net-buck_3v3.stage.ic.boost.b",
           "current": 1.5020976720399046,
           "least_width": 0.6581305815939394,
           "vias": 3,
-          "source": "part `buck_3v3.stage.inductor`: 1.07 mA to 1.5 A"
+          "source": "part `buck_3v3.stage.inductor`: 1.07 mA to 1.5 A",
+          "from": "sum"
         },
         {
           "net": "net-buck_3v3.stage.ic.en",
           "current": 0.00011999696322222223,
           "least_width": 1.4674030817509108e-6,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.12 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.12 mA",
+          "from": "analysis"
         },
         {
           "net": "net-buck_5v.light.anode",
           "current": 0.003484848489333334,
           "least_width": 0.0001529323220894459,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 3.48 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 3.48 mA",
+          "from": "analysis"
         },
         {
           "net": "net-buck_5v.pg_pullup.resistor.b",
           "current": 0.00005303030303030303,
           "least_width": 4.7575386812470433e-7,
           "vias": 1,
-          "source": "part `buck_5v.pg_pullup.resistor`: 0 mA to 0.053 mA"
+          "source": "part `buck_5v.pg_pullup.resistor`: 0 mA to 0.053 mA",
+          "from": "sum"
         },
         {
           "net": "net-buck_5v.stage.divider.rbottom.a",
           "current": 0.0008358186758006605,
           "least_width": 0.00002134164015944283,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.836 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.836 mA",
+          "from": "analysis"
         },
         {
           "net": "net-buck_5v.stage.ic.boost.b",
           "current": 1.5560555156436622,
           "least_width": 0.6909595809587175,
           "vias": 3,
-          "source": "part `buck_5v.stage.inductor`: 3.82 mA to 1.56 A"
+          "source": "part `buck_5v.stage.inductor`: 3.82 mA to 1.56 A",
+          "from": "sum"
         },
         {
           "net": "net-buck_5v.stage.ic.en",
           "current": 0.00011999696322222223,
           "least_width": 1.4674030817509108e-6,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.12 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.12 mA",
+          "from": "analysis"
         },
         {
           "net": "net-input_light.anode",
           "current": 0.003008811523458629,
           "least_width": 0.0001248862339464662,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 3.01 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 3.01 mA",
+          "from": "analysis"
         },
         {
           "net": "net-ldo_light.anode",
           "current": 0.0016818181844999998,
           "least_width": 0.000055985916264529405,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 1.68 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 1.68 mA",
+          "from": "analysis"
         }
       ],
       "pin_currents": [

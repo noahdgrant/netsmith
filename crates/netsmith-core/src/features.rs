@@ -6,8 +6,26 @@ use crate::{
     PartSoftMargin, PartStandoff, PinProtrusion, PinRef, Placement, Pour, StepModel,
 };
 
+/// Where a net's one current comes from (issue #1584): what the track check, the via check, the
+/// track-drop guideline and `board nets --currents` all read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CurrentFrom {
+    /// The sum of the currents of the rails and the parts on the net (each as the design states
+    /// it or the solver works it out), with every load on at once (ADR 0036).
+    #[default]
+    Sum,
+    /// What the DC analysis finds into the net over every corner of its ranges (ADR 0076,
+    /// amendment 8).
+    Analysis,
+    /// The current of one rail or part on the net, more than the DC analysis finds: a part that
+    /// states it carries more (a bypass diode's discharge, which a DC analysis does not see) is
+    /// never sized below what it states.
+    Carrier,
+}
+
 /// The current a net carries, and the least track that carries it (issue #431).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct NetCurrent {
     pub net: String,
     /// The worst case, in amperes: every load on at once (ADR 0036). A lower bound where a
@@ -29,6 +47,13 @@ pub struct NetCurrent {
     /// where a design file written before it says none.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub source: String,
+    /// Which of the ways the current was found (issue #1584).
+    #[serde(default)]
+    pub from: CurrentFrom,
+    /// Whether a current on the net is not known, so that `current` is the part that is known,
+    /// a lower bound (ADR 0036, amendment 3).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub lower_bound: bool,
 }
 
 /// A branch of a net that carries a current of its own (issue #1113): the copper from the pads

@@ -976,6 +976,9 @@ pub struct NetCurrent {
     pub net: String,
     pub current: f64,
     pub source: String,
+    /// Whether a current on the net is not known, so that `current` is a lower bound (issue
+    /// #1584): the copper that feeds branches is then not held to it.
+    pub lower_bound: bool,
 }
 
 /// What the check needs to judge a board's vias against the process (the `via_span` and

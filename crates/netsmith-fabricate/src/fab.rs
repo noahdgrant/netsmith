@@ -3803,6 +3803,7 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
                 net: c.net.clone(),
                 current: c.current,
                 source: c.source.clone(),
+                lower_bound: c.lower_bound,
             })
             .collect(),
         // The layout file's waivers of findings of a part's own footprint (issue #1196).
