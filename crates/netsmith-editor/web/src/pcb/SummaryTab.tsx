@@ -12,7 +12,7 @@ import { EmptyState } from '../components/ui';
 import { pickRoute, select, selection } from '../pcbstore';
 import { pickNet } from '../store';
 import { routesTrackOf } from './uncountedMarks';
-import { copperLayerLine, copperZoneLine, fillAreaLine, fillCountsLine, fillPadLine, fillRegulatorGroundLine, fillStarvedLine, fillWord, guidelineLine, mm, netGroupLine, netPairLine, netRowLine, netUncountedLine, padName, padProblem, padsLine, sheetBox, summaryQuery, teardropsLine, uncountedBox, uncountedRunLine } from './summary';
+import { copperLayerLine, copperZoneLine, fillAreaLine, fillCountsLine, fillPadLine, fillRegulatorGroundLine, fillStarvedLine, fillWord, guidelineLine, mm, netGroupLine, netPairLine, netRowLine, netUncountedLine, padName, padProblem, padsLine, pairsOnBoard, sheetBox, summaryQuery, teardropsLine, uncountedBox, uncountedRunLine } from './summary';
 
 /** How many of the longest nets the tab lists. */
 const LONGEST_NETS = 8;
@@ -33,8 +33,11 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
   const [b, setB] = useState('');
   // The refdes of the selected parts: the neighbours listed are theirs.
   const near = sc.parts.filter((p) => selection.value.includes(p.path)).map((p) => p.refdes);
-  const ask = summaryQuery(sc.board, near, within, pairs);
-  // Asked again when the placement changes (its stamp), the selection, the distance or the pairs.
+  const { asked, leftOut } = pairsOnBoard(sc, pairs);
+  const ask = summaryQuery(sc.board, near, within, asked);
+  // Each section is asked again whenever the scene is loaded again, as the 2D view's fill and marks are (`pcbstore.ts`, `show`): after a
+  // source change, an edit or a route. The scene's stamps would miss a source change that leaves the files they cover. This one is asked
+  // again too when the selection, the distance or the pairs change.
   useEffect(() => {
     let current = true;
     api
@@ -49,9 +52,10 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
         const why = e instanceof ApiFailure || e instanceof Error ? e.message : String(e);
         // Only a pair can be wrong (the parts asked about are selected ones): it is taken off, with
         // what the server said, and the last answer stays.
-        if (pairs.length > 0) {
+        const last = asked[asked.length - 1];
+        if (last) {
           setRefused(why);
-          setPairs((all) => all.slice(0, -1));
+          setPairs((all) => all.filter((p) => p[0] !== last[0] || p[1] !== last[1]));
         } else {
           setError(why);
           setAnswer(null);
@@ -60,9 +64,8 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
     return () => {
       current = false;
     };
-  }, [ask, sc.layoutStamp]);
-  // The copper areas come from the source and the routes file, not from the placement: asked again
-  // when either changes (the scene's stamps) or the board is routed (that counts the teardrop fills).
+  }, [ask, sc]);
+  // The copper areas come from the source and the routes file, not from the placement; a routed board counts the teardrop fills.
   const [copper, setCopper] = useState<PcbCopper | null>(null);
   const [copperError, setCopperError] = useState<string | null>(null);
   useEffect(() => {
@@ -82,9 +85,8 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
     return () => {
       current = false;
     };
-  }, [sc.board, sc.layoutStamp, sc.routesStamp, sc.routed]);
-  // The fill of the pours on the board as placed (and routed): asked again when the placement, the
-  // routes file or the routing changes. Filling takes longer than the rest of the tab.
+  }, [sc]);
+  // The fill of the pours on the board as placed (and routed). Filling takes longer than the rest of the tab.
   const [fill, setFill] = useState<PcbFill | null>(null);
   const [fillError, setFillError] = useState<string | null>(null);
   useEffect(() => {
@@ -104,9 +106,8 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
     return () => {
       current = false;
     };
-  }, [sc.board, sc.layoutStamp, sc.routesStamp, sc.routed]);
-  // The table of the nets and pairs of the board as placed (and routed): asked again when the
-  // placement, the routes file or the routing changes.
+  }, [sc]);
+  // The table of the nets and pairs of the board as placed (and routed).
   const [nets, setNets] = useState<PcbNets | null>(null);
   const [netsError, setNetsError] = useState<string | null>(null);
   useEffect(() => {
@@ -126,7 +127,7 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
     return () => {
       current = false;
     };
-  }, [sc.board, sc.layoutStamp, sc.routesStamp, sc.routed]);
+  }, [sc]);
   const measure = () => {
     const [x, y] = [padName(a), padName(b)];
     if (!x || !y) {
@@ -203,6 +204,11 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
               {refused}
             </div>
           )}
+          {leftOut.map((why, i) => (
+            <div key={`${i} ${why}`} class="note-line bad" data-testid="summary-left-out">
+              {why}
+            </div>
+          ))}
           {s.pads.map((p, i) => (
             <div key={`${p.from}-${p.to}-${i}`} class="summary-line" data-testid="summary-pads">
               <b>
@@ -261,7 +267,7 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
                 <b>{f.layer}</b>: {fillAreaLine(f)}
               </summary>
               {f.pads.map((p) => (
-                <div key={`${p.part}.${p.pad}`} class={`summary-line${p.starved ? ' bad' : ' faint'}`} data-testid="summary-fill-pad" data-pad={`${p.part}.${p.pad}`} data-join={p.join} data-starved={p.starved}>
+                <div key={`${p.part}.${p.pad}`} class={`summary-line${p.starved ? ' bad' : ' faint'}`} data-testid="summary-fill-pad" data-pad={`${p.part}.${p.pad}`} data-join={p.join} data-starved={p.starved} data-stated-by={p.statedBy ?? undefined}>
                   {fillPadLine(p)}
                 </div>
               ))}

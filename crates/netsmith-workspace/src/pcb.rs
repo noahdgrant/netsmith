@@ -965,6 +965,24 @@ pub fn copper(data: &BoardData, name: &str, routed: Option<&Board>) -> Result<Pc
         .map_err(|e| ApiError::internal(format!("the copper areas of {name}: {e}")))
 }
 
+/// `report` as the page reads it: the report of the board `name` with camelCase keys, and what
+/// it was filled on.
+fn fill_answer(
+    report: &netsmith_pcb::FillReport,
+    name: &str,
+    layout_stamp: String,
+    routes_stamp: String,
+    routed: bool,
+) -> Result<PcbFill, ApiError> {
+    let mut value = serde_json::to_value(report).expect("plain data");
+    value["board"] = name.into();
+    value["layout_stamp"] = layout_stamp.into();
+    value["routes_stamp"] = routes_stamp.into();
+    value["routed"] = routed.into();
+    serde_json::from_value(camel_keys(value))
+        .map_err(|e| ApiError::internal(format!("the fill of {name}: {e}")))
+}
+
 /// The board of an entry and the stamps of what it was placed from, copied out so that the fill
 /// of [`Filling::fill`], which takes longer than anything else the view asks for, and the table
 /// of [`Filling::nets`] run with no lock held.
@@ -990,13 +1008,13 @@ impl Filling {
     pub fn fill(self, name: &str) -> Result<PcbFill, ApiError> {
         let report = netsmith_pcb::FillReport::of(&self.board)
             .map_err(|e| ApiError::internal(format!("the fill of {name}: {e}")))?;
-        let mut value = serde_json::to_value(&report).expect("plain data");
-        value["board"] = name.into();
-        value["layout_stamp"] = self.layout_stamp.into();
-        value["routes_stamp"] = self.routes_stamp.into();
-        value["routed"] = self.routed.into();
-        serde_json::from_value(camel_keys(value))
-            .map_err(|e| ApiError::internal(format!("the fill of {name}: {e}")))
+        fill_answer(
+            &report,
+            name,
+            self.layout_stamp,
+            self.routes_stamp,
+            self.routed,
+        )
     }
 
     /// The stitching vias the export will have that the routes file does not (`netsmith view
@@ -2567,7 +2585,10 @@ fn track_layer(board: &Board, word: &str) -> Result<CopperLayer, ApiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netsmith_pcb::{Glimpse, GlimpsePart, Pt, Rect};
+    use netsmith_pcb::{
+        ClearedPad, FillArea, FillIsland, FillPad, FillPolygon, FillReport, FillSource, Glimpse,
+        GlimpsePart, JoinCounts, JoinKind, Pt, Rect, RegulatorGround, StarvedPad, UnjoinablePad,
+    };
     use std::sync::{Arc, Mutex};
 
     fn placing(parts: usize) -> Glimpse {
@@ -2609,5 +2630,138 @@ mod tests {
             "the last is passed: {shown:?}"
         );
         assert!(shown.len() <= 2, "no glimpse is passed twice: {shown:?}");
+    }
+
+    /// Every key of `value` and of what it holds, by its path (`fills[].pads[].statedBy`).
+    fn keys(value: &serde_json::Value, at: &str, found: &mut BTreeSet<String>) {
+        match value {
+            serde_json::Value::Object(map) => {
+                for (key, held) in map {
+                    let path = format!("{at}.{key}");
+                    keys(held, &path, found);
+                    found.insert(path);
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for held in items {
+                    keys(held, &format!("{at}[]"), found);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The page's `PcbFill` holds every key of the report `board fill` prints, apart from those
+    /// left out on purpose, so a field added to the report is not dropped silently (issue
+    /// #1636). The report is built with no `..`, so a new field does not compile until it is
+    /// given here, and with every value there, so that none is skipped when it is written.
+    #[test]
+    fn the_fill_of_the_page_holds_every_field_of_the_report() {
+        let at = Pt::new(1.0, 2.0);
+        let word = || "w".to_string();
+        let island = || FillIsland {
+            at,
+            area: 1.0,
+            outline: vec![vec![at]],
+        };
+        let counts = JoinCounts {
+            no_spokes: 1,
+            one_spoke: 1,
+            two_or_more_spokes: 1,
+            solid: 1,
+            none: 1,
+            starved: 1,
+            unjoinable: 1,
+        };
+        let report = FillReport {
+            board: word(),
+            outline_at: at,
+            fills: vec![FillArea {
+                layer: word(),
+                layer_name: word(),
+                net: word(),
+                source: FillSource::Pour,
+                held: true,
+                area: 1.0,
+                outline: vec![FillPolygon {
+                    outer: vec![at],
+                    holes: vec![vec![at]],
+                }],
+                pads: vec![FillPad {
+                    part: word(),
+                    pad: word(),
+                    at,
+                    join: JoinKind::Thermal,
+                    spokes: Some(4),
+                    joined_spokes: Some(0),
+                    tracks: 1,
+                    joined: true,
+                    starved: true,
+                    unjoinable: Some(word()),
+                    joined_elsewhere: true,
+                    stated_by: Some(word()),
+                    spoke_width: Some(0.5),
+                }],
+                counts,
+                cleared: vec![ClearedPad {
+                    part: word(),
+                    pad: word(),
+                    net: Some(word()),
+                    at,
+                }],
+                islands: vec![island()],
+                removed_islands: vec![island()],
+            }],
+            counts,
+            starved: vec![StarvedPad {
+                layer: word(),
+                net: word(),
+                part: word(),
+                pad: word(),
+                at,
+                spokes: 4,
+                joined_spokes: 1,
+                tracks: 1,
+            }],
+            unjoinable: vec![UnjoinablePad {
+                layer: word(),
+                net: word(),
+                part: word(),
+                pad: word(),
+                at,
+                spokes: 4,
+                why: word(),
+            }],
+            regulator_grounds: vec![RegulatorGround {
+                path: word(),
+                layer: word(),
+                net: word(),
+                part: word(),
+                pad: word(),
+                at,
+                join: JoinKind::Thermal,
+                spokes: Some(4),
+                joined_spokes: Some(1),
+                starved: true,
+                stated_by: Some(word()),
+            }],
+        };
+        let mut printed = BTreeSet::new();
+        let written = camel_keys(serde_json::to_value(&report).unwrap());
+        keys(&written, "", &mut printed);
+        // The 2D view draws a fill's copper from `GET /api/pcb/pours`.
+        printed.retain(|k| !k.starts_with(".fills[].outline"));
+
+        let page = fill_answer(&report, "B", "layout".into(), "routes".into(), true).unwrap();
+        let read = serde_json::to_value(&page).unwrap();
+        let mut held = BTreeSet::new();
+        keys(&read, "", &mut held);
+        // What the editor says of the placement it filled.
+        for own in [".layoutStamp", ".routesStamp", ".routed"] {
+            assert!(held.remove(own), "{own}: {read}");
+        }
+        assert_eq!(held, printed);
+        // And the values of a pad are the report's.
+        assert_eq!(read["fills"][0]["pads"], written["fills"][0]["pads"]);
     }
 }
