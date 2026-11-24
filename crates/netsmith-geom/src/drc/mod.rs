@@ -423,10 +423,14 @@ pub enum Rule {
     /// `netsmith_fab::power_stage`, since the board file does not say which part is a
     /// regulator): a note, which fails nothing.
     SwitchNodeCopper,
+    /// A pour or plane of the process that a zone of the routes file of its net replaces on its
+    /// layer (netsmith's, issue #1612; `netsmith_fab::replaced_pour`, since the board file holds
+    /// the zone and no pour): a note, which fails nothing.
+    PourReplaced,
 }
 
 impl Rule {
-    pub const ALL: [Rule; 63] = [
+    pub const ALL: [Rule; 64] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -490,6 +494,7 @@ impl Rule {
         Rule::PairSkew,
         Rule::NearRuleArea,
         Rule::SwitchNodeCopper,
+        Rule::PourReplaced,
     ];
 
     /// KiCad's name for the rule (its `type` in a JSON report).
@@ -558,6 +563,7 @@ impl Rule {
             Rule::PairSkew => "pair_skew",
             Rule::NearRuleArea => "near_rule_area",
             Rule::SwitchNodeCopper => "switch_node_copper",
+            Rule::PourReplaced => "pour_replaced",
         }
     }
 
@@ -603,6 +609,7 @@ impl Rule {
                 | Rule::PairSkew
                 | Rule::NearRuleArea
                 | Rule::SwitchNodeCopper
+                | Rule::PourReplaced
         )
     }
 
@@ -639,7 +646,9 @@ impl Rule {
             | Rule::AcidTrap
             | Rule::CopperSliver
             | Rule::PairSkew => Severity::Warning,
-            Rule::NearRuleArea | Rule::VCutEdge | Rule::SwitchNodeCopper => Severity::Note,
+            Rule::NearRuleArea | Rule::VCutEdge | Rule::SwitchNodeCopper | Rule::PourReplaced => {
+                Severity::Note
+            }
             _ => Severity::Error,
         })
     }
