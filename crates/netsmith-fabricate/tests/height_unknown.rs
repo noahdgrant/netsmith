@@ -141,7 +141,7 @@ fn a_part_of_unknown_height_under_a_limit_is_one_height_unknown_warning_with_the
     let warning = netsmith_pcb::heights_unknown_warning(&unknown).expect("a warning");
     assert!(
         warning.starts_with("height_unknown: ")
-            && warning.contains("`r2` (R2) on the top face under the keepout `lid`, which limits it to 3.00 mm"),
+            && warning.contains("`r2` (R2) on the top face under a 3.00 mm limit (the keepout `lid`)"),
         "{warning}"
     );
     assert_eq!(warning.matches("height_unknown").count(), 1, "{warning}");
@@ -217,7 +217,7 @@ fn fab_says_height_unknown_once_in_its_notes_and_still_passes() {
     // one warning names all three, with the lid's limit.
     assert_eq!(lines.len(), 1, "{notes}");
     for want in [
-        "`r1` (R1) on the top face under the keepout `lid`, which limits it to 3.00 mm",
+        "`r1` (R1) on the top face under a 3.00 mm limit (the keepout `lid`)",
         "`r2` (R2)",
         "`r3` (R3)",
     ] {
@@ -313,5 +313,115 @@ fn an_overlap_with_a_module_on_pin_strips_names_the_standoff_it_lacks() {
             .all(|o| o.a_refdes != "J1" && o.b_refdes != "J1"),
         "{:?}",
         scene.findings.overlaps
+    );
+}
+
+/// A lid of `limit` mm over a 10 mm wide strip from `x`, on the top face.
+fn strip(name: &str, x: f64, limit: f64) -> String {
+    format!(
+        "    .{name}: Keepout {{
+        .x &= {x}mm
+        .y &= 0mm
+        .width &= 10mm
+        .height &= 30mm
+        .layers &= \"top\"
+        .max_height &= {limit}mm
+    }}
+"
+    )
+}
+
+#[test]
+fn the_parts_of_unknown_height_are_ranked_by_the_room_under_their_limit() {
+    // R1 under a 5 mm lid, R2 under a 1.2 mm lid, R3 under no limit and no body.
+    let extra = format!(
+        "    .module.height &= 2mm\n{}{}",
+        strip("high", 0.0, 5.0),
+        strip("low", 15.0, 1.2)
+    );
+    let b = built(&extra);
+    let mut board = placed(&b, None);
+    let top = board.outline.min;
+    for (path, x) in [("r1", 5.0), ("r2", 20.0), ("r3", 35.0)] {
+        board.parts.iter_mut().find(|p| p.path == path).unwrap().at = Pt::new(top.x + x, top.y + 6.0);
+    }
+    board.parts.iter_mut().find(|p| p.path == "module").unwrap().at = Pt::new(top.x + 35.0, top.y + 25.0);
+    let unknown = board.heights_unknown();
+    // R3 is under nothing, so it is not listed; the 1.2 mm one comes first, though R1 sorts first by name.
+    let order: Vec<&str> = unknown.iter().map(|u| u.refdes.as_str()).collect();
+    assert_eq!(order, ["R2", "R1"], "{unknown:?}");
+    let warning = netsmith_pcb::heights_unknown_warning(&unknown).unwrap();
+    let low = warning.find("`r2` (R2) on the top face under a 1.20 mm limit (the keepout `low`)").expect(&warning);
+    let high = warning.find("`r1` (R1) on the top face under a 5.00 mm limit (the keepout `high`)").expect(&warning);
+    assert!(low < high, "{warning}");
+    assert!(warning.contains("the tightest first"), "{warning}");
+    // The example names the part to state first: the tightest.
+    assert!(warning.contains("`.r2.height &= 8mm`"), "{warning}");
+    // The report lists them in the same order, each with its tightest limit.
+    let scene = netsmith_fabricate::board3d::scene(&b, &board);
+    let report = netsmith_fabricate::board3d::report(&b, &scene, &b.sourcing).unwrap();
+    let json = serde_json::to_value(&report).unwrap();
+    let parts = json["height_unknown"]["parts"].as_array().unwrap();
+    assert_eq!(parts[0]["refdes"], "R2");
+    assert_eq!(parts[0]["tightest_limit"], 1.2);
+    assert_eq!(parts[1]["tightest_limit"], 5.0);
+}
+
+#[test]
+fn the_parts_under_no_limit_come_after_the_limits_by_package_class() {
+    use netsmith_core::PartKind;
+    use netsmith_pcb::{HeightUnknown, UnknownUnder, heights_unknown_warning};
+    let body = |path: &str, kind| HeightUnknown {
+        refdes: path.to_uppercase(),
+        path: path.into(),
+        side: netsmith_pcb::Side::Front,
+        under: vec![UnknownUnder::Body {
+            refdes: "J1".into(),
+            path: "module".into(),
+            height: 8.0,
+        }],
+        kind: Some(kind),
+        body_area: 1.0,
+    };
+    let limited = |path: &str, limit| HeightUnknown {
+        under: vec![UnknownUnder::Limit { keepout: "lid".into(), limit }],
+        ..body(path, PartKind::Resistor)
+    };
+    let parts = [
+        body("r1", PartKind::Resistor),
+        body("j2", PartKind::Connector),
+        limited("c1", 7.0),
+        body("l1", PartKind::Inductor),
+    ];
+    let warning = heights_unknown_warning(&parts).unwrap();
+    let at = |what: &str| warning.find(what).unwrap_or_else(|| panic!("{what}: {warning}"));
+    assert!(at("`c1`") < at("`j2`") && at("`j2`") < at("`l1`") && at("`l1`") < at("`r1`"), "{warning}");
+}
+
+#[test]
+fn the_parts_past_the_listed_ones_are_one_count_line() {
+    use netsmith_core::PartKind;
+    use netsmith_pcb::{HeightUnknown, UnknownUnder, heights_unknown_warning};
+    let part = |i: usize, limit: f64| HeightUnknown {
+        refdes: format!("R{i}"),
+        path: format!("r{i}"),
+        side: netsmith_pcb::Side::Front,
+        under: vec![UnknownUnder::Limit { keepout: "lid".into(), limit }],
+        kind: Some(PartKind::Resistor),
+        body_area: 1.0,
+    };
+    // Eight parts, the limits 1.0, 1.5, ... 4.5 mm, given in the reverse order.
+    let parts: Vec<HeightUnknown> = (1..=8).rev().map(|i| part(i, 0.5 + 0.5 * i as f64)).collect();
+    let warning = heights_unknown_warning(&parts).unwrap();
+    assert!(warning.contains("whether 8 parts"), "{warning}");
+    for listed in 1..=5 {
+        assert!(warning.contains(&format!("`r{listed}` (R{listed})")), "{warning}");
+    }
+    for rest in 6..=8 {
+        assert!(!warning.contains(&format!("`r{rest}` (R{rest})")), "{warning}");
+    }
+    assert!(
+        warning.contains("and 3 more, 3 under a limit of 3.50 mm or more"),
+        "{warning}"
     );
 }

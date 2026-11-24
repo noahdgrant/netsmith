@@ -460,6 +460,11 @@ pub struct NoteCounts {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Report {
     pub command: &'static str,
+    /// The frame of the document's places (issue #1588): `outline` (mm from the outline's top
+    /// left corner, y down) for `board check`, `build` and `fab`, whose places are the boxes of
+    /// the placement; left out where the command adds it as it prints (`board drc`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frame: Option<&'static str>,
     /// Whether the run did what it was asked; its exit status is 0 then.
     pub ok: bool,
     pub boards: Vec<BoardOut>,
@@ -471,6 +476,7 @@ impl Report {
     pub fn new(command: &'static str) -> Report {
         Report {
             command,
+            frame: None,
             ok: true,
             boards: Vec::new(),
             findings: Vec::new(),

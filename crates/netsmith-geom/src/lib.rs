@@ -64,11 +64,12 @@ pub use drc::{
     Room, Rule as DrcRule, RuleArea as DrcRuleArea, Rules as DrcRules, Severity as DrcSeverity,
     Stackup as DrcStackup, Teardrop as DrcTeardrop, VCut as DrcVCut, ViaRules as DrcViaRules,
     WAIVER_PLACE_TOLERANCE as DRC_WAIVER_PLACE_TOLERANCE, Waived as DrcWaived, Waiver as DrcWaiver,
-    check as drc_check, check_artwork as drc_check_artwork, copper_to_edge as drc_copper_to_edge,
-    kicad_dru as drc_kicad_dru, matches_pattern as drc_matches_pattern,
-    outline_shapes as drc_outline_shapes, pad_reaches_pour as drc_pad_reaches_pour,
-    project_of as drc_project_of, rules_file_of as drc_rules_file_of, rules_of as drc_rules_of,
-    teardrops,
+    check as drc_check, check_artwork as drc_check_artwork, copper_joins,
+    copper_to_edge as drc_copper_to_edge,
+    end_joins as copper_end_joins, kicad_dru as drc_kicad_dru,
+    matches_pattern as drc_matches_pattern, outline_shapes as drc_outline_shapes, pad_copper,
+    pad_reaches_pour as drc_pad_reaches_pour, project_of as drc_project_of,
+    rules_file_of as drc_rules_file_of, rules_of as drc_rules_of, teardrops,
 };
 pub use drill::{Hole as DrillHole, files as drill_files, holes as drill_holes};
 pub use edge::{Outline as EdgeOutline, cut_lines as edge_cut_lines, outline as edge_outline};

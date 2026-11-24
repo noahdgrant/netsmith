@@ -41,10 +41,13 @@ pub struct Target {
 pub enum Command {
     /// Write the routes file (and the layout file's places) from a KiCad board.
     #[command(
-        after_long_help = "Every track, arc and through via of F.Cu, B.Cu and the inner signal layers becomes the copper of the design's net its pads are on: a KiCad net is the design's net that most of its pads are on, with the parts paired by a port's parts file (`--parts`, default `reference/parts.toml` of the project when there is one; without one, by reference designator). A KiCad net on no pad of a part the design has keeps its name if the design has a net of that name, and is left out otherwise; copper on an inner layer is left out unless the layer is one of the process's signal layers (an inner plane holds no track); each is said. Each zone of copper that is not the process's own plane or pour becomes a zone of its net's record, on its layers, with its outline, holes and the settings that change its copper (priority, clearance, minimum thickness, pad connection, thermal gap and spoke width, island removal); such a zone of the net of the design's pour or plane on its layer restates it, which is not drawn, and one of another net cuts it (`fab` writes the zones one priority above the pour, and the import takes that one off again). A zone that is the process's own plane or pour (the same net, layer and outline, and the same clearance, minimum width, pad connection and thermal relief as the process states, which is what `fab` writes) is left out and said, so that `fab` and then `routes import` of its board leaves a file of tracks and vias; one that differs from it is imported, as a hand zone. Rule areas, teardrops and hatched zones are left out and said.\n\nEach part of the design that the KiCad board has is written to the layout file at the KiCad board's place, turn and face, locked (`source = \"import\"`), unless `--no-places` (which also leaves out the notes of how a part is placed, turned or moved, and prints `places not imported: N` instead), or the physical file pins it (its requirement places it). Places are from the top left corner of the KiCad board's Edge.Cuts box. Then the board is placed again and each net's record takes its pads as they are. Every net is locked (the router adds nothing to it) unless `--unlocked`. The routes file is written over; the layout file keeps its seed, keepouts and the parts the import does not place."
+        after_long_help = "Every track, arc and through via of F.Cu, B.Cu and the inner signal layers becomes the copper of the design's net its pads are on: a KiCad net is the design's net that most of its pads are on, with the parts paired by a port's parts file (`--parts`, default `reference/parts.toml` of the project when there is one; without one, by reference designator). A KiCad net on no pad of a part the design has keeps its name if the design has a net of that name, and is left out otherwise; copper on an inner layer is left out unless the layer is one of the process's signal layers (an inner plane holds no track); each is said. Each zone of copper that is not the process's own plane or pour becomes a zone of its net's record, on its layers, with its outline, holes and the settings that change its copper (priority, clearance, minimum thickness, pad connection, thermal gap and spoke width, island removal); such a zone of the net of the design's pour or plane on its layer restates it, which is not drawn, and one of another net cuts it (`fab` writes the zones one priority above the pour, and the import takes that one off again). A zone that is the process's own plane or pour (the same net, layer and outline, and the same clearance, minimum width, pad connection and thermal relief as the process states, which is what `fab` writes) is left out and said, so that `fab` and then `routes import` of its board leaves a file of tracks and vias; one that differs from it is imported, as a hand zone. Rule areas, teardrops and hatched zones are left out and said. The stitching vias of a pour (a through via of the pour's net and the rules' size near a point of its grid, in no pad, no track ending on it) are left out with `--unlocked`, as `fab` lays them again, and kept when the nets are locked; with `--format json`, `stitching_vias_left_out` names each one left out (`net`, `at`), and `routes show` counts them as the stitching vias `fab` lays.\n\nEach part of the design that the KiCad board has is written to the layout file at the KiCad board's place, turn and face, locked (`source = \"import\"`), unless `--no-places` (which also leaves out the notes of how a part is placed, turned or moved, and prints `places not imported: N` instead), or the physical file pins it (its requirement places it). Places are from the top left corner of the KiCad board's Edge.Cuts box. Then the board is placed again and each net's record takes its pads as they are. Every net is locked (the router adds nothing to it) unless `--unlocked`. The routes file is written over; the layout file keeps its seed, keepouts and the parts the import does not place."
     )]
     Import(ImportArgs),
     /// Print the routes file's copper and what the router would still route.
+    #[command(
+        after_long_help = "Each record of the board is printed with its tracks, vias and zones numbered from 1, as `delete`, `lock` and `unlock` name them. A net with a stitched pour also has the count of the stitching vias `fab` lays on the pour's grid that the file does not have (`stitching` in the JSON, as `view pcb --stitching` finds them), so the file's vias and these are its vias on the board whether its copper was imported locked or `--unlocked`; a stitched net with no record is listed with those alone. Then what of the file is not used, the connections the router would still route, and those of locked nets that stay unrouted. With `--format json`: `board`, `nets` (each with `net`, `lock`, `tracks`, `vias`, `zones` and `stitching`), `notes`, `to_route` and `locked_left`."
+    )]
     Show(ShowArgs),
     /// Add many tracks, vias and zones from a file or stdin, each checked as its verb checks it,
     /// and write the routes file once.
@@ -116,6 +119,8 @@ pub struct TidyArgs {
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
     #[command(flatten)]
+    pub framing: crate::frame::Framing,
+    #[command(flatten)]
     pub watching: common::Watching,
 }
 
@@ -139,6 +144,8 @@ pub struct ImportArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -157,6 +164,8 @@ pub struct AddArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -166,6 +175,8 @@ pub struct ShowArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -214,6 +225,8 @@ pub struct RouteArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 /// How tracks turn (`--corner`, issue #1508): the variants of `std::sources::TrackCorner`.
@@ -245,6 +258,8 @@ pub struct JoinPadArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -511,6 +526,9 @@ pub fn run(args: Args) -> ExitCode {
 /// `routes tidy` (issue #1192): `netsmith_fabricate::routes_tidy::tidy_files` of the target's
 /// board; exit 0 when the pass ran, 2 when it could not.
 fn tidy(args: &TidyArgs) -> ExitCode {
+    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+        return crate::frame::refused(&e);
+    }
     // As `fab`: with `--format json` the progress is printed only when it is asked for as JSON
     // (issue #1225).
     args.watching.tell_progress(
@@ -546,10 +564,16 @@ fn tidy(args: &TidyArgs) -> ExitCode {
     match tidied {
         Ok(tidied) => {
             match args.format {
-                common::Format::Json => println!(
-                    "{}",
-                    serde_json::to_string_pretty(&tidied).expect("plain data")
-                ),
+                common::Format::Json => {
+                    if let Err(e) = args.framing.print(
+                        &tidied,
+                        crate::frame::Frame::Outline,
+                        Some(crate::frame::design_corner()),
+                        true,
+                    ) {
+                        return crate::frame::refused(&e);
+                    }
+                }
                 common::Format::Text => print!("{}", tidied.text()),
             }
             ExitCode::SUCCESS
@@ -628,16 +652,25 @@ fn with_board<T>(
 }
 
 fn show(args: &ShowArgs) -> ExitCode {
+    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+        return crate::frame::refused(&e);
+    }
     let shown = with_board(&args.target, |layout, board| {
         lib::show(board, &lib::load(&routes_file(layout))?)
     });
     match shown {
         Ok(shown) => {
             match args.format {
-                common::Format::Json => println!(
-                    "{}",
-                    serde_json::to_string_pretty(&shown).expect("plain data")
-                ),
+                common::Format::Json => {
+                    if let Err(e) = args.framing.print(
+                        &shown,
+                        crate::frame::Frame::Outline,
+                        Some(crate::frame::design_corner()),
+                        true,
+                    ) {
+                        return crate::frame::refused(&e);
+                    }
+                }
                 common::Format::Text => print!("{}", shown.text()),
             }
             ExitCode::SUCCESS
@@ -687,6 +720,9 @@ fn edit_all(target: &Target, changes: impl Fn(&Board) -> Vec<lib::Edit>) -> Exit
 /// `routes add SHAPES` (issue #1472, `netsmith_fabricate::routes::batch`): exit 0 when every
 /// shape was made, 1 when one was refused, 2 when it could not run.
 fn add(args: &AddArgs) -> ExitCode {
+    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+        return crate::frame::refused(&e);
+    }
     use netsmith_fabricate::routes::batch;
     let text = if args.shapes == "-" {
         let mut text = String::new();
@@ -741,10 +777,14 @@ fn add(args: &AddArgs) -> ExitCode {
             doc["written"] = written.into();
             doc["dry_run"] = args.dry_run.into();
             doc["file"] = file.display().to_string().into();
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&doc).expect("plain data")
-            );
+            if let Err(e) = args.framing.print(
+                &doc,
+                crate::frame::Frame::Outline,
+                Some(crate::frame::design_corner()),
+                true,
+            ) {
+                return crate::frame::refused(&e);
+            }
         }
         common::Format::Text => {
             print!("{}", added.text());
@@ -766,6 +806,9 @@ fn add(args: &AddArgs) -> ExitCode {
 /// (or would be, with `--dry-run`) or joined already, 1 when it is refused, 2 when it could not
 /// be tried.
 fn route(args: &RouteArgs) -> ExitCode {
+    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+        return crate::frame::refused(&e);
+    }
     use netsmith_fabricate::route_net;
     // The weights of the router's quality objective: the flags, else the project's keys.
     let project = netsmith_fabricate::project::Target::resolve(args.target.file.as_deref())
@@ -827,10 +870,14 @@ fn route(args: &RouteArgs) -> ExitCode {
             doc["dry_run"] = args.dry_run.into();
             doc["written"] = written.into();
             doc["file"] = file.display().to_string().into();
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&doc).expect("plain data")
-            );
+            if let Err(e) = args.framing.print(
+                &doc,
+                crate::frame::Frame::Outline,
+                Some(crate::frame::design_corner()),
+                true,
+            ) {
+                return crate::frame::refused(&e);
+            }
         }
         common::Format::Text => {
             print!("{}", routed.text());
@@ -856,6 +903,9 @@ fn route(args: &RouteArgs) -> ExitCode {
 /// (or would be, with `--dry-run`) or was joined already, 1 when it is refused, 2 when it could
 /// not be tried.
 fn join_pad(args: &JoinPadArgs) -> ExitCode {
+    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+        return crate::frame::refused(&e);
+    }
     use netsmith_fabricate::join_pad;
     let done = with_board(&args.target, |layout, board| {
         let file = routes_file(layout);
@@ -888,10 +938,14 @@ fn join_pad(args: &JoinPadArgs) -> ExitCode {
             doc["dry_run"] = args.dry_run.into();
             doc["written"] = written.into();
             doc["file"] = file.display().to_string().into();
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&doc).expect("plain data")
-            );
+            if let Err(e) = args.framing.print(
+                &doc,
+                crate::frame::Frame::Outline,
+                Some(crate::frame::design_corner()),
+                true,
+            ) {
+                return crate::frame::refused(&e);
+            }
         }
         common::Format::Text => {
             print!("{}", joined.text());
@@ -914,6 +968,9 @@ fn join_pad(args: &JoinPadArgs) -> ExitCode {
 }
 
 fn import(args: &ImportArgs) -> ExitCode {
+    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+        return crate::frame::refused(&e);
+    }
     let pcb = match fs::read_to_string(&args.pcb) {
         Ok(text) => text,
         Err(e) => {
@@ -1005,11 +1062,21 @@ fn import(args: &ImportArgs) -> ExitCode {
             // (issue 1515).
             "refitted": if args.no_places { Vec::new() } else { import.refitted.clone() },
             "skipped": import.skipped,
+            // Each via left out as a stitching via `fab` lays again (issue #1583).
+            "stitching_vias_left_out": import
+                .stitching_vias
+                .iter()
+                .map(|(net, at)| serde_json::json!({ "net": net, "at": at }))
+                .collect::<Vec<_>>(),
         });
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&doc).expect("plain data")
-        );
+        if let Err(e) = args.framing.print(
+            &doc,
+            crate::frame::Frame::Outline,
+            Some(crate::frame::design_corner()),
+            true,
+        ) {
+            return crate::frame::refused(&e);
+        }
         return ExitCode::SUCCESS;
     }
     match &parts_file {

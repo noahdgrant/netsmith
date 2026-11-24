@@ -780,6 +780,7 @@ dependencies = [
  "netsmith-tools",
  "netsmith-workspace",
  "roxmltree",
+ "serde",
  "serde_json",
  "tungstenite 0.30.0",
  "ureq",

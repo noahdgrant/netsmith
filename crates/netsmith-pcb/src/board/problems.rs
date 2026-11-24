@@ -350,8 +350,62 @@ pub struct HeightUnknown {
     pub refdes: String,
     pub path: String,
     pub side: Side,
-    /// Each limit or body it stands under, the limits first, in a fixed order.
+    /// Each limit or body it stands under, the limits first (the tightest first), in a fixed
+    /// order.
     pub under: Vec<UnknownUnder>,
+    /// What the tools treat the part as, which ranks the parts that stand under no limit
+    /// ([`HeightUnknown::class_rank`]).
+    pub kind: Option<netsmith_core::PartKind>,
+    /// The body's area in mm², the tie-break of the package class (the larger body first).
+    pub body_area: f64,
+}
+
+impl HeightUnknown {
+    /// The lowest limit over the part, in mm: how tight the room above it is, the clearance a
+    /// part of unknown height would have to fit in. `None` when no limit is over it (it stands
+    /// only under a body that states no `.standoff`).
+    pub fn tightest_limit(&self) -> Option<f64> {
+        self.under
+            .iter()
+            .filter_map(|u| match u {
+                UnknownUnder::Limit { limit, .. } => Some(*limit),
+                UnknownUnder::Body { .. } => None,
+            })
+            .min_by(f64::total_cmp)
+    }
+
+    /// The package class of the part, larger for a class whose parts stand taller: a connector
+    /// 5, an inductor or a crystal 4, an integrated circuit or a capacitor 3, a light emitting
+    /// diode, a diode, a transistor or a fuse 2, a ferrite bead or a resistor 1, anything else 0.
+    /// It ranks the parts that stand under no limit, where there is no clearance to rank by.
+    pub fn class_rank(&self) -> u8 {
+        use netsmith_core::PartKind as K;
+        match self.kind {
+            Some(K::Connector) => 5,
+            Some(K::Inductor | K::Crystal) => 4,
+            Some(K::Ic | K::Capacitor) => 3,
+            Some(K::Led | K::Diode | K::Transistor | K::Fuse) => 2,
+            Some(K::FerriteBead | K::Resistor) => 1,
+            _ => 0,
+        }
+    }
+
+    /// The order the warning lists the parts in (issue #1590): the parts under a limit first,
+    /// the lowest limit (the least room) first; then the parts under a body alone, by package
+    /// class (the taller class first) and then by the larger body; the path last, so the order
+    /// is fixed.
+    pub fn rank_cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let by_limit = match (self.tightest_limit(), other.tightest_limit()) {
+            (Some(a), Some(b)) => a.total_cmp(&b),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => other
+                .class_rank()
+                .cmp(&self.class_rank())
+                .then(other.body_area.total_cmp(&self.body_area)),
+        };
+        by_limit.then_with(|| self.path.cmp(&other.path))
+    }
 }
 
 impl std::fmt::Display for HeightUnknown {
@@ -367,11 +421,9 @@ impl std::fmt::Display for HeightUnknown {
             f.write_str(sep)?;
             sep = " and ";
             match u {
-                UnknownUnder::Limit { keepout, limit } => write!(
-                    f,
-                    "{}, which limits it to {limit:.2} mm",
-                    limit_word(keepout)
-                )?,
+                UnknownUnder::Limit { keepout, limit } => {
+                    write!(f, "a {limit:.2} mm limit ({})", limit_word(keepout))?
+                }
                 UnknownUnder::Body {
                     refdes,
                     path,
@@ -387,24 +439,55 @@ impl std::fmt::Display for HeightUnknown {
     }
 }
 
+/// How many parts the warning `height_unknown` lists one by one; the rest are one count line.
+const HEIGHT_UNKNOWN_LISTED: usize = 5;
+
 /// The one warning `height_unknown` of `fab` and `dev board3d` (issue #1117): every part of
 /// unknown height that stands under a height limit or under another part's body, with the limit
 /// that would apply, so that a pass of the height check does not read as "fine". `None` when no
 /// part is in that case. It is a warning always: `fab` still passes, whatever the constraints
 /// are (the per-part `height_unchecked` is the error of strict constraints).
+///
+/// The parts are ranked (issue #1590, [`HeightUnknown::rank_cmp`]): the one with the least room
+/// under its limit first, each naming the limit that makes it tight (`under a 1.24 mm limit`),
+/// then the parts under a body alone by package class. The first `HEIGHT_UNKNOWN_LISTED`
+/// are listed and a count line says what the rest stand under; `parts` need not be sorted.
 pub fn heights_unknown_warning(parts: &[HeightUnknown]) -> Option<String> {
     if parts.is_empty() {
         return None;
     }
-    let list: Vec<String> = parts.iter().map(HeightUnknown::to_string).collect();
+    let mut ranked: Vec<&HeightUnknown> = parts.iter().collect();
+    ranked.sort_by(|a, b| a.rank_cmp(b));
+    let (shown, rest) = ranked.split_at(HEIGHT_UNKNOWN_LISTED.min(ranked.len()));
+    let mut list: Vec<String> = shown.iter().map(|p| p.to_string()).collect();
+    if !rest.is_empty() {
+        let limits: Vec<f64> = rest.iter().filter_map(|p| p.tightest_limit()).collect();
+        let mut kinds: Vec<String> = Vec::new();
+        if let Some(least) = limits.iter().copied().min_by(f64::total_cmp) {
+            kinds.push(format!(
+                "{} under a limit of {least:.2} mm or more",
+                limits.len()
+            ));
+        }
+        let bodies = rest.len() - limits.len();
+        if bodies > 0 {
+            kinds.push(format!("{bodies} under another part's body alone"));
+        }
+        list.push(format!(
+            "and {} more, {} (all of them are in `dev board3d --format json`)",
+            rest.len(),
+            kinds.join(" and ")
+        ));
+    }
+    let first = ranked[0];
     Some(format!(
-        "height_unknown: the height check cannot say whether {} part{} of unknown height fit{}, so a pass does not cover {}: {}; state each part's `.height` (for example `.{}.height &= 8mm`, with the real number from its datasheet)",
+        "height_unknown: the height check cannot say whether {} part{} of unknown height fit{}, so a pass does not cover {}; the tightest first: {}; state each part's `.height` (for example `.{}.height &= 8mm`, with the real number from its datasheet)",
         parts.len(),
         if parts.len() == 1 { "" } else { "s" },
         if parts.len() == 1 { "s" } else { "" },
         if parts.len() == 1 { "it" } else { "them" },
         list.join("; "),
-        parts[0].path
+        first.path
     ))
 }
 

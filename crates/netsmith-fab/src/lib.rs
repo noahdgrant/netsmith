@@ -94,8 +94,8 @@ pub mod viewer;
 // `netsmith-geom`'s, which the board model and the router share (issue #611); the code here
 // names them as modules, and other crates import them from `netsmith_geom`.
 use netsmith_geom::{
-    ConstraintOutcome, Constraints, DrcCounts, DrcError, DrcExtras, DrcFinding, DrcReport, DrcRule,
-    DrcVCut, constraint_outcome_findings, drc_check, drc_project_of,
+    ConstraintOutcome, Constraints, DrcCounts, DrcError, DrcExtras, DrcFinding, DrcItem, DrcReport,
+    DrcRule, DrcSeverity, DrcVCut, constraint_outcome_findings, drc_check, drc_project_of,
 };
 
 use netsmith_geom::{
@@ -689,8 +689,8 @@ pub struct Checked {
     pub outcomes: Vec<ConstraintOutcome>,
     /// The nets routed long and the nets with the most vias (issue #1194): notes, not findings.
     pub routes: NetRoutes,
-    /// The diff pairs of [`Options::pairs`] whose skew is over their limit (issue #1223): notes,
-    /// not findings.
+    /// The diff pairs of [`Options::pairs`] whose skew is over their limit (issue #1223): each is
+    /// a `pair_skew` finding of [`Checked::report`] too (issue #1587).
     pub skewed: Vec<PairRow>,
     /// The groups of [`Options::length_groups`] whose spread is over their tolerance (issue
     /// #1234): notes, not findings.
@@ -698,6 +698,53 @@ pub struct Checked {
     /// The paths of [`Options::track_paths`] longer than their length budget (issue #1275) or
     /// losing more than their loss budget (issue #1405): notes, not findings.
     pub long_paths: Vec<PathRow>,
+}
+
+/// The `pair_skew` finding of a diff pair over its skew limit (issue #1587): a warning, an error
+/// when guidelines are errors (`fab --strict`, `guidelines = "error"`), as `pad_island_cut` is.
+/// It is at the start of the first track of the pair's positive net, or of its negative.
+fn pair_skew_finding(art: &Artwork, pair: &PairRow, drc: &DrcExtras) -> DrcFinding {
+    let at = [&pair.p, &pair.n]
+        .into_iter()
+        .find_map(|net| {
+            art.tracks
+                .iter()
+                .filter(|t| t.net.as_deref() == Some(net))
+                .find_map(|t| match t.shape {
+                    netsmith_geom::TrackShape::Line(a, _) => Some(a),
+                    netsmith_geom::TrackShape::Arc(_) => None,
+                })
+        })
+        .unwrap_or_default();
+    let item = |net: &str, length: f64| DrcItem {
+        what: format!("Net {net} ({} mm)", net_table::number(length)),
+        at,
+        part: None,
+        pad: None,
+        net: Some(net.to_string()),
+    };
+    DrcFinding {
+        rule: DrcRule::PairSkew,
+        severity: if drc.strict_guidelines {
+            DrcSeverity::Error
+        } else {
+            DrcSeverity::Warning
+        },
+        message: format!(
+            "diff pair {}/{} is routed {} and {} mm, a skew of {} mm over its limit of {} mm; lengthen the shorter by hand or give the router room for a meander",
+            pair.p,
+            pair.n,
+            net_table::number(pair.length_p),
+            net_table::number(pair.length_n),
+            net_table::number(pair.skew),
+            net_table::number(pair.limit),
+        ),
+        at,
+        layer: None,
+        items: vec![item(&pair.p, pair.length_p), item(&pair.n, pair.length_n)],
+        carrying: None,
+        source: None,
+    }
 }
 
 /// The design rules check of the board file `src` (the text of a `.kicad_pcb`, with the
@@ -709,7 +756,17 @@ pub fn check(src: &str, project: Option<&str>, options: &Options) -> Result<Chec
     let routes = NetRoutes::of(&art);
     let table = NetTable::of(&art, &options.pairs, &options.length_groups)
         .with_paths(&options.track_paths, &options.track_path_losses);
-    let skewed = table.over().cloned().collect();
+    let skewed: Vec<PairRow> = table.over().cloned().collect();
+    if !skewed.is_empty() {
+        report.findings.extend(
+            skewed
+                .iter()
+                .map(|p| pair_skew_finding(&art, p, &options.drc)),
+        );
+        report
+            .findings
+            .sort_by_key(|f| std::cmp::Reverse(f.severity));
+    }
     let spread = table.groups_over().cloned().collect();
     let long_paths = table.paths_over().cloned().collect();
     let outcomes = match &options.constraints {

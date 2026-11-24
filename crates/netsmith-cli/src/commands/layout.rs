@@ -103,6 +103,8 @@ pub struct ExportArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -123,6 +125,8 @@ pub struct ImportArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -151,6 +155,8 @@ pub struct FitArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -165,6 +171,8 @@ pub struct CaptureArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -188,6 +196,8 @@ pub struct RegenerateArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -208,6 +218,8 @@ pub struct SummaryArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -225,6 +237,8 @@ pub struct PartsArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -242,6 +256,8 @@ pub struct CompareArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -254,6 +270,8 @@ pub struct ShowArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 /// The face of the board a part is on.
@@ -297,6 +315,8 @@ pub struct SetArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -309,6 +329,8 @@ pub struct CheckArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 /// The value of `layout set --designator`: a place for the designator's text, or none (`auto`).
@@ -345,6 +367,22 @@ fn parse_turn(text: &str) -> Result<f64, String> {
 }
 
 pub fn run(args: Args) -> ExitCode {
+    let (format, framing) = match &args.command {
+        Command::Show(a) => (a.format, a.framing),
+        Command::Set(a) => (a.format, a.framing),
+        Command::Check(a) => (a.format, a.framing),
+        Command::Summary(a) => (a.format, a.framing),
+        Command::Compare(a) => (a.format, a.framing),
+        Command::Regenerate(a) => (a.format, a.framing),
+        Command::Capture(a) => (a.format, a.framing),
+        Command::Fit(a) => (a.format, a.framing),
+        Command::Parts(a) => (a.format, a.framing),
+        Command::Export(a) => (a.format, a.framing),
+        Command::Import(a) => (a.format, a.framing),
+    };
+    if let Err(e) = framing.for_json(format == common::Format::Json) {
+        return crate::frame::refused(&e);
+    }
     match args.command {
         Command::Show(a) => show(&a),
         Command::Set(a) => set(&a),
@@ -383,7 +421,14 @@ fn export(args: &ExportArgs) -> ExitCode {
     };
     match args.format {
         common::Format::Json => {
-            println!("{}", serde_json::to_string(&exported).expect("plain data"))
+            if let Err(e) = args.framing.print(
+                &exported,
+                crate::frame::Frame::Outline,
+                Some(crate::frame::design_corner()),
+                false,
+            ) {
+                return crate::frame::refused(&e);
+            }
         }
         common::Format::Text => print!("{}", exported.text()),
     }
@@ -436,7 +481,14 @@ fn import(args: &ImportArgs) -> ExitCode {
         common::Format::Json => {
             let mut value = serde_json::to_value(&imported).expect("plain data");
             value["written"] = serde_json::Value::Bool(write);
-            println!("{value}");
+            if let Err(e) = args.framing.print(
+                &value,
+                crate::frame::Frame::Outline,
+                Some(crate::frame::design_corner()),
+                false,
+            ) {
+                return crate::frame::refused(&e);
+            }
         }
         common::Format::Text => {
             print!("{}", imported.text());
@@ -515,7 +567,14 @@ fn fit(args: &FitArgs) -> ExitCode {
             }
             match args.format {
                 common::Format::Json => {
-                    println!("{}", serde_json::to_string(&fit).expect("plain data"))
+                    if let Err(e) = args.framing.print(
+                        &fit,
+                        crate::frame::Frame::Outline,
+                        Some(crate::frame::design_corner()),
+                        false,
+                    ) {
+                        return crate::frame::refused(&e);
+                    }
                 }
                 common::Format::Text => print!("{}", fit.text()),
             }
@@ -567,7 +626,14 @@ fn parts(args: &PartsArgs) -> ExitCode {
         Ok(parts) => {
             match args.format {
                 common::Format::Json => {
-                    println!("{}", serde_json::to_string(&parts).expect("plain data"))
+                    if let Err(e) = args.framing.print(
+                        &parts,
+                        crate::frame::Frame::Outline,
+                        Some(crate::frame::design_corner()),
+                        false,
+                    ) {
+                        return crate::frame::refused(&e);
+                    }
                 }
                 common::Format::Text => print!("{}", parts.text()),
             }
@@ -613,7 +679,14 @@ fn capture(args: &CaptureArgs) -> ExitCode {
         common::Format::Json => {
             let mut value = serde_json::to_value(&captured).expect("plain data");
             value["written"] = serde_json::Value::Bool(write);
-            println!("{value}");
+            if let Err(e) = args.framing.print(
+                &value,
+                crate::frame::Frame::Outline,
+                Some(crate::frame::design_corner()),
+                false,
+            ) {
+                return crate::frame::refused(&e);
+            }
         }
         common::Format::Text => {
             print!("{}", captured.text());
@@ -674,7 +747,14 @@ fn regenerate(args: &RegenerateArgs) -> ExitCode {
         common::Format::Json => {
             let mut value = serde_json::to_value(&proposal).expect("plain data");
             value["written"] = serde_json::Value::Bool(args.write);
-            println!("{value}");
+            if let Err(e) = args.framing.print(
+                &value,
+                crate::frame::Frame::Outline,
+                Some(crate::frame::design_corner()),
+                false,
+            ) {
+                return crate::frame::refused(&e);
+            }
         }
         common::Format::Text => {
             print!("{}", proposal.text());
@@ -715,7 +795,14 @@ fn summary(args: &SummaryArgs) -> ExitCode {
         Ok(summary) => {
             match args.format {
                 common::Format::Json => {
-                    println!("{}", serde_json::to_string(&summary).expect("plain data"))
+                    if let Err(e) = args.framing.print(
+                        &summary,
+                        crate::frame::Frame::Outline,
+                        Some(crate::frame::design_corner()),
+                        false,
+                    ) {
+                        return crate::frame::refused(&e);
+                    }
                 }
                 common::Format::Text => print!("{}", summary.text()),
             }
@@ -748,10 +835,16 @@ fn compare(args: &CompareArgs) -> ExitCode {
     match made {
         Ok(difference) => {
             match args.format {
-                common::Format::Json => println!(
-                    "{}",
-                    serde_json::to_string(&difference).expect("plain data")
-                ),
+                common::Format::Json => {
+                    if let Err(e) = args.framing.print(
+                        &difference,
+                        crate::frame::Frame::Outline,
+                        Some(crate::frame::design_corner()),
+                        false,
+                    ) {
+                        return crate::frame::refused(&e);
+                    }
+                }
                 common::Format::Text => print!("{}", difference.text()),
             }
             ExitCode::SUCCESS
@@ -809,7 +902,16 @@ fn show(args: &ShowArgs) -> ExitCode {
     match shown {
         Ok(shown) => {
             match args.format {
-                common::Format::Json => println!("{}", lib::json(&shown)),
+                common::Format::Json => {
+                    if let Err(e) = args.framing.print(
+                        &shown,
+                        crate::frame::Frame::Outline,
+                        Some(crate::frame::design_corner()),
+                        true,
+                    ) {
+                        return crate::frame::refused(&e);
+                    }
+                }
                 common::Format::Text => print!("{}", shown.text()),
             }
             ExitCode::SUCCESS
@@ -862,7 +964,16 @@ fn set(args: &SetArgs) -> ExitCode {
     match written {
         Ok((written, warnings)) => {
             match args.format {
-                common::Format::Json => println!("{}", lib::json(&written)),
+                common::Format::Json => {
+                    if let Err(e) = args.framing.print(
+                        &written,
+                        crate::frame::Frame::Outline,
+                        Some(crate::frame::design_corner()),
+                        true,
+                    ) {
+                        return crate::frame::refused(&e);
+                    }
+                }
                 common::Format::Text => println!("{}", written.text()),
             }
             for warning in warnings {
@@ -881,7 +992,16 @@ fn check(args: &CheckArgs) -> ExitCode {
     match checked {
         Ok(checked) => {
             match args.format {
-                common::Format::Json => println!("{}", lib::json(&checked)),
+                common::Format::Json => {
+                    if let Err(e) = args.framing.print(
+                        &checked,
+                        crate::frame::Frame::Outline,
+                        Some(crate::frame::design_corner()),
+                        true,
+                    ) {
+                        return crate::frame::refused(&e);
+                    }
+                }
                 common::Format::Text => print!("{}", checked.text()),
             }
             if checked.ok {

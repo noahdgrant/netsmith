@@ -35,6 +35,8 @@ pub struct Args {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 /// The rules of one board as a document and as text, with its name and where its outline's
@@ -47,6 +49,9 @@ struct Made {
 }
 
 pub fn run(args: Args) -> ExitCode {
+    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+        return crate::frame::refused(&e);
+    }
     let made = match &args.kicad_pcb {
         Some(pcb) => match drc::rules_of_kicad_pcb(pcb) {
             Ok(rules) => Made {
@@ -81,7 +86,14 @@ pub fn run(args: Args) -> ExitCode {
                 ),
             );
             doc.extend(rest);
-            println!("{}", serde_json::Value::Object(doc));
+            if let Err(e) = args.framing.print(
+                &serde_json::Value::Object(doc),
+                crate::frame::Frame::BoardFile,
+                made.outline_at,
+                false,
+            ) {
+                return crate::frame::refused(&e);
+            }
         }
         common::Format::Text => {
             println!("{}:", made.board);

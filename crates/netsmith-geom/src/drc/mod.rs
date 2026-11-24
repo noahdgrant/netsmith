@@ -219,6 +219,7 @@ mod waivers;
 use crate::artwork::Artwork;
 use crate::geom::Pt;
 pub use board_rules::{BoardRules, RuleArea};
+pub use connect::{copper_joins, end_joins, pad_copper};
 pub use model::outline_shapes;
 pub use room::Room;
 pub use rules::matches_pattern;
@@ -403,10 +404,14 @@ pub enum Rule {
     /// nearer the board's outline than the house keeps copper from a V-cut edge (netsmith's, a
     /// guideline, issue 1592; `v_cut.rs`).
     VCutEdge,
+    /// A differential pair whose two lengths differ by more than the pair's skew limit
+    /// (netsmith's, issue #1587; the pair table of `netsmith_fab::NetTable`, since the board
+    /// file does not hold the limits).
+    PairSkew,
 }
 
 impl Rule {
-    pub const ALL: [Rule; 60] = [
+    pub const ALL: [Rule; 61] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -467,6 +472,7 @@ impl Rule {
         Rule::ViaAspectRatio,
         Rule::UnmatchedWaiver,
         Rule::VCutEdge,
+        Rule::PairSkew,
     ];
 
     /// KiCad's name for the rule (its `type` in a JSON report).
@@ -532,6 +538,7 @@ impl Rule {
             Rule::ViaAspectRatio => "via_aspect_ratio",
             Rule::UnmatchedWaiver => "unmatched_waiver",
             Rule::VCutEdge => "v_cut_edge",
+            Rule::PairSkew => "pair_skew",
         }
     }
 
@@ -574,6 +581,7 @@ impl Rule {
                 | Rule::ViaAspectRatio
                 | Rule::UnmatchedWaiver
                 | Rule::VCutEdge
+                | Rule::PairSkew
         )
     }
 
@@ -609,6 +617,7 @@ impl Rule {
             | Rule::PadIslandCut
             | Rule::AcidTrap
             | Rule::CopperSliver
+            | Rule::PairSkew
             | Rule::VCutEdge => Severity::Warning,
             _ => Severity::Error,
         })
