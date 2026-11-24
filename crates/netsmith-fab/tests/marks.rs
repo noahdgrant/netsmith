@@ -34,6 +34,8 @@ fn jlcpcb() -> DrcExtras {
             min_single_sided_assembly_size: None,
             min_double_sided_assembly_size: None,
             assembly_size_source: None,
+            min_v_cut_edge: None,
+            v_cut_edge_source: None,
         }),
         ..DrcExtras::default()
     }
@@ -639,4 +641,81 @@ fn the_size_is_not_judged_where_the_process_states_none_or_nothing_is_assembled(
     let r = check(&mut b, &assembled(false, false, Some(100.0), Some(100.0)));
     assert_eq!(count(&r, DrcRule::AssemblySize), 0, "{r}");
     assert_eq!(count(&check(&mut b, &DrcExtras::default()), DrcRule::AssemblySize), 0);
+}
+
+/// Issue 1592: a board of 40 x 30 mm with parts on the front and a least single board of 70 mm,
+/// so it is ordered as a panel; a pour over the whole board on the front, which its fill keeps
+/// `edge` mm from the edge, a pad of its net in the middle, and a V-cut figure of 0.4 mm with
+/// its source.
+fn under_size_with_a_pour(edge: f64) -> DrcReport {
+    let mut b = Pcb::new(2);
+    b.rules.edge = edge;
+    b.zone("GND", "F.Cu", (0.0, 0.0, 40.0, 30.0));
+    b.stub("GND", 20.0, 15.0);
+    let mut extras = assembled(true, false, Some(70.0), Some(70.0));
+    let marks = extras.marks.as_mut().unwrap();
+    marks.min_v_cut_edge = Some(0.4);
+    marks.v_cut_edge_source = Some(V_CUT_SOURCE.to_string());
+    check(&mut b, &extras)
+}
+
+const V_CUT_SOURCE: &str =
+    "https://jlcpcb.com/capabilities/pcb-capabilities, Outline, V-cut, read 2026-11-24";
+
+#[test]
+fn a_pour_0_2_mm_from_the_edge_of_a_board_ordered_as_a_panel_is_nearer_than_a_v_cut_allows() {
+    let r = under_size_with_a_pour(0.2);
+    let v = r.v_cut.as_ref().expect("the board is under the assembly size");
+    assert_eq!((v.width, v.height, v.assembly_size), (40.0, 30.0, 70.0));
+    let near = v.nearest.as_ref().expect("the board has copper");
+    assert!(near.what.starts_with("Zone [GND] on F.Cu"), "{near:?}");
+    assert!((near.distance - 0.2).abs() < 0.01, "{near:?}");
+    assert_eq!(v.least, Some(0.4));
+    let found: Vec<_> = r.findings.iter().filter(|f| f.rule == DrcRule::VCutEdge).collect();
+    assert_eq!(found.len(), 1, "{r}");
+    let f = found[0];
+    assert_eq!(f.severity, DrcSeverity::Note, "a note, not an error");
+    assert_eq!(f.source.as_deref(), Some(V_CUT_SOURCE));
+    assert!(
+        f.message.starts_with("Zone [GND] on F.Cu is 0.2")
+            && f.message.contains("ordered as a panel")
+            && f.message.contains("0.4 mm from a V-cut edge")
+            && f.message.contains(&format!("(source: {V_CUT_SOURCE})"))
+            && f.message.contains(".process.min_edge_clearance &= 0.4mm.."),
+        "{}",
+        f.message
+    );
+    assert!(r.is_clean(), "the note stops nothing\n{r}");
+}
+
+#[test]
+fn a_pour_at_the_v_cut_distance_says_nothing() {
+    let r = under_size_with_a_pour(0.4);
+    assert_eq!(count(&r, DrcRule::VCutEdge), 0, "{r}");
+    let near = r.v_cut.as_ref().and_then(|v| v.nearest.as_ref()).expect("measured");
+    assert!(near.distance >= 0.4 - 1e-6, "{near:?}");
+}
+
+#[test]
+fn the_v_cut_distance_is_measured_only_for_a_board_under_the_assembly_size() {
+    // A track 0.25 mm from the edge of a board the house assembles alone: no measure, no note.
+    let mut b = Pcb::new(2);
+    b.track("SIG", "F.Cu", (5.0, 0.3), (20.0, 0.3), 0.1);
+    let mut extras = assembled(true, false, Some(10.0), Some(70.0));
+    extras.marks.as_mut().unwrap().min_v_cut_edge = Some(0.4);
+    let r = check(&mut b, &extras);
+    assert_eq!(r.v_cut, None, "{r}");
+    assert_eq!(count(&r, DrcRule::VCutEdge), 0, "{r}");
+    // The same under the size: the track is the nearest copper, and nearer than the figure.
+    let mut extras = assembled(true, false, Some(70.0), Some(70.0));
+    extras.marks.as_mut().unwrap().min_v_cut_edge = Some(0.4);
+    let r = check(&mut b, &extras);
+    let near = r.v_cut.as_ref().and_then(|v| v.nearest.as_ref()).expect("measured");
+    assert!(near.what.starts_with("Track"), "{near:?}");
+    assert!((near.distance - 0.25).abs() < 1e-6, "{near:?}");
+    assert_eq!(count(&r, DrcRule::VCutEdge), 1, "{r}");
+    // A process with no V-cut figure measures and judges nothing.
+    let r = check(&mut b, &assembled(true, false, Some(70.0), Some(70.0)));
+    assert!(r.v_cut.as_ref().is_some_and(|v| v.least.is_none()), "{r}");
+    assert_eq!(count(&r, DrcRule::VCutEdge), 0, "{r}");
 }

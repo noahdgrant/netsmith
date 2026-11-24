@@ -5797,6 +5797,8 @@
       "min_single_sided_assembly_size": 10.0,
       "min_double_sided_assembly_size": 70.0,
       "assembly_size_source": "https://jlcpcb.com/capabilities/pcb-assembly-capabilities, Economic PCBA (one face) and Standard PCBA (both faces), read 2026-11-19",
+      "min_v_cut_edge_clearance": 0.4,
+      "v_cut_edge_clearance_source": "https://jlcpcb.com/capabilities/pcb-capabilities, Outline, V-cut: copper clearance from V-cut board edges, read 2026-11-24",
       "track_width_tolerance": 0.2,
       "hole_plating": 0.018,
       "finish": "HASL lead-free",
@@ -5868,21 +5870,25 @@
           "current": 0.000021890863966053297,
           "least_width": 1.403999233230249e-7,
           "vias": 1,
-          "source": "part `ovp_ceil_top`: 0.02 mA to 0.0219 mA; the current of rail `mcu.vdd`, rail `comparator.supply`, rail `ldo.vout`, part `sda_pullup`, part `scl_pullup`, part `usb_sda_pullup`, part `usb_scl_pullup`, part `fault_pullup`, part `ntc_converter_pullup`, part `flag_pullup`, part `ntc_plug_pullup`, rail `v3v3` is not known, so it may be more"
+          "source": "part `ovp_ceil_top`: 0.02 mA to 0.0219 mA; the current of rail `mcu.vdd`, rail `comparator.supply`, rail `ldo.vout`, part `sda_pullup`, part `scl_pullup`, part `usb_sda_pullup`, part `usb_scl_pullup`, part `fault_pullup`, part `ntc_converter_pullup`, part `flag_pullup`, part `ntc_plug_pullup`, rail `v3v3` is not known, so it may be more",
+          "from": "sum",
+          "lower_bound": true
         },
         {
           "net": "net-comparator.in_b_pos",
           "current": 0.000021890863966053297,
           "least_width": 1.403999233230249e-7,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.0219 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.0219 mA",
+          "from": "analysis"
         },
         {
           "net": "net-converter.mode",
           "current": 1e-12,
           "least_width": 1.0540623859109564e-17,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.000000001 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.000000001 mA",
+          "from": "analysis"
         }
       ],
       "pin_currents": [

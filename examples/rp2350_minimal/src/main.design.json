@@ -3861,6 +3861,8 @@
       "min_single_sided_assembly_size": 10.0,
       "min_double_sided_assembly_size": 70.0,
       "assembly_size_source": "https://jlcpcb.com/capabilities/pcb-assembly-capabilities, Economic PCBA (one face) and Standard PCBA (both faces), read 2026-11-19",
+      "min_v_cut_edge_clearance": 0.4,
+      "v_cut_edge_clearance_source": "https://jlcpcb.com/capabilities/pcb-capabilities, Outline, V-cut: copper clearance from V-cut board edges, read 2026-11-24",
       "track_width_tolerance": 0.2,
       "hole_plating": 0.018,
       "finish": "ENIG",
@@ -3888,14 +3890,18 @@
           "current": 0.00033989898989898997,
           "least_width": 6.169435844068879e-6,
           "vias": 1,
-          "source": "part `ss_pullup.resistor`: 0 mA to 0.34 mA; the current of rail `regulator.vout`, rail `v3v3`, part `avdd_filter` is not known, so it may be more"
+          "source": "part `ss_pullup.resistor`: 0 mA to 0.34 mA; the current of rail `regulator.vout`, rail `v3v3`, part `avdd_filter` is not known, so it may be more",
+          "from": "sum",
+          "lower_bound": true
         },
         {
           "net": "net-flash.qspi.cs",
           "current": 0.00033989898989898997,
           "least_width": 6.169435844068879e-6,
           "vias": 1,
-          "source": "part `ss_pullup.resistor`: 0 mA to 0.34 mA; the current of part `ss_link`, part `gpio0_link` is not known, so it may be more"
+          "source": "part `ss_pullup.resistor`: 0 mA to 0.34 mA; the current of part `ss_link`, part `gpio0_link` is not known, so it may be more",
+          "from": "sum",
+          "lower_bound": true
         }
       ],
       "pin_currents": [

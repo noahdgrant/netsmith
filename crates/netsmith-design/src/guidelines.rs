@@ -187,7 +187,7 @@
 //! milliamps, at the process's least track.
 
 use netsmith_check::{Domain, InstId, InstKind, Member, Model, PinKind};
-use netsmith_core::{Features, InnerUse, NetCurrent, OUNCE_OF_COPPER, Process};
+use netsmith_core::{CurrentFrom, Features, InnerUse, NetCurrent, OUNCE_OF_COPPER, Process};
 
 /// The temperature rise the check designs to when the board states none, in kelvin. A
 /// default of this tool's and not a published figure (ADR 0036).
@@ -354,6 +354,18 @@ impl<'a> Flow<'a> {
         if lo < 0.0 {
             self.taken.push((c, -lo, false));
         }
+    }
+
+    /// The largest single current a carrier on the net draws through it (a load, or a part that
+    /// passes a current), with the carrier: the least the net's copper carries whatever else is
+    /// on (issue #1584). A supply's range is a budget and not a draw, and is left out.
+    fn largest_load(&self) -> Option<(&'a Carrier, f64)> {
+        self.taken
+            .iter()
+            .chain(&self.given)
+            .filter(|t| t.2)
+            .map(|t| (t.0, t.1))
+            .max_by(|a, b| a.1.total_cmp(&b.1))
     }
 
     /// The larger of the two sums and the terms of that side, largest first. On a net whose
@@ -536,6 +548,12 @@ pub struct Branch {
 /// output current for a linear one, the power balance with the efficiency for a switching
 /// one), never its output current.
 ///
+/// Where the DC analysis solved the net, its worst case over the corners is the net's current,
+/// unless one rail or part on the net draws more than that through it (a part's stated
+/// `.current`, which a DC analysis may not see: a bypass diode's discharge): then that one is
+/// (issue #1584). Each [`NetCurrent`] says which (`from`) and whether a current on the net is
+/// not known (`lower_bound`).
+///
 /// A module's port stands for what is inside the module (ADR 0007), so each current is
 /// counted once: at the port when nothing inside the module is on the net, otherwise inside.
 /// Its tracks are as wide as the rails on
@@ -717,7 +735,16 @@ pub fn plan_tracks(
             .iter()
             .find(|c| net.pins.contains(&c.pin))
             .map(|c| c.current);
-        let total = analysed.unwrap_or(plain);
+        // One rail or part on the net that draws more than the analysis finds wins over it
+        // (issue #1584): a bypass or clamp diode that states the current it discharges carries
+        // it through the net's copper, though the DC analysis sees it blocking. The stated
+        // current is the design's word, and the larger is the safer.
+        let largest = flow.largest_load();
+        let (total, from) = match (analysed, largest) {
+            (Some(a), Some((_, hi))) if hi > a * (1.0 + 1e-9) => (hi, CurrentFrom::Carrier),
+            (Some(a), _) => (a, CurrentFrom::Analysis),
+            (None, _) => (plain, CurrentFrom::Sum),
+        };
         if analysed.is_some() {
             unknown.clear();
         }
@@ -736,7 +763,12 @@ pub fn plan_tracks(
                 // On an inner signal layer: the inner constant and the inner copper (issue #833).
                 inner_least_width: sizing.inner_least_width(total),
                 vias: sizing.vias(total),
-                source: with_unknown(&current_source(analysed.is_some(), plain, &terms), &unknown),
+                source: with_unknown(
+                    &current_source(from, plain, analysed, largest, &terms),
+                    &unknown,
+                ),
+                from,
+                lower_bound: !unknown.is_empty(),
             });
         }
         // Rounded up to the 0.01 mm that a width is written in, so that asking for what the
@@ -792,7 +824,7 @@ pub fn plan_tracks(
         if width >= needs {
             continue;
         }
-        let what = current_source(analysed.is_some(), plain, &terms);
+        let what = current_source(from, plain, analysed, largest, &terms);
         let (carries_word, what) = if unknown.is_empty() {
             ("up to", what)
         } else {
@@ -899,12 +931,28 @@ fn pin_currents(model: &Model, carriers: &[Carrier], plan: &mut TrackPlan) {
     }
 }
 
-/// Where a net's current comes from, in words (issue 1373): the DC analysis' worst case when it
-/// solved the net (`analysed`; `plain` is every current at its largest at once), or the terms
-/// that add up to it, largest first.
-fn current_source(analysed: bool, plain: f64, terms: &[(&Carrier, f64)]) -> String {
+/// Where a net's current comes from, in words (issue 1373): the one carrier that draws more than
+/// the DC analysis finds (`largest`, issue #1584), the DC analysis' worst case when it solved the
+/// net (`analysed`; `plain` is every current at its largest at once), or the terms that add up
+/// to it, largest first.
+fn current_source(
+    from: CurrentFrom,
+    plain: f64,
+    analysed: Option<f64>,
+    largest: Option<(&Carrier, f64)>,
+    terms: &[(&Carrier, f64)],
+) -> String {
     match terms {
-        _ if analysed => format!(
+        _ if from == CurrentFrom::Carrier => match (largest, analysed) {
+            (Some((c, hi)), Some(a)) => format!(
+                "{} carries {}, more than the {} the DC analysis finds into the net",
+                c.who,
+                amps(hi),
+                amps(a)
+            ),
+            _ => String::new(),
+        },
+        _ if from == CurrentFrom::Analysis => format!(
             "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be {}",
             amps(plain)
         ),

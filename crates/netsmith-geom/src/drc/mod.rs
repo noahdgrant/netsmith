@@ -78,7 +78,9 @@
 //! rules of the fabricator's page for fiducials and test points (`fiducial_edge`, `fiducial_mask`
 //! and `fiducial_keepout`, limits, errors; `fiducial_count`, `fiducial_size`, `fiducial_angle`,
 //! `finish_fine_pitch`, `assembly_size` and the `test_point_*` rules, guidelines, warnings:
-//! `marks.rs`, issues #761, #1006 and 1285), `acid_trap` (a track
+//! `marks.rs`, issues #761, #1006 and 1285), `v_cut_edge` (copper of a board under the board
+//! house's assembly size nearer its outline than the house keeps copper from a V-cut edge, a
+//! note: `v_cut.rs`, issue 1592), `acid_trap` (a track
 //! that meets a pad's straight edge or another track of its net at an acute angle, a warning:
 //! `acid.rs`, issue #838), `stackup` (a board file whose copper layers, thickness or stackup
 //! the process does not make, an error: `stackup.rs`, issue #993), `unmatched_waiver` (a waiver of
@@ -211,6 +213,7 @@ pub(crate) mod shape;
 mod silk;
 mod stackup;
 mod teardrop;
+mod v_cut;
 mod vias;
 mod waivers;
 
@@ -403,6 +406,10 @@ pub enum Rule {
     /// A waiver of the layout file that covers no finding of the part's own footprint
     /// (netsmith's, issue #1196; `waivers.rs`).
     UnmatchedWaiver,
+    /// Copper of a board under the board house's assembly size, which is ordered as a panel,
+    /// nearer the board's outline than the house keeps copper from a V-cut edge (netsmith's, a
+    /// note, issue 1592; `v_cut.rs`).
+    VCutEdge,
     /// A differential pair whose two lengths differ by more than the pair's skew limit
     /// (netsmith's, issue #1587; the pair table of `netsmith_fab::NetTable`, since the board
     /// file does not hold the limits).
@@ -419,7 +426,7 @@ pub enum Rule {
 }
 
 impl Rule {
-    pub const ALL: [Rule; 62] = [
+    pub const ALL: [Rule; 63] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -479,6 +486,7 @@ impl Rule {
         Rule::ViaSpan,
         Rule::ViaAspectRatio,
         Rule::UnmatchedWaiver,
+        Rule::VCutEdge,
         Rule::PairSkew,
         Rule::NearRuleArea,
         Rule::SwitchNodeCopper,
@@ -546,6 +554,7 @@ impl Rule {
             Rule::ViaSpan => "via_span",
             Rule::ViaAspectRatio => "via_aspect_ratio",
             Rule::UnmatchedWaiver => "unmatched_waiver",
+            Rule::VCutEdge => "v_cut_edge",
             Rule::PairSkew => "pair_skew",
             Rule::NearRuleArea => "near_rule_area",
             Rule::SwitchNodeCopper => "switch_node_copper",
@@ -590,6 +599,7 @@ impl Rule {
                 | Rule::ViaSpan
                 | Rule::ViaAspectRatio
                 | Rule::UnmatchedWaiver
+                | Rule::VCutEdge
                 | Rule::PairSkew
                 | Rule::NearRuleArea
                 | Rule::SwitchNodeCopper
@@ -629,7 +639,7 @@ impl Rule {
             | Rule::AcidTrap
             | Rule::CopperSliver
             | Rule::PairSkew => Severity::Warning,
-            Rule::NearRuleArea | Rule::SwitchNodeCopper => Severity::Note,
+            Rule::NearRuleArea | Rule::VCutEdge | Rule::SwitchNodeCopper => Severity::Note,
             _ => Severity::Error,
         })
     }
@@ -769,6 +779,42 @@ pub struct Report {
     /// The findings of a part's own footprint that a waiver of the layout file covers, with its
     /// reason and source (issue #1196): neither errors nor warnings, and listed as waived.
     pub waived: Vec<Waived>,
+    /// For a board under the board house's assembly size, which is ordered as a panel: its
+    /// copper nearest the outline and the house's V-cut figure (issue 1592), for the notes.
+    /// `None` for a board that is not under it, or a check with no process.
+    pub v_cut: Option<VCut>,
+}
+
+/// The copper of a board nearest its outline (issue 1592): tracks, pads, vias, teardrops,
+/// drawings on copper and the fill of the pours, against the outer outline (a cutout is not cut
+/// by a V-cut).
+#[derive(Debug, Clone, PartialEq)]
+pub struct EdgeCopper {
+    /// The space from the copper to the outline, in mm.
+    pub distance: f64,
+    /// What the copper is, as a finding names it: `Track [GND] on F.Cu`, `Zone [GND] on B.Cu`.
+    pub what: String,
+    /// The middle of the gap, in the board's frame.
+    pub at: Pt,
+    pub layer: Option<String>,
+}
+
+/// A board ordered as a panel because it is under the board house's assembly size, and what
+/// that asks of its copper at the outline if the panel is cut apart by V-cuts (issue 1592).
+#[derive(Debug, Clone, PartialEq)]
+pub struct VCut {
+    /// The board's width and height, in mm, and the least side the house assembles as a single
+    /// board of its kind.
+    pub width: f64,
+    pub height: f64,
+    pub assembly_size: f64,
+    /// The copper nearest the outline; `None` for a board with no copper.
+    pub nearest: Option<EdgeCopper>,
+    /// The least space from copper to a V-cut edge the process states, in mm, and where it
+    /// comes from: `None` where the house publishes no figure, and the distance is then said
+    /// and not judged.
+    pub least: Option<f64>,
+    pub source: Option<String>,
 }
 
 /// A text of the silkscreen and what a silkscreen rule holds it to (an opening in the mask,
@@ -984,6 +1030,9 @@ pub struct NetCurrent {
     pub net: String,
     pub current: f64,
     pub source: String,
+    /// Whether a current on the net is not known, so that `current` is a lower bound (issue
+    /// #1584): the copper that feeds branches is then not held to it.
+    pub lower_bound: bool,
 }
 
 /// What the check needs to judge a board's vias against the process (the `via_span` and
@@ -1074,6 +1123,12 @@ pub struct Marks {
     pub min_double_sided_assembly_size: Option<f64>,
     /// Where those figures come from (issue 1393), quoted by the `assembly_size` finding.
     pub assembly_size_source: Option<String>,
+    /// The least space from copper to a V-cut edge, in mm (issue 1592): what a board under the
+    /// assembly size, which is ordered as a panel, keeps at its outline if the panel is cut
+    /// apart by V-cuts. `None` is not judged (the distance is still measured for the notes).
+    pub min_v_cut_edge: Option<f64>,
+    /// Where that figure comes from, quoted by the `v_cut_edge` finding.
+    pub v_cut_edge_source: Option<String>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -1182,12 +1237,17 @@ pub fn check_artwork(
     let mut findings = Vec::new();
     checks::run(&model, &mut findings);
     connect::run(&model, &mut findings);
+    let v_cut = v_cut::of(&model);
+    if let Some(v) = &v_cut {
+        findings.extend(v_cut::finding(&model, v));
+    }
     // Errors before warnings, otherwise in the order found.
     findings.sort_by_key(|f| std::cmp::Reverse(f.severity));
     let mut report = Report {
         findings,
         font_dependent: silk::font_dependent(&model),
         waived: Vec::new(),
+        v_cut,
     };
     waivers::apply(&mut report, &extras.waivers);
     report
@@ -1203,6 +1263,20 @@ pub fn pad_reaches_pour(art: &Artwork, part: &str, number: &str) -> Option<bool>
     let extras = Extras::default();
     let model = model::Model::new(art, &rules, &extras, false);
     connect::pad_reaches_pour(&model, part, number)
+}
+
+/// The copper of the board in `pcb` nearest its outer outline (issue 1592), as the check
+/// measures it for [`Report::v_cut`]: the fill of a pour as the check fills it, with the rules of
+/// `project` and `extras`. `None` for a board with no copper or no closed outline. A panel's
+/// notes say it of the board it repeats.
+pub fn copper_to_edge(
+    pcb: &str,
+    project: Option<&str>,
+    extras: &Extras,
+) -> Result<Option<EdgeCopper>, Error> {
+    let read = read(pcb, project, extras)?;
+    let model = model::Model::new(&read.art, &read.rules, extras, read.bridges_in_footprints);
+    Ok(v_cut::nearest(&model))
 }
 
 /// The `.kicad_pro` beside a board file, if there is one.

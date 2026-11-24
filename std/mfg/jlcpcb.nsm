@@ -409,6 +409,20 @@ generic TwoLayer {
     .assembly_size_source: String
     .assembly_size_source &=
         "https://jlcpcb.com/capabilities/pcb-assembly-capabilities, Economic PCBA (one face) and Standard PCBA (both faces), read 2026-11-19"
+    /// The least space between copper and a V-cut edge (`.min_v_cut_edge_clearance`, issue
+    /// 1592): the capabilities page's "Copper clearance from V-cut board edges: ≧0.4 mm" (its
+    /// blog on V-cut panels gives the same 0.4 mm from the cut's centre line and recommends
+    /// 1.0 mm; neither names pours apart from tracks). A board under the assembly size above is
+    /// ordered as a panel, and the design rules check's `v_cut_edge` says when its copper,
+    /// pours included, is nearer its outline than this (a warning, as the check cannot see how
+    /// the panel is cut apart). A lower bound: `&= 1mm..` asks for the blog's advice. Source:
+    /// https://jlcpcb.com/capabilities/pcb-capabilities (read 2026-11-24, `data/jlcpcb/README.md`).
+    .min_v_cut_edge_clearance: Length
+    .min_v_cut_edge_clearance &= 0.4mm..
+    /// Where that figure comes from, which the `v_cut_edge` finding and the notes quote.
+    .v_cut_edge_clearance_source: String
+    .v_cut_edge_clearance_source &=
+        "https://jlcpcb.com/capabilities/pcb-capabilities, Outline, V-cut: copper clearance from V-cut board edges, read 2026-11-24"
     /// How much narrower than drawn a finished track may be, as a fraction: the page's "track
     /// width tolerance ±20%: for a 0.1 mm track, the finished track width ranges from 0.08 and
     /// 0.12 mm". The track width check sizes a net for the current at the narrowest track the
@@ -748,6 +762,20 @@ generic FourLayer {
     .assembly_size_source: String
     .assembly_size_source &=
         "https://jlcpcb.com/capabilities/pcb-assembly-capabilities, Economic PCBA (one face) and Standard PCBA (both faces), read 2026-11-19"
+    /// The least space between copper and a V-cut edge (`.min_v_cut_edge_clearance`, issue
+    /// 1592): the capabilities page's "Copper clearance from V-cut board edges: ≧0.4 mm" (its
+    /// blog on V-cut panels gives the same 0.4 mm from the cut's centre line and recommends
+    /// 1.0 mm; neither names pours apart from tracks). A board under the assembly size above is
+    /// ordered as a panel, and the design rules check's `v_cut_edge` says when its copper,
+    /// pours included, is nearer its outline than this (a warning, as the check cannot see how
+    /// the panel is cut apart). A lower bound: `&= 1mm..` asks for the blog's advice. Source:
+    /// https://jlcpcb.com/capabilities/pcb-capabilities (read 2026-11-24, `data/jlcpcb/README.md`).
+    .min_v_cut_edge_clearance: Length
+    .min_v_cut_edge_clearance &= 0.4mm..
+    /// Where that figure comes from, which the `v_cut_edge` finding and the notes quote.
+    .v_cut_edge_clearance_source: String
+    .v_cut_edge_clearance_source &=
+        "https://jlcpcb.com/capabilities/pcb-capabilities, Outline, V-cut: copper clearance from V-cut board edges, read 2026-11-24"
     /// How much narrower than drawn a finished track may be, as a fraction: the page's "track
     /// width tolerance ±20%: for a 0.1 mm track, the finished track width ranges from 0.08 and
     /// 0.12 mm". The track width check sizes a net for the current at the narrowest track the
@@ -1165,6 +1193,20 @@ generic SixLayer {
     .assembly_size_source: String
     .assembly_size_source &=
         "https://jlcpcb.com/capabilities/pcb-assembly-capabilities, Economic PCBA (one face) and Standard PCBA (both faces), read 2026-11-19"
+    /// The least space between copper and a V-cut edge (`.min_v_cut_edge_clearance`, issue
+    /// 1592): the capabilities page's "Copper clearance from V-cut board edges: ≧0.4 mm" (its
+    /// blog on V-cut panels gives the same 0.4 mm from the cut's centre line and recommends
+    /// 1.0 mm; neither names pours apart from tracks). A board under the assembly size above is
+    /// ordered as a panel, and the design rules check's `v_cut_edge` says when its copper,
+    /// pours included, is nearer its outline than this (a warning, as the check cannot see how
+    /// the panel is cut apart). A lower bound: `&= 1mm..` asks for the blog's advice. Source:
+    /// https://jlcpcb.com/capabilities/pcb-capabilities (read 2026-11-24, `data/jlcpcb/README.md`).
+    .min_v_cut_edge_clearance: Length
+    .min_v_cut_edge_clearance &= 0.4mm..
+    /// Where that figure comes from, which the `v_cut_edge` finding and the notes quote.
+    .v_cut_edge_clearance_source: String
+    .v_cut_edge_clearance_source &=
+        "https://jlcpcb.com/capabilities/pcb-capabilities, Outline, V-cut: copper clearance from V-cut board edges, read 2026-11-24"
     /// How much narrower than drawn a finished track may be, as a fraction: the page's "track
     /// width tolerance ±20%: for a 0.1 mm track, the finished track width ranges from 0.08 and
     /// 0.12 mm". The track width check sizes a net for the current at the narrowest track the
@@ -1596,6 +1638,20 @@ interface HdiFourLayer {
     .assembly_size_source: String
     .assembly_size_source &=
         "https://jlcpcb.com/capabilities/pcb-assembly-capabilities, Economic PCBA (one face) and Standard PCBA (both faces), read 2026-11-19"
+    /// The least space between copper and a V-cut edge (`.min_v_cut_edge_clearance`, issue
+    /// 1592): the capabilities page's "Copper clearance from V-cut board edges: ≧0.4 mm" (its
+    /// blog on V-cut panels gives the same 0.4 mm from the cut's centre line and recommends
+    /// 1.0 mm; neither names pours apart from tracks). A board under the assembly size above is
+    /// ordered as a panel, and the design rules check's `v_cut_edge` says when its copper,
+    /// pours included, is nearer its outline than this (a warning, as the check cannot see how
+    /// the panel is cut apart). A lower bound: `&= 1mm..` asks for the blog's advice. Source:
+    /// https://jlcpcb.com/capabilities/pcb-capabilities (read 2026-11-24, `data/jlcpcb/README.md`).
+    .min_v_cut_edge_clearance: Length
+    .min_v_cut_edge_clearance &= 0.4mm..
+    /// Where that figure comes from, which the `v_cut_edge` finding and the notes quote.
+    .v_cut_edge_clearance_source: String
+    .v_cut_edge_clearance_source &=
+        "https://jlcpcb.com/capabilities/pcb-capabilities, Outline, V-cut: copper clearance from V-cut board edges, read 2026-11-24"
     /// How much narrower than drawn a finished track may be, as a fraction: the page's "track
     /// width tolerance ±20%: for a 0.1 mm track, the finished track width ranges from 0.08 and
     /// 0.12 mm". The track width check sizes a net for the current at the narrowest track the
@@ -1914,6 +1970,20 @@ interface HdiSixLayer {
     .assembly_size_source: String
     .assembly_size_source &=
         "https://jlcpcb.com/capabilities/pcb-assembly-capabilities, Economic PCBA (one face) and Standard PCBA (both faces), read 2026-11-19"
+    /// The least space between copper and a V-cut edge (`.min_v_cut_edge_clearance`, issue
+    /// 1592): the capabilities page's "Copper clearance from V-cut board edges: ≧0.4 mm" (its
+    /// blog on V-cut panels gives the same 0.4 mm from the cut's centre line and recommends
+    /// 1.0 mm; neither names pours apart from tracks). A board under the assembly size above is
+    /// ordered as a panel, and the design rules check's `v_cut_edge` says when its copper,
+    /// pours included, is nearer its outline than this (a warning, as the check cannot see how
+    /// the panel is cut apart). A lower bound: `&= 1mm..` asks for the blog's advice. Source:
+    /// https://jlcpcb.com/capabilities/pcb-capabilities (read 2026-11-24, `data/jlcpcb/README.md`).
+    .min_v_cut_edge_clearance: Length
+    .min_v_cut_edge_clearance &= 0.4mm..
+    /// Where that figure comes from, which the `v_cut_edge` finding and the notes quote.
+    .v_cut_edge_clearance_source: String
+    .v_cut_edge_clearance_source &=
+        "https://jlcpcb.com/capabilities/pcb-capabilities, Outline, V-cut: copper clearance from V-cut board edges, read 2026-11-24"
     /// How much narrower than drawn a finished track may be, as a fraction: the page's "track
     /// width tolerance ±20%: for a 0.1 mm track, the finished track width ranges from 0.08 and
     /// 0.12 mm". The track width check sizes a net for the current at the narrowest track the
@@ -2233,6 +2303,20 @@ interface HdiEightLayer {
     .assembly_size_source: String
     .assembly_size_source &=
         "https://jlcpcb.com/capabilities/pcb-assembly-capabilities, Economic PCBA (one face) and Standard PCBA (both faces), read 2026-11-19"
+    /// The least space between copper and a V-cut edge (`.min_v_cut_edge_clearance`, issue
+    /// 1592): the capabilities page's "Copper clearance from V-cut board edges: ≧0.4 mm" (its
+    /// blog on V-cut panels gives the same 0.4 mm from the cut's centre line and recommends
+    /// 1.0 mm; neither names pours apart from tracks). A board under the assembly size above is
+    /// ordered as a panel, and the design rules check's `v_cut_edge` says when its copper,
+    /// pours included, is nearer its outline than this (a warning, as the check cannot see how
+    /// the panel is cut apart). A lower bound: `&= 1mm..` asks for the blog's advice. Source:
+    /// https://jlcpcb.com/capabilities/pcb-capabilities (read 2026-11-24, `data/jlcpcb/README.md`).
+    .min_v_cut_edge_clearance: Length
+    .min_v_cut_edge_clearance &= 0.4mm..
+    /// Where that figure comes from, which the `v_cut_edge` finding and the notes quote.
+    .v_cut_edge_clearance_source: String
+    .v_cut_edge_clearance_source &=
+        "https://jlcpcb.com/capabilities/pcb-capabilities, Outline, V-cut: copper clearance from V-cut board edges, read 2026-11-24"
     /// How much narrower than drawn a finished track may be, as a fraction: the page's "track
     /// width tolerance ±20%: for a 0.1 mm track, the finished track width ranges from 0.08 and
     /// 0.12 mm". The track width check sizes a net for the current at the narrowest track the
