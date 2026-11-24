@@ -391,10 +391,12 @@ fn reaches(
                 }
                 let d = along(p, s.2, s.3).0;
                 let track = [DrcShape::capsule(s.2, s.3, s.4 / 2.0)];
-                if d > SAME && !tee_on(p, s) && end_joins(p, half, &track) {
-                    if let Some(on) = point_of(s.2, &s.1) {
-                        push(d, Target::Track(i), g.node[on]);
-                    }
+                if d > SAME
+                    && !tee_on(p, s)
+                    && end_joins(p, half, &track)
+                    && let Some(on) = point_of(s.2, &s.1)
+                {
+                    push(d, Target::Track(i), g.node[on]);
                 }
             }
             for (v, via) in vias.iter().enumerate() {
