@@ -415,6 +415,20 @@ pub struct Zone {
     pub hatched: bool,
     /// Its corners rounded or cut (`(smoothing fillet)`, `(smoothing chamfer)`).
     pub smoothed: bool,
+    /// Its `(uuid`, which KiCad keeps when it saves the board again: `fab` writes the zone of a
+    /// plane or a pour of the process with one of its own ([`netsmith_pcb::process_zone_uuid`]).
+    pub uuid: Option<String>,
+}
+
+/// A zone of a KiCad board that [`read_zones`] could not read whole, and why.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnreadZone {
+    /// The net's name as the board writes it (`""` for none).
+    pub net: String,
+    /// KiCad's names of its layers.
+    pub layers: Vec<String>,
+    /// What is missing, a sentence that ends `left out`.
+    pub said: String,
 }
 
 impl fmt::Display for Zone {
@@ -440,9 +454,9 @@ impl fmt::Display for Zone {
 }
 
 /// The zones of the KiCad board `pcb`, rule areas and teardrops among them ([`Zone::kind`]), with
-/// what could not be read, each a sentence (a zone with no outline, or without a setting that
+/// what could not be read ([`UnreadZone`]: a zone with no outline, or without a setting that
 /// KiCad writes into every zone: its clearance, minimum thickness, thermal gap and spoke width).
-pub fn read_zones(pcb: &str, source: &str) -> Result<(Vec<Zone>, Vec<String>), String> {
+pub fn read_zones(pcb: &str, source: &str) -> Result<(Vec<Zone>, Vec<UnreadZone>), String> {
     use netsmith_pcb::{ZoneIslands, ZonePads};
     let outline = crate::reference_table::read_board(pcb, source)?.outline;
     let root = Sexp::parse(pcb).map_err(|e| format!("{source}: {e}"))?;
@@ -530,9 +544,17 @@ pub fn read_zones(pcb: &str, source: &str) -> Result<(Vec<Zone>, Vec<String>), S
         } else {
             ZoneKind::Copper
         };
+        let uuid = item
+            .find("uuid")
+            .and_then(|u| u.args().first()?.text())
+            .map(str::to_string);
         let mut polygons = item.find_all("polygon").map(ring);
         let Some(outline) = polygons.next().filter(|o| o.len() >= 3) else {
-            unread.push(format!("a zone of net `{net}` with no outline: left out"));
+            unread.push(UnreadZone {
+                said: format!("a zone of net `{net}` with no outline: left out"),
+                net,
+                layers,
+            });
             continue;
         };
         let holes: Vec<Vec<[f64; 2]>> = polygons.collect();
@@ -553,9 +575,13 @@ pub fn read_zones(pcb: &str, source: &str) -> Result<(Vec<Zone>, Vec<String>), S
         let (Some(clearance), Some(min_width), Some(thermal_gap), Some(spoke_width)) = settings
         else {
             if kind == ZoneKind::Copper {
-                unread.push(format!(
-                    "a zone of net `{net}` without its clearance, minimum thickness, thermal gap or spoke width: left out"
-                ));
+                unread.push(UnreadZone {
+                    said: format!(
+                        "a zone of net `{net}` without its clearance, minimum thickness, thermal gap or spoke width: left out"
+                    ),
+                    net,
+                    layers,
+                });
                 continue;
             }
             zones.push(Zone {
@@ -574,6 +600,7 @@ pub fn read_zones(pcb: &str, source: &str) -> Result<(Vec<Zone>, Vec<String>), S
                 island_min_area: None,
                 hatched: false,
                 smoothed: false,
+                uuid,
             });
             continue;
         };
@@ -603,6 +630,7 @@ pub fn read_zones(pcb: &str, source: &str) -> Result<(Vec<Zone>, Vec<String>), S
             island_min_area,
             hatched: word("mode").is_some_and(|m| m != "solid"),
             smoothed: word("smoothing").is_some_and(|m| m != "none"),
+            uuid,
         });
     }
     Ok((zones, unread))

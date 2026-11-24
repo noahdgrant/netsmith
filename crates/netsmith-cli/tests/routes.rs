@@ -1061,3 +1061,70 @@ fn routes_show_counts_the_stitching_vias_of_a_locked_import() {
 fn routes_show_counts_the_stitching_vias_of_an_unlocked_import_as_of_a_locked_one() {
     imported_counts_are_the_boards("routes-stitching-unlocked", true);
 }
+
+/// The copper zones of a `.kicad_pcb`, as the import reads them.
+fn kicad_zones(pcb: &Path) -> Vec<netsmith_tools::copper::Zone> {
+    let text = fs::read_to_string(pcb).unwrap();
+    let (zones, unread) = netsmith_tools::copper::read_zones(&text, "board").unwrap();
+    assert!(unread.is_empty(), "{unread:?}");
+    zones
+}
+
+#[test]
+fn routes_import_takes_a_hand_zone_leaves_the_processs_pours_and_fab_writes_them_again() {
+    // Issue #1609: a hand zone of the 3.3 V net on top, over the ground pour, fabbed, imported
+    // and fabbed again with the routes file: the zones of the two boards are the same.
+    let dir = TempDir::new("routes-import-zones");
+    for ext in ["nsm", "physical.nsm", "pcb.toml", "lock.toml"] {
+        fs::copy(
+            repo().join(format!("examples/outline_and_pours.{ext}")),
+            dir.join(format!("main.{ext}")),
+        )
+        .unwrap();
+    }
+    ok(&netsmith(
+        &dir,
+        &[
+            "routes", "add-zone", "--file", "main.nsm", "--net", "3V3", "--layer", "top", "--rect",
+            "38,24,6,6",
+        ],
+    ));
+    ok(&netsmith(&dir, &["board", "fab", "main.nsm", "--out", "first"]));
+    let pcb = "first/OutlineAndPours/OutlineAndPours.kicad_pcb";
+    let run = netsmith(
+        &dir,
+        &["routes", "import", pcb, "--file", "main.nsm", "--no-places", "--format", "json"],
+    );
+    let said = ok(&run);
+    let import: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+    assert_eq!(import["zones"], 1, "{said}");
+    let left = import["zones_left_out"].as_array().unwrap();
+    let reasons = |r: &str| left.iter().filter(|z| z["reason"] == r).count();
+    // The two planes and the two outer pours are the process's, the antenna's keepout a rule
+    // area.
+    assert_eq!(reasons("process"), 4, "{said}");
+    assert!(reasons("rule_area") >= 1, "{said}");
+    assert!(left.iter().all(|z| z["said"].as_str().is_some_and(|s| !s.is_empty())), "{said}");
+    let routes = fs::read_to_string(dir.join("main.routes.toml")).unwrap();
+    assert_eq!(routes.matches("[[OutlineAndPours.nets.3V3.zones]]").count(), 1, "{routes}");
+
+    ok(&netsmith(&dir, &["board", "fab", "main.nsm", "--out", "second"]));
+    let second = "second/OutlineAndPours/OutlineAndPours.kicad_pcb";
+    let (a, b) = (kicad_zones(&dir.join(pcb)), kicad_zones(&dir.join(second)));
+    let diff = netsmith_tools::copper::compare_zones(&a, &b, 1e-6);
+    assert!(
+        diff.missing.is_empty() && diff.extra.is_empty() && diff.differing.is_empty(),
+        "{diff:?}"
+    );
+    assert!(diff.matched >= 5, "{diff:?}");
+
+    // The text counts them.
+    let text = ok(&netsmith(
+        &dir,
+        &["routes", "import", pcb, "--file", "main.nsm", "--no-places"],
+    ));
+    assert!(
+        text.contains("zones: 1 taken, ") && text.contains("4 of the process's own planes and pours"),
+        "{text}"
+    );
+}

@@ -117,7 +117,8 @@ pub use explain::{
     Fault, Precheck, RequirementReport, before_placing, explain as explain_requirements,
 };
 pub use export::{
-    FilledPcb, PATH_PROPERTY, kicad_dru, kicad_pcb, kicad_pcb_filled, kicad_pro, process_zones,
+    FilledPcb, PATH_PROPERTY, kicad_dru, kicad_pcb, kicad_pcb_filled, kicad_pro, process_zone_uuid,
+    process_zones,
 };
 pub use fill_report::{
     ClearedPad, FillArea, FillIsland, FillPad, FillPolygon, FillReport, FillSource, JoinCounts,
@@ -210,8 +211,8 @@ pub use summary::{
 };
 pub use svg::{render as render_svg, render_view as render_svg_view};
 pub use track_drop::{
-    COPPER_RESISTIVITY, DEFAULT_DROP_BUDGET, DropRun, NetPad, PinDraw, TrackDrop, in_outer_copper,
-    net_drop as track_drop_of,
+    COPPER_RESISTIVITY, DEFAULT_DROP_BUDGET, DropPiece, DropRun, NEAR_DROP_BUDGET, NetPad, PinDraw,
+    TrackDrop, in_outer_copper, net_drop as track_drop_of,
 };
 pub use validate::{Subject, footprint_pitch, validate_pinout, validate_table};
 pub use walled::{WallPart, WalledPad};

@@ -122,6 +122,16 @@ fn board_nets_and_board_drc_measure_the_drop_fab_warns_of() {
     let drop = rail["drop"].as_f64().unwrap();
     assert!(drop > 0.033 && rail["share"].as_f64().unwrap() > 1.0, "{rail}");
     assert!(rail["width_for"].as_f64().unwrap() > 0.98, "{rail}");
+    // The path's pieces, the one that drops most first, each with the width it needs (issue
+    // #1610).
+    let path = rail["path"].as_array().unwrap();
+    assert!(!path.is_empty(), "{rail}");
+    let drops_of: Vec<f64> = path.iter().map(|p| p["drop"].as_f64().unwrap()).collect();
+    assert!(drops_of.windows(2).all(|w| w[0] >= w[1]), "{rail}");
+    let summed: f64 = drops_of.iter().sum();
+    assert!((summed - drop).abs() < 1e-9, "{rail}");
+    assert!(path[0]["needs"].as_f64().unwrap() > path[0]["width"].as_f64().unwrap(), "{rail}");
+    assert!(said.contains("    #") && said.contains(" mV ("), "{said}");
     // A ground has no voltage of its own.
     assert!(!drops.iter().any(|d| d["net"] == "GND"), "{drops:?}");
 
@@ -142,6 +152,8 @@ fn board_nets_and_board_drc_measure_the_drop_fab_warns_of() {
     let over = json["boards"][0]["track_drops"].as_array().unwrap();
     assert_eq!(over.len(), 1, "{json}");
     assert_eq!(over[0]["drop"].as_f64(), Some(drop), "{json}");
+    assert_eq!(over[0]["path"], rail["path"], "{json}");
+    assert!(checked.contains("\n  #1 track ") || checked.contains("\n  #2 track "), "{checked}");
 
     // `board fab` on the same copper warns with the same message.
     let fab = netsmith(
