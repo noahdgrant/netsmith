@@ -272,6 +272,12 @@ pub struct Tidied {
 impl Tidied {
     /// The text for a person.
     pub fn text(&self) -> String {
+        self.text_moved([0.0, 0.0])
+    }
+
+    /// [`Tidied::text`] with its places moved by `by`, mm (into another frame than the routes
+    /// file's), the lines of the design rules check in what it refused with them.
+    pub fn text_moved(&self, by: [f64; 2]) -> String {
         use std::fmt::Write as _;
         let mut s = String::new();
         let c = &self.counts;
@@ -316,12 +322,12 @@ impl Tidied {
                 "  {}: net {}{layer} at ({}, {}){owner}: {}",
                 c.kind.word(),
                 c.net,
-                c.at[0],
-                c.at[1],
+                to_um(c.at[0] + by[0]),
+                to_um(c.at[1] + by[1]),
                 c.said
             );
             if let Some(why) = &c.why {
-                let _ = write!(s, ": refused, {why}");
+                let _ = write!(s, ": refused, {}", netsmith_pcb::prose::drc_moved(why, by));
             }
             let _ = writeln!(s);
         };

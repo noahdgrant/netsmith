@@ -460,6 +460,12 @@ impl Summary {
 
     /// A few lines for a person.
     pub fn text(&self) -> String {
+        self.text_moved([0.0, 0.0])
+    }
+
+    /// [`Summary::text`] with its places moved by `by`, mm (into another frame than the layout
+    /// file's).
+    pub fn text_moved(&self, by: [f64; 2]) -> String {
         let t = &self.totals;
         let mut text = format!(
             "{}: {} x {} mm, {} parts; wire {} mm (half perimeter), ratsnest {} mm, {} crossings, decoupling mean {} mm, max {} mm\n",
@@ -488,8 +494,8 @@ impl Summary {
                     "; largest free rectangle {} x {} mm at ({}, {})",
                     round(b.max[0] - b.min[0]),
                     round(b.max[1] - b.min[1]),
-                    b.min[0],
-                    b.min[1]
+                    round(b.min[0] + by[0]),
+                    round(b.min[1] + by[1])
                 );
             }
             text.push('\n');
@@ -1011,6 +1017,14 @@ impl PlacementComparison {
 
     /// A few lines for a person.
     pub fn text(&self) -> String {
+        self.text_moved([0.0, 0.0], "")
+    }
+
+    /// [`PlacementComparison::text`] with its places moved by `by`, mm (into another frame than
+    /// the layout file's), and the placer's sentences in `appeared` and `gone` with them (`says`
+    /// is what a text says of the frame after `mm`).
+    pub fn text_moved(&self, by: [f64; 2], says: &str) -> String {
+        let place = |v: f64, d: f64| round(v + d);
         let mut text = format!(
             "{}: {} parts moved; wire {} -> {} mm, crossings {} -> {}, decoupling max {} -> {} mm\n",
             self.board,
@@ -1027,12 +1041,12 @@ impl PlacementComparison {
                 "moved {} ({}): ({}, {}) {} {} -> ({}, {}) {} {}, {} mm\n",
                 m.refdes,
                 m.path,
-                m.from.x,
-                m.from.y,
+                place(m.from.x, by[0]),
+                place(m.from.y, by[1]),
                 m.from.turn,
                 m.from.side,
-                m.to.x,
-                m.to.y,
+                place(m.to.x, by[0]),
+                place(m.to.y, by[1]),
                 m.to.turn,
                 m.to.side,
                 m.distance
@@ -1045,10 +1059,10 @@ impl PlacementComparison {
             text += &format!("only after: {p}\n");
         }
         for f in &self.appeared {
-            text += &format!("appeared: {f}\n");
+            text += &format!("appeared: {}\n", crate::prose::placer_moved(f, by, says));
         }
         for f in &self.gone {
-            text += &format!("gone: {f}\n");
+            text += &format!("gone: {}\n", crate::prose::placer_moved(f, by, says));
         }
         text
     }

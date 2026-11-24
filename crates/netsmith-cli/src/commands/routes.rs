@@ -523,15 +523,21 @@ pub fn run(args: Args) -> ExitCode {
     }
 }
 
+/// How far (`[dx, dy]`, mm) the places of a text move from the routes file's frame to the one
+/// asked for (`--frame`).
+fn text_by(framing: &crate::frame::Framing) -> Result<[f64; 2], ExitCode> {
+    match framing.moved(
+        crate::frame::Frame::Outline,
+        Some(crate::frame::design_corner()),
+    ) {
+        Ok((_, dx, dy)) => Ok([dx, dy]),
+        Err(e) => Err(crate::frame::refused(&e)),
+    }
+}
+
 /// `routes tidy` (issue #1192): `netsmith_fabricate::routes_tidy::tidy_files` of the target's
 /// board; exit 0 when the pass ran, 2 when it could not.
 fn tidy(args: &TidyArgs) -> ExitCode {
-    if let Err(e) = args
-        .framing
-        .for_text(args.format == common::Format::Json, "routes tidy")
-    {
-        return crate::frame::refused(&e);
-    }
     // As `fab`: with `--format json` the progress is printed only when it is asked for as JSON
     // (issue #1225).
     args.watching.tell_progress(
@@ -577,7 +583,13 @@ fn tidy(args: &TidyArgs) -> ExitCode {
                         return crate::frame::refused(&e);
                     }
                 }
-                common::Format::Text => print!("{}", tidied.text()),
+                common::Format::Text => {
+                    let by = match text_by(&args.framing) {
+                        Ok(by) => by,
+                        Err(code) => return code,
+                    };
+                    print!("{}", tidied.text_moved(by));
+                }
             }
             ExitCode::SUCCESS
         }
@@ -729,12 +741,6 @@ fn edit_all(target: &Target, changes: impl Fn(&Board) -> Vec<lib::Edit>) -> Exit
 /// `routes add SHAPES` (issue #1472, `netsmith_fabricate::routes::batch`): exit 0 when every
 /// shape was made, 1 when one was refused, 2 when it could not run.
 fn add(args: &AddArgs) -> ExitCode {
-    if let Err(e) = args
-        .framing
-        .for_text(args.format == common::Format::Json, "routes add")
-    {
-        return crate::frame::refused(&e);
-    }
     use netsmith_fabricate::routes::batch;
     let text = if args.shapes == "-" {
         let mut text = String::new();
@@ -799,7 +805,7 @@ fn add(args: &AddArgs) -> ExitCode {
             }
         }
         common::Format::Text => {
-            print!("{}", added.text());
+            print!("{}", args.framing.drc(&added.text()));
             if written {
                 println!("wrote {}", file.display());
             } else if args.dry_run {
@@ -818,12 +824,6 @@ fn add(args: &AddArgs) -> ExitCode {
 /// (or would be, with `--dry-run`) or joined already, 1 when it is refused, 2 when it could not
 /// be tried.
 fn route(args: &RouteArgs) -> ExitCode {
-    if let Err(e) = args
-        .framing
-        .for_text(args.format == common::Format::Json, "routes route")
-    {
-        return crate::frame::refused(&e);
-    }
     use netsmith_fabricate::route_net;
     // The weights of the router's quality objective: the flags, else the project's keys.
     let project = netsmith_fabricate::project::Target::resolve(args.target.file.as_deref())
@@ -874,7 +874,7 @@ fn route(args: &RouteArgs) -> ExitCode {
     let (routed, file, written) = match done {
         Ok(Ok(done)) => done,
         Ok(Err(e)) => {
-            eprintln!("error: {e}");
+            eprintln!("error: {}", args.framing.drc(&e));
             return ExitCode::FAILURE;
         }
         Err(code) => return code,
@@ -895,7 +895,11 @@ fn route(args: &RouteArgs) -> ExitCode {
             }
         }
         common::Format::Text => {
-            print!("{}", routed.text());
+            let by = match text_by(&args.framing) {
+                Ok(by) => by,
+                Err(code) => return code,
+            };
+            print!("{}", routed.text_moved(by));
             if written {
                 println!("wrote {}", file.display());
             } else if args.dry_run && routed.routes.is_some() {
@@ -906,7 +910,7 @@ fn route(args: &RouteArgs) -> ExitCode {
     match &routed.refused {
         Some(e) => {
             if args.format == common::Format::Text {
-                eprintln!("error: {e}");
+                eprintln!("error: {}", args.framing.drc(e));
             }
             ExitCode::FAILURE
         }
@@ -918,12 +922,6 @@ fn route(args: &RouteArgs) -> ExitCode {
 /// (or would be, with `--dry-run`) or was joined already, 1 when it is refused, 2 when it could
 /// not be tried.
 fn join_pad(args: &JoinPadArgs) -> ExitCode {
-    if let Err(e) = args
-        .framing
-        .for_text(args.format == common::Format::Json, "routes join-pad")
-    {
-        return crate::frame::refused(&e);
-    }
     use netsmith_fabricate::join_pad;
     let done = with_board(&args.target, |layout, board| {
         let file = routes_file(layout);
@@ -945,7 +943,7 @@ fn join_pad(args: &JoinPadArgs) -> ExitCode {
     let (joined, file, written) = match done {
         Ok(Ok(done)) => done,
         Ok(Err(e)) => {
-            eprintln!("error: {e}");
+            eprintln!("error: {}", args.framing.drc(&e));
             return ExitCode::FAILURE;
         }
         Err(code) => return code,
@@ -966,7 +964,11 @@ fn join_pad(args: &JoinPadArgs) -> ExitCode {
             }
         }
         common::Format::Text => {
-            print!("{}", joined.text());
+            let by = match text_by(&args.framing) {
+                Ok(by) => by,
+                Err(code) => return code,
+            };
+            print!("{}", joined.text_moved(by));
             if written {
                 println!("wrote {}", file.display());
             } else if args.dry_run && joined.routes.is_some() {
@@ -977,7 +979,7 @@ fn join_pad(args: &JoinPadArgs) -> ExitCode {
     match &joined.refused {
         Some(e) => {
             if args.format == common::Format::Text {
-                eprintln!("error: {e}");
+                eprintln!("error: {}", args.framing.drc(e));
             }
             ExitCode::FAILURE
         }
@@ -986,12 +988,6 @@ fn join_pad(args: &JoinPadArgs) -> ExitCode {
 }
 
 fn import(args: &ImportArgs) -> ExitCode {
-    if let Err(e) = args
-        .framing
-        .for_text(args.format == common::Format::Json, "routes import")
-    {
-        return crate::frame::refused(&e);
-    }
     let pcb = match fs::read_to_string(&args.pcb) {
         Ok(text) => text,
         Err(e) => {
@@ -1100,6 +1096,10 @@ fn import(args: &ImportArgs) -> ExitCode {
         }
         return ExitCode::SUCCESS;
     }
+    let by = match text_by(&args.framing) {
+        Ok(by) => by,
+        Err(code) => return code,
+    };
     match &parts_file {
         Some(p) => println!("parts paired by {}", p.display()),
         None => println!("parts paired by reference designator"),
@@ -1139,8 +1139,8 @@ fn import(args: &ImportArgs) -> ExitCode {
                 "net {net}: {} error(s) of the design rules check in its copper, first: [{}] at ({:.3}, {:.3})",
                 errors.len(),
                 errors[0].rule,
-                errors[0].at[0],
-                errors[0].at[1]
+                errors[0].at[0] + by[0],
+                errors[0].at[1] + by[1]
             );
         }
     }

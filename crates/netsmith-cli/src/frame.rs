@@ -97,6 +97,7 @@ pub const PLACE_KEYS: &[&str] = &[
     "largest_free",
     "origin",
     "body_centre",
+    "region",
 ];
 
 /// The keys whose value holds lists of objects with an `x` and a `y` of their own, which are
@@ -150,16 +151,38 @@ impl Framing {
         Ok((to, sign * cx, sign * cy))
     }
 
-    /// Refuses `--frame` for the text of a command whose text says places that it does not
-    /// move yet: exit 2 with the reason, so that no text says a place in a frame it was not
-    /// asked for.
-    pub fn for_text(&self, json: bool, command: &str) -> Result<(), String> {
-        match (self.frame, json) {
-            (Some(_), false) => Err(format!(
-                "`--frame` does not move the places of the text of `{command}` yet: ask for `--format json`, or leave the frame to the text's own"
-            )),
-            _ => Ok(()),
+    /// How far (`[dx, dy]`, mm) and in which words the places a text says in the outline's
+    /// frame move to the frame asked for: nothing without `--frame`, and `says` is what the text
+    /// says of the frame after `mm`.
+    pub fn text_move(&self) -> ([f64; 2], String) {
+        let (cx, cy) = design_corner();
+        match self.frame {
+            Some(Frame::BoardFile) => ([cx, cy], Frame::BoardFile.says()),
+            Some(Frame::Outline) => ([0.0, 0.0], Frame::Outline.says()),
+            None => ([0.0, 0.0], Frame::Outline.says()),
         }
+    }
+
+    /// The same for the lines of the design rules check, which say their places in the board
+    /// file's frame: nothing without `--frame` or with `--frame board-file`.
+    pub fn board_file_move(&self) -> [f64; 2] {
+        let (cx, cy) = design_corner();
+        match self.frame {
+            Some(Frame::Outline) => [-cx, -cy],
+            _ => [0.0, 0.0],
+        }
+    }
+
+    /// `text`, a placer's sentences (a courtyard "from the board's top left corner") with their
+    /// places in the frame asked for.
+    pub fn placer(&self, text: &str) -> String {
+        let (by, says) = self.text_move();
+        netsmith_pcb::prose::placer_moved(text, by, &says)
+    }
+
+    /// `text`, lines of the design rules check, with their places in the frame asked for.
+    pub fn drc(&self, text: &str) -> String {
+        netsmith_pcb::prose::drc_moved(text, self.board_file_move())
     }
 
     /// `doc` with a `frame` key, its places in the asked frame. Its places are in `own`, with
@@ -222,10 +245,27 @@ impl Framing {
     /// The report of `board check`, `build` and `fab` as `--format json` prints it: its places
     /// are in the outline's frame, and in the asked one with `--frame`.
     pub fn report_json(&self, report: &netsmith_tools::findings::Report) -> Result<String, String> {
-        if self.of(Frame::Outline) == Frame::Outline {
+        if self.frame.is_none() {
             return Ok(report.to_json());
         }
-        let value = self.document(report, Frame::Outline, Some(design_corner()))?;
+        if self.of(Frame::Outline) == Frame::Outline {
+            // The document as it is (its keys in their order), the board file's lines of the
+            // design rules check in its messages moved to the outline's frame.
+            let mut report = report.clone();
+            for finding in &mut report.findings {
+                finding.message = self.drc(&self.placer(&finding.message));
+            }
+            return Ok(report.to_json());
+        }
+        let mut value = self.document(report, Frame::Outline, Some(design_corner()))?;
+        // The placer's sentences in the messages say their places in the document's frame.
+        if let Some(findings) = value["findings"].as_array_mut() {
+            for finding in findings {
+                if let Some(message) = finding["message"].as_str() {
+                    finding["message"] = Value::String(self.drc(&self.placer(message)));
+                }
+            }
+        }
         let mut text = serde_json::to_string_pretty(&value).expect("a document is plain data");
         text.push('\n');
         Ok(text)

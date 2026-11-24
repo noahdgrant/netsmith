@@ -167,10 +167,6 @@ impl Entry {
         }
     }
 
-    fn text(&self) -> String {
-        self.text_moved([0.0, 0.0])
-    }
-
     /// The entry as text with its place moved by `by`, mm (the designator's `at` is an offset
     /// from the footprint's origin: it does not move).
     fn text_moved(&self, by: [f64; 2]) -> String {
@@ -331,13 +327,18 @@ pub struct Written {
 impl Written {
     /// The line the command prints.
     pub fn text(&self) -> String {
+        self.text_moved([0.0, 0.0])
+    }
+
+    /// [`Written::text`] with the place moved by `by`, mm (into another frame than the file's).
+    pub fn text_moved(&self, by: [f64; 2]) -> String {
         format!(
             "{} the entry of `{}` ({}) in {}: {}",
             if self.existed { "changed" } else { "wrote" },
             self.path,
             self.refdes,
             self.file,
-            self.entry.text()
+            self.entry.text_moved(by)
         )
     }
 }
@@ -860,5 +861,35 @@ mod tests {
         for turn in [360.0, -90.0, -0.5, 720.0, f64::NAN] {
             assert!(turn_error(turn).is_some(), "{turn}");
         }
+    }
+
+    #[test]
+    fn the_entry_that_set_wrote_says_its_place_in_the_frame_asked_for() {
+        let written = Written {
+            board: "B".into(),
+            file: "b.pcb.toml".into(),
+            path: "stage.c1".into(),
+            refdes: "C1".into(),
+            existed: true,
+            entry: Entry {
+                at: [3.0, 4.5],
+                turn: 90.0,
+                side: "top",
+                lock: true,
+                designator: Some(DesignatorEntry {
+                    at: [0.0, -1.0],
+                    turn: 0.0,
+                }),
+                source: None,
+                line: None,
+            },
+        };
+        assert!(
+            written.text().contains("at 3, 4.5 mm  turn 90"),
+            "{}",
+            written.text()
+        );
+        let moved = written.text_moved([20.0, 20.0]);
+        assert!(moved.contains("at 23, 24.5 mm  turn 90"), "{moved}");
     }
 }
