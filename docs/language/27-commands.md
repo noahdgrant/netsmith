@@ -58,6 +58,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith board nets` | new (#1223) | `--board`, `--lengths`, `--power-stage`, `--route`, `--route-timeout`, `--currents`, `--gate`, `--max-crossings`, `--max-duplicates`, `--max-unneeded`, `--max-short`, `--max-via-pairs`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
 | `netsmith layout show` | the same | `--file` (was `--into`), `--board`, `--format`, `--frame` |
 | `netsmith layout set` | the same | `--file` (was `--into`), `--board`, `--at`, `--turn`, `--side`, `--lock`, `--unlock`, `--designator`, `--format`, `--frame` |
+| `netsmith layout move` | new (#1627) | `--file`, `--board`, `--dry-run`, `--format`, `--frame` |
 | `netsmith layout check` | the same | `--file` (was `--into`), `--board`, `--strict`, `--format`, `--frame` |
 | `netsmith layout summary` | the same | `--file` (was `--into`), `--board`, `--near`, `--within`, `--between`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
 | `netsmith layout compare` | the same | `--file` (was `--into`), `--board`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
@@ -120,7 +121,7 @@ A board's places are in mm with y down, in one of two frames (issue #1588): the 
 | Frame of its own | Commands |
 |---|---|
 | The board file's | `board nets`, `board drc`, `board fill`, `board rules` |
-| The outline's | `layout show`, `set`, `check`, `summary`, `compare`, `regenerate`, `capture`, `fit`, `parts`, `export`, `import`; `routes import`, `show`, `add`, `route`, `join-pad`, `tidy`; `board check`, `board build`, `board fab` (the boxes of the placement in their findings) |
+| The outline's | `layout show`, `set`, `move`, `check`, `summary`, `compare`, `regenerate`, `capture`, `fit`, `parts`, `export`, `import`; `routes import`, `show`, `add`, `route`, `join-pad`, `tidy`; `board check`, `board build`, `board fab` (the boxes of the placement in their findings) |
 | The 3D scene's | `dev board3d` |
 
 The four commands of the board file's frame are the odd ones out: every file a person edits, the 2D pictures and the Gerbers are in the outline's frame. They keep it as their default, so that no document a script reads changes, and a script that joins the places of several commands passes `--frame outline` to each.
@@ -130,7 +131,7 @@ The four commands of the board file's frame are the odd ones out: every file a p
 With text, `--frame` moves every place the text says, in every command that takes it. The places are moved in the data the text is made of, so a text and its JSON say one place:
 
 - `board drc` (each finding's `at (x, y)`), `board rules` (a rule area's first corner), `board fill` (every place, and the outline's corner in the heading, which says the frame it is in), `board nets` (where the copper that is not counted in a net's length is), `routes show` and `layout show` (the places of the entries and the shapes) and `layout parts` (its heading says the frame).
-- `layout set` (the entry's place), `layout summary` (the corner of the largest free rectangle of a face), `layout compare` (the two places of each part that moved), `layout regenerate` (the region and the two places of each part placed again), `layout fit` (the place it is near and each place it tries; the `netsmith layout set ... --at X,Y` it gives to write a place is still in the layout file's frame, as `--at` always is, so the place before it and the one in it can differ), `layout export` and `layout import` (the places of the findings; the two places of each part that moved on the KiCad board).
+- `layout set` (the entry's place), `layout move` (the two places of the entry and the ends of the routes file it lists), `layout summary` (the corner of the largest free rectangle of a face), `layout compare` (the two places of each part that moved), `layout regenerate` (the region and the two places of each part placed again), `layout fit` (the place it is near and each place it tries; the `netsmith layout set ... --at X,Y` it gives to write a place is still in the layout file's frame, as `--at` always is, so the place before it and the one in it can differ), `layout export` and `layout import` (the places of the findings; the two places of each part that moved on the KiCad board).
 - `routes import` (the place of the first error of the design rules check in a net's copper), `routes tidy` (the place of each change), `routes route` (the narrowest place of the way, and the vias that wall a net in), `routes join-pad` (the ends of the track and the via).
 - `board fab` lists the origin and the body's centre of each part (its heading says the frame, and that a `.place.x` of the physical file still measures from the outline's corner: take the corner off a place of this frame).
 
