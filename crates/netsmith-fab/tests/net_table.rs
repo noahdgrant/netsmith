@@ -442,6 +442,8 @@ fn with_strict_guidelines_a_pair_over_its_skew_is_an_error() {
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].severity, netsmith_geom::DrcSeverity::Error);
     assert!(!checked.report.is_clean());
+}
+
 
 /// Net B: a pad 0.5 by 0.36 mm at (0, 0), stubs at (5, 0) and (0, 3), a track of 0.2 mm from the
 /// pad's centre to (5, 0), and a branch up to (0, 3) that starts at `branch`: at (0, 0.2) it is
