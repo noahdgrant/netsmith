@@ -31,10 +31,13 @@ pub struct Import {
     /// pour (the same net, layer, outline and settings, issue #1116); each is also said in
     /// `skipped`.
     pub process_zones: usize,
-    /// How many vias of the KiCad board were left out because each is a stitching via of a pour
-    /// that `fab` lays again (on the pour's grid, of the rules' size, with no track ending on it,
-    /// [`netsmith_pcb::is_stitching_via`], issue #1483); said once in `skipped`.
-    pub stitching_vias: usize,
+    /// The vias of the KiCad board left out because each is a stitching via of a pour that `fab`
+    /// lays again (on the pour's grid, of the rules' size, with no track ending on it,
+    /// [`netsmith_pcb::is_stitching_via`], issue #1483), each its net and its place from the
+    /// board's corner as the routes file writes places; their count is said once in `skipped`,
+    /// and `routes show` counts them as the vias `fab` lays (issue #1583). A locked import leaves
+    /// none out.
+    pub stitching_vias: Vec<(String, [f64; 2])>,
 }
 
 impl Import {
@@ -536,7 +539,7 @@ pub fn import(
     // The stitching vias of the pours, as `fab` laid them: `fab` lays them again on the same
     // grid, so the routes file keeps none (issue #1483). A locked net gets no copper from `fab`,
     // so its stitching vias are kept.
-    let mut stitching = 0;
+    let mut stitching: Vec<(String, [f64; 2])> = Vec::new();
     let mut kept = 0;
     // The pads stand where the KiCad board has them, for the check that a via is in none.
     let mut placed = board.clone();
@@ -552,7 +555,6 @@ pub fn import(
     }
     for (net, record) in out.nets.iter_mut() {
         let ends: Vec<[f64; 2]> = record.tracks.iter().flat_map(|t| [t.from, t.to]).collect();
-        let before = record.vias.len();
         let mut found = 0;
         record.vias.retain(|v| {
             let via = netsmith_pcb::Via {
@@ -569,21 +571,23 @@ pub fn import(
                 v.layers.is_empty() && !joined && netsmith_pcb::is_stitching_via(&placed, &via);
             if is {
                 found += 1;
+                if !lock {
+                    stitching.push((net.clone(), v.at));
+                }
             }
             !is || lock
         });
         if lock {
             kept += found;
-        } else {
-            stitching += before - record.vias.len();
         }
     }
-    out.stitching_vias = stitching;
-    if stitching > 0 {
+    if !stitching.is_empty() {
         out.skipped.push(format!(
-            "{stitching} stitching via(s) of the pours: left out (`fab` lays them again on the pour's grid)"
+            "{} stitching via(s) of the pours: left out (`fab` lays them again on the pour's grid, and `routes show` counts them as its stitching vias; `--format json` names each in `stitching_vias_left_out`)",
+            stitching.len()
         ));
     }
+    out.stitching_vias = stitching;
     if kept > 0 {
         out.skipped.push(format!(
             "{kept} stitching via(s) of the pours kept, as the import locks their nets and `fab` lays no copper on a locked net"

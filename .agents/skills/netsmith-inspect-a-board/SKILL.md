@@ -19,6 +19,7 @@ A picture is for your eyes, a number is for your answer. Take the number when a 
 | What spaces and widths does the check hold the copper to (a net's clearance and width, a footprint's mask margin, a rule area)? | `board rules` (`--format json` for a program; `--kicad-pcb` for a KiCad board): the numbers `board drc` judges by, read by the same function | `clearance`, `nets`, `mask`, `holes`, `rule_areas` |
 | How long is each line, how many vias, is a diff pair matched and coupled? | `board nets` (`--route` to route first, `--lengths` longest first, `--format json`): each net's routed and straight length, vias, layer changes and layers; each pair's lengths, skew against its limit (its `.skew`, else 0.1 mm), coupled length, gaps and vias side by side | the `pair` lines, `skew`, `share`, `via_pairs` |
 | What will the board house get? | `view gerber fab/<Board>` (`--layer top\|bottom\|inner1\|all`, or one function alone: `--layer top-paste`, `drill`; repeat to stack), `--format json` for files, sizes and holes | `board`, `holes`, `unread` |
+| What did netsmith leave unverified (`fab-notes.txt`), which design rules findings stand, with no package in the project? | `board fab --for-review --locked --out <scratch>` (a folder outside the project; see below), `board drc --format json` | the lines of `fab-notes.txt`, the findings by `rule` and `place` |
 | Which pins does a net join, what did the solve leave a part (ratings, effective capacitance, row), is the pick lock current? | `board show` (text, or `--format json`) | the part's lines, the net's pins |
 | What does the bill cost, what does a rail carry? | `board bom --offline`, `board power` (text, or `--format json`) | the lines and totals |
 | What does the person see in the editor? | `view editor-3d` with the person's `view editor` running; with no flag it prints the page's state | the state it prints |
@@ -29,6 +30,7 @@ A picture is a view of the design, not a check: the checks are `board build`, `l
 
 - **3D (`view 3d`, `dev board3d`)**: millimetres, z up, origin at the outline's **bottom-left** corner on the top face, y up. `--view top` has x to the right; `bottom` has x to the left (turned over left to right); `iso` is the corner at +x, -y, +z. `--section x=7` cuts 7 mm in from the left edge; `z=0` is the top face, `z=-1.6` the bottom of a 1.6 mm board. The part's height is from its face; a part of unknown height is a flat orange outline, never a box.
 - **Layout, routes, 2D copper and Gerber files**: millimetres from the outline's **top-left** corner, x right, **y down** (`--region X,Y,W,H`). A layout point `(x, y)` is `(x, outline height - y)` in the 3D frame: convert before you carry a number from one picture to another.
+- **Places in JSON**: each document's `frame` key names its frame. `board nets`, `board drc`, `board fill` and `board rules` give places in the board file's frame (the outline's corner at 20, 20 mm); the layout and routes commands in the outline's; `dev board3d` in the 3D one. Pass `--frame outline` to every command whose places you join, and they agree (`docs/language/27-commands.md`, _The frame of the places_).
 - **Sides**: `view pcb --layer bottom` and `view gerber --layer bottom` are drawn as a person turns the board over, mirrored left to right. A part on the bottom is at its layout position, but seen from below.
 - **One grid**: `view pcb` and `view gerber` with the same `--layer`, `--region` and `--scale` give pictures of the same size, pixel for pixel over the same place, so the board model and the files can be set side by side. With no `--region` both draw the outline with 1 mm round it.
 - **Scale**: `view pcb` and `view gerber` take `--scale` in pixels a millimetre (20 by default; at most 16384 pixels a side). For one pad or a gap take a `--region` of 10 to 20 mm at `--scale 40` instead of the whole board. A section of a board shows the layers to scale: at the default size a 35 µm copper layer is under a pixel, so cut a narrow board.
@@ -38,6 +40,22 @@ A picture is a view of the design, not a check: the checks are `board build`, `l
 ## Light a part or a net
 
 `--highlight` lights what it names and dims the rest, on `view 3d`, `view pcb` and `view editor-3d`: a part by its designator or path (`J1`, `power_in`), `net:GND`, `module:<path>` (every part of a module, by its path in the design as `layout summary` names it; each module named in its own colour), and on the 3D ones `limit:lid` (a height limit's volume, red where a part is too tall) and `case:lid` (a case model). Several go in one flag, `--highlight net:GND,R1`. An id the board lacks is exit 2, with the parts, nets, limits and modules it has. `view pcb --only-open` lights the nets that still have an open connection. `--xray` sees through the bodies; `--case hidden` leaves the case out so the board shows.
+
+## Read `fab-notes.txt` in a review
+
+A review needs `fab-notes.txt` (the radio conditions, the unverified rotations, the nets routed long, the design rules findings), and it is written only by `fab`. Running `fab` for a review is allowed when it leaves the project's files as they are:
+
+```
+netsmith board fab --for-review --locked --offline --out <scratch>
+```
+
+- `--out` is a folder **outside the project** (a temporary folder, never `fab/`, never a folder that is committed), so the package a person made earlier in `fab/` is not overwritten and nothing is staged.
+- `--for-review` writes the package to look at even when a design rules finding stands (`FOR REVIEW, NOT FOR ORDER`, no `bom.csv`, no `cpl.csv`; `netsmith-prepare-fab-order` has the details), so the findings are read, not hidden by a stopped run. It never makes an order file.
+- `--locked` stops the run, before anything is written, when the pick lock or the pin file would change, so a review never rewrites `<stem>.lock.toml` or the pin file. If it stops, say so in the review as a finding (the lock is stale) and do not run `project lock --update` yourself.
+- `--offline` asks no supplier, so the review needs no network; the notes then say that stock and price were not checked, and the review says so too.
+- The router's own copper goes to its cache (`.netsmith/routes/`, never committed). The routes file and the layout file are not touched.
+
+Read from `<scratch>/<Board>/`: `fab-notes.txt` (the whole file, every `verify:`, `unverified` and `waived` line), the findings of the design rules check it lists (`board drc --format json` gives the same, with the rule, place, nets and parts, and runs without routing), and the pictures `<Board>-<layer>-REVIEW.png`. Quote the lines in the review. Remove the scratch folder when the review ends, and say in the review that `fab` was run for it and where.
 
 ## When to look, and when to ask the person
 

@@ -466,6 +466,10 @@ pub struct HeightUnknownPart {
     pub path: String,
     pub refdes: String,
     pub face: &'static str,
+    /// The lowest limit over it, in mm (issue #1590); the parts are listed by it, the least
+    /// room first. Absent for a part that stands only under a body.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tightest_limit: Option<f64>,
     /// What it stands under, the limits first: `{kind: "limit", name, limit}` for a height limit
     /// (a keepout's, or `standoff of J1`), `{kind: "body", path, refdes, height}` for the body
     /// of a part that states no `.standoff`.
@@ -864,12 +868,16 @@ impl Report {
 fn height_unknown_report(unknown: &[netsmith_pcb::HeightUnknown]) -> Option<HeightUnknownReport> {
     use netsmith_pcb::UnknownUnder;
     let message = netsmith_pcb::heights_unknown_warning(unknown)?;
-    let parts = unknown
-        .iter()
+    // Ranked as the warning is (issue #1590), whatever order the findings come in.
+    let mut ranked: Vec<&netsmith_pcb::HeightUnknown> = unknown.iter().collect();
+    ranked.sort_by(|a, b| a.rank_cmp(b));
+    let parts = ranked
+        .into_iter()
         .map(|u| HeightUnknownPart {
             path: u.path.clone(),
             refdes: u.refdes.clone(),
             face: face(u.side),
+            tightest_limit: u.tightest_limit(),
             under: u
                 .under
                 .iter()

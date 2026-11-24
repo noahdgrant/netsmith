@@ -169,6 +169,98 @@ fn a_six_layer_board_has_planes_on_the_named_layers_and_says_what_each_inner_lay
 }
 
 #[test]
+fn the_process_note_counts_the_tracks_of_each_signal_layer() {
+    // Issue #1589: the note says what the routed copper has, not that there is none yet.
+    let mut board = six_layer_board();
+    let at = |x: f64| Pt::new(x, 0.0);
+    for (layer, width, n) in [
+        (CopperLayer::Inner(2), 0.09, 3),
+        (CopperLayer::Front, 0.09, 2),
+        (CopperLayer::Inner(3), 0.2, 0),
+    ] {
+        for i in 0..n {
+            let x = f64::from(i);
+            board
+                .tracks
+                .push(Track::straight("GND", layer, at(x), at(x + 1.0), width));
+        }
+    }
+    let note = board.process_note();
+    assert!(
+        note.contains("In2.Cu is a signal layer, with 3 tracks, In3.Cu is a signal layer, with no tracks, In4.Cu is a plane on 3V3"),
+        "{note}"
+    );
+    board.tracks.retain(|t| t.layer != CopperLayer::Inner(2));
+    board.tracks.push(Track::straight(
+        "GND",
+        CopperLayer::Inner(2),
+        at(0.0),
+        at(1.0),
+        0.09,
+    ));
+    assert!(
+        board
+            .process_note()
+            .contains("In2.Cu is a signal layer, with 1 track,"),
+        "{}",
+        board.process_note()
+    );
+}
+
+#[test]
+fn the_impedance_notes_quote_each_track_width_in_use_on_a_layer() {
+    // Issue #1589: every track here is 0.09 mm (and one is 0.2 mm), and the board's own
+    // track width is 0.14 mm: the notes quote 0.09 mm and 0.2 mm, not the board's width.
+    let mut board = six_layer_board();
+    board.rules.track_width = 0.14;
+    let at = |x: f64| Pt::new(x, 0.0);
+    for (layer, width, n) in [
+        (CopperLayer::Inner(2), 0.09, 2),
+        (CopperLayer::Inner(2), 0.2, 1),
+        (CopperLayer::Front, 0.09, 1),
+    ] {
+        for i in 0..n {
+            let x = f64::from(i);
+            board
+                .tracks
+                .push(Track::straight("GND", layer, at(x), at(x + 1.0), width));
+        }
+    }
+    assert_eq!(board.track_widths_on("In2.Cu"), [(0.09, 2), (0.2, 1)]);
+    let extras = board.process_extras();
+    let line = |layer: &str| {
+        extras
+            .iter()
+            .find(|l| l.trim_start().starts_with(&format!("{layer}: ")))
+            .unwrap_or_else(|| panic!("{layer}: {extras:?}"))
+    };
+    let in2 = line("In2.Cu");
+    assert!(
+        in2.contains("the 0.09 mm track (2 tracks) is ")
+            && in2.contains("the 0.2 mm track (1 track) is ")
+            && !in2.contains("0.14 mm"),
+        "{in2}"
+    );
+    let front = line("F.Cu");
+    assert!(
+        front.contains("the 0.09 mm track (1 track) is ") && !front.contains("0.14 mm"),
+        "{front}"
+    );
+    // A layer with no track says so and quotes the router's default width.
+    let in3 = line("In3.Cu");
+    assert!(
+        in3.contains("no tracks on it; the router's default 0.14 mm track would be "),
+        "{in3}"
+    );
+    assert!(
+        !extras
+            .iter()
+            .any(|l| l.contains("impedance of the router's")),
+        "{extras:?}"
+    );
+}
+
+#[test]
 fn the_inner_layers_of_a_four_layer_board_are_planes_on_the_nets_the_board_named() {
     let board = four_layer_board();
     let planes: Vec<(&str, &str)> = board
@@ -1123,7 +1215,7 @@ fn a_slot_lies_at_its_pads_and_parts_turn_and_its_hole_is_off_the_copper_by_the_
 #[test]
 fn a_six_layer_board_lists_its_track_impedance_from_the_build_up() {
     let process = crate::rules::six_layer_process();
-    let lines = crate::impedance_notes(&process.stackup, 0.2, 50.0);
+    let lines = crate::impedance_notes(&process.stackup, &|_| Vec::new(), 0.2, 50.0);
     assert!(
         lines[0].starts_with("track impedance: from build-up JLC06161H-3313"),
         "{lines:?}"
@@ -1145,7 +1237,7 @@ fn a_six_layer_board_lists_its_track_impedance_from_the_build_up() {
     assert!(!lines[1].contains("not a plane"), "{}", lines[1]);
     // A two-layer board records no build-up and has no lines.
     let two = crate::rules::process_from(&[]);
-    assert!(crate::impedance_notes(&two.stackup, 0.2, 50.0).is_empty());
+    assert!(crate::impedance_notes(&two.stackup, &|_| Vec::new(), 0.2, 50.0).is_empty());
 }
 
 /// The width a `target_notes` line gives, in mm, to the micrometre it is written in: the number
@@ -1285,7 +1377,7 @@ fn a_track_drawn_off_its_target_is_said_to_be_outside_jlcpcbs_test_tolerance() {
 #[test]
 fn the_impedance_header_says_that_the_mask_and_the_calculators_copper_are_counted() {
     let process = crate::rules::six_layer_process();
-    let lines = crate::impedance_notes(&process.stackup, 0.2, 50.0);
+    let lines = crate::impedance_notes(&process.stackup, &|_| Vec::new(), 0.2, 50.0);
     assert!(
         lines[0].contains("The solder mask over an outer track is counted (0.03048 mm of er 3.8"),
         "{}",
@@ -1293,7 +1385,7 @@ fn the_impedance_header_says_that_the_mask_and_the_calculators_copper_are_counte
     );
     // ACME's process states neither, and the header says the mask is not counted.
     let acme = crate::rules::acme_process(8);
-    let lines = crate::impedance_notes(&acme.stackup, 0.2, 50.0);
+    let lines = crate::impedance_notes(&acme.stackup, &|_| Vec::new(), 0.2, 50.0);
     assert!(
         lines[0].contains("The solder mask is not counted"),
         "{}",
