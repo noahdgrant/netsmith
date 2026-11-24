@@ -126,6 +126,20 @@ pub struct Process {
     /// design file when unstated.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub switch_node_keepout: Option<f64>,
+    /// How near a via's hole may come to a pad's copper, edge to edge, in mm, before `board drc`
+    /// notes it, if the board states it (`.process.via_hole_pad_reach`, issue #1579;
+    /// `via_hole_near_pad`, a note): a pad of any net, on any layer the via is on. `None`, what
+    /// every process leaves it, is [`DEFAULT_VIA_HOLE_PAD_REACH`], a figure of this tool's and
+    /// not a fabricator's. Not written to the design file when unstated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via_hole_pad_reach: Option<f64>,
+    /// How near a via's ring may come to a pad's copper, edge to edge, in mm, before `board drc`
+    /// notes it, if the board states it (`.process.via_ring_pad_reach`, issue #1579;
+    /// `via_ring_near_pad`, a note). `None`, what every process leaves it, is
+    /// [`DEFAULT_VIA_RING_PAD_REACH`]: a ring that reaches into a pad's copper. Not written to
+    /// the design file when unstated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via_ring_pad_reach: Option<f64>,
     /// The least side, in mm, of a single board that the assembly house places parts on one
     /// side of, if the process states it (`.process.min_single_sided_assembly_size`, issue
     /// 1285). `None`, what a process leaves it where its house publishes no figure, is that the
@@ -425,6 +439,35 @@ impl InnerLayers {
             InnerUse::Plane(net) => Some((i + 1, net.as_str())),
             InnerUse::Signal => None,
         })
+    }
+}
+
+/// How near a via's hole comes to a pad's copper, edge to edge, in mm, before `board drc` notes it
+/// (`via_hole_near_pad`, issue #1579) when the board states no `.via_hole_pad_reach`. A figure of
+/// this tool's, not a fabricator's: JLCPCB's pages give no distance from a via's hole to a pad
+/// (the only one, 0.35 mm, is the distance inside which a via cannot be plugged with ink). It is
+/// about the width of a pad's solder mask expansion and the drill's wander, inside which a hole
+/// can open in the pad's mask opening.
+pub const DEFAULT_VIA_HOLE_PAD_REACH: f64 = 0.1;
+
+/// How near a via's ring comes to a pad's copper, edge to edge, in mm, before `board drc` notes it
+/// (`via_ring_near_pad`, issue #1579) when the board states no `.via_ring_pad_reach`: 0, a ring
+/// that reaches into a pad's copper. A figure of this tool's, not a fabricator's.
+pub const DEFAULT_VIA_RING_PAD_REACH: f64 = 0.0;
+
+impl Process {
+    /// The process's `.via_hole_pad_reach`, or [`DEFAULT_VIA_HOLE_PAD_REACH`] when it states
+    /// none (issue #1579).
+    pub fn hole_pad_reach(&self) -> f64 {
+        self.via_hole_pad_reach
+            .unwrap_or(DEFAULT_VIA_HOLE_PAD_REACH)
+    }
+
+    /// The process's `.via_ring_pad_reach`, or [`DEFAULT_VIA_RING_PAD_REACH`] when it states
+    /// none (issue #1579).
+    pub fn ring_pad_reach(&self) -> f64 {
+        self.via_ring_pad_reach
+            .unwrap_or(DEFAULT_VIA_RING_PAD_REACH)
     }
 }
 

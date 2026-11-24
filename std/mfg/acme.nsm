@@ -186,6 +186,16 @@ interface EightLayer {
     /// fabricator publishes: unstated, it is 1 mm. A board states another
     /// (`.process.switch_node_keepout &= 2mm`). A note, which fails no check.
     .switch_node_keepout: Length
+    /// How near a via's hole may come to a pad's copper (a pad of any net, on any layer the via
+    /// is on), edge to edge, before `board drc` notes it (`via_hole_near_pad`, issue #1579): a
+    /// hole on or near a pad's edge can open in the pad's mask opening and draw solder down it.
+    /// Not a number the fabricator publishes: unstated, it is 0.1 mm. A board states another
+    /// (`.process.via_hole_pad_reach &= 0.2mm`). A note, which fails no check.
+    .via_hole_pad_reach: Length
+    /// How near a via's ring may come to a pad's copper before `board drc` notes it
+    /// (`via_ring_near_pad`, issue #1579). Not a number the fabricator publishes: unstated, it
+    /// is 0 mm, a ring that reaches into a pad's copper. A note, which fails no check.
+    .via_ring_pad_reach: Length
     /// The least side of a single board that the assembly house places parts on one face
     /// of, and on both (`.min_single_sided_assembly_size`, issue 1285), for the
     /// `assembly_size` rule. The fictional house publishes no figure and leaves both
@@ -431,6 +441,16 @@ interface TenLayer {
     /// fabricator publishes: unstated, it is 1 mm. A board states another
     /// (`.process.switch_node_keepout &= 2mm`). A note, which fails no check.
     .switch_node_keepout: Length
+    /// How near a via's hole may come to a pad's copper (a pad of any net, on any layer the via
+    /// is on), edge to edge, before `board drc` notes it (`via_hole_near_pad`, issue #1579): a
+    /// hole on or near a pad's edge can open in the pad's mask opening and draw solder down it.
+    /// Not a number the fabricator publishes: unstated, it is 0.1 mm. A board states another
+    /// (`.process.via_hole_pad_reach &= 0.2mm`). A note, which fails no check.
+    .via_hole_pad_reach: Length
+    /// How near a via's ring may come to a pad's copper before `board drc` notes it
+    /// (`via_ring_near_pad`, issue #1579). Not a number the fabricator publishes: unstated, it
+    /// is 0 mm, a ring that reaches into a pad's copper. A note, which fails no check.
+    .via_ring_pad_reach: Length
     /// The least side of a single board that the assembly house places parts on one face
     /// of, and on both (`.min_single_sided_assembly_size`, issue 1285), for the
     /// `assembly_size` rule. The fictional house publishes no figure and leaves both

@@ -185,6 +185,10 @@ pub struct Vias {
     /// The most space between the copper of two vias of one net at which they stand side by
     /// side as one group for `via_current` (issue #1505).
     pub group_gap: f64,
+    /// How near a pad's copper a via's hole and its ring come, edge to edge, before the check
+    /// notes them (`via_hole_near_pad`, `via_ring_near_pad`, issue #1579); `None` notes nothing.
+    pub hole_pad_reach: Option<f64>,
+    pub ring_pad_reach: Option<f64>,
     /// The blind and buried vias the process makes, by their first and last copper layer.
     pub spans: Vec<ViaSpan>,
 }
@@ -488,6 +492,8 @@ impl BoardRules {
                 drill: rules.default_sizes.via_drill,
                 in_pad: extras.via_in_pad,
                 group_gap: extras.via_group_gap,
+                hole_pad_reach: extras.via_hole_pad_reach,
+                ring_pad_reach: extras.via_ring_pad_reach,
                 spans,
             },
             rule_areas,
@@ -553,14 +559,16 @@ impl BoardRules {
         ));
         let v = &self.vias;
         line(format!(
-            "vias: {} / {} drawn, {:.4} mm / {:.4} mm least, ring {:.4} mm, in a pad up to {}, side by side within {:.4} mm",
+            "vias: {} / {} drawn, {:.4} mm / {:.4} mm least, ring {:.4} mm, in a pad up to {}, side by side within {:.4} mm, noted near a pad within {} (hole) and {} (ring)",
             mm(v.diameter),
             mm(v.drill),
             v.least_diameter,
             v.least_drill,
             v.least_ring,
             mm(v.in_pad),
-            v.group_gap
+            v.group_gap,
+            mm(v.hole_pad_reach),
+            mm(v.ring_pad_reach)
         ));
         for span in &v.spans {
             line(format!(
