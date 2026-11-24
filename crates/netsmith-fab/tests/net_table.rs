@@ -366,3 +366,163 @@ fn a_short_track_that_leads_to_no_pad_is_one_stub_and_the_runs_add_up() {
     let runs: f64 = row.not_counted.iter().map(|r| r.length).sum();
     assert!(close(runs, row.copper - row.length), "{row:?}");
 }
+
+/// A pair `P`/`N` from x = 10 to x = 30, 20 mm for `P`; `N` runs 2 mm below it, straight, or
+/// with a detour of 0.5 mm down and back that makes it 21 mm, 1 mm out of skew.
+fn two_lines(detour: bool) -> Pcb {
+    let mut b = Pcb::new(2);
+    b.wire("P", "F.Cu", (10.0, 10.0), (30.0, 10.0), 0.2);
+    b.stub("N", 10.0, 12.0);
+    b.stub("N", 30.0, 12.0);
+    if detour {
+        for (a, z) in [
+            ((10.0, 12.0), (15.0, 12.0)),
+            ((15.0, 12.0), (15.0, 12.5)),
+            ((15.0, 12.5), (25.0, 12.5)),
+            ((25.0, 12.5), (25.0, 12.0)),
+            ((25.0, 12.0), (30.0, 12.0)),
+        ] {
+            b.track("N", "F.Cu", a, z, 0.2);
+        }
+    } else {
+        b.track("N", "F.Cu", (10.0, 12.0), (30.0, 12.0), 0.2);
+    }
+    b
+}
+
+fn skew_findings(detour: bool, strict: bool) -> (netsmith_fab::Checked, Vec<netsmith_geom::DrcFinding>) {
+    let mut b = two_lines(detour);
+    let options = netsmith_fab::Options {
+        pairs: vec![("P".to_string(), "N".to_string(), 0.1)],
+        drc: netsmith_geom::DrcExtras {
+            strict_guidelines: strict,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let checked = netsmith_fab::check(&b.pcb(), Some(&b.pro()), &options).unwrap();
+    let found = checked
+        .report
+        .findings
+        .iter()
+        .filter(|f| f.rule == netsmith_geom::DrcRule::PairSkew)
+        .cloned()
+        .collect();
+    (checked, found)
+}
+
+#[test]
+fn a_pair_1_mm_out_of_skew_is_a_pair_skew_finding_and_a_matched_pair_is_none() {
+    let (checked, found) = skew_findings(true, false);
+    assert_eq!(found.len(), 1, "{:?}", checked.report.findings);
+    let f = &found[0];
+    assert_eq!(f.severity, netsmith_geom::DrcSeverity::Warning);
+    assert!(
+        f.message.contains("P/N")
+            && f.message.contains("20 and 21 mm")
+            && f.message.contains("skew of 1 mm")
+            && f.message.contains("limit of 0.1 mm"),
+        "{}",
+        f.message
+    );
+    let nets: Vec<_> = f.items.iter().filter_map(|i| i.net.as_deref()).collect();
+    assert_eq!(nets, ["P", "N"]);
+    // A warning does not fail the check; the pair stays in the table's list too.
+    assert!(checked.report.is_clean(), "{:?}", checked.report.findings);
+    assert_eq!(checked.skewed.len(), 1);
+    assert!(f.to_string().starts_with("warning [pair_skew] diff pair P/N"));
+
+    let (checked, found) = skew_findings(false, false);
+    assert!(found.is_empty() && checked.skewed.is_empty(), "{found:?}");
+}
+
+#[test]
+fn with_strict_guidelines_a_pair_over_its_skew_is_an_error() {
+    let (checked, found) = skew_findings(true, true);
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].severity, netsmith_geom::DrcSeverity::Error);
+    assert!(!checked.report.is_clean());
+}
+
+
+/// Net B: a pad 0.5 by 0.36 mm at (0, 0), stubs at (5, 0) and (0, 3), a track of 0.2 mm from the
+/// pad's centre to (5, 0), and a branch up to (0, 3) that starts at `branch`: at (0, 0.2) it is
+/// 0.1 mm off the track's copper and 0.02 mm outside the pad's edge, its round end running into
+/// the pad (issue #1582).
+fn board_with_a_branch(branch: (f64, f64)) -> Pcb {
+    let mut b = Pcb::new(2);
+    let d = Draw {
+        courtyard: None,
+        silk: None,
+        back: false,
+    };
+    b.part("P1", (0.0, 0.0), 0.0, &[smd("1", 0.0, 0.0, 0.5, 0.36, "B")], d);
+    b.stub("B", 5.0, 0.0);
+    b.stub("B", 0.0, 3.0);
+    b.track("B", "F.Cu", (0.0, 0.0), (5.0, 0.0), 0.2);
+    b.track("B", "F.Cu", branch, (0.0, 3.0), 0.2);
+    b
+}
+
+#[test]
+fn a_branch_joined_to_the_track_through_a_pads_copper_is_counted_as_the_design_rules_check_joins_it()
+ {
+    let mut b = board_with_a_branch((0.0, 0.2));
+    let (pcb, pro) = (b.pcb(), b.pro());
+    // The design rules check finds the branch joined: its round end runs into the pad.
+    let r = netsmith_geom::drc_check(&pcb, Some(&pro), &netsmith_geom::DrcExtras::default())
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(r.count(netsmith_geom::DrcRule::UnconnectedItems), 0, "{r}");
+    let t = NetTable::of(&Artwork::parse(&pcb).unwrap(), &[], &[]);
+    let row = &t.nets[0];
+    // So the length counts it all: 5 mm of track and 2.8 mm of branch.
+    assert!(close(row.length, 7.8) && close(row.copper, 7.8), "{row:?}");
+    assert!(row.not_counted.is_empty(), "{row:?}");
+}
+
+#[test]
+fn a_branch_joined_to_nothing_is_still_a_dead_stub() {
+    // The branch starts at (0, 0.6), clear of the pad and the track: the design rules check
+    // finds it apart, and the length leaves it out as a stub.
+    let mut b = board_with_a_branch((0.0, 0.6));
+    let (pcb, pro) = (b.pcb(), b.pro());
+    let r = netsmith_geom::drc_check(&pcb, Some(&pro), &netsmith_geom::DrcExtras::default())
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(r.count(netsmith_geom::DrcRule::UnconnectedItems), 1, "{r}");
+    let t = NetTable::of(&Artwork::parse(&pcb).unwrap(), &[], &[]);
+    let row = &t.nets[0];
+    assert!(close(row.length, 5.0) && close(row.copper, 7.4), "{row:?}");
+    assert_eq!(row.not_counted.len(), 1, "{row:?}");
+    assert_eq!(row.not_counted[0].kind, Uncounted::Stub);
+    assert!(close(row.not_counted[0].length, 2.4), "{row:?}");
+}
+
+#[test]
+fn a_branch_whose_round_end_reaches_a_track_is_joined_to_it_and_a_stair_is_not_cut_short() {
+    // Net C: stubs at (0, 0), (6, 0) and (3, 3); a trunk of 0.2 mm from the first to the second,
+    // and a branch to the third that starts at (3, 0.15), off the trunk's copper but with its
+    // round end in it (the check's rule): the branch tees into the trunk.
+    let mut b = Pcb::new(2);
+    b.stub("C", 0.0, 0.0);
+    b.stub("C", 6.0, 0.0);
+    b.stub("C", 3.0, 3.0);
+    b.track("C", "F.Cu", (0.0, 0.0), (6.0, 0.0), 0.2);
+    b.track("C", "F.Cu", (3.0, 0.15), (3.0, 3.0), 0.2);
+    let t = NetTable::of(&Artwork::parse(&b.pcb()).unwrap(), &[], &[]);
+    let row = &t.nets[0];
+    assert!(close(row.length, 8.85) && row.not_counted.is_empty(), "{row:?}");
+    // A stair of tracks 0.05 mm long, each end within the next but one's round end: it is
+    // joined end to end already, so no tee cuts across it and its length is all its copper.
+    let mut b = Pcb::new(2);
+    b.stub("D", 0.0, 0.0);
+    b.stub("D", 2.0, 0.0);
+    b.track("D", "F.Cu", (0.0, 0.0), (0.95, 0.0), 0.2);
+    for k in 0..2 {
+        let x = 0.95 + 0.05 * k as f64;
+        b.track("D", "F.Cu", (x, 0.0), (x + 0.05, 0.0), 0.2);
+    }
+    b.track("D", "F.Cu", (1.05, 0.0), (2.0, 0.0), 0.2);
+    let t = NetTable::of(&Artwork::parse(&b.pcb()).unwrap(), &[], &[]);
+    let row = &t.nets[0];
+    assert!(close(row.length, 2.0) && row.not_counted.is_empty(), "{row:?}");
+}

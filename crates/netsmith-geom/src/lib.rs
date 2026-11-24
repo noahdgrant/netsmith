@@ -64,8 +64,9 @@ pub use drc::{
     RuleArea as DrcRuleArea, Rules as DrcRules, Severity as DrcSeverity, Stackup as DrcStackup,
     Teardrop as DrcTeardrop, ViaRules as DrcViaRules,
     WAIVER_PLACE_TOLERANCE as DRC_WAIVER_PLACE_TOLERANCE, Waived as DrcWaived, Waiver as DrcWaiver,
-    check as drc_check, check_artwork as drc_check_artwork, kicad_dru as drc_kicad_dru,
-    matches_pattern as drc_matches_pattern, outline_shapes as drc_outline_shapes,
+    check as drc_check, check_artwork as drc_check_artwork, copper_joins,
+    end_joins as copper_end_joins, kicad_dru as drc_kicad_dru,
+    matches_pattern as drc_matches_pattern, outline_shapes as drc_outline_shapes, pad_copper,
     pad_reaches_pour as drc_pad_reaches_pour, project_of as drc_project_of,
     rules_file_of as drc_rules_file_of, rules_of as drc_rules_of, teardrops,
 };
