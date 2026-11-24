@@ -182,6 +182,13 @@ interface EightLayer {
     /// Unstated with them; a board that states a figure states its source too
     /// (`.process.assembly_size_source &= "..."`).
     .assembly_size_source: String
+    /// The least space between copper and a V-cut edge (`.min_v_cut_edge_clearance`, issue
+    /// 1592), for the `v_cut_edge` rule of a board under the assembly size. The fictional house
+    /// publishes no figure, so a board that states an assembly size has the space from its
+    /// outline to its copper said in the notes and not judged; a board states one (`.process.min_v_cut_edge_clearance &= 0.4mm..`)
+    /// with its source (`.process.v_cut_edge_clearance_source &= "..."`).
+    .min_v_cut_edge_clearance: Length
+    .v_cut_edge_clearance_source: String
     /// How much narrower than drawn a finished track may be, as a fraction.
     .track_width_tolerance: Number
     .track_width_tolerance &= 0.2
@@ -405,6 +412,13 @@ interface TenLayer {
     /// Unstated with them; a board that states a figure states its source too
     /// (`.process.assembly_size_source &= "..."`).
     .assembly_size_source: String
+    /// The least space between copper and a V-cut edge (`.min_v_cut_edge_clearance`, issue
+    /// 1592), for the `v_cut_edge` rule of a board under the assembly size. The fictional house
+    /// publishes no figure, so a board that states an assembly size has the space from its
+    /// outline to its copper said in the notes and not judged; a board states one (`.process.min_v_cut_edge_clearance &= 0.4mm..`)
+    /// with its source (`.process.v_cut_edge_clearance_source &= "..."`).
+    .min_v_cut_edge_clearance: Length
+    .v_cut_edge_clearance_source: String
     /// How much narrower than drawn a finished track may be, as a fraction.
     .track_width_tolerance: Number
     .track_width_tolerance &= 0.2

@@ -261,6 +261,19 @@ Where the pages differ the stricter number is stated: the panel for assembly is 
 
 **Not found on any page, so unverified:** the designators JLCPCB accepts in the BOM and CPL of a panel made by the customer (the help pages say nothing; a 6-year-old EasyEDA forum thread has a user guessing that the CPL follows the panel); the V-cut file format their Gerber viewer reads beyond the instruction above (a forum user reports a V-cut on a user layer appearing in the outline layer of their viewer); the mask opening round a fiducial (netsmith uses the project's own `Fiducial_1mm_Mask2mm`, twice the copper); the tab count of a routed panel. JLCPCB has not accepted a netsmith panel.
 
+## Copper to a V-cut edge of a board under the assembly size (issue 1592)
+
+Not parts: the `.min_v_cut_edge_clearance` of every JLCPCB process (0.4 mm), and its `.v_cut_edge_clearance_source`. A board under the assembly size (next section) is ordered as a panel, and if the panel is cut apart by V-cuts the board's outline is the cut, so its copper is held to the V-cut figure. Read again on 2026-11-24 with WebFetch (the page text, summarised by a tool, each figure asked for by name and quoted below), all four pages loaded:
+
+| Page | What it says |
+|---|---|
+| capabilities `https://jlcpcb.com/capabilities/pcb-capabilities`, Outline table, V-Cut row | "Copper clearance from V-cut board edges: ≧0.4 mm"; for comparison, "Copper clearance from routed board edges: ≧0.2 mm" and "Copper clearance from non-mouse-bite board edges: ≧0.2 mm" |
+| blog `https://jlcpcb.com/blog/v-cut-panelization-standards` (updated 2026-11-10) | "The copper layer, traces/solder pads, etc., need to be at least 0.4mm away from the V-cut centerline"; table "Min Clearance to Copper: 0.4 mm (recommended 1.0 mm), To centerline"; FAQ "strongly recommended to keep ≥ 1.0 mm, and ≥ 2.0 mm for tall or stress-sensitive components" |
+| help `https://jlcpcb.com/help/article/pcb-panelization` | no copper distance; "V-cut is not supported in Economic Assembly"; "Panel by JLCPCB" adds edge rails, fiducials and tooling holes |
+| assembly capabilities `https://jlcpcb.com/capabilities/pcb-assembly-capabilities` | no copper distance; delivery format Economic "Single PCB, Panel with mouse bites", Standard "Single PCB, Panel with mouse bites, Panel with V-cut" |
+
+The figure is the capabilities page's 0.4 mm from the edge; the blog's 0.4 mm is to the cut's centre line, and no page reconciles the two, so 0.4 mm from the board's edge is taken (the stricter reading) and the blog's 1.0 mm is advice (`VCutPanel`'s `.advised_edge_clearance`). **No page names pours or planes apart from tracks**: the blog says "the copper layer, traces/solder pads, etc.", so a pour's fill is held to the same figure. **No page says when JLCPCB panelises a small board itself, or by which method**: the size limits are of a single board, and mouse bites are the only panel the Economic service delivers. So the `v_cut_edge` finding is a warning and its words name both ways (copper 0.4 mm from the edge, or a panel cut apart without V-cuts).
+
 ## Board size for assembly (`std/mfg/jlcpcb.nsm`, issue 1285)
 
 Not parts: the least single board JLCPCB assembles, the `.min_single_sided_assembly_size` and `.min_double_sided_assembly_size` of every JLCPCB process. Read on 2026-11-19 from `https://jlcpcb.com/capabilities/pcb-assembly-capabilities` with WebFetch (the page text, summarised by a tool, each figure asked for by name and quoted below). The page lists two services:

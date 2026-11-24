@@ -95,7 +95,7 @@ pub mod viewer;
 // names them as modules, and other crates import them from `netsmith_geom`.
 use netsmith_geom::{
     ConstraintOutcome, Constraints, DrcCounts, DrcError, DrcExtras, DrcFinding, DrcReport, DrcRule,
-    constraint_outcome_findings, drc_check, drc_project_of,
+    DrcVCut, constraint_outcome_findings, drc_check, drc_project_of,
 };
 
 use netsmith_geom::{
@@ -866,6 +866,50 @@ pub(crate) fn plot_rules(pcb: &Path) -> PlotRules {
     plot_rules_of(Some(&pro))
 }
 
+/// The line of the notes of a board under the board house's assembly size (issue 1592): it is
+/// ordered as a panel, so the notes say how far its copper is from the outline and what the
+/// house keeps from a V-cut edge, where the process cites a figure.
+fn v_cut_note(v: &DrcVCut) -> String {
+    let head = format!(
+        "V-cut copper to edge: the board is {:.1} x {:.1} mm, under the {:.0} mm the board house assembles as a single board, so it is ordered as a panel",
+        v.width, v.height, v.assembly_size
+    );
+    let Some(near) = &v.nearest else {
+        return format!("{head}; it has no copper");
+    };
+    let measured = format!(
+        "its copper nearest the outline is {:.3} mm from it ({})",
+        near.distance, near.what
+    );
+    match v.least {
+        Some(least) => {
+            let from = v
+                .source
+                .as_deref()
+                .map(|s| format!(" ({s})"))
+                .unwrap_or_default();
+            let verdict = if near.distance + 0.0005 >= least {
+                "which holds if the panel is cut apart by V-cuts".to_string()
+            } else {
+                "nearer than that, so a V-cut may expose or cut it: keep copper that far from the edge, or order the panel cut apart without V-cuts (the design rules warning `v_cut_edge`)".to_string()
+            };
+            format!(
+                "{head}; {measured}, and the board house keeps copper {} mm from a V-cut edge{from}, {verdict}",
+                format_mm(least)
+            )
+        }
+        None => format!(
+            "{head}; {measured}; the process states no space from copper to a V-cut edge, so this is not judged: check the board house's rule for the panel it makes"
+        ),
+    }
+}
+
+/// A length in mm as a source states it: `0.4`, not `0.400`.
+fn format_mm(x: f64) -> String {
+    let s = format!("{x:.3}");
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
 /// Lines for the notes about the fill of zones and anything the writers left out.
 fn fill_notes(art: &Artwork, plotted: &[String]) -> Vec<String> {
     let mut lines = Vec::new();
@@ -914,6 +958,7 @@ fn notes(
         lines.push(format!("process: {process}"));
     }
     lines.extend(extras.iter().cloned());
+    lines.extend(report.v_cut.as_ref().map(v_cut_note));
     if board.copper_layers.len() > 2 {
         lines.push(format!(
             "copper layers: {} ({}): the zip holds one Gerber for each; check the layer count and order in JLCPCB's order preview",

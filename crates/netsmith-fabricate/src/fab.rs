@@ -3928,6 +3928,8 @@ pub fn marks_of(board: &Board) -> netsmith_geom::DrcMarks {
         min_single_sided_assembly_size: p.min_single_sided_assembly_size,
         min_double_sided_assembly_size: p.min_double_sided_assembly_size,
         assembly_size_source: p.assembly_size_source.clone(),
+        min_v_cut_edge: p.min_v_cut_edge_clearance,
+        v_cut_edge_source: p.v_cut_edge_clearance_source.clone(),
     }
 }
 
@@ -4514,7 +4516,7 @@ mod tests {
 
     /// The fields of a process that are not a rule the router and the design rules check keep,
     /// each with the reason (issue #431).
-    const NOT_A_COPPER_RULE: [(&str, &str); 38] = [
+    const NOT_A_COPPER_RULE: [(&str, &str); 40] = [
         (
             "finish",
             "the surface finish, a word for the notes and the order",
@@ -4622,6 +4624,14 @@ mod tests {
         (
             "min_double_sided_assembly_size",
             "the least single board the assembly house places parts on both faces of, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
+        (
+            "min_v_cut_edge_clearance",
+            "the space from copper to a V-cut edge, judged on the placed board of one under the assembly size: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
+        (
+            "v_cut_edge_clearance_source",
+            "where the V-cut figure comes from, a sentence the `v_cut_edge` finding and the notes quote (issue 1592)",
         ),
         (
             "min_round_track_angle",
@@ -4766,6 +4776,8 @@ mod tests {
                 min_single_sided_assembly_size: p.min_single_sided_assembly_size,
                 min_double_sided_assembly_size: p.min_double_sided_assembly_size,
                 assembly_size_source: p.assembly_size_source.clone(),
+                min_v_cut_edge: p.min_v_cut_edge_clearance,
+                v_cut_edge_source: p.v_cut_edge_clearance_source.clone(),
                 ..Default::default()
             }),
             ..Default::default()
@@ -4803,6 +4815,7 @@ mod tests {
             ("fine_pitch", "0.5mm"),
             ("min_single_sided_assembly_size", "20mm.."),
             ("min_double_sided_assembly_size", "100mm.."),
+            ("min_v_cut_edge_clearance", "1mm.."),
         ] {
             let narrowed = format!(".{field} &= {raised}");
             let after =
