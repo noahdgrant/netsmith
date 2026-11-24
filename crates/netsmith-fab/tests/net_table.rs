@@ -366,3 +366,80 @@ fn a_short_track_that_leads_to_no_pad_is_one_stub_and_the_runs_add_up() {
     let runs: f64 = row.not_counted.iter().map(|r| r.length).sum();
     assert!(close(runs, row.copper - row.length), "{row:?}");
 }
+
+/// A pair `P`/`N` from x = 10 to x = 30, 20 mm for `P`; `N` runs 2 mm below it, straight, or
+/// with a detour of 0.5 mm down and back that makes it 21 mm, 1 mm out of skew.
+fn two_lines(detour: bool) -> Pcb {
+    let mut b = Pcb::new(2);
+    b.wire("P", "F.Cu", (10.0, 10.0), (30.0, 10.0), 0.2);
+    b.stub("N", 10.0, 12.0);
+    b.stub("N", 30.0, 12.0);
+    if detour {
+        for (a, z) in [
+            ((10.0, 12.0), (15.0, 12.0)),
+            ((15.0, 12.0), (15.0, 12.5)),
+            ((15.0, 12.5), (25.0, 12.5)),
+            ((25.0, 12.5), (25.0, 12.0)),
+            ((25.0, 12.0), (30.0, 12.0)),
+        ] {
+            b.track("N", "F.Cu", a, z, 0.2);
+        }
+    } else {
+        b.track("N", "F.Cu", (10.0, 12.0), (30.0, 12.0), 0.2);
+    }
+    b
+}
+
+fn skew_findings(detour: bool, strict: bool) -> (netsmith_fab::Checked, Vec<netsmith_geom::DrcFinding>) {
+    let mut b = two_lines(detour);
+    let options = netsmith_fab::Options {
+        pairs: vec![("P".to_string(), "N".to_string(), 0.1)],
+        drc: netsmith_geom::DrcExtras {
+            strict_guidelines: strict,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let checked = netsmith_fab::check(&b.pcb(), Some(&b.pro()), &options).unwrap();
+    let found = checked
+        .report
+        .findings
+        .iter()
+        .filter(|f| f.rule == netsmith_geom::DrcRule::PairSkew)
+        .cloned()
+        .collect();
+    (checked, found)
+}
+
+#[test]
+fn a_pair_1_mm_out_of_skew_is_a_pair_skew_finding_and_a_matched_pair_is_none() {
+    let (checked, found) = skew_findings(true, false);
+    assert_eq!(found.len(), 1, "{:?}", checked.report.findings);
+    let f = &found[0];
+    assert_eq!(f.severity, netsmith_geom::DrcSeverity::Warning);
+    assert!(
+        f.message.contains("P/N")
+            && f.message.contains("20 and 21 mm")
+            && f.message.contains("skew of 1 mm")
+            && f.message.contains("limit of 0.1 mm"),
+        "{}",
+        f.message
+    );
+    let nets: Vec<_> = f.items.iter().filter_map(|i| i.net.as_deref()).collect();
+    assert_eq!(nets, ["P", "N"]);
+    // A warning does not fail the check; the pair stays in the table's list too.
+    assert!(checked.report.is_clean(), "{:?}", checked.report.findings);
+    assert_eq!(checked.skewed.len(), 1);
+    assert!(f.to_string().starts_with("warning [pair_skew] diff pair P/N"));
+
+    let (checked, found) = skew_findings(false, false);
+    assert!(found.is_empty() && checked.skewed.is_empty(), "{found:?}");
+}
+
+#[test]
+fn with_strict_guidelines_a_pair_over_its_skew_is_an_error() {
+    let (checked, found) = skew_findings(true, true);
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].severity, netsmith_geom::DrcSeverity::Error);
+    assert!(!checked.report.is_clean());
+}

@@ -13,6 +13,8 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+- **`board drc`.** `pair_skew` is a new warning (an error with `--strict` or `guidelines = "error"`): a diff pair whose skew is over its limit, with both lengths, the skew and the limit (#1587). `pair_skews` in `--format json` stays, and the text note `pair skew: ...` is now this finding. A board that passed may get a warning, and one checked with `--strict` that has such a pair now fails.
+
 ## 0.8.0: changes since 0.7.0
 
 ### A board's `.corner` is its corner style, a `TrackCorner` (issue #1508)

@@ -396,10 +396,14 @@ pub enum Rule {
     /// A waiver of the layout file that covers no finding of the part's own footprint
     /// (netsmith's, issue #1196; `waivers.rs`).
     UnmatchedWaiver,
+    /// A differential pair whose two lengths differ by more than the pair's skew limit
+    /// (netsmith's, issue #1587; the pair table of `netsmith_fab::NetTable`, since the board
+    /// file does not hold the limits).
+    PairSkew,
 }
 
 impl Rule {
-    pub const ALL: [Rule; 59] = [
+    pub const ALL: [Rule; 60] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -459,6 +463,7 @@ impl Rule {
         Rule::ViaSpan,
         Rule::ViaAspectRatio,
         Rule::UnmatchedWaiver,
+        Rule::PairSkew,
     ];
 
     /// KiCad's name for the rule (its `type` in a JSON report).
@@ -523,6 +528,7 @@ impl Rule {
             Rule::ViaSpan => "via_span",
             Rule::ViaAspectRatio => "via_aspect_ratio",
             Rule::UnmatchedWaiver => "unmatched_waiver",
+            Rule::PairSkew => "pair_skew",
         }
     }
 
@@ -564,6 +570,7 @@ impl Rule {
                 | Rule::ViaSpan
                 | Rule::ViaAspectRatio
                 | Rule::UnmatchedWaiver
+                | Rule::PairSkew
         )
     }
 
@@ -598,7 +605,8 @@ impl Rule {
             | Rule::IsolatedCopper
             | Rule::PadIslandCut
             | Rule::AcidTrap
-            | Rule::CopperSliver => Severity::Warning,
+            | Rule::CopperSliver
+            | Rule::PairSkew => Severity::Warning,
             _ => Severity::Error,
         })
     }
