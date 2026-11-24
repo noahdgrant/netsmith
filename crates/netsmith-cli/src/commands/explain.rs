@@ -45,6 +45,7 @@ const ROWS: usize = 20;
 
 pub fn run(args: Args) -> ExitCode {
     run_build(&BuildRun {
+        framing: Default::default(),
         file: args.file.as_deref(),
         out: None,
         strict: false,

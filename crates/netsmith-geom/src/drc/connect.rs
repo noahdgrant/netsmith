@@ -444,10 +444,8 @@ fn dangling(out: &mut Out<'_>, neighbours: &[Vec<usize>], poured: &[Vec<usize>])
                     out.push(
                         Rule::TrackDangling,
                         format!(
-                            "{} has an end at ({:.3}, {:.3}) that touches nothing of net {}{miss}",
+                            "{} has an end that touches nothing of net {}{miss}",
                             c.item.what,
-                            end.x,
-                            end.y,
                             c.net.as_deref().unwrap_or("")
                         ),
                         end,

@@ -511,6 +511,11 @@ impl BoardRules {
     /// The rules as text for a person: a line for each kind of rule, then the classes, the
     /// nets, the footprints with a margin of their own, the rule areas and the pours.
     pub fn text(&self) -> String {
+        self.text_moved(Pt::new(0.0, 0.0))
+    }
+
+    /// [`BoardRules::text`] with its places moved by `by`, mm (a rule area's first corner).
+    pub fn text_moved(&self, by: Pt) -> String {
         use std::fmt::Write;
         let mm =
             |v: Option<f64>| v.map_or_else(|| "not checked".to_string(), |v| format!("{v:.4} mm"));
@@ -655,7 +660,7 @@ impl BoardRules {
                     .outlines
                     .first()
                     .and_then(|o| o.first())
-                    .map(|p| format!(" from ({:.3}, {:.3})", p[0], p[1]))
+                    .map(|p| format!(" from ({:.3}, {:.3})", p[0] + by.x, p[1] + by.y))
                     .unwrap_or_default();
                 line(format!(
                     "  {name}{whose} on {}{at}: no {}",

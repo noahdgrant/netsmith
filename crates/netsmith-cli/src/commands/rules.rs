@@ -44,14 +44,11 @@ pub struct Args {
 struct Made {
     board: String,
     json: serde_json::Value,
-    text: String,
+    rules: netsmith_geom::DrcBoardRules,
     outline_at: Option<(f64, f64)>,
 }
 
 pub fn run(args: Args) -> ExitCode {
-    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
-        return crate::frame::refused(&e);
-    }
     let made = match &args.kicad_pcb {
         Some(pcb) => match drc::rules_of_kicad_pcb(pcb) {
             Ok(rules) => Made {
@@ -59,7 +56,7 @@ pub fn run(args: Args) -> ExitCode {
                     .file_stem()
                     .map_or_else(String::new, |s| s.to_string_lossy().into_owned()),
                 json: serde_json::to_value(&rules).expect("plain data"),
-                text: rules.text(),
+                rules,
                 outline_at: None,
             },
             Err(e) => {
@@ -96,8 +93,15 @@ pub fn run(args: Args) -> ExitCode {
             }
         }
         common::Format::Text => {
+            let (_, dx, dy) = match args
+                .framing
+                .moved(crate::frame::Frame::BoardFile, made.outline_at)
+            {
+                Ok(moved) => moved,
+                Err(e) => return crate::frame::refused(&e),
+            };
             println!("{}:", made.board);
-            print!("{}", made.text);
+            print!("{}", made.rules.text_moved(netsmith_geom::Pt::new(dx, dy)));
         }
     }
     ExitCode::SUCCESS
@@ -124,7 +128,7 @@ fn of_design(args: &Args) -> Result<Made, ExitCode> {
                     Ok(Made {
                         board: built.label(),
                         json: serde_json::to_value(&rules).expect("plain data"),
-                        text: rules.text(),
+                        rules,
                         outline_at: Some((board.outline.min.x, board.outline.min.y)),
                     })
                 })?

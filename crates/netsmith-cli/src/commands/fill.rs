@@ -38,9 +38,6 @@ pub struct Args {
 }
 
 pub fn run(args: Args) -> ExitCode {
-    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
-        return crate::frame::refused(&e);
-    }
     let made = common::with_stage_events(|| {
         common::with_placed_board(
             args.file.as_deref(),
@@ -75,7 +72,20 @@ pub fn run(args: Args) -> ExitCode {
                         return crate::frame::refused(&e);
                     }
                 }
-                common::Format::Text => print!("{}", report.text()),
+                common::Format::Text => {
+                    let corner = (report.outline_at.x, report.outline_at.y);
+                    let (frame, dx, dy) = match args
+                        .framing
+                        .moved(crate::frame::Frame::BoardFile, Some(corner))
+                    {
+                        Ok(moved) => moved,
+                        Err(e) => return crate::frame::refused(&e),
+                    };
+                    print!(
+                        "{}",
+                        report.text_moved(netsmith_pcb::Pt::new(dx, dy), frame.words())
+                    );
+                }
             }
             ExitCode::SUCCESS
         }

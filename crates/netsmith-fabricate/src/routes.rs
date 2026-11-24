@@ -1504,9 +1504,19 @@ impl Shown {
     /// The text for a person: each net's record with its shapes numbered from 1, as `routes
     /// delete`, `lock` and `unlock` name them.
     pub fn text(&self) -> String {
+        self.text_moved([0.0, 0.0])
+    }
+
+    /// [`Shown::text`] with its places moved by `by`, mm (into another frame than the file's).
+    pub fn text_moved(&self, by: [f64; 2]) -> String {
         use std::fmt::Write as _;
         let mut s = String::new();
-        let pt = |p: [f64; 2]| format!("({}, {})", p[0], p[1]);
+        // To a micrometre, so that a moved place is said as the file would say it.
+        let um = |v: f64| {
+            let r = (v * 1e6).round() / 1e6;
+            if r == 0.0 { 0.0 } else { r }
+        };
+        let pt = |p: [f64; 2]| format!("({}, {})", um(p[0] + by[0]), um(p[1] + by[1]));
         for n in &self.nets {
             let _ = writeln!(
                 s,

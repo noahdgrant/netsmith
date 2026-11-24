@@ -304,8 +304,15 @@ impl PartGeometries {
 
     /// The lines a person reads: each part's frame, then its pads.
     pub fn text(&self) -> String {
+        self.text_moved([0.0, 0.0], "mm from the outline's top left corner, y down")
+    }
+
+    /// [`PartGeometries::text`] with the places moved by `by`, mm, and `frame` the words that
+    /// say the frame they are then in (the heading says it).
+    pub fn text_moved(&self, by: [f64; 2], frame: &str) -> String {
+        let (mx, my) = (|x: f64| round(x + by[0]), |y: f64| round(y + by[1]));
         let mut text = format!(
-            "{}: {} x {} mm, {} parts (mm from the outline's top left corner, y down)\n",
+            "{}: {} x {} mm, {} parts ({frame})\n",
             self.board,
             self.width,
             self.height,
@@ -319,8 +326,8 @@ impl PartGeometries {
                 p.path,
                 p.footprint,
                 p.value,
-                f.at[0],
-                f.at[1],
+                mx(f.at[0]),
+                my(f.at[1]),
                 f.turn,
                 f.side,
                 if f.mirrored { " (mirrored)" } else { "" },
@@ -332,7 +339,10 @@ impl PartGeometries {
             for c in &p.courtyards {
                 text.push_str(&format!(
                     "  courtyard {},{} to {},{}\n",
-                    c.min[0], c.min[1], c.max[0], c.max[1]
+                    mx(c.min[0]),
+                    my(c.min[1]),
+                    mx(c.max[0]),
+                    my(c.max[1])
                 ));
             }
             for pad in &p.pads {
@@ -341,8 +351,8 @@ impl PartGeometries {
                     pad.number,
                     pad.kind,
                     pad.shape,
-                    pad.at[0],
-                    pad.at[1],
+                    mx(pad.at[0]),
+                    my(pad.at[1]),
                     pad.width,
                     pad.height,
                     pad.turn,

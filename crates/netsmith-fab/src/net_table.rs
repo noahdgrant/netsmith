@@ -85,6 +85,12 @@ impl NetRow {
     /// of its 27.00 mm of copper not counted in its length: a second way of 7.00 mm on F.Cu at
     /// (12.00, 5.00)`.
     pub fn not_counted_line(&self) -> String {
+        self.not_counted_line_moved((0.0, 0.0))
+    }
+
+    /// [`NetRow::not_counted_line`] with its places moved by `by`, mm (to say them in another
+    /// frame than the table's).
+    pub fn not_counted_line_moved(&self, by: (f64, f64)) -> String {
         let runs: Vec<String> = self
             .not_counted
             .iter()
@@ -94,8 +100,8 @@ impl NetRow {
                     r.kind.words(),
                     r.length,
                     r.layer,
-                    r.at.0,
-                    r.at.1
+                    r.at.0 + by.0,
+                    r.at.1 + by.1
                 )
             })
             .collect();
@@ -618,6 +624,12 @@ impl NetTable {
     /// The table as text for a person: a line for each net, then a line for each pair, then a
     /// line for each group.
     pub fn text(&self) -> String {
+        self.text_moved((0.0, 0.0))
+    }
+
+    /// [`NetTable::text`] with its places moved by `by`, mm: the table's are in the board
+    /// file's frame, and minus the outline's corner is the outline's.
+    pub fn text_moved(&self, by: (f64, f64)) -> String {
         let mut out = String::new();
         let width = self
             .nets
@@ -647,7 +659,7 @@ impl NetTable {
             ));
         }
         for n in self.nets.iter().filter(|n| !n.not_counted.is_empty()) {
-            out.push_str(&format!("{}\n", n.not_counted_line()));
+            out.push_str(&format!("{}\n", n.not_counted_line_moved(by)));
         }
         for p in &self.pairs {
             let gaps = match p.gaps {
