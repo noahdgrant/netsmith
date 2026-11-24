@@ -155,7 +155,7 @@ fn drc_findings(board: &Board) -> Result<Vec<netsmith_geom::DrcFinding>, String>
 /// [`drc_findings`] of `board` to the rules of `project` and `extras` (the whole board's, for a
 /// board cut to a neighbourhood). With `cuts`, a `pad_island_cut` warning too (issue #1509): the
 /// check of an edit refuses a track that cuts a pad's piece of a fill off from the rest of it.
-fn drc_findings_with(
+pub(crate) fn drc_findings_with(
     board: &Board,
     project: &str,
     extras: &netsmith_geom::DrcExtras,
