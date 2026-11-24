@@ -56,6 +56,13 @@ impl Exported {
 
     /// One line for each finding, as the findings file lists them.
     pub fn lines(&self) -> Vec<String> {
+        self.lines_moved([0.0, 0.0], "")
+    }
+
+    /// [`Exported::lines`] with the placer's sentences' places moved by `by`, mm (`says` is what a
+    /// text says of the frame they are moved to, after `mm`).
+    pub fn lines_moved(&self, by: [f64; 2], says: &str) -> Vec<String> {
+        let sentence = |t: &str| netsmith_pcb::prose::placer_moved(t, by, says);
         let mut lines = Vec::new();
         if let Some(refused) = &self.placement_refused {
             lines.push(format!("refused: {}", refused.trim_end()));
@@ -63,18 +70,25 @@ impl Exported {
         lines.extend(
             self.conflicts
                 .iter()
-                .map(|c| format!("conflict: {}", c.text)),
+                .map(|c| format!("conflict: {}", sentence(&c.text))),
         );
         lines.extend(
             self.placement
                 .iter()
-                .map(|f| format!("placement: {}", f.text)),
+                .map(|f| format!("placement: {}", sentence(&f.text))),
         );
         lines
     }
 
     /// What the command prints for a person.
     pub fn text(&self) -> String {
+        self.text_moved([0.0, 0.0], "")
+    }
+
+    /// [`Exported::text`] with the places of the findings moved by `by`, mm (into another frame
+    /// than the layout file's; `says` is what a text says of it, after `mm`). The findings file
+    /// the export writes says its own, in the layout file's frame.
+    pub fn text_moved(&self, by: [f64; 2], says: &str) -> String {
         let mut out = format!(
             "{}: wrote {} ({} parts, placed, not routed: not for fabrication) and {}\n",
             self.board, self.file, self.parts, self.project
@@ -86,7 +100,7 @@ impl Exported {
                     "{n} finding(s) of the placement, listed in {}:\n",
                     self.findings_file
                 ));
-                for line in self.lines() {
+                for line in self.lines_moved(by, says) {
                     out.push_str(&format!("  {line}\n"));
                 }
             }
@@ -381,6 +395,12 @@ pub struct Imported {
 impl Imported {
     /// What the command prints for a person.
     pub fn text(&self) -> String {
+        self.text_moved([0.0, 0.0])
+    }
+
+    /// [`Imported::text`] with the places moved by `by`, mm (into another frame than the layout
+    /// file's).
+    pub fn text_moved(&self, by: [f64; 2]) -> String {
         let mut out = format!(
             "{}: {} part(s) moved in KiCad, {} where the board places them\n",
             self.board,
@@ -392,8 +412,8 @@ impl Imported {
                 "  {} ({}): {} -> {}{}\n",
                 m.path,
                 m.refdes,
-                spot_text(&m.from),
-                spot_text(&m.to),
+                spot_text(&m.from, by),
+                spot_text(&m.to, by),
                 if m.lock { ", locked" } else { "" }
             ));
         }
@@ -415,8 +435,14 @@ impl Imported {
     }
 }
 
-fn spot_text(s: &Spot) -> String {
-    format!("({}, {}) turned {} {}", s.at[0], s.at[1], s.turn, s.side)
+fn spot_text(s: &Spot, by: [f64; 2]) -> String {
+    format!(
+        "({}, {}) turned {} {}",
+        round(s.at[0] + by[0]),
+        round(s.at[1] + by[1]),
+        s.turn,
+        s.side
+    )
 }
 
 fn face_word(side: Side) -> &'static str {
@@ -621,5 +647,89 @@ mod tests {
         assert_eq!(normal_turn(-90.0), 270.0);
         assert_eq!(normal_turn(360.0), 0.0);
         assert_eq!(normal_turn(-0.00001), 0.0);
+    }
+
+    #[test]
+    fn the_places_of_what_was_moved_on_the_kicad_board_move_with_the_frame() {
+        let imported = Imported {
+            board: "B".into(),
+            file: "b.pcb.toml".into(),
+            moved: vec![Move {
+                path: "stage.r".into(),
+                refdes: "R1".into(),
+                from: Spot {
+                    at: [1.0, 2.0],
+                    turn: 0.0,
+                    side: "top",
+                },
+                to: Spot {
+                    at: [3.5, 4.0],
+                    turn: 90.0,
+                    side: "top",
+                },
+                existed: true,
+                lock: false,
+            }],
+            unchanged: 0,
+            held: Vec::new(),
+            missing: Vec::new(),
+            notes: Vec::new(),
+        };
+        let own = imported.text();
+        assert!(
+            own.contains("(1, 2) turned 0 top -> (3.5, 4) turned 90 top"),
+            "{own}"
+        );
+        let moved = imported.text_moved([20.0, 20.0]);
+        assert!(
+            moved.contains("(21, 22) turned 0 top -> (23.5, 24) turned 90 top"),
+            "{moved}"
+        );
+    }
+
+    #[test]
+    fn the_sentences_of_the_findings_of_an_export_move_with_the_frame() {
+        let exported = Exported {
+            board: "B".into(),
+            file: "b.kicad_pcb".into(),
+            project: "b.kicad_pro".into(),
+            findings_file: "b.findings.txt".into(),
+            parts: 1,
+            placement: vec![netsmith_pcb::PlacementFault {
+                kind: "too_tall",
+                parts: Vec::new(),
+                area: None,
+                shared: None,
+                past: Vec::new(),
+                distance: None,
+                least: None,
+                pads: Vec::new(),
+                near: None,
+                cutout: None,
+                keepout: None,
+                height: None,
+                limit: None,
+                growth: None,
+                face: None,
+                text: format!(
+                    "C1 stands tall, around (4.5, 6.0) {}",
+                    netsmith_pcb::prose::BOARD_TAIL
+                ),
+            }],
+            conflicts: Vec::new(),
+            placement_refused: None,
+        };
+        assert!(
+            exported
+                .text()
+                .contains("around (4.5, 6.0) mm from the board's top left corner")
+        );
+        let moved = exported.text_moved([20.0, 20.0], "mm in a frame");
+        assert!(
+            moved.contains("around (24.5, 26.0) mm in a frame"),
+            "{moved}"
+        );
+        // The findings file the export writes keeps the layout file's frame.
+        assert!(exported.lines()[0].contains("(4.5, 6.0)"));
     }
 }

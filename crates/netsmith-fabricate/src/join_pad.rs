@@ -109,12 +109,18 @@ pub struct Joined {
 impl Joined {
     /// The text for a person.
     pub fn text(&self) -> String {
+        self.text_moved([0.0, 0.0])
+    }
+
+    /// [`Joined::text`] with the places moved by `by`, mm (into another frame than the routes
+    /// file's).
+    pub fn text_moved(&self, by: [f64; 2]) -> String {
         let mut out = format!("{} [{}]: {}\n", self.pad, self.net, self.before);
         if self.already {
             out.push_str("it is joined already: nothing to add\n");
         }
         if let Some(j) = &self.join {
-            let at = |p: [f64; 2]| format!("{:.3},{:.3}", p[0], p[1]);
+            let at = |p: [f64; 2]| format!("{:.3},{:.3}", p[0] + by[0], p[1] + by[1]);
             out.push_str(&format!(
                 "a {:.3} mm track on {} from {} to {} ({:.3} mm, {:.1} degrees)",
                 j.width,
@@ -505,4 +511,43 @@ fn exit(r: &netsmith_pcb::Rect, centre: Pt, u: Pt) -> f64 {
 /// The place `t` mm from `centre` along the unit `u`.
 fn along(centre: Pt, u: Pt, t: f64) -> Pt {
     Pt::new(centre.x + u.x * t, centre.y + u.y * t)
+}
+
+#[cfg(test)]
+mod frame_tests {
+    use super::*;
+
+    #[test]
+    fn the_text_says_the_ends_of_the_track_and_the_via_in_the_frame_asked_for() {
+        let joined = Joined {
+            board: "B".into(),
+            pad: "C1.1".into(),
+            net: "GND".into(),
+            before: "starved".into(),
+            already: false,
+            join: Some(Join {
+                layer: "top".into(),
+                from: [1.0, 2.0],
+                to: [3.0, 2.0],
+                width: 0.2,
+                length: 2.0,
+                direction: 0.0,
+                via: Some([3.0, 2.0]),
+                fill_layer: Some("bottom".into()),
+            }),
+            tried: Vec::new(),
+            refused: None,
+            said: None,
+            routes: None,
+            counts: EditCounts::default(),
+        };
+        assert!(joined.text().contains("from 1.000,2.000 to 3.000,2.000"));
+        let moved = joined.text_moved([20.0, 20.0]);
+        assert!(
+            moved.contains("from 21.000,22.000 to 23.000,22.000"),
+            "{moved}"
+        );
+        assert!(moved.contains("a via at 23.000,22.000"), "{moved}");
+        assert!(moved.contains("(2.000 mm, 0.0 degrees)"), "{moved}");
+    }
 }

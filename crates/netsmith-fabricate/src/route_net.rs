@@ -304,6 +304,9 @@ pub struct Wall {
     pub pads: Vec<String>,
     /// The vias in the wall, `net X at (x, y)`.
     pub vias: Vec<String>,
+    /// The same vias as the net and the place, for a text in another frame.
+    #[serde(skip)]
+    pub via_places: Vec<(String, [f64; 2])>,
     pub edge: bool,
 }
 
@@ -1020,6 +1023,14 @@ fn walls(board: &Board, why: &[LineReport]) -> Vec<Wall> {
                     format!("net {} at ({}, {})", v.net, um(at.x), um(at.y))
                 })
                 .collect(),
+            via_places: r
+                .vias
+                .iter()
+                .map(|v| {
+                    let at = v.at - board.outline.min;
+                    (v.net.clone(), [um(at.x), um(at.y)])
+                })
+                .collect(),
             edge: r.edge,
         })
         .collect()
@@ -1048,6 +1059,12 @@ fn list(set: &BTreeSet<String>) -> String {
 impl Routed {
     /// The text for a person.
     pub fn text(&self) -> String {
+        self.text_moved([0.0, 0.0])
+    }
+
+    /// [`Routed::text`] with its places moved by `by`, mm (into another frame than the routes
+    /// file's).
+    pub fn text_moved(&self, by: [f64; 2]) -> String {
         use std::fmt::Write as _;
         let mut s = String::new();
         let what = match &self.connection {
@@ -1118,26 +1135,40 @@ impl Routed {
             );
         }
         for w in &self.walls {
-            let mut by: Vec<String> = Vec::new();
+            let mut who: Vec<String> = Vec::new();
             if !w.pads.is_empty() {
-                by.push(format!("pad(s) {}", w.pads.join(", ")));
+                who.push(format!("pad(s) {}", w.pads.join(", ")));
             }
             if !w.vias.is_empty() {
-                by.push(format!("via(s) of {}", w.vias.join(", ")));
+                let vias: Vec<String> = if w.via_places.len() == w.vias.len() {
+                    w.via_places
+                        .iter()
+                        .map(|(net, at)| {
+                            format!(
+                                "net {net} at ({}, {})",
+                                um(at[0] + by[0]) + 0.0,
+                                um(at[1] + by[1]) + 0.0
+                            )
+                        })
+                        .collect()
+                } else {
+                    w.vias.clone()
+                };
+                who.push(format!("via(s) of {}", vias.join(", ")));
             }
             if !w.nets.is_empty() {
                 let set: BTreeSet<String> = w.nets.iter().cloned().collect();
-                by.push(format!("the copper of {}", nets_said(&set)));
+                who.push(format!("the copper of {}", nets_said(&set)));
             }
             if w.edge {
-                by.push("the board's edge".to_string());
+                who.push("the board's edge".to_string());
             }
-            let by = if by.is_empty() {
+            let who = if who.is_empty() {
                 "nothing it can name (a keepout?)".to_string()
             } else {
-                by.join("; ")
+                who.join("; ")
             };
-            let _ = writeln!(s, "{}: walled in by {by}", w.line);
+            let _ = writeln!(s, "{}: walled in by {who}", w.line);
         }
         if self.refused.is_none() {
             for (k, n) in self.nets.iter().enumerate() {
@@ -1180,8 +1211,8 @@ impl Routed {
                 let _ = writeln!(
                     s,
                     "the narrowest place of its way, at ({}, {}) on {}, has room for a track of {}{} mm (it is {} mm)",
-                    c.at[0],
-                    c.at[1],
+                    um(c.at[0] + by[0]) + 0.0,
+                    um(c.at[1] + by[1]) + 0.0,
                     c.layer,
                     if most { "at least " } else { "" },
                     c.fits,

@@ -627,8 +627,13 @@ impl Waived {
             for part in &fault.parts {
                 if let Some(c) = &part.courtyard {
                     message.push_str(&format!(
-                        "; the courtyard of {} is ({:.2}, {:.2}) to ({:.2}, {:.2}) mm from the board's top left corner",
-                        part.part.refdes, c.x_min, c.y_min, c.x_max, c.y_max
+                        "; the courtyard of {} is ({:.2}, {:.2}) to ({:.2}, {:.2}) {}",
+                        part.part.refdes,
+                        c.x_min,
+                        c.y_min,
+                        c.x_max,
+                        c.y_max,
+                        netsmith_pcb::prose::BOARD_TAIL
                     ));
                 }
             }
@@ -2069,6 +2074,8 @@ fn fab_board(
             // Foreign copper at a switch node is a `switch_node_copper` note (issue #1585).
             regulators: board.switching_regulators.clone(),
             switch_node_keepout: board.process.switch_node_keepout,
+            // A pour a zone of the routes file replaced is a `pour_replaced` note (issue #1612).
+            replaced_pours: crate::drc::replaced_pours(&board),
             ..Options::default()
         };
         // The pictures of a package made for review are of the board just routed (issue #1213);

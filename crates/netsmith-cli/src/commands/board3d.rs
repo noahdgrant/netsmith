@@ -60,12 +60,6 @@ pub struct Args {
 
 /// Prints the board's 3D scene, or writes it.
 pub fn run(args: Args) -> ExitCode {
-    if let Err(e) = args
-        .framing
-        .for_text(args.format == super::common::Format::Json, "dev board3d")
-    {
-        return crate::frame::refused(&e);
-    }
     args.watching.tell_progress("board3d", false);
     let code = super::common::with_stage_events(|| {
         run_board3d(
@@ -128,7 +122,7 @@ fn run_board3d(
                     return ExitCode::from(2);
                 }
             }
-            if json && framing.frame.is_some() {
+            if framing.frame.is_some() {
                 return crate::frame::refused(
                     "`--frame`: a system's scene is in the frame of its first member, which has no outline frame of its own; ask for a member, `--board System/member`",
                 );
@@ -169,12 +163,13 @@ fn run_board3d(
     } else if json {
         print!("{}", report.json());
     } else if glb.is_none() && step.is_none() {
-        print!("{}", report.summary());
+        // The sentences of the placement check say their places in the frame asked for.
+        print!("{}", framing.placer(&report.summary()));
     }
     // A layout file the placer refused: the report is of the board where it ended, and the
     // command fails, as `fab` would (issue #779).
     if let Some(refused) = &report.placement_refused {
-        eprintln!("error: {label}: {}", refused.trim_end());
+        eprintln!("error: {label}: {}", framing.placer(refused.trim_end()));
         return ExitCode::FAILURE;
     }
     // A board placed with a fault of where its parts are (two courtyards that overlap, a part
@@ -188,7 +183,7 @@ fn run_board3d(
         .collect();
     if !faults.is_empty() {
         for f in &faults {
-            eprintln!("error: {label}: {}", f.text);
+            eprintln!("error: {label}: {}", framing.placer(&f.text));
         }
         eprintln!(
             "error: {label}: the placement has {} fault(s) of where its parts are; `fab` refuses it (`netsmith layout fit <part>` says where a part fits)",

@@ -771,8 +771,9 @@ impl std::fmt::Display for PlacementProblem {
                         };
                         write!(
                             f,
-                            "{} is not wholly inside the board outline: its courtyard is {cut:.2} mm past the outline's edge {place} ({x:.1}, {y:.1}) mm from the board's top left corner",
-                            member(path, refdes)
+                            "{} is not wholly inside the board outline: its courtyard is {cut:.2} mm past the outline's edge {place} ({x:.1}, {y:.1}) {tail}",
+                            member(path, refdes),
+                            tail = crate::prose::BOARD_TAIL
                         )
                     }
                     _ => write!(f, "{text}"),
@@ -799,14 +800,15 @@ impl std::fmt::Display for PlacementProblem {
                 at,
             } => write!(
                 f,
-                "{} stands {height:.2} mm tall on the {} face{}, and {} allows {limit:.2} mm there ({:.2} mm too tall), where its body is, around ({:.1}, {:.1}) mm from the board's top left corner",
+                "{} stands {height:.2} mm tall on the {} face{}, and {} allows {limit:.2} mm there ({:.2} mm too tall), where its body is, around ({:.1}, {:.1}) {}",
                 member(path, refdes),
                 side.word(),
                 grown_word(*height, *growth),
                 limit_word(keepout),
                 height - limit,
                 at.0,
-                at.1
+                at.1,
+                crate::prose::BOARD_TAIL
             ),
             Self::PadInKeepout {
                 refdes,

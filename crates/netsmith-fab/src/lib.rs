@@ -87,6 +87,7 @@ mod net_table;
 mod panel;
 pub mod power_stage;
 mod raster;
+pub mod replaced_pour;
 mod rotation;
 mod score;
 pub mod viewer;
@@ -206,6 +207,10 @@ pub struct Options {
     /// How near a switch node foreign copper may come, in mm (the process's
     /// `.switch_node_keepout`); `None` is [`power_stage::DEFAULT_SWITCH_NODE_KEEPOUT`].
     pub switch_node_keepout: Option<f64>,
+    /// The pours and planes of the process that a zone of the routes file replaces on their
+    /// layer (issue #1612), which the board file does not hold: [`check`] notes each
+    /// (`pour_replaced`) and says so in a `via_dangling` finding of a via of its net.
+    pub replaced_pours: Vec<replaced_pour::ReplacedPour>,
     /// Package even though some parts have no LCSC part number. Those parts are left out
     /// of the BOM and placement file and listed in the notes as unassembled.
     pub allow_missing_lcsc: bool,
@@ -784,6 +789,14 @@ pub fn check(src: &str, project: Option<&str>, options: &Options) -> Result<Chec
         let stages = power_stage::of(&art, &options.regulators, keepout);
         report.findings.extend(power_stage::findings(&stages));
     }
+    // A pour a zone of the routes file replaced (issue #1612): a note, and the cause of a via
+    // that joins nothing on its layer.
+    if !options.replaced_pours.is_empty() {
+        replaced_pour::name_in_dangling(&mut report.findings, &art, &options.replaced_pours);
+        report
+            .findings
+            .extend(replaced_pour::findings(&options.replaced_pours));
+    }
     if !skewed.is_empty() {
         report.findings.extend(
             skewed
@@ -958,10 +971,14 @@ pub(crate) fn said_report(report: &DrcReport, outline_at: Option<Pt>) -> DrcRepo
     }
 }
 
+/// What the first line of the notes says of the frame of their places, the outline's (issue
+/// #1614): a text that moves them to another frame changes these words too.
+pub const NOTES_FRAME: &str = "places in mm from the outline's top left corner, y down";
+
 /// What the header of the notes says of the frame of their places (issue #1614).
 fn frame_words(outline_at: Option<Pt>) -> &'static str {
     match outline_at {
-        Some(_) => "places in mm from the outline's top left corner, y down",
+        Some(_) => NOTES_FRAME,
         None => "places in mm in the board file's frame, y down",
     }
 }
@@ -1160,9 +1177,16 @@ fn notes(
             // To a micrometre, so that a place is said as a person would write it.
             let um = |v: f64| (v * 1e6).round() / 1e6;
             format!(
-                "origin: drill/place origin at ({}, {}) mm on the board, used by every file",
+                "origin: drill/place origin at ({}, {}) {}, used by every file",
                 um(x - dx),
-                um(y - dy)
+                um(y - dy),
+                // The words of the placer's sentences, so that a text that moves them moves
+                // this place too (`netsmith_pcb::prose`).
+                if outline_at.is_some() {
+                    "mm from the board's top left corner"
+                } else {
+                    "mm on the board"
+                }
             )
         }
         None => "origin: the board sets no drill/place origin; coordinates are relative to the page corner, the same in every file".to_string(),
@@ -1230,7 +1254,9 @@ fn notes(
         }
     }
     // Notes (`near_rule_area`, issue #1591): what stands near a rule area, for a person to judge.
-    let notes: Vec<&DrcFinding> = report.notes().collect();
+    // A pour a zone replaced (issue #1612) first: it is the cause of findings further up.
+    let mut notes: Vec<&DrcFinding> = report.notes().collect();
+    notes.sort_by_key(|n| n.rule != DrcRule::PourReplaced);
     if !notes.is_empty() {
         lines.push(format!("design rules notes: {}", notes.len()));
         lines.extend(notes.iter().take(10).map(|n| format!("  {n}")));

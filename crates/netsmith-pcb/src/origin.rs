@@ -62,16 +62,22 @@ impl PartOrigin {
     /// `J1 (`slot`) bottom, turned 90: origin (3.45, 19.65), body centre (3.45, 10.15), dx 0
     /// dy 9.5`.
     pub fn line(&self) -> String {
+        self.line_moved([0.0, 0.0])
+    }
+
+    /// [`PartOrigin::line`] with the origin and the body's centre moved by `by`, mm (the offset
+    /// between them does not move).
+    pub fn line_moved(&self, by: [f64; 2]) -> String {
         format!(
             "{} (`{}`) {}, turned {}: origin ({}, {}), body centre ({}, {}), dx {} dy {}",
             self.refdes,
             self.path,
             self.side,
             mm(self.rotation),
-            mm(self.origin[0]),
-            mm(self.origin[1]),
-            mm(self.body_centre[0]),
-            mm(self.body_centre[1]),
+            mm(self.origin[0] + by[0]),
+            mm(self.origin[1] + by[1]),
+            mm(self.body_centre[0] + by[0]),
+            mm(self.body_centre[1] + by[1]),
             mm(self.offset[0]),
             mm(self.offset[1]),
         )
@@ -90,10 +96,30 @@ impl Board {
 
 /// The list as `fab` prints it: [`ORIGINS_HEAD`], then one indented line for each part.
 pub fn origins_text(origins: &[PartOrigin]) -> String {
-    let mut s = format!("{ORIGINS_HEAD}:\n");
+    origins_text_moved(origins, [0.0, 0.0], "")
+}
+
+/// [`origins_text`] with the places moved by `by`, mm (into another frame than the outline's):
+/// the heading says the frame (`says` is what a text says of it after `mm`) and that a
+/// requirement still measures from the outline's corner.
+pub fn origins_text_moved(origins: &[PartOrigin], by: [f64; 2], says: &str) -> String {
+    let head = if by == [0.0, 0.0] {
+        ORIGINS_HEAD.to_string()
+    } else {
+        ORIGINS_HEAD
+            .replace(
+                "in mm from the outline's top left corner (y down)",
+                &format!("in {says}"),
+            )
+            .replace(
+                "to put the origin at (x, y)",
+                "to put the origin at (x, y) in mm from the outline's top left corner (a requirement measures from there: take the outline's corner off a place in this frame)",
+            )
+    };
+    let mut s = format!("{head}:\n");
     for o in origins {
         s.push_str("  ");
-        s.push_str(&o.line());
+        s.push_str(&o.line_moved(by));
         s.push('\n');
     }
     s
