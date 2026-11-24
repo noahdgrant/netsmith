@@ -239,9 +239,25 @@ impl Rules {
     /// does: JLCPCB's 0.15 mm between surface-mount pads, where the project's least clearance is
     /// 0.1 mm, among them.
     pub fn kicad_dru(&self, name: &str, classes: &[NetClass]) -> String {
+        self.kicad_dru_reaching(name, classes, None)
+    }
+
+    /// [`Rules::kicad_dru`] with the reach of `near_rule_area` (the process's
+    /// `.rule_area_reach`, issue #1591), which the file holds in a comment for netsmith's check
+    /// of the KiCad board.
+    pub fn kicad_dru_reaching(
+        &self,
+        name: &str,
+        classes: &[NetClass],
+        rule_area_reach: Option<f64>,
+    ) -> String {
         let project = netsmith_geom::DrcRules::from_project(&self.kicad_pro(name, classes))
             .expect("the project file netsmith writes is JSON");
-        netsmith_geom::drc_kicad_dru(&project, &self.process_rules())
+        let extras = netsmith_geom::DrcExtras {
+            rule_area_reach,
+            ..self.process_rules()
+        };
+        netsmith_geom::drc_kicad_dru(&project, &extras)
     }
 
     /// The text of a `.kicad_pro` for a board with these rules, which KiCad's DRC reads when

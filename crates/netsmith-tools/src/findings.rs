@@ -280,6 +280,8 @@ pub fn of_drc_finding(f: &netsmith_geom::DrcFinding, board: Option<&str>) -> Fin
         ..Finding::plain(
             match f.severity {
                 netsmith_geom::DrcSeverity::Error => Severity::Error,
+                // `near_rule_area` (issue #1591): a note, which fails nothing.
+                netsmith_geom::DrcSeverity::Note => Severity::Note,
                 _ => Severity::Warning,
             },
             "drc",
