@@ -19,6 +19,7 @@ pub mod layout;
 pub mod layout_capture;
 pub mod layout_edit;
 pub mod layout_kicad;
+pub mod layout_move;
 pub mod migrate_offers;
 pub mod models;
 pub mod net_currents;

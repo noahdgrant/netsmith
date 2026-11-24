@@ -54,8 +54,13 @@ pub fn apply_beside(board: &mut Board, layout: Option<&Path>) -> Result<Vec<Stri
     let Some(layout) = layout else {
         return Ok(Vec::new());
     };
-    let file = beside_layout(layout);
-    let Some((routes, name)) = read_unchecked(&file)? else {
+    apply_file(board, &beside_layout(layout))
+}
+
+/// [`apply_beside`] with the routes file at `file` in place of the one beside the layout file
+/// (`board nets --compare`, issue #1629): nothing when there is no such file.
+pub fn apply_file(board: &mut Board, file: &Path) -> Result<Vec<String>, String> {
+    let Some((routes, name)) = read_unchecked(file)? else {
         return Ok(Vec::new());
     };
     let notes = apply_routes(board, &routes, &name).map_err(|e| e.to_string())?;

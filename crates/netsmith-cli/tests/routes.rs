@@ -801,6 +801,114 @@ fn tidy_says_what_it_would_change_then_cuts_a_corner_and_merges_a_pair() {
     assert!(said.contains("nothing to write"), "{said}");
 }
 
+/// `board nets --compare` (issue #1629): two routes files of one board, one tidied, compare row
+/// by row, from the routes file and from the JSON of an earlier run alike, and the gate fails
+/// on a row that is worse.
+#[test]
+fn board_nets_compares_a_tidied_routes_file_with_the_one_before_and_gates_on_a_worse_row() {
+    let dir = imported("routes-nets-compare");
+    // The imported copper unlocked, and the GND track split near its pad, as a round of hand
+    // routing leaves it: `routes tidy` changes it.
+    let file = dir.join("led.routes.toml");
+    let written = fs::read_to_string(&file).unwrap();
+    let gnd = "{ layer = \"top\", width = 0.15, from = [2.65, 5.24], to = [9.85, 5.3875] },";
+    assert!(written.contains(gnd), "{written}");
+    let split = "{ layer = \"top\", width = 0.15, from = [2.65, 5.24], to = [2.75, 5.242049] },\n  \
+                 { layer = \"top\", width = 0.15, from = [2.75, 5.242049], to = [9.85, 5.3875] },";
+    fs::write(
+        &file,
+        written.replace("lock = true\n", "").replace(gnd, split),
+    )
+    .unwrap();
+    fs::copy(&file, dir.join("before.routes.toml")).unwrap();
+    let nets = |args: &[&str]| {
+        let mut all = vec!["board", "nets", "led.nsm"];
+        all.extend_from_slice(args);
+        netsmith(&dir, &all)
+    };
+    let run = nets(&["--format", "json"]);
+    ok(&run);
+    fs::write(dir.join("before.json"), &run.stdout).unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+    let q = &json["quality"];
+    assert_eq!(
+        (&q["tracks"], &q["connections_left"], &q["drops_over"], &q["findings"]),
+        (&4.into(), &0.into(), &0.into(), &0.into()),
+        "{q}"
+    );
+    let said = ok(&nets(&[]));
+    assert!(
+        said.contains("routing: 4 track(s), 0 connection(s) left to route, 0 track drop(s) over budget, 0 error(s) of the design rules check"),
+        "{said}"
+    );
+
+    ok(&routes(&dir, &["tidy"]));
+    let tidied = fs::read_to_string(&file).unwrap();
+    // The change of a row, the last number of its line (or the one before `worse`).
+    let change = |said: &str, words: &str| -> f64 {
+        let line = said
+            .lines()
+            .find(|l| l.trim_start().starts_with(words))
+            .unwrap_or_else(|| panic!("no row {words}: {said}"));
+        let line = line.trim_end().trim_end_matches("worse").trim_end();
+        line.rsplit(' ').next().unwrap().parse().unwrap()
+    };
+    // The tidied file against the one before, from the routes file and from the JSON alike:
+    // every row printed with its change, the signal length down and the tracks up.
+    for against in ["before.routes.toml", "before.json"] {
+        let run = nets(&["--compare", against, "--gate", "--max-unneeded", "9"]);
+        let said = text(&run);
+        assert!(
+            said.contains(&format!("compared with {against} (worse beyond 0 %):")),
+            "{said}"
+        );
+        for words in [
+            "signal length (mm)", "short tracks", "layer changes", "via pairs", "vias",
+            "tracks", "connections left", "track drops over budget", "design rules errors",
+        ] {
+            change(&said, words);
+        }
+        assert!(change(&said, "signal length (mm)") < 0.0, "{said}");
+        assert!(change(&said, "tracks") > 0.0, "{said}");
+        assert_eq!(change(&said, "design rules errors"), 0.0, "{said}");
+        // More tracks is a worse row, and the gate fails on it.
+        assert_eq!(run.status.code(), Some(1), "{said}");
+        assert!(
+            said.contains(&format!("quality gate: tracks worse than in {against}: 4 before")),
+            "{said}"
+        );
+        assert!(!said.contains("quality gate: length"), "{said}");
+    }
+    let run = nets(&["--compare", "before.routes.toml", "--format", "json"]);
+    let json: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+    let rows = json["compare"]["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 9, "{json}");
+    let tracks = rows.iter().find(|r| r["row"] == "tracks").unwrap();
+    assert_eq!(tracks["before"], 4.0, "{json}");
+    assert_eq!(tracks["worse"], true, "{json}");
+    // Within a tolerance as large as the growth, the tracks are no worse.
+    let after = tracks["after"].as_f64().unwrap();
+    let pct = format!("{}", (after - 4.0) / 4.0 * 100.0);
+    ok(&nets(&[
+        "--compare", "before.routes.toml", "--gate", "--max-unneeded", "9", "--tolerance", &pct,
+    ]));
+
+    // The other way round: the file before against the tidied one has the longer signal, and
+    // the gate fails on that row; without `--gate` the comparison judges nothing.
+    fs::write(dir.join("tidied.routes.toml"), &tidied).unwrap();
+    fs::copy(dir.join("before.routes.toml"), &file).unwrap();
+    let run = nets(&["--compare", "tidied.routes.toml", "--gate", "--max-unneeded", "9"]);
+    let said = text(&run);
+    assert_eq!(run.status.code(), Some(1), "{said}");
+    assert!(change(&said, "signal length (mm)") > 0.0, "{said}");
+    assert!(
+        said.contains("quality gate: length worse than in tidied.routes.toml: "),
+        "{said}"
+    );
+    assert!(!said.contains("quality gate: tracks"), "{said}");
+    ok(&nets(&["--compare", "tidied.routes.toml"]));
+}
+
 /// `netsmith <args>` in `dir` with `input` on stdin.
 fn netsmith_with_input(dir: &Path, args: &[&str], input: &str) -> Output {
     use std::io::Write;

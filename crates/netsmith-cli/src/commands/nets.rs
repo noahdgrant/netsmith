@@ -18,7 +18,7 @@
 use std::process::ExitCode;
 
 use clap::Args as ClapArgs;
-use netsmith_fabricate::net_quality::{Counts, Quality};
+use netsmith_fabricate::net_quality::{Compared, Counts, Quality, Routing};
 use netsmith_fabricate::pcb_picture;
 
 use super::common;
@@ -26,7 +26,7 @@ use super::common;
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`board nets` measures a board's routed copper and prints a table of it, so that a person or an agent reads each line's length, vias and skew with no KiCad and no picture. The board is placed (the layout file read, the placer run for the rest) and has the copper `view pcb` draws on it: the routes file beside the source, the router's copper the editor keeps (`.netsmith/routes/`) for every net whose pads have not moved since it was routed, and the teardrops. With `--route` the router runs first, from that copper, as `board fab --reuse-routes` does (`--route-timeout` as for `view pcb`). Nothing is written.\n\nFor each net that no zone pours and that has a track or a via (a poured net's tracks are no connection) it prints the routed length (all its tracks, an arc by its chords), the straight length (the shortest tree of straight lines between the centres of its pads), their ratio, its vias, its layer changes (the vias where its tracks meet on two layers or more) and the layers its tracks are on; the nets by name, or longest first with `--lengths`. Then for each diff pair of the board (two nets whose names differ by a suffix pair such as `dp`/`dm`, the nets of a `PairImpedance` or a `DiffPair`, the lines of a `Can`): both lengths, the skew and whether it is within the pair's limit (its `.skew`, or the router's 0.1 mm), the length of the first net that runs coupled (the other's track on its layer within 0.5 mm, centre to centre, sampled every 0.05 mm) and its share, the least and the largest gap edge to edge over that length (equal for a pair at one pitch), both nets' vias and how many stand side by side (copper no more than 0.5 mm apart). Then for each group of nets matched in length: each net's length and the group's spread against its tolerance. These are the numbers the router matches a pair and a group by, and `board drc` notes a pair whose skew is over its limit and a group whose spread is over its tolerance. Lengths are in mm.\n\nWith `--format json` one JSON document is printed on stdout: `board`, `nets` (each with `net`, `length`, `straight`, `ratio`, `vias`, `layer_changes`, `layers`) and `pairs` (each with `p`, `n`, `length_p`, `length_n`, `skew`, `limit`, `over`, `coupled`, `share`, `gaps` (the least and the largest, or null), `vias_p`, `vias_n`, `via_pairs`) and `groups` (each with `path`, `nets` (each with `net`, `length`, `short_by`), `spread`, `tolerance`, `over`). Then the `track drop` section (issue #1540): for each power net whose rail states a voltage and whose current is known, of the nets no zone, plane or pour carries, the voltage its routed tracks drop, measured as `board fab`'s `track drop` guideline measures it (each run of the path at what the pins past it draw), in mV against its budget (1 % of the rail's voltage) and the share of the budget, `over` when it is more, the two pads of the path, its length, its narrowest track and the most current a run carries, the largest share first; it measures the copper the board has, routed or not, so a net left open drops what its copper does. In JSON it is `track_drops`, each with `net`, `volts`, `drop` and `allowed` (V), `share`, `over`, `current` (A), `whole_current` (every run at the net's current), `from`, `to`, `length`, `narrowest` and `thickness` (mm), and `width_for` (the `.min_track` in mm that brings the path within the budget, for a net over it). Under a net at half its budget or more the pieces of its path are listed (issue #1610), the one that drops most first: each track (`#n track (x, y) to (x, y) on <layer>, <width> mm wide, <length> mm long, <current>: <mV> (<share> of the drop)`, then `, needs <w> mm` for a net over the budget where the track is narrower than the width it needs) and each via the path changes layer in; in JSON `path`, each with `step` (its place from the source, from 0), `track` (the index of the track in the board's copper) or `via` (its place), `layer`, `from`, `to`, `length`, `width` (drawn, mm), `current` (A), `drop` (V), `needs` (mm) and `unreachable` (no width is enough). With `--currents`, the `currents` section follows (issue #1584): for each net with a known current, the one current that the design rules check holds its tracks (`track_current`) and its vias (`via_current`) to and the track drop measures it at, the worst case in A, where it comes from (`sum`, every rail and part on the net with every load on at once; `analysis`, what the DC analysis finds into it over every corner of its ranges; `carrier`, one rail or part on the net that draws more than the analysis finds, such as a diode's stated `.current`), `at least` where a current on the net is not known, the words of the findings, and the least track on an outer and an inner layer and the vias side by side that it needs; copper that only feeds the pins of branches is held to what those pins carry, never more than this. In JSON it is `currents`, each with `net`, `current`, `from`, `lower_bound`, `source`, `least_width`, `inner_least_width` and `vias`. Then the `quality` section: the totals, the router's quality objective of the nets of the table (issue #1517: their routed length over their straight length, their vias and layer changes, and the nets routed over twice their straight length, the five longest ratios named; `objective` in the JSON, with `length`, `straight`, `detour`, `vias`, `layer_changes`, `over_twice` and `worst`, each with `net`, `ratio`, `vias`, `layer_changes`), and for each net with a defect, the most first, its own-net crossings (two straight tracks of the net on one layer whose centre lines cross away from their ends: a loop), its duplicate ways (a second way between the same two places, as `routes tidy` finds it), its unneeded copper (each track and via that ends in nothing, a dead stub or branch or a dangling via, a nudge from a pad's or a via's centre to a point still inside it, and a track inside or overlapping another of its net and layer), its short tracks (straight tracks shorter than two of their widths) and its vias side by side (two vias of the net whose copper is no more than the group gap apart, the process's least clearance or the board's `.process.via_group_gap`, each via taken once, a group no larger than the net's current needs left out), of the nets no zone pours; `board drc` notes the totals. In JSON it is `quality`, with `totals` and `nets` (each with `net`, `crossings`, `duplicates`, `unneeded`, `short`, `via_pairs`), the `limits` it is judged by and the kinds `over` them (each with `kind`, `count`, `limit`). With `--power-stage` (issue #1585) it prints, instead of all that, each switching regulator's power stage: a regulator is a part that provides the standard library's `BuckIc`, its VIN, ground, switch node and feedback the pins `vin.pos`, `vin.neg`, `sw.pos` and `fb`; each input capacitor (a capacitor between VIN and ground), nearest first, with the distance from its VIN pad and from its ground pad to the IC's nearest pad of each, centre to centre, and the routed length and vias of the shortest way through the tracks between them (`no track` where a pour or a plane carries the net, or it is open); each capacitor on another pin of the IC (a boot capacitor, whose other pad is on the switch node; an internal supply's) with the same from the pin; the feedback net's routed length and vias; and each via and track of another net within the process's `.switch_node_keepout` (1 mm unless stated) of the switch node or under the IC's body, with no plane between, which `board drc` notes as `switch_node_copper`. In JSON it is `board` and `power_stages`, each with `regulator`, `path`, `vin`, `gnd`, `sw`, `keepout`, `input_caps` (`cap`, `vin` and `gnd`, each with `from`, `to`, `distance`, `routed`, `vias`), `support` (`pin`, `net`, `cap`, `boot`, `leg`), `feedback` (`net`, `length`, `vias`) and `foreign` (`kind`, `net`, `layer`, `at`, `gap`, `under_body`). The exit code is 0 when it is printed (a pair over its skew too: `board drc` is the check), 1 when the board does not build, place or route, or with `--gate` when a total is over its limit (0 of each, or the `--max-<kind>` flag's: `--max-crossings`, `--max-duplicates`, `--max-unneeded`, `--max-short`, `--max-via-pairs`), each kind over said on stderr, and 2 when the command cannot run."
+    after_long_help = "`board nets` measures a board's routed copper and prints a table of it, so that a person or an agent reads each line's length, vias and skew with no KiCad and no picture. The board is placed (the layout file read, the placer run for the rest) and has the copper `view pcb` draws on it: the routes file beside the source, the router's copper the editor keeps (`.netsmith/routes/`) for every net whose pads have not moved since it was routed, and the teardrops. With `--route` the router runs first, from that copper, as `board fab --reuse-routes` does (`--route-timeout` as for `view pcb`). Nothing is written.\n\nFor each net that no zone pours and that has a track or a via (a poured net's tracks are no connection) it prints the routed length (all its tracks, an arc by its chords), the straight length (the shortest tree of straight lines between the centres of its pads), their ratio, its vias, its layer changes (the vias where its tracks meet on two layers or more) and the layers its tracks are on; the nets by name, or longest first with `--lengths`. Then for each diff pair of the board (two nets whose names differ by a suffix pair such as `dp`/`dm`, the nets of a `PairImpedance` or a `DiffPair`, the lines of a `Can`): both lengths, the skew and whether it is within the pair's limit (its `.skew`, or the router's 0.1 mm), the length of the first net that runs coupled (the other's track on its layer within 0.5 mm, centre to centre, sampled every 0.05 mm) and its share, the least and the largest gap edge to edge over that length (equal for a pair at one pitch), both nets' vias and how many stand side by side (copper no more than 0.5 mm apart). Then for each group of nets matched in length: each net's length and the group's spread against its tolerance. These are the numbers the router matches a pair and a group by, and `board drc` notes a pair whose skew is over its limit and a group whose spread is over its tolerance. Lengths are in mm.\n\nWith `--format json` one JSON document is printed on stdout: `board`, `nets` (each with `net`, `length`, `straight`, `ratio`, `vias`, `layer_changes`, `layers`) and `pairs` (each with `p`, `n`, `length_p`, `length_n`, `skew`, `limit`, `over`, `coupled`, `share`, `gaps` (the least and the largest, or null), `vias_p`, `vias_n`, `via_pairs`) and `groups` (each with `path`, `nets` (each with `net`, `length`, `short_by`), `spread`, `tolerance`, `over`). Then the `track drop` section (issue #1540): for each power net whose rail states a voltage and whose current is known, of the nets no zone, plane or pour carries, the voltage its routed tracks drop, measured as `board fab`'s `track drop` guideline measures it (each run of the path at what the pins past it draw), in mV against its budget (1 % of the rail's voltage) and the share of the budget, `over` when it is more, the two pads of the path, its length, its narrowest track and the most current a run carries, the largest share first; it measures the copper the board has, routed or not, so a net left open drops what its copper does. In JSON it is `track_drops`, each with `net`, `volts`, `drop` and `allowed` (V), `share`, `over`, `current` (A), `whole_current` (every run at the net's current), `from`, `to`, `length`, `narrowest` and `thickness` (mm), and `width_for` (the `.min_track` in mm that brings the path within the budget, for a net over it). Under a net at half its budget or more the pieces of its path are listed (issue #1610), the one that drops most first: each track (`#n track (x, y) to (x, y) on <layer>, <width> mm wide, <length> mm long, <current>: <mV> (<share> of the drop)`, then `, needs <w> mm` for a net over the budget where the track is narrower than the width it needs) and each via the path changes layer in; in JSON `path`, each with `step` (its place from the source, from 0), `track` (the index of the track in the board's copper) or `via` (its place), `layer`, `from`, `to`, `length`, `width` (drawn, mm), `current` (A), `drop` (V), `needs` (mm) and `unreachable` (no width is enough). With `--currents`, the `currents` section follows (issue #1584): for each net with a known current, the one current that the design rules check holds its tracks (`track_current`) and its vias (`via_current`) to and the track drop measures it at, the worst case in A, where it comes from (`sum`, every rail and part on the net with every load on at once; `analysis`, what the DC analysis finds into it over every corner of its ranges; `carrier`, one rail or part on the net that draws more than the analysis finds, such as a diode's stated `.current`), `at least` where a current on the net is not known, the words of the findings, and the least track on an outer and an inner layer and the vias side by side that it needs; copper that only feeds the pins of branches is held to what those pins carry, never more than this. In JSON it is `currents`, each with `net`, `current`, `from`, `lower_bound`, `source`, `least_width`, `inner_least_width` and `vias`. Then the `quality` section: the totals, the router's quality objective of the nets of the table (issue #1517: their routed length over their straight length, their vias and layer changes, and the nets routed over twice their straight length, the five longest ratios named; `objective` in the JSON, with `length`, `straight`, `detour`, `vias`, `layer_changes`, `over_twice` and `worst`, each with `net`, `ratio`, `vias`, `layer_changes`), and for each net with a defect, the most first, its own-net crossings (two straight tracks of the net on one layer whose centre lines cross away from their ends: a loop), its duplicate ways (a second way between the same two places, as `routes tidy` finds it), its unneeded copper (each track and via that ends in nothing, a dead stub or branch or a dangling via, a nudge from a pad's or a via's centre to a point still inside it, and a track inside or overlapping another of its net and layer), its short tracks (straight tracks shorter than two of their widths) and its vias side by side (two vias of the net whose copper is no more than the group gap apart, the process's least clearance or the board's `.process.via_group_gap`, each via taken once, a group no larger than the net's current needs left out), of the nets no zone pours; `board drc` notes the totals. In JSON it is `quality`, with `totals` and `nets` (each with `net`, `crossings`, `duplicates`, `unneeded`, `short`, `via_pairs`), the `limits` it is judged by and the kinds `over` them (each with `kind`, `count`, `limit`). After the objective, the `routing:` line (issue #1629): the tracks of the nets no zone pours, the connections left to route, the track drops over budget and the errors of the design rules check as `board drc` counts them, the connections left out (`tracks`, `connections_left`, `drops_over` and `findings` in `quality`). With `--compare FILE` each row a routing round is judged by (the signal length, short tracks, layer changes, via pairs, vias, tracks, connections left, track drops over budget and design rules errors, each read from the `quality` section, so no number is said twice) is printed before, after and with its change; the earlier state is the JSON of an earlier `board nets --format json` run (a `.json` file; a row it lacks is `-`) or a routes file, measured as the board is with it in place of the routes file beside the source (the kept copper as now, never routed). In JSON it is `compare`, with `against`, `tolerance` and `rows` (each with `row`, `before`, `after`, `change`, `worse`). With `--power-stage` (issue #1585) it prints, instead of all that, each switching regulator's power stage: a regulator is a part that provides the standard library's `BuckIc`, its VIN, ground, switch node and feedback the pins `vin.pos`, `vin.neg`, `sw.pos` and `fb`; each input capacitor (a capacitor between VIN and ground), nearest first, with the distance from its VIN pad and from its ground pad to the IC's nearest pad of each, centre to centre, and the routed length and vias of the shortest way through the tracks between them (`no track` where a pour or a plane carries the net, or it is open); each capacitor on another pin of the IC (a boot capacitor, whose other pad is on the switch node; an internal supply's) with the same from the pin; the feedback net's routed length and vias; and each via and track of another net within the process's `.switch_node_keepout` (1 mm unless stated) of the switch node or under the IC's body, with no plane between, which `board drc` notes as `switch_node_copper`. In JSON it is `board` and `power_stages`, each with `regulator`, `path`, `vin`, `gnd`, `sw`, `keepout`, `input_caps` (`cap`, `vin` and `gnd`, each with `from`, `to`, `distance`, `routed`, `vias`), `support` (`pin`, `net`, `cap`, `boot`, `leg`), `feedback` (`net`, `length`, `vias`) and `foreign` (`kind`, `net`, `layer`, `at`, `gap`, `under_body`). The exit code is 0 when it is printed (a pair over its skew too: `board drc` is the check), 1 when the board does not build, place or route, or with `--gate` when a total is over its limit (0 of each, or the `--max-<kind>` flag's: `--max-crossings`, `--max-duplicates`, `--max-unneeded`, `--max-short`, `--max-via-pairs`), each kind over said on stderr, or with `--gate` and `--compare` when a row is more than before by over `--tolerance` percent of before (0 by default), each row worse said on stderr, and 2 when the command cannot run."
 )]
 pub struct Args {
     /// The source file; with none, the project's boards.
@@ -41,7 +41,7 @@ pub struct Args {
     /// Print each switching regulator's power stage instead of the table: its input
     /// capacitors' loop, its support capacitors' routes, its feedback route and the copper of
     /// other nets near its switch node.
-    #[arg(long, conflicts_with_all = ["lengths", "gate", "currents"])]
+    #[arg(long, conflicts_with_all = ["lengths", "gate", "currents", "compare"])]
     pub power_stage: bool,
     /// Route the board first, from the routes file's and the kept copper, as `board fab
     /// --reuse-routes` does.
@@ -57,6 +57,12 @@ pub struct Args {
     /// Fail (exit code 1) when a count of the quality section is over its limit.
     #[arg(long)]
     pub gate: bool,
+    /// Compare the quality rows with an earlier state: a routes file, or a JSON run's output.
+    #[arg(long, value_name = "FILE")]
+    pub compare: Option<String>,
+    /// How much worse than before, in percent, a compared row may be under `--gate` (default 0).
+    #[arg(long, value_name = "PCT", requires = "compare")]
+    pub tolerance: Option<f64>,
     /// The most own-net crossings `--gate` allows (default 0).
     #[arg(long, value_name = "N", requires = "gate")]
     pub max_crossings: Option<usize>,
@@ -91,15 +97,41 @@ pub fn run(args: Args) -> ExitCode {
             |placed| {
                 placed.with_board(|built, board| {
                     let label = built.label();
+                    let layout = placed.layout_of(built).file.clone();
+                    let placed_board = board;
                     let mut board = board.clone();
                     let say = |line: String| eprintln!("{label}: {line}");
-                    pcb_picture::put_copper(
-                        &mut board,
-                        &placed.layout_of(built).file,
-                        route.as_ref(),
-                        &say,
-                    )
-                    .map_err(|e| format!("error: {label}: {e}\n"))?;
+                    pcb_picture::put_copper(&mut board, &layout, route.as_ref(), &say)
+                        .map_err(|e| format!("error: {label}: {e}\n"))?;
+                    // The table, the quality section with its rows and the track drops of a
+                    // board's copper (issue #1629: the rows' design rules check is `board
+                    // drc`'s).
+                    let measure = |board: &netsmith_pcb::Board| {
+                        let fail = |e: String| format!("error: {label}: {e}\n");
+                        let table = netsmith_fabricate::net_table::of_board(board).map_err(fail)?;
+                        let drops =
+                            netsmith_fabricate::track_drop::drops_of(board, &built.trace.model);
+                        let constraints = netsmith_pipeline::constraints::of_design(
+                            &built.design,
+                            placed.catalogs.constraints_warn(),
+                        );
+                        let checked = netsmith_fabricate::drc::of_board(
+                            board,
+                            constraints,
+                            placed.catalogs.strict_guidelines(),
+                        )
+                        .map_err(fail)?;
+                        let counts = checked.report.counts();
+                        let routing = Routing::of_board(
+                            board,
+                            drops.iter().filter(|d| d.over).count(),
+                            (counts.violations + counts.footprint_errors) as usize,
+                        );
+                        let quality = Quality::of_board(board)
+                            .with_objective(&table)
+                            .with_routing(routing);
+                        Ok::<_, String>((table, quality, drops))
+                    };
                     // The power stage of each switching regulator (issue #1585).
                     let stages = if args.power_stage {
                         netsmith_fabricate::power_stage::of_board(&board)
@@ -107,19 +139,28 @@ pub fn run(args: Args) -> ExitCode {
                     } else {
                         Vec::new()
                     };
-                    let mut table = netsmith_fabricate::net_table::of_board(&board)
-                        .map_err(|e| format!("error: {label}: {e}\n"))?;
+                    // The track-drop guideline of `fab`, on the copper the board has (issue
+                    // #1540).
+                    let (mut table, quality, drops) = measure(&board)?;
+                    // The earlier state's quality section (issue #1629): the JSON of an earlier
+                    // run, or the board with another routes file, measured as it stands.
+                    let before = match &args.compare {
+                        None => None,
+                        Some(file) => Some(before_of(file, &|routes| {
+                            let mut earlier = placed_board.clone();
+                            let say = |line: String| eprintln!("{label}: {file}: {line}");
+                            pcb_picture::put_copper_from(&mut earlier, &layout, routes, None, &say)
+                                .map_err(|e| format!("error: {label}: {e}\n"))?;
+                            let (_, quality, _) = measure(&earlier)?;
+                            Ok(serde_json::to_value(&quality).expect("plain data"))
+                        })?),
+                    };
                     if args.lengths {
                         table.by_length();
                     }
-                    table.board = label;
-                    let quality = Quality::of_board(&board).with_objective(&table);
-                    // The track-drop guideline of `fab`, on the copper the board has (issue
-                    // #1540).
-                    let drops =
-                        netsmith_fabricate::track_drop::drops_of(&board, &built.trace.model);
+                    table.board = label.clone();
                     let currents = netsmith_fabricate::net_currents::of_board(&board);
-                    Ok((table, quality, drops, currents, stages))
+                    Ok((table, quality, drops, currents, stages, before))
                 })?
             },
         )
@@ -132,7 +173,7 @@ pub fn run(args: Args) -> ExitCode {
         via_pairs: args.max_via_pairs.unwrap_or(Counts::LIMITS.via_pairs),
     };
     match made {
-        Ok((table, quality, drops, currents, stages)) => {
+        Ok((table, quality, drops, currents, stages, before)) => {
             if args.power_stage {
                 match args.format {
                     common::Format::Json => {
@@ -157,6 +198,10 @@ pub fn run(args: Args) -> ExitCode {
                 return ExitCode::SUCCESS;
             }
             let over = quality.over(&limits);
+            let compared = before.map(|(file, before)| {
+                let after = serde_json::to_value(&quality).expect("plain data");
+                Compared::of(file, &before, &after, args.tolerance.unwrap_or(0.0))
+            });
             match args.format {
                 common::Format::Json => {
                     let mut out = serde_json::to_value(&table).expect("plain data");
@@ -167,6 +212,9 @@ pub fn run(args: Args) -> ExitCode {
                     out["track_drops"] = serde_json::to_value(&drops).expect("plain data");
                     if args.currents {
                         out["currents"] = serde_json::to_value(&currents).expect("plain data");
+                    }
+                    if let Some(c) = &compared {
+                        out["compare"] = serde_json::to_value(c).expect("plain data");
                     }
                     if let Err(e) = args.framing.print(
                         &out,
@@ -193,14 +241,23 @@ pub fn run(args: Args) -> ExitCode {
                         print!("{}", netsmith_fabricate::net_currents::text(&currents));
                     }
                     print!("{}", quality.text());
+                    if let Some(c) = &compared {
+                        print!("{}", c.text());
+                    }
                 }
             }
-            if args.gate && !over.is_empty() {
+            let worse: Vec<_> = compared.iter().flat_map(Compared::worse).collect();
+            if args.gate && (!over.is_empty() || !worse.is_empty()) {
                 for o in &over {
                     eprintln!(
                         "{}: quality gate: {} {} over the limit of {}",
                         table.board, o.count, o.kind, o.limit
                     );
+                }
+                if let Some(c) = &compared {
+                    for w in &worse {
+                        eprintln!("{}: quality gate: {}", table.board, c.worse_line(w));
+                    }
                 }
                 return ExitCode::FAILURE;
             }
@@ -208,6 +265,31 @@ pub fn run(args: Args) -> ExitCode {
         }
         Err(code) => code,
     }
+}
+
+/// The earlier state of `--compare FILE`: the file's name and its `quality` section, read from
+/// the JSON of an earlier `board nets --format json` run (a `.json` file), or else measured by
+/// `measure` on the board with the routes file at `file`.
+fn before_of(
+    file: &str,
+    measure: &dyn Fn(&std::path::Path) -> Result<serde_json::Value, String>,
+) -> Result<(String, serde_json::Value), String> {
+    let path = std::path::Path::new(file);
+    if !path.is_file() {
+        return Err(format!("error: --compare {file}: no such file\n"));
+    }
+    if path.extension().is_some_and(|e| e == "json") {
+        let text = std::fs::read_to_string(path).map_err(|e| format!("error: {file}: {e}\n"))?;
+        let doc: serde_json::Value =
+            serde_json::from_str(&text).map_err(|e| format!("error: {file}: {e}\n"))?;
+        return match doc.get("quality") {
+            Some(q) => Ok((file.to_string(), q.clone())),
+            None => Err(format!(
+                "error: {file}: no `quality` section: give the JSON of `board nets --format json`, or a routes file\n"
+            )),
+        };
+    }
+    Ok((file.to_string(), measure(path)?))
 }
 
 #[cfg(test)]
@@ -275,6 +357,23 @@ mod tests {
             ),
             (Some(1), Some(2), Some(3), Some(4), Some(5))
         );
+        let Ok(Leaf::Nets(a)) = parse(&[
+            "board",
+            "nets",
+            "--compare",
+            "before.routes.toml",
+            "--tolerance",
+            "2.5",
+        ]) else {
+            panic!("nets should parse");
+        };
+        assert_eq!(
+            (a.compare.as_deref(), a.tolerance),
+            (Some("before.routes.toml"), Some(2.5))
+        );
+        // A tolerance is for the comparison, which is of the table's rows.
+        assert!(parse(&["board", "nets", "--tolerance", "2"]).is_err());
+        assert!(parse(&["board", "nets", "--compare", "a.json", "--power-stage"]).is_err());
         // A limit is for the gate.
         assert!(parse(&["board", "nets", "--max-short", "3"]).is_err());
         // A timeout is for the router.
