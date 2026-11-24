@@ -48,6 +48,10 @@ _Avoid_: designator map, `designators.toml` (the map of the fab board's designat
 A role that an interface has no `lines` for, such as `UsbRole::Passthrough`, which a receptacle (`std::parts::connector::UsbC2`) states: the bus goes through the part, so it is not an end of the bus and the role is the one of the end behind it. It has no table to judge, counts toward no limit, satisfies the `bus role` guideline, and the guideline and the note name the end behind it that states no role, never the pass-through (ADR 0064, section 10). A **Role** that is an end of the bus has `lines`.
 _Avoid_: Transparent end, bypass, receptacle role, none (there is no role `none`)
 
+**Patch**:
+A zone of the routes file of the net of a pour or plane on its layer that says `patch = true` (`routes add-zone --patch`, issue #1608): the pour is kept, and the zone's settings (its pad connection, clearance and thermal relief) hold inside its outline alone, such as one pad joined solid in a pour with thermal reliefs. A zone of that net without the mark replaces the pour on its layer.
+_Avoid_: Override zone, overlay
+
 **Peak current**:
 The most current one load draws at an instant, transients included: the `.peak_current` of a `Rail`, such as the inrush of a capacitor charged through a resistor. `.current` is the steady range, and the DC analysis never reads the peak, so it enters no balance or power. Each rail has its own (`~` does not share it), and it is checked against the rail's `.max_peak_current`, what the source gives at an instant, which a regulator states and joined rails share (issue #750). A load that states `.burst` draws it for that long at a stretch, and its `.current` is its average; see _Burst_.
 _Avoid_: Inrush current (the inrush is one cause; the peak is the number), surge current

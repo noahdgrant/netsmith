@@ -184,7 +184,7 @@ impl CopperAreas {
             let patches = net.as_deref().is_some_and(|n| {
                 zones
                     .iter()
-                    .any(|z| z.patch && z.net == n && z.layers.iter().any(|l| *l == layer))
+                    .any(|z| z.patch && z.net == n && z.layers.contains(&layer))
             });
             let zones = on(&layer, None);
             // A zone of the layer's own net restates its pour or plane, unless it is a patch of it
