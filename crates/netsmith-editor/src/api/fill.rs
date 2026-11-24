@@ -6,9 +6,10 @@
 //! has it placed (and routed), as the Gerbers fill them, and answers for each fill the pads of
 //! its net and how each is joined (`solid`, `thermal` with the spokes that reach the fill, or
 //! `none`), the counts, the pads of other nets it keeps clear of, its copper islands kept and
-//! removed (a removed island with its outline, which the 2D view draws, issue #1188), and the
-//! starved thermal reliefs of the board. The places are in mm in the frame of the board file, y
-//! down; `outlineAt` is the outline's top left corner there. `404` for a board that is not
+//! removed (a removed island with its outline, which the 2D view draws, issue #1188), the
+//! starved thermal reliefs of the board, and the ground pads of its switching regulators that a
+//! fill does not join solid (issue #1586). The places are in mm in the frame of the board file,
+//! y down; `outlineAt` is the outline's top left corner there. `404` for a board that is not
 //! there; a board that cannot be filled is a `500` with the reason.
 
 use serde::{Deserialize, Serialize};
@@ -129,6 +130,32 @@ pub struct FillUnjoinable {
     pub why: String,
 }
 
+/// A switching regulator's ground pad that a fill of its net holds and does not join with solid
+/// copper (issue #1586), a warning of `board fill`: `netsmith_pcb::RegulatorGround`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct FillRegulatorGround {
+    /// The regulator IC's path in the design (`reg.ic`).
+    pub path: String,
+    pub layer: String,
+    pub net: String,
+    pub part: String,
+    pub pad: String,
+    pub at: FillAt,
+    /// `thermal` or `none` (or `solid` where the fill does not reach it).
+    pub join: String,
+    /// Of a thermal relief: its spokes, and how many of them reach the fill.
+    #[serde(default)]
+    pub spokes: Option<u32>,
+    #[serde(default)]
+    pub joined_spokes: Option<u32>,
+    /// Whether it is also a starved thermal relief.
+    pub starved: bool,
+    /// The path of the pin that states the pad's connection, when one does (`reg.ic.vin.neg`).
+    #[serde(default)]
+    pub stated_by: Option<String>,
+}
+
 /// How the fill of the board's pours joins its pads.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -148,4 +175,7 @@ pub struct PcbFill {
     /// starved ones.
     #[serde(default)]
     pub unjoinable: Vec<FillUnjoinable>,
+    /// The switching regulators' ground pads a fill holds and does not join solid.
+    #[serde(default)]
+    pub regulator_grounds: Vec<FillRegulatorGround>,
 }
