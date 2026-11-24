@@ -869,6 +869,26 @@ impl Report {
     }
 }
 
+impl Report {
+    /// The report with every place it prints moved by `by` (mm): a finding's `at` and its
+    /// items', the waived findings'. The check judges in the board file's frame; `by` is minus
+    /// the outline's corner for the outline's (`board drc --frame outline`).
+    pub fn moved(&self, by: Pt) -> Report {
+        let mut report = self.clone();
+        for finding in report
+            .findings
+            .iter_mut()
+            .chain(report.waived.iter_mut().map(|w| &mut w.finding))
+        {
+            finding.at = finding.at + by;
+            for item in &mut finding.items {
+                item.at = item.at + by;
+            }
+        }
+        report
+    }
+}
+
 impl std::fmt::Display for Report {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for finding in &self.findings {

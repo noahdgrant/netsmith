@@ -82,9 +82,6 @@ pub struct Args {
 }
 
 pub fn run(args: Args) -> ExitCode {
-    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
-        return crate::frame::refused(&e);
-    }
     let route = super::pcb::route_of(args.route, args.route_timeout);
     let made = common::with_stage_events(|| {
         common::with_placed_board(
@@ -182,7 +179,15 @@ pub fn run(args: Args) -> ExitCode {
                 }
                 common::Format::Text => {
                     println!("{}:", table.board);
-                    print!("{}", table.text());
+                    let moved = args.framing.moved(
+                        crate::frame::Frame::BoardFile,
+                        Some(crate::frame::design_corner()),
+                    );
+                    let (_, dx, dy) = match moved {
+                        Ok(moved) => moved,
+                        Err(e) => return crate::frame::refused(&e),
+                    };
+                    print!("{}", table.text_moved((dx, dy)));
                     print!("{}", netsmith_fabricate::track_drop::text(&drops));
                     if args.currents {
                         print!("{}", netsmith_fabricate::net_currents::text(&currents));

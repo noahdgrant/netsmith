@@ -530,7 +530,10 @@ pub fn run(args: Args) -> ExitCode {
 /// `routes tidy` (issue #1192): `netsmith_fabricate::routes_tidy::tidy_files` of the target's
 /// board; exit 0 when the pass ran, 2 when it could not.
 fn tidy(args: &TidyArgs) -> ExitCode {
-    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+    if let Err(e) = args
+        .framing
+        .for_text(args.format == common::Format::Json, "routes tidy")
+    {
         return crate::frame::refused(&e);
     }
     // As `fab`: with `--format json` the progress is printed only when it is asked for as JSON
@@ -656,9 +659,6 @@ fn with_board<T>(
 }
 
 fn show(args: &ShowArgs) -> ExitCode {
-    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
-        return crate::frame::refused(&e);
-    }
     let shown = with_board(&args.target, |layout, board| {
         lib::show(board, &lib::load(&routes_file(layout))?)
     });
@@ -675,7 +675,16 @@ fn show(args: &ShowArgs) -> ExitCode {
                         return crate::frame::refused(&e);
                     }
                 }
-                common::Format::Text => print!("{}", shown.text()),
+                common::Format::Text => {
+                    let (_, dx, dy) = match args.framing.moved(
+                        crate::frame::Frame::Outline,
+                        Some(crate::frame::design_corner()),
+                    ) {
+                        Ok(moved) => moved,
+                        Err(e) => return crate::frame::refused(&e),
+                    };
+                    print!("{}", shown.text_moved([dx, dy]));
+                }
             }
             ExitCode::SUCCESS
         }
@@ -724,7 +733,10 @@ fn edit_all(target: &Target, changes: impl Fn(&Board) -> Vec<lib::Edit>) -> Exit
 /// `routes add SHAPES` (issue #1472, `netsmith_fabricate::routes::batch`): exit 0 when every
 /// shape was made, 1 when one was refused, 2 when it could not run.
 fn add(args: &AddArgs) -> ExitCode {
-    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+    if let Err(e) = args
+        .framing
+        .for_text(args.format == common::Format::Json, "routes add")
+    {
         return crate::frame::refused(&e);
     }
     use netsmith_fabricate::routes::batch;
@@ -810,7 +822,10 @@ fn add(args: &AddArgs) -> ExitCode {
 /// (or would be, with `--dry-run`) or joined already, 1 when it is refused, 2 when it could not
 /// be tried.
 fn route(args: &RouteArgs) -> ExitCode {
-    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+    if let Err(e) = args
+        .framing
+        .for_text(args.format == common::Format::Json, "routes route")
+    {
         return crate::frame::refused(&e);
     }
     use netsmith_fabricate::route_net;
@@ -907,7 +922,10 @@ fn route(args: &RouteArgs) -> ExitCode {
 /// (or would be, with `--dry-run`) or was joined already, 1 when it is refused, 2 when it could
 /// not be tried.
 fn join_pad(args: &JoinPadArgs) -> ExitCode {
-    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+    if let Err(e) = args
+        .framing
+        .for_text(args.format == common::Format::Json, "routes join-pad")
+    {
         return crate::frame::refused(&e);
     }
     use netsmith_fabricate::join_pad;
@@ -994,7 +1012,10 @@ fn zones_said(import: &routes_import::Import) -> String {
 }
 
 fn import(args: &ImportArgs) -> ExitCode {
-    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+    if let Err(e) = args
+        .framing
+        .for_text(args.format == common::Format::Json, "routes import")
+    {
         return crate::frame::refused(&e);
     }
     let pcb = match fs::read_to_string(&args.pcb) {

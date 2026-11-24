@@ -168,10 +168,16 @@ impl Entry {
     }
 
     fn text(&self) -> String {
+        self.text_moved([0.0, 0.0])
+    }
+
+    /// The entry as text with its place moved by `by`, mm (the designator's `at` is an offset
+    /// from the footprint's origin: it does not move).
+    fn text_moved(&self, by: [f64; 2]) -> String {
         format!(
             "at {}, {} mm  turn {}  {}{}{}{}{}",
-            number(self.at[0]),
-            number(self.at[1]),
+            number(self.at[0] + by[0]),
+            number(self.at[1] + by[1]),
             number(self.turn),
             self.side,
             if self.lock { "  locked" } else { "" },
@@ -217,6 +223,11 @@ pub struct Shown {
 impl Shown {
     /// For a person: a line for each part.
     pub fn text(&self) -> String {
+        self.text_moved([0.0, 0.0])
+    }
+
+    /// [`Shown::text`] with the places moved by `by`, mm (into another frame than the file's).
+    pub fn text_moved(&self, by: [f64; 2]) -> String {
         let width = self
             .parts
             .iter()
@@ -232,7 +243,7 @@ impl Shown {
         for part in &self.parts {
             let name = format!("{} ({})", part.path, part.refdes);
             let what = match &part.entry {
-                Some(e) => e.text(),
+                Some(e) => e.text_moved(by),
                 None => "no entry: the placer places it".to_string(),
             };
             out.push_str(&format!("{name:width$}  {what}\n"));

@@ -476,9 +476,16 @@ impl FillReport {
     /// The report as text for a person: each fill with its counts, its pads, the pads it clears
     /// and its islands, then the counts of the board and the starved reliefs.
     pub fn text(&self) -> String {
-        let at = |p: Pt| format!("({:.3}, {:.3})", p.x, p.y);
+        self.text_moved(Pt::new(0.0, 0.0), "board file")
+    }
+
+    /// [`FillReport::text`] with its places moved by `by`, mm, and the frame they are then in
+    /// named `frame` (`outline`): the report's are in the board file's, and minus the outline's
+    /// corner [`FillReport::outline_at`] is the outline's.
+    pub fn text_moved(&self, by: Pt, frame: &str) -> String {
+        let at = |p: Pt| format!("({:.3}, {:.3})", p.x + by.x, p.y + by.y);
         let mut out = format!(
-            "{}: the fill of {} pour(s), plane(s) and zone(s), as the Gerbers hold it (places in mm in the board file's frame; the outline's top left corner is at {})\n",
+            "{}: the fill of {} pour(s), plane(s) and zone(s), as the Gerbers hold it (places in mm in the {frame}'s frame; the outline's top left corner is at {})\n",
             self.board,
             self.fills.len(),
             at(self.outline_at)

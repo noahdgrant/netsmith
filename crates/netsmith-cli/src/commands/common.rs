@@ -195,7 +195,7 @@ fn say_on_stderr(line: &str) {
     crate::progress::tell(line);
 }
 
-/// `--format` and `--notes`, of `build`, `check` and `fab`.
+/// `--format`, `--notes` and `--frame`, of `build`, `check` and `fab`.
 #[derive(Debug, PartialEq, ClapArgs)]
 pub struct Output {
     /// Text for a person, or one JSON document on stdout.
@@ -219,6 +219,8 @@ pub struct Output {
     /// always there.
     #[arg(long, value_enum, default_value = "all")]
     pub notes: Notes,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 /// `--format`.
@@ -773,6 +775,7 @@ pub(crate) mod testing {
         common::Output {
             format: common::Format::Text,
             notes: common::Notes::All,
+            framing: Default::default(),
         }
     }
 }

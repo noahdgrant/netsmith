@@ -37,6 +37,7 @@ pub fn run(args: Args) -> ExitCode {
         emit_solved: None,
         portable: false,
         explain: None,
+        framing: args.output.framing,
     })
 }
 
