@@ -51,7 +51,7 @@
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
-use crate::{Board, PadRef, Pt, Track};
+use crate::{Board, CopperLayer, PadRef, Pt, Track};
 
 /// The resistivity of annealed copper at 20 °C, in ohm millimetres (1.72e-8 ohm metres: the
 /// International Annealed Copper Standard, 100 % IACS).
@@ -64,6 +64,10 @@ pub const DEFAULT_DROP_BUDGET: f64 = 0.01;
 /// How near two ends of copper must be to be one place, in mm.
 const JOIN: f64 = 1e-3;
 
+/// How near its budget a net's drop must be for its path to be listed piece by piece: half of
+/// it (issue #1610). A choice of this tool's: a net far within its budget needs no widening.
+pub const NEAR_DROP_BUDGET: f64 = 0.5;
+
 /// One run of a [`TrackDrop`]'s path: a length of track at one width, and the current it
 /// carries.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -74,6 +78,17 @@ pub struct DropRun {
     pub width: f64,
     /// In amperes: what the pins past it draw, at most the net's current.
     pub current: f64,
+    /// Where the run starts and ends, from the source towards the load (issue #1610).
+    pub from: Pt,
+    pub to: Pt,
+    /// The run's track and its layer: an index into the tracks the path was measured from (for
+    /// [`Board::track_drops`], into [`Board::tracks`]), and its drawn width in mm, which differs
+    /// from `width` on an inner layer.
+    pub track: Option<usize>,
+    pub layer: Option<CopperLayer>,
+    pub drawn: f64,
+    /// The via the path changes layer in before this run, if it does: its place.
+    pub via_before: Option<Pt>,
 }
 
 impl DropRun {
@@ -139,6 +154,136 @@ impl TrackDrop {
         (1..=5000)
             .map(|k| k as f64 / 100.0)
             .find(|&w| self.drop_at(w) <= volts * (1.0 + 1e-9))
+    }
+
+    /// The pieces of the path (issue #1610): each track (the runs of one track next to each
+    /// other on the path taken together) and each via, from the source to the load, with what
+    /// each drops and, when the path drops more than `volts`, the drawn width each track needs
+    /// so that it drops no more: [`TrackDrop::width_for`], the one width every narrower run is
+    /// widened to, in the drawn copper of the track's layer. A via drops nothing here (the
+    /// header of this module says why). [`DropPiece::worst_first`] orders them by their drop.
+    pub fn pieces(&self, volts: f64) -> Vec<DropPiece> {
+        let floor = if self.drop() > volts * (1.0 + 1e-9) {
+            self.width_for(volts)
+        } else {
+            None
+        };
+        let mut pieces: Vec<DropPiece> = Vec::new();
+        for r in &self.runs {
+            if let Some(at) = r.via_before {
+                pieces.push(DropPiece {
+                    step: pieces.len(),
+                    via: Some(at),
+                    track: None,
+                    layer: None,
+                    from: at,
+                    to: at,
+                    length: 0.0,
+                    width: 0.0,
+                    current: r.current,
+                    drop: 0.0,
+                    needs: None,
+                    unreachable: false,
+                });
+            }
+            let drop = if self.thickness > 0.0 {
+                r.current * r.ohms(r.width, self.thickness)
+            } else {
+                0.0
+            };
+            let scale = if r.width > 0.0 {
+                r.drawn / r.width
+            } else {
+                1.0
+            };
+            if let Some(last) = pieces.last_mut()
+                && last.via.is_none()
+                && last.track.is_some()
+                && last.track == r.track
+            {
+                last.to = r.to;
+                last.length += r.length;
+                last.current = last.current.max(r.current);
+                last.drop += drop;
+                continue;
+            }
+            let (needs, unreachable) = match (floor, self.drop() > volts * (1.0 + 1e-9)) {
+                (Some(w), _) if r.width < w - 1e-9 => (Some(round_up(w * scale)), false),
+                (None, true) => (None, true),
+                _ => (None, false),
+            };
+            pieces.push(DropPiece {
+                step: pieces.len(),
+                via: None,
+                track: r.track,
+                layer: r.layer,
+                from: r.from,
+                to: r.to,
+                length: r.length,
+                width: r.drawn,
+                current: r.current,
+                drop,
+                needs,
+                unreachable,
+            });
+        }
+        pieces
+    }
+}
+
+/// A width rounded up to the next 0.01 mm, as [`TrackDrop::width_for`] steps.
+fn round_up(w: f64) -> f64 {
+    (w * 100.0 - 1e-6).ceil() / 100.0
+}
+
+/// One piece of a [`TrackDrop`]'s path (issue #1610): a track, or a via the path changes layer
+/// in, with its share of the drop and the width it needs. What `board nets` and `board drc` list
+/// for a net near its budget, and what a tool that widens the path reads.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct DropPiece {
+    /// Its place on the path, from the source: 0 is the first.
+    pub step: usize,
+    /// A via's place, for a via; `None` for a track.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub via: Option<Pt>,
+    /// The track: its index in the tracks the path was measured from (for
+    /// [`Board::track_drops`], into [`Board::tracks`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub track: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none", serialize_with = "layer_name")]
+    pub layer: Option<CopperLayer>,
+    /// Where it starts and ends, from the source towards the load, in the board's frame.
+    pub from: Pt,
+    pub to: Pt,
+    /// In mm, drawn: on an inner layer, the width of the inner copper.
+    pub length: f64,
+    pub width: f64,
+    /// The most current it carries, in amperes.
+    pub current: f64,
+    /// What it drops, in volts.
+    pub drop: f64,
+    /// The drawn width in mm it needs for the path to drop no more than the budget, when it is
+    /// narrower than that and the path is over: `None` for a piece wide enough, or a path within.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub needs: Option<f64>,
+    /// Whether no width up to 50 mm brings the path within the budget.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub unreachable: bool,
+}
+
+fn layer_name<S: serde::Serializer>(l: &Option<CopperLayer>, s: S) -> Result<S::Ok, S::Error> {
+    match l {
+        Some(l) => s.serialize_str(l.name()),
+        None => s.serialize_none(),
+    }
+}
+
+impl DropPiece {
+    /// The pieces in the order of their drop, the most first, and by their place on the path
+    /// where two drop the same.
+    pub fn worst_first(mut pieces: Vec<DropPiece>) -> Vec<DropPiece> {
+        pieces.sort_by(|a, b| b.drop.total_cmp(&a.drop).then(a.step.cmp(&b.step)));
+        pieces
     }
 }
 
@@ -218,9 +363,11 @@ pub fn net_drop(
         .iter()
         .map(|t| (place(t.from), place(t.to)))
         .collect();
-    // An edge: two places, its length and width (a run of track), or a join with none.
+    // An edge: two places, its length and width (a run of track), or a join with none; and
+    // what it is, a run of the track of that index, a via at that place or a pad's copper.
     let mut edges: Vec<(usize, usize, f64, f64)> = Vec::new();
-    for (t, &(a, b)) in tracks.iter().zip(&ends) {
+    let mut kinds: Vec<Edge> = Vec::new();
+    for (n, (t, &(a, b))) in tracks.iter().zip(&ends).enumerate() {
         // A straight track that another track ends on part way along is split there, so that a
         // branch joins it where it leaves it.
         let mut stops: Vec<(f64, usize)> = vec![(0.0, a), (t.length(), b)];
@@ -235,6 +382,7 @@ pub fn net_drop(
         stops.sort_by(|x, y| x.0.total_cmp(&y.0));
         for w in stops.windows(2) {
             edges.push((w[0].1, w[1].1, w[1].0 - w[0].0, t.width));
+            kinds.push(Edge::Track(n));
         }
     }
     // A via joins the ends of copper in it; each pad is a place of its own, joined to the ends
@@ -246,6 +394,7 @@ pub fn net_drop(
             .collect();
         for w in ins.windows(2) {
             edges.push((w[0], w[1], 0.0, 0.0));
+            kinds.push(Edge::Via);
         }
     }
     let mut pad_places = Vec::new();
@@ -262,6 +411,7 @@ pub fn net_drop(
                 && q.y <= p.max.y + JOIN
             {
                 edges.push((at, i, 0.0, 0.0));
+                kinds.push(Edge::Pad);
             }
         }
         pad_places.push(at);
@@ -358,27 +508,46 @@ pub fn net_drop(
                 continue;
             }
             // The path back to the source, each run at what the place past it passes on.
-            let mut runs = Vec::new();
+            let mut runs: Vec<DropRun> = Vec::new();
             let mut volts = 0.0;
             let mut at = end;
             while let Some(k) = came[at] {
                 let (length, width) = (edges[k].2, edges[k].3);
-                if width > 0.0 {
-                    let amps = load[at].min(current);
-                    volts += amps * ohms((length, width));
-                    runs.push(DropRun {
-                        length,
-                        width,
-                        current: amps,
-                    });
+                let back = other(k, at);
+                match kinds[k] {
+                    Edge::Track(t) if width > 0.0 => {
+                        let amps = load[at].min(current);
+                        volts += amps * ohms((length, width));
+                        runs.push(DropRun {
+                            length,
+                            width,
+                            current: amps,
+                            from: places[back],
+                            to: places[at],
+                            track: Some(t),
+                            layer: Some(tracks[t].layer),
+                            drawn: width,
+                            via_before: None,
+                        });
+                    }
+                    _ => {}
                 }
-                at = other(k, at);
+                at = back;
             }
             // Two pads joined through a track, not only through each other's copper.
             if runs.is_empty() {
                 continue;
             }
             runs.reverse();
+            // A via the path changes layer in, between two runs on two layers.
+            for i in 1..runs.len() {
+                if runs[i - 1].layer != runs[i].layer {
+                    runs[i].via_before = vias
+                        .iter()
+                        .copied()
+                        .find(|v| v.distance(runs[i].from) <= JOIN);
+                }
+            }
             if worst.as_ref().is_none_or(|w| volts > w.0 + 1e-15) {
                 worst = Some((volts, n, m, runs));
             }
@@ -396,6 +565,14 @@ pub fn net_drop(
         runs,
         thickness,
     })
+}
+
+/// What an edge of [`net_drop`]'s graph is.
+#[derive(Clone, Copy)]
+enum Edge {
+    Track(usize),
+    Via,
+    Pad,
 }
 
 impl Board {
@@ -422,7 +599,10 @@ impl Board {
                 .inner
                 .as_ref()
                 .map_or(thickness, |i| i.copper);
-            let mine: Vec<&Track> = self.tracks.iter().filter(|t| t.net == c.net).collect();
+            let index: Vec<usize> = (0..self.tracks.len())
+                .filter(|&i| self.tracks[i].net == c.net)
+                .collect();
+            let mine: Vec<&Track> = index.iter().map(|&i| &self.tracks[i]).collect();
             let owned = in_outer_copper(&mine, thickness, inner);
             let tracks: Vec<&Track> = owned.iter().collect();
             if tracks.is_empty() {
@@ -450,9 +630,18 @@ impl Board {
                     });
                 }
             }
-            drops.extend(net_drop(
-                &c.net, c.current, &tracks, &vias, &pads, thickness,
-            ));
+            drops.extend(
+                net_drop(&c.net, c.current, &tracks, &vias, &pads, thickness).map(|mut d| {
+                    // The runs name the board's tracks, at their drawn widths.
+                    for r in &mut d.runs {
+                        if let Some(t) = r.track {
+                            r.track = Some(index[t]);
+                            r.drawn = self.tracks[index[t]].width;
+                        }
+                    }
+                    d
+                }),
+            );
         }
         drops
     }

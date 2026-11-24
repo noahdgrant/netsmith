@@ -11,7 +11,7 @@
 //! to state its own is a language choice left to the owner. A net whose rail has no known
 //! voltage, or whose current is not known, is not checked.
 
-use netsmith_pcb::{Board, DEFAULT_DROP_BUDGET, TrackDrop};
+use netsmith_pcb::{Board, DEFAULT_DROP_BUDGET, DropPiece, NEAR_DROP_BUDGET, TrackDrop};
 
 /// The rule's name, as a guideline's message names it: `Board: track drop guideline: ...`.
 pub const RULE: &str = "track drop";
@@ -46,6 +46,11 @@ pub struct NetDrop {
     /// width does. Left out of the JSON for a net within it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub width_for: Option<f64>,
+    /// The pieces of the path, the one that drops most first (issue #1610), for a net at
+    /// [`NEAR_DROP_BUDGET`] of its budget or over: each track and via with its share of the drop
+    /// and the width it needs ([`TrackDrop::pieces`]). Left out of the JSON when empty.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub path: Vec<DropPiece>,
     #[serde(skip)]
     measured: TrackDrop,
 }
@@ -95,6 +100,11 @@ pub fn net_drop(d: TrackDrop, volts: f64, budget: f64) -> Option<NetDrop> {
         narrowest: d.narrowest,
         thickness: d.thickness,
         width_for: if over { d.width_for(allowed) } else { None },
+        path: if drop >= allowed * NEAR_DROP_BUDGET {
+            DropPiece::worst_first(d.pieces(allowed))
+        } else {
+            Vec::new()
+        },
         measured: d,
     })
 }
@@ -118,6 +128,46 @@ impl NetDrop {
         )
     }
 
+    /// The lines of the path's pieces (issue #1610), the one that drops most first: a track's
+    /// place, layer, width, length, current, its drop in mV and its share of the net's, and the
+    /// width it needs; a via's place. None for a net far within its budget.
+    pub fn path_lines(&self) -> Vec<String> {
+        self.path
+            .iter()
+            .map(|p| {
+                let share = if self.drop > 0.0 { p.drop / self.drop } else { 0.0 };
+                match p.via {
+                    Some(at) => format!(
+                        "#{} via at ({}, {}), {} mV",
+                        p.step + 1,
+                        number(at.x),
+                        number(at.y),
+                        sig(p.drop * 1e3)
+                    ),
+                    None => format!(
+                        "#{} track ({}, {}) to ({}, {}) on {}, {} mm wide, {} mm long, {}: {} mV ({} of the drop){}",
+                        p.step + 1,
+                        number(p.from.x),
+                        number(p.from.y),
+                        number(p.to.x),
+                        number(p.to.y),
+                        p.layer.map_or("?", |l| l.name()),
+                        number(p.width),
+                        number(p.length),
+                        amps(p.current),
+                        sig(p.drop * 1e3),
+                        percent(share),
+                        match (p.needs, p.unreachable) {
+                            (Some(w), _) => format!(", needs {} mm", number(w)),
+                            (None, true) => ", no width is enough".to_string(),
+                            _ => String::new(),
+                        },
+                    ),
+                }
+            })
+            .collect()
+    }
+
     /// The guideline's message when the drop is over the budget, as `fab` reports it.
     pub fn finding(&self) -> Option<String> {
         self.over
@@ -138,6 +188,9 @@ pub fn text(drops: &[NetDrop]) -> String {
     );
     for d in drops {
         out.push_str(&format!("  {}\n", d.line()));
+        for line in d.path_lines() {
+            out.push_str(&format!("    {line}\n"));
+        }
     }
     out
 }
@@ -261,6 +314,12 @@ mod tests {
                 length,
                 width,
                 current,
+                from: netsmith_pcb::Pt::new(0.0, 0.0),
+                to: netsmith_pcb::Pt::new(length, 0.0),
+                track: Some(0),
+                layer: Some(netsmith_pcb::CopperLayer::Front),
+                drawn: width,
+                via_before: None,
             }],
             thickness,
         }
@@ -283,6 +342,61 @@ mod tests {
         assert!(d.drop() < 0.0502 && d.drop() > 0.05, "{}", d.drop());
         assert_eq!(finding(&d, 5.0, 0.0101), None);
         assert!(finding(&d, 5.0, 0.0099).is_some());
+    }
+
+    #[test]
+    fn a_net_over_its_budget_lists_its_pieces_worst_first_in_text_and_json() {
+        use netsmith_pcb::{CopperLayer, NetPad, Pt, Track, track_drop_of};
+        // 30 mm at 0.4 mm, 10 mm at 0.09 mm, 30 mm at 0.4 mm, at 0.3 A on a 3 V rail: about
+        // 38 mV against 30 mV (issue #1610).
+        let tracks = [(0.0, 30.0, 0.4), (30.0, 40.0, 0.09), (40.0, 70.0, 0.4)].map(|(a, b, w)| {
+            Track::straight("P", CopperLayer::Front, Pt::new(a, 0.0), Pt::new(b, 0.0), w)
+        });
+        let refs: Vec<&Track> = tracks.iter().collect();
+        let pad = |r: &str, x: f64| NetPad {
+            pad: PadRef {
+                refdes: r.into(),
+                number: "1".into(),
+            },
+            min: Pt::new(x - 0.5, -0.5),
+            max: Pt::new(x + 0.5, 0.5),
+            draws: None,
+        };
+        let d = track_drop_of(
+            "P",
+            0.3,
+            &refs,
+            &[],
+            &[pad("J1", 0.0), pad("J2", 70.0)],
+            0.035,
+        )
+        .unwrap();
+        let n = net_drop(d, 3.0, 0.01).unwrap();
+        assert!(n.over);
+        let lines = n.path_lines();
+        assert_eq!(lines.len(), 3);
+        assert_eq!(
+            lines[0],
+            "#2 track (30, 0) to (40, 0) on F.Cu, 0.09 mm wide, 10 mm long, 300 mA: 16.4 mV (43% of the drop), needs 0.19 mm"
+        );
+        assert!(!lines[1].contains("needs"), "{}", lines[1]);
+        let json = serde_json::to_value(&n).unwrap();
+        let path = json["path"].as_array().unwrap();
+        assert_eq!(path[0]["track"], 1);
+        assert_eq!(path[0]["layer"], "F.Cu");
+        assert_eq!(path[0]["needs"], 0.19);
+        assert!(path[1].get("needs").is_none());
+        // Far within its budget, a net lists no path.
+        let d = track_drop_of(
+            "P",
+            0.01,
+            &refs,
+            &[],
+            &[pad("J1", 0.0), pad("J2", 70.0)],
+            0.035,
+        )
+        .unwrap();
+        assert!(net_drop(d, 3.0, 0.01).unwrap().path.is_empty());
     }
 
     #[test]

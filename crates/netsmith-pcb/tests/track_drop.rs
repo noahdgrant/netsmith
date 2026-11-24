@@ -277,3 +277,64 @@ fn a_pin_of_two_pads_draws_its_current_once() {
     let r = ohms(20.0, 1.0) + ohms(30.0, 0.2);
     assert!((d.drop() - r).abs() < 1e-12, "{d:?}");
 }
+
+#[test]
+fn the_path_lists_a_narrow_piece_first_with_its_share_and_the_width_it_needs() {
+    // 30 mm at 0.4 mm on the front, 10 mm at 0.09 mm on the back between two vias, 30 mm at
+    // 0.4 mm on the front, at 0.3 A (issue #1610).
+    let tracks = [
+        track(
+            CopperLayer::Front,
+            Pt::new(0.0, 0.0),
+            Pt::new(30.0, 0.0),
+            0.4,
+        ),
+        track(
+            CopperLayer::Back,
+            Pt::new(30.0, 0.0),
+            Pt::new(40.0, 0.0),
+            0.09,
+        ),
+        track(
+            CopperLayer::Front,
+            Pt::new(40.0, 0.0),
+            Pt::new(70.0, 0.0),
+            0.4,
+        ),
+    ];
+    let refs: Vec<&Track> = tracks.iter().collect();
+    let pads = [
+        pad("J1", "1", Pt::new(0.0, 0.0)),
+        pad("J2", "1", Pt::new(70.0, 0.0)),
+    ];
+    let vias = [Pt::new(30.0, 0.0), Pt::new(40.0, 0.0)];
+    let d = track_drop_of("P", 0.3, &refs, &vias, &pads, OZ).unwrap();
+    let narrow = 0.3 * ohms(10.0, 0.09);
+    let wide = 0.3 * ohms(30.0, 0.4);
+    assert!((d.drop() - narrow - 2.0 * wide).abs() < 1e-12);
+    // A budget of 30 mV: the narrow piece alone must drop no more than 30 mV less the rest.
+    let budget = 0.03;
+    assert!(d.drop() > budget);
+    let pieces = d.pieces(budget);
+    // In the order of the path: a track, a via, the narrow track, a via, a track.
+    let order: Vec<Option<usize>> = pieces.iter().map(|p| p.track).collect();
+    assert_eq!(order, [Some(0), None, Some(1), None, Some(2)]);
+    assert_eq!(pieces[1].via, Some(Pt::new(30.0, 0.0)));
+    assert_eq!(pieces[2].layer, Some(CopperLayer::Back));
+    let worst = netsmith_pcb::DropPiece::worst_first(pieces);
+    assert_eq!(worst[0].track, Some(1));
+    assert_eq!(worst[0].width, 0.09);
+    assert!((worst[0].drop - narrow).abs() < 1e-12);
+    assert!((worst[0].current - 0.3).abs() < 1e-12);
+    // The width that brings the net under budget, in steps of 0.01 mm: the least `w` with
+    // 0.3 A through 10 mm at `w` within what the two wide pieces leave.
+    let needs = worst[0].needs.unwrap();
+    assert!(0.3 * ohms(10.0, needs) + 2.0 * wide <= budget);
+    assert!(0.3 * ohms(10.0, needs - 0.01) + 2.0 * wide > budget);
+    assert_eq!(Some(needs), d.width_for(budget));
+    // The wide pieces are wide enough, and the vias drop nothing.
+    assert!(worst[1..].iter().all(|p| p.needs.is_none()));
+    assert!(worst[3..].iter().all(|p| p.via.is_some() && p.drop == 0.0));
+    // Within the budget nothing needs widening.
+    assert!(d.pieces(1.0).iter().all(|p| p.needs.is_none()));
+}
