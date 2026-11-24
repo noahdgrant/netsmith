@@ -3,9 +3,14 @@
 //! part of it.
 //!
 //! The net's tracks are a graph: a track is split where another track of the net ends on it (a
-//! tee) and where a via of the net stands on it, and the pieces are joined where their ends meet
-//! on one layer, at a via (on the layers it spans) and in a pad (on any layer: the length is no
-//! check of connectivity, which the design rules check makes). The
+//! tee), where a via of the net stands on it and where it passes through a pad of the net, and
+//! the pieces are joined where their ends meet on one layer, at a via (on the layers it spans)
+//! and in a pad (on any layer: the length is no check of a layer's connectivity, which the
+//! design rules check makes). Where the design rules check joins copper the graph leaves apart,
+//! a track's round end that runs into another track, a via or a pad of its net
+//! ([`netsmith_geom::copper_end_joins`], the check's own rule, issue #1582), the graph joins it
+//! too, nearest first and only where nothing else joins the two, so the length and the check
+//! agree on what is joined and a stair of tracks shorter than their width is not cut short. The
 //! **connection** is, in each part of the graph that joins two pads or more, the shortest way
 //! from its first pad to each of the others, all those ways together: for two pads the path
 //! from pad to pad, for more a tree of the branches the pads need, and the copper that lies
@@ -21,7 +26,10 @@
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BinaryHeap};
 
-use netsmith_geom::{Artwork, ArtworkPad, ArtworkVia, Pt};
+use netsmith_geom::{
+    Artwork, ArtworkPad, ArtworkVia, DrcShape, Pt, copper_end_joins as end_joins, copper_joins,
+    pad_copper,
+};
 
 use crate::net_table::Seg;
 
@@ -119,12 +127,6 @@ fn along(p: Pt, a: Pt, b: Pt) -> (f64, f64) {
     (p.dist(Pt::new(a.x + dx * t, a.y + dy * t)), t)
 }
 
-/// Whether `p` is in the copper of `pad` (its rectangle, turned with it).
-fn in_pad(pad: &ArtworkPad, p: Pt) -> bool {
-    let local = (p - pad.at).rotate(-pad.angle);
-    local.x.abs() <= pad.size.0 / 2.0 + SAME && local.y.abs() <= pad.size.1 / 2.0 + SAME
-}
-
 /// The connection of each net of `segs` with a pad on the board, by name. A net with no pad has
 /// none: its length is all its copper.
 pub(crate) fn of(art: &Artwork, segs: &[Seg]) -> BTreeMap<String, Connection> {
@@ -145,27 +147,82 @@ pub(crate) fn of(art: &Artwork, segs: &[Seg]) -> BTreeMap<String, Connection> {
         .collect()
 }
 
-fn connect(art: &Artwork, net: &str, segs: &[&Seg], pads: &[&ArtworkPad]) -> Connection {
-    let vias: Vec<&ArtworkVia> = art
-        .vias
-        .iter()
-        .filter(|v| v.net.as_deref() == Some(net))
-        .collect();
+/// What a track's end reaches by its round end alone (issue #1582).
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Target {
+    Track(usize),
+    Via(usize),
+    Pad(usize),
+}
+
+/// A join only a track's round end makes: the end `end` (0 for the start, 1 for the end) of track
+/// `from`, and what it runs into.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Reach {
+    from: usize,
+    end: usize,
+    to: Target,
+}
+
+/// The graph of a net's tracks: the pieces, and the point each end of a piece, each via and each
+/// pad is (`node[2 * e]` and `node[2 * e + 1]` the ends of piece `e`, then the vias, then the
+/// pads).
+struct Graph {
+    pieces: Vec<Seg>,
+    node: Vec<usize>,
+}
+
+/// The copper of a via, as the design rules check has it.
+fn via_copper(v: &ArtworkVia) -> [DrcShape; 1] {
+    [DrcShape::disc(v.at, v.diameter / 2.0)]
+}
+
+/// Whether the end `p` of a track is a tee on the track `s`: it lies on its copper, beside a
+/// point of its centre line that is no end of it. An end that lies on the copper only near the
+/// track's end is an end beside an end, which [`reaches`] joins where it must.
+fn tee_on(p: Pt, s: &Seg) -> bool {
+    let (d, t) = along(p, s.2, s.3);
+    let q = Pt::new(s.2.x + (s.3.x - s.2.x) * t, s.2.y + (s.3.y - s.2.y) * t);
+    d <= s.4 / 2.0 && q.dist(s.2) > SAME && q.dist(s.3) > SAME
+}
+
+/// Whether a via of `span` stands on the copper layer `layer` (an index; `None`, a layer the
+/// board does not list, is on every via).
+fn spans(span: Option<(usize, usize)>, layer: Option<usize>) -> bool {
+    match (span, layer) {
+        (Some((top, bottom)), Some(l)) => (top..=bottom).contains(&l),
+        _ => true,
+    }
+}
+
+/// Builds the graph: points that meet are joined (an end on an end, an end on a track's copper
+/// beside its middle, an end in a via's or a pad's copper, pads and vias whose copper runs into
+/// each other), and so are the joins of `reaches`.
+fn graph(
+    art: &Artwork,
+    segs: &[&Seg],
+    vias: &[&ArtworkVia],
+    pads: &[&ArtworkPad],
+    copper: &[Vec<DrcShape>],
+    reaches: &[Reach],
+) -> Graph {
     let layer_index = |layer: &str| art.copper.iter().position(|c| c == layer);
-    // Split each track where another track's end or a via of the net stands on it, at the point
-    // of the track nearest it, so the pieces add up to the track. An end that touches the track
-    // away from its centre line is joined to that point (a tee): cutting at the end itself would
-    // draw a piece from the track to it, which copies a short track that ends there (issue #1511).
+    let end_of = |r: &Reach| {
+        let o = segs[r.from];
+        if r.end == 0 { o.2 } else { o.3 }
+    };
+    // Split each track where another track's end or a via of the net stands on it, and where it
+    // passes through a pad of the net, at the point of the track nearest it, so the pieces add up
+    // to the track. An end that touches the track away from its centre line is joined to that
+    // point (a tee): cutting at the end itself would draw a piece from the track to it, which
+    // copies a short track that ends there (issue #1511).
     let mut pieces: Vec<Seg> = Vec::new();
     let mut tees: Vec<(Pt, Pt, &str)> = Vec::new();
     for (i, s) in segs.iter().enumerate() {
         let (_, layer, a, b, w) = s;
         let mut cuts: Vec<(f64, Pt)> = Vec::new();
-        let mut cut_at = |p: Pt, reach: f64, tee: bool| {
-            let (d, t) = along(p, *a, *b);
-            if d > reach {
-                return;
-            }
+        let mut cut_at = |p: Pt, tee: bool| {
+            let (_, t) = along(p, *a, *b);
             let q = Pt::new(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
             if q.dist(*a) > SAME && q.dist(*b) > SAME {
                 cuts.push((t, q));
@@ -176,12 +233,27 @@ fn connect(art: &Artwork, net: &str, segs: &[&Seg], pads: &[&ArtworkPad]) -> Con
         };
         for (j, o) in segs.iter().enumerate() {
             if j != i && o.1 == *layer {
-                cut_at(o.2, w / 2.0, true);
-                cut_at(o.3, w / 2.0, true);
+                for p in [o.2, o.3] {
+                    if tee_on(p, s) {
+                        cut_at(p, true);
+                    }
+                }
             }
         }
-        for v in &vias {
-            cut_at(v.at, w / 2.0, false);
+        for r in reaches.iter().filter(|r| r.to == Target::Track(i)) {
+            cut_at(end_of(r), true);
+        }
+        for v in vias {
+            if along(v.at, *a, *b).0 <= w / 2.0 {
+                cut_at(v.at, false);
+            }
+        }
+        for (d, pad) in pads.iter().enumerate() {
+            let (_, t) = along(pad.at, *a, *b);
+            let q = Pt::new(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+            if end_joins(q, SAME, &copper[d]) {
+                cut_at(pad.at, false);
+            }
         }
         cuts.sort_by(|x, y| x.0.total_cmp(&y.0));
         let mut from = *a;
@@ -192,12 +264,23 @@ fn connect(art: &Artwork, net: &str, segs: &[&Seg], pads: &[&ArtworkPad]) -> Con
             }
         }
     }
-    // The points: two ends of each piece, then each via, then each pad.
+    // The points: two ends of each piece, then each via, then each pad. An end in a pad is
+    // joined to it on any layer: the length is no check of a layer's connectivity, which the
+    // design rules check makes.
     let ends = 2 * pieces.len();
+    let (via0, pad0) = (ends, ends + vias.len());
     let mut union = Union::new(ends + vias.len() + pads.len());
     let end = |k: usize| -> (Pt, &str) {
         let s = &pieces[k / 2];
         (if k.is_multiple_of(2) { s.2 } else { s.3 }, s.1.as_str())
+    };
+    let at = |pt: Pt, layer: &str| -> Vec<usize> {
+        (0..ends)
+            .filter(|&k| {
+                let (e, l) = end(k);
+                l == layer && e.dist(pt) <= SAME
+            })
+            .collect()
     };
     for k in 0..ends {
         let (p, layer) = end(k);
@@ -208,43 +291,153 @@ fn connect(art: &Artwork, net: &str, segs: &[&Seg], pads: &[&ArtworkPad]) -> Con
             }
         }
         for (v, via) in vias.iter().enumerate() {
-            let spans = match (via.span, layer_index(layer)) {
-                (Some((top, bottom)), Some(l)) => (top..=bottom).contains(&l),
-                _ => true,
-            };
-            if spans && p.dist(via.at) <= via.diameter / 2.0 + SAME {
-                union.join(k, ends + v);
+            if spans(via.span, layer_index(layer)) && end_joins(p, SAME, &via_copper(via)) {
+                union.join(k, via0 + v);
             }
         }
-        for (d, pad) in pads.iter().enumerate() {
-            if in_pad(pad, p) {
-                union.join(k, ends + vias.len() + d);
+        for (d, _) in pads.iter().enumerate() {
+            if end_joins(p, SAME, &copper[d]) {
+                union.join(k, pad0 + d);
             }
         }
     }
     // A track's end that touches another track is joined to the point of it nearest the end.
     for (q, p, layer) in &tees {
-        let at = |pt: Pt| -> Vec<usize> {
-            (0..ends)
-                .filter(|&k| {
-                    let (e, l) = end(k);
-                    l == *layer && e.dist(pt) <= SAME
-                })
-                .collect()
-        };
-        for k in at(*q) {
-            for m in at(*p) {
+        for k in at(*q, layer) {
+            for m in at(*p, layer) {
                 union.join(k, m);
             }
         }
     }
-    // Pads on one point are one.
+    for r in reaches {
+        let (p, layer) = (end_of(r), segs[r.from].1.as_str());
+        let node = match r.to {
+            Target::Track(_) => continue,
+            Target::Via(v) => via0 + v,
+            Target::Pad(d) => pad0 + d,
+        };
+        for k in at(p, layer) {
+            union.join(k, node);
+        }
+    }
+    // Pads on one point are one, and pads whose copper runs into each other on a layer, or a
+    // via's, are joined, as the design rules check joins them.
+    let pad_layers: Vec<Vec<usize>> = pads
+        .iter()
+        .map(|pad| {
+            (0..art.copper.len())
+                .filter(|&l| art.pad_copper_on(pad, &art.copper[l]))
+                .collect()
+        })
+        .collect();
     for (d, pad) in pads.iter().enumerate() {
-        if let Some(first) = pads.iter().position(|q| q.at.dist(pad.at) <= SAME) {
-            union.join(ends + vias.len() + d, ends + vias.len() + first);
+        for (e, other) in pads.iter().enumerate().skip(d + 1) {
+            let share = pad_layers[d].iter().any(|l| pad_layers[e].contains(l));
+            if other.at.dist(pad.at) <= SAME || (share && copper_joins(&copper[d], &copper[e])) {
+                union.join(pad0 + d, pad0 + e);
+            }
+        }
+        for (v, via) in vias.iter().enumerate() {
+            let share = pad_layers[d].iter().any(|&l| via.on(l));
+            if share && copper_joins(&copper[d], &via_copper(via)) {
+                union.join(pad0 + d, via0 + v);
+            }
         }
     }
     let node: Vec<usize> = (0..union.0.len()).map(|k| union.find(k)).collect();
+    Graph { pieces, node }
+}
+
+/// The joins the graph needs that only a track's round end makes: an end whose round end runs
+/// into another track of its layer, a via or a pad of the net, as the design rules check joins a
+/// track's end (`netsmith_geom::copper_end_joins`, issue #1582), but whose point is not on that
+/// copper (or is on a track's copper only beside its end), where the two are in parts of the
+/// graph that nothing else joins, nearest first. Taking such a join where the copper is joined
+/// already would cut short a stair of tracks shorter than their width, or a track into a via.
+fn reaches(
+    art: &Artwork,
+    segs: &[&Seg],
+    vias: &[&ArtworkVia],
+    copper: &[Vec<DrcShape>],
+    g: &Graph,
+) -> Vec<Reach> {
+    let ends = 2 * g.pieces.len();
+    let (via0, pad0) = (ends, ends + vias.len());
+    let mut parts = Union::new(g.node.len());
+    for e in 0..g.pieces.len() {
+        parts.join(g.node[2 * e], g.node[2 * e + 1]);
+    }
+    let point_of = |p: Pt, layer: &str| -> Option<usize> {
+        (0..ends).find(|&k| {
+            let s = &g.pieces[k / 2];
+            s.1 == layer && (if k % 2 == 0 { s.2 } else { s.3 }).dist(p) <= SAME
+        })
+    };
+    let layer_index = |layer: &str| art.copper.iter().position(|c| c == layer);
+    let mut candidates: Vec<(f64, Reach, usize, usize)> = Vec::new();
+    for (j, o) in segs.iter().enumerate() {
+        let half = o.4 / 2.0;
+        for (end, p) in [(0, o.2), (1, o.3)] {
+            let Some(k) = point_of(p, &o.1) else {
+                continue;
+            };
+            let from = g.node[k];
+            let mut push = |d: f64, to: Target, node: usize| {
+                candidates.push((d, Reach { from: j, end, to }, from, node));
+            };
+            for (i, s) in segs.iter().enumerate() {
+                if i == j || s.1 != o.1 {
+                    continue;
+                }
+                let d = along(p, s.2, s.3).0;
+                let track = [DrcShape::capsule(s.2, s.3, s.4 / 2.0)];
+                if d > SAME && !tee_on(p, s) && end_joins(p, half, &track) {
+                    if let Some(on) = point_of(s.2, &s.1) {
+                        push(d, Target::Track(i), g.node[on]);
+                    }
+                }
+            }
+            for (v, via) in vias.iter().enumerate() {
+                let c = via_copper(via);
+                if spans(via.span, layer_index(&o.1))
+                    && !end_joins(p, SAME, &c)
+                    && end_joins(p, half, &c)
+                {
+                    push(p.dist(via.at), Target::Via(v), g.node[via0 + v]);
+                }
+            }
+            for (d, c) in copper.iter().enumerate() {
+                if !end_joins(p, SAME, c) && end_joins(p, half, c) {
+                    push(0.0, Target::Pad(d), g.node[pad0 + d]);
+                }
+            }
+        }
+    }
+    candidates.sort_by(|x, y| x.0.total_cmp(&y.0));
+    let mut out = Vec::new();
+    for (_, r, a, b) in candidates {
+        if parts.find(a) != parts.find(b) {
+            parts.join(a, b);
+            out.push(r);
+        }
+    }
+    out
+}
+
+fn connect(art: &Artwork, net: &str, segs: &[&Seg], pads: &[&ArtworkPad]) -> Connection {
+    let vias: Vec<&ArtworkVia> = art
+        .vias
+        .iter()
+        .filter(|v| v.net.as_deref() == Some(net))
+        .collect();
+    let copper: Vec<Vec<DrcShape>> = pads.iter().map(|p| pad_copper(p)).collect();
+    let mut g = graph(art, segs, &vias, pads, &copper, &[]);
+    let needed = reaches(art, segs, &vias, &copper, &g);
+    if !needed.is_empty() {
+        g = graph(art, segs, &vias, pads, &copper, &needed);
+    }
+    let Graph { pieces, node } = g;
+    let ends = 2 * pieces.len();
     let edge = |e: usize| (node[2 * e], node[2 * e + 1]);
     let mut adjacent: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
     for e in 0..pieces.len() {

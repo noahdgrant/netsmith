@@ -263,7 +263,7 @@ impl<'a> Model<'a> {
                 pad_item.push(None);
                 continue;
             }
-            let shapes = outline_shapes(&pads::outline(pad));
+            let shapes = super::connect::pad_copper(pad);
             let kind = match pad.kind {
                 PadKind::Smd | PadKind::Connect => "SMD pad",
                 PadKind::Thru => "PTH pad",
