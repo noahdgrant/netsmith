@@ -154,7 +154,7 @@ pub fn run(args: Args) -> ExitCode {
                     netsmith_fabricate::track_drop::RULE
                 );
                 // The path's pieces, the one that drops most first (issue #1610).
-                for line in d.path_lines() {
+                for line in d.path_lines((dx, dy)) {
                     println!("  {line}");
                 }
             }

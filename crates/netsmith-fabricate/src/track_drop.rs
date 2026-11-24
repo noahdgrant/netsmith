@@ -130,8 +130,10 @@ impl NetDrop {
 
     /// The lines of the path's pieces (issue #1610), the one that drops most first: a track's
     /// place, layer, width, length, current, its drop in mV and its share of the net's, and the
-    /// width it needs; a via's place. None for a net far within its budget.
-    pub fn path_lines(&self) -> Vec<String> {
+    /// width it needs; a via's place. None for a net far within its budget. The places are
+    /// moved by `moved`, `(dx, dy)` in mm, from the board's frame (`--frame`).
+    pub fn path_lines(&self, moved: (f64, f64)) -> Vec<String> {
+        let (dx, dy) = moved;
         self.path
             .iter()
             .map(|p| {
@@ -140,17 +142,17 @@ impl NetDrop {
                     Some(at) => format!(
                         "#{} via at ({}, {}), {} mV",
                         p.step + 1,
-                        number(at.x),
-                        number(at.y),
+                        number(at.x + dx),
+                        number(at.y + dy),
                         sig(p.drop * 1e3)
                     ),
                     None => format!(
                         "#{} track ({}, {}) to ({}, {}) on {}, {} mm wide, {} mm long, {}: {} mV ({} of the drop){}",
                         p.step + 1,
-                        number(p.from.x),
-                        number(p.from.y),
-                        number(p.to.x),
-                        number(p.to.y),
+                        number(p.from.x + dx),
+                        number(p.from.y + dy),
+                        number(p.to.x + dx),
+                        number(p.to.y + dy),
                         p.layer.map_or("?", |l| l.name()),
                         number(p.width),
                         number(p.length),
@@ -177,8 +179,9 @@ impl NetDrop {
 }
 
 /// The text of `board nets`' `track drop` section (issue #1540): a line for each net, worst
-/// first, or nothing when no net is measured.
-pub fn text(drops: &[NetDrop]) -> String {
+/// first, or nothing when no net is measured. The places of the paths are moved by `moved`, as
+/// [`NetDrop::path_lines`] says.
+pub fn text(drops: &[NetDrop], moved: (f64, f64)) -> String {
     if drops.is_empty() {
         return String::new();
     }
@@ -188,7 +191,7 @@ pub fn text(drops: &[NetDrop]) -> String {
     );
     for d in drops {
         out.push_str(&format!("  {}\n", d.line()));
-        for line in d.path_lines() {
+        for line in d.path_lines(moved) {
             out.push_str(&format!("    {line}\n"));
         }
     }
@@ -373,7 +376,8 @@ mod tests {
         .unwrap();
         let n = net_drop(d, 3.0, 0.01).unwrap();
         assert!(n.over);
-        let lines = n.path_lines();
+        let lines = n.path_lines((0.0, 0.0));
+        assert!(n.path_lines((-10.0, 5.0))[0].contains("track (20, 5) to (30, 5)"));
         assert_eq!(lines.len(), 3);
         assert_eq!(
             lines[0],

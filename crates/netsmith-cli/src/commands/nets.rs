@@ -188,7 +188,7 @@ pub fn run(args: Args) -> ExitCode {
                         Err(e) => return crate::frame::refused(&e),
                     };
                     print!("{}", table.text_moved((dx, dy)));
-                    print!("{}", netsmith_fabricate::track_drop::text(&drops));
+                    print!("{}", netsmith_fabricate::track_drop::text(&drops, (dx, dy)));
                     if args.currents {
                         print!("{}", netsmith_fabricate::net_currents::text(&currents));
                     }
