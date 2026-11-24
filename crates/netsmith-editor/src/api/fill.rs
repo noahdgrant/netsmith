@@ -1,6 +1,8 @@
 //! How the fill of the board's pours joins each pad (issue #1187): what `netsmith board fill`
 //! prints, as the page reads it. The values are `netsmith_pcb::FillReport`'s, so the page and
-//! the command line cannot differ; their field names are camelCase here and nothing else differs.
+//! the command line cannot differ; their field names are camelCase here and nothing else differs,
+//! but a fill's copper (`FillArea::outline`) is left out: the 2D view draws it from
+//! `GET /api/pcb/pours`.
 //!
 //! **`GET /api/pcb/fill?board=`** fills the pours, planes and zones of the board as the PCB view
 //! has it placed (and routed), as the Gerbers fill them, and answers for each fill the pads of
@@ -44,6 +46,17 @@ pub struct FillPad {
     /// why the fill makes none of its spokes.
     #[serde(default)]
     pub unjoinable: Option<String>,
+    /// Of a thermal relief that no spoke and no track joins to this fill: whether another fill
+    /// of its net joins the pad, which makes it not unjoinable (issue 1292).
+    #[serde(default)]
+    pub joined_elsewhere: bool,
+    /// The path of the pin whose own `.pour_connection` or `.spoke_width` joins the pad, over
+    /// what the pour says (issue 1276), when one does (`radio.gnd`).
+    #[serde(default)]
+    pub stated_by: Option<String>,
+    /// The width of the spokes that pin states, in mm, if it states one.
+    #[serde(default)]
+    pub spoke_width: Option<f64>,
 }
 
 /// A pad of another net in the fill's outline, which the fill keeps clear of.

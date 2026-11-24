@@ -141,3 +141,101 @@ fn the_fill_warns_of_a_switching_regulators_ground_pad_on_a_relief() {
         "{json}"
     );
 }
+
+/// A project of the buck converter's board with `extra` added to the board's body, and the
+/// routes file `routes` beside it, if any.
+fn buck_project(name: &str, extra: &str, routes: Option<&str>) -> (TempDir, Workspace) {
+    let root = TempDir::new(&format!("editor-fill-{name}"));
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(root.join("netsmith.toml"), "[project]\nname = \"fill\"\n").unwrap();
+    let source = include_str!("../../../scripts/editor-verify-js/fixtures/buck_pours.nsm")
+        .replace(
+            "import std::mfg::jlcpcb::TwoLayer\n",
+            "import std::mfg::jlcpcb::TwoLayer\nimport std::mfg::stackup::PadConnection\n",
+        )
+        .replace(
+            "    .reg.vout ~ .output\n",
+            &format!("    .reg.vout ~ .output\n{extra}"),
+        );
+    assert!(
+        source.contains("PadConnection\n") && source.contains(extra),
+        "the fixture moved"
+    );
+    fs::write(root.join("src/main.nsm"), source).unwrap();
+    if let Some(routes) = routes {
+        fs::write(root.join("src/main.routes.toml"), routes).unwrap();
+    }
+    let editor = Workspace::open(Target::resolve_from(&root, None).unwrap())
+        .unwrap_or_else(|e| panic!("{e}"));
+    (root, editor)
+}
+
+/// A pad whose own pin says how a pour joins it names the pin and its spoke width (issue #1636).
+#[test]
+fn the_fill_names_the_pin_that_states_a_pads_connection() {
+    let (_root, editor) = buck_project(
+        "stated",
+        "    .reg.ic.vin.neg.pour_connection &= PadConnection::Thermal\n    .reg.ic.vin.neg.spoke_width &= 0.5mm..\n",
+        None,
+    );
+    let json = serde_json::to_value(editor.pcb_fill("BuckPours").unwrap()).unwrap();
+    let (stated, others): (Vec<&serde_json::Value>, Vec<&serde_json::Value>) = json["fills"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|f| f["pads"].as_array().unwrap())
+        .partition(|p| !p["statedBy"].is_null());
+    assert!(!stated.is_empty(), "{json}");
+    for p in stated {
+        assert_eq!(
+            (p["statedBy"].as_str(), p["spokeWidth"].as_f64()),
+            (Some("reg.ic.vin.neg"), Some(0.5)),
+            "{p}"
+        );
+    }
+    assert!(
+        others.iter().all(|p| p["spokeWidth"].is_null()),
+        "no other pin states one: {json}"
+    );
+}
+
+/// A thermal relief that one zone joins by nothing and a zone of a higher priority over it joins
+/// solid says it is joined elsewhere (issue #1636).
+#[test]
+fn the_fill_says_a_relief_another_fill_of_its_net_joins() {
+    let (_root, editor) = buck_project("elsewhere", "", None);
+    let fill = editor.pcb_fill("BuckPours").unwrap();
+    let ground = &fill.regulator_grounds[0];
+    // In the frame of the routes file: from the outline's top left corner.
+    let (x, y) = (
+        ground.at.x - fill.outline_at.x,
+        ground.at.y - fill.outline_at.y,
+    );
+    let zone = |priority: u32, pads: &str, from: (f64, f64), to: (f64, f64)| {
+        format!(
+            "[[BuckPours.nets.GND.zones]]\nlayers = [\"top\"]\npriority = {priority}\nclearance = 0.2\nmin_width = 0.2\npads = \"{pads}\"\nthermal_gap = 0.3\nspoke_width = 0.3\noutline = [[{0}, {1}], [{2}, {1}], [{2}, {3}], [{0}, {3}]]\n\n",
+            from.0, from.1, to.0, to.1
+        )
+    };
+    // A thermal zone round the pad, and over the pad a solid one of a higher priority. The
+    // record's stamp of the pads is made up, which makes it a stale one, whose zones are filled.
+    let routes = format!(
+        "version = 1\n\n[BuckPours.nets.GND]\npads = \"x\"\n\n{}{}",
+        zone(0, "thermal", (x - 4.0, y - 4.0), (x + 4.0, y + 4.0)),
+        zone(1, "solid", (x - 1.5, y - 1.5), (x + 1.5, y + 1.5)),
+    );
+    let (_root, editor) = buck_project("elsewhere-zones", "", Some(&routes));
+    let fill = editor.pcb_fill("BuckPours").unwrap();
+    let joins: Vec<(&str, bool, bool)> = fill
+        .fills
+        .iter()
+        .filter(|f| f.layer == "top")
+        .flat_map(|f| &f.pads)
+        .filter(|p| p.part == ground.part && p.pad == ground.pad)
+        .map(|p| (p.join.as_str(), p.joined, p.joined_elsewhere))
+        .collect();
+    assert!(
+        joins.contains(&("solid", true, false)) && joins.contains(&("thermal", false, true)),
+        "{joins:?}: {fill:?}"
+    );
+}

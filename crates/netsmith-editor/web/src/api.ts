@@ -1862,7 +1862,21 @@ starved: boolean,
  * Of a thermal relief that no spoke and no track joins (`unjoinable_thermal`, issue 1222):
  * why the fill makes none of its spokes.
  */
-unjoinable: string | null, };
+unjoinable: string | null, 
+/**
+ * Of a thermal relief that no spoke and no track joins to this fill: whether another fill
+ * of its net joins the pad, which makes it not unjoinable (issue 1292).
+ */
+joinedElsewhere: boolean, 
+/**
+ * The path of the pin whose own `.pour_connection` or `.spoke_width` joins the pad, over
+ * what the pour says (issue 1276), when one does (`radio.gnd`).
+ */
+statedBy: string | null, 
+/**
+ * The width of the spokes that pin states, in mm, if it states one.
+ */
+spokeWidth: number | null, };
 
 export type FillCleared = { part: string, pad: string, net: string | null, at: FillAt, };
 

@@ -32,6 +32,19 @@ export function padProblem(scene: PcbScene, name: string): string | null {
   return `the part \`${found.refdes}\` has no pad \`${number}\`; its pads are: ${numbers.join(', ')}`;
 }
 
+/** The pairs of pads typed in, parted into those to ask the server about and, for those the board has no pad for any more (a source
+ * edit took the part or the pad away), why each is left out. A pair left out stays typed, and is asked about again once the board has it. */
+export function pairsOnBoard(scene: PcbScene, pairs: [string, string][]): { asked: [string, string][]; leftOut: string[] } {
+  const asked: [string, string][] = [];
+  const leftOut: string[] = [];
+  for (const [a, b] of pairs) {
+    const wrong = padProblem(scene, a) ?? padProblem(scene, b);
+    if (wrong) leftOut.push(`${a} to ${b} is not measured: ${wrong}`);
+    else asked.push([a, b]);
+  }
+  return { asked, leftOut };
+}
+
 /** The query of `GET /api/pcb/summary`: the board, the parts whose neighbours to list, how far, and the pairs of pads. */
 export function summaryQuery(board: string, near: string[], within: number, between: [string, string][]): string {
   const q = new URLSearchParams({ board });
@@ -121,13 +134,20 @@ export function fillAreaLine(f: FillArea): string {
   ].join('; ');
 }
 
-/** How the fill joins a pad: `U1.2: thermal, 1 of 4 spokes (starved)`, `J1.1: solid`, `J1.2: thermal, 0 of 4 spokes (unjoinable: <why>)`. */
+/** How the fill joins a pad: `U1.2: thermal, 1 of 4 spokes (starved)`, `J1.1: solid (as its pin radio.gnd states)`, `J1.2: thermal, 0 of 4 spokes
+ * (unjoinable: <why>)` or `(joined by another fill of its net)`. The words are `board fill`'s. */
 export function fillPadLine(p: FillPad): string {
   let how: string = p.join;
   if (p.join === 'thermal') how = p.spokes === 0 ? 'thermal, no spokes (the pad is narrower than the minimum width)' : `thermal, ${p.joinedSpokes} of ${p.spokes} spokes`;
   else if (p.join === 'solid' && !p.joined) how = 'solid, the fill does not reach it';
   const tracks = p.tracks === 0 ? '' : ` and ${p.tracks} track${p.tracks === 1 ? '' : 's'}`;
-  return `${p.part}.${p.pad}: ${how}${tracks}${p.starved ? ' (starved)' : ''}${p.unjoinable ? ` (unjoinable: ${p.unjoinable})` : ''}`;
+  // A pad its pin joins otherwise than the pour says (issue 1276).
+  const own = p.statedBy === null ? '' : ` (as its pin ${p.statedBy} states${p.spokeWidth === null ? '' : `, ${mm(p.spokeWidth)} mm spokes`})`;
+  let flag = '';
+  if (p.unjoinable) flag = ` (unjoinable: ${p.unjoinable})`;
+  else if (p.starved) flag = ' (starved)';
+  else if (p.joinedElsewhere) flag = ' (joined by another fill of its net)';
+  return `${p.part}.${p.pad}: ${how}${tracks}${own}${flag}`;
 }
 
 /** A starved thermal relief: `U1.2 on top (GND) at (8, 15): 1 of 4 spokes`. */
