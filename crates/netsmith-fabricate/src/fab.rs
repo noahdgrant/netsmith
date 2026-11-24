@@ -2062,6 +2062,9 @@ fn fab_board(
                 &built.design,
                 catalogs.constraints_warn(),
             ),
+            // The board's diff pairs with their skew limits: a pair over its limit is a
+            // `pair_skew` finding, as `board drc` has it (issue #1597).
+            pairs: board.diff_pairs_with_skew(),
             ..Options::default()
         };
         // The pictures of a package made for review are of the board just routed (issue #1213);

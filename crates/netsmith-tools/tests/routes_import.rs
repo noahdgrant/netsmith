@@ -197,13 +197,13 @@ fn stitching_vias_brought_back_by_an_import_are_not_laid_again() {
         let import = netsmith_tools::routes_import::import(&stitched_board(), &pcb, None, false)
             .unwrap_or_else(|e| panic!("{e}"));
         assert!(
-            import.stitching_vias > 0,
+            !import.stitching_vias.is_empty(),
             "round {round}: the stitching vias are known: {:?}",
             import.skipped
         );
         let imported = import.counts().2;
         assert_eq!(
-            imported + import.stitching_vias,
+            imported + import.stitching_vias.len(),
             board.vias.len(),
             "round {round}: every via is imported or known as stitching: {:?}",
             import.skipped
@@ -212,7 +212,7 @@ fn stitching_vias_brought_back_by_an_import_are_not_laid_again() {
         let locked = netsmith_tools::routes_import::import(&stitched_board(), &pcb, None, true)
             .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
-            (locked.stitching_vias, locked.counts().2),
+            (locked.stitching_vias.len(), locked.counts().2),
             (0, board.vias.len()),
             "round {round}: {:?}",
             locked.skipped

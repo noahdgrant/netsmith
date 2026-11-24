@@ -911,3 +911,153 @@ fn routes_import_says_each_net_as_data_and_unlocked_locks_none() {
     let routes = fs::read_to_string(dir.join("led.routes.toml")).unwrap();
     assert!(!routes.contains("lock = true"), "{routes}");
 }
+
+/// The four-layer example (a ground pour stitched to the ground plane) in a project folder,
+/// fabbed once into `first/`: its KiCad board has loose stitching vias, ground vias with no
+/// track (issue #1583).
+fn stitched(tag: &str) -> TempDir {
+    let dir = TempDir::new(tag);
+    for ext in ["nsm", "physical.nsm", "pcb.toml", "lock.toml"] {
+        fs::copy(
+            repo().join(format!("examples/outline_and_pours.{ext}")),
+            dir.join(format!("main.{ext}")),
+        )
+        .unwrap();
+    }
+    ok(&netsmith(&dir, &["board", "fab", "main.nsm", "--out", "first"]));
+    dir
+}
+
+/// Each net's tracks and vias of a `.kicad_pcb`, by the net's name.
+fn kicad_counts(pcb: &Path) -> std::collections::BTreeMap<String, (usize, usize)> {
+    let pcb = fs::read_to_string(pcb).unwrap();
+    let mut names = std::collections::HashMap::new();
+    for line in pcb.lines() {
+        // `(net 2 "GND")` at the top of the file names the numbers.
+        if let Some(rest) = line.strip_prefix("\t(net ") {
+            let (n, name) = rest.trim_end_matches(')').split_once(' ').unwrap();
+            names.insert(n.to_string(), name.trim_matches('"').to_string());
+        }
+    }
+    let mut counts = std::collections::BTreeMap::<String, (usize, usize)>::new();
+    let mut kind: Option<&str> = None;
+    for line in pcb.lines() {
+        match line {
+            "\t(segment" | "\t(arc" => kind = Some("track"),
+            "\t(via" => kind = Some("via"),
+            "\t)" => kind = None,
+            _ => {
+                let Some(k) = kind else { continue };
+                if let Some(n) = line.trim().strip_prefix("(net ") {
+                    let entry = counts
+                        .entry(names[n.trim_end_matches(')')].clone())
+                        .or_default();
+                    if k == "track" {
+                        entry.0 += 1;
+                    } else {
+                        entry.1 += 1;
+                    }
+                }
+            }
+        }
+    }
+    counts
+}
+
+/// The routes file's copper of `dir` as `routes show` counts it, each net's tracks and vias on
+/// the board (the file's vias and the stitching vias `fab` lays that the file does not have),
+/// and `board nets`' vias of each net of its table.
+fn shown_counts(
+    dir: &Path,
+) -> (
+    std::collections::BTreeMap<String, (usize, usize)>,
+    std::collections::BTreeMap<String, u64>,
+) {
+    let run = netsmith(
+        dir,
+        &["routes", "show", "--file", "main.nsm", "--format", "json"],
+    );
+    let said = ok(&run);
+    let shown: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+    let count = |n: &serde_json::Value, key: &str| n[key].as_array().unwrap().len();
+    let show = shown["nets"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{said}"))
+        .iter()
+        .map(|n| {
+            (
+                n["net"].as_str().unwrap().to_string(),
+                (
+                    count(n, "tracks"),
+                    count(n, "vias") + n["stitching"].as_u64().unwrap() as usize,
+                ),
+            )
+        })
+        .collect();
+    let run = netsmith(dir, &["board", "nets", "main.nsm", "--format", "json"]);
+    let said = ok(&run);
+    let nets: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+    let table = nets["nets"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{said}"))
+        .iter()
+        .map(|n| {
+            (
+                n["net"].as_str().unwrap().to_string(),
+                n["vias"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    (show, table)
+}
+
+/// Import the board `fab` wrote into `first/`, locked or not, and check that `routes show` and
+/// `board nets` count each net's copper as the KiCad board has it (issue #1583).
+fn imported_counts_are_the_boards(tag: &str, unlocked: bool) {
+    let dir = stitched(tag);
+    let pcb = "first/OutlineAndPours/OutlineAndPours.kicad_pcb";
+    let mut args = vec!["routes", "import", pcb, "--file", "main.nsm", "--no-places"];
+    if unlocked {
+        args.push("--unlocked");
+    }
+    args.extend(["--format", "json"]);
+    let run = netsmith(&dir, &args);
+    let said = ok(&run);
+    let import: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+    let left_out = import["stitching_vias_left_out"].as_array().unwrap();
+    let kicad = kicad_counts(&dir.join(pcb));
+    let gnd = kicad["GND"].1;
+    if unlocked {
+        // The import leaves the stitching vias out, names each, and keeps the ground's others.
+        assert!(left_out.len() > 4, "the pour is stitched: {said}");
+        assert!(left_out.iter().all(|v| v["net"] == "GND"), "{said}");
+        assert_eq!(import["vias"].as_u64().unwrap() as usize + left_out.len(), {
+            kicad.values().map(|c| c.1).sum::<usize>()
+        });
+    } else {
+        assert!(left_out.is_empty(), "{said}");
+    }
+    let (show, table) = shown_counts(&dir);
+    assert_eq!(show, kicad, "routes show counts the KiCad board's copper: {said}");
+    assert!(show["GND"].1 == gnd && gnd > 4, "{show:?}");
+    for (net, vias) in &table {
+        assert_eq!(*vias as usize, kicad[net].1, "board nets' vias of {net}: {table:?}");
+    }
+    // The text says the stitching vias the board has past the file's.
+    let shown = ok(&netsmith(&dir, &["routes", "show", "--file", "main.nsm"]));
+    assert_eq!(
+        shown.contains("stitching via(s) `fab` lays on the pour's grid"),
+        unlocked,
+        "{shown}"
+    );
+}
+
+#[test]
+fn routes_show_counts_the_stitching_vias_of_a_locked_import() {
+    imported_counts_are_the_boards("routes-stitching-locked", false);
+}
+
+#[test]
+fn routes_show_counts_the_stitching_vias_of_an_unlocked_import_as_of_a_locked_one() {
+    imported_counts_are_the_boards("routes-stitching-unlocked", true);
+}

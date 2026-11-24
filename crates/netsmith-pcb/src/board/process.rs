@@ -408,10 +408,19 @@ impl Board {
                     (pl.layer.clone(), text)
                 })
                 .chain(signals.iter().map(|l| {
-                    (
-                        l.clone(),
-                        format!("{l} is a signal layer, with no tracks yet"),
-                    )
+                    let count = self
+                        .track_widths_on(l)
+                        .iter()
+                        .map(|(_, n)| n)
+                        .sum::<usize>();
+                    let tracks = match count {
+                        // A board with no copper at all is not routed yet.
+                        0 if self.tracks.is_empty() => "with no tracks yet".to_string(),
+                        0 => "with no tracks".to_string(),
+                        1 => "with 1 track".to_string(),
+                        n => format!("with {n} tracks"),
+                    };
+                    (l.clone(), format!("{l} is a signal layer, {tracks}"))
                 }))
                 .collect();
             inner.sort_by_key(|(l, _)| inner_number(l));
@@ -474,6 +483,20 @@ impl Board {
     pub fn inner_layers(&self) -> Vec<String> {
         (1..=self.process.stackup.layers.saturating_sub(2))
             .map(|n| format!("In{n}.Cu"))
+            .collect()
+    }
+
+    /// The track widths in use on the layer named `layer` (`F.Cu`, `In2.Cu`...), narrowest
+    /// first, each with how many tracks have it (an arc is a track), widths taken to the
+    /// micrometre. The fabrication notes quote the impedance of each (issue #1589).
+    pub fn track_widths_on(&self, layer: &str) -> Vec<(f64, usize)> {
+        let mut counts: std::collections::BTreeMap<i64, usize> = std::collections::BTreeMap::new();
+        for t in self.tracks.iter().filter(|t| t.layer.name() == layer) {
+            *counts.entry((t.width * 1000.0).round() as i64).or_default() += 1;
+        }
+        counts
+            .into_iter()
+            .map(|(w, n)| (w as f64 / 1000.0, n))
             .collect()
     }
 
@@ -650,6 +673,7 @@ impl Board {
         // What a track's impedance is on each layer, from the recorded build-up (issue #759).
         extras.extend(crate::impedance::impedance_notes(
             &self.process.stackup,
+            &|layer| self.track_widths_on(layer),
             self.rules.track_width,
             IMPEDANCE_TARGET,
         ));
