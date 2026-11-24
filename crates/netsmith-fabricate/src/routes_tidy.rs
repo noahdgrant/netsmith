@@ -38,6 +38,15 @@
 //! width to the wanted one, so that each track is made as wide as its neighbours' clearance
 //! allows; a track is never made narrower, and one widened part of the way is not tried again.
 //!
+//! With [`Widen::ToGuideline`] (`routes tidy --widen-to-guideline`, issue #1611) a track of a
+//! net whose path drops more than the track-drop guideline's budget ([`crate::track_drop`]) is
+//! widened further, to the width the guideline suggests for it ([`netsmith_pcb::DropPiece`]'s
+//! `needs`: the one width every narrower track of the path needs for the path to drop no more),
+//! by the same steps and the same rule; one that has no room for any of those steps is tried at
+//! the width its net wants, as `--widen` widens it. The drop is measured again before each pass,
+//! so a pass widens the path the copper has then. A net within its budget is widened as `--widen`
+//! widens it, and the report gives the drop of each net that was over, before and after.
+//!
 //! **The rule of every change.** A change is made only when the design rules check of the board
 //! with it (the check `routes add-track` makes, [`crate::routes::drc_errors`], with its warnings
 //! too) finds nothing it did not find before, and the connections left to route (the ratsnest)
@@ -127,6 +136,35 @@ const PASSES: usize = 8;
 /// the way, the most first: each is tried when the one before it is refused (issue #1294).
 pub const WIDENINGS: [f64; 4] = [1.0, 0.75, 0.5, 0.25];
 
+/// What `routes tidy` widens (issue #1611).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum Widen {
+    /// Nothing.
+    #[default]
+    Off,
+    /// Each narrow track to the width its net wants ([`wanted_width`], `--widen`).
+    ToNet,
+    /// As `ToNet`, and each track of a net over its track-drop budget to the width the
+    /// guideline suggests (`--widen-to-guideline`): the rails' voltages by net name
+    /// ([`crate::track_drop::rail_voltages`]).
+    ToGuideline(Vec<(String, f64)>),
+}
+
+/// The drop of a net that was over its track-drop budget, before the pass and after
+/// (`--widen-to-guideline`, issue #1611).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct NetDropChange {
+    pub net: String,
+    /// The rail's voltage and what the budget allows, in volts.
+    pub volts: f64,
+    pub allowed: f64,
+    /// What the path drops, in volts, before and after.
+    pub before: f64,
+    pub after: f64,
+    /// Whether it is still over the budget after.
+    pub over: bool,
+}
+
 /// Two places nearer than this (mm) are one: where the check's findings are matched to copper.
 const NEAR: f64 = 1e-3;
 
@@ -205,6 +243,11 @@ pub struct Change {
     /// Why a refused change was refused.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub why: Option<String>,
+    /// Of a widening: the track's width before and after, in mm.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width_before: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width_after: Option<f64>,
 }
 
 /// How many changes of each kind were made.
@@ -238,6 +281,13 @@ pub struct Tidied {
     pub dry_run: bool,
     /// Whether narrow tracks were widened too (`--widen`).
     pub widen: bool,
+    /// Whether the tracks of a net over its track-drop budget were widened towards the width the
+    /// guideline suggests (`--widen-to-guideline`).
+    pub widen_to_guideline: bool,
+    /// With `widen_to_guideline`, the drop of each net over its budget before the pass, and
+    /// after it. Left out of the JSON when empty.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub drops: Vec<NetDropChange>,
     pub counts: Counts,
     /// The changes made, in the order they were made.
     pub changes: Vec<Change>,
@@ -334,6 +384,26 @@ impl Tidied {
                 line(&mut s, c);
             }
         }
+        if self.widen_to_guideline {
+            if self.drops.is_empty() {
+                let _ = writeln!(s, "track drop: no net was over its budget");
+            } else {
+                let _ = writeln!(s, "track drop, before and after:");
+            }
+            let mv = |v: f64| format!("{:.3}", v * 1e3);
+            for d in &self.drops {
+                let _ = writeln!(
+                    s,
+                    "  net {}: {} mV before, {} mV {} (the budget is {} mV){}",
+                    d.net,
+                    mv(d.before),
+                    mv(d.after),
+                    if self.dry_run { "if made" } else { "after" },
+                    mv(d.allowed),
+                    if d.over { ", still over" } else { ", within" }
+                );
+            }
+        }
         let _ = writeln!(
             s,
             "the design rules check: {} finding(s) before, {} after; {} connection(s) left to route, as before",
@@ -372,7 +442,7 @@ pub fn tidy_files(
     board: &Board,
     layout: &Path,
     reuse_routes: bool,
-    widen: bool,
+    widen: Widen,
     dry_run: bool,
 ) -> Result<Tidied, String> {
     let file = beside_layout(layout);
@@ -451,19 +521,23 @@ pub fn tidy_with(
     kept: Option<KeptCopper<'_>>,
     checking: Checking,
 ) -> Result<Tidied, String> {
-    tidy_passes(board, routes, kept, checking, false)
+    tidy_passes(board, routes, kept, checking, Widen::Off)
 }
 
-/// [`tidy_with`], and with `widen` the narrow tracks widened too (the module's header).
+/// [`tidy_with`], and the narrow tracks widened too as `widen` says (the module's header).
 pub fn tidy_passes(
     board: &Board,
     routes: &Routes,
     kept: Option<KeptCopper<'_>>,
     checking: Checking,
-    widen: bool,
+    widen: Widen,
 ) -> Result<Tidied, String> {
     let mut work = Work::new(board, routes, kept.as_ref())?;
-    work.widen = widen;
+    work.widen = widen != Widen::Off;
+    if let Widen::ToGuideline(voltages) = &widen {
+        work.voltages = Some(voltages.clone());
+    }
+    let drops_before = work.over_budget();
     let first = work.look(&work.copper.clone())?;
     let mut look = first.clone();
     let mut made: Vec<Change> = Vec::new();
@@ -519,10 +593,27 @@ pub fn tidy_passes(
         Some(k) => Some(k?),
         None => None,
     };
+    let after = work.drops_now();
+    let drops = drops_before
+        .into_iter()
+        .map(|d| {
+            let now = after.iter().find(|a| a.net == d.net);
+            NetDropChange {
+                net: d.net.clone(),
+                volts: d.volts,
+                allowed: d.allowed,
+                before: d.drop,
+                after: now.map_or(d.drop, |a| a.drop),
+                over: now.is_none_or(|a| a.over),
+            }
+        })
+        .collect();
     Ok(Tidied {
         board: board.name.clone(),
         dry_run: false,
-        widen,
+        widen: widen != Widen::Off,
+        widen_to_guideline: matches!(widen, Widen::ToGuideline(_)),
+        drops,
         counts,
         changes: made,
         refused: refused.into_values().collect(),
@@ -626,6 +717,9 @@ struct Work<'a> {
     lines: Vec<String>,
     /// Whether narrow tracks are widened too.
     widen: bool,
+    /// With `--widen-to-guideline`, the rails' voltages by net name: the tracks of a net over
+    /// its track-drop budget are widened to the width the guideline suggests.
+    voltages: Option<Vec<(String, f64)>>,
     /// The pads of each net, for the passes of [`shapes`].
     spots: BTreeMap<String, Vec<shapes::Spot>>,
     checks: usize,
@@ -708,6 +802,7 @@ impl<'a> Work<'a> {
             reach: 0.0,
             lines: Vec::new(),
             widen: false,
+            voltages: None,
             spots: shapes::spots(board),
             checks: 0,
             items: 0,
@@ -831,6 +926,7 @@ impl<'a> Work<'a> {
             reach,
             lines: Vec::new(),
             widen: false,
+            voltages: None,
             spots: shapes::spots(board),
             checks: 0,
             items: 0,
@@ -940,20 +1036,8 @@ impl<'a> Work<'a> {
             .filter(|&i| part(i))
             .map(|i| self.parts[i].clone())
             .collect();
-        let live = |i: usize, owner: Owner| {
-            let w = &copper.wires[i];
-            w.alive && w.owner == owner && wire(i)
-        };
-        let mut file: Vec<usize> = (0..copper.wires.len())
-            .filter(|&i| live(i, Owner::RoutesFile))
-            .collect();
-        file.sort_by(|&a, &b| {
-            let (wa, wb) = (&copper.wires[a], &copper.wires[b]);
-            (&wa.track.net, wa.rank, a).cmp(&(&wb.track.net, wb.rank, b))
-        });
-        board.tracks = file
+        board.tracks = wire_order(copper, wire)
             .into_iter()
-            .chain((0..copper.wires.len()).filter(|&i| live(i, Owner::Kept)))
             .map(|i| copper.wires[i].drawn.clone())
             .collect();
         let live = |i: usize, owner: Owner| {
@@ -975,6 +1059,44 @@ impl<'a> Work<'a> {
     /// The whole board with `copper` on it.
     fn board_of(&self, copper: &Copper) -> Board {
         self.board_with(copper, |_| true, |_| true, |_| true)
+    }
+
+    /// With `--widen-to-guideline`, the drop of each net of the copper as it is now with a
+    /// rail of a known voltage ([`crate::track_drop::drops`]); none without it.
+    fn drops_now(&self) -> Vec<crate::track_drop::NetDrop> {
+        match &self.voltages {
+            Some(v) => crate::track_drop::drops(&self.board_of(&self.copper), v),
+            None => Vec::new(),
+        }
+    }
+
+    /// [`Work::drops_now`] of the nets over their budget.
+    fn over_budget(&self) -> Vec<crate::track_drop::NetDrop> {
+        self.drops_now().into_iter().filter(|d| d.over).collect()
+    }
+
+    /// The width the track-drop guideline suggests for each track of the copper as it is now
+    /// that a net over its budget needs wider, by its place in the copper (issue #1611).
+    fn guideline_widths(&self) -> HashMap<usize, f64> {
+        let Some(voltages) = &self.voltages else {
+            return HashMap::new();
+        };
+        let order = wire_order(&self.copper, |_| true);
+        let board = self.board_of(&self.copper);
+        let mut out = HashMap::new();
+        for d in crate::track_drop::drops(&board, voltages) {
+            if !d.over {
+                continue;
+            }
+            for p in &d.path {
+                if let (Some(k), Some(w)) = (p.track, p.needs)
+                    && let Some(&i) = order.get(k)
+                {
+                    out.insert(i, w);
+                }
+            }
+        }
+        out
     }
 
     /// The design rules check of `board`, counted.
@@ -1354,54 +1476,81 @@ impl<'a> Work<'a> {
             push(Some(c), &mut out);
         }
         if self.widen {
+            let guide = self.guideline_widths();
             for i in 0..self.copper.wires.len() {
-                push(self.widening(i, &attempt), &mut out);
+                push(self.widening(i, guide.get(&i).copied(), &attempt), &mut out);
             }
         }
         out
     }
 
     /// The narrow track `i` widened, in the form after those refused: none when it is as wide
-    /// as its net wants, was widened already, or cannot be changed.
-    fn widening(&self, i: usize, attempt: &dyn Fn(&Key) -> usize) -> Option<Candidate> {
+    /// as its net wants (or as `guide`, the width the track-drop guideline suggests for it,
+    /// when that is wider), was widened already, or cannot be changed. With `guide`, the form
+    /// after the [`WIDENINGS`] towards it is the width its net wants.
+    fn widening(
+        &self,
+        i: usize,
+        guide: Option<f64>,
+        attempt: &dyn Fn(&Key) -> usize,
+    ) -> Option<Candidate> {
         if !self.editable(i) || self.copper.wires[i].widened {
             return None;
         }
         let w = &self.copper.wires[i];
         let t = &w.track;
-        let wanted = wanted_width(self.board, &t.net, t.layer);
+        let wants = wanted_width(self.board, &t.net, t.layer);
+        let guide = guide.filter(|&g| g > wants + 1e-6);
+        let wanted = guide.unwrap_or(wants);
         if t.width >= wanted - 1e-6 {
             return None;
         }
         let at = Pt::new((t.from.x + t.to.x) / 2.0, (t.from.y + t.to.y) / 2.0);
         let key = self.key(Kind::Widen, &t.net, Some(t.layer), at);
         let tried = attempt(&key);
-        let share = *WIDENINGS.get(tried)?;
-        let width = if tried == 0 {
-            wanted
-        } else {
-            // Part of the way, to the 0.01 mm below.
-            ((t.width + share * (wanted - t.width)) * 100.0 + 1e-9).floor() / 100.0
+        let target = match guide {
+            Some(_) => "the track-drop guideline suggests",
+            None => "its net wants",
+        };
+        let (width, said) = match WIDENINGS.get(tried) {
+            Some(_) if tried == 0 => (
+                wanted,
+                format!(
+                    "widened from {:.3} mm to the {:.3} mm {target}",
+                    t.width, wanted
+                ),
+            ),
+            Some(share) => {
+                // Part of the way, to the 0.01 mm below.
+                let width = ((t.width + share * (wanted - t.width)) * 100.0 + 1e-9).floor() / 100.0;
+                (
+                    width,
+                    format!(
+                        "widened from {:.3} mm to {:.3} mm, of the {:.3} mm {target}: the clearance to its neighbours allows no more",
+                        t.width, width, wanted
+                    ),
+                )
+            }
+            None if tried == WIDENINGS.len() && guide.is_some() => (
+                wants,
+                format!(
+                    "widened from {:.3} mm to the {:.3} mm its net wants: the clearance to its neighbours allows none of the steps towards the {:.3} mm the track-drop guideline suggests",
+                    t.width, wants, wanted
+                ),
+            ),
+            None => return None,
         };
         if width <= t.width + 1e-6 {
             return None;
         }
         let mut wider = t.clone();
         wider.width = width;
-        let said = if tried == 0 {
-            format!(
-                "widened from {:.3} mm to the {:.3} mm its net wants",
-                t.width, wanted
-            )
-        } else {
-            format!(
-                "widened from {:.3} mm to {:.3} mm, of the {:.3} mm its net wants: the clearance to its neighbours allows no more",
-                t.width, width, wanted
-            )
-        };
+        let mut change = self.change(Kind::Widen, &t.net, Some(t.layer), at, w.owner, said);
+        change.width_before = Some(t.width);
+        change.width_after = Some(width);
         Some(Candidate {
             key,
-            change: self.change(Kind::Widen, &t.net, Some(t.layer), at, w.owner, said),
+            change,
             remove_wires: vec![i],
             remove_holes: Vec::new(),
             add: vec![wider],
@@ -1436,6 +1585,8 @@ impl<'a> Work<'a> {
             copper: owner,
             said,
             why: None,
+            width_before: None,
+            width_after: None,
         }
     }
 
@@ -1827,6 +1978,26 @@ impl<'a> Work<'a> {
         }
         out
     }
+}
+
+/// The live tracks of `copper` that `wire` takes, in the order the board with all of it has
+/// them: the routes file's tracks net by net in the order its records are written, then the
+/// router's kept copper ([`Work::board_with`]).
+fn wire_order(copper: &Copper, wire: impl Fn(usize) -> bool) -> Vec<usize> {
+    let live = |i: usize, owner: Owner| {
+        let w = &copper.wires[i];
+        w.alive && w.owner == owner && wire(i)
+    };
+    let mut file: Vec<usize> = (0..copper.wires.len())
+        .filter(|&i| live(i, Owner::RoutesFile))
+        .collect();
+    file.sort_by(|&a, &b| {
+        let (wa, wb) = (&copper.wires[a], &copper.wires[b]);
+        (&wa.track.net, wa.rank, a).cmp(&(&wb.track.net, wb.rank, b))
+    });
+    file.into_iter()
+        .chain((0..copper.wires.len()).filter(|&i| live(i, Owner::Kept)))
+        .collect()
 }
 
 /// `c` made on `copper`: what it removes marked so, what it adds written in the place of the
@@ -2324,7 +2495,7 @@ mod tests {
         save(&file, &routes).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
         let _ = tidied(&board, &routes, None);
-        let tidied = tidy_files(&board, &layout, false, false, false).unwrap();
+        let tidied = tidy_files(&board, &layout, false, Widen::Off, false).unwrap();
         let said = tidied.text();
         assert_eq!(tidied.changes, Vec::new(), "{said}");
         assert_eq!(tidied.refused.len(), 1, "{said}");
@@ -2434,19 +2605,24 @@ mod tests {
         save(&file, &routes).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
         let token = job::Cancel::new();
-        let whole = job::scope(&token, || tidy_files(&board, &layout, false, false, true)).unwrap();
+        let whole = job::scope(&token, || {
+            tidy_files(&board, &layout, false, Widen::Off, true)
+        })
+        .unwrap();
         let reached = token.checkpoints();
         assert!(reached > 2, "{reached} checkpoint(s): {}", whole.text());
         for at in [1, reached / 2, reached] {
             let token = job::Cancel::at_checkpoint(at);
             let ended = job::catch(|| {
-                job::scope(&token, || tidy_files(&board, &layout, false, false, false))
+                job::scope(&token, || {
+                    tidy_files(&board, &layout, false, Widen::Off, false)
+                })
             });
             assert!(ended.is_err(), "cancelled at checkpoint {at} of {reached}");
             assert_eq!(token.checkpoints(), at, "no work after the cancel");
             assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
         }
-        let done = tidy_files(&board, &layout, false, false, false).unwrap();
+        let done = tidy_files(&board, &layout, false, Widen::Off, false).unwrap();
         assert_eq!(done.counts.corners, 1, "{}", done.text());
         assert_ne!(std::fs::read_to_string(&file).unwrap(), text);
     }

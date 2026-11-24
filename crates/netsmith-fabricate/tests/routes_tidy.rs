@@ -387,12 +387,12 @@ fn widen_makes_each_narrow_track_as_wide_as_its_net_wants_or_its_neighbours_allo
     };
     // Without `--widen` nothing is widened.
     let plain =
-        routes_tidy::tidy_passes(&board, &routes, None, routes_tidy::Checking::Near, false)
+        routes_tidy::tidy_passes(&board, &routes, None, routes_tidy::Checking::Near, routes_tidy::Widen::Off)
             .unwrap();
     assert_eq!(plain.counts.widened, 0, "{}", plain.text());
     assert_eq!(widths(&plain), vec![0.15, 0.12]);
     for checking in [routes_tidy::Checking::Near, routes_tidy::Checking::Whole] {
-        let tidied = routes_tidy::tidy_passes(&board, &routes, None, checking, true).unwrap();
+        let tidied = routes_tidy::tidy_passes(&board, &routes, None, checking, routes_tidy::Widen::ToNet).unwrap();
         let said = tidied.text();
         assert_eq!(tidied.counts.widened, 2, "{said}");
         assert!(tidied.refused.is_empty(), "{said}");
@@ -506,4 +506,148 @@ fn the_overlap_pass_compares_a_track_with_its_neighbours_and_not_with_its_net() 
         "the pairs compared grow {ratio:.2} times for 4 times the tracks: {small} then {big}"
     );
     assert!(big < 20 * 400, "{big} pairs compared for 400 tracks");
+}
+
+/// A board for `--widen-to-guideline` (issue #1611): a net `p` of 1 A on a 1.2 V rail (a budget
+/// of 12 mV) from pad 2 of one resistor to pad 1 of another as three straight tracks, 0.4 mm,
+/// 0.09 mm (1 mm long) and 0.4 mm wide. The 0.4 mm tracks drop about 9.8 mV and the 0.09 mm
+/// one 5.5 mV, so the path is over its budget and the guideline suggests 0.23 mm for the thin
+/// track; the net wants 0.1 mm (the rules' track width). With `neighbour`, a track of a
+/// locked net of no pads runs beside the thin one with 0.1025 mm of clearance, room for none
+/// of the steps.
+fn over_budget(neighbour: bool) -> (Board, Routes) {
+    let (mut board, _) = narrow();
+    board.net_widths.clear();
+    board.net_currents = vec![netsmith_core::NetCurrent {
+        net: "p".to_string(),
+        current: 1.0,
+        least_width: 0.1,
+        vias: 1,
+        ..Default::default()
+    }];
+    let mut p = Vec::new();
+    for (from, to, width) in [(2.51, 6.5, 0.4), (6.5, 7.5, 0.09), (7.5, 11.49, 0.4)] {
+        let mut t = straight(CopperLayer::Front, &[[from, 2.0], [to, 2.0]]);
+        t[0].width = width;
+        p.extend(t);
+    }
+    let mut q = straight(CopperLayer::Front, &[[6.3, 2.1975], [7.7, 2.1975]]);
+    q[0].width = 0.1;
+    let mut routes = Routes::default();
+    let table = routes.boards.entry(board.name.clone()).or_default();
+    let mut nets = vec![("p", p, false)];
+    if neighbour {
+        nets.push(("q", q, true));
+    }
+    for (net, tracks, lock) in nets {
+        table.nets.insert(
+            net.to_string(),
+            NetRoutes {
+                pads: netsmith_pcb::pad_hash(&board, net).expect("a net of the board"),
+                lock,
+                tracks,
+                vias: Vec::new(),
+                zones: Vec::new(),
+            },
+        );
+    }
+    (board, routes)
+}
+
+fn widths_of(t: &Tidied) -> Vec<f64> {
+    t.routes.boards["narrow"].nets["p"]
+        .tracks
+        .iter()
+        .map(|t| t.width)
+        .collect()
+}
+
+fn to_guideline(volts: f64) -> routes_tidy::Widen {
+    routes_tidy::Widen::ToGuideline(vec![("p".to_string(), volts)])
+}
+
+#[test]
+fn widen_to_guideline_widens_the_thin_track_of_a_net_over_its_drop_budget_where_there_is_room() {
+    let (board, routes) = over_budget(false);
+    // `--widen` alone widens the thin track to the width its net wants, as before.
+    let plain = routes_tidy::tidy_passes(
+        &board,
+        &routes,
+        None,
+        routes_tidy::Checking::Near,
+        routes_tidy::Widen::ToNet,
+    )
+    .unwrap();
+    assert_eq!(widths_of(&plain), vec![0.4, 0.1, 0.4], "{}", plain.text());
+    assert!(plain.drops.is_empty() && !plain.widen_to_guideline);
+    for checking in [routes_tidy::Checking::Near, routes_tidy::Checking::Whole] {
+        let tidied =
+            routes_tidy::tidy_passes(&board, &routes, None, checking, to_guideline(1.2)).unwrap();
+        let said = tidied.text();
+        assert_eq!(widths_of(&tidied), vec![0.4, 0.23, 0.4], "{said}");
+        assert_eq!(tidied.counts.widened, 1, "{said}");
+        assert!(tidied.refused.is_empty(), "{said}");
+        let c = &tidied.changes[0];
+        assert_eq!((c.width_before, c.width_after), (Some(0.09), Some(0.23)));
+        assert!(
+            said.contains("widened from 0.090 mm to the 0.230 mm the track-drop guideline suggests"),
+            "{said}"
+        );
+        let [d] = tidied.drops.as_slice() else {
+            panic!("one net over its budget: {said}")
+        };
+        assert_eq!(d.net, "p");
+        assert!(d.before > 0.015 && d.after <= 0.012 && !d.over, "{d:?}");
+        assert!(said.contains("net p: ") && said.contains(", within"), "{said}");
+        // The thin track's own finding (narrower than the rules' least track) is gone.
+        assert!(tidied.findings_after < tidied.findings_before, "{said}");
+        let json = serde_json::to_value(&tidied).unwrap();
+        assert_eq!(json["changes"][0]["width_after"], 0.23);
+        assert_eq!(json["drops"][0]["net"], "p");
+    }
+}
+
+#[test]
+fn widen_to_guideline_leaves_a_thin_track_with_no_room_and_says_why() {
+    let (board, routes) = over_budget(true);
+    let tidied = routes_tidy::tidy_passes(
+        &board,
+        &routes,
+        None,
+        routes_tidy::Checking::Near,
+        to_guideline(1.2),
+    )
+    .unwrap();
+    let said = tidied.text();
+    assert_eq!(widths_of(&tidied), vec![0.4, 0.09, 0.4], "{said}");
+    assert_eq!(tidied.counts.widened, 0, "{said}");
+    let [r] = tidied.refused.as_slice() else {
+        panic!("the thin track refused: {said}")
+    };
+    assert_eq!(r.kind, routes_tidy::Kind::Widen);
+    assert!(r.why.is_some(), "{said}");
+    let [d] = tidied.drops.as_slice() else {
+        panic!("one net over its budget: {said}")
+    };
+    assert!(d.over && (d.after - d.before).abs() < 1e-12, "{d:?}");
+    assert!(said.contains(", still over"), "{said}");
+    assert_eq!(tidied.routes.boards["narrow"].nets["q"], routes.boards["narrow"].nets["q"]);
+}
+
+#[test]
+fn widen_to_guideline_leaves_a_net_within_its_budget_as_widen_does() {
+    let (board, routes) = over_budget(false);
+    // On a 3 V rail the budget is 30 mV: the net is within it.
+    let tidied = routes_tidy::tidy_passes(
+        &board,
+        &routes,
+        None,
+        routes_tidy::Checking::Near,
+        to_guideline(3.0),
+    )
+    .unwrap();
+    let said = tidied.text();
+    assert_eq!(widths_of(&tidied), vec![0.4, 0.1, 0.4], "{said}");
+    assert!(tidied.drops.is_empty(), "{said}");
+    assert!(said.contains("track drop: no net was over its budget"), "{said}");
 }
