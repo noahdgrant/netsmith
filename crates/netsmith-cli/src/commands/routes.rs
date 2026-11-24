@@ -41,7 +41,7 @@ pub struct Target {
 pub enum Command {
     /// Write the routes file (and the layout file's places) from a KiCad board.
     #[command(
-        after_long_help = "Every track, arc and through via of F.Cu, B.Cu and the inner signal layers becomes the copper of the design's net its pads are on: a KiCad net is the design's net that most of its pads are on, with the parts paired by a port's parts file (`--parts`, default `reference/parts.toml` of the project when there is one; without one, by reference designator). A KiCad net on no pad of a part the design has keeps its name if the design has a net of that name, and is left out otherwise; copper on an inner layer is left out unless the layer is one of the process's signal layers (an inner plane holds no track); each is said. Each zone of copper that is not the process's own plane or pour becomes a zone of its net's record, on its layers, with its outline, holes and the settings that change its copper (priority, clearance, minimum thickness, pad connection, thermal gap and spoke width, island removal); such a zone of the net of the design's pour or plane on its layer restates it, which is not drawn, and one of another net cuts it (`fab` writes the zones one priority above the pour, and the import takes that one off again). A zone that is the process's own plane or pour (the same net, layer and outline, and the same clearance, minimum width, pad connection and thermal relief as the process states, which is what `fab` writes) is left out and said, so that `fab` and then `routes import` of its board leaves a file of tracks and vias; one that differs from it is imported, as a hand zone. Rule areas, teardrops and hatched zones are left out and said. The stitching vias of a pour (a through via of the pour's net and the rules' size near a point of its grid, in no pad, no track ending on it) are left out with `--unlocked`, as `fab` lays them again, and kept when the nets are locked; with `--format json`, `stitching_vias_left_out` names each one left out (`net`, `at`), and `routes show` counts them as the stitching vias `fab` lays.\n\nEach part of the design that the KiCad board has is written to the layout file at the KiCad board's place, turn and face, locked (`source = \"import\"`), unless `--no-places` (which also leaves out the notes of how a part is placed, turned or moved, and prints `places not imported: N` instead), or the physical file pins it (its requirement places it). Places are from the top left corner of the KiCad board's Edge.Cuts box. Then the board is placed again and each net's record takes its pads as they are. Every net is locked (the router adds nothing to it) unless `--unlocked`. The routes file is written over; the layout file keeps its seed, keepouts and the parts the import does not place."
+        after_long_help = "Every track, arc and through via of F.Cu, B.Cu and the inner signal layers becomes the copper of the design's net its pads are on: a KiCad net is the design's net that most of its pads are on, with the parts paired by a port's parts file (`--parts`, default `reference/parts.toml` of the project when there is one; without one, by reference designator). A KiCad net on no pad of a part the design has keeps its name if the design has a net of that name, and is left out otherwise; copper on an inner layer is left out unless the layer is one of the process's signal layers (an inner plane holds no track); each is said. Each zone of copper that is not the process's own plane or pour becomes a zone of its net's record, on its layers, with its outline, holes and the settings that change its copper (priority, clearance, minimum thickness, pad connection, thermal gap and spoke width, island removal); such a zone of the net of the design's pour or plane on its layer restates it, which is not drawn, and one of another net cuts it (`fab` writes the zones one priority above the pour, and the import takes that one off again). A zone that is the process's own plane or pour is left out and said, so that `fab` and then `routes import` of its board leaves a file of tracks and vias: one with the same net, layer and outline, and the same clearance, minimum width, pad connection and thermal relief as the process states (what `fab` writes), or one with the uuid `fab` gives the process's zone of its layer, which KiCad keeps (a pour `fab` wrote and changed since, in KiCad or by a process that states other settings now, is still the process's, not a hand zone); `--process-zones` takes them as hand zones instead. Rule areas (the routes file holds copper only), teardrops and hatched zones are left out and said. The text counts the zones taken and those left out by reason (`zones: 2 taken, 3 left out (2 of the process's own planes and pours, 1 rule area(s))`), and with `--format json` `zones_left_out` names each zone left out (`net`, `layers`, `reason`: `process`, `process_changed`, `rule_area`, `teardrop`, `hatched`, `not_copper`, `no_net` or `unreadable`, and `said`). The stitching vias of a pour (a through via of the pour's net and the rules' size near a point of its grid, in no pad, no track ending on it) are left out with `--unlocked`, as `fab` lays them again, and kept when the nets are locked; with `--format json`, `stitching_vias_left_out` names each one left out (`net`, `at`), and `routes show` counts them as the stitching vias `fab` lays.\n\nEach part of the design that the KiCad board has is written to the layout file at the KiCad board's place, turn and face, locked (`source = \"import\"`), unless `--no-places` (which also leaves out the notes of how a part is placed, turned or moved, and prints `places not imported: N` instead), or the physical file pins it (its requirement places it). Places are from the top left corner of the KiCad board's Edge.Cuts box. Then the board is placed again and each net's record takes its pads as they are. Every net is locked (the router adds nothing to it) unless `--unlocked`. The routes file is written over; the layout file keeps its seed, keepouts and the parts the import does not place."
     )]
     Import(ImportArgs),
     /// Print the routes file's copper and what the router would still route.
@@ -141,6 +141,10 @@ pub struct ImportArgs {
     /// Leave every net unlocked: the router may add copper to complete it.
     #[arg(long)]
     pub unlocked: bool,
+    /// Take the zones that are the process's own planes and pours (as `fab` wrote them, changed
+    /// since or not) as hand zones too, instead of leaving them out.
+    #[arg(long)]
+    pub process_zones: bool,
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
@@ -985,6 +989,28 @@ fn join_pad(args: &JoinPadArgs) -> ExitCode {
     }
 }
 
+/// The line of `routes import` that counts the KiCad board's zones (issue #1609): `zones: 2
+/// taken, 3 left out (2 of the process's own planes and pours, 1 rule area(s))`.
+fn zones_said(import: &routes_import::Import) -> String {
+    let mut by: std::collections::BTreeMap<routes_import::ZoneReason, usize> = Default::default();
+    for z in &import.zones_left_out {
+        *by.entry(z.reason).or_default() += 1;
+    }
+    let mut said = format!(
+        "zones: {} taken, {} left out",
+        import.zones(),
+        import.zones_left_out.len()
+    );
+    if !by.is_empty() {
+        let why: Vec<String> = by
+            .iter()
+            .map(|(reason, n)| format!("{n} {}", reason.phrase()))
+            .collect();
+        said.push_str(&format!(" ({})", why.join(", ")));
+    }
+    said
+}
+
 fn import(args: &ImportArgs) -> ExitCode {
     if let Err(e) = args
         .framing
@@ -1017,7 +1043,11 @@ fn import(args: &ImportArgs) -> ExitCode {
     };
     // First the design's board as it is placed now, for its parts, nets and paths.
     let imported = with_board(&args.target, |layout, board| {
-        let import = routes_import::import(board, &pcb, parts.as_ref(), !args.unlocked)?;
+        let options = routes_import::Options {
+            lock: !args.unlocked,
+            process_zones: args.process_zones,
+        };
+        let import = routes_import::import_with(board, &pcb, parts.as_ref(), options)?;
         if !args.no_places {
             write_places(layout, board, &import)?;
         }
@@ -1083,6 +1113,17 @@ fn import(args: &ImportArgs) -> ExitCode {
             // (issue 1515).
             "refitted": if args.no_places { Vec::new() } else { import.refitted.clone() },
             "skipped": import.skipped,
+            // Each zone of the KiCad board not taken, with why (issue #1609).
+            "zones_left_out": import
+                .zones_left_out
+                .iter()
+                .map(|z| serde_json::json!({
+                    "net": z.net,
+                    "layers": z.layers,
+                    "reason": z.reason.word(),
+                    "said": z.said,
+                }))
+                .collect::<Vec<_>>(),
             // Each via left out as a stitching via `fab` lays again (issue #1583).
             "stitching_vias_left_out": import
                 .stitching_vias
@@ -1121,6 +1162,7 @@ fn import(args: &ImportArgs) -> ExitCode {
     for s in &import.skipped {
         println!("note: {s}");
     }
+    println!("{}", zones_said(&import));
     println!(
         "wrote {}: {} net(s), {tracks} track(s), {arcs} arc(s), {vias} via(s), {zones} zone(s){}",
         file.display(),
