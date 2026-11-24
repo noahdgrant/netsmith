@@ -80,7 +80,7 @@
 //! `finish_fine_pitch`, `assembly_size` and the `test_point_*` rules, guidelines, warnings:
 //! `marks.rs`, issues #761, #1006 and 1285), `v_cut_edge` (copper of a board under the board
 //! house's assembly size nearer its outline than the house keeps copper from a V-cut edge, a
-//! warning: `v_cut.rs`, issue 1592), `acid_trap` (a track
+//! note: `v_cut.rs`, issue 1592), `acid_trap` (a track
 //! that meets a pad's straight edge or another track of its net at an acute angle, a warning:
 //! `acid.rs`, issue #838), `stackup` (a board file whose copper layers, thickness or stackup
 //! the process does not make, an error: `stackup.rs`, issue #993), `unmatched_waiver` (a waiver of
