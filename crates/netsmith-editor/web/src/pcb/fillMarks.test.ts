@@ -37,6 +37,7 @@ const fill: PcbFill = {
   counts,
   starved: [{ layer: 'bottom', net: 'GND', part: 'J1', pad: '2', at: { x: 23.5, y: 28.54 }, spokes: 4, joinedSpokes: 1, tracks: 0 }],
   unjoinable: [{ layer: 'bottom', net: 'GND', part: 'J1', pad: '4', at: { x: 23.5, y: 33.62 }, spokes: 4, why: 'the clearance of track [VCC] (0.2 mm) at the end of 4 spokes' }],
+  regulatorGrounds: [],
 };
 
 describe('the marks of the fill', () => {

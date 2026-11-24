@@ -34,6 +34,11 @@
 //! After the objective, a line for each power net ([`PowerNet`], issue #1532): its layers, its
 //! layer changes and its via groups, against the vias side by side its current needs.
 //!
+//! With [`Quality::with_routing`] it holds the rest of the rows a routing round is judged by
+//! ([`ROWS`], issue #1629): the tracks, the connections left, the track drops over budget and
+//! the errors of the design rules check; [`Compared`] reads the rows of two states and says
+//! each one's change.
+//!
 //! The limits of `--gate` are [`Counts::LIMITS`] unless a `--max-<kind>` flag gives another: 0
 //! of each, the zero-defect check, and the report states the limits it was judged by.
 
@@ -117,6 +122,247 @@ pub struct Quality {
     /// The power nets' layer changes and via groups ([`PowerNet`], issue #1532).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub power: Vec<PowerNet>,
+    /// The rest of the rows a routing round is judged by (issue #1629): `None` until
+    /// [`Quality::with_routing`] gives them. In the JSON its keys stand beside `totals`.
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub routing: Option<Routing>,
+}
+
+/// The counts of a board's copper that [`Quality`]'s totals and [`Objective`] do not hold, for
+/// the rows of [`ROWS`] (issue #1629).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct Routing {
+    /// The tracks of the nets no zone, pour or plane pours (a poured net's tracks are no
+    /// connection, as the table leaves those nets out).
+    pub tracks: usize,
+    /// The connections left to route (`netsmith_pcb::Ratsnest`, as `routes tidy` counts them).
+    pub connections_left: usize,
+    /// The power nets whose track drop is over its budget (`track_drop`, the `over` of
+    /// `track_drops`).
+    pub drops_over: usize,
+    /// The errors of the design rules check, as `board drc` counts them, the connections left
+    /// out: its violations and footprint errors.
+    pub findings: usize,
+}
+
+impl Routing {
+    /// The counts of `board` as it stands, with `drops_over` and `findings` measured by the
+    /// caller (the track drop and the check need the design).
+    pub fn of_board(board: &Board, drops_over: usize, findings: usize) -> Routing {
+        let poured = poured_nets(board);
+        Routing {
+            tracks: board
+                .tracks
+                .iter()
+                .filter(|t| !t.net.is_empty() && !poured.contains(t.net.as_str()))
+                .count(),
+            connections_left: netsmith_pcb::Ratsnest::of(board).lines.len(),
+            drops_over,
+            findings,
+        }
+    }
+
+    /// The counts as a line of text for a person.
+    pub fn text(&self) -> String {
+        format!(
+            "routing: {} track(s), {} connection(s) left to route, {} track drop(s) over budget, {} error(s) of the design rules check\n",
+            self.tracks, self.connections_left, self.drops_over, self.findings
+        )
+    }
+}
+
+/// The nets a zone, a pour or a plane pours.
+fn poured_nets(board: &Board) -> BTreeSet<&str> {
+    board
+        .zones
+        .iter()
+        .map(|z| z.net.as_str())
+        .chain(board.pours.iter().map(|p| p.net.as_str()))
+        .chain(board.planes.iter().map(|p| p.net.as_str()))
+        .collect()
+}
+
+/// A row a routing round is judged by (issue #1629): a number of the `quality` section, found in
+/// its JSON at `path`, so that a live run and the JSON of an earlier one are read alike and no
+/// number is stated twice. More is worse for each.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Row {
+    /// Its key in the JSON of the comparison.
+    pub key: &'static str,
+    /// Its name for a person.
+    pub words: &'static str,
+    pub path: &'static [&'static str],
+}
+
+/// The rows, in the order they are printed: the objective's length, the totals' short tracks,
+/// the objective's layer changes, the totals' via pairs, the objective's vias, then
+/// [`Routing`]'s.
+pub const ROWS: [Row; 9] = [
+    Row {
+        key: "length",
+        words: "signal length (mm)",
+        path: &["objective", "length"],
+    },
+    Row {
+        key: "short",
+        words: "short tracks",
+        path: &["totals", "short"],
+    },
+    Row {
+        key: "layer_changes",
+        words: "layer changes",
+        path: &["objective", "layer_changes"],
+    },
+    Row {
+        key: "via_pairs",
+        words: "via pairs",
+        path: &["totals", "via_pairs"],
+    },
+    Row {
+        key: "vias",
+        words: "vias",
+        path: &["objective", "vias"],
+    },
+    Row {
+        key: "tracks",
+        words: "tracks",
+        path: &["tracks"],
+    },
+    Row {
+        key: "connections_left",
+        words: "connections left",
+        path: &["connections_left"],
+    },
+    Row {
+        key: "drops_over",
+        words: "track drops over budget",
+        path: &["drops_over"],
+    },
+    Row {
+        key: "findings",
+        words: "design rules errors",
+        path: &["findings"],
+    },
+];
+
+impl Row {
+    /// The row's number in `quality`, the JSON of a `quality` section; `None` when it has none
+    /// (the JSON of a run older than the row).
+    pub fn of(&self, quality: &serde_json::Value) -> Option<f64> {
+        self.path
+            .iter()
+            .try_fold(quality, |v, key| v.get(key))?
+            .as_f64()
+    }
+}
+
+/// One row of a comparison: before, after and the change, and whether it is worse beyond the
+/// tolerance.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RowChange {
+    pub row: &'static str,
+    pub before: Option<f64>,
+    pub after: Option<f64>,
+    pub change: Option<f64>,
+    pub worse: bool,
+}
+
+/// The rows of a board's copper against an earlier state of it (`board nets --compare`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Compared {
+    /// The file the earlier state was read from.
+    pub against: String,
+    /// How much worse than before, in percent of before, a row may be before it is worse.
+    pub tolerance: f64,
+    pub rows: Vec<RowChange>,
+}
+
+impl Compared {
+    /// The rows of `after` against `before`, each the JSON of a `quality` section. A row is
+    /// worse when it is more than its before by over `tolerance` percent of it (and by over a
+    /// millionth, the rounding of a length).
+    pub fn of(
+        against: String,
+        before: &serde_json::Value,
+        after: &serde_json::Value,
+        tolerance: f64,
+    ) -> Compared {
+        let rows = ROWS
+            .iter()
+            .map(|row| {
+                let (b, a) = (row.of(before), row.of(after));
+                let change = b.zip(a).map(|(b, a)| a - b);
+                let worse = b
+                    .zip(a)
+                    .is_some_and(|(b, a)| a - b > (b.abs() * tolerance / 100.0).max(1e-6));
+                RowChange {
+                    row: row.key,
+                    before: b,
+                    after: a,
+                    change,
+                    worse,
+                }
+            })
+            .collect();
+        Compared {
+            against,
+            tolerance,
+            rows,
+        }
+    }
+
+    /// The line `--gate` says on stderr for the row `r`, one of [`Compared::worse`].
+    pub fn worse_line(&self, r: &RowChange) -> String {
+        let n = |v: Option<f64>| match v {
+            Some(v) if r.row == "length" => format!("{v:.3}"),
+            Some(v) => format!("{v:.0}"),
+            None => "-".to_string(),
+        };
+        format!(
+            "{} worse than in {}: {} before, {} now",
+            r.row,
+            self.against,
+            n(r.before),
+            n(r.after)
+        )
+    }
+
+    /// The rows worse beyond the tolerance.
+    pub fn worse(&self) -> impl Iterator<Item = &RowChange> {
+        self.rows.iter().filter(|r| r.worse)
+    }
+
+    /// The comparison as text for a person: a line for each row, `-` where a side has none.
+    pub fn text(&self) -> String {
+        let n = |v: Option<f64>, key: &str| match v {
+            None => "-".to_string(),
+            Some(v) if key == "length" => format!("{v:.3}"),
+            Some(v) => format!("{v:.0}"),
+        };
+        let mut out = format!(
+            "compared with {} (worse beyond {} %):\n  {:24}  {:>10}  {:>10}  {:>10}\n",
+            self.against, self.tolerance, "row", "before", "after", "change"
+        );
+        for (r, row) in self.rows.iter().zip(ROWS.iter()) {
+            let change = match r.change {
+                None => "-".to_string(),
+                Some(c) => {
+                    let c = if c.abs() < 5e-7 { 0.0 } else { c };
+                    let sign = if c > 0.0 { "+" } else { "" };
+                    format!("{sign}{}", n(Some(c), r.row))
+                }
+            };
+            out.push_str(&format!(
+                "  {:24}  {:>10}  {:>10}  {:>10}{}\n",
+                row.words,
+                n(r.before, r.row),
+                n(r.after, r.row),
+                change,
+                if r.worse { "  worse" } else { "" }
+            ));
+        }
+        out
+    }
 }
 
 /// A power net's copper (issue #1532): a net with a known current (`Board::net_currents`) that
@@ -315,13 +561,7 @@ pub struct Over {
 impl Quality {
     /// The quality of `board`'s copper as it stands.
     pub fn of_board(board: &Board) -> Quality {
-        let poured: BTreeSet<&str> = board
-            .zones
-            .iter()
-            .map(|z| z.net.as_str())
-            .chain(board.pours.iter().map(|p| p.net.as_str()))
-            .chain(board.planes.iter().map(|p| p.net.as_str()))
-            .collect();
+        let poured = poured_nets(board);
         let mut by: BTreeMap<String, Counts> = BTreeMap::new();
         // Each track and via is counted once: as unneeded copper first, then in a duplicate
         // way only when the way has a track that is not unneeded (a nudge from a pad's centre is
@@ -402,6 +642,15 @@ impl Quality {
             nets,
             objective: None,
             power: PowerNet::of_board(board),
+            routing: None,
+        }
+    }
+
+    /// The quality with the rest of the rows of a routing round (issue #1629).
+    pub fn with_routing(self, routing: Routing) -> Quality {
+        Quality {
+            routing: Some(routing),
+            ..self
         }
     }
 
@@ -430,6 +679,9 @@ impl Quality {
         let mut out = format!("quality: {}\n", self.totals.words());
         if let Some(o) = &self.objective {
             out.push_str(&o.text());
+        }
+        if let Some(r) = &self.routing {
+            out.push_str(&r.text());
         }
         for p in &self.power {
             out.push_str(&p.text());
@@ -635,6 +887,7 @@ mod tests {
             nets: Vec::new(),
             objective: None,
             power: Vec::new(),
+            routing: None,
         };
         let over = q.over(&Counts::LIMITS);
         assert_eq!(
@@ -646,5 +899,49 @@ mod tests {
             ..Counts::LIMITS
         });
         assert_eq!(over.len(), 1);
+    }
+
+    #[test]
+    fn a_comparison_reads_each_row_by_its_path_and_names_a_row_worse_beyond_the_tolerance() {
+        let state = |length: f64, short: usize, findings: Option<usize>| {
+            let mut q = serde_json::json!({
+                "totals": {"short": short, "via_pairs": 0},
+                "objective": {"length": length, "vias": 2, "layer_changes": 1},
+                "tracks": 5, "connections_left": 0, "drops_over": 0,
+            });
+            if let Some(f) = findings {
+                q["findings"] = f.into();
+            }
+            q
+        };
+        let c = Compared::of(
+            "before".into(),
+            &state(10.0, 3, Some(1)),
+            &state(10.5, 1, Some(1)),
+            0.0,
+        );
+        let row = |key: &str| c.rows.iter().find(|r| r.row == key).unwrap().clone();
+        assert_eq!(row("short").change, Some(-2.0));
+        assert!(!row("short").worse);
+        assert_eq!(row("length").change, Some(0.5));
+        assert!(row("length").worse);
+        assert_eq!(c.worse().count(), 1);
+        // Within 10 % of before, the longer length is no worse.
+        let c = Compared::of(
+            "b".into(),
+            &state(10.0, 3, None),
+            &state(10.5, 3, Some(2)),
+            10.0,
+        );
+        assert_eq!(c.worse().count(), 0);
+        // A row the earlier state lacks has no change and is never worse.
+        let f = c.rows.iter().find(|r| r.row == "findings").unwrap();
+        assert_eq!(
+            (f.before, f.after, f.change, f.worse),
+            (None, Some(2.0), None, false)
+        );
+        let text = c.text();
+        assert!(text.contains("signal length (mm)"), "{text}");
+        assert!(text.contains("10.000      10.500      +0.500"), "{text}");
     }
 }

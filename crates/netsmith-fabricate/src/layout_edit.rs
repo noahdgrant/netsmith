@@ -42,7 +42,7 @@ pub fn json<T: Serialize>(value: &T) -> String {
     serde_json::to_string_pretty(value).expect("plain data")
 }
 
-fn number(v: f64) -> String {
+pub(crate) fn number(v: f64) -> String {
     format!("{}", (v * 1e3).round() / 1e3)
 }
 
@@ -100,14 +100,14 @@ pub fn nearest(names: &[String], wanted: &str, count: usize) -> Vec<String> {
 }
 
 /// The paths of the parts of `design`, in name order.
-fn part_paths(design: &Design) -> Vec<String> {
+pub(crate) fn part_paths(design: &Design) -> Vec<String> {
     let mut paths: Vec<String> = design.parts.iter().map(|p| p.path.clone()).collect();
     paths.sort();
     paths
 }
 
 /// The error for `path`, which is no part of the board.
-fn no_such_part(design: &Design, path: &str, names: &[String]) -> String {
+pub(crate) fn no_such_part(design: &Design, path: &str, names: &[String]) -> String {
     let near = nearest(names, path, 5)
         .iter()
         .map(|n| format!("`{n}`"))
@@ -120,7 +120,7 @@ fn no_such_part(design: &Design, path: &str, names: &[String]) -> String {
 }
 
 /// The layout file at `file` as text and parsed, or nothing if there is no such file.
-fn read(file: &Path) -> Result<Option<(String, Layout)>, String> {
+pub(crate) fn read(file: &Path) -> Result<Option<(String, Layout)>, String> {
     let name = file.display().to_string();
     let text = match std::fs::read_to_string(file) {
         Ok(text) => text,
