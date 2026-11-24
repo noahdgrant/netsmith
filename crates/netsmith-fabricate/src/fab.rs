@@ -2065,6 +2065,9 @@ fn fab_board(
             // The board's diff pairs with their skew limits: a pair over its limit is a
             // `pair_skew` finding, as `board drc` has it (issue #1597).
             pairs: board.diff_pairs_with_skew(),
+            // Foreign copper at a switch node is a `switch_node_copper` note (issue #1585).
+            regulators: board.switching_regulators.clone(),
+            switch_node_keepout: board.process.switch_node_keepout,
             ..Options::default()
         };
         // The pictures of a package made for review are of the board just routed (issue #1213);
@@ -4518,7 +4521,7 @@ mod tests {
 
     /// The fields of a process that are not a rule the router and the design rules check keep,
     /// each with the reason (issue #431).
-    const NOT_A_COPPER_RULE: [(&str, &str); 39] = [
+    const NOT_A_COPPER_RULE: [(&str, &str); 40] = [
         (
             "finish",
             "the surface finish, a word for the notes and the order",

@@ -138,7 +138,7 @@ fn the_stage_has_its_input_loop_boot_route_and_feedback() {
     // No copper of another net near the switch node: the far signal is not, and the nets of
     // the IC, the inductor and the boot capacitor are the stage's own.
     assert!(s.foreign.is_empty(), "{:?}", s.foreign);
-    assert!(power_stage::notes(std::slice::from_ref(s)).is_empty());
+    assert!(power_stage::findings(std::slice::from_ref(s)).is_empty());
     let text = power_stage::text(std::slice::from_ref(s));
     println!("{text}");
     assert!(text.contains("input C1: VIN U1.3 to C1.1 3.97 mm apart, routed 5.45 mm with 0 via(s)"), "{text}");
@@ -159,8 +159,10 @@ fn a_signal_via_under_the_ic_beside_the_switch_node_is_noted() {
     assert_eq!((f[0].kind, f[0].net.as_str()), ("via", "SIG"));
     assert!(close(f[0].gap.unwrap(), 0.27), "{f:?}");
     assert!(f[0].under_body, "{f:?}");
-    let notes = power_stage::notes(&s);
+    let notes = power_stage::findings(&s);
     assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].rule, netsmith_geom::DrcRule::SwitchNodeCopper);
+    assert_eq!(notes[0].severity, netsmith_geom::DrcSeverity::Note);
     println!("{}", notes[0].message);
     assert!(
         notes[0]

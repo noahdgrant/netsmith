@@ -23,7 +23,7 @@ use crate::{Design, PartKind};
 pub const BUCK_IC: &str = "BuckIc";
 
 /// A switching regulator of a design: the IC, its pins by role, and the capacitors round it.
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SwitchingRegulator {
     pub refdes: String,
     /// The IC's path in the design (`reg.ic`).
@@ -44,14 +44,14 @@ pub struct SwitchingRegulator {
 }
 
 /// A role of a regulator's pin: the net it is on and the IC's pads of it.
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RegulatorPin {
     pub net: String,
     pub pads: Vec<String>,
 }
 
 /// A capacitor on a pin of the IC that is none of its roles.
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SupportCap {
     /// The pin as its datasheet names it (`INTVCC`, `BOOT`).
     pub pin: String,

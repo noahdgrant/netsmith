@@ -172,3 +172,37 @@ fn a_length_group_the_source_states_is_lengthened_by_the_router_and_listed() {
     assert!(text.contains("group lane: "), "{text}");
     assert!(text.contains("within the 0.2 mm tolerance"), "{text}");
 }
+
+/// `board nets --power-stage` (issue #1585) of the buck example: its IC is recognised as a
+/// switching regulator (a provider of `BuckIc`) with its nets by role, its input capacitors, the
+/// capacitors on its other pins and its feedback net; nothing is routed, so no way has a track
+/// and no copper of another net is near the switch node, and `board drc` notes none.
+#[test]
+fn the_power_stage_of_a_buck_names_its_roles_and_capacitors() {
+    let dir = TempDir::new("board-nets-power-stage");
+    let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+    for f in ["buck_converter.nsm", "buck_converter.lock.toml"] {
+        fs::copy(examples.join(f), dir.join(f)).unwrap();
+    }
+    let out = json(&dir, &["board", "nets", "buck_converter.nsm", "--power-stage"]);
+    println!("{out}");
+    let stages = out["power_stages"].as_array().unwrap();
+    assert_eq!(stages.len(), 1, "{out}");
+    let s = &stages[0];
+    assert!(s["path"].as_str().unwrap().ends_with("ic"), "{s}");
+    for role in ["vin", "gnd", "sw"] {
+        assert!(!s[role].as_str().unwrap().is_empty(), "{s}");
+    }
+    let caps = s["input_caps"].as_array().unwrap();
+    assert!(!caps.is_empty(), "{s}");
+    assert!(caps[0]["vin"]["distance"].as_f64().unwrap() > 0.0, "{s}");
+    assert!(caps[0]["vin"]["routed"].is_null(), "{s}");
+    assert!(s["feedback"]["net"].is_string(), "{s}");
+    assert_eq!(s["foreign"].as_array().unwrap().len(), 0, "{s}");
+    let text = netsmith(&dir, &["board", "nets", "buck_converter.nsm", "--power-stage"]);
+    let text = String::from_utf8_lossy(&text.stdout);
+    assert!(text.contains("power stage:") && text.contains("input "), "{text}");
+    let drc = netsmith(&dir, &["board", "drc", "buck_converter.nsm"]);
+    let drc = String::from_utf8_lossy(&drc.stdout);
+    assert!(!drc.contains("switch_node_copper"), "{drc}");
+}

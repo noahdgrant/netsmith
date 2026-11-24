@@ -21,7 +21,10 @@
 //!   spans.
 
 use netsmith_core::SwitchingRegulator;
-use netsmith_geom::{Artwork, DrcShape, Pt, TrackShape, pad_copper, polygon_contains, shape_gap};
+use netsmith_geom::{
+    Artwork, DrcFinding, DrcItem, DrcRule, DrcSeverity, DrcShape, Pt, TrackShape, pad_copper,
+    polygon_contains, shape_gap,
+};
 use serde::Serialize;
 
 use crate::connection;
@@ -146,29 +149,47 @@ impl ForeignCopper {
     }
 }
 
-/// A via or a track of another net near a switch node or under a regulator: `board drc`'s
-/// `switch_node_copper` note, which fails no check.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct SwitchNodeNote {
-    pub regulator: String,
-    pub switch_node: String,
-    pub keepout: f64,
-    #[serde(flatten)]
-    pub copper: ForeignCopper,
-    pub message: String,
-}
-
-/// The `switch_node_copper` notes of `stages`: each one's foreign copper, nearest first.
-pub fn notes(stages: &[PowerStage]) -> Vec<SwitchNodeNote> {
+/// The `switch_node_copper` notes of `stages` (issue #1585): a finding of the design rules
+/// check for each via and track of another net near a switch node or under a regulator, at its
+/// place, with severity `note`, which fails nothing with any strictness.
+pub fn findings(stages: &[PowerStage]) -> Vec<DrcFinding> {
     stages
         .iter()
         .flat_map(|s| {
-            s.foreign.iter().map(move |f| SwitchNodeNote {
-                regulator: s.regulator.clone(),
-                switch_node: s.sw.clone(),
-                keepout: s.keepout,
-                copper: f.clone(),
-                message: f.note(s),
+            s.foreign.iter().map(move |f| {
+                let at = Pt::new(f.at.0, f.at.1);
+                let item = |what: String, net: &str, part: Option<&str>| DrcItem {
+                    what,
+                    at,
+                    part: part.map(str::to_string),
+                    pad: None,
+                    net: Some(net.to_string()),
+                };
+                DrcFinding {
+                    rule: DrcRule::SwitchNodeCopper,
+                    severity: DrcSeverity::Note,
+                    message: f.note(s),
+                    at,
+                    layer: (f.kind == "track").then(|| f.layer.clone()),
+                    items: vec![
+                        item(
+                            format!(
+                                "{} of {}",
+                                if f.kind == "via" { "Via" } else { "Track" },
+                                f.net
+                            ),
+                            &f.net,
+                            None,
+                        ),
+                        item(
+                            format!("Switch node {} of {}", s.sw, s.regulator),
+                            &s.sw,
+                            Some(&s.regulator),
+                        ),
+                    ],
+                    carrying: None,
+                    source: None,
+                }
             })
         })
         .collect()
@@ -224,7 +245,8 @@ fn stage(
     r: &SwitchingRegulator,
     keepout: f64,
 ) -> Option<PowerStage> {
-    let ic = |role: &netsmith_core::RegulatorPin| pads_of(art, &r.refdes, Some(&role.pads), &role.net);
+    let ic =
+        |role: &netsmith_core::RegulatorPin| pads_of(art, &r.refdes, Some(&role.pads), &role.net);
     let (vin, gnd, sw) = (ic(&r.vin), ic(&r.gnd), ic(&r.sw));
     if sw.is_empty() {
         return None;
@@ -355,16 +377,17 @@ fn foreign(art: &Artwork, r: &SwitchingRegulator, keepout: f64) -> Vec<ForeignCo
             hi = Pt::new(hi.x.max(q.x + s.r), hi.y.max(q.y + s.r));
         }
     }
-    let body = DrcShape::polygon(
-        vec![lo, Pt::new(hi.x, lo.y), hi, Pt::new(lo.x, hi.y)],
-        0.0,
-    );
+    let body = DrcShape::polygon(vec![lo, Pt::new(hi.x, lo.y), hi, Pt::new(lo.x, hi.y)], 0.0);
     let back = art
         .footprints
         .iter()
         .find(|f| f.part == r.refdes)
         .is_some_and(|f| f.back);
-    let side = if back { art.copper.len().saturating_sub(1) } else { 0 };
+    let side = if back {
+        art.copper.len().saturating_sub(1)
+    } else {
+        0
+    };
     let foreign_net = |net: &Option<String>| -> Option<String> {
         let n = net.as_deref().filter(|n| !n.is_empty())?;
         (!own.contains(&n)).then(|| n.to_string())
@@ -466,8 +489,7 @@ fn track_shapes(t: &netsmith_geom::ArtworkTrack) -> Vec<DrcShape> {
 /// board has none.
 pub fn text(stages: &[PowerStage]) -> String {
     if stages.is_empty() {
-        return "power stage: no switching regulator (a part that provides `BuckIc`)\n"
-            .to_string();
+        return "power stage: no switching regulator (a part that provides `BuckIc`)\n".to_string();
     }
     let mm = |x: Option<f64>| x.map_or("-".to_string(), number);
     let leg = |l: &Leg| match (l.routed, l.vias) {

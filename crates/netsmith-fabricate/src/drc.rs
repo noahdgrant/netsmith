@@ -42,6 +42,8 @@ fn options_of(board: &Board, constraints: Option<Constraints>) -> Options {
             .iter()
             .map(|p| board.track_path_loss(p))
             .collect(),
+        regulators: board.switching_regulators.clone(),
+        switch_node_keepout: board.process.switch_node_keepout,
         ..Options::default()
     }
 }

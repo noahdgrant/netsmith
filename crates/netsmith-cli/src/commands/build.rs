@@ -455,7 +455,6 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
                 long_paths: Vec::new(),
                 quality: None,
                 track_drops: Vec::new(),
-                switch_node_copper: Vec::new(),
             });
             if run.emit_solved.is_some() || run.explain.is_some() {
                 solved.push(netsmith_pipeline::solved::to_value(&b));
