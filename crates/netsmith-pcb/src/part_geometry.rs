@@ -113,6 +113,20 @@ pub struct PadGeometry {
     /// primitives, which `polygons` gives as it is; issue 1516). For a custom pad `width` and
     /// `height` are its anchor's size, not its copper's.
     pub shape: &'static str,
+    /// For a `custom` pad, the shape of its anchor: `rect`, `round_rect`, `oval` or `circle`
+    /// (its primitives' copper is in `polygons`, the box of the whole in `bounds`). Left out
+    /// for every other shape, which `shape` says.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anchor_shape: Option<&'static str>,
+    /// For a `round_rect` pad, how round its corners are,
+    /// in mm: `corner_ratio` times the shorter side of the pad's own size, as KiCad draws
+    /// them and the design rules check measures them, rounded to 0.0001.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub corner_radius: Option<f64>,
+    /// For a `round_rect` pad, the ratio the radius came
+    /// from: the footprint's `roundrect_rratio`, or KiCad's default 0.25 when it states none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub corner_ratio: Option<f64>,
     /// The centre of the copper on the board: `[x, y]`.
     pub at: [f64; 2],
     /// The centre of the copper in the footprint's own frame.
@@ -403,6 +417,23 @@ fn point(p: Pt, origin: Pt) -> [f64; 2] {
     [round(p.x - origin.x), round(p.y - origin.y)]
 }
 
+fn shape_word(shape: PadShape) -> &'static str {
+    match shape {
+        PadShape::Rect => "rect",
+        PadShape::RoundRect => "round_rect",
+        PadShape::Oval => "oval",
+        PadShape::Circle => "circle",
+    }
+}
+
+fn round4(v: f64) -> f64 {
+    (v * 1e4).round() / 1e4
+}
+
+fn round6(v: f64) -> f64 {
+    (v * 1e6).round() / 1e6
+}
+
 fn pad_geometry(
     p: &Placed,
     pad: &Pad,
@@ -430,13 +461,15 @@ fn pad_geometry(
             PadKind::ThruHole => "thru_hole",
             PadKind::NpThruHole => "np_thru_hole",
         },
-        shape: match pad.shape {
-            _ if is_custom(pad) => "custom",
-            PadShape::Rect => "rect",
-            PadShape::RoundRect => "round_rect",
-            PadShape::Oval => "oval",
-            PadShape::Circle => "circle",
+        shape: if is_custom(pad) {
+            "custom"
+        } else {
+            shape_word(pad.shape)
         },
+        anchor_shape: is_custom(pad).then(|| shape_word(pad.shape)),
+        corner_radius: (pad.shape == PadShape::RoundRect)
+            .then(|| round4(pad.corner_ratio * pad.width.min(pad.height))),
+        corner_ratio: (pad.shape == PadShape::RoundRect).then(|| round6(pad.corner_ratio)),
         at: [round(at.x - origin.x), round(at.y - origin.y)],
         local: [round(pad.at.x), round(pad.at.y)],
         width: round(pad.width),
@@ -660,5 +693,54 @@ mod custom_pad_tests {
         let json = serde_json::to_string(&all).unwrap();
         assert!(!json.contains("polygons"), "{json}");
         assert!(!json.contains("\"custom\""), "{json}");
+    }
+
+    /// A footprint with a rounded-rectangle pad that states its ratio, one that states none
+    /// (KiCad's default 0.25), a rectangle, an oval, and a custom pad with a rectangular anchor.
+    fn rounded_footprint() -> Footprint {
+        Footprint::parse(
+            "L:ROUNDED",
+            r#"(footprint "ROUNDED"
+                (property "Reference" "REF**" (at 0 -2 0) (layer "F.SilkS"))
+                (pad "1" smd roundrect (at 0 0) (size 1.2 0.6) (layers "F.Cu" "F.Mask" "F.Paste")
+                    (roundrect_rratio 0.1))
+                (pad "2" smd roundrect (at 2 0) (size 0.5 1.6) (layers "F.Cu" "F.Mask" "F.Paste"))
+                (pad "3" smd rect (at 4 0) (size 1 1) (layers "F.Cu" "F.Mask" "F.Paste"))
+                (pad "4" smd oval (at 6 0) (size 1 2) (layers "F.Cu" "F.Mask" "F.Paste"))
+                (pad "5" smd custom (at 8 0) (size 0.8 0.4) (layers "F.Cu" "F.Mask" "F.Paste")
+                    (options (clearance outline) (anchor rect))
+                    (primitives
+                        (gr_poly (pts (xy -0.4 -0.2) (xy 1 -0.2) (xy 1 0.2) (xy -0.4 0.2))
+                            (width 0) (fill yes)))))"#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_round_rect_pad_gives_its_corner_radius_and_the_ratio_it_came_from() {
+        let mut board = crate::board::tests::led_board();
+        board.parts[0].footprint = rounded_footprint();
+        let json = serde_json::to_value(PartGeometries::of(&board, &[]).unwrap()).unwrap();
+        let pads = json["parts"][0]["pads"].as_array().unwrap();
+        // The footprint states 0.1 of the shorter side, 0.6 mm: 0.06 mm.
+        assert_eq!(pads[0]["shape"], "round_rect");
+        assert_eq!(pads[0]["corner_ratio"], 0.1);
+        assert_eq!(pads[0]["corner_radius"], 0.06);
+        // It states none: KiCad's default 0.25 of the shorter side, 0.5 mm: 0.125 mm.
+        assert_eq!(pads[1]["shape"], "round_rect");
+        assert_eq!(pads[1]["corner_ratio"], 0.25);
+        assert_eq!(pads[1]["corner_radius"], 0.125);
+        // Another shape says its shape and has no corner keys.
+        for (i, shape) in [(2, "rect"), (3, "oval")] {
+            assert_eq!(pads[i]["shape"], shape);
+            for key in ["corner_radius", "corner_ratio", "anchor_shape"] {
+                assert!(pads[i].get(key).is_none(), "{i} {key}: {}", pads[i]);
+            }
+        }
+        // A custom pad says its anchor's shape, and its copper as polygons.
+        assert_eq!(pads[4]["shape"], "custom");
+        assert_eq!(pads[4]["anchor_shape"], "rect");
+        assert!(pads[4].get("corner_radius").is_none(), "{}", pads[4]);
+        assert!(pads[4]["polygons"].is_array());
     }
 }
