@@ -1729,17 +1729,20 @@ fn a_via_is_in_a_pad_when_its_centre_is_on_the_copper_and_touches_it_when_its_ho
         )),
         "{extras:?}"
     );
+    // With the process's 0.1 mm reach (issue #1579), vias 3 and 4, whose holes are 0.05 mm and
+    // 0 mm from pad 1, are in the line too; a reach of 0 takes the holes that cross an edge.
     assert!(
         extras.iter().any(|l| l.starts_with(
-            "2 vias whose hole touches a pad's edge: on R1 (pads R1.1, R1.2); each centre is off the pad's copper"
+            "4 vias whose hole touches or comes within 0.1 mm of a pad's edge: on R1 (pads R1.1, R1.2, of any net and layer); each centre is off the pad's copper"
         )),
         "{extras:?}"
     );
     let touching = board.drilled_vias_touching_pads();
     assert_eq!(
-        (touching.count, touching.parts),
-        (2, vec!["R1".to_string()])
+        (touching.count, touching.parts, touching.reach),
+        (4, vec!["R1".to_string()], 0.1)
     );
+    assert_eq!(board.vias_near_pads(0.0), board.vias_touching_pads());
 
     // Turned by 45 degrees with its part, pad 1's box grows past its copper: a via in the
     // box's corner is on neither.
@@ -1830,4 +1833,37 @@ fn a_pads_copper_distance_follows_its_shape() {
     };
     assert!(near(turned.copper_distance(Pt::new(0.0, 0.9)), 0.0));
     assert!(near(turned.copper_distance(Pt::new(0.9, 0.0)), 0.4));
+}
+
+#[test]
+fn a_via_whose_hole_comes_near_a_pad_of_any_net_and_face_is_counted_once() {
+    // Issue #1579: R1's pad 1 spans x from -1.5 to -0.5, pad 2 is a circle of radius 0.4 at
+    // x = 1; the vias' holes are 0.1 mm in radius.
+    let mut board = two_pad_board();
+    let r1 = |n: &str| PadRef {
+        refdes: "R1".into(),
+        number: n.into(),
+    };
+    let vias = [
+        (-0.35, 0.0), // 0: its hole 0.05 mm from pad 1: near
+        (-0.1, 0.0),  // 1: its hole 0.3 mm from pad 1: not near
+        (1.0, 0.0),   // 2: in pad 2, its hole off pad 1: a via in a pad, not near
+    ];
+    board.vias = vias.iter().map(|&(x, y)| via_at(&board, x, y)).collect();
+    // Any net: the vias are on the first net, the pads on R1's own.
+    assert_eq!(board.vias_near_pads(0.1), vec![(0, r1("1"))]);
+    assert_eq!(board.vias_near_pads(0.35), vec![(0, r1("1")), (1, r1("1"))]);
+    assert_eq!(board.vias_in_pads(), vec![(2, r1("2"))]);
+    let near = board.drilled_vias_touching_pads();
+    assert_eq!((near.count, near.pads), (1, vec!["R1.1".to_string()]));
+    // On the back, the through vias come as near: any face.
+    let part = board.parts.iter_mut().find(|p| p.refdes == "R1").unwrap();
+    part.side = Side::Back;
+    let mirrored: Vec<Via> = vias.iter().map(|&(x, y)| via_at(&board, -x, y)).collect();
+    board.vias = mirrored;
+    assert_eq!(board.vias_near_pads(0.1), vec![(0, r1("1"))]);
+    assert_eq!(board.drilled_vias_touching_pads().count, 1);
+    // A board that states its reach is counted with it.
+    board.process.via_hole_pad_reach = Some(0.35);
+    assert_eq!(board.drilled_vias_touching_pads().count, 2);
 }

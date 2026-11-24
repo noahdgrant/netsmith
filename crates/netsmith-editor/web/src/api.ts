@@ -1793,9 +1793,14 @@ zones: number,
 /**
  * Whether a zone of the plane's or the pour's own net replaces it: the design's copper on
  * the layer is then not drawn. Zones of other nets cut it and leave it drawn round them
- * (issue 1314).
+ * (issue 1314), and a patch of its own net (issue 1608) keeps it.
  */
-replacedByZones: boolean, };
+replacedByZones: boolean, 
+/**
+ * Whether a patch of the plane's or the pour's own net is on the layer (issue 1608): the
+ * copper is drawn, and the patch holds its settings inside its outline.
+ */
+patchedByZones: boolean, };
 
 export type CopperZone = { net: string, layers: Array<string>, priority: number, clearance: number, minWidth: number, pads: string, thermalGap: number, spokeWidth: number, 
 /**
@@ -1805,7 +1810,12 @@ islands: string,
 /**
  * The outline's area less its holes, in mm2, on one layer.
  */
-area: number, locked: boolean, };
+area: number, locked: boolean, 
+/**
+ * A patch of the plane or pour of its net (issue 1608): the pour is kept, and the zone's
+ * settings hold inside its outline alone.
+ */
+patch: boolean, };
 
 export type CopperTeardrops = { layer: string, count: number, };
 

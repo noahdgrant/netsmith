@@ -113,6 +113,9 @@ pub struct ZoneShape {
     /// the flag spells it).
     #[serde(default)]
     pub pads: Option<String>,
+    /// A patch of the pour or plane of its net (issue #1608): `routes add-zone --patch`.
+    #[serde(default)]
+    pub patch: bool,
     #[serde(default)]
     pub lock: bool,
 }
@@ -294,6 +297,7 @@ fn zone(z: &ZoneShape, board: &Board) -> Result<Edit, String> {
         spoke_width: z.spoke_width,
         priority: z.priority,
         pads,
+        patch: z.patch,
         lock: z.lock,
     })
 }

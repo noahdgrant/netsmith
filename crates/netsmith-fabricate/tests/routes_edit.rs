@@ -152,6 +152,7 @@ fn edits(n: usize, columns: usize) -> Vec<(&'static str, Edit, bool)> {
                 spoke_width: None,
                 priority: 0,
                 pads: ZonePads::Thermal,
+                patch: false,
                 lock: false,
             },
             true,
@@ -334,6 +335,7 @@ fn batch_of(cells: impl Iterator<Item = usize>, columns: usize, pieces: usize) -
             lock: false,
         });
         doc.zone.push(batch::ZoneShape {
+            patch: false,
             net,
             layer: Some(batch::Layers::One("bottom".to_string())),
             outline: None,
@@ -448,13 +450,15 @@ net = "s1"
 layer = ["top", "bottom"]
 rect = [1, 1, 2, 2]
 pads = "thru-hole-only"
+patch = true
 "#;
     assert!(!batch::Document::is_json("shapes.toml", toml));
     let doc = batch::Document::parse(toml, "shapes.toml", false).unwrap();
     assert_eq!((doc.track.len(), doc.via.len(), doc.zone.len()), (1, 1, 1));
+    assert!(doc.zone[0].patch, "a zone carries `routes add-zone --patch` (issue #1608)");
     let json = r#"{"track": [{"net": "s1", "layer": "bottom", "from": [1, 2], "to": [3, 2]}],
         "via": [{"net": "s1", "at": [[1, 1], [1.5, 1]]}],
-        "zone": [{"net": "s1", "layer": ["top", "bottom"], "rect": [1, 1, 2, 2], "pads": "thru-hole-only"}]}"#;
+        "zone": [{"net": "s1", "layer": ["top", "bottom"], "rect": [1, 1, 2, 2], "pads": "thru-hole-only", "patch": true}]}"#;
     assert!(batch::Document::is_json("-", json));
     assert_eq!(
         batch::Document::parse(json, "stdin", true).unwrap(),

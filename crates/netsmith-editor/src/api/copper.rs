@@ -42,8 +42,11 @@ pub struct CopperLayer {
     pub zones: u32,
     /// Whether a zone of the plane's or the pour's own net replaces it: the design's copper on
     /// the layer is then not drawn. Zones of other nets cut it and leave it drawn round them
-    /// (issue 1314).
+    /// (issue 1314), and a patch of its own net (issue 1608) keeps it.
     pub replaced_by_zones: bool,
+    /// Whether a patch of the plane's or the pour's own net is on the layer (issue 1608): the
+    /// copper is drawn, and the patch holds its settings inside its outline.
+    pub patched_by_zones: bool,
 }
 
 /// A zone of the routes file, counted apart from the process's pours.
@@ -63,6 +66,9 @@ pub struct CopperZone {
     /// The outline's area less its holes, in mm2, on one layer.
     pub area: f64,
     pub locked: bool,
+    /// A patch of the plane or pour of its net (issue 1608): the pour is kept, and the zone's
+    /// settings hold inside its outline alone.
+    pub patch: bool,
 }
 
 /// The teardrop fills of a layer.

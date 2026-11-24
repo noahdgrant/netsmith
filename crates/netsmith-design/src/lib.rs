@@ -926,6 +926,26 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
             },
             None => None,
         },
+        // Unstated in the library; a board may state them (issue #1579). How near a via's hole
+        // or ring comes to a pad before the check notes it, so the top.
+        via_hole_pad_reach: match model.field_at("process.via_hole_pad_reach") {
+            Some(f) => match &model.field(f).domain {
+                Domain::Quantity(q) => {
+                    Some((end("via_hole_pad_reach", q, true) * 1e12).round() / 1e9)
+                }
+                _ => None,
+            },
+            None => None,
+        },
+        via_ring_pad_reach: match model.field_at("process.via_ring_pad_reach") {
+            Some(f) => match &model.field(f).domain {
+                Domain::Quantity(q) => {
+                    Some((end("via_ring_pad_reach", q, true) * 1e12).round() / 1e9)
+                }
+                _ => None,
+            },
+            None => None,
+        },
         // Unstated where the board house publishes no figure. A lower bound, so the bottom.
         min_single_sided_assembly_size: optional_mm("process.min_single_sided_assembly_size"),
         min_double_sided_assembly_size: optional_mm("process.min_double_sided_assembly_size"),

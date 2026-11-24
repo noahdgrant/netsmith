@@ -93,7 +93,7 @@ export function pourFields(p: CopperPour): string {
 export function copperLayerLine(l: CopperLayer): string {
   const head = `${l.kind}${l.net ? ` on ${l.net}` : ''}${l.pour ? `: ${pourFields(l.pour)}` : ''}`;
   if (l.replacedByZones) return `${head} (not drawn: ${l.zones} zone${l.zones === 1 ? '' : 's'} of the routes file replace${l.zones === 1 ? 's' : ''} it)`;
-  if (l.zones > 0 && l.kind !== 'signal') return `${head} (cut by ${l.zones} hand zone${l.zones === 1 ? '' : 's'} of other nets, drawn round them)`;
+  if (l.zones > 0 && l.kind !== 'signal') return `${head} (${l.patchedByZones ? 'cut or patched by' : 'cut by'} ${l.zones} hand zone${l.zones === 1 ? '' : 's'}${l.patchedByZones ? '' : ' of other nets'}, drawn round them)`;
   if (l.zones > 0) return `${head} (${l.zones} hand zone${l.zones === 1 ? '' : 's'})`;
   return head;
 }
@@ -106,6 +106,7 @@ export function copperZoneLine(z: CopperZone): string {
     `clearance ${mm(z.clearance)} mm`,
     `min width ${mm(z.minWidth)} mm`,
     `pads ${z.pads}`,
+    ...(z.patch ? ['a patch of the pour'] : []),
     ...(z.locked ? ['locked'] : []),
   ].join(', ');
 }

@@ -269,6 +269,7 @@ fn measured() {
         .expect("cell 0 is shorted")
         .zones
         .push(netsmith_pcb::RouteZone {
+            patch: false,
             layers: vec!["bottom".to_string()],
             priority: 0,
             clearance: 0.2,

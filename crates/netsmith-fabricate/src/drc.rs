@@ -50,7 +50,8 @@ fn options_of(board: &Board, constraints: Option<Constraints>) -> Options {
 }
 
 /// The pours and planes of `board`'s process that a zone of the routes file replaces on their
-/// layer (issue #1612, [`Board::replaced`]), each with the zones that do: what `board drc` and
+/// layer (issue #1612, [`Board::replaced`]), each with the zones that do (a patch of the pour,
+/// issue #1608, does not): what `board drc` and
 /// `fab` note as `pour_replaced`. The board file holds the zone and no pour, so the check is
 /// told.
 pub fn replaced_pours(board: &Board) -> Vec<netsmith_fab::replaced_pour::ReplacedPour> {
@@ -74,7 +75,7 @@ pub fn replaced_pours(board: &Board) -> Vec<netsmith_fab::replaced_pour::Replace
             let zones: Vec<&netsmith_pcb::BoardZone> = board
                 .zones
                 .iter()
-                .filter(|z| z.net == net && z.layers.contains(&layer))
+                .filter(|z| !z.patch && z.net == net && z.layers.contains(&layer))
                 .collect();
             let describe = |z: &netsmith_pcb::BoardZone| {
                 let (mut lo, mut hi) = (z.outline[0], z.outline[0]);

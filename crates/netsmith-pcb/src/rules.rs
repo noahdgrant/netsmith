@@ -239,22 +239,26 @@ impl Rules {
     /// does: JLCPCB's 0.15 mm between surface-mount pads, where the project's least clearance is
     /// 0.1 mm, among them.
     pub fn kicad_dru(&self, name: &str, classes: &[NetClass]) -> String {
-        self.kicad_dru_reaching(name, classes, None)
+        self.kicad_dru_noting(name, classes, &netsmith_geom::DrcExtras::default())
     }
 
-    /// [`Rules::kicad_dru`] with the reach of `near_rule_area` (the process's
-    /// `.rule_area_reach`, issue #1591), which the file holds in a comment for netsmith's check
-    /// of the KiCad board.
-    pub fn kicad_dru_reaching(
+    /// [`Rules::kicad_dru`] with the distances of the notes the file holds in comments for
+    /// netsmith's check of the KiCad board: the reach of `near_rule_area` (the process's
+    /// `.rule_area_reach`, issue #1591) and how near a pad a via's hole and ring come before
+    /// `via_hole_near_pad` and `via_ring_near_pad` note them (issue #1579), the fields of
+    /// `notes` of those names; its other fields are not read.
+    pub fn kicad_dru_noting(
         &self,
         name: &str,
         classes: &[NetClass],
-        rule_area_reach: Option<f64>,
+        notes: &netsmith_geom::DrcExtras,
     ) -> String {
         let project = netsmith_geom::DrcRules::from_project(&self.kicad_pro(name, classes))
             .expect("the project file netsmith writes is JSON");
         let extras = netsmith_geom::DrcExtras {
-            rule_area_reach,
+            rule_area_reach: notes.rule_area_reach,
+            via_hole_pad_reach: notes.via_hole_pad_reach,
+            via_ring_pad_reach: notes.via_ring_pad_reach,
             ..self.process_rules()
         };
         netsmith_geom::drc_kicad_dru(&project, &extras)

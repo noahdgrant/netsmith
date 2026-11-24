@@ -159,7 +159,7 @@ pub enum ZoneIslands {
 /// A zone a routes file fixed ([`crate::routes`]): copper filled inside `outline`, less its
 /// holes, on each of `layers`, joined to `net`, with the settings of KiCad's zone that change
 /// the copper. One of the net of the design's pour or plane on its layer restates it, which is
-/// then not drawn ([`Board::replaced`]); one of another net has the area it covers, and the pour
+/// then not drawn ([`Board::replaced`]), unless it is a patch (`patch`); one of another net has the area it covers, and the pour
 /// is drawn round it (issue #1314, [`Board::zone_lift`]).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BoardZone {
@@ -182,6 +182,11 @@ pub struct BoardZone {
     pub islands: ZoneIslands,
     /// For [`ZoneIslands::RemoveBelow`], in mm².
     pub island_min_area: Option<f64>,
+    /// A patch of the pour or plane of its net on its layer (issue #1608): the pour is kept, and
+    /// the zone, above it, holds its settings inside its outline alone. Without it a zone of
+    /// that net replaces the pour ([`Board::replaced`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub patch: bool,
 }
 
 /// An area where tracks, vias, copper or parts are not allowed (ADR 0029).

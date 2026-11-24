@@ -179,6 +179,7 @@ fn write_zone(root: &Path, net: &str, outline: &[[f64; 2]], holes: Vec<Vec<[f64;
         .get_mut(net)
         .unwrap();
     record.zones.push(netsmith_pcb::RouteZone {
+        patch: false,
         layers: vec!["top".into()],
         priority: 0,
         clearance: 0.2,
