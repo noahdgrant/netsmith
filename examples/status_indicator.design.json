@@ -263,6 +263,7 @@
       "tall_part_height": 6.4,
       "min_test_point_tall_body": 2.0,
       "fiducial_round_angle": 90.0,
+      "rule_area_reach": 3.0,
       "fine_pitch": 0.4,
       "via_in_pad": 0.55,
       "max_temperature_rise": null,

@@ -289,6 +289,15 @@ generic TwoLayer {
     .fiducial_round_angle ?= 90
     .fine_pitch: Length
     .fine_pitch ?= 0.4mm
+    /// How far from a rule area that forbids copper or parts (a module's antenna keep-out, a
+    /// footprint's keep-out zone, an RF keep-out of the board) the design rules check notes the
+    /// parts, tracks, vias and pours of the board near it: under it on a layer it is not on, and
+    /// beside it (`near_rule_area`, issue #1591). A note, which fails nothing: copper and parts
+    /// near an antenna can detune it, and the person decides. Not a fabricator's figure: 3 mm is
+    /// a default of this tool's, a few track pitches round the area; a board offers another
+    /// (`.process.rule_area_reach &= 5mm`), and `0mm` lists only what is under or inside it.
+    .rule_area_reach: Length
+    .rule_area_reach ?= 3mm
     /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
     /// mm preferred) larger than via hole size", half of it on each side (issue #431).
     .min_via_ring: Length
@@ -613,6 +622,15 @@ generic FourLayer {
     .fiducial_round_angle ?= 90
     .fine_pitch: Length
     .fine_pitch ?= 0.4mm
+    /// How far from a rule area that forbids copper or parts (a module's antenna keep-out, a
+    /// footprint's keep-out zone, an RF keep-out of the board) the design rules check notes the
+    /// parts, tracks, vias and pours of the board near it: under it on a layer it is not on, and
+    /// beside it (`near_rule_area`, issue #1591). A note, which fails nothing: copper and parts
+    /// near an antenna can detune it, and the person decides. Not a fabricator's figure: 3 mm is
+    /// a default of this tool's, a few track pitches round the area; a board offers another
+    /// (`.process.rule_area_reach &= 5mm`), and `0mm` lists only what is under or inside it.
+    .rule_area_reach: Length
+    .rule_area_reach ?= 3mm
     /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
     /// mm preferred) larger than via hole size", half of it on each side (issue #431).
     .min_via_ring: Length
@@ -1015,6 +1033,15 @@ generic SixLayer {
     .fiducial_round_angle ?= 90
     .fine_pitch: Length
     .fine_pitch ?= 0.4mm
+    /// How far from a rule area that forbids copper or parts (a module's antenna keep-out, a
+    /// footprint's keep-out zone, an RF keep-out of the board) the design rules check notes the
+    /// parts, tracks, vias and pours of the board near it: under it on a layer it is not on, and
+    /// beside it (`near_rule_area`, issue #1591). A note, which fails nothing: copper and parts
+    /// near an antenna can detune it, and the person decides. Not a fabricator's figure: 3 mm is
+    /// a default of this tool's, a few track pitches round the area; a board offers another
+    /// (`.process.rule_area_reach &= 5mm`), and `0mm` lists only what is under or inside it.
+    .rule_area_reach: Length
+    .rule_area_reach ?= 3mm
     /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
     /// mm preferred) larger than via hole size", half of it on each side (issue #431).
     .min_via_ring: Length
@@ -1431,6 +1458,15 @@ interface HdiFourLayer {
     .fiducial_round_angle ?= 90
     .fine_pitch: Length
     .fine_pitch ?= 0.4mm
+    /// How far from a rule area that forbids copper or parts (a module's antenna keep-out, a
+    /// footprint's keep-out zone, an RF keep-out of the board) the design rules check notes the
+    /// parts, tracks, vias and pours of the board near it: under it on a layer it is not on, and
+    /// beside it (`near_rule_area`, issue #1591). A note, which fails nothing: copper and parts
+    /// near an antenna can detune it, and the person decides. Not a fabricator's figure: 3 mm is
+    /// a default of this tool's, a few track pitches round the area; a board offers another
+    /// (`.process.rule_area_reach &= 5mm`), and `0mm` lists only what is under or inside it.
+    .rule_area_reach: Length
+    .rule_area_reach ?= 3mm
     /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
     /// mm preferred) larger than via hole size", half of it on each side (issue #431).
     .min_via_ring: Length
@@ -1734,6 +1770,15 @@ interface HdiSixLayer {
     .fiducial_round_angle ?= 90
     .fine_pitch: Length
     .fine_pitch ?= 0.4mm
+    /// How far from a rule area that forbids copper or parts (a module's antenna keep-out, a
+    /// footprint's keep-out zone, an RF keep-out of the board) the design rules check notes the
+    /// parts, tracks, vias and pours of the board near it: under it on a layer it is not on, and
+    /// beside it (`near_rule_area`, issue #1591). A note, which fails nothing: copper and parts
+    /// near an antenna can detune it, and the person decides. Not a fabricator's figure: 3 mm is
+    /// a default of this tool's, a few track pitches round the area; a board offers another
+    /// (`.process.rule_area_reach &= 5mm`), and `0mm` lists only what is under or inside it.
+    .rule_area_reach: Length
+    .rule_area_reach ?= 3mm
     /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
     /// mm preferred) larger than via hole size", half of it on each side (issue #431).
     .min_via_ring: Length
@@ -2038,6 +2083,15 @@ interface HdiEightLayer {
     .fiducial_round_angle ?= 90
     .fine_pitch: Length
     .fine_pitch ?= 0.4mm
+    /// How far from a rule area that forbids copper or parts (a module's antenna keep-out, a
+    /// footprint's keep-out zone, an RF keep-out of the board) the design rules check notes the
+    /// parts, tracks, vias and pours of the board near it: under it on a layer it is not on, and
+    /// beside it (`near_rule_area`, issue #1591). A note, which fails nothing: copper and parts
+    /// near an antenna can detune it, and the person decides. Not a fabricator's figure: 3 mm is
+    /// a default of this tool's, a few track pitches round the area; a board offers another
+    /// (`.process.rule_area_reach &= 5mm`), and `0mm` lists only what is under or inside it.
+    .rule_area_reach: Length
+    .rule_area_reach ?= 3mm
     /// The least copper round a via's hole: the page's "via diameter should be 0.1 mm (0.15
     /// mm preferred) larger than via hole size", half of it on each side (issue #431).
     .min_via_ring: Length

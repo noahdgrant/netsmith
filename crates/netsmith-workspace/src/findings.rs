@@ -478,6 +478,8 @@ pub fn drc_findings(board: &Board) -> Vec<PcbFinding> {
 fn from_drc(f: &DrcFinding, board: &Board, ids: &mut Ids) -> PcbFinding {
     let severity = match f.severity {
         DrcSeverity::Error => Severity::Error,
+        // `near_rule_area` (issue #1591): the page lists notes apart and does not count them.
+        DrcSeverity::Note => Severity::Note,
         _ => Severity::Warning,
     };
     let points: Vec<Pt> = std::iter::once(Pt::new(f.at.x, f.at.y))

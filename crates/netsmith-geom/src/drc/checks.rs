@@ -96,6 +96,7 @@ pub(crate) fn run(m: &Model<'_>, findings: &mut Vec<Finding>) {
     super::acid::run(&mut out);
     super::stackup::run(&mut out);
     super::vias::run(&mut out);
+    super::near::run(&mut out);
 }
 
 /// Whether two holes share a layer: a hole through the board meets every hole, a blind or a
@@ -827,12 +828,7 @@ fn rule_areas(out: &mut Out<'_>) {
             .filter_map(|l| m.layers.iter().position(|x| x == l))
             .collect();
         let owner = (!z.owner.is_empty()).then_some(z.owner.as_str());
-        let name = match (owner, z.name.is_empty()) {
-            (Some(o), true) => format!("of {o}'s footprint"),
-            (Some(o), false) => format!("'{}' of {o}'s footprint", z.name),
-            (None, true) => "'(unnamed)'".to_string(),
-            (None, false) => format!("'{}'", z.name),
-        };
+        let name = area_name(z);
         let area_bounds = Bounds::of(z.outlines.iter().flatten().copied());
         let Some(area_bounds) = area_bounds else {
             continue;
@@ -880,26 +876,11 @@ fn rule_areas(out: &mut Out<'_>) {
                 .iter()
                 .filter(|fp| Some(fp.part.as_str()) != owner)
             {
-                let side = if fp.back { "B.CrtYd" } else { "F.CrtYd" };
                 let side_cu = if fp.back { "B.Cu" } else { "F.Cu" };
                 if !z.layers.iter().any(|l| l == side_cu) {
                     continue;
                 }
-                let pts: Vec<Pt> = m
-                    .art
-                    .graphics
-                    .iter()
-                    .filter(|g| g.owner == fp.part && g.layer == side)
-                    .flat_map(|g| match &g.shape {
-                        crate::artwork::Shape::Line(a, b) => vec![*a, *b],
-                        crate::artwork::Shape::Poly(p) => p.clone(),
-                        crate::artwork::Shape::Arc(a) => a.points(),
-                        crate::artwork::Shape::Circle { centre, radius } => {
-                            geom::circle_polygon(*centre, *radius)
-                        }
-                    })
-                    .collect();
-                let Some(yard) = Bounds::of(pts) else {
+                let Some(yard) = courtyard_box(m.art, fp) else {
                     continue;
                 };
                 let corners = vec![
@@ -932,6 +913,40 @@ fn rule_areas(out: &mut Out<'_>) {
             }
         }
     }
+}
+
+/// How a finding names a rule area: `'name' of U1's footprint`, `of U1's footprint`, `'name'` or
+/// `'(unnamed)'` for the board's.
+pub(crate) fn area_name(z: &crate::artwork::Zone) -> String {
+    let owner = (!z.owner.is_empty()).then_some(z.owner.as_str());
+    match (owner, z.name.is_empty()) {
+        (Some(o), true) => format!("of {o}'s footprint"),
+        (Some(o), false) => format!("'{}' of {o}'s footprint", z.name),
+        (None, true) => "'(unnamed)'".to_string(),
+        (None, false) => format!("'{}'", z.name),
+    }
+}
+
+/// The box round a footprint's courtyard on its side, as KiCad's rule areas judge a part.
+pub(crate) fn courtyard_box(
+    art: &crate::artwork::Artwork,
+    fp: &crate::artwork::Footprint,
+) -> Option<Bounds> {
+    let side = if fp.back { "B.CrtYd" } else { "F.CrtYd" };
+    let pts: Vec<Pt> = art
+        .graphics
+        .iter()
+        .filter(|g| g.owner == fp.part && g.layer == side)
+        .flat_map(|g| match &g.shape {
+            crate::artwork::Shape::Line(a, b) => vec![*a, *b],
+            crate::artwork::Shape::Poly(p) => p.clone(),
+            crate::artwork::Shape::Arc(a) => a.points(),
+            crate::artwork::Shape::Circle { centre, radius } => {
+                geom::circle_polygon(*centre, *radius)
+            }
+        })
+        .collect();
+    Bounds::of(pts)
 }
 
 /// Whether `s` reaches into `area`: it touches the outer ring and is not wholly inside one of
