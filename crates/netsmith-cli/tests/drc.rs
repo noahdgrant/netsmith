@@ -95,7 +95,8 @@ fn its_findings_are_fabs_for_the_same_board_and_it_routes_and_writes_nothing() {
     assert!(expected.len() >= 2, "a board with warnings to compare: {expected:#?}");
 
     let before = listing(&dir);
-    let run = netsmith(&dir, &["board", "drc", "led.nsm"]);
+    // `fab` says its places in the outline's frame, `board drc` in the board file's unless asked.
+    let run = netsmith(&dir, &["board", "drc", "led.nsm", "--frame", "outline"]);
     let said = text(&run);
     assert!(run.status.success(), "{said}");
     assert_eq!(lines(&run), expected, "{said}");
