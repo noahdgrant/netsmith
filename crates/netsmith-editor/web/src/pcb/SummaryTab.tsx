@@ -2,7 +2,7 @@
 // summary` prints. Wire length and crossings, how full each face is and where it is free, each
 // module's box, the decoupling distances, what the datasheets' layout guidelines measure (issue
 // 994), the longest nets, the parts near the selected parts, and
-// the distance between two pads typed in, and the copper areas (issue 1085, `netsmith board copper`): the planes, pours, the routes file's zones and the teardrop fills, and how the fill of the pours joins each pad (issue 1187, `netsmith board fill`): by how many thermal spokes, solid or not at all, the starved reliefs and the copper islands, and the table of the nets (issue 1223, `netsmith board nets`): each net's lengths, vias and layers, and each diff pair's skew, coupled length and vias side by side. A click on a box or a part zooms the canvas to it.
+// the distance between two pads typed in, and the copper areas (issue 1085, `netsmith board copper`): the planes, pours, the routes file's zones and the teardrop fills, and how the fill of the pours joins each pad (issue 1187, `netsmith board fill`): by how many thermal spokes, solid or not at all, the starved reliefs, the switching regulators' ground pads not joined solid (issue 1586) and the copper islands, and the table of the nets (issue 1223, `netsmith board nets`): each net's lengths, vias and layers, and each diff pair's skew, coupled length and vias side by side. A click on a box or a part zooms the canvas to it.
 
 import { useEffect, useState } from 'preact/hooks';
 
@@ -12,7 +12,7 @@ import { EmptyState } from '../components/ui';
 import { pickRoute, select, selection } from '../pcbstore';
 import { pickNet } from '../store';
 import { routesTrackOf } from './uncountedMarks';
-import { copperLayerLine, copperZoneLine, fillAreaLine, fillCountsLine, fillPadLine, fillStarvedLine, fillWord, guidelineLine, mm, netGroupLine, netPairLine, netRowLine, netUncountedLine, padName, padProblem, padsLine, sheetBox, summaryQuery, teardropsLine, uncountedBox, uncountedRunLine } from './summary';
+import { copperLayerLine, copperZoneLine, fillAreaLine, fillCountsLine, fillPadLine, fillRegulatorGroundLine, fillStarvedLine, fillWord, guidelineLine, mm, netGroupLine, netPairLine, netRowLine, netUncountedLine, padName, padProblem, padsLine, sheetBox, summaryQuery, teardropsLine, uncountedBox, uncountedRunLine } from './summary';
 
 /** How many of the longest nets the tab lists. */
 const LONGEST_NETS = 8;
@@ -275,6 +275,11 @@ export function SummaryTab(props: { scene: PcbScene; onFocus: (box: PcbBox) => v
           {fill?.starved.map((s) => (
             <div key={`${s.layer} ${s.part}.${s.pad}`} class="summary-line bad" data-testid="summary-fill-starved">
               Starved: {fillStarvedLine(s)}
+            </div>
+          ))}
+          {fill?.regulatorGrounds.map((g) => (
+            <div key={`${g.layer} ${g.net} ${g.part}.${g.pad}`} class="summary-line warn" data-testid="summary-fill-regulator-ground" data-pad={`${g.part}.${g.pad}`} data-layer={g.layer} data-join={g.join}>
+              <b>Regulator ground</b> {fillRegulatorGroundLine(g)}
             </div>
           ))}
           <div class="sub">Routed nets and pairs</div>

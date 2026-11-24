@@ -64,6 +64,11 @@ pub const PREFIX: &str = "netsmith ";
 /// [`Extras::with_rules_file`] reads back.
 const REACH: &str = "# netsmith near_rule_area ";
 
+/// The comments that hold how near a pad a via's hole and its ring come before netsmith's check
+/// notes them (`via_hole_near_pad` and `via_ring_near_pad`, issue #1579), in mm after each.
+const HOLE_PAD_REACH: &str = "# netsmith via_hole_near_pad ";
+const RING_PAD_REACH: &str = "# netsmith via_ring_near_pad ";
+
 /// The condition that matches two surface-mount pads of different nets (KiCad's `connect` pads,
 /// an edge connector's, among them, as netsmith's `pad_to_pad` takes them).
 const SMD_PADS: &str = "A.Type == 'Pad' && B.Type == 'Pad' \
@@ -198,6 +203,20 @@ pub fn kicad_dru(project: &Rules, process: &Extras) -> String {
             mm(reach)
         ));
     }
+    if process.via_hole_pad_reach.is_some() || process.via_ring_pad_reach.is_some() {
+        out.push_str(
+            "\n# How near a pad's copper a via's hole and its ring come before netsmith's check notes them\n\
+             # (issue #1579): notes, which KiCad has no rule for.\n",
+        );
+        for (prefix, reach) in [
+            (HOLE_PAD_REACH, process.via_hole_pad_reach),
+            (RING_PAD_REACH, process.via_ring_pad_reach),
+        ] {
+            if let Some(reach) = reach {
+                out.push_str(&format!("{prefix}{}mm\n", mm(reach)));
+            }
+        }
+    }
     for r in rules {
         if r.name == "hole_to_track" {
             out.push_str(
@@ -251,11 +270,20 @@ impl Extras {
             };
             slot.get_or_insert(least);
         }
-        if self.rule_area_reach.is_none() {
-            self.rule_area_reach = text.lines().find_map(|l| {
-                let n = l.trim().strip_prefix(REACH)?.trim();
+        let comment = |prefix: &str| {
+            text.lines().find_map(|l| {
+                let n = l.trim().strip_prefix(prefix)?.trim();
                 n.strip_suffix("mm").unwrap_or(n).trim().parse::<f64>().ok()
-            });
+            })
+        };
+        if self.rule_area_reach.is_none() {
+            self.rule_area_reach = comment(REACH);
+        }
+        if self.via_hole_pad_reach.is_none() {
+            self.via_hole_pad_reach = comment(HOLE_PAD_REACH);
+        }
+        if self.via_ring_pad_reach.is_none() {
+            self.via_ring_pad_reach = comment(RING_PAD_REACH);
         }
         self
     }
@@ -311,6 +339,8 @@ mod tests {
             pad_ring: Some(0.18),
             text_to_mask: Some(0.15),
             rule_area_reach: Some(3.0),
+            via_hole_pad_reach: Some(0.1),
+            via_ring_pad_reach: Some(0.0),
             ..Extras::default()
         }
     }
@@ -343,6 +373,19 @@ mod tests {
         assert!(!text.contains("pad_hole_to_hole"), "{text}");
         assert!(text.contains("netsmith pad_to_pad"), "{text}");
         assert!(text.contains("\n# netsmith near_rule_area 3mm\n"), "{text}");
+        assert!(
+            text.contains("\n# netsmith via_hole_near_pad 0.1mm\n"),
+            "{text}"
+        );
+        assert!(
+            text.contains("\n# netsmith via_ring_near_pad 0mm\n"),
+            "{text}"
+        );
+        let back = Extras::default().with_rules_file(&text);
+        assert_eq!(
+            (back.via_hole_pad_reach, back.via_ring_pad_reach),
+            (Some(0.1), Some(0.0))
+        );
         let none = kicad_dru(&project(), &Extras::default());
         assert_eq!(none.lines().next(), Some("(version 1)"));
         assert!(!none.contains("(rule"), "{none}");

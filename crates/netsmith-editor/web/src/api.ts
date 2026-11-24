@@ -1897,6 +1897,28 @@ export type FillStarved = { layer: string, net: string, part: string, pad: strin
 
 export type FillUnjoinable = { layer: string, net: string, part: string, pad: string, at: FillAt, spokes: number, why: string, };
 
+export type FillRegulatorGround = { 
+/**
+ * The regulator IC's path in the design (`reg.ic`).
+ */
+path: string, layer: string, net: string, part: string, pad: string, at: FillAt, 
+/**
+ * `thermal` or `none` (or `solid` where the fill does not reach it).
+ */
+join: string, 
+/**
+ * Of a thermal relief: its spokes, and how many of them reach the fill.
+ */
+spokes: number | null, joinedSpokes: number | null, 
+/**
+ * Whether it is also a starved thermal relief.
+ */
+starved: boolean, 
+/**
+ * The path of the pin that states the pad's connection, when one does (`reg.ic.vin.neg`).
+ */
+statedBy: string | null, };
+
 export type PcbFill = { board: string, 
 /**
  * The stamps of the placement and of the routes file it was filled on, and whether it was
@@ -1911,7 +1933,11 @@ fills: Array<FillArea>, counts: FillCounts, starved: Array<FillStarved>,
  * The thermal reliefs the fill joins by nothing, which the 2D view rings as it rings the
  * starved ones.
  */
-unjoinable: Array<FillUnjoinable>, };
+unjoinable: Array<FillUnjoinable>, 
+/**
+ * The switching regulators' ground pads a fill holds and does not join solid.
+ */
+regulatorGrounds: Array<FillRegulatorGround>, };
 
 export type StitchingVia = { net: string, x: number, y: number, diameter: number, };
 

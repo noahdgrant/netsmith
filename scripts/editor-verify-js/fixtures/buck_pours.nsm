@@ -1,0 +1,29 @@
+//! A buck converter on a two-layer board poured with ground on both faces, for the warning of a
+//! switching regulator's ground pad that a pour joins by a thermal relief (issue #1586).
+
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::parts::regulator::{Buck, Rt8059}
+import std::sources::Rail
+
+board BuckPours {
+    /// JLCPCB's two-layer process, both faces poured with ground.
+    .process: TwoLayer { .stackup.thickness &= 1.6mm; .top.net &= "GND"; .bottom.net &= "GND" }
+
+    /// The input rail, supplied from outside the board.
+    .input: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VIN"; .neg.net &= "GND" }
+    /// What the outside world draws from the output.
+    .output: Rail { .pos.net &= "3V3"; .current &= 0mA..500mA }
+
+    .reg: Buck<Rt8059> { .vout.voltage &= 3.3V +/- 5% }
+
+    .input ~ .reg.vin
+    .reg.vout ~ .output
+
+    .power_in: Header1x2
+    .power_out: Header1x2
+    .input.pos ~ .power_in.p1
+    .input.neg ~ .power_in.p2
+    .output.pos ~ .power_out.p1
+    .output.neg ~ .power_out.p2
+}

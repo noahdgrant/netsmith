@@ -214,6 +214,7 @@ mod silk;
 mod stackup;
 mod teardrop;
 mod v_cut;
+mod via_pad;
 mod vias;
 mod waivers;
 
@@ -427,10 +428,19 @@ pub enum Rule {
     /// layer (netsmith's, issue #1612; `netsmith_fab::replaced_pour`, since the board file holds
     /// the zone and no pour): a note, which fails nothing.
     PourReplaced,
+    /// A via whose hole comes within the process's `.via_hole_pad_reach` of a pad's copper, edge
+    /// to edge, its centre off every pad (netsmith's, issue #1579; `via_pad.rs`): a pad of any
+    /// net, on any layer the via is on, whose mask opening the hole can open in. A note, which
+    /// fails nothing.
+    ViaHoleNearPad,
+    /// A via whose ring comes within the process's `.via_ring_pad_reach` of a pad's copper while
+    /// its hole does not come within `.via_hole_pad_reach` (netsmith's, issue #1579;
+    /// `via_pad.rs`): a weaker sign than [`Rule::ViaHoleNearPad`]. A note, which fails nothing.
+    ViaRingNearPad,
 }
 
 impl Rule {
-    pub const ALL: [Rule; 64] = [
+    pub const ALL: [Rule; 66] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -495,6 +505,8 @@ impl Rule {
         Rule::NearRuleArea,
         Rule::SwitchNodeCopper,
         Rule::PourReplaced,
+        Rule::ViaHoleNearPad,
+        Rule::ViaRingNearPad,
     ];
 
     /// KiCad's name for the rule (its `type` in a JSON report).
@@ -564,6 +576,8 @@ impl Rule {
             Rule::NearRuleArea => "near_rule_area",
             Rule::SwitchNodeCopper => "switch_node_copper",
             Rule::PourReplaced => "pour_replaced",
+            Rule::ViaHoleNearPad => "via_hole_near_pad",
+            Rule::ViaRingNearPad => "via_ring_near_pad",
         }
     }
 
@@ -610,6 +624,8 @@ impl Rule {
                 | Rule::NearRuleArea
                 | Rule::SwitchNodeCopper
                 | Rule::PourReplaced
+                | Rule::ViaHoleNearPad
+                | Rule::ViaRingNearPad
         )
     }
 
@@ -646,9 +662,12 @@ impl Rule {
             | Rule::AcidTrap
             | Rule::CopperSliver
             | Rule::PairSkew => Severity::Warning,
-            Rule::NearRuleArea | Rule::VCutEdge | Rule::SwitchNodeCopper | Rule::PourReplaced => {
-                Severity::Note
-            }
+            Rule::NearRuleArea
+            | Rule::VCutEdge
+            | Rule::SwitchNodeCopper
+            | Rule::PourReplaced
+            | Rule::ViaHoleNearPad
+            | Rule::ViaRingNearPad => Severity::Note,
             _ => Severity::Error,
         })
     }
@@ -856,6 +875,41 @@ impl Report {
             .filter(|f| f.severity == Severity::Note)
     }
 
+    /// The count and the pads of the vias whose hole, then whose ring, comes near a pad
+    /// (`via_hole_near_pad`, `via_ring_near_pad`, issue #1579), one line each that has any:
+    /// `3 vias whose hole comes near a pad (via_hole_near_pad): pads U1.1, U1.2, J1.1`. What
+    /// `board drc` says after the findings.
+    pub fn via_near_pad_lines(&self) -> Vec<String> {
+        [
+            (Rule::ViaHoleNearPad, "hole"),
+            (Rule::ViaRingNearPad, "ring"),
+        ]
+        .into_iter()
+        .filter_map(|(rule, what)| {
+            let notes: Vec<&Finding> = self.notes().filter(|f| f.rule == rule).collect();
+            if notes.is_empty() {
+                return None;
+            }
+            let mut pads: Vec<String> = Vec::new();
+            for i in notes.iter().flat_map(|f| &f.items) {
+                if let (Some(part), Some(pad)) = (&i.part, &i.pad) {
+                    let name = format!("{part}.{pad}");
+                    if !pads.contains(&name) {
+                        pads.push(name);
+                    }
+                }
+            }
+            Some(format!(
+                "{} {} whose {what} comes near a pad ({}): pads {}",
+                notes.len(),
+                if notes.len() == 1 { "via" } else { "vias" },
+                rule.id(),
+                pads.join(", ")
+            ))
+        })
+        .collect()
+    }
+
     pub fn counts(&self) -> Counts {
         let mut c = Counts::default();
         for f in self.errors() {
@@ -981,6 +1035,14 @@ pub struct Extras {
     /// it (`near_rule_area`, issue #1591), in mm: the process's `.rule_area_reach`, or the
     /// `.kicad_dru`'s. `None` lists nothing.
     pub rule_area_reach: Option<f64>,
+    /// How near a pad's copper a via's hole comes, edge to edge, before the check notes it
+    /// (`via_hole_near_pad`, issue #1579), in mm: the process's `.via_hole_pad_reach`, or the
+    /// `.kicad_dru`'s. `None` notes nothing.
+    pub via_hole_pad_reach: Option<f64>,
+    /// How near a pad's copper a via's ring comes before the check notes it
+    /// (`via_ring_near_pad`, issue #1579), in mm: the process's `.via_ring_pad_reach`, or the
+    /// `.kicad_dru`'s. `None` notes nothing.
+    pub via_ring_pad_reach: Option<f64>,
     /// The fabricator's rules for fiducials and test points (issue #761); `None` is not
     /// checked.
     pub marks: Option<Marks>,

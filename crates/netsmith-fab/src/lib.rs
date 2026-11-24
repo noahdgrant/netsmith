@@ -1255,7 +1255,13 @@ fn notes(
     }
     // Notes (`near_rule_area`, issue #1591): what stands near a rule area, for a person to judge.
     // A pour a zone replaced (issue #1612) first: it is the cause of findings further up.
-    let mut notes: Vec<&DrcFinding> = report.notes().collect();
+    // A via whose hole comes near a pad (`via_hole_near_pad`, issue #1579) is in the line of the
+    // vias whose hole touches or comes near a pad's edge, with the count and the pads, so it is
+    // not listed again here.
+    let mut notes: Vec<&DrcFinding> = report
+        .notes()
+        .filter(|n| n.rule != DrcRule::ViaHoleNearPad)
+        .collect();
     notes.sort_by_key(|n| n.rule != DrcRule::PourReplaced);
     if !notes.is_empty() {
         lines.push(format!("design rules notes: {}", notes.len()));
