@@ -897,7 +897,7 @@ fn zone_with(board: &Board, plane: &Plane, net: Sexp, fill: &Fill) -> Sexp {
         .iter()
         .map(|c| Sexp::node("xy", vec![Sexp::num(c.x), Sexp::num(c.y)]))
         .collect();
-    let key = format!("{}/zone/{}", board.name, plane.layer);
+    let key = process_zone_key(board, &plane.layer);
     Sexp::node(
         "zone",
         vec![
@@ -920,6 +920,19 @@ fn zone_with(board: &Board, plane: &Plane, net: Sexp, fill: &Fill) -> Sexp {
             Sexp::node("polygon", vec![Sexp::node("pts", points)]),
         ],
     )
+}
+
+/// The name the uuid of the process's own zone on `layer` (KiCad's name) is made from.
+fn process_zone_key(board: &Board, layer: &str) -> String {
+    format!("{}/zone/{layer}", board.name)
+}
+
+/// The `(uuid` that [`kicad_pcb`] gives the zone of the process's plane or pour on `layer`
+/// (KiCad's name, `F.Cu`, `In1.Cu`, ...) of `board`, the same on every run: KiCad keeps it when it
+/// saves the board again, so `routes import` knows a zone `fab` wrote for the process by it, also
+/// after the zone was changed in KiCad or the process states other settings now (issue #1609).
+pub fn process_zone_uuid(board: &Board, layer: &str) -> String {
+    Uuid::new_v5(&NAMESPACE, process_zone_key(board, layer).as_bytes()).to_string()
 }
 
 /// A zone of the routes file as KiCad writes one, unfilled (the fill is [`kicad_pcb_filled`]'s): its outline and each hole a

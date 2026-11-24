@@ -67,7 +67,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith layout parts` | the same | `--file` (was `--into`), `--board`, `--as-laid-out`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
 | `netsmith layout export` | the same | `--file` (was `--into`), `--board`, `--kicad-pcb` (was `--out`), `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
 | `netsmith layout import` | the same | `--file` (was `--into`), `--board`, `--lock`, `--dry-run`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
-| `netsmith routes import` | the same | `--file` (was `--into`), `--board`, `--parts`, `--no-places`, `--unlocked`, `--format`, `--frame` |
+| `netsmith routes import` | the same | `--file` (was `--into`), `--board`, `--parts`, `--no-places`, `--unlocked`, `--process-zones`, `--format`, `--frame` |
 | `netsmith routes show` | the same | `--file` (was `--into`), `--board`, `--format`, `--frame` |
 | `netsmith routes add` | new (#1472) | `--file`, `--board`, `--stop-on-refusal`, `--dry-run`, `--format`, `--frame` |
 | `netsmith routes add-track` | the same | `--file` (was `--into`), `--board`, `--net`, `--layer`, `--width`, `--from`, `--to`, `--mid`, `--lock` |

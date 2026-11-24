@@ -27,9 +27,10 @@ pub struct Import {
     /// the design's, a shape on an inner layer, a part the design does not have, a rule area, a
     /// teardrop, a hatched zone.
     pub skipped: Vec<String>,
-    /// How many zones of the KiCad board were left out because each is the process's own plane or
-    /// pour (the same net, layer, outline and settings, issue #1116); each is also said in
-    /// `skipped`.
+    /// How many zones of the KiCad board are the process's own planes and pours: of the same
+    /// net, layer, outline and settings (issue #1116), or with the uuid `fab` gives them
+    /// ([`netsmith_pcb::process_zone_uuid`], issue #1609). Each is left out and said in `skipped`
+    /// and [`Import::zones_left_out`], or with [`Options::process_zones`] taken as a hand zone.
     pub process_zones: usize,
     /// The vias of the KiCad board left out because each is a stitching via of a pour that `fab`
     /// lays again (on the pour's grid, of the rules' size, with no track ending on it,
@@ -38,6 +39,75 @@ pub struct Import {
     /// and `routes show` counts them as the vias `fab` lays (issue #1583). A locked import leaves
     /// none out.
     pub stitching_vias: Vec<(String, [f64; 2])>,
+    /// Each zone of the KiCad board the import did not take, with why (issue #1609): the
+    /// process's own planes and pours, rule areas, teardrops, hatched zones, zones of no copper
+    /// layer or of a net the design does not have, and zones that could not be read.
+    pub zones_left_out: Vec<ZoneLeftOut>,
+}
+
+/// A zone of the KiCad board that [`import`] left out of the routes file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ZoneLeftOut {
+    /// The KiCad board's net of it (`""` for none).
+    pub net: String,
+    /// KiCad's names of its layers.
+    pub layers: Vec<String>,
+    pub reason: ZoneReason,
+    /// The sentence that says it.
+    pub said: String,
+}
+
+/// Why a zone of the KiCad board was left out of the routes file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ZoneReason {
+    /// The process's own plane or pour, as `fab` writes it: the process draws it.
+    Process,
+    /// A zone `fab` wrote for the process's plane or pour (its uuid says so), changed since.
+    ProcessChanged,
+    /// A rule area (keepout): the routes file holds copper only.
+    RuleArea,
+    /// A teardrop: `fab` draws its own.
+    Teardrop,
+    /// Filled with hatching: netsmith fills solid zones only.
+    Hatched,
+    /// On no copper layer netsmith draws.
+    NotCopper,
+    /// Of a KiCad net on no pad of a part the design has.
+    NoNet,
+    /// Without an outline or a setting KiCad writes into every zone.
+    Unreadable,
+}
+
+impl ZoneReason {
+    /// The word of the JSON output.
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Process => "process",
+            Self::ProcessChanged => "process_changed",
+            Self::RuleArea => "rule_area",
+            Self::Teardrop => "teardrop",
+            Self::Hatched => "hatched",
+            Self::NotCopper => "not_copper",
+            Self::NoNet => "no_net",
+            Self::Unreadable => "unreadable",
+        }
+    }
+
+    /// What the text output calls the zones left out for this reason.
+    pub fn phrase(self) -> &'static str {
+        match self {
+            Self::Process => "of the process's own planes and pours",
+            Self::ProcessChanged => {
+                "of the process's planes and pours as fab wrote them, changed since"
+            }
+            Self::RuleArea => "rule area(s)",
+            Self::Teardrop => "teardrop(s)",
+            Self::Hatched => "hatched",
+            Self::NotCopper => "on no copper layer",
+            Self::NoNet => "of no net of the design",
+            Self::Unreadable => "unreadable",
+        }
+    }
 }
 
 impl Import {
@@ -398,14 +468,45 @@ fn fit(
 /// is left out and said. Each zone of copper is taken whole (its layers, outline, holes and
 /// settings, [`RouteZone`]); a rule area, a teardrop and a hatched zone are left out and said, and
 /// so is a zone that is the process's own plane or pour (same net, layer, outline and settings as
-/// the board's process states them, [`netsmith_pcb::process_zones`], issue #1116): one that differs
-/// is a hand zone.
+/// the board's process states them, [`netsmith_pcb::process_zones`], issue #1116, or with the uuid
+/// `fab` gives that zone, [`netsmith_pcb::process_zone_uuid`], issue #1609): any other zone is a
+/// hand zone. Each zone left out is in [`Import::zones_left_out`] with its reason.
 pub fn import(
     board: &Board,
     pcb: &str,
     parts: Option<&crate::port::PortParts>,
     lock: bool,
 ) -> Result<Import, String> {
+    import_with(
+        board,
+        pcb,
+        parts,
+        Options {
+            lock,
+            ..Options::default()
+        },
+    )
+}
+
+/// What the import does beyond [`import`]'s defaults.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Options {
+    /// Lock every net imported.
+    pub lock: bool,
+    /// Take the zones that are the process's own planes and pours (known by their settings or
+    /// by the uuid `fab` gives them) as hand zones too, instead of leaving them out
+    /// (`routes import --process-zones`).
+    pub process_zones: bool,
+}
+
+/// [`import`] with its [`Options`].
+pub fn import_with(
+    board: &Board,
+    pcb: &str,
+    parts: Option<&crate::port::PortParts>,
+    options: Options,
+) -> Result<Import, String> {
+    let lock = options.lock;
     let kicad = crate::reference_table::read_board(pcb, "the KiCad board")?;
     let signal = board.signal_layers();
     let copper_layers = board.copper_count();
@@ -594,32 +695,66 @@ pub fn import(
         ));
     }
     let (zones, unread) = crate::copper::read_zones(pcb, "the KiCad board")?;
-    out.skipped.extend(unread);
+    for u in unread {
+        out.skipped.push(u.said.clone());
+        out.zones_left_out.push(ZoneLeftOut {
+            net: u.net,
+            layers: u.layers,
+            reason: ZoneReason::Unreadable,
+            said: u.said,
+        });
+    }
     let mut process = netsmith_pcb::process_zones(board);
     // The layers of the process's own zones the KiCad board has, for the lift below.
     let mut found: Vec<String> = Vec::new();
+    // The process's own zones carried as hand zones (`process_zones`), added after the lift.
+    let mut carried: Vec<(String, RouteZone)> = Vec::new();
     let (mut rule_areas, mut teardrops) = (0, 0);
     for zone in zones {
+        let theirs = &zone.net;
+        let mut leave = |reason: ZoneReason, said: String| {
+            out.zones_left_out.push(ZoneLeftOut {
+                net: zone.net.clone(),
+                layers: zone.layers.clone(),
+                reason,
+                said,
+            });
+        };
         match zone.kind {
             ZoneKind::RuleArea => {
                 rule_areas += 1;
+                leave(
+                    ZoneReason::RuleArea,
+                    "a rule area: left out (the design's keepouts are its own)".into(),
+                );
                 continue;
             }
             ZoneKind::Teardrop => {
                 teardrops += 1;
+                leave(
+                    ZoneReason::Teardrop,
+                    format!("a teardrop of net `{theirs}`: left out (`fab` draws its own)"),
+                );
                 continue;
             }
             ZoneKind::Copper => {}
         }
-        let theirs = &zone.net;
         let Some((ours, _)) = map.get(theirs) else {
             *lost.entry(theirs.clone()).or_default() += 1;
+            leave(
+                ZoneReason::NoNet,
+                format!(
+                    "a zone of KiCad net `{theirs}`, which is on no pad of a part the design has: left out"
+                ),
+            );
             continue;
         };
         if zone.hatched {
-            out.skipped.push(format!(
+            let said = format!(
                 "a zone of net `{theirs}` filled with hatching: netsmith fills solid zones only; left out"
-            ));
+            );
+            out.skipped.push(said.clone());
+            leave(ZoneReason::Hatched, said);
             continue;
         }
         let words: Option<Vec<String>> = zone
@@ -628,10 +763,12 @@ pub fn import(
             .map(|l| netsmith_pcb::routes_layer_word(l))
             .collect();
         let Some(layers) = words.filter(|w| !w.is_empty()) else {
-            out.skipped.push(format!(
+            let said = format!(
                 "a zone of net `{theirs}` on {}: not a copper layer; left out",
                 zone.layers.join(", ")
-            ));
+            );
+            out.skipped.push(said.clone());
+            leave(ZoneReason::NotCopper, said);
             continue;
         };
         let taken = RouteZone {
@@ -644,23 +781,55 @@ pub fn import(
             spoke_width: zone.spoke_width,
             islands: zone.islands,
             island_min_area: zone.island_min_area,
-            outline: zone.outline,
-            holes: zone.holes,
+            outline: zone.outline.clone(),
+            holes: zone.holes.clone(),
             lock: false,
         };
         // The process's own plane or pour, as `fab` wrote it, is the design's already: taken, it
         // would replace the process's with a hand zone that has the settings frozen as of now.
-        if let Some(i) = process
+        // It is known by its settings (the net, layer, outline and settings the process states)
+        // or by the uuid `fab` gives it, which KiCad keeps: a zone `fab` wrote for the process
+        // and changed since, in KiCad or by a process that states other settings now, is still
+        // the process's and not a hand zone (issue #1609).
+        let same = process
             .iter()
-            .position(|(net, own)| net == ours && own.same_copper(&taken))
-        {
-            let (_, own) = process.remove(i);
-            found.extend(own.layers.iter().cloned());
+            .position(|(net, own)| net == ours && own.same_copper(&taken));
+        let written = zone.uuid.as_deref().is_some_and(|u| {
+            zone.layers
+                .iter()
+                .any(|l| u == netsmith_pcb::process_zone_uuid(board, l))
+        });
+        if same.is_some() || written {
+            found.extend(taken.layers.iter().cloned());
+            if let Some(i) = same {
+                process.remove(i);
+            }
             out.process_zones += 1;
-            out.skipped.push(format!(
-                "a zone of net `{ours}` on {} is the process's own plane or pour: left out (the process draws it)",
-                own.layers.join(", ")
-            ));
+            let on = taken.layers.join(", ");
+            if options.process_zones {
+                out.skipped.push(format!(
+                    "a zone of net `{ours}` on {on} is the process's own plane or pour: taken as a hand zone (`--process-zones`)"
+                ));
+                carried.push((ours.clone(), taken));
+                continue;
+            }
+            let (reason, said) = if same.is_some() {
+                (
+                    ZoneReason::Process,
+                    format!(
+                        "a zone of net `{ours}` on {on} is the process's own plane or pour: left out (the process draws it)"
+                    ),
+                )
+            } else {
+                (
+                    ZoneReason::ProcessChanged,
+                    format!(
+                        "a zone of net `{ours}` on {on} is the process's own plane or pour as `fab` wrote it, changed since (in KiCad, or the process states other settings now): left out (the process draws it as it states it; `--process-zones` takes it as a hand zone)"
+                    ),
+                )
+            };
+            out.skipped.push(said.clone());
+            leave(reason, said);
             continue;
         }
         if zone.smoothed {
@@ -675,6 +844,16 @@ pub fn import(
         record.zones.push(taken);
     }
     unlift(&mut out.nets, &found);
+    for (net, zone) in carried {
+        out.nets
+            .entry(net)
+            .or_insert_with(|| NetRoutes {
+                lock,
+                ..NetRoutes::default()
+            })
+            .zones
+            .push(zone);
+    }
     if rule_areas > 0 {
         out.skipped.push(format!(
             "{rule_areas} rule area(s) of the KiCad board: left out (the design's keepouts are its own)"
