@@ -33,6 +33,8 @@ pub struct Args {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 /// What the check was made of: the report, the board's name and where its outline's corner is.
@@ -49,6 +51,9 @@ struct Made {
 }
 
 pub fn run(args: Args) -> ExitCode {
+    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+        return crate::frame::refused(&e);
+    }
     let made = match &args.kicad_pcb {
         Some(pcb) => drc::of_kicad_pcb(pcb).map(|checked| Made {
             board: pcb
@@ -75,6 +80,7 @@ pub fn run(args: Args) -> ExitCode {
     let clean = made.checked.report.is_clean();
     match args.format {
         common::Format::Json => {
+            let corner = made.outline_at.as_ref().map(|p| (p.x, p.y));
             let mut report = Report::new("drc");
             report.ok = clean;
             report.boards.push(BoardOut {
@@ -98,7 +104,12 @@ pub fn run(args: Args) -> ExitCode {
             report
                 .findings
                 .extend(of_drc(&made.checked.report, Some(&made.board)));
-            print!("{}", report.to_json());
+            if let Err(e) =
+                args.framing
+                    .print(&report, crate::frame::Frame::BoardFile, corner, true)
+            {
+                return crate::frame::refused(&e);
+            }
         }
         common::Format::Text => {
             for note in &made.notes {

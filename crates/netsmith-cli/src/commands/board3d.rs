@@ -54,10 +54,18 @@ pub struct Args {
     pub placing: Placing,
     #[command(flatten)]
     pub watching: super::common::Watching,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 /// Prints the board's 3D scene, or writes it.
 pub fn run(args: Args) -> ExitCode {
+    if let Err(e) = args
+        .framing
+        .for_json(args.format == super::common::Format::Json)
+    {
+        return crate::frame::refused(&e);
+    }
     args.watching.tell_progress("board3d", false);
     let code = super::common::with_stage_events(|| {
         run_board3d(
@@ -67,6 +75,7 @@ pub fn run(args: Args) -> ExitCode {
             args.glb.as_deref(),
             args.step.as_deref(),
             &args.placing,
+            &args.framing,
         )
     });
     crate::progress::ended(
@@ -94,6 +103,7 @@ fn run_board3d(
     glb: Option<&Path>,
     step: Option<&Path>,
     placing: &Placing,
+    framing: &crate::frame::Framing,
 ) -> ExitCode {
     let made = match with_placed_board(file, board, Some(placing), |placed| placed.run_any()) {
         Ok(made) => made,
@@ -117,6 +127,11 @@ fn run_board3d(
                     eprintln!("error: {}: {e}", out.display());
                     return ExitCode::from(2);
                 }
+            }
+            if json && framing.frame.is_some() {
+                return crate::frame::refused(
+                    "`--frame`: a system's scene is in the frame of its first member, which has no outline frame of its own; ask for a member, `--board System/member`",
+                );
             }
             if json {
                 print!("{}", report.json());
@@ -144,7 +159,14 @@ fn run_board3d(
             return ExitCode::from(2);
         }
     }
-    if json {
+    if json && framing.frame.is_some() {
+        let value = serde_json::to_value(&report).expect("the report is plain data");
+        let value = framing.scene_report(value, crate::frame::design_corner());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&value).expect("the report is plain data")
+        );
+    } else if json {
         print!("{}", report.json());
     } else if glb.is_none() && step.is_none() {
         print!("{}", report.summary());
