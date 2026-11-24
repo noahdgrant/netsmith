@@ -309,6 +309,36 @@ pub struct UnjoinablePad {
     pub why: String,
 }
 
+/// A switching regulator's ground pad that a fill of its net holds and does not join with solid
+/// copper (issue #1586): a thermal relief, however many of its spokes reach the fill, or no join
+/// at all. The ground of a switching regulator carries its switched current and its heat, so its
+/// pads want solid copper: a pin states it with `.pour_connection &= PadConnection::Solid`. A
+/// regulator is a part that provides `BuckIc` ([`netsmith_core::switching_regulators`], as `board
+/// nets --power-stage` finds them), and its ground pads are the IC's pads on the net of its
+/// `vin.neg`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RegulatorGround {
+    /// The regulator IC's path in the design (`reg.ic`).
+    pub path: String,
+    pub layer: String,
+    pub net: String,
+    pub part: String,
+    pub pad: String,
+    pub at: Pt,
+    /// How the fill joins it: `thermal` or `none` (or `solid` where the fill does not reach it).
+    pub join: JoinKind,
+    /// The spokes of its relief and how many reach the fill, for a thermal relief.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spokes: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub joined_spokes: Option<u32>,
+    /// Whether the relief is also a starved one (`starved_thermal`).
+    pub starved: bool,
+    /// The path of the pin that states the pad's connection, when one does (`reg.ic.vin.neg`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stated_by: Option<String>,
+}
+
 /// What the fill of a board's pours does with its pads ([module](self)).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FillReport {
@@ -324,6 +354,10 @@ pub struct FillReport {
     /// Every thermal relief the fill joins by nothing.
     #[serde(default)]
     pub unjoinable: Vec<UnjoinablePad>,
+    /// Every switching regulator's ground pad a fill holds and does not join solid (issue
+    /// #1586), the warnings of `board fill`.
+    #[serde(default)]
+    pub regulator_grounds: Vec<RegulatorGround>,
 }
 
 impl FillReport {
@@ -463,6 +497,7 @@ impl FillReport {
                 tracks: p.tracks,
             }));
         }
+        let regulator_grounds = regulator_grounds(board, &fills);
         Ok(FillReport {
             board: board.name.clone(),
             outline_at: board.outline.min,
@@ -470,6 +505,7 @@ impl FillReport {
             counts,
             starved,
             unjoinable,
+            regulator_grounds,
         })
     }
 
@@ -607,8 +643,81 @@ impl FillReport {
                 ));
             }
         }
+        if let Some(lines) = self.regulator_text(&at) {
+            out.push_str(&lines);
+        }
         out
     }
+
+    /// The warnings of the switching regulators' ground pads (issue #1586); `None` on a board
+    /// whose fills hold no regulator's ground pad that is not solid.
+    fn regulator_text(&self, at: &dyn Fn(Pt) -> String) -> Option<String> {
+        if self.regulator_grounds.is_empty() {
+            return None;
+        }
+        let mut out = format!(
+            "switching regulators' ground pads a fill does not join with solid copper: {}\n",
+            self.regulator_grounds.len()
+        );
+        for g in &self.regulator_grounds {
+            let how = match (g.join, g.spokes, g.joined_spokes) {
+                (JoinKind::Thermal, Some(n), Some(r)) => {
+                    let starved = if g.starved { ", starved" } else { "" };
+                    format!("a thermal relief, {r} of {n} spokes{starved}")
+                }
+                (JoinKind::Thermal, _, _) => "a thermal relief".into(),
+                (JoinKind::Solid, _, _) => "solid, but the fill does not reach it".into(),
+                (JoinKind::None, _, _) => "not joined (the fill's pad connection is none)".into(),
+            };
+            let pin = match &g.stated_by {
+                Some(pin) => format!("`{pin}`"),
+                None => format!("`{}.vin.neg`", g.path),
+            };
+            out.push_str(&format!(
+                "  warning: {} on {} ({}) at {}, the ground of the switching regulator `{}`: {how}; a regulator's ground carries its switched current and its heat: join it solid with `.pour_connection &= PadConnection::Solid` on its pin {pin}\n",
+                pad_name(&g.part, &g.pad),
+                g.layer,
+                g.net,
+                at(g.at),
+                g.path,
+            ));
+        }
+        Some(out)
+    }
+}
+
+/// The ground pads of `board`'s switching regulators that a fill of their net holds and joins
+/// otherwise than with solid copper that reaches them, in the order of the fills.
+fn regulator_grounds(board: &Board, fills: &[FillArea]) -> Vec<RegulatorGround> {
+    let mut out = Vec::new();
+    for f in fills {
+        for reg in board
+            .switching_regulators
+            .iter()
+            .filter(|r| r.gnd.net == f.net)
+        {
+            for p in f.pads.iter().filter(|p| {
+                p.part == reg.refdes
+                    && reg.gnd.pads.contains(&p.pad)
+                    && !(p.join == JoinKind::Solid && p.joined)
+            }) {
+                out.push(RegulatorGround {
+                    path: reg.path.clone(),
+                    layer: f.layer.clone(),
+                    net: f.net.clone(),
+                    part: p.part.clone(),
+                    pad: p.pad.clone(),
+                    at: p.at,
+                    join: p.join,
+                    spokes: p.spokes,
+                    joined_spokes: p.joined_spokes,
+                    starved: p.starved,
+                    stated_by: p.stated_by.clone(),
+                });
+            }
+        }
+    }
+    out
 }
 
 /// A pad by its part and number, `U1.2`, or the part alone for a pad with no number (a
@@ -794,6 +903,104 @@ mod tests {
             text.contains("starved thermal reliefs (one or more but fewer than 2"),
             "{text}"
         );
+    }
+
+    /// `starving` with D1 taken for a switching regulator whose ground is its pad 1 on GND.
+    fn regulator_on(board: &mut Board) {
+        let pin = |net: &str, pad: &str| netsmith_core::RegulatorPin {
+            net: net.into(),
+            pads: vec![pad.into()],
+        };
+        board
+            .switching_regulators
+            .push(netsmith_core::SwitchingRegulator {
+                refdes: "D1".into(),
+                path: "reg.ic".into(),
+                vin: pin("3V3", "9"),
+                gnd: pin("GND", "1"),
+                sw: pin("net-led.anode", "2"),
+                fb: None,
+                input_caps: Vec::new(),
+                support: Vec::new(),
+                switch_parts: Vec::new(),
+            });
+    }
+
+    #[test]
+    fn a_regulators_ground_pad_on_a_relief_is_a_warning_and_one_joined_solid_is_not() {
+        let mut board = starving();
+        let before = FillReport::of(&board).unwrap();
+        assert!(before.regulator_grounds.is_empty(), "{}", before.text());
+        assert!(
+            !before.text().contains("switching regulators' ground pads"),
+            "{}",
+            before.text()
+        );
+
+        regulator_on(&mut board);
+        let report = FillReport::of(&board).unwrap();
+        let top: Vec<&RegulatorGround> = report
+            .regulator_grounds
+            .iter()
+            .filter(|g| g.layer == "top")
+            .collect();
+        assert_eq!(top.len(), 1, "{}", report.text());
+        let g = top[0];
+        assert_eq!(
+            (g.part.as_str(), g.pad.as_str(), g.net.as_str(), g.join),
+            ("D1", "1", "GND", JoinKind::Thermal)
+        );
+        assert!(g.starved, "the pour starves D1.1: {}", report.text());
+        assert_eq!(g.stated_by, None);
+        let text = report.text();
+        assert!(
+            text.contains(
+                "switching regulators' ground pads a fill does not join with solid copper:"
+            ),
+            "{text}"
+        );
+        assert!(
+            text.contains("warning: D1.1 on top (GND) at (")
+                && text.contains("the ground of the switching regulator `reg.ic`: a thermal relief, ")
+                && text.contains(
+                    "join it solid with `.pour_connection &= PadConnection::Solid` on its pin `reg.ic.vin.neg`"
+                ),
+            "{text}"
+        );
+        // The JSON has the same.
+        let json = serde_json::to_value(&report).unwrap();
+        assert_eq!(json["regulator_grounds"][0]["path"], "reg.ic");
+
+        // The pin that states its pads solid takes the warning away: the pad is joined solid.
+        board.pad_pours.push(netsmith_core::PadPour {
+            path: "reg.ic.vin.neg".into(),
+            pins: vec![netsmith_core::PinRef {
+                refdes: "D1".into(),
+                pin: "1".into(),
+            }],
+            connection: Some(netsmith_core::PadConnection::Solid),
+            spoke_width: None,
+        });
+        let solid = FillReport::of(&board).unwrap();
+        assert!(solid.regulator_grounds.is_empty(), "{}", solid.text());
+        let pad = solid
+            .fills
+            .iter()
+            .filter(|f| f.layer == "top")
+            .flat_map(|f| &f.pads)
+            .find(|p| p.part == "D1" && p.pad == "1")
+            .unwrap();
+        assert_eq!((pad.join, pad.joined), (JoinKind::Solid, true));
+
+        // A pin that states a relief keeps the warning, and it names that pin.
+        board.pad_pours[0].connection = Some(netsmith_core::PadConnection::Thermal);
+        let thermal = FillReport::of(&board).unwrap();
+        let g = thermal
+            .regulator_grounds
+            .iter()
+            .find(|g| g.layer == "top")
+            .unwrap();
+        assert_eq!(g.stated_by.as_deref(), Some("reg.ic.vin.neg"));
     }
 
     /// A zone of the routes file on F.Cu of `net` over `area`, with the pad connection `pads`
