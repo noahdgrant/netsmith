@@ -74,7 +74,13 @@ pub fn drops(board: &Board, voltages: &[(String, f64)]) -> Vec<NetDrop> {
 /// [`drops`] of the routed `board` of a design whose checked model is `model`, its rails'
 /// voltages read from it: what `fab`, `board nets` and `board drc` call.
 pub fn drops_of(board: &Board, model: &netsmith_check::Model) -> Vec<NetDrop> {
-    drops(board, &netsmith_design::guidelines::net_voltages(model))
+    drops(board, &rail_voltages(model))
+}
+
+/// The voltage of each net's rail in the checked `model`, by net name, as [`drops_of`] reads
+/// them: what `routes tidy --widen-to-guideline` measures the drop against (issue #1611).
+pub fn rail_voltages(model: &netsmith_check::Model) -> Vec<(String, f64)> {
+    netsmith_design::guidelines::net_voltages(model)
 }
 
 /// The drop of `d` against `budget` of `volts`, or `None` for a rail of no voltage.
