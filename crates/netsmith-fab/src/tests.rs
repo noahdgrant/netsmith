@@ -869,3 +869,43 @@ fn a_package_with_alternates_writes_their_file_and_one_without_removes_an_old_on
     pkg.write(&dir).unwrap();
     assert!(!dir.join("bom-alternates.csv").exists());
 }
+
+/// Issue 1592: the notes of a board under the assembly size say how far its copper is from the
+/// outline against the V-cut figure and its source, whether the copper holds it, and say the
+/// distance without a verdict where the process cites no figure.
+#[test]
+fn the_notes_say_the_copper_to_edge_distance_of_a_board_ordered_as_a_panel() {
+    let v = |distance: f64, least: Option<f64>| DrcVCut {
+        width: 40.0,
+        height: 30.0,
+        assembly_size: 70.0,
+        nearest: Some(netsmith_geom::DrcEdgeCopper {
+            distance,
+            what: "Zone [GND] on F.Cu".into(),
+            at: netsmith_geom::Pt::new(0.2, 15.0),
+            layer: Some("F.Cu".into()),
+        }),
+        least,
+        source: least.map(|_| "the capabilities page, read 2026-11-24".to_string()),
+    };
+    let near = v_cut_note(&v(0.2, Some(0.4)));
+    assert!(
+        near.starts_with("V-cut copper to edge: the board is 40.0 x 30.0 mm, under the 70 mm")
+            && near.contains("0.200 mm from it (Zone [GND] on F.Cu)")
+            && near.contains("0.4 mm from a V-cut edge (the capabilities page, read 2026-11-24)")
+            && near.contains("nearer than that")
+            && near.contains("`v_cut_edge`"),
+        "{near}"
+    );
+    let held = v_cut_note(&v(0.4, Some(0.4)));
+    assert!(
+        held.contains("which holds if the panel is cut apart by V-cuts"),
+        "{held}"
+    );
+    let unstated = v_cut_note(&v(0.2, None));
+    assert!(
+        unstated.contains("0.200 mm from it")
+            && unstated.contains("states no space from copper to a V-cut edge"),
+        "{unstated}"
+    );
+}

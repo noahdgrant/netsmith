@@ -927,6 +927,16 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
             },
             None => None,
         },
+        // Unstated where the board house publishes no figure (issue 1592). A lower bound, so the
+        // bottom; and the page and day it was read.
+        min_v_cut_edge_clearance: optional_mm("process.min_v_cut_edge_clearance"),
+        v_cut_edge_clearance_source: match model.field_at("process.v_cut_edge_clearance_source") {
+            Some(f) => match &model.field(f).domain {
+                Domain::Text(t) if !t.is_empty() => Some(t.clone()),
+                _ => None,
+            },
+            None => None,
+        },
         track_width_tolerance: number("track_width_tolerance"),
         hole_plating: mm("hole_plating"),
         finish: text(find("finish")),

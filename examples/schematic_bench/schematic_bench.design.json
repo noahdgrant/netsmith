@@ -3483,6 +3483,8 @@
       "min_single_sided_assembly_size": 10.0,
       "min_double_sided_assembly_size": 70.0,
       "assembly_size_source": "https://jlcpcb.com/capabilities/pcb-assembly-capabilities, Economic PCBA (one face) and Standard PCBA (both faces), read 2026-11-19",
+      "min_v_cut_edge_clearance": 0.4,
+      "v_cut_edge_clearance_source": "https://jlcpcb.com/capabilities/pcb-capabilities, Outline, V-cut: copper clearance from V-cut board edges, read 2026-11-24",
       "track_width_tolerance": 0.2,
       "hole_plating": 0.018,
       "finish": "HASL lead-free",

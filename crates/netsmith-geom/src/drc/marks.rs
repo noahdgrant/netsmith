@@ -414,23 +414,17 @@ fn fiducials(out: &mut Out<'_>, marks: &Marks) {
 /// its own size.
 fn assembly_size(out: &mut Out<'_>, marks: &Marks) {
     let m = out.m;
-    let (least, faces) = match (marks.assembled_front, marks.assembled_back) {
-        (true, true) => (marks.min_double_sided_assembly_size, "both faces"),
-        (true, false) => (marks.min_single_sided_assembly_size, "the front"),
-        (false, true) => (marks.min_single_sided_assembly_size, "the back"),
-        (false, false) => return,
-    };
-    let Some(least) = least else {
+    let Some(Under {
+        width: w,
+        height: h,
+        least,
+        faces,
+        corner,
+    }) = under_assembly_size(m, marks)
+    else {
         return;
     };
-    if m.edge.is_empty() {
-        return;
-    }
-    let b = Model::bounds_of(&m.edge.iter().map(|(s, _)| s.clone()).collect::<Vec<_>>());
-    let (w, h) = (b.max.x - b.min.x, b.max.y - b.min.y);
-    if w >= least - EPS && h >= least - EPS {
-        return;
-    }
+    let b = corner;
     let source = marks.assembly_size_source.clone().filter(|s| !s.is_empty());
     let from = source
         .as_deref()
@@ -441,10 +435,49 @@ fn assembly_size(out: &mut Out<'_>, marks: &Marks) {
         format!(
             "the board is {w:.1} x {h:.1} mm and has parts the board house assembles on {faces}; it assembles a single board of that kind at {least:.0} x {least:.0} mm at least{from}, so this board needs a panel or to be larger: a panel is `panel P {{ .cell: Board; .fab: VCutPanel {{ .columns &= 3; .rows &= 2 }} }}` (guide chapter 18), and `fab` then writes the panelised Gerbers, BOM and CPL, with the cell in each designator"
         ),
-        Pt::new(b.min.x, b.min.y),
+        b,
         Some("Edge.Cuts"),
         source,
     );
+}
+
+/// A board smaller than the least the board house assembles as a single board of its kind
+/// (issue 1285): its size, that least, the faces it has assembled parts on and the top left
+/// corner of its outline.
+pub(super) struct Under {
+    pub width: f64,
+    pub height: f64,
+    pub least: f64,
+    pub faces: &'static str,
+    pub corner: Pt,
+}
+
+/// Whether the board is under the assembly size of `marks` ([`Under`]); `None` for a board
+/// with no assembled part, no outline, or no figure for its faces. The `assembly_size` finding
+/// and the V-cut measure (issue 1592) both ask it.
+pub(super) fn under_assembly_size(m: &Model<'_>, marks: &Marks) -> Option<Under> {
+    let (least, faces) = match (marks.assembled_front, marks.assembled_back) {
+        (true, true) => (marks.min_double_sided_assembly_size, "both faces"),
+        (true, false) => (marks.min_single_sided_assembly_size, "the front"),
+        (false, true) => (marks.min_single_sided_assembly_size, "the back"),
+        (false, false) => return None,
+    };
+    let least = least?;
+    if m.edge.is_empty() {
+        return None;
+    }
+    let b = Model::bounds_of(&m.edge.iter().map(|(s, _)| s.clone()).collect::<Vec<_>>());
+    let (width, height) = (b.max.x - b.min.x, b.max.y - b.min.y);
+    if width >= least - EPS && height >= least - EPS {
+        return None;
+    }
+    Some(Under {
+        width,
+        height,
+        least,
+        faces,
+        corner: Pt::new(b.min.x, b.min.y),
+    })
 }
 
 /// A guideline: each side that has assembled parts has at least `min_fiducials` of them.
