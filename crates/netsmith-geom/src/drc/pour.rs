@@ -341,10 +341,8 @@ fn cut_pieces(out: &mut Out<'_>, layer: &str, judged: &[fill::Judged], rules: &p
             "the pour"
         };
         let message = format!(
-            "{what} cuts a piece of {whose} of {net} ({:.3} mm² at ({:.3}, {:.3})) off from the rest of its fill, and nothing else joins {} on it to the net: no via, plated hole, track or other fill of {net}; {fix}, or give the pad a via or a track of its own",
+            "{what} cuts a piece of {whose} of {net} ({:.3} mm²) off from the rest of its fill, and nothing else joins {} on it to the net: no via, plated hole, track or other fill of {net}; {fix}, or give the pad a via or a track of its own",
             c.area,
-            c.at.x,
-            c.at.y,
             names.join(", "),
         );
         let mut items = pads;

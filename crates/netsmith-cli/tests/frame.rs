@@ -212,8 +212,163 @@ fn every_json_document_with_places_says_their_frame() {
         "{}",
         scene["frame"]
     );
-    // `--frame` is for the JSON; the text says its frame.
-    let run = netsmith(&dir, &["board", "nets", f, "--frame", "outline"]);
+    // The text of the commands that say a place follows `--frame` too (the tests below); the text
+    // of one that does not move its places yet refuses it.
+    let run = netsmith(&dir, &["layout", "fit", "D1", "--file", f, "--frame", "outline"]);
     assert_eq!(run.status.code(), Some(2), "{run:?}");
     assert!(String::from_utf8_lossy(&run.stderr).contains("--format json"));
+}
+
+/// A number as the text of `layout parts` and `routes show` say it: to a micrometre.
+fn um(v: f64) -> String {
+    let r = (v * 1e6).round() / 1e6;
+    format!("{}", if r == 0.0 { 0.0 } else { r })
+}
+
+#[test]
+fn the_text_says_its_places_in_the_frame_asked_for() {
+    let (dir, pad, end) = led("frame-text");
+    for (frame, by) in [("outline", 0.0), ("board-file", 20.0)] {
+        let flag = ["--frame", frame];
+        let with = |args: &[&'static str]| [args, &flag[..]].concat();
+        let text = |args: &[&'static str]| {
+            let run = netsmith(&dir, &with(args));
+            assert!(run.status.code().is_some_and(|c| c < 2), "{run:?}");
+            String::from_utf8_lossy(&run.stdout).into_owned()
+        };
+        let (pad, end) = ([pad[0] + by, pad[1] + by], [end[0] + by, end[1] + by]);
+
+        // `layout parts`: the pad's place, and the heading names the frame.
+        let parts = text(&["layout", "parts", "J1", "--file", "led.nsm"]);
+        let at = format!("pad 1 thru_hole rect at {},{} ", um(pad[0]), um(pad[1]));
+        assert!(parts.contains(&at), "{frame}: {at}\n{parts}");
+        let heading = if by == 0.0 { "from the outline's top left" } else { "the board file's frame" };
+        assert!(parts.lines().next().unwrap().contains(heading), "{parts}");
+
+        // `routes show`: the track's two ends.
+        let routes = text(&["routes", "show", "--file", "led.nsm"]);
+        let track = format!(
+            "({}, {}) to ({}, {})",
+            um(pad[0]),
+            um(pad[1]),
+            um(end[0]),
+            um(end[1])
+        );
+        assert!(routes.contains(&track), "{frame}: {track}\n{routes}");
+
+        // `layout show`: the entry of J1 (the pad is its origin).
+        let show = text(&["layout", "show", "power_in", "--file", "led.nsm"]);
+        let entry = format!("at {}, {} mm", um(pad[0]), um(pad[1]));
+        assert!(show.contains(&entry), "{frame}: {entry}\n{show}");
+
+        // `board drc`: the track's free end, which the text says `at (x, y)`.
+        let drc = text(&["board", "drc", "led.nsm"]);
+        let dangling = format!("at ({:.3}, {:.3}) on F.Cu", end[0], end[1]);
+        assert!(drc.contains(&dangling), "{frame}: {dangling}\n{drc}");
+
+        // `board nets`: the dead stub is the track, which starts at the pad.
+        let nets = text(&["board", "nets", "led.nsm"]);
+        let stub = format!("at ({:.2}, {:.2})", pad[0], pad[1]);
+        assert!(nets.contains(&stub), "{frame}: {stub}\n{nets}");
+
+        // `board fill`: the outline's corner, and the frame it says.
+        let fill = text(&["board", "fill", "led.nsm"]);
+        let corner = format!("corner is at ({by:.3}, {by:.3})");
+        assert!(fill.contains(&corner), "{frame}: {corner}\n{fill}");
+        let frame_words = if by == 0.0 { "outline's frame" } else { "board file's frame" };
+        assert!(fill.contains(frame_words), "{fill}");
+
+        // `board rules` takes it too.
+        text(&["board", "rules", "led.nsm"]);
+    }
+}
+
+/// A project of the LED example with a physical file that pins its LED and its resistor to the
+/// same place: a conflict proved before the placer runs, with the boxes of their courtyards.
+fn led_overlapped(tag: &str) -> TempDir {
+    let dir = TempDir::new(tag);
+    for name in ["led.nsm", "led.lock.toml"] {
+        fs::copy(repo().join("examples").join(name), dir.join(name)).unwrap();
+    }
+    fs::write(
+        dir.join("led.physical.nsm"),
+        "import std::pcb::Outline\n\nphysical for LedExample {\n    case {\n        .outline: Outline {\n            .width &= 40mm\n            .height &= 24mm\n        }\n    }\n    .r1.place.x &= 10mm +/- 0.1mm\n    .r1.place.y &= 10mm +/- 0.1mm\n    .led.place.x &= 10mm +/- 0.1mm\n    .led.place.y &= 10mm +/- 0.1mm\n    .led.place.rotation &= 90\n}\n",
+    )
+    .unwrap();
+    dir
+}
+
+#[test]
+fn board_check_build_and_fab_say_one_courtyard_at_one_place_in_the_frame_asked_for() {
+    let dir = led_overlapped("frame-check-build-fab");
+    let out = dir.join("out");
+    let out = out.to_str().unwrap();
+    // The courtyard of R1, pinned at (10, 10) mm in the outline's frame.
+    for (frame, by) in [("outline", 0.0), ("board-file", 20.0)] {
+        for args in [
+            &["board", "check", "led.nsm"][..],
+            &["board", "build", "led.nsm", "--out", out],
+            &["board", "fab", "led.nsm", "--out", out],
+        ] {
+            let doc = json(&dir, &[args, &["--format", "json", "--frame", frame][..]].concat());
+            let what = format!("netsmith {} --frame {frame}", args.join(" "));
+            assert_eq!(doc["frame"], frame, "{what}");
+            let boxed = doc["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .flat_map(|f| f["conflicts"].as_array().into_iter().flatten())
+                .flat_map(|c| c["parts"].as_array().into_iter().flatten())
+                .find(|p| p["refdes"] == "R1")
+                .unwrap_or_else(|| panic!("{what}: {doc:#}"));
+            let yard = &boxed["courtyard"];
+            for (key, outline) in [("x_min", 8.97), ("x_max", 11.03), ("y_min", 8.97), ("y_max", 11.03)] {
+                let got = yard[key].as_f64().unwrap();
+                assert!((got - (outline + by)).abs() < 1e-6, "{what}: {key} {got}");
+            }
+        }
+    }
+    // The text says its places in its own frame, and does not take the flag.
+    let run = netsmith(&dir, &["board", "check", "led.nsm", "--frame", "board-file"]);
+    assert_eq!(run.status.code(), Some(2), "{run:?}");
+    assert!(String::from_utf8_lossy(&run.stderr).contains("--format json"));
+}
+
+#[test]
+fn a_finding_fab_waived_for_review_is_in_the_documents_frame() {
+    let (dir, _, _) = led("frame-waived");
+    let out = dir.join("out");
+    let out = out.to_str().unwrap();
+    // A track of VCC from (5, 5) to (8, 5) mm touches nothing: a `track_dangling` error of the
+    // design rules check at its start, which `--for-review` waives. The document is in the
+    // outline's frame, and so is the finding's place.
+    let run = netsmith(
+        &dir,
+        &[
+            "routes", "add-track", "--file", "led.nsm", "--net", "VCC", "--layer", "top", "--width",
+            "0.3", "--from", "5,5", "--to", "8,5",
+        ],
+    );
+    assert!(run.status.success(), "{run:?}");
+    for (frame, by) in [("outline", 0.0), ("board-file", 20.0)] {
+        let doc = json(
+            &dir,
+            &[
+                "board", "fab", "led.nsm", "--for-review", "--no-pictures", "--no-step",
+                "--no-pdf", "--out", out, "--format", "json", "--frame", frame,
+            ],
+        );
+        assert_eq!(doc["frame"], frame);
+        let finding = doc["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["rule"] == "track_dangling" && f["waived"] == "for-review")
+            .unwrap_or_else(|| panic!("{doc:#}"));
+        near(
+            point(&finding["place"]),
+            [5.0 + by, 5.0 + by],
+            "the waived finding's place",
+        );
+    }
 }

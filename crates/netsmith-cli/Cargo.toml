@@ -22,6 +22,7 @@ netsmith-dxf = { path = "../netsmith-dxf" }
 netsmith-editor = { path = "../netsmith-editor" }
 netsmith-fab = { path = "../netsmith-fab" }
 netsmith-fabricate = { path = "../netsmith-fabricate" }
+netsmith-geom = { path = "../netsmith-geom" }
 netsmith-kicad = { path = "../netsmith-kicad" }
 netsmith-lang = { path = "../netsmith-lang" }
 netsmith-lint = { path = "../netsmith-lint" }
@@ -44,7 +45,6 @@ automod = "1.0.17"
 netsmith-fabricate = { path = "../netsmith-fabricate", features = ["test-support"] }
 netsmith-pipeline = { path = "../netsmith-pipeline", features = ["test-support"] }
 netsmith-catalog = { path = "../netsmith-catalog" }
-netsmith-geom = { path = "../netsmith-geom" }
 netsmith-kicad = { path = "../netsmith-kicad", features = ["test-support"] }
 netsmith-testkit = { path = "../netsmith-testkit" }
 netsmith-netlist = { path = "../netsmith-netlist" }

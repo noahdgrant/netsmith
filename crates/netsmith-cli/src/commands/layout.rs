@@ -380,7 +380,21 @@ pub fn run(args: Args) -> ExitCode {
         Command::Export(a) => (a.format, a.framing),
         Command::Import(a) => (a.format, a.framing),
     };
-    if let Err(e) = framing.for_json(format == common::Format::Json) {
+    // The text of `show` and `parts` moves its places; `check` and `capture` say none; the
+    // text of the others says its places in the outline's frame only.
+    let text_moves = match &args.command {
+        Command::Show(_) | Command::Parts(_) | Command::Check(_) | Command::Capture(_) => None,
+        Command::Set(_) => Some("layout set"),
+        Command::Summary(_) => Some("layout summary"),
+        Command::Compare(_) => Some("layout compare"),
+        Command::Regenerate(_) => Some("layout regenerate"),
+        Command::Fit(_) => Some("layout fit"),
+        Command::Export(_) => Some("layout export"),
+        Command::Import(_) => Some("layout import"),
+    };
+    if let Some(command) = text_moves
+        && let Err(e) = framing.for_text(format == common::Format::Json, command)
+    {
         return crate::frame::refused(&e);
     }
     match args.command {
@@ -635,7 +649,16 @@ fn parts(args: &PartsArgs) -> ExitCode {
                         return crate::frame::refused(&e);
                     }
                 }
-                common::Format::Text => print!("{}", parts.text()),
+                common::Format::Text => {
+                    let (frame, dx, dy) = match args.framing.moved(
+                        crate::frame::Frame::Outline,
+                        Some(crate::frame::design_corner()),
+                    ) {
+                        Ok(moved) => moved,
+                        Err(e) => return crate::frame::refused(&e),
+                    };
+                    print!("{}", parts.text_moved([dx, dy], &frame.says()));
+                }
             }
             ExitCode::SUCCESS
         }
@@ -912,7 +935,16 @@ fn show(args: &ShowArgs) -> ExitCode {
                         return crate::frame::refused(&e);
                     }
                 }
-                common::Format::Text => print!("{}", shown.text()),
+                common::Format::Text => {
+                    let (_, dx, dy) = match args.framing.moved(
+                        crate::frame::Frame::Outline,
+                        Some(crate::frame::design_corner()),
+                    ) {
+                        Ok(moved) => moved,
+                        Err(e) => return crate::frame::refused(&e),
+                    };
+                    print!("{}", shown.text_moved([dx, dy]));
+                }
             }
             ExitCode::SUCCESS
         }

@@ -25,8 +25,8 @@ pub struct Framing {
     /// `outline` is mm from the outline's top left corner, y down, as the layout file and the
     /// routes file have their places; `board-file` is the KiCad board file's, with the outline's
     /// top left corner at (20, 20) mm. The document's `frame` key says which frame its places
-    /// are in. The guide's chapter on the commands lists each command's own frame. Only with
-    /// `--format json`.
+    /// are in; the text says the frame of its places. The guide's chapter on the commands lists
+    /// each command's own frame.
     #[arg(long, value_enum, value_name = "FRAME")]
     pub frame: Option<Frame>,
 }
@@ -46,6 +46,27 @@ impl Frame {
         match self {
             Frame::Outline => "outline",
             Frame::BoardFile => "board-file",
+        }
+    }
+
+    /// What a text says of its places in this frame, after `mm`.
+    pub fn says(self) -> String {
+        match self {
+            Frame::Outline => "mm from the outline's top left corner, y down".to_string(),
+            Frame::BoardFile => {
+                let (x, y) = design_corner();
+                format!(
+                    "mm in the board file's frame, y down, the outline's top left corner at ({x}, {y})"
+                )
+            }
+        }
+    }
+
+    /// Its name as prose says it: `outline`, `board file`.
+    pub fn words(self) -> &'static str {
+        match self {
+            Frame::Outline => "outline",
+            Frame::BoardFile => "board file",
         }
     }
 }
@@ -74,10 +95,19 @@ pub const PLACE_KEYS: &[&str] = &[
     "courtyard",
     "courtyards",
     "largest_free",
+    "origin",
+    "body_centre",
 ];
 
+/// The keys whose value holds lists of objects with an `x` and a `y` of their own, which are
+/// places: the pairs of courtyards that overlap and the parts' places of a refusal because the
+/// parts do not fit (`does_not_fit`), listed by the key of the list.
+pub const PLACE_LISTS: &[(&str, &[&str])] = &[("does_not_fit", &["overlapping", "parts"])];
+
 /// The keys whose places are in a part's own frame, which no frame of the board moves.
-pub const LOCAL_KEYS: &[&str] = &["local", "local_courtyards"];
+///
+/// A designator's `at` is the offset of its text from the part's origin: it moves with the part.
+pub const LOCAL_KEYS: &[&str] = &["local", "local_courtyards", "designator"];
 
 /// The outline's top left corner in the board file's frame, for a design's board.
 pub fn design_corner() -> (f64, f64) {
@@ -96,13 +126,38 @@ impl Framing {
         self.frame.unwrap_or(own)
     }
 
-    /// Refuses `--frame` with text output, which says its own frame (exit 2 with the reason).
-    pub fn for_json(&self, json: bool) -> Result<(), String> {
+    /// The frame the places of a text are in and how far to move them from `own`, `(dx, dy)` in
+    /// mm: the asked frame, or `own` (no move). `corner` is the outline's top left corner in the
+    /// board file's frame (`None` where it is not known, a KiCad board's: then only `own` may be
+    /// asked for).
+    pub fn moved(
+        &self,
+        own: Frame,
+        corner: Option<(f64, f64)>,
+    ) -> Result<(Frame, f64, f64), String> {
+        let to = self.of(own);
+        if to == own {
+            return Ok((to, 0.0, 0.0));
+        }
+        let Some((cx, cy)) = corner else {
+            return Err(format!(
+                "`--frame {}`: this board's outline corner is not known, so its places are in the frame `{}` only",
+                to.name(),
+                own.name()
+            ));
+        };
+        let sign = if to == Frame::BoardFile { 1.0 } else { -1.0 };
+        Ok((to, sign * cx, sign * cy))
+    }
+
+    /// Refuses `--frame` for the text of a command whose text says places that it does not
+    /// move yet: exit 2 with the reason, so that no text says a place in a frame it was not
+    /// asked for.
+    pub fn for_text(&self, json: bool, command: &str) -> Result<(), String> {
         match (self.frame, json) {
-            (Some(_), false) => Err(
-                "`--frame` sets the frame of the places of `--format json`; the text says the frame of its places"
-                    .to_string(),
-            ),
+            (Some(_), false) => Err(format!(
+                "`--frame` does not move the places of the text of `{command}` yet: ask for `--format json`, or leave the frame to the text's own"
+            )),
             _ => Ok(()),
         }
     }
@@ -117,17 +172,9 @@ impl Framing {
         corner: Option<(f64, f64)>,
     ) -> Result<Value, String> {
         let mut value = serde_json::to_value(doc).expect("a document is plain data");
-        let to = self.of(own);
+        let (to, dx, dy) = self.moved(own, corner)?;
         if to != own {
-            let Some((cx, cy)) = corner else {
-                return Err(format!(
-                    "`--frame {}`: this board's outline corner is not known, so its places are in the frame `{}` only",
-                    to.name(),
-                    own.name()
-                ));
-            };
-            let sign = if to == Frame::BoardFile { 1.0 } else { -1.0 };
-            shift(&mut value, sign * cx, sign * cy, false);
+            shift(&mut value, dx, dy, false);
         }
         if let Value::Object(map) = &mut value {
             map.insert("frame".into(), Value::String(to.name().into()));
@@ -170,6 +217,18 @@ impl Framing {
         };
         println!("{}", text.expect("a document is plain data"));
         Ok(())
+    }
+
+    /// The report of `board check`, `build` and `fab` as `--format json` prints it: its places
+    /// are in the outline's frame, and in the asked one with `--frame`.
+    pub fn report_json(&self, report: &netsmith_tools::findings::Report) -> Result<String, String> {
+        if self.of(Frame::Outline) == Frame::Outline {
+            return Ok(report.to_json());
+        }
+        let value = self.document(report, Frame::Outline, Some(design_corner()))?;
+        let mut text = serde_json::to_string_pretty(&value).expect("a document is plain data");
+        text.push('\n');
+        Ok(text)
     }
 
     /// `dev board3d`'s report put in the asked frame: its plan places (in the scene's frame, y
@@ -268,6 +327,15 @@ fn shift(v: &mut Value, dx: f64, dy: f64, in_place: bool) {
             for (key, child) in map.iter_mut() {
                 if LOCAL_KEYS.contains(&key.as_str()) {
                     continue;
+                }
+                if let Some((_, lists)) = PLACE_LISTS.iter().find(|(parent, _)| parent == key) {
+                    for list in *lists {
+                        if let Some(items) = child.get_mut(*list).and_then(Value::as_array_mut) {
+                            for item in items {
+                                move_xy(item, dx, dy);
+                            }
+                        }
+                    }
                 }
                 shift(
                     child,
@@ -399,6 +467,45 @@ mod tests {
     }
 
     #[test]
+    fn the_places_of_a_refusal_origins_and_a_designator_are_moved_as_they_are() {
+        let framing = Framing {
+            frame: Some(Frame::BoardFile),
+        };
+        let doc = json!({
+            "findings": [{
+                "does_not_fit": {
+                    "outline": {"width": 10.0, "height": 8.0},
+                    "overlapping": [{"a": {"refdes": "R1"}, "width": 1.0, "height": 1.0, "x": 2.0, "y": 3.0}],
+                    "outside": [{"refdes": "R2", "worst": 0.5}],
+                    "parts": [{"refdes": "R1", "x": 4.0, "y": 5.0, "rotation": 90.0,
+                               "courtyard": {"width": 1.0, "height": 2.0}}],
+                },
+            }],
+            "boards": [{"parts": [{
+                "origin": [1.0, 2.0], "body_centre": [1.5, 2.5], "offset": [-0.5, -0.5],
+            }]}],
+            "entry": {"at": [1.0, 2.0], "designator": {"at": [0.0, -1.0], "turn": 90.0}},
+        });
+        let moved = framing
+            .document(&doc, Frame::Outline, Some((20.0, 20.0)))
+            .unwrap();
+        let fit = &moved["findings"][0]["does_not_fit"];
+        assert_eq!(fit["overlapping"][0]["x"], 22.0);
+        assert_eq!(fit["overlapping"][0]["y"], 23.0);
+        assert_eq!(fit["overlapping"][0]["width"], 1.0);
+        assert_eq!(fit["parts"][0]["x"], 24.0);
+        assert_eq!(fit["parts"][0]["y"], 25.0);
+        assert_eq!(fit["parts"][0]["rotation"], 90.0);
+        assert_eq!(fit["outline"]["width"], 10.0);
+        let part = &moved["boards"][0]["parts"][0];
+        assert_eq!(part["origin"], json!([21.0, 22.0]));
+        assert_eq!(part["body_centre"], json!([21.5, 22.5]));
+        assert_eq!(part["offset"], json!([-0.5, -0.5]));
+        assert_eq!(moved["entry"]["at"], json!([21.0, 22.0]));
+        assert_eq!(moved["entry"]["designator"]["at"], json!([0.0, -1.0]));
+    }
+
+    #[test]
     fn the_own_frame_is_named_and_an_unknown_corner_refuses_the_other() {
         let doc = json!({"at": [1.0, 2.0]});
         let own = Framing::default()
@@ -409,8 +516,15 @@ mod tests {
             frame: Some(Frame::Outline),
         };
         assert!(other.document(&doc, Frame::BoardFile, None).is_err());
-        assert!(other.for_json(false).is_err());
-        assert!(Framing::default().for_json(false).is_ok());
+        assert!(other.moved(Frame::BoardFile, None).is_err());
+        assert_eq!(
+            other.moved(Frame::BoardFile, Some((20.0, 20.0))).unwrap(),
+            (Frame::Outline, -20.0, -20.0)
+        );
+        assert_eq!(
+            Framing::default().moved(Frame::BoardFile, None).unwrap(),
+            (Frame::BoardFile, 0.0, 0.0)
+        );
     }
 
     #[test]
