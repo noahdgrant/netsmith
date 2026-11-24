@@ -60,6 +60,8 @@ The surface finish is in `order.txt` (`finish HASL lead-free`, the process's `.f
 
 ## Read `fab-notes.txt`
 
+Its first line names the board and the frame of every place the notes say: `fab-notes for <Board>; places in mm from the outline's top left corner, y down`, the frame of the layout file and the routes file. A design rules line's `at (x, y)` is there too; `board drc` says the same finding in the board file's frame (20 mm more each way) unless you pass `--frame outline`.
+
 | Line | What to do |
 |---|---|
 | `process:` | The factory rules used. Confirm the layer count and thickness are what the user wants. |
@@ -79,7 +81,7 @@ The surface finish is in `order.txt` (`finish HASL lead-free`, the process's `.f
 | `turn off the right angles unverified` | Parts on the top turned by other than 0, 90, 180 or 270 degrees: JLCPCB's correction for such a turn is not measured, and the placement file has KiCad's turn plus the footprint's offset. Look at them in the order preview. |
 | `routed long:` and `most vias:` | Nets the routing made more than twice the straight length between their pads (and 2 mm over it), and the nets with the most vias, with each length, the ratio and the vias (`--format json`: each board's `routes`). A note, not a fault. Tell the user which of them must be short (a crystal's, a clock's, a boot capacitor's, a switching node's): such a net needs a better placement or route (`netsmith-route-a-board`), and a datasheet number goes in the part's `layout` block as `route NAME .pin length LENGTH`, which `fab` then checks as a `layout guideline` warning that names the net. |
 | `V-cut copper to edge:` | Only for a board under the board house's assembly size (10 mm for parts on one face, 70 mm for both at JLCPCB), which is ordered as a panel, and in a declared panel's notes: the board's size, how far its nearest copper (a track, pad, via or a pour's fill) is from the outline, what it is, and the board house's space from copper to a V-cut edge with its source (JLCPCB: 0.4 mm, capabilities page; 1.0 mm advised). Copper nearer than that also has the design rules note `v_cut_edge` (under `design rules notes:`), which fails nothing. Ask the user how the panel is cut apart: a V-cut panel needs the copper that far in (`.process.min_edge_clearance &= 0.4mm..` and fab again), a panel with mouse bites (the only one JLCPCB's Economic assembly delivers) does not. A line that says the process states no figure is not judged: check the board house's rule. |
-| `origin:` | The placement origin. Nothing to do unless the user needs a particular one. |
+| `origin:` | The placement origin, from the outline's top left corner. Nothing to do unless the user needs a particular one. |
 | `design rules check: passed` | netsmith's own check found no error. If the line is missing or says `NOT clean` (or `FOR REVIEW, NOT FOR ORDER`), stop. |
 | `design rules warnings: N` | Findings that do not stop a package but should be read: silkscreen over an opening in the mask (`silk_over_copper`: the fabricator clips a line there and removes a text within 0.15 mm of a pad), silkscreen too near other silkscreen (`silk_overlap`) or the board edge (`silk_edge_clearance`), a solder mask web narrower than the process makes, a via in a pad the process cannot fill. Each is listed with its place. |
 | `zone fill:` | netsmith filled the planes and pours itself. Look at every inner layer and pour in the order preview: clearances round holes and pads, thermal spokes on the plane's own pads. |

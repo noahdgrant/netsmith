@@ -97,7 +97,8 @@ pub mod viewer;
 // names them as modules, and other crates import them from `netsmith_geom`.
 use netsmith_geom::{
     ConstraintOutcome, Constraints, DrcCounts, DrcError, DrcExtras, DrcFinding, DrcItem, DrcReport,
-    DrcRule, DrcSeverity, DrcVCut, constraint_outcome_findings, drc_check, drc_project_of,
+    DrcRule, DrcSeverity, DrcVCut, Pt, constraint_outcome_findings, drc_check, drc_project_of,
+    outline_corner,
 };
 
 use netsmith_geom::{
@@ -595,8 +596,12 @@ pub struct Package {
     pub notes: String,
     pub plan: Plan,
     pub drc: DrcOutcome,
-    /// Everything the design rules check found, warnings included.
+    /// Everything the design rules check found, warnings included, its places in the board
+    /// file's frame, where the check judges.
     pub drc_report: DrcReport,
+    /// The outline's top left corner in the board file's frame (`None` for a board with nothing
+    /// on `Edge.Cuts`): the notes say every place from it, in the outline's frame (issue #1614).
+    pub outline_at: Option<Pt>,
     /// Each requirement on where a part goes, measured: met or not, with the numbers.
     pub constraints: Vec<ConstraintOutcome>,
     /// Designators whose rotation or side the package could not verify against JLCPCB's
@@ -608,6 +613,12 @@ pub struct Package {
 }
 
 impl Package {
+    /// [`Package::drc_report`] as the notes say it: its places in the outline's frame (issue
+    /// #1614).
+    pub fn said_drc_report(&self) -> DrcReport {
+        said_report(&self.drc_report, self.outline_at)
+    }
+
     /// Whether this package was made for review and not for order ([`Options::for_review`]).
     pub fn for_review(&self) -> bool {
         matches!(self.drc, DrcOutcome::ForReview(_))
@@ -846,8 +857,13 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         spread: _,
         long_paths: _,
     } = check(&src, drc_project_of(pcb).as_deref(), options)?;
+    let art = Artwork::parse(&src)?;
+    // What `fab` says of the check, in its messages and its notes, is in the outline's frame,
+    // as the rest of what it writes (issue #1614); the report keeps the check's own.
+    let outline_at = outline_corner(&art);
+    let said = said_report(&drc_report, outline_at);
     // A requirement of the design is not a design rule: waiving the rules does not waive it.
-    let unmet: Vec<String> = drc_report
+    let unmet: Vec<String> = said
         .errors()
         .filter(|f| f.rule == DrcRule::Constraint)
         .map(ToString::to_string)
@@ -878,7 +894,7 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
     } else {
         return Err(Error::Drc {
             counts: drc_report.counts(),
-            report: drc_report
+            report: said
                 .errors()
                 .map(ToString::to_string)
                 .collect::<Vec<_>>()
@@ -887,7 +903,6 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         });
     };
 
-    let art = Artwork::parse(&src)?;
     let plotted = plot_layer(&art, &name, &plot_rules(pcb))?;
     let mut files = plotted.files;
     files.extend(drill_files(&art, &name));
@@ -921,7 +936,7 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         &board,
         &plan,
         &placed,
-        (drc, &drc_report),
+        (drc, &drc_report, outline_at),
         &outcomes,
         (options.process.as_deref(), options.revision.as_deref()),
         &extras,
@@ -939,10 +954,33 @@ pub fn package(pcb: &Path, entries: &[BomEntry], options: &Options) -> Result<Pa
         name,
         drc,
         drc_report,
+        outline_at,
         constraints: outcomes,
         unverified,
         routes,
     })
+}
+
+/// The report as `fab` says it (issue #1614): each place moved from the board file's frame,
+/// where the check judges, to the outline's, from `outline_at`, the outline's top left corner
+/// (none for a board with no outline: then the report is as the check says it).
+pub(crate) fn said_report(report: &DrcReport, outline_at: Option<Pt>) -> DrcReport {
+    match outline_at {
+        Some(at) => report.moved(Pt::new(-at.x, -at.y)),
+        None => report.clone(),
+    }
+}
+
+/// What the first line of the notes says of the frame of their places, the outline's (issue
+/// #1614): a text that moves them to another frame changes these words too.
+pub const NOTES_FRAME: &str = "places in mm from the outline's top left corner, y down";
+
+/// What the header of the notes says of the frame of their places (issue #1614).
+fn frame_words(outline_at: Option<Pt>) -> &'static str {
+    match outline_at {
+        Some(_) => NOTES_FRAME,
+        None => "places in mm in the board file's frame, y down",
+    }
 }
 
 /// The rules the plot needs from the project file beside the board (`kicad_pro`), which
@@ -1026,16 +1064,20 @@ fn notes(
     board: &Board,
     plan: &Plan,
     placed: &cpl::Cpl,
-    (drc, report): (DrcOutcome, &DrcReport),
+    (drc, report, outline_at): (DrcOutcome, &DrcReport, Option<Pt>),
     constraints: &[ConstraintOutcome],
     (process, revision): (Option<&str>, Option<&str>),
     extras: &[String],
     trim: &[String],
     (waived, pictures): (&[String], &[String]),
 ) -> String {
+    // Every place the notes say is in one frame, the outline's, which the header names (issue
+    // #1614): the check's findings are moved from the board file's frame, where it judges.
+    let report = &said_report(report, outline_at);
+    let frame = frame_words(outline_at);
     let mut lines = vec![match revision {
-        Some(revision) => format!("fab-notes for {name}, revision {revision}"),
-        None => format!("fab-notes for {name}"),
+        Some(revision) => format!("fab-notes for {name}, revision {revision}; {frame}"),
+        None => format!("fab-notes for {name}; {frame}"),
     }];
     if matches!(drc, DrcOutcome::ForReview(_)) {
         lines.extend(review_heading(report, waived, pictures));
@@ -1130,7 +1172,23 @@ fn notes(
         ));
     }
     lines.push(match board.origin {
-        Some((x, y)) => format!("origin: drill/place origin at ({x}, {y}) mm on the board, used by every file"),
+        Some((x, y)) => {
+            let (dx, dy) = outline_at.map_or((0.0, 0.0), |at| (at.x, at.y));
+            // To a micrometre, so that a place is said as a person would write it.
+            let um = |v: f64| (v * 1e6).round() / 1e6;
+            format!(
+                "origin: drill/place origin at ({}, {}) {}, used by every file",
+                um(x - dx),
+                um(y - dy),
+                // The words of the placer's sentences, so that a text that moves them moves
+                // this place too (`netsmith_pcb::prose`).
+                if outline_at.is_some() {
+                    "mm from the board's top left corner"
+                } else {
+                    "mm on the board"
+                }
+            )
+        }
         None => "origin: the board sets no drill/place origin; coordinates are relative to the page corner, the same in every file".to_string(),
     });
     lines.push(match drc {
