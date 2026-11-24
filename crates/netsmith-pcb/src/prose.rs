@@ -71,6 +71,31 @@ fn shift_pairs(line: &str, from: usize, to: usize, by: [f64; 2]) -> String {
     out
 }
 
+/// A via of a wall of `routes route`: `net X at (x, y)`, the place in the outline's frame. The
+/// generator (`netsmith_fabricate::route_net`) says it by this, and [`via_moved`] reads it.
+pub fn via_said(net: &str, at: [f64; 2]) -> String {
+    format!("net {net} at ({}, {})", tidy(at[0]), tidy(at[1]))
+}
+
+/// `text`, a via as [`via_said`] says it, with its place moved by `by` (mm). With a move of
+/// nothing, or a text that is not one, it is `text`.
+pub fn via_moved(text: &str, by: [f64; 2]) -> String {
+    if by == [0.0, 0.0] {
+        return text.to_string();
+    }
+    let Some(i) = text.rfind(" at (").map(|i| i + " at ".len()) else {
+        return text.to_string();
+    };
+    match parse_pair(text, i) {
+        Some((end, ..)) if end == text.len() => {
+            let mut out = text[..i].to_string();
+            out.push_str(&shift_pairs(text, i, end, by));
+            out
+        }
+        _ => text.to_string(),
+    }
+}
+
 /// The sentences of the placer in `text`, whose places are in the outline's frame, with each
 /// place moved by `by` (mm) and the words that name its frame replaced by `says` (what a text
 /// says after `mm`, `Frame::says` of the command line): a part's courtyard or body "from the
@@ -212,6 +237,18 @@ mod tests {
         assert!(moved.contains("mm) at (30.0, 30.5), 3.0 mm"), "{moved}");
         // Only the list's lines.
         assert!(moved.contains("x at (1.0, 2.0)"), "{moved}");
+    }
+
+    #[test]
+    fn a_via_of_a_wall_is_moved_at_its_place() {
+        let said = via_said("VCC", [12.5, 3.0]);
+        assert_eq!(said, "net VCC at (12.5, 3)");
+        assert_eq!(via_moved(&said, [20.0, 20.0]), "net VCC at (32.5, 23)");
+        assert_eq!(via_moved(&said, [0.0, 0.0]), said);
+        // A net whose name says a place is not mistaken for one.
+        let odd = via_said("A at (1, 2)", [1.5, 2.0]);
+        assert_eq!(via_moved(&odd, [1.0, 1.0]), "net A at (1, 2) at (2.5, 3)");
+        assert_eq!(via_moved("no place", [1.0, 1.0]), "no place");
     }
 
     #[test]

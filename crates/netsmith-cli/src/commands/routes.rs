@@ -834,7 +834,7 @@ fn add(args: &AddArgs) -> ExitCode {
             }
         }
         common::Format::Text => {
-            print!("{}", args.framing.drc(&added.text()));
+            print!("{}", args.framing.routes_drc(&added.text()));
             if written {
                 println!("wrote {}", file.display());
             } else if args.dry_run {
@@ -903,7 +903,7 @@ fn route(args: &RouteArgs) -> ExitCode {
     let (routed, file, written) = match done {
         Ok(Ok(done)) => done,
         Ok(Err(e)) => {
-            eprintln!("error: {}", args.framing.drc(&e));
+            eprintln!("error: {}", args.framing.routes_drc(&e));
             return ExitCode::FAILURE;
         }
         Err(code) => return code,
@@ -939,7 +939,7 @@ fn route(args: &RouteArgs) -> ExitCode {
     match &routed.refused {
         Some(e) => {
             if args.format == common::Format::Text {
-                eprintln!("error: {}", args.framing.drc(e));
+                eprintln!("error: {}", args.framing.routes_drc(e));
             }
             ExitCode::FAILURE
         }
@@ -972,7 +972,7 @@ fn join_pad(args: &JoinPadArgs) -> ExitCode {
     let (joined, file, written) = match done {
         Ok(Ok(done)) => done,
         Ok(Err(e)) => {
-            eprintln!("error: {}", args.framing.drc(&e));
+            eprintln!("error: {}", args.framing.routes_drc(&e));
             return ExitCode::FAILURE;
         }
         Err(code) => return code,
@@ -1008,7 +1008,7 @@ fn join_pad(args: &JoinPadArgs) -> ExitCode {
     match &joined.refused {
         Some(e) => {
             if args.format == common::Format::Text {
-                eprintln!("error: {}", args.framing.drc(e));
+                eprintln!("error: {}", args.framing.routes_drc(e));
             }
             ExitCode::FAILURE
         }
