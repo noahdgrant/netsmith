@@ -756,7 +756,7 @@ fn hertz(f: f64) -> String {
 }
 
 /// A number with at most two decimals and no trailing zeros: `3`, `2.45`.
-fn number(x: f64) -> String {
+pub(crate) fn number(x: f64) -> String {
     let text = format!("{x:.2}");
     text.trim_end_matches('0').trim_end_matches('.').to_string()
 }
