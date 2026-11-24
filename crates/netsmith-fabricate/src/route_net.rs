@@ -1020,7 +1020,7 @@ fn walls(board: &Board, why: &[LineReport]) -> Vec<Wall> {
                 .iter()
                 .map(|v| {
                     let at = v.at - board.outline.min;
-                    format!("net {} at ({}, {})", v.net, um(at.x), um(at.y))
+                    netsmith_pcb::prose::via_said(&v.net, [um(at.x), um(at.y)])
                 })
                 .collect(),
             via_places: r
@@ -1144,11 +1144,7 @@ impl Routed {
                     w.via_places
                         .iter()
                         .map(|(net, at)| {
-                            format!(
-                                "net {net} at ({}, {})",
-                                um(at[0] + by[0]) + 0.0,
-                                um(at[1] + by[1]) + 0.0
-                            )
+                            netsmith_pcb::prose::via_said(net, [at[0] + by[0], at[1] + by[1]])
                         })
                         .collect()
                 } else {

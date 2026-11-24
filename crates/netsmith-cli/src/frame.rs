@@ -105,6 +105,22 @@ pub const PLACE_KEYS: &[&str] = &[
 /// parts do not fit (`does_not_fit`), listed by the key of the list.
 pub const PLACE_LISTS: &[(&str, &[&str])] = &[("does_not_fit", &["overlapping", "parts"])];
 
+/// The keys whose value, a string or a list of them, is a sentence of the placer or a line of the
+/// design rules check, which say a place inside the sentence: the `message` and `text` of the
+/// findings, the `said` and `why` of the changes of the routes commands, their `refused`, the
+/// placer's `placement_refused`, and the `appeared` and `gone` of `layout compare` and
+/// `regenerate`. [`Framing::document`] moves the places inside them (`netsmith_pcb::prose`).
+pub const PROSE_KEYS: &[&str] = &[
+    "message",
+    "text",
+    "said",
+    "why",
+    "refused",
+    "placement_refused",
+    "appeared",
+    "gone",
+];
+
 /// The keys whose places are in a part's own frame, which no frame of the board moves.
 ///
 /// A designator's `at` is the offset of its text from the part's origin: it moves with the part.
@@ -163,16 +179,6 @@ impl Framing {
         }
     }
 
-    /// The same for the lines of the design rules check, which say their places in the board
-    /// file's frame: nothing without `--frame` or with `--frame board-file`.
-    pub fn board_file_move(&self) -> [f64; 2] {
-        let (cx, cy) = design_corner();
-        match self.frame {
-            Some(Frame::Outline) => [-cx, -cy],
-            _ => [0.0, 0.0],
-        }
-    }
-
     /// `text`, a placer's sentences (a courtyard "from the board's top left corner") with their
     /// places in the frame asked for.
     pub fn placer(&self, text: &str) -> String {
@@ -180,9 +186,56 @@ impl Framing {
         netsmith_pcb::prose::placer_moved(text, by, &says)
     }
 
-    /// `text`, lines of the design rules check, with their places in the frame asked for.
-    pub fn drc(&self, text: &str) -> String {
-        netsmith_pcb::prose::drc_moved(text, self.board_file_move())
+    /// `value`, a document in the outline's frame, with the places of its sentences
+    /// ([`PROSE_KEYS`], and the `vias` of the `walls` of `routes route`) in the frame asked for:
+    /// the placer's sentences and the lines of the design rules check in them say their places
+    /// in the outline's frame, as `fab` and the routes commands make them ([`Framing::fab`]).
+    pub fn prose(&self, value: &mut Value) {
+        if self.frame.is_none() {
+            return;
+        }
+        let (by, _) = self.text_move();
+        match value {
+            Value::Array(items) => {
+                for item in items {
+                    self.prose(item);
+                }
+            }
+            Value::Object(map) => {
+                for (key, child) in map.iter_mut() {
+                    if PROSE_KEYS.contains(&key.as_str()) {
+                        match child {
+                            Value::String(text) => *text = self.fab(text),
+                            Value::Array(items) => {
+                                for item in items {
+                                    if let Value::String(text) = item {
+                                        *text = self.fab(text);
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    } else if key == "walls" {
+                        for wall in each(child) {
+                            for via in each(&mut wall["vias"]) {
+                                if let Value::String(text) = via {
+                                    *text = netsmith_pcb::prose::via_moved(text, by);
+                                }
+                            }
+                        }
+                    }
+                    self.prose(child);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// `text`, lines of the design rules check that a routes command made (the check of an edit
+    /// of the routes file, `netsmith_fabricate::routes::drc_errors`), with their places in the
+    /// frame asked for: those lines say their places in the routes file's frame, the outline's.
+    pub fn routes_drc(&self, text: &str) -> String {
+        netsmith_pcb::prose::drc_moved(text, self.text_move().0)
     }
 
     /// `text` of `board fab`, its notes and its messages, with their places in the frame asked
@@ -211,6 +264,9 @@ impl Framing {
         let (to, dx, dy) = self.moved(own, corner)?;
         if to != own {
             shift(&mut value, dx, dy, false);
+        }
+        if own == Frame::Outline {
+            self.prose(&mut value);
         }
         if let Value::Object(map) = &mut value {
             map.insert("frame".into(), Value::String(to.name().into()));
@@ -263,15 +319,9 @@ impl Framing {
         if self.of(Frame::Outline) == Frame::Outline {
             return Ok(report.to_json());
         }
-        let mut value = self.document(report, Frame::Outline, Some(design_corner()))?;
-        // The sentences in the messages say their places in the document's frame.
-        if let Some(findings) = value["findings"].as_array_mut() {
-            for finding in findings {
-                if let Some(message) = finding["message"].as_str() {
-                    finding["message"] = Value::String(self.fab(message));
-                }
-            }
-        }
+        // The sentences in the messages say their places in the document's frame (`fab` says
+        // every place in the outline's frame, issue #1614).
+        let value = self.document(report, Frame::Outline, Some(design_corner()))?;
         let mut text = serde_json::to_string_pretty(&value).expect("a document is plain data");
         text.push('\n');
         Ok(text)
@@ -341,6 +391,8 @@ impl Framing {
             }
             shift(&mut report, corner.0, corner.1, false);
         }
+        // The placement check's sentences say their places in the frame asked for too.
+        self.prose(&mut report);
         report["frame"] = Value::String(to.name().into());
         report
     }
@@ -549,6 +601,67 @@ mod tests {
         assert_eq!(part["offset"], json!([-0.5, -0.5]));
         assert_eq!(moved["entry"]["at"], json!([21.0, 22.0]));
         assert_eq!(moved["entry"]["designator"]["at"], json!([0.0, -1.0]));
+    }
+
+    #[test]
+    fn the_places_inside_the_sentences_of_a_document_are_moved_by_the_frame_asked_for() {
+        let placer =
+            "R1 stands 2.00 mm tall, around (10.5, 12.0) mm from the board's top left corner";
+        let drc = "error [clearance] a gap at (25.000, 30.500) on F.Cu: track";
+        let doc = json!({
+            "findings": [{"message": placer, "at": [10.5, 12.0]}],
+            "shapes": [{"said": drc, "why": [placer], "appeared": [placer], "refused": 1}],
+            "walls": [{"vias": ["net GND at (5, 0.4)"], "nets": ["at (1, 2)"]}],
+        });
+        let file = Framing {
+            frame: Some(Frame::BoardFile),
+        };
+        let moved = file
+            .document(&doc, Frame::Outline, Some((20.0, 20.0)))
+            .unwrap();
+        assert!(
+            moved["findings"][0]["message"]
+                .as_str()
+                .unwrap()
+                .contains("around (30.5, 32.0) mm in the board file's frame"),
+            "{moved:#}"
+        );
+        assert_eq!(moved["findings"][0]["at"], json!([30.5, 32.0]));
+        // The check's lines, in the outline's frame, move as the placer's sentences do.
+        assert_eq!(
+            moved["shapes"][0]["said"],
+            "error [clearance] a gap at (45.000, 50.500) on F.Cu: track"
+        );
+        assert!(
+            moved["shapes"][0]["why"][0]
+                .as_str()
+                .unwrap()
+                .contains("(30.5, 32.0)")
+        );
+        assert!(
+            moved["shapes"][0]["appeared"][0]
+                .as_str()
+                .unwrap()
+                .contains("(30.5, 32.0)")
+        );
+        assert_eq!(moved["shapes"][0]["refused"], 1);
+        assert_eq!(moved["walls"][0]["vias"][0], "net GND at (25, 20.4)");
+        assert_eq!(moved["walls"][0]["nets"][0], "at (1, 2)");
+        // `--frame outline` is the frame they are in.
+        let outline = Framing {
+            frame: Some(Frame::Outline),
+        };
+        let own = outline
+            .document(&doc, Frame::Outline, Some((20.0, 20.0)))
+            .unwrap();
+        assert_eq!(own["shapes"][0]["said"], drc);
+        assert_eq!(own["walls"][0]["vias"][0], "net GND at (5, 0.4)");
+        // With no flag nothing moves.
+        let none = Framing::default()
+            .document(&doc, Frame::Outline, Some((20.0, 20.0)))
+            .unwrap();
+        assert_eq!(none["shapes"][0]["said"], drc);
+        assert_eq!(none["findings"][0]["message"], placer);
     }
 
     #[test]

@@ -641,6 +641,199 @@ fn near_said(a: [f64; 2], b: [f64; 2], what: &str) {
 }
 
 #[test]
+fn routes_add_says_the_place_of_a_refusal_in_the_frame_asked_for_in_text_and_json() {
+    let (dir, pad, _) = led("frame-routes-add");
+    // A track of GND that crosses the VCC track (pad 1 of J1 out 3 mm to the right) at x + 1.
+    let (x, y) = (pad[0] + 1.0, pad[1]);
+    fs::write(
+        dir.join("shapes.toml"),
+        format!(
+            "[[track]]\nnet = \"GND\"\nfrom = [{x}, {}]\nto = [{x}, {}]\n",
+            y - 1.0,
+            y + 1.0
+        ),
+    )
+    .unwrap();
+    for (frame, by) in [("outline", 0.0), ("board-file", 20.0)] {
+        let args = |format: &'static str| {
+            [
+                "routes", "add", "shapes.toml", "--file", "led.nsm", "--dry-run", "--format", format,
+                "--frame", frame,
+            ]
+        };
+        let place = [x + by, y + by];
+        let said = text_of(&dir, &args("text"));
+        let line = said.lines().find(|l| l.contains("[tracks_crossing]")).unwrap_or_else(|| panic!("{said}"));
+        near_said(place_after(line, " cross; they are on nets GND and VCC at "), place, "routes add's text");
+        let doc = json(&dir, &args("json"));
+        assert_eq!(doc["frame"], frame);
+        let shape = &doc["shapes"][0];
+        near(point(&shape["findings"][0]["at"]), place, "routes add's finding");
+        // The sentence of the shape says the same place.
+        let sentence = shape["said"].as_str().unwrap();
+        near_said(
+            place_after(sentence, " cross; they are on nets GND and VCC at "),
+            place,
+            "routes add's said",
+        );
+    }
+}
+
+/// The LED example with a wall of locked GND vias between the pads of VCC, which has no way
+/// across it: the net is walled in by the vias.
+fn led_walled(tag: &str) -> TempDir {
+    let dir = TempDir::new(tag);
+    for name in ["led.nsm", "led.lock.toml"] {
+        fs::copy(repo().join("examples").join(name), dir.join(name)).unwrap();
+    }
+    for args in [
+        &["layout", "capture", "--file", "led.nsm"][..],
+        &[
+            "routes", "add-track", "--file", "led.nsm", "--net", "GND", "--layer", "bottom",
+            "--width", "0.15", "--from", "12,1", "--to", "13,1",
+        ],
+    ] {
+        let run = netsmith(&dir, args);
+        assert!(run.status.success(), "{run:?}");
+    }
+    let file = dir.join("led.routes.toml");
+    let vias: Vec<String> = (0..19)
+        .map(|i| {
+            format!(
+                "{{ at = [5.0, {:.2}], diameter = 0.6, drill = 0.3, lock = true }}",
+                0.4 + 0.4 * f64::from(i)
+            )
+        })
+        .collect();
+    let text = fs::read_to_string(&file).unwrap();
+    assert!(text.contains("tracks = ["), "{text}");
+    fs::write(&file, text.replacen("tracks = [", &format!("vias = [{}]\ntracks = [", vias.join(", ")), 1)).unwrap();
+    dir
+}
+
+#[test]
+fn routes_route_says_the_vias_that_wall_a_net_in_in_the_frame_asked_for() {
+    let dir = led_walled("frame-routes-route");
+    for (frame, by) in [("outline", 0.0), ("board-file", 20.0)] {
+        let args = |format: &'static str| {
+            [
+                "routes", "route", "VCC", "--file", "led.nsm", "--dry-run", "--format", format,
+                "--frame", frame,
+            ]
+        };
+        // The first and the last via of the wall, as the sentence says them.
+        let first = format!("net GND at ({}, {})", um(5.0 + by), um(0.4 + by));
+        let last = format!("net GND at ({}, {})", um(5.0 + by), um(7.6 + by));
+        let said = text_of(&dir, &args("text"));
+        assert!(said.contains(&first) && said.contains(&last), "{frame}: {said}");
+        let doc = json(&dir, &args("json"));
+        assert_eq!(doc["frame"], frame);
+        let vias = doc["walls"][0]["vias"].as_array().unwrap();
+        assert_eq!(vias.len(), 19, "{doc:#}");
+        assert_eq!(vias[0], first.as_str(), "{frame}");
+        assert_eq!(vias[18], last.as_str(), "{frame}");
+    }
+}
+
+#[test]
+fn routes_import_says_the_place_of_a_fault_in_the_copper_as_its_json_does() {
+    let dir = TempDir::new("frame-routes-import");
+    for name in ["led.nsm", "led.lock.toml"] {
+        fs::copy(repo().join("examples").join(name), dir.join(name)).unwrap();
+    }
+    let out = dir.join("first");
+    let run = netsmith(
+        &dir,
+        &["board", "fab", "led.nsm", "--for-review", "--locked", "--no-pictures", "--no-step", "--no-pdf", "--out", out.to_str().unwrap()],
+    );
+    assert!(run.status.success(), "{run:?}");
+    // The board `fab` wrote, with a track of net 3 across the tracks of the other nets.
+    let board = fs::read_to_string(out.join("LedExample/LedExample.kicad_pcb")).unwrap();
+    assert!(board.contains("(net 3 \"net-led.anode\")"), "the example's nets changed");
+    let board = board.trim_end().strip_suffix(')').unwrap().to_string()
+        + "\t(segment\n\t\t(start 26.5 21.0)\n\t\t(end 26.5 28.0)\n\t\t(width 0.15)\n\t\t(layer \"F.Cu\")\n\t\t(net 3)\n\t\t(uuid \"aaaaaaaa-84cb-50bb-a4ff-ffc825c25fee\")\n\t)\n)\n";
+    fs::write(dir.join("hand.kicad_pcb"), board).unwrap();
+    for (frame, by) in [("outline", 0.0), ("board-file", 20.0)] {
+        let args = |format: &'static str| {
+            [
+                "routes", "import", "hand.kicad_pcb", "--file", "led.nsm", "--format", format,
+                "--frame", frame,
+            ]
+        };
+        let said = text_of(&dir, &args("text"));
+        let line = said.lines().find(|l| l.starts_with("net GND:")).unwrap_or_else(|| panic!("{said}"));
+        let doc = json(&dir, &args("json"));
+        assert_eq!(doc["frame"], frame);
+        let gnd = doc["nets"].as_array().unwrap().iter().find(|n| n["net"] == "GND").unwrap();
+        let at = point(&gnd["refusals"][0]["at"]);
+        // The crossing is on the new track, at x = 6.5 in the outline's frame.
+        near(at, [6.5 + by, at[1]], "routes import's json");
+        near_said(place_after(line, "[tracks_crossing] at "), at, "routes import's text");
+    }
+}
+
+#[test]
+fn board3d_and_layout_check_say_the_place_of_a_part_in_the_notch_in_the_frame_asked_for() {
+    // The L-shaped board with its resistor in the cut-away corner: the placement check says
+    // where its courtyard is past the outline, `at (x, y) mm from the board's top left corner`.
+    let dir = TempDir::new("frame-board3d-notch");
+    let fixtures = repo().join("scripts/editor-verify-js/fixtures");
+    for name in ["polygon_outline.nsm", "polygon_outline.physical.nsm"] {
+        fs::copy(fixtures.join(name), dir.join(name)).unwrap();
+    }
+    for args in [
+        &["layout", "capture", "--file", "polygon_outline.nsm"][..],
+        &["layout", "set", "r", "--at", "32,7", "--file", "polygon_outline.nsm"],
+    ] {
+        let run = netsmith(&dir, args);
+        assert!(run.status.success(), "{run:?}");
+    }
+    for (frame, by, words) in [
+        ("outline", 0.0, "mm from the board's top left corner"),
+        ("board-file", 20.0, "mm in the board file's frame"),
+    ] {
+        let place = [33.5 + by, 6.3 + by];
+        let sentence = "is not wholly inside the board outline";
+        // `dev board3d`: the placement on stdout and the refusal on stderr.
+        let run = netsmith(&dir, &["dev", "board3d", "polygon_outline.nsm", "--frame", frame]);
+        assert_eq!(run.status.code(), Some(1), "{run:?}");
+        for (what, text) in [
+            ("stdout", String::from_utf8_lossy(&run.stdout).into_owned()),
+            ("stderr", String::from_utf8_lossy(&run.stderr).into_owned()),
+        ] {
+            let line = text
+                .lines()
+                .find(|l| l.contains(sentence))
+                .unwrap_or_else(|| panic!("{frame} {what}: {text}"));
+            near(place_after(line, "box, at "), place, "board3d's text");
+            assert!(line.contains(words), "{frame}: {line}");
+            assert_eq!(by != 0.0, !line.contains("board's top left corner"), "{frame}: {line}");
+        }
+        // The JSON of the same board, in the frame asked for.
+        let scene = json(
+            &dir,
+            &["dev", "board3d", "polygon_outline.nsm", "--frame", frame, "--format", "json"],
+        );
+        assert_eq!(scene["frame"], frame);
+        // `layout check`: the sentence in the `message` of a finding.
+        let checked = json(
+            &dir,
+            &["layout", "check", "--file", "polygon_outline.nsm", "--format", "json", "--frame", frame],
+        );
+        assert_eq!(checked["frame"], frame);
+        let message = checked["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|f| f["message"].as_str())
+            .find(|m| m.contains(sentence))
+            .unwrap_or_else(|| panic!("{frame}: {checked:#}"));
+        near(place_after(message, "box, at "), place, "layout check's json");
+        assert!(message.contains(words), "{frame}: {message}");
+    }
+}
+
+#[test]
 fn the_places_of_fab_notes_are_in_the_outlines_frame_as_its_header_says() {
     // A track of VCC from (5, 5) to (8, 5) mm in the outline's frame (the routes file's) touches
     // nothing: a `track_dangling` error at its start, which `--for-review` waives and
