@@ -144,7 +144,25 @@ pub fn put_copper(
     route: Option<&Route>,
     say: &dyn Fn(String),
 ) -> Result<(), String> {
-    for note in crate::routes::apply_beside(board, Some(layout))? {
+    put_copper_from(
+        board,
+        layout,
+        &crate::routes::beside_layout(layout),
+        route,
+        say,
+    )
+}
+
+/// [`put_copper`] with the routes file at `routes` in place of the one beside the layout file
+/// (`board nets --compare`, issue #1629), the router's kept copper and the teardrops as there.
+pub fn put_copper_from(
+    board: &mut Board,
+    layout: &Path,
+    routes: &Path,
+    route: Option<&Route>,
+    say: &dyn Fn(String),
+) -> Result<(), String> {
+    for note in crate::routes::apply_file(board, routes)? {
         say(format!("warning: {note}"));
     }
     let kept = KeptRoutes::beside_layout(layout);

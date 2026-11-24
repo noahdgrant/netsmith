@@ -199,6 +199,7 @@ fn every_json_document_with_places_says_their_frame() {
             "outline",
         ),
         (&["routes", "show", "--file", f], "outline"),
+        (&["routes", "sites", "D1", "--file", f], "outline"),
         (&["routes", "tidy", "--dry-run", "--file", f], "outline"),
     ];
     for (args, frame) in own {
