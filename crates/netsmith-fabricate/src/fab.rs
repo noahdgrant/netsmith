@@ -3770,6 +3770,7 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
         via_group_gap: board.rules.group_gap(),
         track_angle: true,
         round_track_angle: board.process.min_round_track_angle,
+        rule_area_reach: Some(board.process.rule_area_reach),
         marks: Some(marks_of(board)),
         stackup: Some(netsmith_geom::DrcStackup {
             layers: board.process.stackup.layers as usize,
@@ -4519,7 +4520,7 @@ mod tests {
 
     /// The fields of a process that are not a rule the router and the design rules check keep,
     /// each with the reason (issue #431).
-    const NOT_A_COPPER_RULE: [(&str, &str); 40] = [
+    const NOT_A_COPPER_RULE: [(&str, &str); 41] = [
         (
             "finish",
             "the surface finish, a word for the notes and the order",
@@ -4644,6 +4645,10 @@ mod tests {
             "via_group_gap",
             "the space at which vias of one net stand side by side as one group, unstated by every process (the least clearance then): `a_via_group_gap_a_board_states_reaches_the_router_and_the_check` proves both keep it",
         ),
+        (
+            "rule_area_reach",
+            "how far from a rule area the check notes what stands near it (`near_rule_area`, a note), judged on the routed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
     ];
 
     /// The fields declared at the top level of `interface <name>` (or `generic <name>`) in
@@ -4761,6 +4766,7 @@ mod tests {
             text_to_mask: Some(rules.silk_to_pad),
             round_track_angle: p.min_round_track_angle,
             via_group_gap: rules.group_gap(),
+            rule_area_reach: Some(p.rule_area_reach),
             marks: Some(netsmith_geom::DrcMarks {
                 min_fiducials: p.min_fiducials as usize,
                 fiducial_diameter: p.fiducial_diameter,
@@ -4819,6 +4825,7 @@ mod tests {
             ("min_single_sided_assembly_size", "20mm.."),
             ("min_double_sided_assembly_size", "100mm.."),
             ("min_v_cut_edge_clearance", "1mm.."),
+            ("rule_area_reach", "5mm"),
         ] {
             let narrowed = format!(".{field} &= {raised}");
             let after =

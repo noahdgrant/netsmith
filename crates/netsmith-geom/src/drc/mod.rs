@@ -204,6 +204,7 @@ pub(crate) mod constraints;
 mod fab_rules;
 mod marks;
 mod model;
+mod near;
 mod pour;
 mod room;
 mod rules;
@@ -232,6 +233,9 @@ pub use waivers::{PLACE_TOLERANCE as WAIVER_PLACE_TOLERANCE, Waived, Waiver};
 /// How bad a finding is. A rule the project file says to ignore produces none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Severity {
+    /// Something for a person to look at that the check does not judge (`near_rule_area`,
+    /// issue #1591): it fails nothing, with any strictness, and no warning counts it.
+    Note,
     Warning,
     Error,
     /// Only in a project file: the person chose not to check this rule.
@@ -244,6 +248,7 @@ impl Severity {
             "error" => Some(Severity::Error),
             "warning" => Some(Severity::Warning),
             "ignore" => Some(Severity::Ignore),
+            "note" => Some(Severity::Note),
             _ => None,
         }
     }
@@ -253,6 +258,7 @@ impl Severity {
             Severity::Error => "error",
             Severity::Warning => "warning",
             Severity::Ignore => "ignore",
+            Severity::Note => "note",
         }
     }
 }
@@ -402,16 +408,20 @@ pub enum Rule {
     UnmatchedWaiver,
     /// Copper of a board under the board house's assembly size, which is ordered as a panel,
     /// nearer the board's outline than the house keeps copper from a V-cut edge (netsmith's, a
-    /// guideline, issue 1592; `v_cut.rs`).
+    /// note, issue 1592; `v_cut.rs`).
     VCutEdge,
     /// A differential pair whose two lengths differ by more than the pair's skew limit
     /// (netsmith's, issue #1587; the pair table of `netsmith_fab::NetTable`, since the board
     /// file does not hold the limits).
     PairSkew,
+    /// A part, track, via or pour within the reach of a rule area that forbids copper or parts
+    /// (a module's antenna keep-out), on a layer it is not on or beside it, which can detune an
+    /// antenna (netsmith's, issue #1591; `near.rs`): a note, which fails nothing.
+    NearRuleArea,
 }
 
 impl Rule {
-    pub const ALL: [Rule; 61] = [
+    pub const ALL: [Rule; 62] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -473,6 +483,7 @@ impl Rule {
         Rule::UnmatchedWaiver,
         Rule::VCutEdge,
         Rule::PairSkew,
+        Rule::NearRuleArea,
     ];
 
     /// KiCad's name for the rule (its `type` in a JSON report).
@@ -539,6 +550,7 @@ impl Rule {
             Rule::UnmatchedWaiver => "unmatched_waiver",
             Rule::VCutEdge => "v_cut_edge",
             Rule::PairSkew => "pair_skew",
+            Rule::NearRuleArea => "near_rule_area",
         }
     }
 
@@ -582,6 +594,7 @@ impl Rule {
                 | Rule::UnmatchedWaiver
                 | Rule::VCutEdge
                 | Rule::PairSkew
+                | Rule::NearRuleArea
         )
     }
 
@@ -617,8 +630,8 @@ impl Rule {
             | Rule::PadIslandCut
             | Rule::AcidTrap
             | Rule::CopperSliver
-            | Rule::PairSkew
-            | Rule::VCutEdge => Severity::Warning,
+            | Rule::PairSkew => Severity::Warning,
+            Rule::NearRuleArea | Rule::VCutEdge => Severity::Note,
             _ => Severity::Error,
         })
     }
@@ -819,6 +832,13 @@ impl Report {
             .filter(|f| f.severity == Severity::Warning)
     }
 
+    /// The notes (`near_rule_area`, issue #1591), which fail nothing.
+    pub fn notes(&self) -> impl Iterator<Item = &Finding> {
+        self.findings
+            .iter()
+            .filter(|f| f.severity == Severity::Note)
+    }
+
     pub fn counts(&self) -> Counts {
         let mut c = Counts::default();
         for f in self.errors() {
@@ -920,6 +940,10 @@ pub struct Extras {
     /// that round copper (a round pad or via, an oval's end, a rounded corner, a custom pad's
     /// circle or arc) is not judged.
     pub round_track_angle: Option<f64>,
+    /// How far from a rule area that forbids copper or parts the check lists what stands near
+    /// it (`near_rule_area`, issue #1591), in mm: the process's `.rule_area_reach`, or the
+    /// `.kicad_dru`'s. `None` lists nothing.
+    pub rule_area_reach: Option<f64>,
     /// The fabricator's rules for fiducials and test points (issue #761); `None` is not
     /// checked.
     pub marks: Option<Marks>,

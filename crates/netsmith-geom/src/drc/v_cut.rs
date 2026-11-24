@@ -11,7 +11,7 @@
 //! (the fill the board file holds, else the fill [`crate::fill`] works out), against the outer
 //! outline only (a cutout is not cut by a V-cut).
 //!
-//! **A guideline, a warning.** The check judges one board and does not know how the panel will
+//! **A note** (`Severity::Note`: it fails nothing, with any strictness). The check judges one board and does not know how the panel will
 //! be cut: a panel with mouse bites, or the Economic service, which makes no V-cut, keeps the
 //! board's own edge clearance. So copper nearer than the figure is told what a V-cut asks and is
 //! not refused. A panel the file declares (`VCutPanel`) holds the board's edge clearance to the

@@ -674,7 +674,7 @@ fn a_pour_0_2_mm_from_the_edge_of_a_board_ordered_as_a_panel_is_nearer_than_a_v_
     let found: Vec<_> = r.findings.iter().filter(|f| f.rule == DrcRule::VCutEdge).collect();
     assert_eq!(found.len(), 1, "{r}");
     let f = found[0];
-    assert_eq!(f.severity, DrcSeverity::Warning, "a note, not an error");
+    assert_eq!(f.severity, DrcSeverity::Note, "a note, not an error");
     assert_eq!(f.source.as_deref(), Some(V_CUT_SOURCE));
     assert!(
         f.message.starts_with("Zone [GND] on F.Cu is 0.2")
