@@ -44,8 +44,68 @@ fn options_of(board: &Board, constraints: Option<Constraints>) -> Options {
             .collect(),
         regulators: board.switching_regulators.clone(),
         switch_node_keepout: board.process.switch_node_keepout,
+        replaced_pours: replaced_pours(board),
         ..Options::default()
     }
+}
+
+/// The pours and planes of `board`'s process that a zone of the routes file replaces on their
+/// layer (issue #1612, [`Board::replaced`]), each with the zones that do: what `board drc` and
+/// `fab` note as `pour_replaced`. The board file holds the zone and no pour, so the check is
+/// told.
+pub fn replaced_pours(board: &Board) -> Vec<netsmith_fab::replaced_pour::ReplacedPour> {
+    use netsmith_fab::replaced_pour::ReplacedPour;
+    let number = |v: f64| {
+        let text = format!("{v:.2}");
+        text.trim_end_matches('0').trim_end_matches('.').to_string()
+    };
+    let pours = board
+        .pours
+        .iter()
+        .map(|p| (p.layer.name().to_string(), p.net.clone(), "pour"));
+    let planes = board
+        .planes
+        .iter()
+        .map(|p| (p.layer.clone(), p.net.clone(), "plane"));
+    pours
+        .chain(planes)
+        .filter(|(layer, net, _)| board.replaced(layer, net))
+        .map(|(layer, net, kind)| {
+            let zones: Vec<&netsmith_pcb::BoardZone> = board
+                .zones
+                .iter()
+                .filter(|z| z.net == net && z.layers.contains(&layer))
+                .collect();
+            let describe = |z: &netsmith_pcb::BoardZone| {
+                let (mut lo, mut hi) = (z.outline[0], z.outline[0]);
+                for p in &z.outline {
+                    (lo.x, lo.y) = (lo.x.min(p.x), lo.y.min(p.y));
+                    (hi.x, hi.y) = (hi.x.max(p.x), hi.y.max(p.y));
+                }
+                let (x, y) = (lo.x - board.outline.min.x, lo.y - board.outline.min.y);
+                format!(
+                    "{},{},{},{}",
+                    number(x),
+                    number(y),
+                    number(hi.x - lo.x),
+                    number(hi.y - lo.y),
+                )
+            };
+            ReplacedPour {
+                at: {
+                    let p = zones
+                        .first()
+                        .and_then(|z| z.outline.first().copied())
+                        .unwrap_or(board.outline.min);
+                    netsmith_geom::Pt::new(p.x, p.y)
+                },
+                zones: zones.iter().map(|z| describe(z)).collect(),
+                layer,
+                net,
+                kind,
+            }
+        })
+        .collect()
 }
 
 /// The rules [`of_board`] holds `board` to, as data (`netsmith board rules`, issue #1513): read

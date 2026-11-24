@@ -87,6 +87,7 @@ mod net_table;
 mod panel;
 pub mod power_stage;
 mod raster;
+pub mod replaced_pour;
 mod rotation;
 mod score;
 pub mod viewer;
@@ -205,6 +206,10 @@ pub struct Options {
     /// How near a switch node foreign copper may come, in mm (the process's
     /// `.switch_node_keepout`); `None` is [`power_stage::DEFAULT_SWITCH_NODE_KEEPOUT`].
     pub switch_node_keepout: Option<f64>,
+    /// The pours and planes of the process that a zone of the routes file replaces on their
+    /// layer (issue #1612), which the board file does not hold: [`check`] notes each
+    /// (`pour_replaced`) and says so in a `via_dangling` finding of a via of its net.
+    pub replaced_pours: Vec<replaced_pour::ReplacedPour>,
     /// Package even though some parts have no LCSC part number. Those parts are left out
     /// of the BOM and placement file and listed in the notes as unassembled.
     pub allow_missing_lcsc: bool,
@@ -773,6 +778,14 @@ pub fn check(src: &str, project: Option<&str>, options: &Options) -> Result<Chec
         let stages = power_stage::of(&art, &options.regulators, keepout);
         report.findings.extend(power_stage::findings(&stages));
     }
+    // A pour a zone of the routes file replaced (issue #1612): a note, and the cause of a via
+    // that joins nothing on its layer.
+    if !options.replaced_pours.is_empty() {
+        replaced_pour::name_in_dangling(&mut report.findings, &art, &options.replaced_pours);
+        report
+            .findings
+            .extend(replaced_pour::findings(&options.replaced_pours));
+    }
     if !skewed.is_empty() {
         report.findings.extend(
             skewed
@@ -1183,7 +1196,9 @@ fn notes(
         }
     }
     // Notes (`near_rule_area`, issue #1591): what stands near a rule area, for a person to judge.
-    let notes: Vec<&DrcFinding> = report.notes().collect();
+    // A pour a zone replaced (issue #1612) first: it is the cause of findings further up.
+    let mut notes: Vec<&DrcFinding> = report.notes().collect();
+    notes.sort_by_key(|n| n.rule != DrcRule::PourReplaced);
     if !notes.is_empty() {
         lines.push(format!("design rules notes: {}", notes.len()));
         lines.extend(notes.iter().take(10).map(|n| format!("  {n}")));
