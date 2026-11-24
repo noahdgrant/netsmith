@@ -85,6 +85,7 @@ mod kicad_drc;
 mod net_routes;
 mod net_table;
 mod panel;
+pub mod power_stage;
 mod raster;
 mod rotation;
 mod score;
@@ -197,6 +198,13 @@ pub struct Options {
     /// out (`netsmith_pcb::Board::track_path_loss`, issue #1405): [`check`] notes each path
     /// whose loss is over its loss budget.
     pub track_path_losses: Vec<Option<Result<f64, String>>>,
+    /// The design's switching regulators (issue #1585, `netsmith_pcb::Board`'s
+    /// `switching_regulators`), which the board file does not name: [`check`] notes each via and
+    /// track of another net near a switch node or under a regulator (`switch_node_copper`).
+    pub regulators: Vec<netsmith_core::SwitchingRegulator>,
+    /// How near a switch node foreign copper may come, in mm (the process's
+    /// `.switch_node_keepout`); `None` is [`power_stage::DEFAULT_SWITCH_NODE_KEEPOUT`].
+    pub switch_node_keepout: Option<f64>,
     /// Package even though some parts have no LCSC part number. Those parts are left out
     /// of the BOM and placement file and listed in the notes as unassembled.
     pub allow_missing_lcsc: bool,
@@ -757,6 +765,14 @@ pub fn check(src: &str, project: Option<&str>, options: &Options) -> Result<Chec
     let table = NetTable::of(&art, &options.pairs, &options.length_groups)
         .with_paths(&options.track_paths, &options.track_path_losses);
     let skewed: Vec<PairRow> = table.over().cloned().collect();
+    // Foreign copper at a switch node (issue #1585): notes, which fail nothing.
+    if !options.regulators.is_empty() {
+        let keepout = options
+            .switch_node_keepout
+            .unwrap_or(power_stage::DEFAULT_SWITCH_NODE_KEEPOUT);
+        let stages = power_stage::of(&art, &options.regulators, keepout);
+        report.findings.extend(power_stage::findings(&stages));
+    }
     if !skewed.is_empty() {
         report.findings.extend(
             skewed

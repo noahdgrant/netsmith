@@ -383,6 +383,12 @@ generic TwoLayer {
     /// the least clearance is one group. A board states another as an upper bound
     /// (`.process.via_group_gap &= 0.15mm`); `0mm` asks that the copper touch.
     .via_group_gap: Length
+    /// How near copper of another net may come to a switching regulator's switch node (its
+    /// pads and tracks), edge to edge, before `board drc` notes it (`switch_node_copper`, issue
+    /// #1585): a via or a track of a signal beside the node picks up its edges. Not a number the
+    /// fabricator publishes: unstated, it is 1 mm. A board states another
+    /// (`.process.switch_node_keepout &= 2mm`). A note, which fails no check.
+    .switch_node_keepout: Length
     /// The least side of a single board that JLCPCB assembles with parts on one face
     /// (`.min_single_sided_assembly_size`, issue 1285): the assembly capabilities page's
     /// "Single PCB Size: 10x10mm - 470x500mm" of the Economic service (single sided
@@ -730,6 +736,12 @@ generic FourLayer {
     /// the least clearance is one group. A board states another as an upper bound
     /// (`.process.via_group_gap &= 0.15mm`); `0mm` asks that the copper touch.
     .via_group_gap: Length
+    /// How near copper of another net may come to a switching regulator's switch node (its
+    /// pads and tracks), edge to edge, before `board drc` notes it (`switch_node_copper`, issue
+    /// #1585): a via or a track of a signal beside the node picks up its edges. Not a number the
+    /// fabricator publishes: unstated, it is 1 mm. A board states another
+    /// (`.process.switch_node_keepout &= 2mm`). A note, which fails no check.
+    .switch_node_keepout: Length
     /// The least side of a single board that JLCPCB assembles with parts on one face
     /// (`.min_single_sided_assembly_size`, issue 1285): the assembly capabilities page's
     /// "Single PCB Size: 10x10mm - 470x500mm" of the Economic service (single sided
@@ -1155,6 +1167,12 @@ generic SixLayer {
     /// the least clearance is one group. A board states another as an upper bound
     /// (`.process.via_group_gap &= 0.15mm`); `0mm` asks that the copper touch.
     .via_group_gap: Length
+    /// How near copper of another net may come to a switching regulator's switch node (its
+    /// pads and tracks), edge to edge, before `board drc` notes it (`switch_node_copper`, issue
+    /// #1585): a via or a track of a signal beside the node picks up its edges. Not a number the
+    /// fabricator publishes: unstated, it is 1 mm. A board states another
+    /// (`.process.switch_node_keepout &= 2mm`). A note, which fails no check.
+    .switch_node_keepout: Length
     /// The least side of a single board that JLCPCB assembles with parts on one face
     /// (`.min_single_sided_assembly_size`, issue 1285): the assembly capabilities page's
     /// "Single PCB Size: 10x10mm - 470x500mm" of the Economic service (single sided
@@ -1594,6 +1612,12 @@ interface HdiFourLayer {
     /// the least clearance is one group. A board states another as an upper bound
     /// (`.process.via_group_gap &= 0.15mm`); `0mm` asks that the copper touch.
     .via_group_gap: Length
+    /// How near copper of another net may come to a switching regulator's switch node (its
+    /// pads and tracks), edge to edge, before `board drc` notes it (`switch_node_copper`, issue
+    /// #1585): a via or a track of a signal beside the node picks up its edges. Not a number the
+    /// fabricator publishes: unstated, it is 1 mm. A board states another
+    /// (`.process.switch_node_keepout &= 2mm`). A note, which fails no check.
+    .switch_node_keepout: Length
     /// The least side of a single board that JLCPCB assembles with parts on one face
     /// (`.min_single_sided_assembly_size`, issue 1285): the assembly capabilities page's
     /// "Single PCB Size: 10x10mm - 470x500mm" of the Economic service (single sided
@@ -1920,6 +1944,12 @@ interface HdiSixLayer {
     /// the least clearance is one group. A board states another as an upper bound
     /// (`.process.via_group_gap &= 0.15mm`); `0mm` asks that the copper touch.
     .via_group_gap: Length
+    /// How near copper of another net may come to a switching regulator's switch node (its
+    /// pads and tracks), edge to edge, before `board drc` notes it (`switch_node_copper`, issue
+    /// #1585): a via or a track of a signal beside the node picks up its edges. Not a number the
+    /// fabricator publishes: unstated, it is 1 mm. A board states another
+    /// (`.process.switch_node_keepout &= 2mm`). A note, which fails no check.
+    .switch_node_keepout: Length
     /// The least side of a single board that JLCPCB assembles with parts on one face
     /// (`.min_single_sided_assembly_size`, issue 1285): the assembly capabilities page's
     /// "Single PCB Size: 10x10mm - 470x500mm" of the Economic service (single sided
@@ -2247,6 +2277,12 @@ interface HdiEightLayer {
     /// the least clearance is one group. A board states another as an upper bound
     /// (`.process.via_group_gap &= 0.15mm`); `0mm` asks that the copper touch.
     .via_group_gap: Length
+    /// How near copper of another net may come to a switching regulator's switch node (its
+    /// pads and tracks), edge to edge, before `board drc` notes it (`switch_node_copper`, issue
+    /// #1585): a via or a track of a signal beside the node picks up its edges. Not a number the
+    /// fabricator publishes: unstated, it is 1 mm. A board states another
+    /// (`.process.switch_node_keepout &= 2mm`). A note, which fails no check.
+    .switch_node_keepout: Length
     /// The least side of a single board that JLCPCB assembles with parts on one face
     /// (`.min_single_sided_assembly_size`, issue 1285): the assembly capabilities page's
     /// "Single PCB Size: 10x10mm - 470x500mm" of the Economic service (single sided

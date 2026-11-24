@@ -16,6 +16,7 @@ mod interface;
 mod note;
 mod part;
 mod process;
+mod regulator;
 
 pub use board::*;
 pub use cause::*;
@@ -25,3 +26,4 @@ pub use interface::*;
 pub use note::*;
 pub use part::*;
 pub use process::*;
+pub use regulator::*;

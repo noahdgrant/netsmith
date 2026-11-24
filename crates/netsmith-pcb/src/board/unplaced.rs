@@ -134,6 +134,7 @@ impl Unplaced {
             fixed: FixedCopper::default(),
             zones: Vec::new(),
             drc_waivers: Vec::new(),
+            switching_regulators: netsmith_core::switching_regulators(design),
         }
     }
 }

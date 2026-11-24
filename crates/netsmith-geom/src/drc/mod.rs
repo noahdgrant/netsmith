@@ -418,10 +418,15 @@ pub enum Rule {
     /// (a module's antenna keep-out), on a layer it is not on or beside it, which can detune an
     /// antenna (netsmith's, issue #1591; `near.rs`): a note, which fails nothing.
     NearRuleArea,
+    /// A via or a track of another net within the keepout of a switching regulator's switch
+    /// node, or under the regulator's body, with no plane between (netsmith's, issue #1585;
+    /// `netsmith_fab::power_stage`, since the board file does not say which part is a
+    /// regulator): a note, which fails nothing.
+    SwitchNodeCopper,
 }
 
 impl Rule {
-    pub const ALL: [Rule; 62] = [
+    pub const ALL: [Rule; 63] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -484,6 +489,7 @@ impl Rule {
         Rule::VCutEdge,
         Rule::PairSkew,
         Rule::NearRuleArea,
+        Rule::SwitchNodeCopper,
     ];
 
     /// KiCad's name for the rule (its `type` in a JSON report).
@@ -551,6 +557,7 @@ impl Rule {
             Rule::VCutEdge => "v_cut_edge",
             Rule::PairSkew => "pair_skew",
             Rule::NearRuleArea => "near_rule_area",
+            Rule::SwitchNodeCopper => "switch_node_copper",
         }
     }
 
@@ -595,6 +602,7 @@ impl Rule {
                 | Rule::VCutEdge
                 | Rule::PairSkew
                 | Rule::NearRuleArea
+                | Rule::SwitchNodeCopper
         )
     }
 
@@ -631,7 +639,7 @@ impl Rule {
             | Rule::AcidTrap
             | Rule::CopperSliver
             | Rule::PairSkew => Severity::Warning,
-            Rule::NearRuleArea | Rule::VCutEdge => Severity::Note,
+            Rule::NearRuleArea | Rule::VCutEdge | Rule::SwitchNodeCopper => Severity::Note,
             _ => Severity::Error,
         })
     }
