@@ -112,6 +112,13 @@ pub struct Process {
     /// written to the design file when unstated.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub via_group_gap: Option<f64>,
+    /// How near copper of another net may come to a switching regulator's switch node, edge to
+    /// edge, in mm, before `board drc` notes it, if the board states it
+    /// (`.process.switch_node_keepout`, issue #1585). `None`, what every process leaves it, is
+    /// 1 mm (`netsmith_fab::power_stage::DEFAULT_SWITCH_NODE_KEEPOUT`). Not written to the
+    /// design file when unstated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub switch_node_keepout: Option<f64>,
     /// The least side, in mm, of a single board that the assembly house places parts on one
     /// side of, if the process states it (`.process.min_single_sided_assembly_size`, issue
     /// 1285). `None`, what a process leaves it where its house publishes no figure, is that the

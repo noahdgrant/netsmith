@@ -85,6 +85,7 @@ mod kicad_drc;
 mod net_routes;
 mod net_table;
 mod panel;
+pub mod power_stage;
 mod raster;
 mod rotation;
 mod score;

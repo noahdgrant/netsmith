@@ -46,6 +46,8 @@ struct Made {
     quality: Option<netsmith_fabricate::net_quality::Quality>,
     /// The nets over the budget of the track-drop guideline (issue #1540).
     drops: Vec<netsmith_fabricate::track_drop::NetDrop>,
+    /// The copper of other nets near a switch node or under a regulator (issue #1585).
+    switch_node: Vec<netsmith_fab::power_stage::SwitchNodeNote>,
 }
 
 pub fn run(args: Args) -> ExitCode {
@@ -59,6 +61,7 @@ pub fn run(args: Args) -> ExitCode {
             notes: Vec::new(),
             quality: None,
             drops: Vec::new(),
+            switch_node: Vec::new(),
         }),
         None => match of_design(&args) {
             Ok(made) => Ok(made),
@@ -88,6 +91,7 @@ pub fn run(args: Args) -> ExitCode {
                 long_paths: made.checked.long_paths.clone(),
                 quality: made.quality.clone().filter(|q| q.totals.total() > 0),
                 track_drops: made.drops.clone(),
+                switch_node_copper: made.switch_node.clone(),
             });
             report
                 .findings
@@ -134,6 +138,15 @@ pub fn run(args: Args) -> ExitCode {
                     "{}: note: {} guideline: {drop}",
                     made.board,
                     netsmith_fabricate::track_drop::RULE
+                );
+            }
+            // The copper of other nets near a switch node or under a regulator (issue #1585).
+            for note in &made.switch_node {
+                println!(
+                    "{}: note: {}: {}",
+                    made.board,
+                    netsmith_fab::power_stage::RULE,
+                    note.message
                 );
             }
             let counts = made.checked.report.counts();
@@ -196,6 +209,11 @@ fn of_design(args: &Args) -> Result<Made, ExitCode> {
                             .into_iter()
                             .filter(|d| d.over)
                             .collect();
+                    // Foreign copper at a switch node (issue #1585): notes.
+                    let switch_node = netsmith_fab::power_stage::notes(
+                        &netsmith_fabricate::power_stage::of_board(&board, &built.design)
+                            .map_err(&fail)?,
+                    );
                     Ok(Made {
                         board: built.label(),
                         checked,
@@ -207,6 +225,7 @@ fn of_design(args: &Args) -> Result<Made, ExitCode> {
                         notes,
                         quality: Some(quality),
                         drops,
+                        switch_node,
                     })
                 })?
             },

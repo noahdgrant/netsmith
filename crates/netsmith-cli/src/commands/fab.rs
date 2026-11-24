@@ -583,6 +583,7 @@ fn run_fab(
                             long_paths: Vec::new(),
                             quality: None,
                             track_drops: Vec::new(),
+                            switch_node_copper: Vec::new(),
                         });
                         continue;
                     }

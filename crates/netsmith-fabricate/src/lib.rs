@@ -32,6 +32,7 @@ pub mod picture;
 pub mod pin_export;
 pub mod pin_swap;
 pub mod pins;
+pub mod power_stage;
 pub mod placed;
 pub mod project;
 pub mod refresh;

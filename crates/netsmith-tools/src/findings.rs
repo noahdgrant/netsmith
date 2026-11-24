@@ -447,6 +447,11 @@ pub struct BoardOut {
     /// none.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub track_drops: Vec<netsmith_fabricate::track_drop::NetDrop>,
+    /// For `board drc` of a design's board: the vias and tracks of other nets near a switching
+    /// regulator's switch node or under its body (issue #1585), the `switch_node_copper` notes.
+    /// Left out when there are none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub switch_node_copper: Vec<netsmith_fab::power_stage::SwitchNodeNote>,
 }
 
 /// The count of the notes of the run, for each cause, whether or not they are listed.

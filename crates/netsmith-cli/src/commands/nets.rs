@@ -38,6 +38,11 @@ pub struct Args {
     /// List the nets longest first instead of by name.
     #[arg(long)]
     pub lengths: bool,
+    /// Print each switching regulator's power stage instead of the table: its input
+    /// capacitors' loop, its support capacitors' routes, its feedback route and the copper of
+    /// other nets near its switch node.
+    #[arg(long, conflicts_with_all = ["lengths", "gate"])]
+    pub power_stage: bool,
     /// Route the board first, from the routes file's and the kept copper, as `board fab
     /// --reuse-routes` does.
     #[arg(long)]
@@ -89,6 +94,13 @@ pub fn run(args: Args) -> ExitCode {
                         &say,
                     )
                     .map_err(|e| format!("error: {label}: {e}\n"))?;
+                    // The power stage of each switching regulator (issue #1585).
+                    let stages = if args.power_stage {
+                        netsmith_fabricate::power_stage::of_board(&board, &built.design)
+                            .map_err(|e| format!("error: {label}: {e}\n"))?
+                    } else {
+                        Vec::new()
+                    };
                     let mut table = netsmith_fabricate::net_table::of_board(&board)
                         .map_err(|e| format!("error: {label}: {e}\n"))?;
                     if args.lengths {
@@ -100,7 +112,7 @@ pub fn run(args: Args) -> ExitCode {
                     // #1540).
                     let drops =
                         netsmith_fabricate::track_drop::drops_of(&board, &built.trace.model);
-                    Ok((table, quality, drops))
+                    Ok((table, quality, drops, stages))
                 })?
             },
         )
@@ -113,7 +125,7 @@ pub fn run(args: Args) -> ExitCode {
         via_pairs: args.max_via_pairs.unwrap_or(Counts::LIMITS.via_pairs),
     };
     match made {
-        Ok((table, quality, drops)) => {
+        Ok((table, quality, drops, stages)) => {
             let over = quality.over(&limits);
             match args.format {
                 common::Format::Json => {
