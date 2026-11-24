@@ -65,6 +65,7 @@ mod picture;
 mod pin_distance;
 mod placement;
 mod polygon;
+pub mod prose;
 mod protrusion;
 mod quality;
 mod ratsnest;
@@ -156,7 +157,7 @@ pub use modules::{
     MODULE_COLOURS, MODULE_COLOURS_DARK, MODULE_COLOURS_LIGHT, in_module, module_colour,
     module_paths_of, rgb_of,
 };
-pub use origin::{ORIGINS_HEAD, PartOrigin, mm as mm_text, origins_text};
+pub use origin::{ORIGINS_HEAD, PartOrigin, mm as mm_text, origins_text, origins_text_moved};
 pub use overhang::{
     Edge, Edges, Overhang, clip as clip_to_outline, needs as overhang_needs,
     reached as overhang_reached,

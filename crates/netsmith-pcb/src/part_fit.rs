@@ -169,10 +169,20 @@ impl PartFit {
     /// placer places round a locked part, where an unlocked entry is put after placing and
     /// may find a part the placer put there (issue #1224).
     pub fn text(&self) -> String {
+        self.text_moved([0.0, 0.0], "")
+    }
+
+    /// [`PartFit::text`] with the places it says moved by `by`, mm (into another frame than the
+    /// layout file's), and the placer's sentences with them (`says` is what a text says of that
+    /// frame after `mm`). The `netsmith layout set` it gives is still in the layout file's frame,
+    /// as `--at` always is: the place before it says the frame asked for.
+    pub fn text_moved(&self, by: [f64; 2], says: &str) -> String {
+        let (mx, my) = (|x: f64| x + by[0], |y: f64| y + by[1]);
+        let sentence = |m: &str| crate::prose::placer_moved(m, by, says);
         let near = match &self.near.part {
             Some(p) => format!("{} ({})", p.refdes, p.path),
             None if self.near.itself => "where it is".to_string(),
-            None => format!("{},{}", num(self.near.x), num(self.near.y)),
+            None => format!("{},{}", num(mx(self.near.x)), num(my(self.near.y))),
         };
         let mut out = format!(
             "{} ({}) of {}, nearest {near}, on a grid of {} mm:\n",
@@ -181,20 +191,20 @@ impl PartFit {
             self.board,
             num(self.step)
         );
-        out += &format!("  now {}", pose(&self.now));
+        out += &format!("  now {}", pose(&self.now, by));
         if self.now.fits {
             out += ": fits\n";
         } else {
             out += ":\n";
             for m in &self.now.messages {
-                out += &format!("    {m}\n");
+                out += &format!("    {}\n", sentence(m));
             }
         }
         for p in &self.poses {
             if p.fits {
                 out += &format!(
                     "  fits {}, {} mm away: netsmith layout set {} --at {},{} --turn {} --side {} --lock\n",
-                    pose(p),
+                    pose(p, by),
                     num(p.distance),
                     self.part.path,
                     num(p.at[0]),
@@ -207,11 +217,11 @@ impl PartFit {
                     "  no place turned {} on the {}; the closest try, {},{}, has:\n",
                     num(p.turn),
                     p.side,
-                    num(p.at[0]),
-                    num(p.at[1])
+                    num(mx(p.at[0])),
+                    num(my(p.at[1]))
                 );
                 for m in &p.messages {
-                    out += &format!("    {m}\n");
+                    out += &format!("    {}\n", sentence(m));
                 }
             }
         }
@@ -222,11 +232,11 @@ impl PartFit {
     }
 }
 
-fn pose(p: &FitPlace) -> String {
+fn pose(p: &FitPlace, by: [f64; 2]) -> String {
     format!(
         "{},{} {}° {}",
-        num(p.at[0]),
-        num(p.at[1]),
+        num(p.at[0] + by[0]),
+        num(p.at[1] + by[1]),
         num(p.turn),
         p.side
     )

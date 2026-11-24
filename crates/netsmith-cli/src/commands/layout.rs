@@ -366,37 +366,19 @@ fn parse_turn(text: &str) -> Result<f64, String> {
     }
 }
 
-pub fn run(args: Args) -> ExitCode {
-    let (format, framing) = match &args.command {
-        Command::Show(a) => (a.format, a.framing),
-        Command::Set(a) => (a.format, a.framing),
-        Command::Check(a) => (a.format, a.framing),
-        Command::Summary(a) => (a.format, a.framing),
-        Command::Compare(a) => (a.format, a.framing),
-        Command::Regenerate(a) => (a.format, a.framing),
-        Command::Capture(a) => (a.format, a.framing),
-        Command::Fit(a) => (a.format, a.framing),
-        Command::Parts(a) => (a.format, a.framing),
-        Command::Export(a) => (a.format, a.framing),
-        Command::Import(a) => (a.format, a.framing),
-    };
-    // The text of `show` and `parts` moves its places; `check` and `capture` say none; the
-    // text of the others says its places in the outline's frame only.
-    let text_moves = match &args.command {
-        Command::Show(_) | Command::Parts(_) | Command::Check(_) | Command::Capture(_) => None,
-        Command::Set(_) => Some("layout set"),
-        Command::Summary(_) => Some("layout summary"),
-        Command::Compare(_) => Some("layout compare"),
-        Command::Regenerate(_) => Some("layout regenerate"),
-        Command::Fit(_) => Some("layout fit"),
-        Command::Export(_) => Some("layout export"),
-        Command::Import(_) => Some("layout import"),
-    };
-    if let Some(command) = text_moves
-        && let Err(e) = framing.for_text(format == common::Format::Json, command)
-    {
-        return crate::frame::refused(&e);
+/// How far (`[dx, dy]`, mm) the places of a text move from the layout file's frame to the one
+/// asked for (`--frame`), and what the text says of that frame after `mm`.
+fn text_moved(framing: &crate::frame::Framing) -> Result<([f64; 2], String), ExitCode> {
+    match framing.moved(
+        crate::frame::Frame::Outline,
+        Some(crate::frame::design_corner()),
+    ) {
+        Ok((frame, dx, dy)) => Ok(([dx, dy], frame.says())),
+        Err(e) => Err(crate::frame::refused(&e)),
     }
+}
+
+pub fn run(args: Args) -> ExitCode {
     match args.command {
         Command::Show(a) => show(&a),
         Command::Set(a) => set(&a),
@@ -444,7 +426,13 @@ fn export(args: &ExportArgs) -> ExitCode {
                 return crate::frame::refused(&e);
             }
         }
-        common::Format::Text => print!("{}", exported.text()),
+        common::Format::Text => {
+            let (by, says) = match text_moved(&args.framing) {
+                Ok(m) => m,
+                Err(code) => return code,
+            };
+            print!("{}", exported.text_moved(by, &says));
+        }
     }
     ExitCode::SUCCESS
 }
@@ -505,7 +493,11 @@ fn import(args: &ImportArgs) -> ExitCode {
             }
         }
         common::Format::Text => {
-            print!("{}", imported.text());
+            let (by, _) = match text_moved(&args.framing) {
+                Ok(m) => m,
+                Err(code) => return code,
+            };
+            print!("{}", imported.text_moved(by));
             if write {
                 println!("wrote {}", file.display());
             } else if args.dry_run {
@@ -577,7 +569,7 @@ fn fit(args: &FitArgs) -> ExitCode {
     match made {
         Ok(fit) => {
             for note in fit.notes() {
-                eprintln!("{note}");
+                eprintln!("{}", args.framing.placer(&note));
             }
             match args.format {
                 common::Format::Json => {
@@ -590,7 +582,13 @@ fn fit(args: &FitArgs) -> ExitCode {
                         return crate::frame::refused(&e);
                     }
                 }
-                common::Format::Text => print!("{}", fit.text()),
+                common::Format::Text => {
+                    let (by, says) = match text_moved(&args.framing) {
+                        Ok(m) => m,
+                        Err(code) => return code,
+                    };
+                    print!("{}", fit.text_moved(by, &says));
+                }
             }
             if fit.fits() {
                 ExitCode::SUCCESS
@@ -780,7 +778,11 @@ fn regenerate(args: &RegenerateArgs) -> ExitCode {
             }
         }
         common::Format::Text => {
-            print!("{}", proposal.text());
+            let (by, says) = match text_moved(&args.framing) {
+                Ok(m) => m,
+                Err(code) => return code,
+            };
+            print!("{}", proposal.text_moved(by, &says));
             if args.write {
                 println!("wrote {}", file.display());
             } else {
@@ -827,7 +829,13 @@ fn summary(args: &SummaryArgs) -> ExitCode {
                         return crate::frame::refused(&e);
                     }
                 }
-                common::Format::Text => print!("{}", summary.text()),
+                common::Format::Text => {
+                    let (by, _) = match text_moved(&args.framing) {
+                        Ok(m) => m,
+                        Err(code) => return code,
+                    };
+                    print!("{}", summary.text_moved(by));
+                }
             }
             ExitCode::SUCCESS
         }
@@ -868,7 +876,13 @@ fn compare(args: &CompareArgs) -> ExitCode {
                         return crate::frame::refused(&e);
                     }
                 }
-                common::Format::Text => print!("{}", difference.text()),
+                common::Format::Text => {
+                    let (by, says) = match text_moved(&args.framing) {
+                        Ok(m) => m,
+                        Err(code) => return code,
+                    };
+                    print!("{}", difference.text_moved(by, &says));
+                }
             }
             ExitCode::SUCCESS
         }
@@ -1006,10 +1020,16 @@ fn set(args: &SetArgs) -> ExitCode {
                         return crate::frame::refused(&e);
                     }
                 }
-                common::Format::Text => println!("{}", written.text()),
+                common::Format::Text => {
+                    let (by, _) = match text_moved(&args.framing) {
+                        Ok(m) => m,
+                        Err(code) => return code,
+                    };
+                    println!("{}", written.text_moved(by));
+                }
             }
             for warning in warnings {
-                eprintln!("warning: {warning}");
+                eprintln!("warning: {}", args.framing.placer(&warning));
             }
             ExitCode::SUCCESS
         }
@@ -1034,7 +1054,7 @@ fn check(args: &CheckArgs) -> ExitCode {
                         return crate::frame::refused(&e);
                     }
                 }
-                common::Format::Text => print!("{}", checked.text()),
+                common::Format::Text => print!("{}", args.framing.placer(&checked.text())),
             }
             if checked.ok {
                 ExitCode::SUCCESS

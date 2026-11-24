@@ -169,15 +169,6 @@ fn tell_built(b: &netsmith_pipeline::Built, run: &BuildRun, report: &mut Report)
 
 pub(super) fn run_build(run: &BuildRun) -> ExitCode {
     let json = run.format == Format::Json;
-    // The text says its places in its own frame.
-    let command = if run.write {
-        "board build"
-    } else {
-        "board check"
-    };
-    if let Err(e) = run.framing.for_text(json, command) {
-        return crate::frame::refused(&e);
-    }
     let mut report = Report::new(if run.write { "build" } else { "check" });
     // The places of its findings (the placement's boxes) are in the outline's frame.
     report.frame = Some(crate::frame::Frame::Outline.name());
@@ -391,7 +382,11 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
                         ..Finding::plain(Severity::Warning, "place", warning_text.clone())
                     });
                 } else {
-                    eprintln!("warning: {}: {warning_text}", found.board);
+                    eprintln!(
+                        "warning: {}: {}",
+                        found.board,
+                        run.framing.placer(warning_text)
+                    );
                 }
             }
             for (n, error) in found.errors.iter().enumerate() {
@@ -405,7 +400,7 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
                         placement: found.placement.clone(),
                         ..Finding::plain(Severity::Error, "place", error.clone())
                     },
-                    &format!("error: {}: {error}\n", found.board),
+                    &format!("error: {}: {}\n", found.board, run.framing.placer(error)),
                 );
             }
         }

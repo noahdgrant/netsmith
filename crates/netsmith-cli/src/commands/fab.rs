@@ -357,10 +357,6 @@ fn run_fab(
     output: FabOutput,
 ) -> ExitCode {
     let json = output.format == Format::Json;
-    // The text says its places in its own frame.
-    if let Err(e) = output.framing.for_text(json, "board fab") {
-        return crate::frame::refused(&e);
-    }
     let mut report = Report::new("fab");
     // The places of its findings (the placement's boxes) are in the outline's frame.
     report.frame = Some(crate::frame::Frame::Outline.name());
@@ -531,7 +527,10 @@ fn run_fab(
                             .extend(netsmith_tools::findings::of_problems(&failure.problems));
                     }
                 } else {
-                    eprint!("{}", failure.text);
+                    eprint!(
+                        "{}",
+                        output.framing.drc(&output.framing.placer(&failure.text))
+                    );
                 }
             }
             Ok(boards) => {
@@ -596,11 +595,21 @@ fn run_fab(
                     print!("{}", b.summary);
                     println!("wrote {}", b.dir.display());
                     if !b.origins.is_empty() {
-                        print!("{}", netsmith_pcb::origins_text(&b.origins));
+                        let (by, says) = output.framing.text_move();
+                        print!(
+                            "{}",
+                            netsmith_pcb::origins_text_moved(&b.origins, by, &says)
+                        );
                     }
                     match output.notes {
                         NotesMode::All if !lines.is_empty() => {
-                            eprintln!("\nbefore you order ({}):\n{}", b.board, b.notes.trim_end());
+                            eprintln!(
+                                "\nbefore you order ({}):\n{}",
+                                b.board,
+                                output
+                                    .framing
+                                    .drc(&output.framing.placer(b.notes.trim_end()))
+                            );
                         }
                         NotesMode::Summary if !lines.is_empty() => eprintln!(
                             "note: {}: {} lines to read before you order, in {} (`--notes all` prints them)",

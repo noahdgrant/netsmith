@@ -626,8 +626,13 @@ impl Waived {
             for part in &fault.parts {
                 if let Some(c) = &part.courtyard {
                     message.push_str(&format!(
-                        "; the courtyard of {} is ({:.2}, {:.2}) to ({:.2}, {:.2}) mm from the board's top left corner",
-                        part.part.refdes, c.x_min, c.y_min, c.x_max, c.y_max
+                        "; the courtyard of {} is ({:.2}, {:.2}) to ({:.2}, {:.2}) {}",
+                        part.part.refdes,
+                        c.x_min,
+                        c.y_min,
+                        c.x_max,
+                        c.y_max,
+                        netsmith_pcb::prose::BOARD_TAIL
                     ));
                 }
             }
