@@ -211,8 +211,9 @@ fn has_layer(node: &Node, layer: CopperLayer) -> bool {
 }
 
 /// Whether copper round `at`, reaching `reach` from it (half a track's width, a via's radius),
-/// runs into the pad's box on the layer.
-fn on_pad(node: &Node, at: Pt, reach: f64, layer: Option<CopperLayer>) -> bool {
+/// runs into the pad's box on the layer (`None`: on either face), as the ratsnest joins copper to
+/// a pad. `netsmith layout move` asks it of the ends of the routes file (issue #1627).
+pub fn on_pad(node: &Node, at: Pt, reach: f64, layer: Option<CopperLayer>) -> bool {
     let on_layer = match layer {
         Some(layer) => has_layer(node, layer),
         None => node.front || node.back,
