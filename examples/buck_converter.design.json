@@ -615,42 +615,48 @@
           "current": 0.2026536383368799,
           "least_width": 0.041532649157284315,
           "vias": 1,
-          "source": "the sum of the currents on it with every load on at once: rail `reg.ic.vin` 203 mA + part `reg.ic.shdn_pullup` 0.000000001 mA"
+          "source": "the sum of the currents on it with every load on at once: rail `reg.ic.vin` 203 mA + part `reg.ic.shdn_pullup` 0.000000001 mA",
+          "from": "sum"
         },
         {
           "net": "3V3",
           "current": 0.5000544322573659,
           "least_width": 0.14435833883579152,
           "vias": 1,
-          "source": "part `reg.inductor`: 0.0476 mA to 500 mA"
+          "source": "part `reg.inductor`: 0.0476 mA to 500 mA",
+          "from": "sum"
         },
         {
           "net": "GND",
           "current": 1.0783441976818149,
           "least_width": 0.41665162745466755,
           "vias": 2,
-          "source": "the sum of the currents on it with every load on at once: rail `reg.ic.sw` 500 mA + part `reg.ic.catch` 376 mA + rail `v12` 203 mA"
+          "source": "the sum of the currents on it with every load on at once: rail `reg.ic.sw` 500 mA + part `reg.ic.catch` 376 mA + rail `v12` 203 mA",
+          "from": "sum"
         },
         {
           "net": "net-reg.divider.rbottom.a",
           "current": 0.0000544322584202335,
           "least_width": 4.931885788251611e-7,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.0544 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.0544 mA",
+          "from": "analysis"
         },
         {
           "net": "net-reg.ic.boost.b",
           "current": 0.8756905593459349,
           "least_width": 0.31266130293272976,
           "vias": 2,
-          "source": "the sum of the currents on it with every load on at once: rail `reg.ic.sw` 500 mA + part `reg.ic.catch` 376 mA"
+          "source": "the sum of the currents on it with every load on at once: rail `reg.ic.sw` 500 mA + part `reg.ic.catch` 376 mA",
+          "from": "sum"
         },
         {
           "net": "net-reg.ic.shdn",
           "current": 1e-12,
           "least_width": 1.0540623859109564e-17,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.000000001 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.000000001 mA",
+          "from": "analysis"
         }
       ],
       "pin_currents": [

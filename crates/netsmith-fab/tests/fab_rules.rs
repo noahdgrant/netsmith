@@ -268,6 +268,7 @@ fn a_track_finding_names_the_width_the_width_needed_and_the_current_assumed() {
             net: "P".to_string(),
             current: 1.0,
             source: from.to_string(),
+            ..Default::default()
         }],
         ..jlcpcb()
     };
@@ -315,12 +316,14 @@ fn a_track_finding_names_the_width_the_width_needed_and_the_current_assumed() {
 #[test]
 fn the_findings_of_copper_that_feeds_branches_name_the_pins_and_what_they_state() {
     // Issue 1373: a branch that states 2 A needs 0.98 mm and three vias, and the findings of the
-    // copper say so, with the pin that states it, and not the net's current.
+    // copper say so, with the pin that states it, and not the net's current, which is a lower
+    // bound here (a current on it is not known).
     let extras = DrcExtras {
         net_currents: vec![DrcNetCurrent {
             net: "P".to_string(),
             current: 1.0,
             source: "rail `a` 1 A".to_string(),
+            lower_bound: true,
         }],
         ..branch_extras(Some(2.0))
     };
@@ -354,6 +357,7 @@ fn a_via_finding_names_the_vias_the_current_needs_and_what_one_carries() {
             net: "P".to_string(),
             current: 1.2,
             source: "rail `a` 1.2 A".to_string(),
+            ..Default::default()
         }],
         ..branch_extras(None)
     };
@@ -699,4 +703,36 @@ fn vias_whose_copper_is_within_the_group_gap_count_as_one_group() {
         ..jlcpcb()
     };
     assert_eq!(check(&mut b, &extras).count(DrcRule::ViaCurrent), 0);
+}
+
+#[test]
+fn copper_that_feeds_branches_is_never_held_to_more_than_its_nets_whole_current() {
+    // Issue #1584: a pin that states 2 A (a rating) on a net known in full to carry 1 A. The
+    // copper to it carries no more than the net, so its track and its via are held to the net's
+    // one current, as its other copper is: the findings say the net's 1 A, not the pin's 2 A.
+    let whole = |lower_bound: bool| DrcExtras {
+        net_currents: vec![DrcNetCurrent {
+            net: "P".to_string(),
+            current: 1.0,
+            source: "rail `a` 1 A".to_string(),
+            lower_bound,
+        }],
+        ..branch_extras(Some(2.0))
+    };
+    let mut b = branch_board(0.2, false);
+    let r = check(&mut b, &whole(false));
+    let track = r.findings.iter().find(|f| f.rule == DrcRule::TrackCurrent).unwrap();
+    assert!(
+        track.message.contains("its net `P` carries 1 A (rail `a` 1 A), which needs 0.4000 mm"),
+        "{}",
+        track.message
+    );
+    assert_eq!(track.carrying.as_ref().unwrap().current, Some(1.0));
+    let via = r.findings.iter().find(|f| f.rule == DrcRule::ViaCurrent).unwrap();
+    let c = via.carrying.as_ref().unwrap();
+    assert_eq!((c.current, c.needed_vias), (Some(1.0), Some(3)), "{}", via.message);
+    // Where the net's current is a lower bound the pin's statement still holds its copper.
+    let r = check(&mut b, &whole(true));
+    let via = r.findings.iter().find(|f| f.rule == DrcRule::ViaCurrent).unwrap();
+    assert_eq!(via.carrying.as_ref().unwrap().current, Some(2.0));
 }

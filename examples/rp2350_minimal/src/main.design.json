@@ -3887,14 +3887,18 @@
           "current": 0.00033989898989898997,
           "least_width": 6.169435844068879e-6,
           "vias": 1,
-          "source": "part `ss_pullup.resistor`: 0 mA to 0.34 mA; the current of rail `regulator.vout`, rail `v3v3`, part `avdd_filter` is not known, so it may be more"
+          "source": "part `ss_pullup.resistor`: 0 mA to 0.34 mA; the current of rail `regulator.vout`, rail `v3v3`, part `avdd_filter` is not known, so it may be more",
+          "from": "sum",
+          "lower_bound": true
         },
         {
           "net": "net-flash.qspi.cs",
           "current": 0.00033989898989898997,
           "least_width": 6.169435844068879e-6,
           "vias": 1,
-          "source": "part `ss_pullup.resistor`: 0 mA to 0.34 mA; the current of part `ss_link`, part `gpio0_link` is not known, so it may be more"
+          "source": "part `ss_pullup.resistor`: 0 mA to 0.34 mA; the current of part `ss_link`, part `gpio0_link` is not known, so it may be more",
+          "from": "sum",
+          "lower_bound": true
         }
       ],
       "pin_currents": [

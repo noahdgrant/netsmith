@@ -341,7 +341,8 @@
           "current": 0.05,
           "least_width": 0.006026516109918563,
           "vias": 1,
-          "source": "rail `stage.regulator.vin`: 0 mA to 50 mA"
+          "source": "rail `stage.regulator.vin`: 0 mA to 50 mA",
+          "from": "sum"
         }
       ],
       "outline": null,

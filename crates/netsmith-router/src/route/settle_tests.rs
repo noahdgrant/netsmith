@@ -606,6 +606,7 @@ fn a_via_in_a_pad_leads_to_the_inner_signal_layers_the_line_may_use() {
         inner_least_width: None,
         vias: 1,
         source: String::new(),
+        ..Default::default()
     });
     assert_eq!(spots_of(&board).len(), 1);
 }
