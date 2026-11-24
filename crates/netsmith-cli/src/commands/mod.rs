@@ -83,7 +83,7 @@ pub enum Command {
     /// A board: check, build, fab, explain a pick, compare two designs.
     #[command(subcommand)]
     Board(Board),
-    /// Show, set or check the entries of a board's layout file (where each part is).
+    /// Show, set, move or check the entries of a board's layout file (where each part is).
     Layout(layout::Args),
     /// Fix copper of a board in its routes file: import it from KiCad, add, delete, lock, show.
     Routes(routes::Args),
