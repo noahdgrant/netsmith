@@ -437,10 +437,25 @@ fn the_six_layer_board_becomes_a_package_with_no_kicad_and_the_notes_say_what_ea
     );
     assert!(
         notes.contains(
-            "6 layers (In1.Cu is a plane on GND, In2.Cu is a signal layer, with no tracks yet, In3.Cu is a signal layer, with no tracks yet, In4.Cu is a plane on 3V3), 1.6 mm thick, 1 oz copper, build-up JLC06161H-3313"
+            "6 layers (In1.Cu is a plane on GND, In2.Cu is a signal layer, with no tracks, In3.Cu is a signal layer, with no tracks, In4.Cu is a plane on 3V3), 1.6 mm thick, 1 oz copper, build-up JLC06161H-3313"
         ),
         "{notes}"
     );
+    // The impedance lines quote the widths the routed copper has (issue #1589): the routed
+    // tracks are all on the front, and the layers with none say so.
+    let line = |layer: &str| {
+        notes
+            .lines()
+            .find(|l| l.trim_start().starts_with(&format!("{layer}: ")))
+            .unwrap_or_else(|| panic!("{layer}: {notes}"))
+    };
+    assert!(
+        line("F.Cu").contains("mm track (") && !line("F.Cu").contains("no tracks on it"),
+        "{notes}"
+    );
+    for layer in ["In2.Cu", "In3.Cu", "B.Cu"] {
+        assert!(line(layer).contains("no tracks on it; the router's default "), "{notes}");
+    }
     for layer in ["F_Cu", "In1_Cu", "In2_Cu", "In3_Cu", "In4_Cu", "B_Cu"] {
         assert!(
             made[0]

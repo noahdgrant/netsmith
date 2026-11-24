@@ -745,9 +745,16 @@ fn unplaned(layer: &TrackLayer) -> String {
 pub const TEST_TOLERANCE: f64 = 0.10;
 
 /// The `fab-notes.txt` lines of a board's track impedance: for each layer a track may be on,
-/// the width of a `target`-ohm track and the impedance of the router's `track_width` (mm). A
-/// two-layer board records no build-up (ADR 0111), so it has none.
-pub fn impedance_notes(stackup: &Stackup, track_width: f64, target: f64) -> Vec<String> {
+/// the width of a `target`-ohm track and the impedance of each track width in use on it
+/// (`in_use` gives a layer's widths in mm with how many tracks have each, issue #1589); a layer
+/// with no track gets the impedance of the router's default `track_width` (mm). A two-layer board
+/// records no build-up (ADR 0111), so it has none.
+pub fn impedance_notes(
+    stackup: &Stackup,
+    in_use: &dyn Fn(&str) -> Vec<(f64, usize)>,
+    track_width: f64,
+    target: f64,
+) -> Vec<String> {
     let Some(layers) = track_layers(stackup) else {
         return Vec::new();
     };
@@ -760,7 +767,7 @@ pub fn impedance_notes(stackup: &Stackup, track_width: f64, target: f64) -> Vec<
         None => "The solder mask is not counted and lowers an outer track's impedance; an inner track between two different dielectric layers is an approximation of unstated error".to_string(),
     };
     let mut lines = vec![format!(
-        "track impedance: from build-up {}, the width of a {target} ohm track and the impedance of the router's {track_width} mm track, by quasi-static closed forms (Hammerstad and Jensen 1980 for microstrip, Wheeler 1978 for stripline; netsmith_pcb::impedance). {mask}. The board is not ordered with impedance control: for a controlled board, check JLCPCB's impedance calculator and order it",
+        "track impedance: from build-up {}, the width of a {target} ohm track and the impedance of each track width in use on the layer (of the router's default {track_width} mm track where it has no track), by quasi-static closed forms (Hammerstad and Jensen 1980 for microstrip, Wheeler 1978 for stripline; netsmith_pcb::impedance). {mask}. The board is not ordered with impedance control: for a controlled board, check JLCPCB's impedance calculator and order it",
         inner.build
     )];
     for layer in &layers {
@@ -773,12 +780,29 @@ pub fn impedance_notes(stackup: &Stackup, track_width: f64, target: f64) -> Vec<
             Ok(w) => format!("a {target} ohm track is {:.3} mm wide", w),
             Err(e) => format!("no width for {target} ohm: {e}"),
         };
-        let router = match layer.single(track_width) {
-            Ok(l) => format!(
-                "the router's {track_width} mm track is {:.1} ohm",
-                l.impedance
-            ),
-            Err(e) => format!("the router's {track_width} mm track has no figure: {e}"),
+        let figure = |w: f64| match layer.single(w) {
+            Ok(l) => format!("{:.1} ohm", l.impedance),
+            Err(e) => format!("no figure: {e}"),
+        };
+        let used = in_use(&layer.name);
+        let router = if used.is_empty() {
+            format!(
+                "no tracks on it; the router's default {track_width} mm track would be {}",
+                figure(track_width)
+            )
+        } else {
+            let each: Vec<String> = used
+                .iter()
+                .map(|&(w, n)| {
+                    let tracks = if n == 1 {
+                        "1 track"
+                    } else {
+                        &format!("{n} tracks")
+                    };
+                    format!("the {w} mm track ({tracks}) is {}", figure(w))
+                })
+                .collect();
+            each.join("; ")
         };
         lines.push(format!(
             "  {}: {}: {width}; {router}{}",
