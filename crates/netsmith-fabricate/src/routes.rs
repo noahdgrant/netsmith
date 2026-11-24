@@ -1432,12 +1432,29 @@ pub struct ShownNet {
     pub tracks: Vec<RouteTrack>,
     pub vias: Vec<RouteVia>,
     pub zones: Vec<netsmith_pcb::RouteZone>,
+    /// The stitching vias `fab` lays on the net's pours that the file does not have
+    /// ([`netsmith_router::stitching_vias`] of the board with the file's copper, issue #1583):
+    /// the file's vias and these are the net's vias on the board, whether the net is locked
+    /// (the import keeps its stitching vias, and `fab` lays none) or not (the import leaves them
+    /// out, and `fab` lays them again).
+    pub stitching: usize,
+}
+
+impl ShownNet {
+    /// How many shapes of the file the net has (its stitching vias are none of them).
+    pub fn shapes(&self) -> usize {
+        self.tracks.len() + self.vias.len() + self.zones.len()
+    }
 }
 
 /// [`Shown`] of `board` (placed, with no routes) and `routes`.
 pub fn show(board: &Board, routes: &Routes) -> Result<Shown, String> {
     let (fixed, notes) = with_routes(board, routes)?;
-    let nets = routes
+    let mut stitching: std::collections::BTreeMap<String, usize> = Default::default();
+    for via in netsmith_router::stitching_vias(&fixed) {
+        *stitching.entry(via.net).or_default() += 1;
+    }
+    let mut nets: Vec<ShownNet> = routes
         .boards
         .get(&board.name)
         .map(|t| {
@@ -1449,10 +1466,23 @@ pub fn show(board: &Board, routes: &Routes) -> Result<Shown, String> {
                     tracks: r.tracks.clone(),
                     vias: r.vias.clone(),
                     zones: r.zones.clone(),
+                    stitching: stitching.remove(net).unwrap_or(0),
                 })
                 .collect()
         })
         .unwrap_or_default();
+    // A stitched net the file has no record of: its stitching vias are on the board all the same.
+    for (net, count) in stitching {
+        nets.push(ShownNet {
+            net,
+            lock: false,
+            tracks: Vec::new(),
+            vias: Vec::new(),
+            zones: Vec::new(),
+            stitching: count,
+        });
+    }
+    nets.sort_by(|a, b| a.net.cmp(&b.net));
     let (mut to_route, mut locked_left) = (Vec::new(), Vec::new());
     for line in netsmith_pcb::Ratsnest::of(&fixed).lines {
         if fixed.fixed.is_locked(&line.net) {
@@ -1491,6 +1521,14 @@ impl Shown {
                     format!(", {} zone(s)", n.zones.len())
                 }
             );
+            if n.stitching > 0 {
+                let _ = writeln!(
+                    s,
+                    "  and {} stitching via(s) `fab` lays on the pour's grid, not in the file: {} via(s) on the board",
+                    n.stitching,
+                    n.vias.len() + n.stitching
+                );
+            }
             for (i, t) in n.tracks.iter().enumerate() {
                 let layer = t.layer.word();
                 let mid = t
@@ -1532,7 +1570,7 @@ impl Shown {
                 );
             }
         }
-        if self.nets.is_empty() {
+        if self.nets.iter().all(|n| n.shapes() == 0) {
             let _ = writeln!(s, "{}: the routes file fixes no copper", self.board);
         }
         for note in &self.notes {
