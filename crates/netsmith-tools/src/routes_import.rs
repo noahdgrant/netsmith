@@ -707,6 +707,9 @@ pub fn import_with(
     let mut process = netsmith_pcb::process_zones(board);
     // The layers of the process's own zones the KiCad board has, for the lift below.
     let mut found: Vec<String> = Vec::new();
+    // The process's own zones the KiCad board has and the import leaves to the process, by net
+    // and layer: a zone taken of that net on that layer is a patch of it (issue #1608).
+    let mut drawn: Vec<(String, String)> = Vec::new();
     // The process's own zones carried as hand zones (`process_zones`), added after the lift.
     let mut carried: Vec<(String, RouteZone)> = Vec::new();
     let (mut rule_areas, mut teardrops) = (0, 0);
@@ -783,6 +786,7 @@ pub fn import_with(
             island_min_area: zone.island_min_area,
             outline: zone.outline.clone(),
             holes: zone.holes.clone(),
+            patch: false,
             lock: false,
         };
         // The process's own plane or pour, as `fab` wrote it, is the design's already: taken, it
@@ -801,6 +805,9 @@ pub fn import_with(
         });
         if same.is_some() || written {
             found.extend(taken.layers.iter().cloned());
+            if !options.process_zones {
+                drawn.extend(taken.layers.iter().map(|l| (ours.clone(), l.clone())));
+            }
             if let Some(i) = same {
                 process.remove(i);
             }
@@ -843,6 +850,7 @@ pub fn import_with(
         });
         record.zones.push(taken);
     }
+    patches(&mut out.nets, &drawn);
     unlift(&mut out.nets, &found);
     for (net, zone) in carried {
         out.nets
@@ -875,6 +883,22 @@ pub fn import_with(
         .map(|(theirs, (ours, votes))| (ours, theirs, votes))
         .collect();
     Ok(out)
+}
+
+/// Marks `patch` each zone taken of a net on a layer where the KiCad board also has the
+/// process's own pour or plane of that net (`drawn`, net and routes file word), which the import
+/// leaves to the process (issue #1608): in KiCad the pour is drawn under it and the zone holds
+/// its settings inside its outline, as a patch does. Without the mark the zone would replace the
+/// pour on its whole layer.
+fn patches(nets: &mut BTreeMap<String, NetRoutes>, drawn: &[(String, String)]) {
+    for (net, record) in nets.iter_mut() {
+        for z in &mut record.zones {
+            z.patch = z
+                .layers
+                .iter()
+                .any(|l| drawn.iter().any(|(n, d)| n == net && d == l));
+        }
+    }
 }
 
 /// Takes the 1 off each zone's priority that `fab` adds where the process's pour or plane is

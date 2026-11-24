@@ -130,3 +130,71 @@ fn fab_lists_the_note_in_fab_notes() {
     assert_eq!(notes(&notes_file).len(), 1, "{notes_file}");
     assert!(notes_file.contains("design rules notes:"), "{notes_file}");
 }
+
+#[test]
+fn a_patch_zone_keeps_the_pour_gives_no_note_and_comes_back_from_fabs_board() {
+    // Issue #1608: the same ground zone made with `routes add-zone --patch` keeps the pour, so
+    // nothing is replaced and no note is given; `fab` writes it above the pour, and `routes
+    // import` of that board gives it back as a patch at its own priority.
+    let dir = project("pour-patched");
+    let run = netsmith(
+        &dir,
+        &[
+            "routes", "add-zone", "--file", "main.nsm", "--net", "GND", "--layer", "top",
+            "--rect", "1,1,10,5", "--pads", "solid", "--patch",
+        ],
+    );
+    let said = String::from_utf8_lossy(&run.stdout).into_owned()
+        + &String::from_utf8_lossy(&run.stderr);
+    assert!(run.status.success(), "{said}");
+    assert!(
+        said.contains("it patches the design's pour or plane on top: the pour is kept"),
+        "{said}"
+    );
+    assert!(!said.contains("is not drawn now"), "{said}");
+    let file = fs::read_to_string(dir.join("main.routes.toml")).unwrap();
+    assert!(file.contains("\npatch = true\n"), "{file}");
+    let shown = netsmith(&dir, &["routes", "show", "--file", "main.nsm"]);
+    let shown = String::from_utf8_lossy(&shown.stdout).into_owned();
+    assert!(shown.contains(", a patch of the pour"), "{shown}");
+
+    let run = netsmith(&dir, &["board", "drc", "main.nsm"]);
+    let said = String::from_utf8_lossy(&run.stdout).into_owned();
+    assert!(notes(&said).is_empty(), "{said}");
+
+    let run = netsmith(
+        &dir,
+        &["board", "fab", "main.nsm", "--for-review", "--out", "out"],
+    );
+    let said = String::from_utf8_lossy(&run.stderr).into_owned();
+    let notes_file = fs::read_to_string(dir.join("out/OutlineAndPours/fab-notes.txt"))
+        .unwrap_or_else(|e| panic!("{e}: {said}"));
+    assert!(notes(&notes_file).is_empty(), "{notes_file}");
+    assert!(
+        notes_file.contains("F.Cu is a pour on GND, cut or patched by the routes file's zones"),
+        "{notes_file}"
+    );
+
+    let run = netsmith(
+        &dir,
+        &[
+            "routes",
+            "import",
+            "out/OutlineAndPours/OutlineAndPours.kicad_pcb",
+            "--file",
+            "main.nsm",
+            "--no-places",
+        ],
+    );
+    let said = String::from_utf8_lossy(&run.stdout).into_owned()
+        + &String::from_utf8_lossy(&run.stderr);
+    assert!(run.status.success(), "{said}");
+    let back = fs::read_to_string(dir.join("main.routes.toml")).unwrap();
+    let zone = back
+        .split("[[OutlineAndPours.nets.GND.zones]]")
+        .nth(1)
+        .unwrap_or_else(|| panic!("the ground zone is imported: {back}\n{said}"));
+    for line in ["priority = 0\n", "pads = \"solid\"\n", "patch = true\n"] {
+        assert!(zone.contains(line), "{line}: {back}");
+    }
+}

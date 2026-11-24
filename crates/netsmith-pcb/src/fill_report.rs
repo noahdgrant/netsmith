@@ -376,8 +376,11 @@ impl FillReport {
             for z in joins {
                 let net = art.zones[z.zone].net.clone().unwrap_or_default();
                 // A zone of the routes file restates a pour or a plane of its net; one of another
-                // net leaves the pour drawn round it (issue #1314).
+                // net leaves the pour drawn round it (issue #1314), and so does a patch of its own
+                // net (issue #1608), which the board file raises above the pour, written at
+                // priority 0 ([`Board::zone_lift`]): a fill above 0 is the patch's.
                 let source = if board.replaced(layer, &net)
+                    || art.zones[z.zone].priority > 0
                     || !board
                         .pours
                         .iter()
@@ -805,6 +808,7 @@ mod tests {
         priority: u32,
     ) -> crate::board::BoardZone {
         crate::board::BoardZone {
+            patch: false,
             net: net.into(),
             layers: vec!["F.Cu".into()],
             outline: area.corners().to_vec(),
@@ -831,6 +835,100 @@ mod tests {
         .iter()
         .filter(|f| f.rule.id() == "unjoinable_thermal")
         .count()
+    }
+
+    /// The LED board with a GND pour on the top, thermal reliefs at its pads.
+    fn poured_top() -> Board {
+        let mut board = crate::board::tests::led_board();
+        board.pours.push(BoardPour {
+            layer: CopperLayer::Front,
+            net: "GND".into(),
+            stitch_pitch: None,
+            thermal_gap: None,
+            spoke_width: None,
+            clearance: None,
+            min_width: None,
+            pads: None,
+        });
+        board
+    }
+
+    /// The joins of the pour's fill on the top, but of `but`: each pad with how it is joined.
+    fn pour_joins(report: &FillReport, but: (&str, &str)) -> Vec<(String, String, JoinKind, bool)> {
+        let mut joins: Vec<_> = report
+            .fills
+            .iter()
+            .filter(|f| f.layer == "top" && f.source == FillSource::Pour)
+            .flat_map(|f| f.pads.iter())
+            .filter(|p| (p.part.as_str(), p.pad.as_str()) != but)
+            .map(|p| (p.part.clone(), p.pad.clone(), p.join, p.joined))
+            .collect();
+        joins.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
+        joins
+    }
+
+    #[test]
+    fn a_patch_zone_joins_a_pad_solid_and_keeps_the_rest_of_the_pour() {
+        // Issue #1608: a solid GND zone marked `patch` over one GND pad of a thermal GND pour
+        // joins that pad solid, and the pour stays, with its other pads as they were; the same
+        // zone without the mark replaces the pour on the layer (issue #1314).
+        use crate::board::ZonePads;
+        let mut board = poured_top();
+        let before = FillReport::of(&board).unwrap();
+        let pad = before
+            .fills
+            .iter()
+            .filter(|f| f.layer == "top" && f.source == FillSource::Pour)
+            .flat_map(|f| f.pads.iter())
+            .find(|p| p.join == JoinKind::Thermal && p.joined)
+            .unwrap_or_else(|| panic!("a GND pad the pour joins: {}", before.text()))
+            .clone();
+        let around = crate::geometry::Rect::new(
+            Pt::new(pad.at.x - 1.2, pad.at.y - 1.2),
+            Pt::new(pad.at.x + 1.2, pad.at.y + 1.2),
+        );
+        let mut patch = zone("GND", around, ZonePads::Solid, 0);
+        patch.patch = true;
+        board.zones.push(patch.clone());
+        assert!(!board.replaced("F.Cu", "GND"));
+        assert_eq!(board.zone_lift(), 1, "the patch is written above the pour");
+        let report = FillReport::of(&board).unwrap();
+        let joins: Vec<(FillSource, JoinKind, bool)> = report
+            .fills
+            .iter()
+            .filter(|f| f.layer == "top")
+            .flat_map(|f| f.pads.iter().map(move |p| (f.source, p)))
+            .filter(|(_, p)| (p.part.as_str(), p.pad.as_str()) == (&pad.part, &pad.pad))
+            .map(|(source, p)| (source, p.join, p.joined))
+            .collect();
+        assert!(
+            joins.contains(&(FillSource::Zone, JoinKind::Solid, true)),
+            "{joins:?}\n{}",
+            report.text()
+        );
+        let but = (pad.part.as_str(), pad.pad.as_str());
+        assert!(!pour_joins(&before, but).is_empty(), "{}", before.text());
+        assert_eq!(
+            pour_joins(&report, but),
+            pour_joins(&before, but),
+            "{}",
+            report.text()
+        );
+        assert_eq!(report.counts.unjoinable, 0, "{}", report.text());
+
+        // Without the mark the zone replaces the pour: no fill of the pour is left on the top.
+        patch.patch = false;
+        board.zones = vec![patch];
+        assert!(board.replaced("F.Cu", "GND"));
+        let replaced = FillReport::of(&board).unwrap();
+        assert!(
+            !replaced
+                .fills
+                .iter()
+                .any(|f| f.layer == "top" && f.source == FillSource::Pour),
+            "{}",
+            replaced.text()
+        );
     }
 
     #[test]

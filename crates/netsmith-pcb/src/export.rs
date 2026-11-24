@@ -2990,6 +2990,7 @@ mod tests {
         let mut board = four();
         let p = |x: f64, y: f64| board.outline.min + Pt::new(x, y);
         board.zones.push(BoardZone {
+            patch: false,
             net: "3V3".into(),
             layers: vec!["F.Cu".into(), "In1.Cu".into()],
             outline: vec![p(1.0, 1.0), p(6.0, 1.0), p(6.0, 5.0)],
@@ -3052,6 +3053,7 @@ mod tests {
         let mut board = four();
         let p = |x: f64, y: f64| board.outline.min + Pt::new(x, y);
         board.zones.push(BoardZone {
+            patch: false,
             net: "GND".into(),
             layers: vec!["In1.Cu".into()],
             outline: vec![p(1.0, 1.0), p(6.0, 1.0), p(6.0, 5.0)],
@@ -3077,6 +3079,56 @@ mod tests {
             Some("In2.Cu")
         );
         assert!(zones[1].find("priority").is_none());
+    }
+
+    #[test]
+    fn a_patch_zone_of_a_planes_own_net_is_written_above_the_plane_that_stays() {
+        // Issue #1608: a zone of GND marked `patch` on In1.Cu keeps the GND plane there, written
+        // at priority 0, and is KiCad's zone of GND one priority above it, so that KiCad's fill
+        // and netsmith's give the zone's settings the area inside its outline.
+        use crate::board::{BoardZone, ZoneIslands, ZonePads};
+        let mut board = four();
+        let p = |x: f64, y: f64| board.outline.min + Pt::new(x, y);
+        board.zones.push(BoardZone {
+            patch: true,
+            net: "GND".into(),
+            layers: vec!["In1.Cu".into()],
+            outline: vec![p(1.0, 1.0), p(6.0, 1.0), p(6.0, 5.0)],
+            holes: Vec::new(),
+            priority: 0,
+            clearance: 0.2,
+            min_width: 0.25,
+            pads: ZonePads::Solid,
+            thermal_gap: 0.5,
+            spoke_width: 0.5,
+            islands: ZoneIslands::Remove,
+            island_min_area: None,
+        });
+        assert!(!board.replaced("In1.Cu", "GND"));
+        assert_eq!(board.zone_lift(), 1);
+        let pcb = parsed(&board);
+        let zones: Vec<&Sexp> = pcb.find_all("zone").collect();
+        assert_eq!(zones.len(), 3);
+        let of = |z: &Sexp| {
+            (
+                z.find("layer").unwrap().args()[0]
+                    .text()
+                    .unwrap()
+                    .to_string(),
+                z.find("net_name").unwrap().args()[0]
+                    .text()
+                    .unwrap()
+                    .to_string(),
+                z.find("priority").map(|_| numbers(z, "priority")[0]),
+            )
+        };
+        assert_eq!(of(zones[0]), ("In1.Cu".into(), "GND".into(), None));
+        assert_eq!(of(zones[1]), ("In2.Cu".into(), "3V3".into(), None));
+        assert_eq!(of(zones[2]), ("In1.Cu".into(), "GND".into(), Some(1.0)));
+        assert_eq!(
+            zones[2].find("connect_pads").unwrap().args()[0].text(),
+            Some("yes")
+        );
     }
 
     #[test]

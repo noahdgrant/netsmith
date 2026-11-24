@@ -290,6 +290,7 @@ fn a_board_fab_wrote_imports_and_writes_again_with_the_same_zones() {
         .expect("the fixture has a plane of a net other than GND");
     let p = |x: f64, y: f64| board.outline.min + Pt::new(x, y);
     board.zones = vec![netsmith_pcb::BoardZone {
+        patch: false,
         net: other.clone(),
         layers: vec!["F.Cu".into()],
         outline: vec![p(1.0, 1.0), p(4.0, 1.0), p(4.0, 3.0), p(1.0, 3.0)],
@@ -352,6 +353,7 @@ fn a_hand_zone_over_the_processs_pour_comes_back_with_its_own_priority() {
         .expect("the fixture has a plane of a net other than GND");
     let p = |x: f64, y: f64| board.outline.min + Pt::new(x, y);
     let zone = |priority: u32| netsmith_pcb::BoardZone {
+        patch: false,
         net: other.clone(),
         layers: vec!["F.Cu".into()],
         outline: vec![p(1.0, 1.0), p(4.0, 1.0), p(4.0, 3.0), p(1.0, 3.0)],
