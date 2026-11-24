@@ -83,6 +83,9 @@ pub enum Command {
         after_long_help = "The pad (`REF.PAD`) is joined when a fill of its net that covers its centre joins it (by a spoke or a track, and not starved: `board fill` says how) or another fill of its net does, or, when no fill covers it, when the design rules check finds it connected; a joined pad is said and nothing is written. Otherwise a track of the net's own width is drawn from the pad's centre straight out, in each of 16 directions, to the first place (0.025 mm at a time, at most 5 mm out) where its round end lies wholly on the fill of its net on that layer, as `board fill --format json` outlines it; the shortest is tried first, and each is checked as `add-track` checks a track. When no track fits, a track to a through via of the process placed on the fill of its net on another layer, clear of the pad. The first one the design rules check takes and that joins the pad is written to the net's record, unlocked. At most 24 are tried; when none is taken the command is refused (exit 1, nothing written) and says how many were tried and why the shortest was refused. `--dry-run` says what it would add and writes nothing. With `--format json`: `board`, `pad`, `net`, `before` (how the fill had the pad), `already`, `join` (`layer`, `from`, `to`, `width`, `length`, `direction` in degrees counterclockwise from +x, and `via` and `fill_layer` with a via), `tried` (`layer`, `direction`, `length`, `via`, `why`), `refused`, `said`, `dry_run`, `written` and `file`."
     )]
     JoinPad(JoinPadArgs),
+    /// List the places between a part's pads where a via fits, and which net's copper holds each.
+    #[command(after_long_help = super::routes_sites::LONG_HELP)]
+    Sites(super::routes_sites::Args),
     /// Delete a net's record, or one of its shapes; a locked one is refused. A record of a net the board no longer has (a net renamed, say: `fab` names it) is deleted whole, even when locked.
     Delete(ShapeArgs),
     /// Lock a net (the router adds no copper to it) or one shape (kept when the net's pads move).
@@ -513,6 +516,7 @@ pub fn run(args: Args) -> ExitCode {
         }),
         Command::Route(a) => route(&a),
         Command::JoinPad(a) => join_pad(&a),
+        Command::Sites(a) => super::routes_sites::run(&a),
         Command::Delete(a) => edit(&a.target, |_| lib::Edit::Delete {
             net: a.net.clone(),
             shape: shape(&a),

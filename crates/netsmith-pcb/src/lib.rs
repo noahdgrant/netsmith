@@ -122,7 +122,7 @@ pub use export::{
 };
 pub use fill_report::{
     ClearedPad, FillArea, FillIsland, FillPad, FillPolygon, FillReport, FillSource, JoinCounts,
-    JoinKind, StarvedPad,
+    JoinKind, RegulatorGround, StarvedPad,
 };
 pub use fit_report::{FitReport, PartRef, Size};
 pub use footprint::{
@@ -188,7 +188,7 @@ pub use quality::{
 };
 pub use ratsnest::{
     Node as RatNode, OpenCopper, OpenEnd, Ratline, Ratsnest, nodes_of as ratsnest_nodes_of,
-    open_ends,
+    on_pad as ratsnest_on_pad, open_ends,
 };
 pub use room::{FreeRoom, NoRoom, RoomCheck, parts_without_room};
 pub use routes::{
