@@ -122,7 +122,7 @@ pub use export::{
 };
 pub use fill_report::{
     ClearedPad, FillArea, FillIsland, FillPad, FillPolygon, FillReport, FillSource, JoinCounts,
-    JoinKind, StarvedPad,
+    JoinKind, RegulatorGround, StarvedPad,
 };
 pub use fit_report::{FitReport, PartRef, Size};
 pub use footprint::{
