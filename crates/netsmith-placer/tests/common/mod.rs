@@ -1024,6 +1024,7 @@ pub fn routing_board(seed: u64, extra: usize, objective: f64) -> Board {
         inner_least_width: None,
         vias: 1,
         source: String::new(),
+        ..Default::default()
     })
     .collect();
     let features = netsmith_core::Features {

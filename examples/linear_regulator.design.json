@@ -279,6 +279,8 @@
       "min_single_sided_assembly_size": 10.0,
       "min_double_sided_assembly_size": 70.0,
       "assembly_size_source": "https://jlcpcb.com/capabilities/pcb-assembly-capabilities, Economic PCBA (one face) and Standard PCBA (both faces), read 2026-11-19",
+      "min_v_cut_edge_clearance": 0.4,
+      "v_cut_edge_clearance_source": "https://jlcpcb.com/capabilities/pcb-capabilities, Outline, V-cut: copper clearance from V-cut board edges, read 2026-11-24",
       "track_width_tolerance": 0.2,
       "hole_plating": 0.018,
       "finish": "HASL lead-free",
@@ -305,21 +307,24 @@
           "current": 0.05,
           "least_width": 0.006026516109918563,
           "vias": 1,
-          "source": "rail `output`: 0 mA to 50 mA"
+          "source": "rail `output`: 0 mA to 50 mA",
+          "from": "sum"
         },
         {
           "net": "GND",
           "current": 0.1,
           "least_width": 0.015677619109034917,
           "vias": 1,
-          "source": "the sum of the currents on it with every load on at once: rail `stage.regulator.vin` 50 mA + rail `output` 50 mA"
+          "source": "the sum of the currents on it with every load on at once: rail `stage.regulator.vin` 50 mA + rail `output` 50 mA",
+          "from": "sum"
         },
         {
           "net": "VIN",
           "current": 0.05,
           "least_width": 0.006026516109918563,
           "vias": 1,
-          "source": "rail `stage.regulator.vin`: 0 mA to 50 mA"
+          "source": "rail `stage.regulator.vin`: 0 mA to 50 mA",
+          "from": "sum"
         }
       ],
       "outline": null,

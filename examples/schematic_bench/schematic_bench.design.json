@@ -3483,6 +3483,8 @@
       "min_single_sided_assembly_size": 10.0,
       "min_double_sided_assembly_size": 70.0,
       "assembly_size_source": "https://jlcpcb.com/capabilities/pcb-assembly-capabilities, Economic PCBA (one face) and Standard PCBA (both faces), read 2026-11-19",
+      "min_v_cut_edge_clearance": 0.4,
+      "v_cut_edge_clearance_source": "https://jlcpcb.com/capabilities/pcb-capabilities, Outline, V-cut: copper clearance from V-cut board edges, read 2026-11-24",
       "track_width_tolerance": 0.2,
       "hole_plating": 0.018,
       "finish": "HASL lead-free",
@@ -3526,84 +3528,99 @@
           "current": 0.500014354068,
           "least_width": 0.14434238048234482,
           "vias": 1,
-          "source": "the sum of the currents on it with every load on at once: rail `rail_1v8` 500 mA + part `buck.r_top` 0.0144 mA; the current of part `buck.l` is not known, so it may be more"
+          "source": "the sum of the currents on it with every load on at once: rail `rail_1v8` 500 mA + part `buck.r_top` 0.0144 mA; the current of part `buck.l` is not known, so it may be more",
+          "from": "sum",
+          "lower_bound": true
         },
         {
           "net": "+2V8",
           "current": 0.1,
           "least_width": 0.015677619109034917,
           "vias": 1,
-          "source": "rail `rail_2v8`: 0 mA to 100 mA"
+          "source": "rail `rail_2v8`: 0 mA to 100 mA",
+          "from": "sum"
         },
         {
           "net": "+3V3",
           "current": 0.10000000000500003,
           "least_width": 0.015677619110116135,
           "vias": 1,
-          "source": "the sum of the currents on it with every load on at once: rail `rail_3v3` 100 mA + part `modem.rc_a` 0.000000001 mA + part `modem.rc_b` 0.000000001 mA + part `modem.rc_e` 0.000000001 mA and 2 more; the current of rail `adc.amp.supply`, rail `mcu.mcu.vdd`, part `buck.r_pg`, part `modem.r_tx`, part `modem.r_cts` is not known, so it may be more"
+          "source": "the sum of the currents on it with every load on at once: rail `rail_3v3` 100 mA + part `modem.rc_a` 0.000000001 mA + part `modem.rc_b` 0.000000001 mA + part `modem.rc_e` 0.000000001 mA and 2 more; the current of rail `adc.amp.supply`, rail `mcu.mcu.vdd`, part `buck.r_pg`, part `modem.r_tx`, part `modem.r_cts` is not known, so it may be more",
+          "from": "sum",
+          "lower_bound": true
         },
         {
           "net": "GND",
           "current": 0.7000170410707288,
           "least_width": 0.22958692997055005,
           "vias": 2,
-          "source": "the sum of the currents on it with every load on at once: rail `rail_1v8` 500 mA + rail `rail_3v3` 100 mA + rail `rail_2v8` 100 mA + part `buck.r_bottom` 0.0144 mA and 2 more; the current of rail `rail_5v`, rail `adc.amp.supply`, rail `mcu.mcu.vdd`, rail `buck.ic.vin`, part `modem.r_rx`, part `modem.r_led`, part `modem.led`, rail `rail_3v8`, rail `ldo.u.vin` is not known, so it may be more"
+          "source": "the sum of the currents on it with every load on at once: rail `rail_1v8` 500 mA + rail `rail_3v3` 100 mA + rail `rail_2v8` 100 mA + part `buck.r_bottom` 0.0144 mA and 2 more; the current of rail `rail_5v`, rail `adc.amp.supply`, rail `mcu.mcu.vdd`, rail `buck.ic.vin`, part `modem.r_rx`, part `modem.r_led`, part `modem.led`, rail `rail_3v8`, rail `ldo.u.vin` is not known, so it may be more",
+          "from": "sum",
+          "lower_bound": true
         },
         {
           "net": "net-adc.amp.in_a_pos",
           "current": 2.6870017289034138e-6,
           "least_width": 7.777179151417264e-9,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.00269 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.00269 mA",
+          "from": "analysis"
         },
         {
           "net": "net-buck.ic.fb",
           "current": 0.000014354068,
           "least_width": 7.844332068588634e-8,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.0144 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.0144 mA",
+          "from": "analysis"
         },
         {
           "net": "net-buck.ic.rt",
           "current": 1e-12,
           "least_width": 1.0540623859109564e-17,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.000000001 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.000000001 mA",
+          "from": "analysis"
         },
         {
           "net": "net-modem.cf_a.a",
           "current": 1.0000000935515504e-12,
           "least_width": 1.0540625219236078e-17,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.000000001 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.000000001 mA",
+          "from": "analysis"
         },
         {
           "net": "net-modem.cf_b.a",
           "current": 1.0000000935515504e-12,
           "least_width": 1.0540625219236078e-17,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.000000001 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.000000001 mA",
+          "from": "analysis"
         },
         {
           "net": "net-modem.cf_c.a",
           "current": 1e-12,
           "least_width": 1.0540623859109564e-17,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.000000001 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.000000001 mA",
+          "from": "analysis"
         },
         {
           "net": "net-modem.cf_d.a",
           "current": 1e-12,
           "least_width": 1.0540623859109564e-17,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.000000001 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.000000001 mA",
+          "from": "analysis"
         },
         {
           "net": "net-modem.cf_e.a",
           "current": 1.000000019986013e-12,
           "least_width": 1.0540624149682044e-17,
           "vias": 1,
-          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.000000001 mA"
+          "source": "the most the DC analysis finds into it over every corner of its ranges; every current at its largest at once would be 0.000000001 mA",
+          "from": "analysis"
         }
       ],
       "pin_currents": [

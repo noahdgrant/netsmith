@@ -35,6 +35,7 @@ fn board() -> netsmith_pcb::Board {
         inner_least_width: None,
         vias: 3,
         source: String::new(),
+        ..Default::default()
     }];
     board
 }

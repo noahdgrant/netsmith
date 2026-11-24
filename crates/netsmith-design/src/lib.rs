@@ -915,12 +915,33 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
             },
             None => None,
         },
+        // Unstated in the library; a board may state it (issue #1585). An upper bound on how
+        // near foreign copper comes, so the top.
+        switch_node_keepout: match model.field_at("process.switch_node_keepout") {
+            Some(f) => match &model.field(f).domain {
+                Domain::Quantity(q) => {
+                    Some((end("switch_node_keepout", q, true) * 1e12).round() / 1e9)
+                }
+                _ => None,
+            },
+            None => None,
+        },
         // Unstated where the board house publishes no figure. A lower bound, so the bottom.
         min_single_sided_assembly_size: optional_mm("process.min_single_sided_assembly_size"),
         min_double_sided_assembly_size: optional_mm("process.min_double_sided_assembly_size"),
         // Unstated where the board house publishes no figure; the page, service and day of
         // the two figures above (issue 1393).
         assembly_size_source: match model.field_at("process.assembly_size_source") {
+            Some(f) => match &model.field(f).domain {
+                Domain::Text(t) if !t.is_empty() => Some(t.clone()),
+                _ => None,
+            },
+            None => None,
+        },
+        // Unstated where the board house publishes no figure (issue 1592). A lower bound, so the
+        // bottom; and the page and day it was read.
+        min_v_cut_edge_clearance: optional_mm("process.min_v_cut_edge_clearance"),
+        v_cut_edge_clearance_source: match model.field_at("process.v_cut_edge_clearance_source") {
             Some(f) => match &model.field(f).domain {
                 Domain::Text(t) if !t.is_empty() => Some(t.clone()),
                 _ => None,

@@ -1271,7 +1271,15 @@ pub fn build(spec: &Spec, cell: &CellInput, options: &Options) -> Result<PanelPa
     unverified.sort_by(|a, b| bom::designator_cmp(a, b));
     unverified.dedup();
 
+    // The copper of the board it repeats nearest the board's edge, which a V-cut runs along
+    // (issue 1592): the check above held the board's edge clearance to the rule, and the notes
+    // say what the copper keeps.
+    let nearest = netsmith_geom::drc_copper_to_edge(cell.pcb, cell.pro, &options.drc)?;
     let mut extras = panel_notes(spec, &g, cell, &findings);
+    extras.insert(
+        2,
+        v_cut_copper_note(spec, &cell.facts.board, nearest.as_ref()),
+    );
     if !alternates.is_empty() {
         extras.push(format!(
             "bom-alternates.csv lists each alternate once for each cell, with the cell in the designator (U1_3, as bom.csv names the parts); the board's own bom-alternates.csv is in cell/{}/",
@@ -1380,6 +1388,28 @@ fn panel_notes(spec: &Spec, g: &Geometry, cell: &CellInput, findings: &[Finding]
             .map(|f| format!("warning: {}", f.message)),
     );
     lines
+}
+
+/// The line of the notes that says how far the copper of the repeated board is from its edge,
+/// against the panel's figure for copper to a V-cut edge, with its source (issue 1592).
+fn v_cut_copper_note(
+    spec: &Spec,
+    board: &str,
+    nearest: Option<&netsmith_geom::DrcEdgeCopper>,
+) -> String {
+    let r = &spec.rules;
+    match nearest {
+        Some(n) => format!(
+            "V-cut copper to edge: the copper of {board} nearest its edge is {:.3} mm from it ({}); {} keeps copper at least {} mm from a V-cut edge and advises {} mm ({})",
+            n.distance,
+            n.what,
+            r.fabricator,
+            mm(r.min_edge_clearance),
+            mm(r.advised_edge_clearance),
+            r.source
+        ),
+        None => format!("V-cut copper to edge: {board} has no copper"),
+    }
 }
 
 fn list(v: &[f64]) -> String {

@@ -610,3 +610,118 @@ fn connect(art: &Artwork, net: &str, segs: &[&Seg], pads: &[&ArtworkPad]) -> Con
         not_counted,
     }
 }
+
+/// The shortest way through the tracks of one net between two sets of its pads (issue #1585):
+/// its length along the centre lines, in mm, and the vias at which it changes layer.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Way {
+    pub length: f64,
+    pub vias: usize,
+}
+
+/// The shortest [`Way`] through the tracks of `net` (of `segs`, the board's straight pieces)
+/// from any of the pads `from` to any of the pads `to` (indices into `art.pads`, all of `net`),
+/// joined as the connection joins them; `None` when no track joins them (a pour or a plane
+/// carries the net, or it is open). A pad of each set joined to one of the other (two pads on
+/// one point, a pad in a pad) is a way of 0 mm.
+pub(crate) fn way(
+    art: &Artwork,
+    segs: &[Seg],
+    net: &str,
+    from: &[usize],
+    to: &[usize],
+) -> Option<Way> {
+    let segs: Vec<&Seg> = segs.iter().filter(|s| s.0 == net).collect();
+    let index: Vec<usize> = (0..art.pads.len())
+        .filter(|&i| art.pads[i].net.as_deref() == Some(net))
+        .collect();
+    let pads: Vec<&ArtworkPad> = index.iter().map(|&i| &art.pads[i]).collect();
+    let vias: Vec<&ArtworkVia> = art
+        .vias
+        .iter()
+        .filter(|v| v.net.as_deref() == Some(net))
+        .collect();
+    let copper: Vec<Vec<DrcShape>> = pads.iter().map(|p| pad_copper(p)).collect();
+    let mut g = graph(art, &segs, &vias, &pads, &copper, &[]);
+    let needed = reaches(art, &segs, &vias, &copper, &g);
+    if !needed.is_empty() {
+        g = graph(art, &segs, &vias, &pads, &copper, &needed);
+    }
+    let ends = 2 * g.pieces.len();
+    let pad0 = ends + vias.len();
+    let node_of = |set: &[usize]| -> Vec<usize> {
+        set.iter()
+            .filter_map(|i| index.iter().position(|j| j == i))
+            .map(|d| g.node[pad0 + d])
+            .collect()
+    };
+    let (sources, targets) = (node_of(from), node_of(to));
+    if sources.is_empty() || targets.is_empty() {
+        return None;
+    }
+    if sources.iter().any(|s| targets.contains(s)) {
+        return Some(Way {
+            length: 0.0,
+            vias: 0,
+        });
+    }
+    let edge = |e: usize| (g.node[2 * e], g.node[2 * e + 1]);
+    let mut adjacent: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for e in 0..g.pieces.len() {
+        let (u, v) = edge(e);
+        if u != v {
+            adjacent.entry(u).or_default().push(e);
+            adjacent.entry(v).or_default().push(e);
+        }
+    }
+    let mut best: BTreeMap<usize, f64> = BTreeMap::new();
+    let mut came: BTreeMap<usize, usize> = BTreeMap::new();
+    let mut heap = BinaryHeap::new();
+    for &s in &sources {
+        best.insert(s, 0.0);
+        heap.push(Reverse((0u64, s)));
+    }
+    let mut reached = None;
+    while let Some(Reverse((bits, u))) = heap.pop() {
+        let d = f64::from_bits(bits);
+        if d > best[&u] {
+            continue;
+        }
+        if targets.contains(&u) {
+            reached = Some((u, d));
+            break;
+        }
+        for &e in adjacent.get(&u).map(Vec::as_slice).unwrap_or_default() {
+            let (a, b) = edge(e);
+            let w = if a == u { b } else { a };
+            let next = d + g.pieces[e].2.dist(g.pieces[e].3);
+            if best.get(&w).is_none_or(|&old| next < old) {
+                best.insert(w, next);
+                came.insert(w, e);
+                heap.push(Reverse((next.to_bits(), w)));
+            }
+        }
+    }
+    let (mut at, length) = reached?;
+    // The pieces of the way from the target back to a source, and the nodes between them.
+    let mut path: Vec<(usize, usize)> = Vec::new();
+    while let Some(&e) = came.get(&at) {
+        let (a, b) = edge(e);
+        let prev = if a == at { b } else { a };
+        path.push((e, prev));
+        if sources.contains(&prev) {
+            break;
+        }
+        at = prev;
+    }
+    let via_nodes: Vec<usize> = (0..vias.len()).map(|v| g.node[ends + v]).collect();
+    let vias = path
+        .windows(2)
+        .filter(|w| {
+            let (later, joint) = w[0];
+            let (earlier, _) = w[1];
+            g.pieces[later].1 != g.pieces[earlier].1 && via_nodes.contains(&joint)
+        })
+        .count();
+    Some(Way { length, vias })
+}

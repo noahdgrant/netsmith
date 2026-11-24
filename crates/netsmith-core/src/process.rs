@@ -119,6 +119,13 @@ pub struct Process {
     /// written to the design file when unstated.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub via_group_gap: Option<f64>,
+    /// How near copper of another net may come to a switching regulator's switch node, edge to
+    /// edge, in mm, before `board drc` notes it, if the board states it
+    /// (`.process.switch_node_keepout`, issue #1585). `None`, what every process leaves it, is
+    /// 1 mm (`netsmith_fab::power_stage::DEFAULT_SWITCH_NODE_KEEPOUT`). Not written to the
+    /// design file when unstated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub switch_node_keepout: Option<f64>,
     /// The least side, in mm, of a single board that the assembly house places parts on one
     /// side of, if the process states it (`.process.min_single_sided_assembly_size`, issue
     /// 1285). `None`, what a process leaves it where its house publishes no figure, is that the
@@ -137,6 +144,18 @@ pub struct Process {
     /// file when unstated.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assembly_size_source: Option<String>,
+    /// The least space, in mm, the board house keeps between copper and a V-cut edge, if the
+    /// process states it (`.process.min_v_cut_edge_clearance`, issue 1592): what a board under
+    /// the assembly size above, which is ordered as a panel, keeps at its outline if the panel
+    /// is cut apart by V-cuts. `None` is that the copper's distance is said and not judged.
+    /// Not written to the design file when unstated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_v_cut_edge_clearance: Option<f64>,
+    /// Where that figure comes from, in words (`.process.v_cut_edge_clearance_source`): the
+    /// `v_cut_edge` finding and the notes quote it. Not written to the design file when
+    /// unstated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub v_cut_edge_clearance_source: Option<String>,
     /// How much narrower than drawn a finished track may be, as a fraction (0.2 for ±20 %): the
     /// track width check sizes for the narrowest.
     pub track_width_tolerance: f64,

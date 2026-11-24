@@ -19,7 +19,9 @@
 //! carries a current through (an enable pin tied to a converter's input, issue #1504), with
 //! none. A pad of a pin whose current is not
 //! known (a capacitor's, a connector's that no rail names) is of the trunk, so the copper is
-//! sized by the sum of the known currents of the pins past it and never by a guess.
+//! sized by the sum of the known currents of the pins past it and never by a guess. That sum is
+//! never more than the net's own current where the net's current is known in full (issue
+//! #1584): copper that would carry as much is held to the net's current, as its other copper is.
 
 use std::collections::HashSet;
 
@@ -141,6 +143,16 @@ pub(crate) fn current_through(m: &Model<'_>, net: &str, removed: &[usize]) -> Op
         .collect();
     pins.sort_unstable();
     pins.dedup();
+    // The pins' own currents are each at most what they carry, and several can add up to more
+    // than the whole net carries (pins that state ratings, issue #1584). Copper of a net whose
+    // current is known in full carries no more than that: it is held to the net's one current,
+    // the number its other copper is held to.
+    if let Some(whole) = m.extras.net_currents.iter().find(|c| c.net == net)
+        && !whole.lower_bound
+        && current >= whole.current
+    {
+        return None;
+    }
     Some(Through {
         current,
         pins: pins.into_iter().map(|b| branches[b].path.clone()).collect(),

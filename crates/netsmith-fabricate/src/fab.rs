@@ -2065,6 +2065,9 @@ fn fab_board(
             // The board's diff pairs with their skew limits: a pair over its limit is a
             // `pair_skew` finding, as `board drc` has it (issue #1597).
             pairs: board.diff_pairs_with_skew(),
+            // Foreign copper at a switch node is a `switch_node_copper` note (issue #1585).
+            regulators: board.switching_regulators.clone(),
+            switch_node_keepout: board.process.switch_node_keepout,
             ..Options::default()
         };
         // The pictures of a package made for review are of the board just routed (issue #1213);
@@ -3803,6 +3806,7 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
                 net: c.net.clone(),
                 current: c.current,
                 source: c.source.clone(),
+                lower_bound: c.lower_bound,
             })
             .collect(),
         // The layout file's waivers of findings of a part's own footprint (issue #1196).
@@ -3932,6 +3936,8 @@ pub fn marks_of(board: &Board) -> netsmith_geom::DrcMarks {
         min_single_sided_assembly_size: p.min_single_sided_assembly_size,
         min_double_sided_assembly_size: p.min_double_sided_assembly_size,
         assembly_size_source: p.assembly_size_source.clone(),
+        min_v_cut_edge: p.min_v_cut_edge_clearance,
+        v_cut_edge_source: p.v_cut_edge_clearance_source.clone(),
     }
 }
 
@@ -4518,7 +4524,7 @@ mod tests {
 
     /// The fields of a process that are not a rule the router and the design rules check keep,
     /// each with the reason (issue #431).
-    const NOT_A_COPPER_RULE: [(&str, &str); 39] = [
+    const NOT_A_COPPER_RULE: [(&str, &str); 42] = [
         (
             "finish",
             "the surface finish, a word for the notes and the order",
@@ -4628,12 +4634,24 @@ mod tests {
             "the least single board the assembly house places parts on both faces of, judged on the placed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
         ),
         (
+            "min_v_cut_edge_clearance",
+            "the space from copper to a V-cut edge, judged on the placed board of one under the assembly size: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
+        (
+            "v_cut_edge_clearance_source",
+            "where the V-cut figure comes from, a sentence the `v_cut_edge` finding and the notes quote (issue 1592)",
+        ),
+        (
             "min_round_track_angle",
             "the angle at which a track may leave round copper, unstated by every process and judged on the routed board by `acid_trap` only where a board states it: the router draws none of it; `a_round_track_angle_a_board_states_reaches_the_check` proves the check keeps it",
         ),
         (
             "via_group_gap",
             "the space at which vias of one net stand side by side as one group, unstated by every process (the least clearance then): `a_via_group_gap_a_board_states_reaches_the_router_and_the_check` proves both keep it",
+        ),
+        (
+            "switch_node_keepout",
+            "how near foreign copper may come to a switching regulator's switch node, unstated by every process (1 mm then) and judged on the routed board by `board drc`'s `switch_node_copper` note: the router draws none of it; `a_switch_node_keepout_a_board_states_reaches_the_note` proves the note keeps it",
         ),
         (
             "rule_area_reach",
@@ -4775,6 +4793,8 @@ mod tests {
                 min_single_sided_assembly_size: p.min_single_sided_assembly_size,
                 min_double_sided_assembly_size: p.min_double_sided_assembly_size,
                 assembly_size_source: p.assembly_size_source.clone(),
+                min_v_cut_edge: p.min_v_cut_edge_clearance,
+                v_cut_edge_source: p.v_cut_edge_clearance_source.clone(),
                 ..Default::default()
             }),
             ..Default::default()
@@ -4812,6 +4832,7 @@ mod tests {
             ("fine_pitch", "0.5mm"),
             ("min_single_sided_assembly_size", "20mm.."),
             ("min_double_sided_assembly_size", "100mm.."),
+            ("min_v_cut_edge_clearance", "1mm.."),
             ("rule_area_reach", "5mm"),
         ] {
             let narrowed = format!(".{field} &= {raised}");
@@ -4860,6 +4881,22 @@ mod tests {
         assert_ne!(after.0, base.0, "it does not reach the router");
         assert_ne!(after.1, base.1, "it does not reach the check");
         assert!(after.1.contains("via_group_gap: 0.15"), "{}", after.1);
+    }
+
+    /// `.process.switch_node_keepout` (issue #1585) is stated by no process and is 1 mm then;
+    /// a board that states it changes how near foreign copper the `switch_node_copper` note
+    /// judges.
+    #[test]
+    fn a_switch_node_keepout_a_board_states_reaches_the_note() {
+        let p = process("TwoLayer", &[]);
+        assert_eq!(p.switch_node_keepout, None);
+        assert_eq!(
+            crate::power_stage::keepout(&p),
+            netsmith_fab::power_stage::DEFAULT_SWITCH_NODE_KEEPOUT
+        );
+        let stated = process("TwoLayer", &[".switch_node_keepout &= 2mm".to_string()]);
+        assert_eq!(stated.switch_node_keepout, Some(2.0));
+        assert_eq!(crate::power_stage::keepout(&stated), 2.0);
     }
 
     /// Every rule a process states reaches both the router and the design rules check: a

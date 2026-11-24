@@ -1207,3 +1207,62 @@ fn a_nets_current_says_where_it_comes_from() {
         "{node:?}"
     );
 }
+
+// ---- one current per net, with its source (issue #1584) ---------------------------------
+
+/// A 12 V supply through a 1 ohm link to a 10 kohm load, and a module whose clamp diode, anode
+/// on ground and cathode on the node after the link, states that it carries up to 1 A (what it
+/// discharges, which a DC analysis does not see: the diode blocks).
+pub const CLAMP: &str = "import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::parts::diode::Diode
+import std::parts::passive::Resistor
+import std::sources::Rail
+
+module Clamp {
+    .vin: Rail
+    .bypass: Diode { .current &= 0A..1A }
+    .vin.neg ~> .bypass ~> .vin.pos
+}
+
+board B {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .supply: Rail { .voltage &= 12V; .pos.net &= \"VIN\"; .neg.net &= \"GND\" }
+    .link: Resistor { .resistance &= 1ohm +/- 1% }
+    .load: Resistor { .resistance &= 10kohm +/- 1% }
+    .clamp: Clamp
+    .supply.pos ~> .link ~> .load ~> .supply.neg
+    .clamp.vin.pos ~ .link.b
+    .clamp.vin.neg ~ .supply.neg
+    .power_in: Header1x2
+    .supply.pos ~ .power_in.p1
+    .supply.neg ~ .power_in.p2
+}
+";
+
+#[test]
+fn a_part_in_a_module_that_states_more_than_the_dc_analysis_finds_sets_its_nets_current() {
+    let l = designed_of(CLAMP);
+    for c in &l.design.features.net_currents {
+        eprintln!("{} {} {:?} {}", c.net, c.current, c.from, c.source);
+    }
+    let node = l
+        .design
+        .features
+        .net_currents
+        .iter()
+        .find(|c| c.net.contains("clamp") || c.net.contains("link"))
+        .expect("the node has a current");
+    assert_eq!(node.from, netsmith_core::CurrentFrom::Carrier, "{node:?}");
+    assert!((node.current - 1.0).abs() < 1e-9, "{node:?}");
+    assert!(!node.lower_bound, "{node:?}");
+    assert!(
+        node.source.starts_with("part `clamp.bypass` carries 1 A, more than the ")
+            && node.source.ends_with(" the DC analysis finds into the net"),
+        "{}",
+        node.source
+    );
+    // The tracks and the vias of the net are sized for that one number.
+    assert_eq!(width_of(&l, &node.net), Some(0.38));
+    assert_eq!(node.vias, 2, "{node:?}");
+}

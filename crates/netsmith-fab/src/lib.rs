@@ -85,6 +85,7 @@ mod kicad_drc;
 mod net_routes;
 mod net_table;
 mod panel;
+pub mod power_stage;
 mod raster;
 mod rotation;
 mod score;
@@ -95,7 +96,7 @@ pub mod viewer;
 // names them as modules, and other crates import them from `netsmith_geom`.
 use netsmith_geom::{
     ConstraintOutcome, Constraints, DrcCounts, DrcError, DrcExtras, DrcFinding, DrcItem, DrcReport,
-    DrcRule, DrcSeverity, constraint_outcome_findings, drc_check, drc_project_of,
+    DrcRule, DrcSeverity, DrcVCut, constraint_outcome_findings, drc_check, drc_project_of,
 };
 
 use netsmith_geom::{
@@ -197,6 +198,13 @@ pub struct Options {
     /// out (`netsmith_pcb::Board::track_path_loss`, issue #1405): [`check`] notes each path
     /// whose loss is over its loss budget.
     pub track_path_losses: Vec<Option<Result<f64, String>>>,
+    /// The design's switching regulators (issue #1585, `netsmith_pcb::Board`'s
+    /// `switching_regulators`), which the board file does not name: [`check`] notes each via and
+    /// track of another net near a switch node or under a regulator (`switch_node_copper`).
+    pub regulators: Vec<netsmith_core::SwitchingRegulator>,
+    /// How near a switch node foreign copper may come, in mm (the process's
+    /// `.switch_node_keepout`); `None` is [`power_stage::DEFAULT_SWITCH_NODE_KEEPOUT`].
+    pub switch_node_keepout: Option<f64>,
     /// Package even though some parts have no LCSC part number. Those parts are left out
     /// of the BOM and placement file and listed in the notes as unassembled.
     pub allow_missing_lcsc: bool,
@@ -757,6 +765,14 @@ pub fn check(src: &str, project: Option<&str>, options: &Options) -> Result<Chec
     let table = NetTable::of(&art, &options.pairs, &options.length_groups)
         .with_paths(&options.track_paths, &options.track_path_losses);
     let skewed: Vec<PairRow> = table.over().cloned().collect();
+    // Foreign copper at a switch node (issue #1585): notes, which fail nothing.
+    if !options.regulators.is_empty() {
+        let keepout = options
+            .switch_node_keepout
+            .unwrap_or(power_stage::DEFAULT_SWITCH_NODE_KEEPOUT);
+        let stages = power_stage::of(&art, &options.regulators, keepout);
+        report.findings.extend(power_stage::findings(&stages));
+    }
     if !skewed.is_empty() {
         report.findings.extend(
             skewed
@@ -923,6 +939,50 @@ pub(crate) fn plot_rules(pcb: &Path) -> PlotRules {
     plot_rules_of(Some(&pro))
 }
 
+/// The line of the notes of a board under the board house's assembly size (issue 1592): it is
+/// ordered as a panel, so the notes say how far its copper is from the outline and what the
+/// house keeps from a V-cut edge, where the process cites a figure.
+fn v_cut_note(v: &DrcVCut) -> String {
+    let head = format!(
+        "V-cut copper to edge: the board is {:.1} x {:.1} mm, under the {:.0} mm the board house assembles as a single board, so it is ordered as a panel",
+        v.width, v.height, v.assembly_size
+    );
+    let Some(near) = &v.nearest else {
+        return format!("{head}; it has no copper");
+    };
+    let measured = format!(
+        "its copper nearest the outline is {:.3} mm from it ({})",
+        near.distance, near.what
+    );
+    match v.least {
+        Some(least) => {
+            let from = v
+                .source
+                .as_deref()
+                .map(|s| format!(" ({s})"))
+                .unwrap_or_default();
+            let verdict = if near.distance + 0.0005 >= least {
+                "which holds if the panel is cut apart by V-cuts".to_string()
+            } else {
+                "nearer than that, so a V-cut may expose or cut it: keep copper that far from the edge, or order the panel cut apart without V-cuts (the design rules note `v_cut_edge`)".to_string()
+            };
+            format!(
+                "{head}; {measured}, and the board house keeps copper {} mm from a V-cut edge{from}, {verdict}",
+                format_mm(least)
+            )
+        }
+        None => format!(
+            "{head}; {measured}; the process states no space from copper to a V-cut edge, so this is not judged: check the board house's rule for the panel it makes"
+        ),
+    }
+}
+
+/// A length in mm as a source states it: `0.4`, not `0.400`.
+fn format_mm(x: f64) -> String {
+    let s = format!("{x:.3}");
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
 /// Lines for the notes about the fill of zones and anything the writers left out.
 fn fill_notes(art: &Artwork, plotted: &[String]) -> Vec<String> {
     let mut lines = Vec::new();
@@ -971,6 +1031,7 @@ fn notes(
         lines.push(format!("process: {process}"));
     }
     lines.extend(extras.iter().cloned());
+    lines.extend(report.v_cut.as_ref().map(v_cut_note));
     if board.copper_layers.len() > 2 {
         lines.push(format!(
             "copper layers: {} ({}): the zip holds one Gerber for each; check the layer count and order in JLCPCB's order preview",

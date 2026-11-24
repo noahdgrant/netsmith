@@ -17,6 +17,20 @@ Every change below that makes source an error was a pull request whose title has
 - **`board drc`.** `pair_skew` is a new warning (an error with `--strict` or `guidelines = "error"`): a diff pair whose skew is over its limit, with both lengths, the skew and the limit (#1587). `pair_skews` in `--format json` stays, and the text note `pair skew: ...` is now this finding. A board that passed may get a warning, and one checked with `--strict` that has such a pair now fails.
 - **`board fab`.** `fab` runs the same check with the board's diff pairs, so a pair over its skew limit is a `pair_skew` warning in `fab-notes.txt`, and `fab --strict` (or `guidelines = "error"`) now stops with an error for it where it only noted that the meander could not match the pair (#1597). Give the router room for a meander, lengthen the shorter net by hand, or state a larger `.skew` on the pair.
 
+### A part's stated current wins over the DC analysis on its net (issue #1584)
+
+A net the DC analysis solves carried what the analysis finds into it, even where a part on it states more: a clamp or bypass diode with `.current &= 0A..1A`, blocking in the analysis, left its net sized for the few milliamps of the rest. Now one rail or part on a net that draws more than the analysis finds sets the net's current (ADR 0036), and the router, `track_current`, `via_current` and the track drop all read that one number. A routes file, or copper of your own, drawn for the smaller current can now fail `board drc` and `board fab`:
+
+```text
+error [track_current] Track of net-clamp.bypass.cathode is 0.0900 mm wide; its net `net-clamp.bypass.cathode` carries 1 A (part `clamp.bypass` carries 1 A, more than the 1.21 mA the DC analysis finds into the net), which needs 0.3755 mm ...
+```
+
+| Old | New |
+|---|---|
+| the net carried what the DC analysis found (1.21 mA) | it carries the part's stated 1 A; widen its tracks and add vias (`netsmith routes route` the net again, or `routes add-via --count N`), or state a smaller `.current` on the part |
+
+`netsmith board nets --currents` lists each net's current with where it comes from. The other way round, copper that only feeds pins which state more together than their net carries in full (a pin's `.current` that is a rating) is now held to the net's current, so a board may pass where it failed.
+
 ## 0.8.0: changes since 0.7.0
 
 ### A board's `.corner` is its corner style, a `TrackCorner` (issue #1508)
