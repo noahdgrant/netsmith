@@ -175,10 +175,7 @@ fn outline(out: &mut Out<'_>) {
                 if let Some(p) = cut.iter().find(|p| !geom::contains(&o.outer, **p)) {
                     out.push(
                         Rule::InvalidOutline,
-                        format!(
-                            "a cutout of the board outline has a corner at ({:.3}, {:.3}) outside the board",
-                            p.x, p.y
-                        ),
+                        "a cutout of the board outline has a corner outside the board".to_string(),
                         *p,
                         Some("Edge.Cuts"),
                         Vec::new(),
@@ -637,8 +634,9 @@ fn courtyards(out: &mut Out<'_>) {
                 Err((start, end)) => out.push(
                     Rule::MalformedCourtyard,
                     format!(
-                        "the courtyard of {} on {layer} is not closed: a path from ({:.3}, {:.3}) ends at ({:.3}, {:.3})",
-                        fp.part, start.x, start.y, end.x, end.y
+                        "the courtyard of {} on {layer} is not closed: a path from this place ends {:.3} mm from where it began",
+                        fp.part,
+                        start.dist(end)
                     ),
                     start,
                     Some(layer),

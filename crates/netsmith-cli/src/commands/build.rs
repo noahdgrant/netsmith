@@ -106,6 +106,7 @@ pub fn run(args: Args) -> ExitCode {
             emit_solved: args.emit_solved.as_deref(),
             portable: args.portable,
             explain: None,
+            framing: args.output.framing,
         })
     })
 }
@@ -128,6 +129,8 @@ pub(super) struct BuildRun<'a> {
     pub(super) portable: bool,
     /// What to print as text of what the solve left (`explain`).
     pub(super) explain: Option<Explain<'a>>,
+    /// `--frame`: the frame of the places of the JSON document.
+    pub(super) framing: crate::frame::Framing,
 }
 
 /// What `explain` prints: the part or member `path` and what is inside it, in the board named
@@ -166,6 +169,15 @@ fn tell_built(b: &netsmith_pipeline::Built, run: &BuildRun, report: &mut Report)
 
 pub(super) fn run_build(run: &BuildRun) -> ExitCode {
     let json = run.format == Format::Json;
+    // The text says its places in its own frame.
+    let command = if run.write {
+        "board build"
+    } else {
+        "board check"
+    };
+    if let Err(e) = run.framing.for_text(json, command) {
+        return crate::frame::refused(&e);
+    }
     let mut report = Report::new(if run.write { "build" } else { "check" });
     // The places of its findings (the placement's boxes) are in the outline's frame.
     report.frame = Some(crate::frame::Frame::Outline.name());
@@ -538,7 +550,10 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
                 );
                 common::print_json(&document);
             }
-            _ => print!("{}", report.to_json()),
+            _ => match run.framing.report_json(&report) {
+                Ok(text) => print!("{text}"),
+                Err(e) => return crate::frame::refused(&e),
+            },
         }
     }
     code

@@ -51,9 +51,6 @@ struct Made {
 }
 
 pub fn run(args: Args) -> ExitCode {
-    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
-        return crate::frame::refused(&e);
-    }
     let made = match &args.kicad_pcb {
         Some(pcb) => drc::of_kicad_pcb(pcb).map(|checked| Made {
             board: pcb
@@ -115,7 +112,16 @@ pub fn run(args: Args) -> ExitCode {
             for note in &made.notes {
                 eprintln!("{}: warning: {note}", made.board);
             }
-            print!("{}", made.checked.report);
+            // The places of the text are in the frame asked for (`--frame`).
+            let corner = made.outline_at.as_ref().map(|p| (p.x, p.y));
+            let (_, dx, dy) = match args.framing.moved(crate::frame::Frame::BoardFile, corner) {
+                Ok(moved) => moved,
+                Err(e) => return crate::frame::refused(&e),
+            };
+            print!(
+                "{}",
+                made.checked.report.moved(netsmith_geom::Pt::new(dx, dy))
+            );
             // The nets routed long and the nets with the most vias (issue #1194): notes, which
             // do not fail the check.
             for line in made.checked.routes.lines() {

@@ -62,7 +62,7 @@ pub struct Args {
 pub fn run(args: Args) -> ExitCode {
     if let Err(e) = args
         .framing
-        .for_json(args.format == super::common::Format::Json)
+        .for_text(args.format == super::common::Format::Json, "dev board3d")
     {
         return crate::frame::refused(&e);
     }

@@ -230,6 +230,7 @@ fn run_chosen(args: &Args, format: Format) -> ExitCode {
                 quiet: args.quiet,
                 format,
                 notes: args.output.notes.into(),
+                framing: args.output.framing,
             },
         )
     })
@@ -356,6 +357,10 @@ fn run_fab(
     output: FabOutput,
 ) -> ExitCode {
     let json = output.format == Format::Json;
+    // The text says its places in its own frame.
+    if let Err(e) = output.framing.for_text(json, "board fab") {
+        return crate::frame::refused(&e);
+    }
     let mut report = Report::new("fab");
     // The places of its findings (the placement's boxes) are in the outline's frame.
     report.frame = Some(crate::frame::Frame::Outline.name());
@@ -624,7 +629,10 @@ fn run_fab(
             }
         }
         report.ok = code == ExitCode::SUCCESS;
-        print!("{}", report.to_json());
+        match output.framing.report_json(&report) {
+            Ok(text) => print!("{text}"),
+            Err(e) => return crate::frame::refused(&e),
+        }
     }
     code
 }
@@ -635,6 +643,7 @@ struct FabOutput {
     quiet: bool,
     format: Format,
     notes: NotesMode,
+    framing: crate::frame::Framing,
 }
 
 /// The lines `board fab --format json` keeps as it goes, to make findings of the warnings and notes
@@ -683,6 +692,14 @@ fn waived_finding(w: &netsmith_fabricate::fab::Waived) -> Finding {
         Some(f) => netsmith_tools::findings::of_drc_finding(f, None),
         None => Finding::plain(Severity::Error, "fab", w.message.clone()),
     };
+    // The design rules check judges in the board file's frame; the document is in the outline's.
+    if let Some(place) = &mut finding.place {
+        let (cx, cy) = crate::frame::design_corner();
+        // To a micrometre, so that a place is said as a person would write it.
+        let um = |v: f64| (v * 1e6).round() / 1e6;
+        place.x = um(place.x - cx);
+        place.y = um(place.y - cy);
+    }
     finding.severity = Severity::Error;
     finding.code = "fab".to_string();
     finding.rule = Some(w.rule.clone());
