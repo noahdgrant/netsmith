@@ -59,6 +59,11 @@ use super::{Extras, Rules};
 /// What starts the name of each rule the file holds.
 pub const PREFIX: &str = "netsmith ";
 
+/// The comment that holds the reach of `near_rule_area` (issue #1591), in mm after it: KiCad has
+/// no rule for a note, so the file says the distance in a comment, which KiCad skips and
+/// [`Extras::with_rules_file`] reads back.
+const REACH: &str = "# netsmith near_rule_area ";
+
 /// The condition that matches two surface-mount pads of different nets (KiCad's `connect` pads,
 /// an edge connector's, among them, as netsmith's `pad_to_pad` takes them).
 const SMD_PADS: &str = "A.Type == 'Pad' && B.Type == 'Pad' \
@@ -185,6 +190,14 @@ pub fn kicad_dru(project: &Rules, process: &Extras) -> String {
          # by netsmith (issue #1185). Each is named for the rule of netsmith's design rules check\n\
          # that holds it; netsmith writes this file again on every fab.\n",
     );
+    if let Some(reach) = process.rule_area_reach {
+        out.push_str(&format!(
+            "\n# How far from a rule area netsmith's check notes the parts, tracks, vias and pours near it\n\
+             # (issue #1591): a note, which KiCad has no rule for.\n\
+             {REACH}{}mm\n",
+            mm(reach)
+        ));
+    }
     for r in rules {
         if r.name == "hole_to_track" {
             out.push_str(
@@ -237,6 +250,12 @@ impl Extras {
                 _ => continue,
             };
             slot.get_or_insert(least);
+        }
+        if self.rule_area_reach.is_none() {
+            self.rule_area_reach = text.lines().find_map(|l| {
+                let n = l.trim().strip_prefix(REACH)?.trim();
+                n.strip_suffix("mm").unwrap_or(n).trim().parse::<f64>().ok()
+            });
         }
         self
     }
@@ -291,6 +310,7 @@ mod tests {
             plated_slot: Some(0.5),
             pad_ring: Some(0.18),
             text_to_mask: Some(0.15),
+            rule_area_reach: Some(3.0),
             ..Extras::default()
         }
     }
@@ -322,6 +342,7 @@ mod tests {
         assert!(!text.contains("plated_ring"), "{text}");
         assert!(!text.contains("pad_hole_to_hole"), "{text}");
         assert!(text.contains("netsmith pad_to_pad"), "{text}");
+        assert!(text.contains("\n# netsmith near_rule_area 3mm\n"), "{text}");
         let none = kicad_dru(&project(), &Extras::default());
         assert_eq!(none.lines().next(), Some("(version 1)"));
         assert!(!none.contains("(rule"), "{none}");

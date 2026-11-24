@@ -167,6 +167,8 @@ fn tell_built(b: &netsmith_pipeline::Built, run: &BuildRun, report: &mut Report)
 pub(super) fn run_build(run: &BuildRun) -> ExitCode {
     let json = run.format == Format::Json;
     let mut report = Report::new(if run.write { "build" } else { "check" });
+    // The places of its findings (the placement's boxes) are in the outline's frame.
+    report.frame = Some(crate::frame::Frame::Outline.name());
     let (target, loader, catalogs) = match target(run.file, run.strict) {
         Ok(t) => t,
         Err(code) => return code,

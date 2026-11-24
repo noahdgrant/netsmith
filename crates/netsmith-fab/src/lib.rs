@@ -1122,6 +1122,15 @@ fn notes(
             lines.push(format!("  ... and {} more", warnings.len() - 10));
         }
     }
+    // Notes (`near_rule_area`, issue #1591): what stands near a rule area, for a person to judge.
+    let notes: Vec<&DrcFinding> = report.notes().collect();
+    if !notes.is_empty() {
+        lines.push(format!("design rules notes: {}", notes.len()));
+        lines.extend(notes.iter().take(10).map(|n| format!("  {n}")));
+        if notes.len() > 10 {
+            lines.push(format!("  ... and {} more", notes.len() - 10));
+        }
+    }
     lines.push(String::new());
     lines.join("\n")
 }

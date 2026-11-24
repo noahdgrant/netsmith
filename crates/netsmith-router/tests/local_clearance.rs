@@ -181,6 +181,7 @@ fn check(board: &Board) -> DrcReport {
         neck_reach: netsmith_router::route::NECK_REACH,
         via_counts: board.via_counts(),
         via_group_gap: board.rules.group_gap(),
+        rule_area_reach: None,
         track_angle: true,
         round_track_angle: None,
         marks: None,

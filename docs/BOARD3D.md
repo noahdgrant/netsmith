@@ -46,6 +46,8 @@ A layout-file point `(x, y)` (from the outline's top-left corner, y down) is
 `(x, outline height - y)` here. A turn is the layout file's: degrees, counterclockwise seen from
 above. Each part also carries its place as the layout file writes it (`layout`), to find it there.
 
+`--frame outline` or `--frame board-file` (issue #1588) prints the report's places in plan in that frame instead, y down, with `frame` its name (`outline` or `board-file`): the holes, the cutouts, the parts' bodies, courtyards and pins, the height limits' areas, the case findings' `at` and the case solids' boxes, and with `board-file` the `layout` places and the placement's boxes too. z and a case model's `rotation` and `offset` stay in this frame. The guide's chapter on the commands has every command's frame (_The frame of the places_).
+
 A part on the top face stands from `z = 0` up to `z = height`. A part on the bottom face hangs
 from `z = -thickness` down to `z = -thickness - height`.
 

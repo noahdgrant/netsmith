@@ -113,6 +113,15 @@ interface EightLayer {
     .fiducial_round_angle ?= 90
     .fine_pitch: Length
     .fine_pitch ?= 0.4mm
+    /// How far from a rule area that forbids copper or parts (a module's antenna keep-out, a
+    /// footprint's keep-out zone, an RF keep-out of the board) the design rules check notes the
+    /// parts, tracks, vias and pours of the board near it: under it on a layer it is not on, and
+    /// beside it (`near_rule_area`, issue #1591). A note, which fails nothing: copper and parts
+    /// near an antenna can detune it, and the person decides. Not a fabricator's figure: 3 mm is
+    /// a default of this tool's, a few track pitches round the area; a board offers another
+    /// (`.process.rule_area_reach &= 5mm`), and `0mm` lists only what is under or inside it.
+    .rule_area_reach: Length
+    .rule_area_reach ?= 3mm
     /// The least copper round a via's hole, on each side.
     .min_via_ring: Length
     .min_via_ring &= 0.05mm..
@@ -342,6 +351,15 @@ interface TenLayer {
     .fiducial_round_angle ?= 90
     .fine_pitch: Length
     .fine_pitch ?= 0.4mm
+    /// How far from a rule area that forbids copper or parts (a module's antenna keep-out, a
+    /// footprint's keep-out zone, an RF keep-out of the board) the design rules check notes the
+    /// parts, tracks, vias and pours of the board near it: under it on a layer it is not on, and
+    /// beside it (`near_rule_area`, issue #1591). A note, which fails nothing: copper and parts
+    /// near an antenna can detune it, and the person decides. Not a fabricator's figure: 3 mm is
+    /// a default of this tool's, a few track pitches round the area; a board offers another
+    /// (`.process.rule_area_reach &= 5mm`), and `0mm` lists only what is under or inside it.
+    .rule_area_reach: Length
+    .rule_area_reach ?= 3mm
     /// The least copper round a via's hole, on each side.
     .min_via_ring: Length
     .min_via_ring &= 0.05mm..

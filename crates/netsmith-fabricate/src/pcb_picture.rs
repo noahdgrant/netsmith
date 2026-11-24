@@ -433,8 +433,11 @@ fn markers_of(
     let mut markers = Vec::new();
     let mut lines = Vec::new();
     for f in
+        // A note (`near_rule_area`, issue #1591) is no problem of the board: `board drc` lists it.
         checked.report.findings.iter().filter(|f| {
-            f.rule != netsmith_geom::DrcRule::UnconnectedItems && on(f.layer.as_deref())
+            f.rule != netsmith_geom::DrcRule::UnconnectedItems
+                && f.severity != netsmith_geom::DrcSeverity::Note
+                && on(f.layer.as_deref())
         })
     {
         let label = (markers.len() + 1).to_string();

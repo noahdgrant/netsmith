@@ -883,6 +883,7 @@ fn process_of(model: &Model, nets: &[String], errors: &mut Vec<String>) -> Optio
         tall_part_height: mm("tall_part_height"),
         min_test_point_tall_body: mm("min_test_point_tall_body"),
         fiducial_round_angle: number("fiducial_round_angle"),
+        rule_area_reach: mm("rule_area_reach"),
         fine_pitch: mm("fine_pitch"),
         // An upper bound, so the top of what the board left.
         via_in_pad: match find("via_in_pad") {

@@ -795,9 +795,14 @@ pub fn kicad_pro(board: &Board) -> String {
 }
 
 /// The text of the `.kicad_dru` that goes beside the board's `.kicad_pro`: the process's rules
-/// that the project file cannot hold, as KiCad custom rules (issue #1185).
+/// that the project file cannot hold, as KiCad custom rules (issue #1185), and the reach of
+/// `near_rule_area` in a comment (issue #1591).
 pub fn kicad_dru(board: &Board) -> String {
-    board.rules.kicad_dru(&board.name, &board.net_classes())
+    board.rules.kicad_dru_reaching(
+        &board.name,
+        &board.net_classes(),
+        Some(board.process.rule_area_reach),
+    )
 }
 
 /// The zone that pours a plane: the whole board inside the least space to the edge, kept

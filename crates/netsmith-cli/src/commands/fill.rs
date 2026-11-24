@@ -33,9 +33,14 @@ pub struct Args {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 pub fn run(args: Args) -> ExitCode {
+    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+        return crate::frame::refused(&e);
+    }
     let made = common::with_stage_events(|| {
         common::with_placed_board(
             args.file.as_deref(),
@@ -60,7 +65,15 @@ pub fn run(args: Args) -> ExitCode {
         Ok(report) => {
             match args.format {
                 common::Format::Json => {
-                    println!("{}", serde_json::to_string(&report).expect("plain data"))
+                    let corner = (report.outline_at.x, report.outline_at.y);
+                    if let Err(e) = args.framing.print(
+                        &report,
+                        crate::frame::Frame::BoardFile,
+                        Some(corner),
+                        false,
+                    ) {
+                        return crate::frame::refused(&e);
+                    }
                 }
                 common::Format::Text => print!("{}", report.text()),
             }

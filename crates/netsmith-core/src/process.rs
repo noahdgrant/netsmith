@@ -89,6 +89,13 @@ pub struct Process {
     /// under which a part is "ultra-fine-pitch" to the surface finish advice (the blog's "0.4mm
     /// pitch BGAs", a guideline).
     pub fiducial_round_angle: f64,
+    /// How far from a rule area that forbids copper or parts (a module's antenna keep-out) the
+    /// design rules check notes the parts, tracks, vias and pours near it, in mm
+    /// (`.process.rule_area_reach`, issue #1591; `near_rule_area`, a note). Every process offers
+    /// 3 mm, a default of this tool's and not a fabricator's figure; a design file written before
+    /// it is read with that.
+    #[serde(default = "default_rule_area_reach")]
+    pub rule_area_reach: f64,
     pub fine_pitch: f64,
     /// The largest via the fabricator fills and caps, so that it may sit in a pad. This is
     /// an upper bound: 0 where the board does not want vias in pads or the process cannot
@@ -414,4 +421,10 @@ impl Stackup {
     pub fn chosen_thickness(&self) -> Option<f64> {
         (self.thickness.0 == self.thickness.1).then_some(self.thickness.0)
     }
+}
+
+/// The reach of `near_rule_area` a design file written before issue #1591 is read with: what
+/// every process of the standard library offers (`.rule_area_reach ?= 3mm`).
+fn default_rule_area_reach() -> f64 {
+    3.0
 }

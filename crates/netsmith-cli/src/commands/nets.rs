@@ -73,9 +73,14 @@ pub struct Args {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 pub fn run(args: Args) -> ExitCode {
+    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+        return crate::frame::refused(&e);
+    }
     let route = super::pcb::route_of(args.route, args.route_timeout);
     let made = common::with_stage_events(|| {
         common::with_placed_board(
@@ -135,7 +140,14 @@ pub fn run(args: Args) -> ExitCode {
                     q["over"] = serde_json::to_value(&over).expect("plain data");
                     out["quality"] = q;
                     out["track_drops"] = serde_json::to_value(&drops).expect("plain data");
-                    println!("{}", serde_json::to_string(&out).expect("plain data"))
+                    if let Err(e) = args.framing.print(
+                        &out,
+                        crate::frame::Frame::BoardFile,
+                        Some(crate::frame::design_corner()),
+                        false,
+                    ) {
+                        return crate::frame::refused(&e);
+                    }
                 }
                 common::Format::Text => {
                     println!("{}:", table.board);
