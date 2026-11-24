@@ -212,11 +212,6 @@ fn every_json_document_with_places_says_their_frame() {
         "{}",
         scene["frame"]
     );
-    // The text of the commands that say a place follows `--frame` too (the tests below); the text
-    // of one that does not move its places yet refuses it.
-    let run = netsmith(&dir, &["layout", "fit", "D1", "--file", f, "--frame", "outline"]);
-    assert_eq!(run.status.code(), Some(2), "{run:?}");
-    assert!(String::from_utf8_lossy(&run.stderr).contains("--format json"));
 }
 
 /// A number as the text of `layout parts` and `routes show` say it: to a micrometre.
@@ -328,10 +323,6 @@ fn board_check_build_and_fab_say_one_courtyard_at_one_place_in_the_frame_asked_f
             }
         }
     }
-    // The text says its places in its own frame, and does not take the flag.
-    let run = netsmith(&dir, &["board", "check", "led.nsm", "--frame", "board-file"]);
-    assert_eq!(run.status.code(), Some(2), "{run:?}");
-    assert!(String::from_utf8_lossy(&run.stderr).contains("--format json"));
 }
 
 #[test]
@@ -371,4 +362,250 @@ fn a_finding_fab_waived_for_review_is_in_the_documents_frame() {
             "the waived finding's place",
         );
     }
+}
+
+/// The first `(x, y)` or `x,y` after `marker` in `text`.
+fn place_after(text: &str, marker: &str) -> [f64; 2] {
+    let rest = text
+        .split_once(marker)
+        .unwrap_or_else(|| panic!("no `{marker}` in\n{text}"))
+        .1;
+    let start = rest
+        .find(|c: char| c.is_ascii_digit() || c == '-')
+        .unwrap_or_else(|| panic!("no place after `{marker}` in\n{text}"));
+    let numbers: Vec<f64> = rest[start..]
+        .split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
+        .filter(|w| !w.is_empty())
+        .take(2)
+        .map(|w| w.parse().unwrap())
+        .collect();
+    [numbers[0], numbers[1]]
+}
+
+fn text_of(dir: &Path, args: &[&str]) -> String {
+    let run = netsmith(dir, args);
+    assert!(run.status.code().is_some_and(|c| c < 2), "{run:?}");
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    )
+}
+
+#[test]
+fn the_text_of_the_layout_commands_says_one_place_as_its_json_does() {
+    let (dir, pad, _) = led("frame-text-layout");
+    for (frame, by) in [("outline", 0.0), ("board-file", 20.0)] {
+        let flag = ["--frame", frame];
+        let with = |args: &[&'static str], format: &'static str| {
+            [args, &["--format", format][..], &flag[..]].concat()
+        };
+        let place = [pad[0] + by, pad[1] + by];
+
+        // `layout set`: the entry of J1, which is at the pad.
+        let set = &["layout", "set", "power_in", "--turn", "0", "--file", "led.nsm"];
+        let said = text_of(&dir, &with(set, "text"));
+        near(place_after(&said, ": at "), place, "layout set's text");
+        let doc = json(&dir, &with(set, "json"));
+        near(point(&doc["entry"]["at"]), place, "layout set's json");
+
+        // `layout summary`: the corner of the largest free rectangle of the top face.
+        let summary = &["layout", "summary", "--file", "led.nsm"];
+        let said = text_of(&dir, &with(summary, "text"));
+        let doc = json(&dir, &with(summary, "json"));
+        let corner = point(&doc["faces"][0]["largest_free"][0]["min"]);
+        // The corner is after the rectangle's size, `W x H mm at (x, y)`.
+        near(place_after(&said, "mm at "), corner, "layout summary");
+
+        // `layout fit`: where the part is now.
+        let fit = &["layout", "fit", "D1", "--file", "led.nsm"];
+        let said = text_of(&dir, &with(fit, "text"));
+        let doc = json(&dir, &with(fit, "json"));
+        near(
+            place_after(&said, "  now "),
+            point(&doc["now"]["at"]),
+            "layout fit",
+        );
+        // The command it gives to write a place is in the layout file's frame, whatever the flag.
+        if let Some(line) = said.lines().find(|l| l.contains("netsmith layout set")) {
+            let at = place_after(line, "--at ");
+            let first = &doc["poses"][0]["at"];
+            assert!(
+                (at[0] - first[0].as_f64().unwrap() + by).abs() < 1e-6,
+                "{line}\n{doc:#}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_text_of_compare_and_regenerate_says_the_places_of_the_parts_as_json_does() {
+    let (dir, pad, _) = led("frame-text-compare");
+    fs::copy(dir.join("led.pcb.toml"), dir.join("before.pcb.toml")).unwrap();
+    let run = netsmith(
+        &dir,
+        &[
+            "layout",
+            "set",
+            "power_in",
+            "--at",
+            &format!("{},{}", pad[0] + 1.0, pad[1]),
+            "--file",
+            "led.nsm",
+        ],
+    );
+    assert!(run.status.success(), "{run:?}");
+    for (frame, by) in [("outline", 0.0), ("board-file", 20.0)] {
+        let flag = ["--frame", frame];
+        let with = |args: &[&'static str], format: &'static str| {
+            [args, &["--format", format][..], &flag[..]].concat()
+        };
+        let compare = &["layout", "compare", "before.pcb.toml", "--file", "led.nsm"];
+        let said = text_of(&dir, &with(compare, "text"));
+        let doc = json(&dir, &with(compare, "json"));
+        let moved = doc["moved"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["refdes"] == "J1")
+            .unwrap_or_else(|| panic!("{doc:#}"));
+        near(point(&moved["from"]), [pad[0] + by, pad[1] + by], "compare's json from");
+        near(point(&moved["to"]), [pad[0] + 1.0 + by, pad[1] + by], "compare's json to");
+        let line = said.lines().find(|l| l.contains("moved J1")).unwrap();
+        near(place_after(line, ": "), point(&moved["from"]), "compare's text from");
+        near(place_after(line, "-> "), point(&moved["to"]), "compare's text to");
+
+        let regenerate = &["layout", "regenerate", "led", "--file", "led.nsm"];
+        let said = text_of(&dir, &with(regenerate, "text"));
+        let doc = json(&dir, &with(regenerate, "json"));
+        let region = point(&doc["region"]);
+        near(place_after(&said, " in "), region, "regenerate's region");
+        let first = &doc["parts"][0];
+        let line = said.lines().find(|l| l.contains("->")).unwrap();
+        near(
+            place_after(line, "-> "),
+            point(&first["after"]["at"]),
+            "regenerate's text and json",
+        );
+    }
+}
+
+/// The LED example with a corner and a collinear pair of GND copper, written by hand.
+fn led_with_corner(tag: &str) -> TempDir {
+    let dir = TempDir::new(tag);
+    for name in ["led.nsm", "led.lock.toml"] {
+        fs::copy(repo().join("examples").join(name), dir.join(name)).unwrap();
+    }
+    let run = netsmith(
+        &dir,
+        &[
+            "routes", "add-track", "--net", "GND", "--layer", "bottom", "--width", "0.15",
+            "--from", "1.0,0.8", "--to", "2.0,0.8", "--file", "led.nsm",
+        ],
+    );
+    assert!(run.status.success(), "{run:?}");
+    let file = dir.join("led.routes.toml");
+    let text = fs::read_to_string(&file).unwrap();
+    let first = text
+        .lines()
+        .find(|l| l.contains("from = [1.0, 0.8]"))
+        .unwrap()
+        .to_string();
+    let more = [
+        first.clone(),
+        first.replace("from = [1.0, 0.8], to = [2.0, 0.8]", "from = [2.0, 0.8], to = [3.5, 0.8]"),
+        first.replace("from = [1.0, 0.8], to = [2.0, 0.8]", "from = [3.5, 0.8], to = [3.5, 2.0]"),
+    ]
+    .join("\n");
+    fs::write(&file, text.replace(&first, &more)).unwrap();
+    dir
+}
+
+#[test]
+fn the_text_of_routes_tidy_says_the_place_of_a_change_as_its_json_does() {
+    let dir = led_with_corner("frame-text-tidy");
+    for (frame, by) in [("outline", 0.0), ("board-file", 20.0)] {
+        let args = |format: &'static str| {
+            [
+                "routes", "tidy", "--dry-run", "--file", "led.nsm", "--format", format, "--frame",
+                frame,
+            ]
+        };
+        let said = text_of(&dir, &args("text"));
+        let doc = json(&dir, &args("json"));
+        let corner = doc["changes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| (point(&c["at"])[0] - (3.5 + by)).abs() < 1e-6)
+            .unwrap_or_else(|| panic!("{doc:#}"));
+        near(point(&corner["at"]), [3.5 + by, 0.8 + by], "tidy's json");
+        let line = said.lines().find(|l| l.contains("corner:")).unwrap();
+        near(place_after(line, " at "), [3.5 + by, 0.8 + by], "tidy's text");
+    }
+}
+
+#[test]
+fn the_lines_of_the_design_rules_check_in_fab_are_moved_with_the_flag() {
+    let (dir, _, _) = led("frame-text-fab-notes");
+    // A dangling track of VCC from (5, 5) mm: `--for-review` waives it, and the notes say it
+    // as the check does, `at (x, y)` in the board file's frame.
+    let run = netsmith(
+        &dir,
+        &[
+            "routes", "add-track", "--file", "led.nsm", "--net", "VCC", "--layer", "top", "--width",
+            "0.3", "--from", "5,5", "--to", "8,5",
+        ],
+    );
+    assert!(run.status.success(), "{run:?}");
+    let out = dir.join("out");
+    let out = out.to_str().unwrap();
+    for (flag, at) in [
+        (None, "at (25.000, 25.000)"),
+        (Some("board-file"), "at (25.000, 25.000)"),
+        (Some("outline"), "at (5.000, 5.000)"),
+    ] {
+        let mut args = vec![
+            "board", "fab", "led.nsm", "--for-review", "--no-pictures", "--no-step", "--no-pdf",
+            "--out", out,
+        ];
+        if let Some(frame) = flag {
+            args.extend(["--frame", frame]);
+        }
+        let run = netsmith(&dir, &args);
+        let said = String::from_utf8_lossy(&run.stderr).into_owned();
+        let line = said
+            .lines()
+            .find(|l| l.contains("[track_dangling]"))
+            .unwrap_or_else(|| panic!("{flag:?}: {said}"));
+        assert!(line.contains(at), "{flag:?}: {line}");
+    }
+}
+
+#[test]
+fn fab_lists_the_origins_of_the_parts_in_the_frame_asked_for() {
+    let dir = TempDir::new("frame-text-origins");
+    for name in ["led.nsm", "led.lock.toml"] {
+        fs::copy(repo().join("examples").join(name), dir.join(name)).unwrap();
+    }
+    let out = dir.join("out");
+    let out = out.to_str().unwrap();
+    let mut found = Vec::new();
+    for (frame, by) in [("outline", 0.0), ("board-file", 20.0)] {
+        let args = [
+            "board", "fab", "led.nsm", "--no-glb", "--no-step", "--no-pdf", "--out", out,
+            "--frame", frame,
+        ];
+        let said = text_of(&dir, &args);
+        let line = said.lines().find(|l| l.trim_start().starts_with("J1 (`")).unwrap_or_else(|| panic!("{said}"));
+        // The offset is a distance: it does not move.
+        let dx: f64 = line.split("dx ").nth(1).unwrap().split(' ').next().unwrap().parse().unwrap();
+        found.push((place_after(line, "origin "), dx));
+        let head = said.lines().find(|l| l.contains("where each footprint's origin is")).unwrap();
+        let words = if by == 0.0 { "from the outline's top left" } else { "the board file's frame" };
+        assert!(head.contains(words), "{head}");
+    }
+    let [(a, dx_a), (b, dx_b)] = found[..] else { unreachable!() };
+    near([b[0] - a[0], b[1] - a[1]], [20.0, 20.0], "the origin moves by the corner");
+    assert_eq!(dx_a, dx_b, "the offset stays");
 }

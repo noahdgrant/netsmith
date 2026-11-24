@@ -651,7 +651,8 @@ fn write_offenders(f: &mut std::fmt::Formatter<'_>, e: &Ended) -> std::fmt::Resu
     if !e.overlapping.is_empty() {
         write!(
             f,
-            "\n  courtyards overlapping (the most overlapped first, positions from the outline's top left corner):"
+            "\n  courtyards overlapping (the most overlapped first, {}):",
+            crate::prose::POSITIONS_HEAD
         )?;
         for o in e.overlapping.iter().take(DESCRIBED) {
             write!(

@@ -105,13 +105,20 @@ pub struct KeptCopper {
 impl Proposal {
     /// The text `netsmith layout regenerate` prints.
     pub fn text(&self) -> String {
+        self.text_moved([0.0, 0.0], "")
+    }
+
+    /// [`Proposal::text`] with its places moved by `by`, mm (into another frame than the layout
+    /// file's), and the placer's sentences with them (`says` is what a text says of that frame
+    /// after `mm`).
+    pub fn text_moved(&self, by: [f64; 2], says: &str) -> String {
         let mut out = format!(
             "regenerated `{}` of {} with seed {} in {:.2},{:.2} {:.2} x {:.2} mm: {} part(s) placed again",
             self.module,
             self.board,
             self.seed,
-            self.region.x,
-            self.region.y,
+            self.region.x + by[0],
+            self.region.y + by[1],
             self.region.width,
             self.region.height,
             self.parts.len()
@@ -125,8 +132,8 @@ impl Proposal {
                 "  {} ({}): {} -> {}\n",
                 m.path,
                 m.refdes,
-                place_text(&m.was),
-                place_text(&m.after)
+                place_text(&m.was, by),
+                place_text(&m.after, by)
             ));
         }
         if !self.nets.is_empty() {
@@ -153,11 +160,12 @@ impl Proposal {
             None => {}
         }
         let c = &self.comparison;
+        let sentence = |f: &str| netsmith_pcb::prose::placer_moved(f, by, says);
         for f in &c.appeared {
-            out.push_str(&format!("finding appeared: {f}\n"));
+            out.push_str(&format!("finding appeared: {}\n", sentence(f)));
         }
         for f in &c.gone {
-            out.push_str(&format!("finding gone: {f}\n"));
+            out.push_str(&format!("finding gone: {}\n", sentence(f)));
         }
         out.push_str(&format!(
             "hpwl {:.2} -> {:.2} mm, ratsnest {:.2} -> {:.2} mm, crossings {} -> {}\n",
@@ -172,11 +180,11 @@ impl Proposal {
     }
 }
 
-fn place_text(p: &PartPlace) -> String {
+fn place_text(p: &PartPlace, by: [f64; 2]) -> String {
     format!(
         "{:.2},{:.2} {}° {}",
-        p.at[0],
-        p.at[1],
+        p.at[0] + by[0],
+        p.at[1] + by[1],
         p.rotation,
         match p.side {
             LayoutFace::Top => "top",
