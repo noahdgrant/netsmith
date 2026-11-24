@@ -1198,6 +1198,9 @@ pub fn build(spec: &Spec, cell: &CellInput, options: &Options) -> Result<PanelPa
         cell.pro,
         &panel_extras(&options.drc, spec, &g, cell.facts.bottom_assembled),
     )?;
+    let art = Artwork::parse(&pcb)?;
+    // The panel's messages and notes say their places from the panel's outline (issue #1614).
+    let outline_at = netsmith_geom::outline_corner(&art);
     let drc = if drc_report.is_clean() {
         DrcOutcome::Passed
     } else if options.allow_drc_violations {
@@ -1205,7 +1208,7 @@ pub fn build(spec: &Spec, cell: &CellInput, options: &Options) -> Result<PanelPa
     } else {
         return Err(Error::Drc {
             counts: drc_report.counts(),
-            report: drc_report
+            report: crate::said_report(&drc_report, outline_at)
                 .errors()
                 .map(ToString::to_string)
                 .collect::<Vec<_>>()
@@ -1214,7 +1217,6 @@ pub fn build(spec: &Spec, cell: &CellInput, options: &Options) -> Result<PanelPa
         });
     };
 
-    let art = Artwork::parse(&pcb)?;
     let rules = crate::plot_rules_of(cell.pro);
     let plotted = plot_layer(&art, &name, &rules)?;
     let mut files = plotted.files;
@@ -1293,7 +1295,7 @@ pub fn build(spec: &Spec, cell: &CellInput, options: &Options) -> Result<PanelPa
         &board,
         &plan,
         &placed,
-        (drc, &drc_report),
+        (drc, &drc_report, outline_at),
         // The cell's requirements on where parts go (ADR 0045) are measured on the cell's own
         // board, by its package; in the panel's frame their numbers would be shifted.
         &[],

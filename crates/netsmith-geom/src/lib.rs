@@ -49,7 +49,7 @@ pub use drc::constraints::{
     BARE_COURTYARD_MARGIN, Constraint, Constraints, Measure as ConstraintMeasure, OneLayerRule,
     Outcome as ConstraintOutcome, PAD_COURTYARD_MARGIN, PinDistanceRule,
     Relation as ConstraintRelation, RelationEnd as ConstraintRelationEnd, SideRule,
-    body_of as constraint_body_of, outcome_findings as constraint_outcome_findings,
+    body_of as constraint_body_of, outcome_findings as constraint_outcome_findings, outline_corner,
 };
 pub use drc::shape::{
     ARC_TOUCH as COPPER_ARC_TOUCH, Gap as ShapeGap, JOIN as COPPER_JOIN, Shape as DrcShape,

@@ -342,6 +342,13 @@ pub fn body_of(art: &Artwork, part: &str, back: bool) -> Option<(Bounds, String)
     ))
 }
 
+/// The outline's top left corner in the board file's frame: the corner of the box round
+/// `Edge.Cuts`, from which the outline's frame (the layout file's, the routes file's) measures
+/// its places. `None` for a board with nothing on `Edge.Cuts`.
+pub fn outline_corner(art: &Artwork) -> Option<Pt> {
+    outline_of(art).map(|b| b.min)
+}
+
 /// The box round `Edge.Cuts`: the frame the requirements are measured in.
 fn outline_of(art: &Artwork) -> Option<Bounds> {
     let mut points: Vec<Pt> = Vec::new();

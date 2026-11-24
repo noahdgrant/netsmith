@@ -605,7 +605,8 @@ pub struct Waived {
     pub message: String,
     /// The fault of the placement check, with its parts and numbers, when it is one.
     pub placement: Option<netsmith_pcb::PlacementFault>,
-    /// The finding of the design rules check, with its place, nets and parts, when it is one.
+    /// The finding of the design rules check, with its nets and parts, when it is one: its
+    /// places in the outline's frame, as the notes say them (issue #1614).
     pub drc: Option<netsmith_geom::DrcFinding>,
 }
 
@@ -2109,7 +2110,8 @@ fn fab_board(
                 draw_pictures(pkg).map_err(fail)?;
                 if pkg.for_review() {
                     let mut waived = waived;
-                    waived.extend(pkg.drc_report.errors().map(Waived::of_drc));
+                    // In the outline's frame, as the notes say them (issue #1614).
+                    waived.extend(pkg.said_drc_report().errors().map(Waived::of_drc));
                     review = Some(Box::new(Review {
                         board: label.clone(),
                         waived,
@@ -2168,7 +2170,8 @@ fn fab_board(
                 .map(|n| n.to_string_lossy().into_owned())
                 .collect();
             let mut waived = waived;
-            waived.extend(pkg.drc_report.errors().map(Waived::of_drc));
+            // In the outline's frame, as the notes say them (issue #1614).
+            waived.extend(pkg.said_drc_report().errors().map(Waived::of_drc));
             return Err(FabFailure {
                 text: fail(format!(
                     "{} finding{} waived for review: {}: files to look at are in {}: {}; no bom.csv and no cpl.csv, and `project order` refuses this package; the run still fails while a waived finding stands\n\n{}",

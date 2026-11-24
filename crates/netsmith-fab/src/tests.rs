@@ -495,14 +495,39 @@ fn the_option_waives_the_gate_and_the_notes_say_so() {
         pkg.notes
     );
     assert!(!pkg.drc_report.is_clean());
-    // Each waived error is listed under the line, so the person ordering reads it.
-    for e in pkg
+    // Each waived error is listed under the line, so the person ordering reads it, its place in
+    // the outline's frame, which the header names (issue #1614).
+    let at = pkg.outline_at.expect("the board has an outline");
+    assert!(
+        pkg.notes
+            .lines()
+            .next()
+            .unwrap()
+            .ends_with("; places in mm from the outline's top left corner, y down"),
+        "{}",
+        pkg.notes
+    );
+    let said = pkg.said_drc_report();
+    let errors = pkg
         .drc_report
         .errors()
-        .filter(|e| e.rule != DrcRule::UnconnectedItems)
-    {
-        assert!(pkg.notes.contains(&format!("  {e}")), "{e}\n{}", pkg.notes);
+        .zip(said.errors())
+        .filter(|(e, _)| e.rule != DrcRule::UnconnectedItems);
+    let mut listed = 0;
+    for (e, moved) in errors {
+        assert!((moved.at.x - (e.at.x - at.x)).abs() < 1e-9, "{e}");
+        assert!((moved.at.y - (e.at.y - at.y)).abs() < 1e-9, "{e}");
+        assert!(
+            pkg.notes.contains(&format!("  {moved}")),
+            "{moved}\n{}",
+            pkg.notes
+        );
+        if at != netsmith_geom::Pt::new(0.0, 0.0) {
+            assert!(!pkg.notes.contains(&format!("  {e}")), "{e}\n{}", pkg.notes);
+        }
+        listed += 1;
     }
+    assert!(listed >= 1);
 }
 
 #[test]

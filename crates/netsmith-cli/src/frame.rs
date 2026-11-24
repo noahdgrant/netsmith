@@ -185,6 +185,19 @@ impl Framing {
         netsmith_pcb::prose::drc_moved(text, self.board_file_move())
     }
 
+    /// `text` of `board fab`, its notes and its messages, with their places in the frame asked
+    /// for: `fab` says every place in the outline's frame (issue #1614), the placer's sentences,
+    /// the lines of the design rules check and the frame the notes' first line names.
+    pub fn fab(&self, text: &str) -> String {
+        let (by, says) = self.text_move();
+        if by == [0.0, 0.0] {
+            return text.to_string();
+        }
+        let moved =
+            netsmith_pcb::prose::drc_moved(&netsmith_pcb::prose::placer_moved(text, by, &says), by);
+        moved.replace(netsmith_fab::NOTES_FRAME, &format!("places in {says}"))
+    }
+
     /// `doc` with a `frame` key, its places in the asked frame. Its places are in `own`, with
     /// the outline's top left corner at `corner` in the board file's frame (`None` where it is
     /// not known, a KiCad board's: then only `own` may be asked for).
@@ -245,24 +258,17 @@ impl Framing {
     /// The report of `board check`, `build` and `fab` as `--format json` prints it: its places
     /// are in the outline's frame, and in the asked one with `--frame`.
     pub fn report_json(&self, report: &netsmith_tools::findings::Report) -> Result<String, String> {
-        if self.frame.is_none() {
-            return Ok(report.to_json());
-        }
+        // The document as it is (its keys in their order) in the outline's frame: its messages
+        // say their places in it too (`fab` says the design rules lines in it, issue #1614).
         if self.of(Frame::Outline) == Frame::Outline {
-            // The document as it is (its keys in their order), the board file's lines of the
-            // design rules check in its messages moved to the outline's frame.
-            let mut report = report.clone();
-            for finding in &mut report.findings {
-                finding.message = self.drc(&self.placer(&finding.message));
-            }
             return Ok(report.to_json());
         }
         let mut value = self.document(report, Frame::Outline, Some(design_corner()))?;
-        // The placer's sentences in the messages say their places in the document's frame.
+        // The sentences in the messages say their places in the document's frame.
         if let Some(findings) = value["findings"].as_array_mut() {
             for finding in findings {
                 if let Some(message) = finding["message"].as_str() {
-                    finding["message"] = Value::String(self.drc(&self.placer(message)));
+                    finding["message"] = Value::String(self.fab(message));
                 }
             }
         }
