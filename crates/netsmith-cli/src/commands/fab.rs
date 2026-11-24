@@ -692,13 +692,12 @@ fn waived_finding(w: &netsmith_fabricate::fab::Waived) -> Finding {
         Some(f) => netsmith_tools::findings::of_drc_finding(f, None),
         None => Finding::plain(Severity::Error, "fab", w.message.clone()),
     };
-    // The design rules check judges in the board file's frame; the document is in the outline's.
+    // The place is in the outline's frame, the document's (`fab` moved it, issue #1614).
     if let Some(place) = &mut finding.place {
-        let (cx, cy) = crate::frame::design_corner();
         // To a micrometre, so that a place is said as a person would write it.
         let um = |v: f64| (v * 1e6).round() / 1e6;
-        place.x = um(place.x - cx);
-        place.y = um(place.y - cy);
+        place.x = um(place.x);
+        place.y = um(place.y);
     }
     finding.severity = Severity::Error;
     finding.code = "fab".to_string();

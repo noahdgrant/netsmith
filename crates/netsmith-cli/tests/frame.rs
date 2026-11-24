@@ -372,3 +372,82 @@ fn a_finding_fab_waived_for_review_is_in_the_documents_frame() {
         );
     }
 }
+
+/// The `at (x, y)` of the line of `text` that names `rule` (`error [track_dangling] ...`).
+fn place_of_line(text: &str, rule: &str) -> [f64; 2] {
+    let line = text
+        .lines()
+        .find(|l| l.contains(&format!("[{rule}]")))
+        .unwrap_or_else(|| panic!("no [{rule}] line in:\n{text}"));
+    let (_, rest) = line.split_once(" at (").unwrap();
+    let (pair, _) = rest.split_once(')').unwrap();
+    let (x, y) = pair.split_once(", ").unwrap();
+    [x.parse().unwrap(), y.parse().unwrap()]
+}
+
+/// Whether a line of `text` that names `rule` says the place `b`, to its three decimals.
+fn says_at(text: &str, rule: &str, b: [f64; 2]) -> bool {
+    text.lines()
+        .filter(|l| l.contains(&format!("[{rule}]")))
+        .any(|l| {
+            let a = place_of_line(l, rule);
+            (a[0] - b[0]).abs() < 6e-4 && (a[1] - b[1]).abs() < 6e-4
+        })
+}
+
+/// A place a text says, to its three decimals, is `b`.
+fn near_said(a: [f64; 2], b: [f64; 2], what: &str) {
+    assert!(
+        (a[0] - b[0]).abs() < 6e-4 && (a[1] - b[1]).abs() < 6e-4,
+        "{what}: {a:?} is not {b:?}"
+    );
+}
+
+#[test]
+fn the_places_of_fab_notes_are_in_the_outlines_frame_as_its_header_says() {
+    // A track of VCC from (5, 5) to (8, 5) mm in the outline's frame (the routes file's) touches
+    // nothing: a `track_dangling` error at its start, which `--for-review` waives and
+    // `fab-notes.txt` lists (issue #1614).
+    let (dir, _, _) = led("frame-fab-notes");
+    let run = netsmith(
+        &dir,
+        &[
+            "routes", "add-track", "--file", "led.nsm", "--net", "VCC", "--layer", "top", "--width",
+            "0.3", "--from", "5,5", "--to", "8,5",
+        ],
+    );
+    assert!(run.status.success(), "{run:?}");
+    let end = [5.0, 5.0];
+    let run = netsmith(
+        &dir,
+        &[
+            "board", "fab", "led.nsm", "--for-review", "--no-pictures", "--no-step", "--no-pdf",
+            "--out", "out",
+        ],
+    );
+    assert_eq!(run.status.code(), Some(1), "{run:?}");
+    let notes = fs::read_to_string(dir.join("out/LedExample/fab-notes.txt")).unwrap();
+    let header = notes.lines().next().unwrap();
+    assert!(
+        header.ends_with("; places in mm from the outline's top left corner, y down"),
+        "{notes}"
+    );
+    near_said(place_of_line(&notes, "track_dangling"), end, "fab-notes.txt");
+    // `fab`'s own message says the same place.
+    let said = String::from_utf8_lossy(&run.stderr);
+    near_said(place_of_line(&said, "track_dangling"), end, "fab's message");
+
+    // `board drc` keeps its own frame, the board file's, and with `--frame outline` says the
+    // place the notes say.
+    let drc = netsmith(&dir, &["board", "drc", "led.nsm"]);
+    let drc = String::from_utf8_lossy(&drc.stdout);
+    let file = [end[0] + 20.0, end[1] + 20.0];
+    assert!(says_at(&drc, "track_dangling", file), "board drc:\n{drc}");
+    assert!(!says_at(&drc, "track_dangling", end), "board drc:\n{drc}");
+    let drc = netsmith(&dir, &["board", "drc", "led.nsm", "--frame", "outline"]);
+    let drc = String::from_utf8_lossy(&drc.stdout);
+    assert!(
+        says_at(&drc, "track_dangling", end),
+        "board drc --frame outline:\n{drc}"
+    );
+}

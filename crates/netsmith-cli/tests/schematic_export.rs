@@ -331,7 +331,7 @@ fn a_revision_in_the_manifest_is_in_the_title_block_the_fab_notes_and_the_order(
     assert!(texts.iter().any(|t| t.starts_with("Drawn by netsmith ")));
     assert_eq!(
         first_line(dir.join("fab-b/Lonely/fab-notes.txt")),
-        "fab-notes for Lonely, revision B"
+        "fab-notes for Lonely, revision B; places in mm from the outline's top left corner, y down"
     );
     for kept in ["bom.csv", "cpl.csv", "Lonely-gerbers.zip"] {
         assert!(dir.join("fab-b/Lonely").join(kept).is_file(), "{kept}");
@@ -352,7 +352,7 @@ fn a_revision_in_the_manifest_is_in_the_title_block_the_fab_notes_and_the_order(
         .into_iter()
         .find(|f| f.ends_with("fab-notes.txt"))
         .expect("the order's package has notes");
-    assert_eq!(first_line(notes), "fab-notes for Lonely, revision B");
+    assert_eq!(first_line(notes), "fab-notes for Lonely, revision B; places in mm from the outline's top left corner, y down");
 
     // Without one: no `Rev`, and the first lines are as they were.
     manifest("");
@@ -361,7 +361,7 @@ fn a_revision_in_the_manifest_is_in_the_title_block_the_fab_notes_and_the_order(
     assert!(texts.iter().all(|t| !t.starts_with("Rev ")), "{texts:?}");
     assert_eq!(
         first_line(dir.join("fab-none/Lonely/fab-notes.txt")),
-        "fab-notes for Lonely"
+        "fab-notes for Lonely; places in mm from the outline's top left corner, y down"
     );
     ok(&netsmith_in(&dir, &["project", "order", "one", "--out", "order-none"]));
     assert!(
