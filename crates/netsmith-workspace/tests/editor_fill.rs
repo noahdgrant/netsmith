@@ -90,3 +90,54 @@ fn the_fill_of_the_placed_board_names_the_pads_the_check_finds_starved() {
     assert_eq!(starved, found, "{fill:?}");
     assert_eq!(editor.pcb_fill("Nope").unwrap_err().status, 404);
 }
+
+/// A buck converter on a two-layer board poured with ground on both faces: the IC's one ground
+/// pad hangs on a thermal relief of the top pour.
+#[test]
+fn the_fill_warns_of_a_switching_regulators_ground_pad_on_a_relief() {
+    let root = TempDir::new("editor-fill-regulator");
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(root.join("netsmith.toml"), "[project]\nname = \"fill\"\n").unwrap();
+    fs::write(
+        root.join("src/main.nsm"),
+        include_str!("../../../scripts/editor-verify-js/fixtures/buck_pours.nsm"),
+    )
+    .unwrap();
+    let editor = Workspace::open(Target::resolve_from(&root, None).unwrap())
+        .unwrap_or_else(|e| panic!("{e}"));
+
+    let fill = editor.pcb_fill("BuckPours").unwrap();
+    let [ground] = fill.regulator_grounds.as_slice() else {
+        panic!("one ground pad of the regulator is on a relief: {fill:?}");
+    };
+    assert_eq!(
+        (
+            ground.path.as_str(),
+            ground.layer.as_str(),
+            ground.net.as_str(),
+            ground.pad.as_str(),
+            ground.join.as_str(),
+        ),
+        ("reg.ic", "top", "GND", "2", "thermal")
+    );
+    assert_eq!(ground.stated_by, None);
+    // It is the pad of that part in the top pour, with the spokes the pour's list says.
+    let pad = fill
+        .fills
+        .iter()
+        .filter(|f| f.layer == ground.layer && f.net == ground.net)
+        .flat_map(|f| &f.pads)
+        .find(|p| p.part == ground.part && p.pad == ground.pad)
+        .unwrap();
+    assert_eq!(
+        (ground.spokes, ground.joined_spokes, ground.at, ground.starved),
+        (pad.spokes, pad.joined_spokes, pad.at, pad.starved)
+    );
+    // The page reads it by its camelCase names.
+    let json = serde_json::to_value(&fill).unwrap();
+    assert_eq!(
+        json["regulatorGrounds"][0]["joinedSpokes"].as_u64(),
+        pad.joined_spokes.map(u64::from),
+        "{json}"
+    );
+}
