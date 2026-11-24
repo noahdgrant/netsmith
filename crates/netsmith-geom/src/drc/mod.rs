@@ -216,6 +216,7 @@ mod waivers;
 use crate::artwork::Artwork;
 use crate::geom::Pt;
 pub use board_rules::{BoardRules, RuleArea};
+pub use connect::{copper_joins, end_joins, pad_copper};
 pub use model::outline_shapes;
 pub use room::Room;
 pub use rules::matches_pattern;

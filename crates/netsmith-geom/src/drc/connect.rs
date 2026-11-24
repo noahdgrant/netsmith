@@ -77,14 +77,31 @@ fn arc_of<'a>(m: &'a Model<'_>, c: &Copper) -> Option<(&'a Arc, f64)> {
     }
 }
 
+/// Whether the round end of a track at `end`, of half width `half`, is joined to copper made of
+/// `shapes` (a pad's, a via's, a straight track's): it runs into them by more than [`JOIN`]. The
+/// rule the check joins a track's end by, and the one `board nets` traces a net's length by
+/// (issue #1582), so the two never disagree on what a track's end reaches.
+pub fn end_joins(end: Pt, half: f64, shapes: &[Shape]) -> bool {
+    let at = Shape::disc(end, half);
+    shapes.iter().any(|s| joined(s, &at))
+}
+
+/// Whether two pieces of copper, each made of its shapes, are joined: some shape of one runs
+/// into some shape of the other by more than [`JOIN`] (two pads that overlap, a via in a pad).
+pub fn copper_joins(a: &[Shape], b: &[Shape]) -> bool {
+    a.iter().any(|sa| b.iter().any(|sb| joined(sa, sb)))
+}
+
+/// The copper of a pad, as the check joins it: its outline's shapes.
+pub fn pad_copper(pad: &crate::artwork::Pad) -> Vec<Shape> {
+    super::model::outline_shapes(&crate::pads::outline(pad))
+}
+
 /// Whether the round end of a track at `end`, of half width `h`, is joined to the item `o`.
 fn end_on(m: &Model<'_>, o: &Copper, end: Pt, h: f64) -> bool {
     match arc_of(m, o) {
         Some((arc, r)) => arc.distance_to(end) <= h + r + ARC_TOUCH,
-        None => {
-            let at = Shape::disc(end, h);
-            o.shapes.iter().any(|s| joined(s, &at))
-        }
+        None => end_joins(end, h, &o.shapes),
     }
 }
 
@@ -93,7 +110,7 @@ fn touches(m: &Model<'_>, a: &Copper, b: &Copper) -> bool {
         a.shapes.iter().any(|sa| {
             b.shapes.iter().any(|sb| {
                 if depth <= JOIN {
-                    return joined(sa, sb);
+                    return copper_joins(std::slice::from_ref(sa), std::slice::from_ref(sb));
                 }
                 let g = gap(sa, sb);
                 g.d == 0.0 && g.depth > depth
