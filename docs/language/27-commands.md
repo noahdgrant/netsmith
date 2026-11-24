@@ -38,8 +38,8 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith board check` | `netsmith check` | `--strict`, `--format`, `--notes` |
 | `netsmith board build` | `netsmith build` | `--out`, `--strict`, `--locked`, `--emit-design`, `--emit-solved`, `--portable`, `--format`, `--notes` |
 | `netsmith board fab` | `netsmith fab` | `--out`, `--route-timeout`, `--rip-rounds`, `--length-weight`, `--via-weight`, `--layer-change-weight`, `--allow-drc-violations`, `--for-review`, `--no-pictures`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--pins`, `--no-glb`, `--no-step`, `--no-pdf`, `--save-placed`, `--reuse-routes`, `--portable`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--progress`, `--to-editor`, `--format`, `--notes` |
-| `netsmith board drc` | new | `--board`, `--kicad-pcb`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
-| `netsmith board rules` | new (#1513) | `--board`, `--kicad-pcb`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
+| `netsmith board drc` | new | `--board`, `--kicad-pcb`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
+| `netsmith board rules` | new (#1513) | `--board`, `--kicad-pcb`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
 | `netsmith board explain` | `netsmith explain` | `--board`, `--all-rows`, `--format` |
 | `netsmith board compare` | `netsmith compare` | `--ref`, `--against-ref`, `--board`, `--map`, `--by-refdes`, `--ignore-unconnected`, `--loose-values`, `--format` |
 | `netsmith board pins show` | new | `--file`, `--board`, `--format` |
@@ -54,31 +54,31 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith board system` | new | `--name`, `--format` |
 | `netsmith board panel` | new | `--name`, `--format` |
 | `netsmith board copper` | new | `--board`, `--format` |
-| `netsmith board fill` | new (#1187) | `--board`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
-| `netsmith board nets` | new (#1223) | `--board`, `--lengths`, `--route`, `--route-timeout`, `--gate`, `--max-crossings`, `--max-duplicates`, `--max-unneeded`, `--max-short`, `--max-via-pairs`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
-| `netsmith layout show` | the same | `--file` (was `--into`), `--board`, `--format` |
-| `netsmith layout set` | the same | `--file` (was `--into`), `--board`, `--at`, `--turn`, `--side`, `--lock`, `--unlock`, `--designator`, `--format` |
-| `netsmith layout check` | the same | `--file` (was `--into`), `--board`, `--strict`, `--format` |
-| `netsmith layout summary` | the same | `--file` (was `--into`), `--board`, `--near`, `--within`, `--between`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
-| `netsmith layout compare` | the same | `--file` (was `--into`), `--board`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
-| `netsmith layout regenerate` | the same | `--file` (was `--into`), `--board`, `--seed`, `--margin`, `--write`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
-| `netsmith layout capture` | the same | `--file` (was `--into`), `--board`, `--dry-run`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
-| `netsmith layout fit` | the same | `--file` (was `--into`), `--board`, `--near`, `--step`, `--side`, `--as-laid-out`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--progress`, `--to-editor`, `--format` |
-| `netsmith layout parts` | the same | `--file` (was `--into`), `--board`, `--as-laid-out`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
-| `netsmith layout export` | the same | `--file` (was `--into`), `--board`, `--kicad-pcb` (was `--out`), `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
-| `netsmith layout import` | the same | `--file` (was `--into`), `--board`, `--lock`, `--dry-run`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format` |
-| `netsmith routes import` | the same | `--file` (was `--into`), `--board`, `--parts`, `--no-places`, `--unlocked`, `--format` |
-| `netsmith routes show` | the same | `--file` (was `--into`), `--board`, `--format` |
-| `netsmith routes add` | new (#1472) | `--file`, `--board`, `--stop-on-refusal`, `--dry-run`, `--format` |
+| `netsmith board fill` | new (#1187) | `--board`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
+| `netsmith board nets` | new (#1223) | `--board`, `--lengths`, `--route`, `--route-timeout`, `--gate`, `--max-crossings`, `--max-duplicates`, `--max-unneeded`, `--max-short`, `--max-via-pairs`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
+| `netsmith layout show` | the same | `--file` (was `--into`), `--board`, `--format`, `--frame` |
+| `netsmith layout set` | the same | `--file` (was `--into`), `--board`, `--at`, `--turn`, `--side`, `--lock`, `--unlock`, `--designator`, `--format`, `--frame` |
+| `netsmith layout check` | the same | `--file` (was `--into`), `--board`, `--strict`, `--format`, `--frame` |
+| `netsmith layout summary` | the same | `--file` (was `--into`), `--board`, `--near`, `--within`, `--between`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
+| `netsmith layout compare` | the same | `--file` (was `--into`), `--board`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
+| `netsmith layout regenerate` | the same | `--file` (was `--into`), `--board`, `--seed`, `--margin`, `--write`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
+| `netsmith layout capture` | the same | `--file` (was `--into`), `--board`, `--dry-run`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
+| `netsmith layout fit` | the same | `--file` (was `--into`), `--board`, `--near`, `--step`, `--side`, `--as-laid-out`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--progress`, `--to-editor`, `--format`, `--frame` |
+| `netsmith layout parts` | the same | `--file` (was `--into`), `--board`, `--as-laid-out`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
+| `netsmith layout export` | the same | `--file` (was `--into`), `--board`, `--kicad-pcb` (was `--out`), `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
+| `netsmith layout import` | the same | `--file` (was `--into`), `--board`, `--lock`, `--dry-run`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
+| `netsmith routes import` | the same | `--file` (was `--into`), `--board`, `--parts`, `--no-places`, `--unlocked`, `--format`, `--frame` |
+| `netsmith routes show` | the same | `--file` (was `--into`), `--board`, `--format`, `--frame` |
+| `netsmith routes add` | new (#1472) | `--file`, `--board`, `--stop-on-refusal`, `--dry-run`, `--format`, `--frame` |
 | `netsmith routes add-track` | the same | `--file` (was `--into`), `--board`, `--net`, `--layer`, `--width`, `--from`, `--to`, `--mid`, `--lock` |
 | `netsmith routes add-via` | the same | `--file` (was `--into`), `--board`, `--net`, `--at`, `--count`, `--pitch`, `--diameter`, `--drill`, `--layers`, `--lock` |
 | `netsmith routes add-zone` | the same | `--file` (was `--into`), `--board`, `--net`, `--layer`, `--outline`, `--rect`, `--board-outline`, `--clearance`, `--min-width`, `--thermal-gap`, `--spoke-width`, `--priority`, `--pads`, `--lock` |
-| `netsmith routes route` | new | `--file`, `--board`, `--rip`, `--rip-depth`, `--tries`, `--corner`, `--length-weight`, `--via-weight`, `--layer-change-weight`, `--reroute`, `--dry-run`, `--format` |
-| `netsmith routes join-pad` | new (#1293) | `--file`, `--board`, `--dry-run`, `--format` |
+| `netsmith routes route` | new | `--file`, `--board`, `--rip`, `--rip-depth`, `--tries`, `--corner`, `--length-weight`, `--via-weight`, `--layer-change-weight`, `--reroute`, `--dry-run`, `--format`, `--frame` |
+| `netsmith routes join-pad` | new (#1293) | `--file`, `--board`, `--dry-run`, `--format`, `--frame` |
 | `netsmith routes delete` | the same | `--file` (was `--into`), `--board`, `--net`, `--track`, `--via`, `--zone` |
 | `netsmith routes lock` | the same | `--file` (was `--into`), `--board`, `--net`, `--track`, `--via`, `--zone` |
 | `netsmith routes unlock` | the same | `--file` (was `--into`), `--board`, `--net`, `--track`, `--via`, `--zone` |
-| `netsmith routes tidy` | new | `--file`, `--board`, `--dry-run`, `--reuse-routes`, `--widen`, `--format`, `--progress`, `--to-editor` |
+| `netsmith routes tidy` | new | `--file`, `--board`, `--dry-run`, `--reuse-routes`, `--widen`, `--format`, `--progress`, `--to-editor`, `--frame` |
 | `netsmith schematic show` | new (#1093) | `--file`, `--board`, `--format` |
 | `netsmith schematic set` | new (#1093) | `--file`, `--board`, `--by`, `--pin`, `--rotate`, `--mirror`, `--no-mirror`, `--at`, `--clear`, `--format` |
 | `netsmith schematic check` | new (#1093) | `--file`, `--board`, `--format` |
@@ -104,7 +104,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith import case model` | `netsmith case import` | `--rx`, `--ry`, `--rz`, `--x`, `--y`, `--z`, `--at`, `--holes-at`, `--limits`, `--thickness`, `--limit-step`, `--board`, `--write` |
 | `netsmith dev route` | `netsmith route` | `--out`, `--route-timeout`, `--rip-rounds`, `--margin`, `--turn`, `--tries`, `--stages`, `--plan`, `--classes`, `--arcs`, `--length-weight`, `--via-weight`, `--layer-change-weight`, `--format` |
 | `netsmith dev parity` | `netsmith parity` | `--table`, `--parts`, `--svg`, `--format` |
-| `netsmith dev board3d` | `netsmith board3d` | `--board`, `--format` (was `--json`), `--glb`, `--step`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--progress`, `--to-editor` |
+| `netsmith dev board3d` | `netsmith board3d` | `--board`, `--format` (was `--json`), `--glb`, `--step`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--progress`, `--to-editor`, `--frame` |
 | `netsmith mcp` | new | `--project`, `--editor` |
 
 `netsmith layout check` (issue 1309) measures the parts the layout file places against each other, one list of findings (courtyards, keepouts, cutouts, the edge: `placement`), and `netsmith board fab` runs the same check before the placer starts. `layout check`, `board check`, `board build` and `board fab` also say, before any placing, each part the placer places that no free rectangle among the locked and pinned parts holds (issue 1283: `no_room`, naming the part and the largest free rectangle of each face), a warning that `--strict` makes an error, so that `fab` stops at it instead of spending its placing budget. A part nearer a part with a `soft margin` (issue 1310, `soft margin 3mm round .u1` in the physical file) than the margin asks is a warning too, `soft_margin` in `layout check` among the parts the file places, and `fab` says it where the parts are placed, an error with `--strict`.
@@ -112,6 +112,22 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 `netsmith layout parts --format json` gives each pad's real shape (issue 1516): `shape` is `rect`, `round_rect`, `oval`, `circle` or `custom`, `bounds` is the box of its whole copper on the board, and a custom pad (a corner pad, a polygon pad) also has `polygons`, its copper on the board as pieces with an `outer` ring and `holes` of `[x, y]` points, with the part's turn and face applied; its `width` and `height` are its anchor's size only. The guide's "Each part's geometry, as data" has the fields.
 
 `netsmith layout parts --as-laid-out` (issue 1308) answers for the parts that have a place: the board is made as the layout file has it, a part with no entry in the layout file and no requirement that pins it is not on it, and the document lists it as having none (`no_entry`, a `refdes` and a `path` for each; a line of text for each) instead of refusing the board, also when the part (or a module with one in it) is what a PATH names. The exit code is that of a placed board: 0 when the data is printed. A script that must know whether every part has a place reads `no_entry` (or runs `netsmith layout check`, whose notes say the same). Only an outline whose size is not stated exactly is refused, as the placing alone gives it. `layout fit --as-laid-out` still needs every part to have a place, since the part it fits is tried against all the others.
+
+### The frame of the places
+
+A board's places are in mm with y down, in one of two frames (issue #1588): the outline's, from the outline's top left corner, as the layout file and the routes file write their places, and the board file's, KiCad's sheet, on which netsmith puts the outline's top left corner at (20, 20) mm. A place in the board file's frame less (20, 20) is the place in the outline's. Each command that prints places as JSON keeps the frame it has always printed in, and its document's `frame` key names it (`outline` or `board-file`); `--frame outline` or `--frame board-file` asks for the other, and then every place of the document is in that frame, also `outline_at`, the outline's corner, which is `(0, 0)` in the outline's frame. What is in a part's own frame (a pad's `local`, `local_courtyards` of `layout parts`) stays as it is.
+
+| Frame of its own | Commands |
+|---|---|
+| The board file's | `board nets`, `board drc`, `board fill`, `board rules` |
+| The outline's | `layout show`, `set`, `check`, `summary`, `compare`, `regenerate`, `capture`, `fit`, `parts`, `export`, `import`; `routes import`, `show`, `add`, `route`, `join-pad`, `tidy`; `board check`, `board build`, `board fab` (the boxes of the placement in their findings) |
+| The 3D scene's | `dev board3d` |
+
+The four commands of the board file's frame are the odd ones out: every file a person edits, the 2D pictures and the Gerbers are in the outline's frame. They keep it as their default, so that no document a script reads changes, and a script that joins the places of several commands passes `--frame outline` to each.
+
+`dev board3d` prints in its scene's frame (docs/BOARD3D.md): y up, from the outline's bottom left corner, its `frame` key a sentence that says so. With `--frame`, its places in plan (the holes, the cutouts, the parts' bodies, courtyards and pins, the height limits' areas, the case findings' `at`, the case solids' boxes, and each part's `layout` place) are put in the frame asked for, y down, and `frame` is its name; z, and a case model's `rotation` and `offset` (a motion), stay the scene's. A system's scene (`--board System`) takes no `--frame`.
+
+`--frame` is only for `--format json`: with text it is an error (exit 2), and the text says the frame of its places. `board drc --kicad-pcb` and `board rules --kicad-pcb` know no outline corner, so they take only `--frame board-file`. In `board fab --format json`, the `place` of a finding of the design rules check that `--for-review` waived is in the board file's frame, as `board drc` has it.
 
 ### The MCP server
 

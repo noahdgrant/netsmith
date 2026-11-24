@@ -357,6 +357,8 @@ fn run_fab(
 ) -> ExitCode {
     let json = output.format == Format::Json;
     let mut report = Report::new("fab");
+    // The places of its findings (the placement's boxes) are in the outline's frame.
+    report.frame = Some(crate::frame::Frame::Outline.name());
     let (target, loader, mut catalogs) = match target_offline(file, strict, offline) {
         Ok(t) => t,
         Err(code) => return code,
