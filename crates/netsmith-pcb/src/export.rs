@@ -796,12 +796,18 @@ pub fn kicad_pro(board: &Board) -> String {
 
 /// The text of the `.kicad_dru` that goes beside the board's `.kicad_pro`: the process's rules
 /// that the project file cannot hold, as KiCad custom rules (issue #1185), and the reach of
-/// `near_rule_area` in a comment (issue #1591).
+/// `near_rule_area` in a comment (issue #1591), and how near a pad a via's hole and ring come
+/// before the check notes them (issue #1579).
 pub fn kicad_dru(board: &Board) -> String {
-    board.rules.kicad_dru_reaching(
+    board.rules.kicad_dru_noting(
         &board.name,
         &board.net_classes(),
-        Some(board.process.rule_area_reach),
+        &netsmith_geom::DrcExtras {
+            rule_area_reach: Some(board.process.rule_area_reach),
+            via_hole_pad_reach: Some(board.process.hole_pad_reach()),
+            via_ring_pad_reach: Some(board.process.ring_pad_reach()),
+            ..netsmith_geom::DrcExtras::default()
+        },
     )
 }
 

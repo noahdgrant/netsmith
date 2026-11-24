@@ -393,8 +393,9 @@ pub struct BoardFacts {
     /// cost is accepted ([`refuse_vias_in_pads`]).
     #[serde(default)]
     pub vias_in_pads: ViasInPads,
-    /// The drilled vias whose hole touches a pad's edge, their centre outside it (issue #1578);
-    /// for a panel, those of all its boards. Said for a person to decide; it stops nothing.
+    /// The drilled vias whose hole touches a pad's edge or comes within the process's
+    /// `.via_hole_pad_reach` of a pad of any net and layer (`reach`), their centre outside it
+    /// (issues #1578 and #1579); for a panel, those of all its boards. Said for a person to decide; it stops nothing.
     #[serde(default)]
     pub vias_touching_pads: ViasInPads,
     /// The parts the owner buys, by supply channel (ADR 0143): the consigned and hand-soldered
@@ -1609,6 +1610,7 @@ mod tests {
             count,
             parts: parts.iter().map(ToString::to_string).collect(),
             pads: parts.iter().map(|p| format!("{p}.1")).collect(),
+            reach: 0.0,
         };
         f
     }
@@ -1662,6 +1664,7 @@ mod tests {
             count: 2,
             parts: vec!["U1".into()],
             pads: vec!["U1.5".into(), "U1.6".into()],
+            reach: 0.0,
         };
         let boards = [("Unit", &board)];
         assert_eq!(refuse_vias_in_pads(&order(DEVKIT), &boards), Ok(()));
@@ -1680,6 +1683,17 @@ mod tests {
         old.as_object_mut().unwrap().remove("vias_touching_pads");
         let back: BoardFacts = serde_json::from_value(old).unwrap();
         assert_eq!(back.vias_touching_pads, ViasInPads::default());
+        // Issue #1579: with the process's reach, the line says how near the holes come.
+        board.vias_touching_pads.reach = 0.1;
+        let text = summary_text("devkit", &[(pick("Unit", 1), &board, "")], &bom);
+        assert!(
+            text.contains(
+                "    2 vias whose hole touches or comes within 0.1 mm of a pad's edge: U1 (on each board; see fab-notes.txt)\n"
+            ),
+            "{text}"
+        );
+        let json = serde_json::to_value(&board).unwrap();
+        assert_eq!(json["vias_touching_pads"]["reach"], 0.1);
     }
 
     #[test]

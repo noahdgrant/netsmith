@@ -3784,6 +3784,8 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
         track_angle: true,
         round_track_angle: board.process.min_round_track_angle,
         rule_area_reach: Some(board.process.rule_area_reach),
+        via_hole_pad_reach: Some(board.process.hole_pad_reach()),
+        via_ring_pad_reach: Some(board.process.ring_pad_reach()),
         marks: Some(marks_of(board)),
         stackup: Some(netsmith_geom::DrcStackup {
             layers: board.process.stackup.layers as usize,
@@ -4534,7 +4536,7 @@ mod tests {
 
     /// The fields of a process that are not a rule the router and the design rules check keep,
     /// each with the reason (issue #431).
-    const NOT_A_COPPER_RULE: [(&str, &str); 42] = [
+    const NOT_A_COPPER_RULE: [(&str, &str); 44] = [
         (
             "finish",
             "the surface finish, a word for the notes and the order",
@@ -4666,6 +4668,14 @@ mod tests {
         (
             "rule_area_reach",
             "how far from a rule area the check notes what stands near it (`near_rule_area`, a note), judged on the routed board: the router draws none of it; `the_marks_rules_a_process_states_reach_the_check` proves the check keeps it",
+        ),
+        (
+            "via_hole_pad_reach",
+            "how near a via's hole may come to a pad before the check notes it (`via_hole_near_pad`, a note), unstated by every process (0.1 mm then) and judged on the routed board: the router is not held to it (issue #1579); `a_via_pad_reach_a_board_states_reaches_the_check` proves the check keeps it",
+        ),
+        (
+            "via_ring_pad_reach",
+            "how near a via's ring may come to a pad before the check notes it (`via_ring_near_pad`, a note), unstated by every process (0 mm then) and judged on the routed board: the router is not held to it (issue #1579); `a_via_pad_reach_a_board_states_reaches_the_check` proves the check keeps it",
         ),
     ];
 
@@ -4907,6 +4917,29 @@ mod tests {
         let stated = process("TwoLayer", &[".switch_node_keepout &= 2mm".to_string()]);
         assert_eq!(stated.switch_node_keepout, Some(2.0));
         assert_eq!(crate::power_stage::keepout(&stated), 2.0);
+    }
+
+    /// `.process.via_hole_pad_reach` and `.process.via_ring_pad_reach` (issue #1579) are stated
+    /// by no process, 0.1 mm and 0 mm then; a board that states them changes how near a pad the
+    /// check notes a via's hole and ring.
+    #[test]
+    fn a_via_pad_reach_a_board_states_reaches_the_check() {
+        let p = process("TwoLayer", &[]);
+        assert_eq!((p.via_hole_pad_reach, p.via_ring_pad_reach), (None, None));
+        assert_eq!((p.hole_pad_reach(), p.ring_pad_reach()), (0.1, 0.0));
+        let stated = process(
+            "TwoLayer",
+            &[
+                ".via_hole_pad_reach &= 0.25mm".to_string(),
+                ".via_ring_pad_reach &= 0.05mm".to_string(),
+            ],
+        );
+        assert_eq!(stated.via_hole_pad_reach, Some(0.25));
+        assert_eq!(stated.via_ring_pad_reach, Some(0.05));
+        assert_eq!(
+            (stated.hole_pad_reach(), stated.ring_pad_reach()),
+            (0.25, 0.05)
+        );
     }
 
     /// Every rule a process states reaches both the router and the design rules check: a
