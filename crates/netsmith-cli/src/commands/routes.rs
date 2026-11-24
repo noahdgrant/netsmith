@@ -119,6 +119,8 @@ pub struct TidyArgs {
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
     #[command(flatten)]
+    pub framing: crate::frame::Framing,
+    #[command(flatten)]
     pub watching: common::Watching,
 }
 
@@ -142,6 +144,8 @@ pub struct ImportArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -160,6 +164,8 @@ pub struct AddArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -169,6 +175,8 @@ pub struct ShowArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -217,6 +225,8 @@ pub struct RouteArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 /// How tracks turn (`--corner`, issue #1508): the variants of `std::sources::TrackCorner`.
@@ -248,6 +258,8 @@ pub struct JoinPadArgs {
     /// Text for a person, or one JSON document on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -514,6 +526,9 @@ pub fn run(args: Args) -> ExitCode {
 /// `routes tidy` (issue #1192): `netsmith_fabricate::routes_tidy::tidy_files` of the target's
 /// board; exit 0 when the pass ran, 2 when it could not.
 fn tidy(args: &TidyArgs) -> ExitCode {
+    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+        return crate::frame::refused(&e);
+    }
     // As `fab`: with `--format json` the progress is printed only when it is asked for as JSON
     // (issue #1225).
     args.watching.tell_progress(
@@ -549,10 +564,16 @@ fn tidy(args: &TidyArgs) -> ExitCode {
     match tidied {
         Ok(tidied) => {
             match args.format {
-                common::Format::Json => println!(
-                    "{}",
-                    serde_json::to_string_pretty(&tidied).expect("plain data")
-                ),
+                common::Format::Json => {
+                    if let Err(e) = args.framing.print(
+                        &tidied,
+                        crate::frame::Frame::Outline,
+                        Some(crate::frame::design_corner()),
+                        true,
+                    ) {
+                        return crate::frame::refused(&e);
+                    }
+                }
                 common::Format::Text => print!("{}", tidied.text()),
             }
             ExitCode::SUCCESS
@@ -631,16 +652,25 @@ fn with_board<T>(
 }
 
 fn show(args: &ShowArgs) -> ExitCode {
+    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+        return crate::frame::refused(&e);
+    }
     let shown = with_board(&args.target, |layout, board| {
         lib::show(board, &lib::load(&routes_file(layout))?)
     });
     match shown {
         Ok(shown) => {
             match args.format {
-                common::Format::Json => println!(
-                    "{}",
-                    serde_json::to_string_pretty(&shown).expect("plain data")
-                ),
+                common::Format::Json => {
+                    if let Err(e) = args.framing.print(
+                        &shown,
+                        crate::frame::Frame::Outline,
+                        Some(crate::frame::design_corner()),
+                        true,
+                    ) {
+                        return crate::frame::refused(&e);
+                    }
+                }
                 common::Format::Text => print!("{}", shown.text()),
             }
             ExitCode::SUCCESS
@@ -690,6 +720,9 @@ fn edit_all(target: &Target, changes: impl Fn(&Board) -> Vec<lib::Edit>) -> Exit
 /// `routes add SHAPES` (issue #1472, `netsmith_fabricate::routes::batch`): exit 0 when every
 /// shape was made, 1 when one was refused, 2 when it could not run.
 fn add(args: &AddArgs) -> ExitCode {
+    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+        return crate::frame::refused(&e);
+    }
     use netsmith_fabricate::routes::batch;
     let text = if args.shapes == "-" {
         let mut text = String::new();
@@ -744,10 +777,14 @@ fn add(args: &AddArgs) -> ExitCode {
             doc["written"] = written.into();
             doc["dry_run"] = args.dry_run.into();
             doc["file"] = file.display().to_string().into();
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&doc).expect("plain data")
-            );
+            if let Err(e) = args.framing.print(
+                &doc,
+                crate::frame::Frame::Outline,
+                Some(crate::frame::design_corner()),
+                true,
+            ) {
+                return crate::frame::refused(&e);
+            }
         }
         common::Format::Text => {
             print!("{}", added.text());
@@ -769,6 +806,9 @@ fn add(args: &AddArgs) -> ExitCode {
 /// (or would be, with `--dry-run`) or joined already, 1 when it is refused, 2 when it could not
 /// be tried.
 fn route(args: &RouteArgs) -> ExitCode {
+    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+        return crate::frame::refused(&e);
+    }
     use netsmith_fabricate::route_net;
     // The weights of the router's quality objective: the flags, else the project's keys.
     let project = netsmith_fabricate::project::Target::resolve(args.target.file.as_deref())
@@ -830,10 +870,14 @@ fn route(args: &RouteArgs) -> ExitCode {
             doc["dry_run"] = args.dry_run.into();
             doc["written"] = written.into();
             doc["file"] = file.display().to_string().into();
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&doc).expect("plain data")
-            );
+            if let Err(e) = args.framing.print(
+                &doc,
+                crate::frame::Frame::Outline,
+                Some(crate::frame::design_corner()),
+                true,
+            ) {
+                return crate::frame::refused(&e);
+            }
         }
         common::Format::Text => {
             print!("{}", routed.text());
@@ -859,6 +903,9 @@ fn route(args: &RouteArgs) -> ExitCode {
 /// (or would be, with `--dry-run`) or was joined already, 1 when it is refused, 2 when it could
 /// not be tried.
 fn join_pad(args: &JoinPadArgs) -> ExitCode {
+    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+        return crate::frame::refused(&e);
+    }
     use netsmith_fabricate::join_pad;
     let done = with_board(&args.target, |layout, board| {
         let file = routes_file(layout);
@@ -891,10 +938,14 @@ fn join_pad(args: &JoinPadArgs) -> ExitCode {
             doc["dry_run"] = args.dry_run.into();
             doc["written"] = written.into();
             doc["file"] = file.display().to_string().into();
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&doc).expect("plain data")
-            );
+            if let Err(e) = args.framing.print(
+                &doc,
+                crate::frame::Frame::Outline,
+                Some(crate::frame::design_corner()),
+                true,
+            ) {
+                return crate::frame::refused(&e);
+            }
         }
         common::Format::Text => {
             print!("{}", joined.text());
@@ -917,6 +968,9 @@ fn join_pad(args: &JoinPadArgs) -> ExitCode {
 }
 
 fn import(args: &ImportArgs) -> ExitCode {
+    if let Err(e) = args.framing.for_json(args.format == common::Format::Json) {
+        return crate::frame::refused(&e);
+    }
     let pcb = match fs::read_to_string(&args.pcb) {
         Ok(text) => text,
         Err(e) => {
@@ -1015,10 +1069,14 @@ fn import(args: &ImportArgs) -> ExitCode {
                 .map(|(net, at)| serde_json::json!({ "net": net, "at": at }))
                 .collect::<Vec<_>>(),
         });
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&doc).expect("plain data")
-        );
+        if let Err(e) = args.framing.print(
+            &doc,
+            crate::frame::Frame::Outline,
+            Some(crate::frame::design_corner()),
+            true,
+        ) {
+            return crate::frame::refused(&e);
+        }
         return ExitCode::SUCCESS;
     }
     match &parts_file {

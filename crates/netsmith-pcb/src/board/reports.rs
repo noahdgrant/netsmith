@@ -154,11 +154,12 @@ impl Board {
     /// shares area with the part's: the body is taken to stand on the board, so no limit is over
     /// the part and the overlap cannot be measured, and that is where a module on pin strips
     /// with a gap under it, whose standoff the design has not stated, leaves the parts under it.
-    /// A part is listed once, by path.
+    /// A part is listed once, by path, and the list is ranked ([`HeightUnknown::rank_cmp`], issue
+    /// #1590): the least room under a limit first, then the parts under a body by package class.
     pub fn heights_unknown(&self) -> Vec<HeightUnknown> {
         let mut found: Vec<HeightUnknown> = Vec::new();
         for u in self.heights_unchecked() {
-            let i = unknown_entry(&mut found, &u.refdes, &u.path, u.side);
+            let i = unknown_entry(self, &mut found, &u.refdes, &u.path, u.side);
             found[i].under.push(UnknownUnder::Limit {
                 keepout: u.keepout,
                 limit: u.limit,
@@ -180,7 +181,7 @@ impl Board {
                 if let Some(height) = height.filter(|h| *h > HEIGHT_TOLERANCE)
                     && body.overlaps(&q.body())
                 {
-                    let i = unknown_entry(&mut found, &a.refdes, &a.path, a.side);
+                    let i = unknown_entry(self, &mut found, &a.refdes, &a.path, a.side);
                     found[i].under.push(UnknownUnder::Body {
                         refdes: q.refdes.clone(),
                         path: q.path.clone(),
@@ -193,9 +194,15 @@ impl Board {
             // Limits first, then bodies, each in a fixed order.
             h.under.sort_by(|x, y| match (x, y) {
                 (
-                    UnknownUnder::Limit { keepout: a, .. },
-                    UnknownUnder::Limit { keepout: b, .. },
-                ) => a.cmp(b),
+                    UnknownUnder::Limit {
+                        keepout: a,
+                        limit: la,
+                    },
+                    UnknownUnder::Limit {
+                        keepout: b,
+                        limit: lb,
+                    },
+                ) => la.total_cmp(lb).then_with(|| a.cmp(b)),
                 (UnknownUnder::Limit { .. }, UnknownUnder::Body { .. }) => std::cmp::Ordering::Less,
                 (UnknownUnder::Body { .. }, UnknownUnder::Limit { .. }) => {
                     std::cmp::Ordering::Greater
@@ -205,7 +212,7 @@ impl Board {
                 }
             });
         }
-        found.sort_by(|a, b| a.path.cmp(&b.path));
+        found.sort_by(|a, b| a.rank_cmp(b));
         found
     }
 
@@ -273,15 +280,27 @@ impl Board {
 }
 
 /// The index of the entry of `path` in `found`, added if it is not there.
-fn unknown_entry(found: &mut Vec<HeightUnknown>, refdes: &str, path: &str, side: Side) -> usize {
+fn unknown_entry(
+    board: &Board,
+    found: &mut Vec<HeightUnknown>,
+    refdes: &str,
+    path: &str,
+    side: Side,
+) -> usize {
     if let Some(i) = found.iter().position(|h| h.path == path) {
         return i;
     }
+    let part = board.parts.iter().find(|p| p.path == path);
     found.push(HeightUnknown {
         refdes: refdes.to_string(),
         path: path.to_string(),
         side,
         under: Vec::new(),
+        kind: part.and_then(|p| p.declared_kind),
+        body_area: part.map_or(0.0, |p| {
+            let b = p.body();
+            (b.max.x - b.min.x) * (b.max.y - b.min.y)
+        }),
     });
     found.len() - 1
 }
