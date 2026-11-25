@@ -42,6 +42,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith board fab` | `netsmith fab` | `--out`, `--route-timeout`, `--rip-rounds`, `--length-weight`, `--via-weight`, `--layer-change-weight`, `--allow-drc-violations`, `--for-review`, `--no-pictures`, `--cross-check`, `--strict`, `--locked`, `--constraints`, `--pins`, `--no-glb`, `--no-step`, `--no-pdf`, `--save-placed`, `--reuse-routes`, `--portable`, `--offline`, `--quiet`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--progress`, `--to-editor`, `--format`, `--notes`, `--frame` |
 | `netsmith board drc` | new | `--board`, `--kicad-pcb`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
 | `netsmith board rules` | new (#1513) | `--board`, `--kicad-pcb`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
+| `netsmith board check-footprint` | new (#1684) | `--board`, `--format` |
 | `netsmith board explain` | `netsmith explain` | `--board`, `--all-rows`, `--format` |
 | `netsmith board compare` | `netsmith compare` | `--ref`, `--against-ref`, `--board`, `--map`, `--by-refdes`, `--ignore-unconnected`, `--loose-values`, `--format` |
 | `netsmith board pins show` | new | `--file`, `--board`, `--format` |
@@ -130,6 +131,7 @@ A board's places are in mm with y down, in one of two frames (issue #1588): the 
 | The board file's | `board nets`, `board drc`, `board fill`, `board rules` |
 | The outline's | `layout show`, `set`, `move`, `check`, `summary`, `compare`, `regenerate`, `capture`, `fit`, `parts`, `export`, `import`; `routes import`, `show`, `add`, `route`, `join-pad`, `sites`, `fanout`, `tidy`; `board check`, `board build`, `board fab` (the boxes of the placement in their findings) |
 | The 3D scene's | `dev board3d` |
+| The footprint's (from its origin, y down) | `board check-footprint` |
 
 The four commands of the board file's frame are the odd ones out: every file a person edits, the 2D pictures and the Gerbers are in the outline's frame. They keep it as their default, so that no document a script reads changes, and a script that joins the places of several commands passes `--frame outline` to each.
 
@@ -315,6 +317,24 @@ The rules of netsmith's that KiCad's check lacks:
 `netsmith board rules [file.nsm]` prints the rules `board drc` holds a board to (issue #1513), so that a tool that draws copper of its own (a script, a router written for one board, its copper written with `routes add` or `routes import`) keeps the spaces the check asks and not the spaces it guessed from the findings. The numbers are read by the function the check reads them with (`netsmith_geom::drc_rules_of`, beside `drc_check`), from the same board, project file and process extras, so a track drawn at a net's `least_width`, a net's `clearance` from another net's copper, and a mask opening's margin plus `mask.to_track` from it passes the check, and a hair less fails it. The board is the one `board drc` checks: placed, with the routes file's copper on it; `--kicad-pcb board.kicad_pcb` reads a KiCad board instead, with the `.kicad_pro` and `.kicad_dru` beside it and none of `fab`'s other extras (no width a current needs, no via rules), as `board drc --kicad-pcb` checks it.
 
 The text is a line for each kind of rule, then the net classes, the clearance between each two, the nets and the rule areas. `--format json` is one document: `board`, `outline_at` (the outline's corner in the frame of the board file, as `board drc` gives it), `clearance` (the board's `least`; `pairs`, the clearance between nets of each two classes, the larger of the two; `pads`, a pad's own clearance where it states one), `classes` (`Default` first, each with its `clearance`, `priority`, net `patterns`, and the `track_width`, via sizes and diff pair gap it draws its copper at), `nets` (each net's `class`, `clearance`, the `width` it wants, its `least_width` on an outer and an inner layer, the board's or its current's, the `impedance_widths` by layer, the `vias` side by side it needs), `widths` (`least` and `neck_reach`, how near its pads a track may be narrower than its current asks), `mask` (the board's `margin`, the `web`, `to_track`, and each footprint's `margin` with its pads that differ), `holes` (to copper, to a track, between holes, the least drill, slot and ring), `pad_to_pad`, `copper_to_edge`, `vias` (the least diameter, drill and ring, the micro via's, the default class's size, `in_pad` and the blind and buried `spans`), `rule_areas` (each with its `name`, the `part` that carries it or null, its `layers`, `outlines` and `holes` as `[x, y]` points in the frame of the board file, and the kinds it `forbids`) and `layers` (the copper layers, the thickness, the stackup and the `pours` with their nets, layers and clearances). Lengths are in mm; a rule the board is not checked to is null. `netsmith board rules --help` lists every field.
+
+### One footprint against the process
+
+`netsmith board check-footprint <PART|FILE.kicad_mod> [file.nsm]` checks one footprint's pads against the rules of the board's process (issue #1684), with nothing placed or routed, so that a land pattern can be tried before a board is run: the board is built, and the design rules check `board fab` runs judges a board of the footprint alone, on the board's process, with its rules and the process's figures (the space between surface-mount pads, `.min_pad_to_pad`; the mask web between two openings, `.min_mask_bridge`; the clearance, the holes and the rings round them, the silkscreen to a pad), in an outline far from its copper, with no other part, no copper, pour, plane, keep-out or waiver. No geometry is its own: each figure is the check's finding's. The findings of the footprint's own items are listed, less those of connections and of the outline, which a board of one part cannot say anything about.
+
+A part of the board, by designator or path (`U1`, `reg.ic`), is its footprint with the nets the design gives its pads, so two pads of one net are not held apart. A `.kicad_mod` file is judged on the process of the board the source and `--board` pick, each pad number on a net of its own (`pad-1`, `pad-2`, ...), so every two pads of different numbers are held apart; pads that share a number are one net, as a board joins them, and a pad with no number has none. The process gives no space between paste openings, so none is measured; a finding of the check about a pad's paste is listed as the others are.
+
+```
+$ netsmith board check-footprint Tight.kicad_mod
+Tight.kicad_mod: 2 pad(s), each pad number on a net of its own, against the process JLCPCB TwoLayer of LedExample: 1 rule(s) broken
+  error [pad_to_pad] pads 1 and 2: needs 0.1500 mm, has 0.1000 mm, short by 0.0500 mm at (0.000, -0.300)
+  warning [solder_mask_bridge] pads 1 and 2: needs 0.1300 mm, has 0.1000 mm, short by 0.0300 mm at (0.000, -0.300) on F.Mask
+places in mm from the footprint's origin, y down
+```
+
+Each finding is a line, errors first and the largest shortfall first: the rule, the pads, the space required and measured and the shortfall in mm, the place in mm from the footprint's origin, y down, as the file has it (the part's own frame, whatever its turn and face on a board). `--format json` is one document: `board`, `process`, `part` (none for a file), `footprint` (its library id, or the file), `nets` (`part` or `pad`), `pads`, `legal`, `errors` and `warnings`, each with `severity`, `rule`, `pads`, `items` (as the check names them), `required`, `measured`, `shortfall`, `at`, `layer` and `message`. The exit code is 0 when no rule is broken, 1 when one is or the board has no such part, and 2 when it could not run.
+
+It is a verb of `board`, beside `board drc` and `board rules`, because the process and the part's nets are a board's, and is named as `routes check-via` is, a check of one thing; `catalog check` checks a catalog's rows against their packages, not pads against a process.
 
 ### A board with findings: `--for-review`
 
