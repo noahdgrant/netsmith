@@ -236,7 +236,9 @@ impl Solver<'_> {
         chosen: &HandPick,
         cat: &mut Catalog,
     ) -> bool {
-        let (source, span) = chosen.at.unwrap_or_else(|| self.model.instance(part).at());
+        let (source, span) = chosen
+            .at()
+            .unwrap_or_else(|| self.model.instance(part).at());
         if cat.candidates.iter().any(|c| chosen.is(c)) {
             cat.candidates.retain(|c| chosen.is(c));
             return true;

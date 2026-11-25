@@ -134,6 +134,9 @@ pub struct Outcome {
     /// The row each part of each board and system was picked as: the pick lock these picks make
     /// (`pick_lock`). Its `file` is empty; the command that writes it names the file.
     pub lock: PickLock,
+    /// What says that a row of `lock` was taken for a hand pick, and where the source states
+    /// it, by the board or system and the part's path (`pick_lock::hand_picks_of`).
+    pub hand_picks: pick_lock::HandPickNotes,
     /// What the check decided about the pin file beside the source (ADR 0101): the pins the
     /// requests got, and for each board what the pin optimizer may move (`pin_swap`).
     pub pins: netsmith_check::PinsOutcome,
@@ -464,6 +467,7 @@ pub fn outcome_observed(
     let mut built = Vec::new();
     let mut solved = Vec::new();
     let mut lock = PickLock::new("");
+    let mut hand_picks = pick_lock::HandPickNotes::new();
     let total = checked.standalone_boards().count() + checked.systems.len();
     for (done, board) in checked.standalone_boards().enumerate() {
         let step = |stage| Step {
@@ -542,6 +546,7 @@ pub fn outcome_observed(
             .as_ref()
             .map_or(&checked.sources, |p| &p.checked.sources);
         lock.set(&board.name, pick_lock::rows_of(solution));
+        hand_picks.extend(pick_lock::hand_picks_of(&board.name, solution, sources));
         lock.set_providers(&board.name, pick_lock::providers_of(&solution.model));
         observe(step(Stage::Design));
         let mut designed = timings::stage("design", &board.name, || design_board(board, solution))
@@ -733,6 +738,7 @@ pub fn outcome_observed(
             .as_ref()
             .map_or(&checked.sources, |p| &p.checked.sources);
         lock.set(&system.name, pick_lock::rows_of(solution));
+        hand_picks.extend(pick_lock::hand_picks_of(&system.name, solution, sources));
         lock.set_providers(&system.name, pick_lock::providers_of(&solution.model));
         observe(step(Stage::Design));
         // The seats of the mates and the mated heights they give (ADR 0110), for the system
@@ -917,6 +923,7 @@ pub fn outcome_observed(
         systems: solved,
         panels,
         lock,
+        hand_picks,
         pins: checked.pins.clone(),
     })
 }

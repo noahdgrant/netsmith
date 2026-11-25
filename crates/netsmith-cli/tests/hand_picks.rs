@@ -101,6 +101,170 @@ fn a_hand_pick_comes_before_the_lock_and_lock_update_records_it() {
     assert!(netsmith(&root, &["board", "build", "--locked"]).status.success());
 }
 
+/// Where `source`, the project's `src/main.nsm`, has `text`: `src/main.nsm:<line>`.
+fn place(source: &str, text: &str) -> String {
+    let line = source.lines().position(|l| l.contains(text)).unwrap();
+    format!("src/main.nsm:{}", line + 1)
+}
+
+/// The lines of a run's output about the part at `path` of the LED board.
+fn lines_of(said: &str, path: &str) -> Vec<String> {
+    let head = format!("  LedExample: `{path}`: ");
+    said.lines()
+        .filter_map(|l| l.strip_prefix(&head))
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn the_lock_diff_says_a_row_was_taken_for_a_hand_pick_and_where_the_source_states_it() {
+    let root = project("hand-pick-diff", LED);
+    assert!(netsmith(&root, &["board", "build"]).status.success());
+    let source = hand_picked(OTHER_MPN);
+    fs::write(root.join("src/main.nsm"), &source).unwrap();
+    let note = format!(
+        "; taken for the hand pick in the source: `.mpn &= \"{OTHER_MPN}\"` at {}",
+        place(&source, ".mpn &=")
+    );
+    for (mode, code) in [("--check", 1), ("--update", 0)] {
+        let run = netsmith(&root, &["project", "lock", mode]);
+        assert_eq!(run.status.code(), Some(code), "{}", stderr(&run));
+        let said = stdout(&run);
+        let lines = lines_of(&said, "r1");
+        assert!(
+            lines.len() == 1
+                && lines[0].starts_with(&format!("`{SOLVER_ROW}` "))
+                && lines[0].contains(&format!(" -> `{OTHER_ROW}` "))
+                && lines[0].ends_with(&note),
+            "{mode}: {said}"
+        );
+    }
+    // The same line in the JSON document, for a part the lock had no entry for.
+    fs::remove_file(root.join("src/main.lock.toml")).unwrap();
+    let run = netsmith(&root, &["project", "lock", "--update", "--format", "json"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    let document: serde_json::Value = serde_json::from_str(&stdout(&run)).unwrap();
+    let changes: Vec<&str> = document["files"][0]["changes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c.as_str().unwrap())
+        .collect();
+    // Only the hand-picked part's line says it.
+    assert!(changes.len() > 1, "{changes:?}");
+    for line in &changes {
+        assert_eq!(
+            line.contains("hand pick"),
+            line.starts_with("LedExample: `r1`: added as "),
+            "{changes:?}"
+        );
+    }
+    assert!(changes.iter().any(|l| l.ends_with(&note)), "{changes:?}");
+    // The pick removed, the part takes the solver's row, and the line says nothing new.
+    fs::write(root.join("src/main.nsm"), LED).unwrap();
+    let run = netsmith(&root, &["project", "lock", "--update"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    let said = stdout(&run);
+    let lines = lines_of(&said, "r1");
+    assert!(
+        lines.len() == 1 && lines[0].contains(&format!(" -> `{SOLVER_ROW}` ")),
+        "{said}"
+    );
+    assert!(!said.contains("hand pick"), "{said}");
+}
+
+#[test]
+fn the_note_of_a_hand_pick_names_the_manufacturer_and_its_own_place() {
+    let source = LED.replace(
+        ".r1: Resistor {}",
+        ".r1: Resistor {\n        .mpn &= \"ZZR-316\"\n        .manufacturer &= \"Zeta\"\n    }",
+    );
+    let root = project("hand-pick-maker", &source);
+    fs::create_dir_all(root.join("catalogs")).unwrap();
+    fs::write(
+        root.join("catalogs/resistor.csv"),
+        "manufacturer,mpn,resistance,max_power,package,price,stock,date,source\n\
+         Zeta,ZZR-316,316ohm +/- 1%,250mW,0402,0.01,10,2026-10-31,https://example.invalid/zzr\n",
+    )
+    .unwrap();
+    let run = netsmith(&root, &["project", "lock", "--update"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    let said = stdout(&run);
+    let note = format!(
+        "; taken for the hand pick in the source: `.mpn &= \"ZZR-316\"` at {} and `.manufacturer &= \"Zeta\"` at {}",
+        place(&source, ".mpn &="),
+        place(&source, ".manufacturer &=")
+    );
+    let lines = lines_of(&said, "r1");
+    assert!(lines.len() == 1 && lines[0].ends_with(&note), "{said}");
+}
+
+/// A regulator sold as two order codes, with a keyed catalog, and a board that needs a feature
+/// of one of them.
+const CODES_PART: &str = r#"import std::sources::Rail
+
+part Zz9 {
+    .variants {
+        "ZZ9-33-S" PLAIN
+        "ZZ9-33-A" AUTOMOTIVE
+    }
+    .vout: Rail
+    pins "SOT-23-5" {
+        .vout.pos      power       "OUT"    "5"
+        .vout.neg      power       "GND"    "2"
+        .nc            no_connect  "NC"     "4"
+    }
+    .package: Package
+    catalog zz9 by .mpn { .mpn, .package }
+}
+"#;
+
+const CODES_BOARD: &str = r#"import std::sources::Rail
+import src::ics::Zz9
+
+board Zz9Board {
+    .u: Zz9
+    .u.needs &= AUTOMOTIVE
+    .output: Rail {
+        .pos.net &= "3V3"
+        .neg.net &= "GND"
+        .current &= 0mA..50mA
+    }
+    .u.vout ~ .output
+}
+"#;
+
+#[test]
+fn the_note_of_an_order_code_names_the_needs_that_left_it() {
+    let root = project("hand-pick-order-code", CODES_BOARD);
+    fs::write(
+        root.join("netsmith.toml"),
+        "[project]\nname = \"zz\"\ntop_level = [\"src/main.nsm\"]\n",
+    )
+    .unwrap();
+    fs::write(root.join("src/ics.nsm"), CODES_PART).unwrap();
+    fs::create_dir_all(root.join("catalogs")).unwrap();
+    fs::write(
+        root.join("catalogs/zz9.csv"),
+        "mpn,package,price,stock,date,source\n\
+         ZZ9-33-S,SOT-23-5,0.10,1000,2026-10-31,https://example.invalid/zz9-33-s.pdf\n\
+         ZZ9-33-A,SOT-23-5,0.20,1000,2026-10-31,https://example.invalid/zz9-33-a.pdf\n",
+    )
+    .unwrap();
+    let run = netsmith(&root, &["project", "lock", "--update"]);
+    assert!(run.status.success(), "{}", stderr(&run));
+    let said = stdout(&run);
+    let note = format!(
+        "; taken for the hand pick in the source: the order code `ZZ9-33-A`, which the design's `.needs` at {} leave",
+        place(CODES_BOARD, ".needs &=")
+    );
+    assert!(
+        said.lines()
+            .any(|l| l.starts_with("  Zz9Board: `u`: added as ") && l.ends_with(&note)),
+        "{said}"
+    );
+}
+
 #[test]
 fn a_hand_picked_row_that_fails_stops_the_build_at_the_narrowing() {
     // 2.2 kohm in 0402 overheats at the LED's current.

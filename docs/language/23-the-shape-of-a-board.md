@@ -3400,6 +3400,16 @@ updated src/main.lock.toml
   Zz9Board: `u`: `ZZ9-33-S` (mpn ZZ9-33-S, jlcpcb-assembly C9001) -> `ZZ9-33-A` (mpn ZZ9-33-A, jlcpcb-assembly C9002)
 ```
 
+The line of a part that is added, or takes another row, for a hand pick (_A hand pick_, below) ends in why: the part number the source states, with the file and line of the statement, and the `.manufacturer` with its own when the source states one (issue #1706):
+
+```sh
+$ netsmith project lock --update
+updated src/main.lock.toml
+  Zz9Board: `u`: `ZZ9-33-A` (mpn ZZ9-33-A, jlcpcb-assembly C9002) -> `ZZ9-33-S` (mpn ZZ9-33-S, jlcpcb-assembly C9001); taken for the hand pick in the source: `.mpn &= "ZZ9-33-S"` at src/main.nsm:10
+```
+
+For a part whose `.mpn` no statement names, because its `.variants` leave one order code, the line ends in ``taken for the hand pick in the source: the order code `ZZ9-33-A`, which the design's `.needs` at src/main.nsm:11 leave`` (with nothing needed of a part that has one code, ``which the part's `.variants` at ... leave``). A part with no hand pick has nothing more on its line, and a part that is already on its hand-picked row has no line. `--check` and the `changes` of `--format json` have the same lines.
+
 Each case of the list above ends in a line of that diff:
 
 - **A part the lock has no entry for** is added (`LedExample: `r2`: added as ...`), and the entries of the other parts are as they were unless their own pick moved. With no lock file, every part is added and the file is written.
