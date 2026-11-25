@@ -10,7 +10,9 @@
 //!   copper as data with the same code the Gerbers are drawn with (ADR 0105), so they agree.
 //! - [`drc_check`]: netsmith's own design rules check (ADR 0037), and the room and teardrops the
 //!   router and the meanders measure with.
-//! - [`COUPLED`] and [`PAIR_SUFFIXES`]: the nets that make a diff pair.
+//! - [`COUPLED`] and [`PAIR_SUFFIXES`]: the nets that make a diff pair, and [`leg_length`]: a
+//!   leg of a net measured to its pads' centres, which `board nets` and the router's meanders
+//!   share (issue #1670).
 //! - [`ipc2221`]: the current a track or a via carries, which the design stage sizes nets with
 //!   and the design rules check holds a branch's copper to (ADR 0036, issue #1113).
 //!
@@ -32,6 +34,7 @@ mod gbr;
 mod geom;
 mod gerber;
 pub mod ipc2221;
+mod leg;
 mod pads;
 mod pairs;
 mod plot;
@@ -86,6 +89,7 @@ pub use geom::{
 pub use gerber::{
     GerberError, file_suffix as gerber_file_suffix, plot_layers as gerber_plot_layers,
 };
+pub use leg::{LegPad, leg_length};
 pub use pads::{Outline as PadOutline, Prim as PadPrim, outline as pad_outline};
 pub use pairs::{COUPLED, PAIR_SUFFIXES};
 pub use plot::{

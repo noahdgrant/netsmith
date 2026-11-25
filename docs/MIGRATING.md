@@ -13,6 +13,10 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+### A leg into a pad is measured to the pad's centre (issue #1670)
+
+- **`board nets`, `board drc`, `board fab`.** A net's length measured the copper of its connection, the copper inside its pads too, so a pair whose legs entered their pads at different points had a skew its outside copper did not have (#1594). Each leg into a pad is now measured to the pad's centre: the copper outside the pad, plus the straight distance from where the leg enters the pad to its centre. A track that stops at the edge of a pad 0.6 mm wide, 19.4 mm of copper between two pads, was 19.4 mm long and is now 20 mm, the same as one drawn from centre to centre; a short track drawn inside a pad to its centre no longer adds its length. A net's `length` and `ratio`, each pair's `length_p`, `length_n` and `skew`, each length group's lengths and `spread`, a track path's `length` and the power stage's routed lengths can change (`copper`, all of a net's tracks, does not), so a `pair_skew` finding, or a group or path over its budget, may come or go, and fail a run with `--strict` or `guidelines = "error"`. The router's meanders match by the same measure, so a board routed again may get other meanders. No source file or command line changes: run `board nets` and `board drc` on a board routed by hand and read its pairs and groups again. The route scorecard still measures all of a net's tracks.
+
 ## 0.9.0: changes since 0.8.0
 
 ### Places in the outline's frame, and the new findings of diff pairs

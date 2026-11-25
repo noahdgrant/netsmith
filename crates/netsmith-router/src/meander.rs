@@ -1,6 +1,9 @@
 //! Length-matching meanders for diff pairs (issue #431, S11): the shorter net of a pair is
 //! lengthened with a serpentine on one of its straight runs until the two nets' track lengths
 //! differ by no more than the pair's skew limit, its `.skew` or [`SKEW_TARGET`] (issue #1234).
+//! A net's track length is measured as `board nets` measures it, each leg into a pad of the net
+//! to the pad's centre (issue #1670, `netsmith_geom::leg_length`), so the router matches by the
+//! numbers the report and the design rules check's `pair_skew` read.
 //! The nets of a group matched in length (a `LengthGroup`, issue #1234) are lengthened so too,
 //! each shorter net towards the group's longest, until the group's spread is within its
 //! tolerance; a net of a group has no partner of its own, so its meander may go anywhere along
@@ -46,7 +49,7 @@
 //! curve and draws meanders on straight tracks only, so it can top a pair up after the arcs. The
 //! same board gives the same meanders: pairs, runs and places are taken in a fixed order.
 
-use netsmith_geom::{DrcRules, DrcShape, Pt as FPt, Room, shape_gap};
+use netsmith_geom::{DrcRules, DrcShape, LegPad, Pt as FPt, Room, leg_length, shape_gap};
 
 use netsmith_pcb::{Board, Pt, Track};
 
@@ -138,26 +141,62 @@ fn groups(board: &Board) -> Vec<(String, Vec<String>, f64)> {
         .collect()
 }
 
-fn length(board: &Board, net: &str) -> f64 {
+/// The copper and the centre of each pad of the board, with its net: what a net's length is
+/// measured to (issue #1670). The pads do not move while the meanders are drawn.
+struct Pads(Vec<(Option<String>, Vec<DrcShape>, FPt)>);
+
+impl Pads {
+    fn of(board: &Board) -> Pads {
+        let pads = netsmith_pcb::copper_artwork(board)
+            .map(|art| {
+                art.pads
+                    .iter()
+                    .map(|p| (p.net.clone(), netsmith_geom::pad_copper(p), p.at))
+                    .collect()
+            })
+            .unwrap_or_default();
+        Pads(pads)
+    }
+
+    /// The pad of `net` that holds `p`.
+    fn at(&self, net: &str, p: FPt) -> Option<LegPad<'_>> {
+        self.0
+            .iter()
+            .filter(|(n, ..)| n.as_deref() == Some(net))
+            .map(|(_, copper, centre)| LegPad {
+                copper,
+                centre: *centre,
+            })
+            .find(|pad| pad.holds(p))
+    }
+}
+
+/// The length of `net`'s tracks, in mm, each leg into a pad of the net measured to the pad's
+/// centre, as `board nets` measures it (issue #1670, `netsmith_geom::leg_length`): a track's
+/// copper inside the pad its end is in does not count, and the straight distance from where it
+/// enters the pad to the pad's centre does.
+fn length(board: &Board, pads: &Pads, net: &str) -> f64 {
     board
         .tracks
         .iter()
         .filter(|t| t.net == net)
-        .map(track_length)
+        .map(|t| track_length(t, pads))
         .sum()
 }
 
-/// The length of a track's centre line, an arc's along its chords of at most 2 µm error.
-fn track_length(t: &Track) -> f64 {
-    t.centre_line()
-        .windows(2)
-        .map(|w| w[0].distance(w[1]))
-        .sum()
+/// The length of a track's centre line, an arc's along its chords of at most 2 µm error,
+/// measured to the centres of the pads of its net its ends are in.
+fn track_length(t: &Track, pads: &Pads) -> f64 {
+    let line: Vec<FPt> = t.centre_line().into_iter().map(fpt).collect();
+    let (Some(&first), Some(&last)) = (line.first(), line.last()) else {
+        return 0.0;
+    };
+    leg_length(&line, pads.at(&t.net, first), pads.at(&t.net, last))
 }
 
 /// The longest less the shortest of the track lengths of `nets`, in mm.
-fn spread(board: &Board, nets: &[String]) -> f64 {
-    let lengths: Vec<f64> = nets.iter().map(|n| length(board, n)).collect();
+fn spread(board: &Board, pads: &Pads, nets: &[String]) -> f64 {
+    let lengths: Vec<f64> = nets.iter().map(|n| length(board, pads, n)).collect();
     let most = lengths.iter().copied().fold(f64::MIN, f64::max);
     let least = lengths.iter().copied().fold(f64::MAX, f64::min);
     if lengths.is_empty() {
@@ -170,13 +209,14 @@ fn spread(board: &Board, nets: &[String]) -> f64 {
 /// The skew of each diff pair of the board and the spread of each group of nets matched in
 /// length, in mm, in the order [`add`] takes them.
 pub fn skews(board: &Board) -> (Vec<f64>, Vec<f64>) {
+    let pads = Pads::of(board);
     let pairs = pairs(board)
         .iter()
-        .map(|(p, n, _)| (length(board, p) - length(board, n)).abs())
+        .map(|(p, n, _)| (length(board, &pads, p) - length(board, &pads, n)).abs())
         .collect();
     let groups = groups(board)
         .iter()
-        .map(|(_, nets, _)| spread(board, nets))
+        .map(|(_, nets, _)| spread(board, &pads, nets))
         .collect();
     (pairs, groups)
 }
@@ -186,16 +226,17 @@ pub fn skews(board: &Board) -> (Vec<f64>, Vec<f64>) {
 /// spread and skew each is left with. The groups go first: a pair in a group (a strobe of a byte
 /// lane) is matched within itself after its nets have their group's length.
 pub fn add(board: &mut Board) -> Lengths {
+    let pads = Pads::of(board);
     let mut out = Lengths::default();
     for (path, nets, tolerance) in groups(board) {
-        let before = spread(board, &nets);
+        let before = spread(board, &pads, &nets);
         if before > tolerance {
             let longest = nets
                 .iter()
-                .map(|n| length(board, n))
+                .map(|n| length(board, &pads, n))
                 .fold(f64::MIN, f64::max);
             for net in &nets {
-                let want = longest - length(board, net);
+                let want = longest - length(board, &pads, net);
                 // A net a routes file locks gets no copper (`netsmith_pcb::Routes`).
                 if want > tolerance && !board.fixed.is_locked(net) {
                     let partner = board.diff_partner(net);
@@ -203,7 +244,7 @@ pub fn add(board: &mut Board) -> Lengths {
                 }
             }
         }
-        let after = spread(board, &nets);
+        let after = spread(board, &pads, &nets);
         out.groups.push(MatchedGroup {
             path,
             nets,
@@ -213,13 +254,13 @@ pub fn add(board: &mut Board) -> Lengths {
         });
     }
     for (p, n, limit) in pairs(board) {
-        let (lp, ln) = (length(board, &p), length(board, &n));
+        let (lp, ln) = (length(board, &pads, &p), length(board, &pads, &n));
         let before = (lp - ln).abs();
         let (short, other) = if lp < ln { (&p, &n) } else { (&n, &p) };
         if before > limit && !board.fixed.is_locked(short) {
             lengthen(board, short, Some(other), before, limit);
         }
-        let after = (length(board, &p) - length(board, &n)).abs();
+        let after = (length(board, &pads, &p) - length(board, &pads, &n)).abs();
         out.pairs.push(Matched {
             p,
             n,
@@ -650,6 +691,38 @@ mod tests {
                 .all(|t| t.from.x > x0 + 5.5 && t.to.x < x0 + 14.5)
         );
         assert_eq!(findings(&board), before);
+    }
+
+    #[test]
+    fn a_track_from_a_pads_edge_and_one_from_its_centre_measure_the_same() {
+        // The meanders match by `board nets`'s measure (issue #1670): a leg into a pad is
+        // measured to the pad's centre, whatever copper it has inside the pad.
+        let mut board = board();
+        let art = netsmith_pcb::copper_artwork(&board).unwrap();
+        let pads = Pads::of(&board);
+        let w = board.rules.track_width;
+        let pad = art
+            .pads
+            .iter()
+            .find(|p| {
+                let net = p.net.as_deref().unwrap_or_default();
+                let out = FPt::new(p.at.x + 5.0, p.at.y);
+                !net.is_empty() && p.angle % 180.0 == 0.0 && pads.at(net, out).is_none()
+            })
+            .expect("a pad of a net");
+        let net = pad.net.clone().unwrap();
+        let (c, half) = (pad.at, pad.size.0 / 2.0);
+        board
+            .tracks
+            .push(track(&net, (c.x, c.y), (c.x + 5.0, c.y), w));
+        let from_centre = length(&board, &pads, &net);
+        board.tracks.clear();
+        board
+            .tracks
+            .push(track(&net, (c.x + half, c.y), (c.x + 5.0, c.y), w));
+        let from_edge = length(&board, &pads, &net);
+        assert!((from_centre - 5.0).abs() < 1e-6, "{from_centre}");
+        assert!((from_edge - 5.0).abs() < 1e-6, "{from_edge}");
     }
 
     #[test]

@@ -16,7 +16,11 @@
 //!   [`crate::connection`]): the tracks that take its pads to each other, not a second way of
 //!   one connection or a stub that leads nowhere, which the table names with their lengths and
 //!   layers, so that a duplicate track does not count twice in a pair's skew or a group's
-//!   spread. Its **straight length** is the shortest tree of straight lines between
+//!   spread. Each leg into a pad is measured to the pad's centre (issue #1670,
+//!   [`netsmith_geom::leg_length`]): the copper outside the pad, plus the straight distance from
+//!   where the leg enters it to its centre, so the same copper outside the pads gives the same
+//!   length, and a pair the same skew, wherever its legs enter them; the router's meanders match
+//!   by the same measure. Its **straight length** is the shortest tree of straight lines between
 //!   the centres of its pads, as for [`crate::NetRoutes`].
 //! - A net **changes layer** at a via where its tracks meet on two layers or more (a via of a
 //!   pour, or one a track only ends on, changes none).
@@ -61,8 +65,9 @@ const SAME: f64 = 1e-3;
 pub struct NetRow {
     pub net: String,
     /// The length of the net's connection, in mm: the tracks that take its pads to each other
-    /// (issue #1487, [`crate::connection`]), not a second way or a dead stub; all its tracks
-    /// for a net with no pad on the board.
+    /// (issue #1487, [`crate::connection`]), not a second way or a dead stub, each leg into a
+    /// pad measured to the pad's centre (issue #1670); all its tracks for a net with no pad on
+    /// the board.
     pub length: f64,
     /// The length of all the net's tracks, in mm.
     pub copper: f64,
@@ -108,7 +113,7 @@ impl NetRow {
         format!(
             "net {}: {:.2} mm of its {:.2} mm of copper not counted in its length: {}",
             self.net,
-            self.copper - self.length,
+            self.not_counted.iter().map(|r| r.length).sum::<f64>(),
             self.copper,
             runs.join(", ")
         )
@@ -335,8 +340,7 @@ pub(crate) fn rows(art: &Artwork) -> Vec<NetRow> {
         .map(|net| {
             let copper = length.get(net).copied().unwrap_or_default();
             let connection = connections.get(net);
-            let length =
-                connection.map_or(copper, |c| c.counted.iter().map(|s| s.2.dist(s.3)).sum());
+            let length = connection.map_or(copper, |c| c.length);
             let straight = pads.get(net).map_or(0.0, |pts| crate::score::prim(pts));
             let (vias, layer_changes) = vias.get(net).copied().unwrap_or_default();
             NetRow {
@@ -365,13 +369,24 @@ pub(crate) fn rows(art: &Artwork) -> Vec<NetRow> {
         .collect()
 }
 
-/// The numbers of the pair `p`, `n` from the straight pieces of track of their connections.
-fn pair_row(art: &Artwork, segs: &[Seg], p: &str, n: &str, limit: f64) -> PairRow {
+/// The numbers of the pair `p`, `n` from the straight pieces of track of their connections and
+/// their lengths `lengths` (each leg measured to its pads' centres, issue #1670); a net with no
+/// length there (no pad) is all its pieces.
+fn pair_row(
+    art: &Artwork,
+    segs: &[Seg],
+    lengths: &BTreeMap<String, f64>,
+    p: &str,
+    n: &str,
+    limit: f64,
+) -> PairRow {
     let length = |net: &str| -> f64 {
-        segs.iter()
-            .filter(|s| s.0 == net)
-            .map(|s| s.2.dist(s.3))
-            .sum()
+        lengths.get(net).copied().unwrap_or_else(|| {
+            segs.iter()
+                .filter(|s| s.0 == net)
+                .map(|s| s.2.dist(s.3))
+                .sum()
+        })
     };
     let (length_p, length_n) = (length(p), length(n));
     let (mut coupled, mut least, mut most) = (0.0, f64::MAX, f64::MIN);
@@ -486,6 +501,10 @@ impl NetTable {
         let has = |net: &str| all.iter().any(|s| s.0 == net);
         // A pair is measured on the copper of its connections, not a second way or a stub.
         let connections = connection::of(art, &all);
+        let lengths: BTreeMap<String, f64> = connections
+            .iter()
+            .map(|(net, c)| (net.clone(), c.length))
+            .collect();
         let segs: Vec<Seg> = all
             .iter()
             .filter(|s| !connections.contains_key(&s.0))
@@ -533,7 +552,7 @@ impl NetTable {
             pairs: pairs
                 .iter()
                 .filter(|(p, n, _)| has(p) && has(n))
-                .map(|(p, n, limit)| pair_row(art, &segs, p, n, *limit))
+                .map(|(p, n, limit)| pair_row(art, &segs, &lengths, p, n, *limit))
                 .collect(),
             nets,
             groups,
