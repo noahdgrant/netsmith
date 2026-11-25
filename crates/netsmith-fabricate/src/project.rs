@@ -798,8 +798,13 @@ impl Manifest {
     }
 
     /// Read manifest text. TOML mistakes are reported by the `toml` crate with the line,
-    /// column and key; values that cannot work are named by field.
+    /// column and key; values that cannot work are named by field. An error of a manifest that
+    /// is written for another minor release says so ([`crate::release::beside_error`]).
     pub fn parse(text: &str) -> Result<Manifest, String> {
+        Manifest::read(text).map_err(|e| crate::release::beside_error(text, e))
+    }
+
+    fn read(text: &str) -> Result<Manifest, String> {
         let file: File = toml::from_str(text).map_err(|e| format!("{MANIFEST}: {e}"))?;
         let mut manifest = file.project;
         manifest.supply = file.supply;

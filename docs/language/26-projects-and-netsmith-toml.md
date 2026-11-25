@@ -53,6 +53,7 @@ Another minor release of netsmith may pick other parts, find other design rules 
 - In text it is a `warning:` line on stderr as the command ends, after the errors it may explain. With `--format json`, `board check`, `build`, `explain`, `fab` and `drc` and `project lint`, `lock` and `order` have it as the first of their `findings`, with `severity` `note` and `code` `release`, and say nothing of it on stderr; every other command says it on stderr and leaves its document as it is.
 - `netsmith view editor` says it in the terminal as it opens the project, and the page lists it first among its problems, as a warning. `netsmith mcp` says it on its stderr and in the server's instructions as it starts in the project's folder, and the commands it runs do not repeat it, unless the key has changed since.
 - No file netsmith writes carries it: `fab-notes.txt`, the design files and the rest of the output are the same with the warning or without.
+- A manifest that cannot be read (a key or a table this release does not know, a value it refuses) stops the command with that error and no warning. When its `netsmith` key names another minor release, the error ends with a line that says which release the manifest is written for and which netsmith is running. With no key, with this minor release, or in a file that is not TOML, the error says nothing of the release.
 
 The warning of a project written for an older release points to `docs/MIGRATING.md` in netsmith's repository, which lists every change that makes source an error, release by release, with the old and the new spelling (ADR 0134). To move a project, check it with the new release and, when it builds, set the key to that release. The warning of a project written for a newer one asks for that release. A project with no `netsmith` key whose `board check`, `build` or `fab` stops because a board failed its check ends with a note that it was made before the key, which points to the same file.
 
@@ -74,7 +75,7 @@ tar -xzf netsmith-0.9.0-x86_64-unknown-linux-gnu.tar.gz
 ./netsmith-0.9.0-x86_64-unknown-linux-gnu/netsmith --version
 ```
 
-(`shasum -a 256 -c` on macOS.) netsmith has no switch that chooses a release for you. An agent host takes that release's program as its server (`claude mcp add netsmith -- ~/netsmith-0.9.0/bin/netsmith mcp`), and `project refresh` writes the agent files of the netsmith that runs it. A release earlier than the one that added the warning says nothing of the key on a run that succeeds.
+(`shasum -a 256 -c` on macOS.) netsmith has no switch that chooses a release for you. An agent host takes that release's program as its server (`claude mcp add netsmith -- ~/netsmith-0.9.0/bin/netsmith mcp`), and `project refresh` writes the agent files of the netsmith that runs it. A release earlier than the one that added the warning says nothing of the key on a run that succeeds, and a release earlier than the one that added the line after a manifest's error says nothing of it there.
 
 ### Orders
 
