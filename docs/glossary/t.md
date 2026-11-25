@@ -18,6 +18,9 @@ _Avoid_: Absolute temperature, delta T (the range of temperatures a board's surr
 **Terminal**:
 A pin that belongs to a part, directly or through one of its interfaces. Terminals are what an exporter writes out.
 
+**Terminal pad**:
+A pad of a footprint on a copper layer, where a _Terminal_ can be soldered: what a count of pads, a pitch, an escape or a distance to a pad measures. A **paste aperture** (a pad with paste and no copper, such as a window of an exposed pad's paste) is none; the paste layers, their Gerbers and the drawings keep it (`netsmith_geom::is_terminal_pad`, issue #1693).
+
 **Termination**:
 A part across the two nets of a _Diff pair_ that matches the line's impedance at its end, so that a level does not reflect: a part with two pads, no connector, one pad on each net (a `std::bus::CanTermination`'s 120 ohm resistor across a CAN bus's `canh` and `canl`). Derived from the netlist, as a decoupling capacitor is: the placer pulls it to the pads of the connectors that have a pad on both nets, where the line leaves the board (`netsmith_pcb::termination_pairs`, issue #1193).
 _Avoid_: Terminator, terminal (a pin of a part is a _Terminal_)

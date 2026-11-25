@@ -269,10 +269,12 @@ pub fn fanout(board: &Board, routes: &Routes, ask: &FanoutAsk) -> Result<Fanout,
             })
         })
         .collect();
+    // The part's pitch is of its terminals: a paste aperture is no pad of it.
     let centres: Vec<Pt> = part
         .footprint
         .pads
         .iter()
+        .filter(|p| p.is_terminal())
         .map(|p| part.pad_centre(p))
         .collect();
     let pitch = centres

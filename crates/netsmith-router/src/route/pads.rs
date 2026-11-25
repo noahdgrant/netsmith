@@ -322,7 +322,8 @@ impl Lanes {
     }
 }
 
-/// Whether a part gets escape lanes ([`Lanes`]): at least 16 surface-mount pads, two of them
+/// Whether a part gets escape lanes ([`Lanes`]): at least 16 surface-mount terminal pads (a
+/// paste aperture is none), two of them
 /// 0.55 mm apart or nearer (pads at one centre, the pieces of an exposed pad, are not counted
 /// apart), facing at least three sides. A connector's single row is not ringed by other parts.
 pub(super) fn fine_pitch(part: &netsmith_pcb::Placed, faces: usize) -> bool {
@@ -330,7 +331,7 @@ pub(super) fn fine_pitch(part: &netsmith_pcb::Placed, faces: usize) -> bool {
         .footprint
         .pads
         .iter()
-        .filter(|p| p.drill.is_none())
+        .filter(|p| p.drill.is_none() && p.is_terminal())
         .collect();
     pads.len() >= 16
         && faces >= 3

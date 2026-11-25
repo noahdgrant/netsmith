@@ -308,8 +308,8 @@ The text is written as the parameters of a `gen:` footprint are, and has three c
 
 | Column | What the footprint must have |
 |---|---|
-| `pads` | That many pads, counted by number: the pieces of an exposed pad that share a number are one, and an unnumbered pad (a paste opening) is none. A 48-pin QFN with an exposed pad has `pads=49`. |
-| `pitch` | The least distance between the centres of two pads of different numbers in one row or one column (the same y, or the same x), to 0.005 mm, so 0.635 mm and 0.65 mm are told apart. A SOT-23-3, whose two pads on one side are 1.9 mm apart, has `pitch=1.9mm`. |
+| `pads` | That many pads, counted by number: the pieces of an exposed pad that share a number are one, and an unnumbered pad is none, nor is a paste aperture (a pad with paste and no copper), numbered or not. A 48-pin QFN with an exposed pad has `pads=49`. |
+| `pitch` | The least distance between the centres of two pads of different numbers in one row or one column (the same y, or the same x; a paste aperture is none), to 0.005 mm, so 0.635 mm and 0.65 mm are told apart. A SOT-23-3, whose two pads on one side are 1.9 mm apart, has `pitch=1.9mm`. |
 | `body` | The body the footprint draws on its fabrication layer (`F.Fab`), across (x in the footprint's frame) and then along (y): `3.9x4.9mm`, matched to 0.05 mm each way, or a size each, `6.9-7.1x6.9-7.1mm`, matched as it stands. A footprint that draws nothing on `F.Fab` has no body to measure, and a `body` column is refused for it. |
 
 Each disagreement names the part, the footprint, the row's table and line, and both numbers:

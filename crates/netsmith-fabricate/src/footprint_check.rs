@@ -61,7 +61,7 @@ pub struct FootprintCheck {
     pub footprint: String,
     /// `part` (each pad has the part's net) or `pad` (each pad number a net of its own).
     pub nets: String,
-    /// The footprint's pads.
+    /// The footprint's terminal pads: its paste apertures are not counted (they are checked).
     pub pads: usize,
     /// No error.
     pub legal: bool,
@@ -244,7 +244,12 @@ fn check(
     part.at = Pt::new(-reach.min.x, -reach.min.y);
     let origin = part.at;
     let refdes = part.refdes.clone();
-    let pads = part.footprint.pads.len();
+    let pads = part
+        .footprint
+        .pads
+        .iter()
+        .filter(|p| p.is_terminal())
+        .count();
     let mut board = template.clone();
     board.outline = outline;
     board.corner_radius = 0.0;
