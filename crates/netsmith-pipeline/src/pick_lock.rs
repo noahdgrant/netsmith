@@ -13,11 +13,13 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use netsmith_check::{Assignment, Loader, Model};
+use netsmith_check::{Assignment, Loader, Model, SourceId, Sources};
 use netsmith_core::Design;
+use netsmith_lang::Span;
 use netsmith_solve::lock::CHANNELS;
 use netsmith_solve::{
-    Catalogs, Designators, LockedFootprint, LockedProvider, LockedRow, PickLock, Solution,
+    Catalogs, Designators, HandPick, LockedFootprint, LockedProvider, LockedRow, OrderCodeBy,
+    PickLock, Solution,
 };
 
 use crate::{Libraries, outcome_with, render_problems};
@@ -59,6 +61,57 @@ pub fn rows_of(solution: &Solution) -> Vec<LockedRow> {
         .iter()
         .map(|p| LockedRow::of_pick(solution.model.path_of(p.part), p))
         .collect()
+}
+
+/// For each part of one board or system that has a hand pick, by the board or system and the
+/// part's path: what the line of a lock diff says of the row taken for it.
+pub type HandPickNotes = BTreeMap<(String, String), String>;
+
+/// The notes of the hand picks of `solution`, the solve of the board or system `unit` (issue
+/// #1706). `sources` are what its places point into.
+pub fn hand_picks_of(unit: &str, solution: &Solution, sources: &Sources) -> HandPickNotes {
+    solution
+        .hand_picks
+        .iter()
+        .map(|(path, pick)| {
+            (
+                (unit.to_string(), path.clone()),
+                hand_pick_note(pick, sources),
+            )
+        })
+        .collect()
+}
+
+/// `taken for the hand pick in the source: `.mpn &= "X"` at src/main.nsm:7`, with the
+/// `.manufacturer` and its place when the source states one. An `.mpn` that no statement names
+/// is said as the order code that was left (issue #1311).
+fn hand_pick_note(pick: &HandPick, sources: &Sources) -> String {
+    let place = |at: Option<(SourceId, Span)>| at.and_then(|(s, span)| sources.place(s, span));
+    let stated = |member: &str, text: &str, at| {
+        let at = place(at).map_or_else(String::new, |p| format!(" at {p}"));
+        format!("`.{member} &= \"{text}\"`{at}")
+    };
+    let mut said = Vec::new();
+    if let Some(mpn) = &pick.mpn {
+        said.push(match pick.order_code {
+            None => stated("mpn", mpn, pick.mpn_at),
+            Some(by) => {
+                let what = match by {
+                    OrderCodeBy::Needs => "the design's `.needs`",
+                    OrderCodeBy::Table => "the part's `.variants`",
+                };
+                let at = place(pick.mpn_at).map_or_else(String::new, |p| format!(" at {p}"));
+                format!("the order code `{mpn}`, which {what}{at} leave")
+            }
+        });
+    }
+    if let Some(manufacturer) = &pick.manufacturer {
+        said.push(stated("manufacturer", manufacturer, pick.manufacturer_at));
+    }
+    format!(
+        "taken for the hand pick in the source: {}",
+        said.join(" and ")
+    )
 }
 
 /// The designator of each part of a design, by its path: under `member.` for a board of a system
@@ -548,12 +601,28 @@ fn outdated_line(version: i64) -> String {
 /// numbers, changed, `added as ...` for a part the old lock has no entry for, and `dropped (was
 /// ...)` for an entry of a part that is no longer there. Empty when the locks hold the same.
 pub fn diff(old: &PickLock, new: &PickLock) -> Vec<String> {
+    diff_saying(old, new, &HandPickNotes::new())
+}
+
+/// [`diff`], with the line of each part that is added or takes another row ending in what
+/// `hand_picks` says of it: why that row was taken.
+fn diff_saying(old: &PickLock, new: &PickLock, hand_picks: &HandPickNotes) -> Vec<String> {
+    let why = |unit: &str, path: &str| {
+        hand_picks
+            .get(&(unit.to_string(), path.to_string()))
+            .map_or_else(String::new, |note| format!("; {note}"))
+    };
     let mut found: Vec<(String, String, String)> = Vec::new();
     for (unit, rows) in new.units() {
         let before = old.rows(unit);
         for row in rows {
             let line = match before.iter().find(|b| b.path == row.path) {
-                None => format!("{unit}: `{}`: added as {}", row.path, describe(row, true)),
+                None => format!(
+                    "{unit}: `{}`: added as {}{}",
+                    row.path,
+                    describe(row, true),
+                    why(unit, &row.path)
+                ),
                 Some(b) if b != row => {
                     let same_row = (&b.catalog, &b.row, &b.skus, &b.manufacturer, &b.mpn)
                         == (
@@ -572,19 +641,17 @@ pub fn diff(old: &PickLock, new: &PickLock) -> Vec<String> {
                     };
                     if same_row {
                         format!("{unit}: `{}`: {hold}", row.path)
-                    } else if hold.is_empty() {
-                        format!(
-                            "{unit}: `{}`: {} -> {}",
-                            row.path,
-                            describe(b, with_catalog),
-                            describe(row, with_catalog)
-                        )
                     } else {
+                        let hold = match hold.as_str() {
+                            "" => String::new(),
+                            hold => format!(" ({hold})"),
+                        };
                         format!(
-                            "{unit}: `{}`: {} -> {} ({hold})",
+                            "{unit}: `{}`: {} -> {}{hold}{}",
                             row.path,
                             describe(b, with_catalog),
-                            describe(row, with_catalog)
+                            describe(row, with_catalog),
+                            why(unit, &row.path)
                         )
                     }
                 }
@@ -885,8 +952,10 @@ pub struct Refresh {
     /// The rows the solver picks now, without the lock's holding: what `--update` writes.
     pub now: PickLock,
     /// The difference between the file and `now`, one line for each part ([`diff`]); all the
-    /// parts of the board as added when there is no file. A file of an older version of the
-    /// format has a first line that says so (`version 1 -> 2`). Empty when the lock is current.
+    /// parts of the board as added when there is no file. The line of a part that is added or
+    /// takes another row for a hand pick ends in where the source states it
+    /// ([`hand_picks_of`]). A file of an older version of the format has a first line that says
+    /// so (`version 1 -> 2`). Empty when the lock is current.
     pub diff: Vec<String>,
     /// The path of every part of the source's boards, and of every entry of the file, in order
     /// of the board and then the path: what a part named to `project lock --update` is looked up in.
@@ -1139,6 +1208,7 @@ pub fn refresh_with(
         }
     };
     let mut now = outcome.lock;
+    let hand_picks = outcome.hand_picks;
     // The footprints as `build` reads them; a run that reads none keeps the lock's.
     now.footprints = match libraries {
         Some(libraries) => footprints_of(&outcome.boards, libraries)?,
@@ -1192,7 +1262,7 @@ pub fn refresh_with(
     paths.sort();
     paths.dedup();
     let empty = PickLock::new("");
-    let mut diff = diff(old.as_ref().unwrap_or(&empty), &now);
+    let mut diff = diff_saying(old.as_ref().unwrap_or(&empty), &now, &hand_picks);
     if let Some(line) = old.as_ref().and_then(|o| o.outdated.clone()) {
         diff.insert(0, line);
     }
