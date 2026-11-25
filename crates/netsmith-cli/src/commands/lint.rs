@@ -7,7 +7,6 @@ use std::fs;
 use std::process::ExitCode;
 
 use clap::Args as ClapArgs;
-use netsmith_fabricate::project::Target;
 use netsmith_lint::{Lint, Project, Root, Rule};
 use netsmith_pipeline::pick_lock;
 use netsmith_tools::findings::{Finding, Report, Severity};
@@ -40,7 +39,7 @@ pub fn run(args: Args) -> ExitCode {
         eprintln!("{e}");
         ExitCode::from(2)
     };
-    let target = match Target::resolve(args.file.as_deref()) {
+    let target = match common::resolve(args.file.as_deref()) {
         Ok(t) => t,
         Err(e) => return fail(e),
     };
@@ -122,7 +121,10 @@ pub fn run(args: Args) -> ExitCode {
         common::Format::Json => {
             let mut report = Report::new("project lint");
             report.ok = !failed;
-            report.findings = found.iter().map(|l| finding(l, severity)).collect();
+            report.findings = crate::release_warning::finding()
+                .into_iter()
+                .chain(found.iter().map(|l| finding(l, severity)))
+                .collect();
             print!("{}", report.to_json());
         }
         common::Format::Text => {

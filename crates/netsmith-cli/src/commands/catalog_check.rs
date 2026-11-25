@@ -74,6 +74,8 @@ pub fn run(args: Args) -> ExitCode {
         Ok(p) => p,
         Err(e) => return fail(e),
     };
+    // A check of the project's catalogs looks at its release too (issue #1657).
+    crate::release_warning::open(project.as_ref());
     let context = match Context::of(project.as_ref()) {
         Ok(c) => c,
         Err(e) => return fail(e),

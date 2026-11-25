@@ -352,6 +352,22 @@ impl Workspace {
         self.target().title.clone()
     }
 
+    /// `analysis` as it is served: first among its problems, the warning of a project written
+    /// for another release than this netsmith (issue #1657). It is the project's, not a reading's,
+    /// so it is not in a reading, and a comparison of two readings does not see it.
+    fn with_release_warning(&self, mut analysis: Analysis) -> Analysis {
+        let warning = self.target().project.as_ref().and_then(|project| {
+            netsmith_fabricate::release::mismatch(project.manifest.netsmith.as_deref())
+        });
+        if let Some(message) = warning {
+            analysis.warnings += 1;
+            analysis
+                .problems
+                .insert(0, analysis::release_problem(message));
+        }
+        analysis
+    }
+
     /// The target as last read: a clone of a pointer, so a caller can keep it across a reload.
     fn target(&self) -> Arc<Target> {
         Arc::clone(&self.target.read().unwrap_or_else(|e| e.into_inner()))
@@ -1193,12 +1209,12 @@ impl Backend for Workspace {
         let stale = !self.auto_analysis.load(Ordering::Acquire)
             && state.version > 0
             && state.stamp.as_ref() != Some(&files::stamps(&self.target().watched()));
-        Analysis {
+        self.with_release_warning(Analysis {
             elapsed_ms: state.elapsed_ms,
             cancelled: state.cancelled.is_some().then_some(true),
             stale: stale.then_some(true),
             ..state.snapshot.summary(state.version)
-        }
+        })
     }
 
     fn cancel_analysis(&self) -> bool {
@@ -1253,10 +1269,10 @@ impl Backend for Workspace {
                 && state.code.get(&fs).copied() == netsmith_lang::code_fingerprint(text)
                 && state.code.contains_key(&fs)
             {
-                return Ok(Analysis {
+                return Ok(self.with_release_warning(Analysis {
                     elapsed_ms: Some(0),
                     ..state.snapshot.summary(state.version)
-                });
+                }));
             }
         }
         let version = self.fresh().version;
@@ -1268,10 +1284,10 @@ impl Backend for Workspace {
                 eprintln!("netsmith editor: the check of {path} panicked: {message}");
                 Snapshot::after_panic(&message, None)
             });
-        Ok(Analysis {
+        Ok(self.with_release_warning(Analysis {
             elapsed_ms: Some(millis(started)),
             ..snapshot.summary(version)
-        })
+        }))
     }
 
     fn board(&self, name: &str) -> Result<BoardDetail, ApiError> {

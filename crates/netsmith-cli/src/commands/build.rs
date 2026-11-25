@@ -576,6 +576,10 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
     }
     if json {
         report.ok = code == ExitCode::SUCCESS;
+        // A project written for another release is warned of, as the first finding (issue #1657).
+        if let Some(finding) = crate::release_warning::finding() {
+            report.findings.insert(0, finding);
+        }
         match (explained, &run.explain) {
             // `explain`: the report's document, with the record of the path for the boards.
             (record, Some(explain)) => {

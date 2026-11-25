@@ -182,7 +182,7 @@ struct Pinned {
 }
 
 fn act(command: &Command, target: &Target, name: &str) -> Result<Done, Failed> {
-    let source = Source::resolve(target.file.as_deref()).map_err(Failed::usage)?;
+    let source = super::common::resolve(target.file.as_deref()).map_err(Failed::usage)?;
     if source.files.is_empty() {
         return Err(Failed::usage(
             "this project has no boards: `top_level` in netsmith.toml is empty; name a .nsm file",

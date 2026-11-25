@@ -8,7 +8,6 @@ use std::process::ExitCode;
 use clap::Args as ClapArgs;
 use netsmith_editor::api::{Swap, SwapAlternative, SwapApply, SwapCheck};
 use netsmith_editor::{ApiError, Backend};
-use netsmith_fabricate::project::Target;
 use netsmith_workspace::Workspace;
 
 use super::common;
@@ -83,7 +82,7 @@ pub fn run(args: Args) -> ExitCode {
 }
 
 fn swap(args: &Args) -> Result<String, Failed> {
-    let target = Target::resolve(args.file.as_deref()).map_err(|e| failed(e, 2))?;
+    let target = common::resolve(args.file.as_deref()).map_err(|e| failed(e, 2))?;
     let workspace = Workspace::open(target).map_err(|e| failed(e, 2))?;
     let analysis = workspace.analysis();
     let errors: Vec<&str> = analysis

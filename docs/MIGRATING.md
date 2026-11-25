@@ -4,7 +4,7 @@ netsmith keeps one spelling for each thing (ADR 0001). When a release changes a 
 
 How to move a project:
 
-1. Run `netsmith board check` in the project with the new netsmith. A project whose `netsmith.toml` names an older release (`netsmith = "0.1.0"`), or names none, and whose check fails, ends the run with a note that points here.
+1. Run `netsmith board check` in the project with the new netsmith. A project whose `netsmith.toml` names an older minor release (`netsmith = "0.1.0"`) gets a warning that points here; one that names none, and whose check fails, ends the run with a note that points here.
 2. Read the section of each release after the project's own, oldest first, and fix what the errors name. Most changes are mechanical: the errors' line numbers find every place.
 3. Run `netsmith project lock --check`: a release may pick other parts for the same source (a new check, a new catalog row). `netsmith project lock --update` takes the new picks; review the lock's diff. A release also adds rows to the built-in catalogs (its notes list them): when a project's own catalog file already has one of those parts, the build stops with "a part is in a catalog once", naming the built-in row and what differs from the project's. Remove the project's row from its catalog file; a pick lock that names that row (`row = "..."`) is then repaired by `netsmith project lock --update`, which sets it to the built-in row of the same manufacturer part number and changes no other row.
 4. When the project builds, set `netsmith = "<release>"` in the `[project]` table of `netsmith.toml`. `netsmith project refresh` brings the project's guide and skills up to the release (ADR 0131); it does not touch the sources.
