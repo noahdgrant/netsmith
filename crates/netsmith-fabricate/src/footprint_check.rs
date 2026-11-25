@@ -98,11 +98,19 @@ impl FootprintCheck {
             let pads = match f.pads.as_slice() {
                 [] => String::new(),
                 [one] => format!(" pad {one}"),
-                many => format!(" pads {}", many.join(" and ")),
+                [a, b] => format!(" pads {a} and {b}"),
+                [rest @ .., last] => format!(" pads {} and {last}", rest.join(", ")),
             };
+            // One line for the pairs of pads no mask web fits between (issue #1685): their count.
+            let pairs = f
+                .message
+                .split_once(" pairs of ")
+                .and_then(|(n, _)| n.parse::<usize>().ok())
+                .map(|n| format!("{n} pairs, "))
+                .unwrap_or_default();
             let figures = match (f.required, f.measured, f.shortfall) {
                 (Some(r), Some(m), Some(s)) => {
-                    format!("needs {r:.4} mm, has {m:.4} mm, short by {s:.4} mm")
+                    format!("{pairs}needs {r:.4} mm, has {m:.4} mm, short by {s:.4} mm")
                 }
                 _ => f.message.clone(),
             };

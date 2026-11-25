@@ -736,3 +736,61 @@ fn copper_that_feeds_branches_is_never_held_to_more_than_its_nets_whole_current(
     let via = r.findings.iter().find(|f| f.rule == DrcRule::ViaCurrent).unwrap();
     assert_eq!(via.carrying.as_ref().unwrap().current, Some(2.0));
 }
+
+/// Net P needs 0.4 mm; a 0.2 mm track of P from S1 to S2 along y = 10, and a 0.2 mm track of
+/// net Q beside it, `apart` mm from centre line to centre line.
+fn widening_board(apart: f64) -> (Pcb, DrcExtras) {
+    let extras = DrcExtras {
+        least_widths: vec![("P".to_string(), 0.4)],
+        neck_reach: 1.0,
+        sizing: Some(sizing()),
+        ..jlcpcb()
+    };
+    let mut b = Pcb::new(2);
+    b.stub("P", 10.0, 10.0);
+    b.stub("P", 20.0, 10.0);
+    b.track("P", "F.Cu", (10.0, 10.0), (20.0, 10.0), 0.2);
+    b.track("Q", "F.Cu", (13.0, 10.0 + apart), (17.0, 10.0 + apart), 0.2);
+    (b, extras)
+}
+
+#[test]
+fn a_track_held_by_a_track_of_another_net_names_it_its_net_and_the_width_it_allows() {
+    // Issue #1691: Q's track runs 0.4 mm from P's centre line to its centre line, so its edge
+    // is 0.3 mm from P's centre line; with the 0.127 mm clearance P may be no wider than
+    // 2 (0.3 - 0.127) = 0.346 mm there, less than the 0.4 mm its current needs.
+    let (mut b, extras) = widening_board(0.4);
+    let r = check(&mut b, &extras);
+    let f = r.findings.iter().find(|f| f.rule == DrcRule::TrackCurrent).expect("a finding");
+    let c = f.carrying.as_ref().unwrap();
+    let widest = c.widest.expect("the widest width");
+    assert!((widest - 0.346).abs() < 1e-9, "{widest}");
+    assert_eq!(c.held_by.len(), 1, "{:?}", c.held_by);
+    let held = &c.held_by[0];
+    assert_eq!((held.kind, held.rule), ("track", DrcRule::Clearance));
+    assert_eq!(held.item.net.as_deref(), Some("Q"));
+    assert!(held.item.what.starts_with("Track [Q] on F.Cu"), "{}", held.item.what);
+    assert!((held.distance.required - 0.127).abs() < 1e-9, "{:?}", held.distance);
+    assert!((held.distance.measured - 0.2).abs() < 1e-9, "{:?}", held.distance);
+    assert!((held.at.y - 10.3).abs() < 1e-9, "{:?}", held.at);
+    for part in [
+        "where it lies it may be no wider than 0.3460 mm: Track [Q] on F.Cu",
+        "of net `Q` at (",
+        "allows 0.3460 mm (clearance 0.1270 mm, 0.2000 mm now)",
+    ] {
+        assert!(f.message.contains(part), "{part}: {}", f.message);
+    }
+}
+
+#[test]
+fn a_track_with_room_says_the_width_it_needs_fits() {
+    // Issue #1691: 0.6 mm apart, Q's edge is 0.5 mm from P's centre line, which allows
+    // 2 (0.5 - 0.127) = 0.746 mm: the 0.4 mm fits, and nothing holds the track.
+    let (mut b, extras) = widening_board(0.6);
+    let r = check(&mut b, &extras);
+    let f = r.findings.iter().find(|f| f.rule == DrcRule::TrackCurrent).expect("a finding");
+    let c = f.carrying.as_ref().unwrap();
+    assert_eq!(c.widest, Some(0.4));
+    assert!(c.held_by.is_empty(), "{:?}", c.held_by);
+    assert!(f.message.contains("where it lies the 0.4000 mm fits"), "{}", f.message);
+}

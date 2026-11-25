@@ -3783,6 +3783,8 @@ fn drc_branches(
 pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
     netsmith_geom::DrcExtras {
         mask_web: Some(board.rules.mask_bridge),
+        // One line for a part whose pads no mask web fits between (issue #1685).
+        mask_web_summary: true,
         via_in_pad: Some(board.process.via_in_pad),
         excused_courtyards: board.excused_courtyards(),
         mask_to_track: Some(board.rules.mask_to_track),
