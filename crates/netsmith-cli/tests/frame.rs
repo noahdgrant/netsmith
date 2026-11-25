@@ -200,6 +200,7 @@ fn every_json_document_with_places_says_their_frame() {
         ),
         (&["routes", "show", "--file", f], "outline"),
         (&["routes", "sites", "D1", "--file", f], "outline"),
+        (&["routes", "check-via", "--at", "2,2", "--file", f], "outline"),
         (&["routes", "tidy", "--dry-run", "--file", f], "outline"),
     ];
     for (args, frame) in own {
@@ -881,4 +882,84 @@ fn the_places_of_fab_notes_are_in_the_outlines_frame_as_its_header_says() {
         says_at(&drc, "track_dangling", end),
         "board drc --frame outline:\n{drc}"
     );
+}
+
+/// `routes move-via` (issue #1644): `--dry-run` writes nothing, its JSON has its places in the
+/// frame asked for, and a move writes the via and its track's new legs.
+#[test]
+fn routes_move_via_moves_the_via_with_its_track_in_the_frame_asked_for() {
+    let (dir, pad, end) = led("frame-move-via");
+    let at = format!("{},{}", end[0], end[1]);
+    let shown = json(
+        &dir,
+        &["routes", "show", "--file", "led.nsm", "--format", "json"],
+    );
+    let net = shown["nets"][0]["net"].as_str().unwrap().to_string();
+    let base = ["--file", "led.nsm", "--net", &net];
+    let run = netsmith(
+        &dir,
+        &[&["routes", "add-via", "--at", &at][..], &base[..]].concat(),
+    );
+    assert!(run.status.success(), "{run:?}");
+    let file = dir.join("led.routes.toml");
+    let was = fs::read_to_string(&file).unwrap();
+    let new = [end[0] - 0.5, end[1] - 1.0];
+    let to = format!("{},{}", new[0], new[1]);
+    let mv = [
+        &["routes", "move-via", "--via", "1", "--to", &to][..],
+        &base[..],
+    ]
+    .concat();
+    let doc = json(
+        &dir,
+        &[
+            &mv[..],
+            &["--dry-run", "--format", "json", "--frame", "board-file"][..],
+        ]
+        .concat(),
+    );
+    assert_eq!(doc["frame"], "board-file", "{doc:#}");
+    assert_eq!(doc["written"], false, "{doc:#}");
+    assert_eq!(doc["refused"], Value::Null, "{doc:#}");
+    near(point(&doc["to"]), [new[0] + 20.0, new[1] + 20.0], "to");
+    let way = doc["tracks"][0]["way_after"].as_array().unwrap();
+    near(point(&way[0]), [pad[0] + 20.0, pad[1] + 20.0], "the end that stays");
+    near(
+        point(way.last().unwrap()),
+        [new[0] + 20.0, new[1] + 20.0],
+        "the end in the via",
+    );
+    assert_eq!(fs::read_to_string(&file).unwrap(), was, "a dry run wrote");
+
+    let run = netsmith(&dir, &mv);
+    let text = String::from_utf8_lossy(&run.stdout);
+    assert!(run.status.success(), "{run:?}");
+    assert!(text.contains("wrote "), "{text}");
+    let shown = json(
+        &dir,
+        &["routes", "show", "--file", "led.nsm", "--format", "json"],
+    );
+    let vcc = shown["nets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["net"] == net.as_str())
+        .unwrap();
+    near(point(&vcc["vias"][0]["at"]), new, "the via");
+    assert_eq!(vcc["tracks"].as_array().unwrap().len(), 2, "{vcc:#}");
+
+    // A locked via is refused, and nothing is written.
+    let run = netsmith(
+        &dir,
+        &[&["routes", "lock", "--via", "1"][..], &base[..]].concat(),
+    );
+    assert!(run.status.success(), "{run:?}");
+    let was = fs::read_to_string(&file).unwrap();
+    let run = netsmith(&dir, &mv);
+    assert_eq!(run.status.code(), Some(1), "{run:?}");
+    assert!(
+        String::from_utf8_lossy(&run.stderr).contains("is locked"),
+        "{run:?}"
+    );
+    assert_eq!(fs::read_to_string(&file).unwrap(), was);
 }
