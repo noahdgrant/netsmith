@@ -206,3 +206,86 @@ fn the_power_stage_of_a_buck_names_its_roles_and_capacitors() {
     let drc = String::from_utf8_lossy(&drc.stdout);
     assert!(!drc.contains("switch_node_copper"), "{drc}");
 }
+
+/// `board nets --decoupling` (issue #1730) of the regulator example: both capacitors are found
+/// with the regulator they decouple, routed on tracks; moved farther from its pins, the output
+/// capacitor has the longer loop, and `--compare` with the JSON kept before says so, in its own
+/// frame or the outline's.
+#[test]
+fn a_decoupling_capacitor_moved_farther_from_its_pin_has_the_longer_loop_in_the_compare() {
+    let dir = TempDir::new("board-nets-decoupling");
+    let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+    for f in ["linear_regulator.nsm", "linear_regulator.lock.toml"] {
+        fs::copy(examples.join(f), dir.join(f)).unwrap();
+    }
+    let run = |args: &[&str]| {
+        let mut all = vec!["board", "nets", "linear_regulator.nsm", "--decoupling", "--route"];
+        all.extend_from_slice(args);
+        netsmith(&dir, &all)
+    };
+    let ok = |out: &std::process::Output| {
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    // The placement held, so the move is the only change.
+    ok(&netsmith(&dir, &["layout", "capture", "--file", "linear_regulator.nsm"]));
+    let before = ok(&run(&["--format", "json"]));
+    fs::write(dir.join("before.json"), &before).unwrap();
+    let before: serde_json::Value = serde_json::from_str(&before).unwrap();
+    assert_eq!(before["frame"], "board-file", "{before}");
+    let caps = before["decoupling"].as_array().unwrap();
+    assert_eq!(caps.len(), 2, "{before}");
+    let loop_of = |doc: &serde_json::Value, path: &str| -> serde_json::Value {
+        doc["decoupling"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["path"] == path)
+            .unwrap_or_else(|| panic!("no {path}: {doc}"))
+            .clone()
+    };
+    let near = loop_of(&before, "stage.output_cap");
+    assert!(near["part"].as_str().unwrap().starts_with('U'), "{near}");
+    assert_eq!(near["loop"]["complete"], true, "{near}");
+    let cap = near["cap"].as_str().unwrap().to_string();
+
+    ok(&netsmith(
+        &dir,
+        &[
+            "layout", "set", "stage.output_cap", "--at", "16.75,3.5", "--lock", "--file",
+            "linear_regulator.nsm",
+        ],
+    ));
+    let after: serde_json::Value =
+        serde_json::from_str(&ok(&run(&["--compare", "before.json", "--format", "json"]))).unwrap();
+    let far = loop_of(&after, "stage.output_cap");
+    let length = |l: &serde_json::Value| l["loop"]["length"].as_f64().unwrap();
+    assert!(length(&far) > length(&near) + 2.0, "{near}\n{far}");
+    assert!(
+        far["supply"]["distance"].as_f64().unwrap() > near["supply"]["distance"].as_f64().unwrap(),
+        "{far}"
+    );
+    let rows = after["compare"]["loops"].as_array().unwrap();
+    let row = rows.iter().find(|r| r["cap"] == cap.as_str()).unwrap();
+    assert!(row["length_change"].as_f64().unwrap() > 2.0, "{row}");
+    assert_eq!(after["compare"]["against"], "before.json");
+    // The text says it too, and the outline's frame moves the capacitor's place.
+    let text = ok(&run(&["--compare", "before.json"]));
+    assert!(text.contains("decoupling loops compared with before.json"), "{text}");
+    let line = text
+        .lines()
+        .find(|l| l.trim_start().starts_with(&format!("{cap}: loop ")))
+        .unwrap_or_else(|| panic!("{text}"));
+    assert!(line.contains(" mm (+"), "{line}");
+    let framed: serde_json::Value =
+        serde_json::from_str(&ok(&run(&["--format", "json", "--frame", "outline"]))).unwrap();
+    assert_eq!(framed["frame"], "outline");
+    let at = |l: &serde_json::Value| l["at"][0].as_f64().unwrap();
+    let moved = loop_of(&framed, "stage.output_cap");
+    assert!((at(&far) - at(&moved) - 20.0).abs() < 1e-6, "{far}\n{moved}");
+    // Not with the power stage's report, nor a gate.
+    for other in ["--power-stage", "--gate", "--lengths"] {
+        let out = run(&[other]);
+        assert_eq!(out.status.code(), Some(2), "{other}");
+    }
+}

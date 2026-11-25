@@ -78,6 +78,7 @@ mod connection;
 mod cpl;
 mod crosscheck;
 mod csv;
+pub mod decoupling_loop;
 mod exclusive;
 mod gerber;
 mod kicad;
