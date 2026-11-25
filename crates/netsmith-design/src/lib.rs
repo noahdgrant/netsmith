@@ -1855,6 +1855,8 @@ fn design_model(
         ),
         None => guidelines::TrackPlan::default(),
     };
+    // A heating (rms) current with no current beside it, or above it (issue #1690).
+    errors.extend(guidelines::rms_errors(model));
     features.net_widths.extend(plan.widths);
     // A `route` statement of a part's `layout` block widens its net (issue #994).
     let part_layout_widths = part_layout.widths.clone();
@@ -1889,6 +1891,7 @@ fn design_model(
             least_width: b.least_width,
             inner_least_width: b.inner_least_width,
             vias: b.vias,
+            rms: b.rms,
         });
     }
     features.branch_currents.sort_by(|a, b| a.path.cmp(&b.path));
@@ -1903,6 +1906,7 @@ fn design_model(
             path: model.path_of(l.pin),
             pins: pins.clone(),
             current: l.current,
+            rms: l.rms,
         });
     }
     features.pin_currents.sort_by(|a, b| a.path.cmp(&b.path));

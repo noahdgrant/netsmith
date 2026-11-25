@@ -76,3 +76,44 @@ board B {
         c.render()
     );
 }
+
+#[test]
+fn a_pin_states_the_rms_current_of_its_branch_where_it_states_its_current() {
+    // Issue #1690: beside the peak, the heating (rms) current of the branch, on the pin of a
+    // part; on a pin of a module it is refused as `.current` is.
+    let c = run(
+        "board B {
+    .supply: Rail { .pos.net &= \"VIN\" }
+    .u: Conv { .bias.current &= 1mA; .bias.rms_current &= 0.2mA }
+    .supply ~ .u.vin
+    .u.bias ~ .supply.pos
+}",
+    );
+    assert!(c.is_ok(), "{}", c.render());
+    let model = &c.board("B").unwrap().model;
+    match model.domain_at("u.bias.rms_current") {
+        Some(Domain::Quantity(q)) => assert_eq!((q.lo(), q.hi()), (0.0002, 0.0002)),
+        other => panic!("{other:?}"),
+    }
+    let c = run(
+        "module Stage {
+    .vin: Rail
+    .u: Conv
+    .vin ~ .u.vin
+    .vin.pos.rms_current &= 1mA
+}
+board B {
+    .supply: Rail { .pos.net &= \"VIN\" }
+    .stage: Stage
+    .supply ~ .stage.vin
+}",
+    );
+    assert_eq!(
+        messages(&c),
+        [
+            "`.vin.pos` is a pin of a module, not of a part: the current of a branch is stated on the pin of the part the branch ends at, such as `.ldo.bias.rms_current &= 1mA`, since a module's pin stands for every pin joined to it",
+        ],
+        "{}",
+        c.render()
+    );
+}
