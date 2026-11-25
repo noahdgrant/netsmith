@@ -270,12 +270,16 @@ fn write_lock(root: &Path) {
     let target = Target::resolve_from(root, None).unwrap();
     let source = &target.files[0];
     let text = fs::read_to_string(&source.path).unwrap();
-    let found = netsmith_pipeline::pick_lock::refresh(
+    let libraries = target.libraries().unwrap();
+    let found = netsmith_pipeline::pick_lock::refresh_with(
         &source.path,
         &source.name,
         &text,
         &target.loader().unwrap(),
         &target.catalogs().unwrap(),
+        &netsmith_pipeline::pick_lock::Parts::All,
+        netsmith_pipeline::pick_lock::Numbering::Keep,
+        Some(&libraries),
     )
     .unwrap();
     found.write().unwrap();

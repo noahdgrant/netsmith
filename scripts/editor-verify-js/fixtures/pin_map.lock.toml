@@ -30,3 +30,7 @@ sku = { jlcpcb-assembly = "C25900", lcsc-retail = "C25900" }
 "load" = "R1"
 "pull" = "R2"
 "u" = "U1"
+
+[PinMapBoard.footprints]
+"load" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"pull" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }

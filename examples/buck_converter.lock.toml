@@ -4,6 +4,8 @@
 # with `netsmith project lock --update`, and number the parts again by path with `--renumber`.
 # Nothing in it is edited by hand but `held = "reason"`, which a person adds to a part's entry
 # to keep the part on its row, and a part's designator, which a renamed part takes by hand.
+# Each part's footprint has the hash of its pads and courtyard: a change to the footprint shows
+# here, and `netsmith project lock --update` takes it.
 version = 2
 
 [BuckConverterExample.providers."process"]
@@ -92,3 +94,16 @@ sku = { jlcpcb-assembly = "C16780", lcsc-retail = "C16780" }
 "reg.inductor" = "L1"
 "reg.input_cap" = "C2"
 "reg.output_cap" = "C3"
+
+[BuckConverterExample.footprints]
+"power_in" = { footprint = "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical", hash = "4f0b767adeef1876" }
+"power_out" = { footprint = "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical", hash = "4f0b767adeef1876" }
+"reg.divider.rbottom" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"reg.divider.rtop" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"reg.ic" = { footprint = "Package_TO_SOT_SMD:SOT-23-6", hash = "b4d64133c8ac0117" }
+"reg.ic.boost" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"reg.ic.catch" = { footprint = "Diode_SMD:D_SOD-323", hash = "0c2f0795e7bc4caf" }
+"reg.ic.shdn_pullup" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"reg.inductor" = { footprint = "Inductor_SMD:L_1210_3225Metric", hash = "3125d5432e8cc029" }
+"reg.input_cap" = { footprint = "Capacitor_SMD:C_1210_3225Metric", hash = "df1cda3b99042958" }
+"reg.output_cap" = { footprint = "Capacitor_SMD:C_0805_2012Metric", hash = "57bea96f2863e6f2" }

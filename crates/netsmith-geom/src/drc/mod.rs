@@ -204,6 +204,7 @@ pub(crate) mod constraints;
 mod exposed_pad;
 mod fab_rules;
 mod marks;
+mod mask_webs;
 mod model;
 mod near;
 mod pour;
@@ -1113,6 +1114,10 @@ pub struct Extras {
     /// Whether guidelines are errors for this run (`fab --strict`, `guidelines = "error"`):
     /// `pad_island_cut` is then an error, where it is otherwise a warning (issue #1509).
     pub strict_guidelines: bool,
+    /// Whether the `solder_mask_bridge` pairs of a part's own pads that the process cannot make
+    /// a web between are one finding for the part (`mask_webs.rs`, issue #1685): `fab`'s
+    /// extras set it; the cross-check with KiCad, which reports pair by pair, does not.
+    pub mask_web_summary: bool,
     /// The boxes a board cut to a neighbourhood was cut to, in the frame of the board file
     /// (the check of an edit, `routes add-track`): a piece of a fill that reaches the edge of
     /// one may go on outside it, so `pad_island_cut` does not judge it. Empty for a whole board.
@@ -1383,6 +1388,9 @@ pub fn check_artwork(
         v_cut,
     };
     waivers::apply(&mut report, &extras.waivers);
+    if extras.mask_web_summary {
+        mask_webs::summarise(&model, &mut report);
+    }
     report
 }
 

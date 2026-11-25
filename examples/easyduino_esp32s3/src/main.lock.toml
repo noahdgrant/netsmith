@@ -4,6 +4,8 @@
 # with `netsmith project lock --update`, and number the parts again by path with `--renumber`.
 # Nothing in it is edited by hand but `held = "reason"`, which a person adds to a part's entry
 # to keep the part on its row, and a part's designator, which a renamed part takes by hand.
+# Each part's footprint has the hash of its pads and courtyard: a change to the footprint shows
+# here, and `netsmith project lock --update` takes it.
 version = 2
 
 [EasyduinoEsp32s3.providers."process"]
@@ -258,3 +260,40 @@ sku = { jlcpcb-assembly = "C11366", lcsc-retail = "C11366" }
 "vbus_100n" = "C8"
 "vbus_1u" = "C9"
 "vbus_22u" = "C10"
+
+[EasyduinoEsp32s3.footprints]
+"auto_reset.q_boot" = { footprint = "easyduino_original:SOT-23W", hash = "6a905911cd9adcd7" }
+"auto_reset.q_en" = { footprint = "easyduino_original:SOT-23W", hash = "6a905911cd9adcd7" }
+"auto_reset.r_dtr" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"auto_reset.r_rts" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"boot" = { footprint = "easyduino_original:SW_Push_SPST_NO_Alps_SKRK", hash = "166d49efe0ad7b4a" }
+"boot_100n" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"bridge" = { footprint = "Package_DFN_QFN:QFN-28-1EP_5x5mm_P0.5mm_EP3.35x3.35mm", hash = "f71511082c8a5c9b" }
+"bridge_reset_pullup.resistor" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"bridge_vdd_cap" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"en_100n[0]" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"en_100n[1]" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"en_pullup.resistor" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"headers" = { footprint = "easyduino_must_match:PinHeader_2x22_P2.54mm_Espressif_ESP32-S3-DevKitC-1", hash = "7e04fdcea3d67249" }
+"mcu" = { footprint = "easyduino_original:ESP32-S3-WROOM-1", hash = "4f882e671547ec5b" }
+"power_led" = { footprint = "LED_SMD:LED_0402_1005Metric", hash = "b6d7b8b0d1b346cc" }
+"power_led_resistor" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"regulator" = { footprint = "Package_TO_SOT_SMD:SOT-223-3_TabPin2", hash = "296e3fe0948f293c" }
+"reset" = { footprint = "easyduino_original:SW_Push_SPST_NO_Alps_SKRK", hash = "166d49efe0ad7b4a" }
+"suspend_pulldown.resistor" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"usb_native.cc1_rd" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"usb_native.cc2_rd" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"usb_native.receptacle" = { footprint = "easyduino_original:USB_C_Receptacle_G-Switch_GT-USB-7010ASV", hash = "88e3d64be70a6629" }
+"usb_native_diode" = { footprint = "easyduino_original:D_0402_1005Metric", hash = "b6d7b8b0d1b346cc" }
+"usb_uart.cc1_rd" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"usb_uart.cc2_rd" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"usb_uart.receptacle" = { footprint = "easyduino_original:USB_C_Receptacle_G-Switch_GT-USB-7010ASV", hash = "88e3d64be70a6629" }
+"usb_uart_diode" = { footprint = "easyduino_original:D_0402_1005Metric", hash = "b6d7b8b0d1b346cc" }
+"user_led" = { footprint = "LED_SMD:LED_0402_1005Metric", hash = "b6d7b8b0d1b346cc" }
+"user_led_resistor" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"v3v3_100n" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"v3v3_22u[0]" = { footprint = "easyduino_ics:CP_EIA-3216-18_Tantalum_A", hash = "2d5a1bcaac904f50" }
+"v3v3_22u[1]" = { footprint = "easyduino_ics:CP_EIA-3216-18_Tantalum_A", hash = "2d5a1bcaac904f50" }
+"vbus_100n" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"vbus_1u" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"vbus_22u" = { footprint = "easyduino_ics:CP_EIA-3216-18_Tantalum_A", hash = "2d5a1bcaac904f50" }

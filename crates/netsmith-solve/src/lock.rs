@@ -94,6 +94,51 @@ pub struct PickLock {
     /// design stage keeps when parts are added. It does not make a lock: a source with no part
     /// to pick has no lock, and its parts are numbered by path.
     pub designators: Designators,
+    /// The footprint of each part of each board and system and the hash of its geometry (issue
+    /// #1683): a record, which a change of the footprint's file or generator shows against. The
+    /// solver does not read it, and it does not make a lock.
+    pub footprints: Footprints,
+}
+
+/// The footprint a part is built with, as a pick lock records it (issue #1683).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LockedFootprint {
+    /// Its id (`Resistor_SMD:R_0402_1005Metric`, `gen:SOT23(pins=3)`).
+    pub id: String,
+    /// The hash of its geometry (`netsmith_pcb::Footprint::geometry_hash`).
+    pub hash: String,
+}
+
+/// The footprint of each part of each board and system, by the name of the board or system and
+/// the part's path in it, as [`Designators`] keys them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Footprints {
+    units: BTreeMap<String, BTreeMap<String, LockedFootprint>>,
+}
+
+impl Footprints {
+    /// Sets the footprints of one board or system; one with none has no entry.
+    pub fn set(&mut self, unit: &str, footprints: BTreeMap<String, LockedFootprint>) {
+        if footprints.is_empty() {
+            self.units.remove(unit);
+        } else {
+            self.units.insert(unit.to_string(), footprints);
+        }
+    }
+
+    /// The footprints of one board or system, by path: `None` when nothing is recorded for it.
+    pub fn of(&self, unit: &str) -> Option<&BTreeMap<String, LockedFootprint>> {
+        self.units.get(unit)
+    }
+
+    /// Every board or system with footprints, in name order.
+    pub fn units(&self) -> impl Iterator<Item = (&str, &BTreeMap<String, LockedFootprint>)> {
+        self.units.iter().map(|(n, d)| (n.as_str(), d))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.units.is_empty()
+    }
 }
 
 /// The reference designator of each part of each board and system, by the name of the board or
@@ -139,6 +184,7 @@ impl PickLock {
             providers: BTreeMap::new(),
             units: BTreeMap::new(),
             designators: Designators::default(),
+            footprints: Footprints::default(),
         }
     }
 
@@ -181,7 +227,7 @@ impl PickLock {
             .map(|(n, p)| (n.as_str(), p.as_slice()))
     }
 
-    /// Whether no part and no provider is locked. Designators alone do not make a lock.
+    /// Whether no part and no provider is locked. Designators and footprints alone do not make a lock.
     pub fn is_empty(&self) -> bool {
         self.units.values().all(Vec::is_empty) && self.providers.values().all(Vec::is_empty)
     }
