@@ -321,12 +321,11 @@ fn a_net_of_three_pads_counts_the_branches_its_pads_need_joined_at_a_tee() {
 }
 
 #[test]
-fn a_track_inside_a_pad_is_counted_once_and_the_runs_add_up_to_the_copper_less_the_length() {
+fn a_track_inside_a_pad_is_no_stub_and_adds_nothing_to_the_length() {
     // Pads at (0, 0) and (6, 6), a track from one to the other, and at each end the short track
     // a hand-routed board draws inside the pad to its centre, from a point the long track's
     // copper touches but its centre line misses (issue #1511): each was listed twice, as a dead
-    // stub, and the runs added up to more than the copper less the length. A dead stub of 1 mm
-    // tees into the middle.
+    // stub. A dead stub of 1 mm tees into the middle.
     let mut b = Pcb::new(2);
     b.stub("L", 0.0, 0.0);
     b.stub("L", 6.0, 6.0);
@@ -338,14 +337,15 @@ fn a_track_inside_a_pad_is_counted_once_and_the_runs_add_up_to_the_copper_less_t
     let row = &t.nets[0];
     let inside = 0.01 + (0.0125f64.powi(2) + 0.05f64.powi(2)).sqrt();
     assert!(close(row.copper, 72f64.sqrt() + inside + 1.0), "{row:?}");
-    // The copper inside the pads is the way into them: counted, and no run.
-    assert!(close(row.length, 72f64.sqrt() + inside), "{row:?}");
+    // The copper inside the pads is the way into them, no run; the length is measured to the
+    // pads' centres (issue #1670), so it adds nothing: the long track, centre to centre.
+    assert!(close(row.length, 72f64.sqrt()), "{row:?}");
     assert_eq!(row.not_counted.len(), 1, "{row:?}");
     let stub = &row.not_counted[0];
     assert_eq!((stub.kind, stub.pieces.len()), (Uncounted::Stub, 1), "{stub:?}");
     assert!(close(stub.length, 1.0), "{stub:?}");
     let runs: f64 = row.not_counted.iter().map(|r| r.length).sum();
-    assert!(close(runs, row.copper - row.length), "{row:?}");
+    assert!(close(runs, row.copper - row.length - inside), "{row:?}");
     assert!(t.text().contains("net L: 1.00 mm of its "), "{}", t.text());
 }
 
@@ -475,8 +475,9 @@ fn a_branch_joined_to_the_track_through_a_pads_copper_is_counted_as_the_design_r
     assert_eq!(r.count(netsmith_geom::DrcRule::UnconnectedItems), 0, "{r}");
     let t = NetTable::of(&Artwork::parse(&pcb).unwrap(), &[], &[]);
     let row = &t.nets[0];
-    // So the length counts it all: 5 mm of track and 2.8 mm of branch.
-    assert!(close(row.length, 7.8) && close(row.copper, 7.8), "{row:?}");
+    // So the length counts it all: 5 mm of track and 2.8 mm of branch, which enters the pad at
+    // its end, 0.2 mm from the pad's centre (issue #1670).
+    assert!(close(row.length, 8.0) && close(row.copper, 7.8), "{row:?}");
     assert!(row.not_counted.is_empty(), "{row:?}");
 }
 
@@ -525,4 +526,43 @@ fn a_branch_whose_round_end_reaches_a_track_is_joined_to_it_and_a_stair_is_not_c
     let t = NetTable::of(&Artwork::parse(&b.pcb()).unwrap(), &[], &[]);
     let row = &t.nets[0];
     assert!(close(row.length, 2.0) && row.not_counted.is_empty(), "{row:?}");
+}
+
+/// A pair `P`/`N` with the same copper outside its pads, 19.4 mm between pads 0.6 mm wide 20 mm
+/// apart: `P` drawn from centre to centre, `N` from the edge of its first pad to a point inside
+/// its second off the centre line, and on inside that pad on a bend that misses its centre.
+fn legs_entering_pads_at_different_points() -> Pcb {
+    let mut b = Pcb::new(2);
+    b.stub("P", 10.0, 10.0);
+    b.stub("P", 30.0, 10.0);
+    b.track("P", "F.Cu", (10.0, 10.0), (30.0, 10.0), 0.2);
+    b.stub("N", 10.0, 12.0);
+    b.stub("N", 30.0, 12.0);
+    b.track("N", "F.Cu", (10.3, 12.0), (29.8, 12.0), 0.2);
+    b.track("N", "F.Cu", (29.8, 12.0), (30.1, 12.2), 0.2);
+    b
+}
+
+#[test]
+fn legs_with_the_same_copper_outside_their_pads_have_no_skew_wherever_they_enter_them() {
+    let mut b = legs_entering_pads_at_different_points();
+    let t = table(&mut b, 0.1);
+    let (p, n) = (&t.nets[1], &t.nets[0]);
+    assert_eq!((p.net.as_str(), n.net.as_str()), ("P", "N"));
+    // Each leg is measured to its pad's centre (issue #1670): the copper outside the pads and
+    // 0.3 mm from where it enters each pad to its centre, whatever copper it has inside.
+    assert!(close(p.length, 20.0), "{p:?}");
+    assert!((n.length - 20.0).abs() < 1e-5, "{n:?}");
+    assert!(close(n.copper, 19.5 + 0.3f64.hypot(0.2)), "{n:?}");
+    let pair = &t.pairs[0];
+    assert!(pair.skew < 1e-5 && !pair.over, "{pair:?}");
+    // A length group of the two reads the same lengths.
+    let group = LengthGroup {
+        path: "lanes".into(),
+        nets: vec!["P".into(), "N".into()],
+        tolerance: 0.01,
+    };
+    let pairs = [("P".to_string(), "N".to_string(), 0.1)];
+    let t = NetTable::of(&Artwork::parse(&b.pcb()).unwrap(), &pairs, &[group]);
+    assert!(t.groups[0].spread < 1e-5 && !t.groups[0].over, "{:?}", t.groups);
 }

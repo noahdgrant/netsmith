@@ -15,8 +15,11 @@
 //! from its first pad to each of the others, all those ways together: for two pads the path
 //! from pad to pad, for more a tree of the branches the pads need, and the copper that lies
 //! wholly inside one of those pads (the short track a hand-routed board draws to a pad's centre
-//! is the way into the pad, no stub to remove: issue #1511). The rest of the copper is **not
-//! counted**, each piece in one run, so the runs add up to the copper less the length:
+//! is the way into the pad, no stub to remove: issue #1511). Its **length** measures each leg
+//! into a pad to the pad's centre (issue #1670, [`netsmith_geom::leg_length`]): the copper outside
+//! the pad, plus the straight distance from where the leg enters the pad to its centre, so copper
+//! inside a pad does not count and the same copper outside gives the same length wherever a leg
+//! enters. The rest of the copper is **not counted**, each piece in one run:
 //!
 //! - a **stub** leads nowhere: what is left when the ends that touch no pad are cut back, again
 //!   and again, and every track of a part that joins fewer than two pads;
@@ -27,8 +30,8 @@ use std::cmp::Reverse;
 use std::collections::{BTreeMap, BinaryHeap};
 
 use netsmith_geom::{
-    Artwork, ArtworkPad, ArtworkVia, DrcShape, Pt, copper_end_joins as end_joins, copper_joins,
-    pad_copper,
+    Artwork, ArtworkPad, ArtworkVia, DrcShape, LegPad, Pt, copper_end_joins as end_joins,
+    copper_joins, leg_length, pad_copper,
 };
 
 use crate::net_table::Seg;
@@ -80,10 +83,14 @@ pub struct Piece {
     pub width: f64,
 }
 
-/// The connection of one net: the pieces of track it counts, and the runs it does not.
+/// The connection of one net: the pieces of track it counts, its length measured to the centres
+/// of its pads, and the runs it does not count.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Connection {
     pub counted: Vec<Seg>,
+    /// The counted pieces' length, each leg into a pad measured to its centre (issue #1670,
+    /// [`netsmith_geom::leg_length`]), in mm.
+    pub length: f64,
     pub not_counted: Vec<NotCounted>,
 }
 
@@ -175,6 +182,31 @@ struct Graph {
 /// The copper of a via, as the design rules check has it.
 fn via_copper(v: &ArtworkVia) -> [DrcShape; 1] {
     [DrcShape::disc(v.at, v.diameter / 2.0)]
+}
+
+/// The length of the piece `e` of the graph measured to the centres of the pads its ends are joined
+/// to (issue #1670): of the pads at an end's point of the graph, the one whose copper holds the
+/// end, else the nearest.
+fn piece_length(
+    g: &Graph,
+    e: usize,
+    pad0: usize,
+    pads: &[&ArtworkPad],
+    copper: &[Vec<DrcShape>],
+) -> f64 {
+    let s = &g.pieces[e];
+    let pad_at = |end: usize, p: Pt| -> Option<LegPad<'_>> {
+        let here = (0..pads.len()).filter(|&d| g.node[pad0 + d] == g.node[2 * e + end]);
+        let leg = |d: usize| LegPad {
+            copper: &copper[d],
+            centre: pads[d].at,
+        };
+        here.clone()
+            .find(|&d| leg(d).holds(p))
+            .or_else(|| here.min_by(|&x, &y| pads[x].at.dist(p).total_cmp(&pads[y].at.dist(p))))
+            .map(leg)
+    };
+    leg_length(&[s.2, s.3], pad_at(0, s.2), pad_at(1, s.3))
 }
 
 /// Whether the end `p` of a track is a tee on the track `s`: it lies on its copper, beside a
@@ -438,6 +470,10 @@ fn connect(art: &Artwork, net: &str, segs: &[&Seg], pads: &[&ArtworkPad]) -> Con
     if !needed.is_empty() {
         g = graph(art, segs, &vias, pads, &copper, &needed);
     }
+    let pad0 = 2 * g.pieces.len() + vias.len();
+    let lengths: Vec<f64> = (0..g.pieces.len())
+        .map(|e| piece_length(&g, e, pad0, pads, &copper))
+        .collect();
     let Graph { pieces, node } = g;
     let ends = 2 * pieces.len();
     let edge = |e: usize| (node[2 * e], node[2 * e + 1]);
@@ -602,6 +638,10 @@ fn connect(art: &Artwork, net: &str, segs: &[&Seg], pads: &[&ArtworkPad]) -> Con
         by_run.into_values().filter(|r| r.length > SAME).collect();
     not_counted.sort_by(|a, b| b.length.total_cmp(&a.length).then(a.kind.cmp(&b.kind)));
     Connection {
+        length: (0..pieces.len())
+            .filter(|&e| counted[e])
+            .map(|e| lengths[e])
+            .sum(),
         counted: pieces
             .into_iter()
             .zip(counted)
@@ -612,7 +652,8 @@ fn connect(art: &Artwork, net: &str, segs: &[&Seg], pads: &[&ArtworkPad]) -> Con
 }
 
 /// The shortest way through the tracks of one net between two sets of its pads (issue #1585):
-/// its length along the centre lines, in mm, and the vias at which it changes layer.
+/// its length along the centre lines, each leg into a pad measured to the pad's centre (issue
+/// #1670), in mm, and the vias at which it changes layer.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Way {
     pub length: f64,
@@ -702,7 +743,7 @@ pub(crate) fn way(
             }
         }
     }
-    let (mut at, length) = reached?;
+    let (mut at, _) = reached?;
     // The pieces of the way from the target back to a source, and the nodes between them.
     let mut path: Vec<(usize, usize)> = Vec::new();
     while let Some(&e) = came.get(&at) {
@@ -714,6 +755,11 @@ pub(crate) fn way(
         }
         at = prev;
     }
+    // The way's length, each leg into a pad measured to its centre (issue #1670).
+    let length = path
+        .iter()
+        .map(|&(e, _)| piece_length(&g, e, pad0, &pads, &copper))
+        .sum();
     let via_nodes: Vec<usize> = (0..vias.len()).map(|v| g.node[ends + v]).collect();
     let vias = path
         .windows(2)
