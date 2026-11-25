@@ -110,7 +110,7 @@ impl<'a> Engine<'a> {
                     },
                     edge_pads: edge_pads(&parts[i]),
                     fixed: p.fixed[i],
-                    escape: (parts[i].footprint.pads.len() as f64 * ESCAPE_PER_PAD).min(MAX_ESCAPE),
+                    escape: (terminals(&parts[i]) as f64 * ESCAPE_PER_PAD).min(MAX_ESCAPE),
                     want: p
                         .wants
                         .get(i)
@@ -170,7 +170,7 @@ impl<'a> Engine<'a> {
                     continue;
                 };
                 for (k, q) in parts[i].footprint.pads.iter().enumerate() {
-                    if q.number == pad.number {
+                    if q.number == pad.number && q.is_terminal() {
                         pads.push((i, k));
                     }
                 }
@@ -228,7 +228,7 @@ impl<'a> Engine<'a> {
         if w_routing > 0.0 {
             let shapes: Vec<(bool, Vec<(usize, usize)>)> =
                 nets.iter().map(|m| (m.plane, m.pads.clone())).collect();
-            let pads_of: Vec<usize> = parts.iter().map(|q| q.footprint.pads.len()).collect();
+            let pads_of: Vec<usize> = parts.iter().map(terminals).collect();
             for (part, host, ids) in routing::find_buses(&shapes, &pads_of) {
                 let mut on = vec![false; n];
                 let mut pads = Vec::new();

@@ -107,7 +107,7 @@ pub fn decoupling_pairs(parts: &[Placed], nets: &[BoardNet]) -> Vec<DecouplingPa
         if !is_capacitor(cap) {
             continue;
         }
-        let numbers = cap.footprint.pad_numbers();
+        let numbers = cap.footprint.terminal_numbers();
         let [first, second] = numbers.as_slice() else {
             continue;
         };
@@ -223,7 +223,7 @@ pub fn termination_pairs(
         if connector(part) {
             continue;
         }
-        let numbers = part.footprint.pad_numbers();
+        let numbers = part.footprint.terminal_numbers();
         let [first, second] = numbers.as_slice() else {
             continue;
         };

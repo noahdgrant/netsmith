@@ -660,7 +660,7 @@ fn pin1_unmarked(
         .footprint
         .pads
         .iter()
-        .filter(|p| !p.number.is_empty() && p.kind != PadKind::NpThruHole)
+        .filter(|p| p.is_terminal() && !p.number.is_empty() && p.kind != PadKind::NpThruHole)
         .collect();
     if pads.len() < 2 {
         return None;
