@@ -648,10 +648,10 @@ pub(crate) mod testing {
 
     use crate::commands::{
         Board, Command, Dev, Import, Project, View, board3d, bom, build, case, catalog, check,
-        common, compare, copper, drc, dxf, editor, explain, fab, fill, fmt, footprint, gerber,
-        init, kicad_libs, layout, lint, lock, mcp, migrate_offers, nets, order, panel, parity,
-        part, pcb, pins, port, power, project_show, render, route, routes, rules, schematic,
-        schematic_layout, show, swap, system, view,
+        check_footprint, common, compare, copper, drc, dxf, editor, explain, fab, fill, fmt,
+        footprint, gerber, init, kicad_libs, layout, lint, lock, mcp, migrate_offers, nets, order,
+        panel, parity, part, pcb, pins, port, power, project_show, render, route, routes, rules,
+        schematic, schematic_layout, show, swap, system, view,
     };
 
     /// The command line as main.rs has it.
@@ -679,6 +679,7 @@ pub(crate) mod testing {
         Fab(fab::Args),
         Drc(drc::Args),
         Rules(rules::Args),
+        CheckFootprint(check_footprint::Args),
         Explain(explain::Args),
         Compare(compare::Args),
         Pins(pins::Args),
@@ -732,6 +733,7 @@ pub(crate) mod testing {
                     Board::Fab(a) => Leaf::Fab(a),
                     Board::Drc(a) => Leaf::Drc(a),
                     Board::Rules(a) => Leaf::Rules(a),
+                    Board::CheckFootprint(a) => Leaf::CheckFootprint(a),
                     Board::Explain(a) => Leaf::Explain(a),
                     Board::Compare(a) => Leaf::Compare(a),
                     Board::Pins(a) => Leaf::Pins(a),
