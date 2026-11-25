@@ -71,14 +71,11 @@ impl Runs<'_> {
         let mut vias: Vec<netsmith_pcb::Via> = Vec::new();
         for asked in &self.ask.through {
             let said = at_said(asked.at);
-            let record = state
-                .boards
-                .get(&board.name)
-                .and_then(|t| t.nets.get(net));
+            let record = state.boards.get(&board.name).and_then(|t| t.nets.get(net));
             let found = record.and_then(|r| {
-                r.vias.iter().find(|v| {
-                    (v.at[0] - asked.at[0]).hypot(v.at[1] - asked.at[1]) < SAME_PLACE
-                })
+                r.vias
+                    .iter()
+                    .find(|v| (v.at[0] - asked.at[0]).hypot(v.at[1] - asked.at[1]) < SAME_PLACE)
             });
             let via = match found {
                 Some(v) => {
@@ -118,9 +115,7 @@ impl Runs<'_> {
                     match edit_all(board, &mut next, &[add]) {
                         Ok(_) => {}
                         Err(Refusal::Refused(e)) => {
-                            return Ok(Err(format!(
-                                "the via {said} of net {net}: {e}"
-                            )));
+                            return Ok(Err(format!("the via {said} of net {net}: {e}")));
                         }
                         Err(e) => return Err(e),
                     }
@@ -142,10 +137,7 @@ impl Runs<'_> {
                 .iter()
                 .map(|l| l.word().to_string())
                 .collect();
-            if !vias
-                .iter()
-                .any(|v| v.at.distance(via.at) < SAME_PLACE)
-            {
+            if !vias.iter().any(|v| v.at.distance(via.at) < SAME_PLACE) {
                 vias.push(via);
             } else {
                 out.through.pop();

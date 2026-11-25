@@ -703,6 +703,26 @@ pub struct Finding {
     /// Where the figure the finding is judged against comes from, in words, when the process
     /// records it (issue 1393: the `assembly_size` finding's page, service and day).
     pub source: Option<String>,
+    /// For a finding of a rule that asks for a space (a clearance, a hole's, the edge's, the
+    /// mask's web, the process's spaces): the space asked for and the space measured, the same
+    /// figures as its message (issue #1643). `None` for the other rules.
+    pub distance: Option<Distance>,
+}
+
+/// The space a rule asks for between two things and the space the check measured, in mm
+/// (issue #1643).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Distance {
+    pub required: f64,
+    pub measured: f64,
+}
+
+impl Distance {
+    /// How much nearer than the rule allows the two are, mm: above 0 for a breach, and for a
+    /// margin ([`Extras::margin`]) at or below 0, its room being the negative.
+    pub fn shortfall(&self) -> f64 {
+        self.required - self.measured
+    }
 }
 
 /// The numbers of a `track_current` or `via_current` finding (issue 1373): what the copper is,
@@ -968,6 +988,10 @@ impl std::fmt::Display for Report {
 /// comes from the manufacturing process the board was made for.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Extras {
+    /// Above 0, the rules that ask for a space also report two things whose space passes by no
+    /// more than this, in mm, as notes with their [`Distance`]: the margins of a probe
+    /// (`routes check-via`, issue #1643). 0, the default, reports breaches alone.
+    pub margin: f64,
     /// The least solder mask between two openings of pads of different nets, if the board's
     /// setup does not say (`solder_mask_min_width`).
     pub mask_web: Option<f64>,

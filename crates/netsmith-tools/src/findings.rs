@@ -559,6 +559,7 @@ mod tests {
             items: Vec::new(),
             carrying: None,
             source,
+            distance: None,
         };
         let with = serde_json::to_value(of_drc_finding(
             &finding(Some("a page, read 2026-11-19".to_string())),
@@ -585,6 +586,7 @@ mod tests {
             items: Vec::new(),
             carrying,
             source: None,
+            distance: None,
         };
         let with = finding(Some(DrcCarrying {
             current: Some(2.5),
