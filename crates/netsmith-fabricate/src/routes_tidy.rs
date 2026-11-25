@@ -2248,22 +2248,22 @@ impl KeptRoutes {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use netsmith_pcb::NetRoutes;
 
     /// The LED example placed, a fixture of `netsmith-pcb` (15 by 7 mm; nets GND, VCC and
     /// `net-led.anode`; R1's pad 2 at (9.61, 4.4) and D1's pad 2 at (13.3875, 4.2) on top).
-    pub(super) fn led() -> Board {
+    pub(crate) fn led() -> Board {
         serde_json::from_str(include_str!(
             "../../netsmith-pcb/tests/fixtures/led.board.json"
         ))
         .expect("a fixture is the JSON of a Board")
     }
 
-    pub(super) const W: f64 = 0.15;
+    pub(crate) const W: f64 = 0.15;
 
-    pub(super) fn track(layer: CopperLayer, from: [f64; 2], to: [f64; 2]) -> RouteTrack {
+    pub(crate) fn track(layer: CopperLayer, from: [f64; 2], to: [f64; 2]) -> RouteTrack {
         RouteTrack {
             layer,
             width: W,
@@ -2275,14 +2275,14 @@ mod tests {
     }
 
     /// Straight tracks through `points`, one after another.
-    pub(super) fn path(layer: CopperLayer, points: &[[f64; 2]]) -> Vec<RouteTrack> {
+    pub(crate) fn path(layer: CopperLayer, points: &[[f64; 2]]) -> Vec<RouteTrack> {
         points
             .windows(2)
             .map(|p| track(layer, p[0], p[1]))
             .collect()
     }
 
-    pub(super) fn via(at: [f64; 2]) -> RouteVia {
+    pub(crate) fn via(at: [f64; 2]) -> RouteVia {
         RouteVia {
             at,
             diameter: 0.45,
@@ -2292,7 +2292,7 @@ mod tests {
         }
     }
 
-    pub(super) fn routes_of(
+    pub(crate) fn routes_of(
         board: &Board,
         records: Vec<(&str, bool, Vec<RouteTrack>, Vec<RouteVia>)>,
     ) -> Routes {

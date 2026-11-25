@@ -86,6 +86,10 @@ pub enum Command {
     /// List the places between a part's pads where a via fits, and which net's copper holds each.
     #[command(after_long_help = super::routes_sites::LONG_HELP)]
     Sites(super::routes_sites::Args),
+    /// Move a via of the routes file and carry every layer's tracks that end in it, laid again in
+    /// 45 degree legs, refused if it breaks the design rules or loses a connection.
+    #[command(name = "move-via", after_long_help = super::routes_move_via::LONG_HELP)]
+    MoveVia(super::routes_move_via::Args),
     /// Delete a net's record, or one of its shapes; a locked one is refused. A record of a net the board no longer has (a net renamed, say: `fab` names it) is deleted whole, even when locked.
     Delete(ShapeArgs),
     /// Lock a net (the router adds no copper to it) or one shape (kept when the net's pads move).
@@ -523,6 +527,7 @@ pub fn run(args: Args) -> ExitCode {
         Command::Route(a) => route(&a),
         Command::JoinPad(a) => join_pad(&a),
         Command::Sites(a) => super::routes_sites::run(&a),
+        Command::MoveVia(a) => super::routes_move_via::run(&a),
         Command::Delete(a) => edit(&a.target, |_| lib::Edit::Delete {
             net: a.net.clone(),
             shape: shape(&a),
