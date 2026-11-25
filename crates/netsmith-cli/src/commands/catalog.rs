@@ -17,13 +17,21 @@ pub struct Args {
 
 #[derive(Debug, PartialEq, Subcommand)]
 pub enum Command {
-    /// Check LCSC's offers of the catalogs' parts against its record and write the day in `checked` (ADR 0039, ADR 0143).
+    /// Check LCSC's offers of the catalogs' parts against its record; write the day in `checked`.
+    ///
+    /// See ADR 0039 and ADR 0143.
     Refresh(RefreshArgs),
-    /// Append a row and its offers made from a supplier's record of a number (LCSC's, or a search provider's), or print the record.
+    /// Append a catalog row and offers from a supplier's record of a number, or print the record.
+    ///
+    /// The record is LCSC's, or a search provider's.
     Add(AddArgs),
     /// List the catalog rows whose price and stock are older than `--days` days, and the unknown ones.
     Age(AgeArgs),
-    /// Find parts by words, a manufacturer's number or parametric filters, with each supplier's sku, stock and price (Nexar or Digi-Key; opt-in).
+    /// Find parts by words, MPN or filters, with supplier stock and price (Nexar, Digi-Key;
+    /// opt-in).
+    ///
+    /// The words may be a manufacturer's number, and the filters are parametric; each part has each
+    /// supplier's sku, stock and price.
     Search(super::catalog_search::Args),
     /// Compare each row's package with the footprint it names: its pads and its body against the package's known size.
     Check(super::catalog_check::Args),
@@ -82,7 +90,11 @@ pub struct AddArgs {
     /// With `--from`, also ask Nexar for the package, the values and the datasheet (a Nexar plan that includes them).
     #[arg(long, conflicts_with = "lcsc")]
     pub details: bool,
-    /// With `--from`, the search provider to ask: `nexar` or `digikey` (default: digikey for `--from digikey` when the project names it, else the one it names, nexar when both).
+    /// With `--from`, the search provider, `nexar` or `digikey` (default: the project's, else
+    /// nexar).
+    ///
+    /// The default is digikey for `--from digikey` when the project names it, else the one the
+    /// project names, and nexar when it names both.
     #[arg(long, value_name = "PROVIDER", value_parser = ["nexar", "digikey"], conflicts_with = "lcsc")]
     pub provider: Option<String>,
     /// With `--from`, the pause between requests, in milliseconds (default 500).
@@ -97,7 +109,9 @@ pub struct AddArgs {
     /// Keep no answer.
     #[arg(long)]
     pub no_cache: bool,
-    /// Write the row even when its package disagrees with the footprint it names or with the record's description (otherwise a run with no terminal to ask on writes nothing).
+    /// Write the row even if its package disagrees with its footprint or the record's description.
+    ///
+    /// Otherwise a run with no terminal to ask on writes nothing.
     #[arg(long)]
     pub accept_package_mismatch: bool,
     /// Text for a person, or one JSON document on stdout.

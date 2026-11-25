@@ -124,7 +124,9 @@ pub enum Project {
     Lint(lint::Args),
     /// Rewrite the sources in the one layout of the language, or check that they are in it.
     Fmt(fmt::Args),
-    /// Move the catalogs' lcsc and library columns into offers files, and `.lcsc &=` hand picks to `.mpn &=` (ADR 0143).
+    /// Move the catalogs' lcsc and library columns into offers files and `.lcsc &=` picks to `.mpn &=`.
+    ///
+    /// See ADR 0143.
     MigrateOffers(migrate_offers::Args),
     /// Make one of the project's orders, or list them with no name (ADR 0035).
     Order(order::Args),
@@ -143,7 +145,10 @@ pub enum Board {
     Fab(fab::Args),
     /// Run the design rules check alone, on the placed board with its routes file or on a KiCad board.
     Drc(drc::Args),
-    /// Print the rules the design rules check holds the board to: clearances, widths per net, mask, holes, vias, rule areas, classes, layers.
+    /// Print the design rules check's rules: clearances, widths per net, holes, vias, areas,
+    /// classes.
+    ///
+    /// They are the rules the check holds the board to, with the mask and the layers.
     Rules(rules::Args),
     /// Check one footprint's pads against the board's process, alone: a part of the board or a .kicad_mod file.
     CheckFootprint(check_footprint::Args),
@@ -167,9 +172,14 @@ pub enum Board {
     Panel(panel::Args),
     /// Say which layers carry a plane or a pour, the hand zones of the routes file and the teardrop fills.
     Copper(copper::Args),
-    /// Fill the pours as `fab` does and say how each pad of their nets is joined: solid, by how many thermal spokes, or not, and the copper islands.
+    /// Fill the pours as `fab` does: how each pad of their nets is joined, and the copper islands.
+    ///
+    /// A pad is joined solid, by a number of thermal spokes, or not at all.
     Fill(fill::Args),
-    /// Print each net's routed and straight length, vias, layer changes and layers, and each diff pair's lengths, skew, coupled length, gaps and vias side by side.
+    /// Print each net's routed and straight length, vias and layers, and each diff pair's skew.
+    ///
+    /// Also each net's layer changes, and of each diff pair its lengths, skew, coupled length, gaps
+    /// and vias side by side.
     Nets(nets::Args),
     /// The DC resistance of a net's copper between two pads, its drop at a current and the hottest copper on the way.
     Resistance(resistance::Args),

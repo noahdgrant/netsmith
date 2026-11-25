@@ -28,9 +28,10 @@ pub struct Args {
     /// The drill in mm (default: the process's via drill).
     #[arg(long, value_name = "MM")]
     pub drill: Option<f64>,
-    /// A blind or a buried via: the two layers it ends on, `top,inner1`, a via the board's HDI
-    /// process makes; its size is then that via's (the laser's for a blind via). Default: a
-    /// through via.
+    /// A blind or buried via's two end layers, `top,inner1` (HDI process); default: a through via.
+    ///
+    /// The via is one the board's HDI process makes; its size is then that via's (the laser's for a
+    /// blind via).
     #[arg(long, value_name = "LAYER,LAYER", value_parser = parse_layer_pair)]
     pub layers: Option<[CopperLayer; 2]>,
     /// Text for a person, or one JSON document on stdout.

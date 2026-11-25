@@ -21,8 +21,7 @@ pub struct Args {
     /// The folder to write into.
     #[arg(long, value_name = "DIR")]
     pub out: Option<PathBuf>,
-    /// Make a guideline finding, and a part with no room among the locked parts, an error for
-    /// this run.
+    /// Make guideline findings, and a part with no room among locked parts, errors for this run.
     ///
     /// Like `guidelines = "error"` in netsmith.toml (ADR 0036); without it a finding against a
     /// guideline, and a part the placer places that no free rectangle among the locked parts

@@ -12,7 +12,14 @@ pub struct Args {
     /// The package: a `.zip`, a folder of Gerber and drill files, or `board fab`'s output folder of a board.
     #[arg(value_name = "PACKAGE")]
     pub package: PathBuf,
-    /// What to draw, repeated to stack layers: `top` or `bottom` (that side's copper, mask openings, paste and silkscreen, the outline and the holes, the bottom mirrored as a person sees it), `inner<n>` (that copper layer), `all`, or one function alone: `top-copper`, `top-mask`, `top-paste`, `top-silk`, `bottom-copper`, `bottom-mask`, `bottom-paste`, `bottom-silk`, `outline` or `drill`.
+    /// Repeatable: `top`, `bottom`, `inner<n>`, `all`, `outline`, `drill`, or
+    /// `<top|bottom>-<copper|mask|paste|silk>`.
+    ///
+    /// What to draw, repeated to stack layers: `top` or `bottom` (that side's copper, mask
+    /// openings, paste and silkscreen, the outline and the holes, the bottom mirrored as a person
+    /// sees it), `inner<n>` (that copper layer), `all`, or one function alone: `top-copper`,
+    /// `top-mask`, `top-paste`, `top-silk`, `bottom-copper`, `bottom-mask`, `bottom-paste`,
+    /// `bottom-silk`, `outline` or `drill`.
     ///
     /// A word the package has no file for is refused with the ones it has (`--format json` lists them as `layer_names`). A stack of things of the bottom alone is drawn mirrored, as a person sees the bottom; with anything of the top it is drawn from the top.
     #[arg(
@@ -30,7 +37,10 @@ pub struct Args {
     /// The PNG's pixels a millimetre (default 20, fewer for a picture longer than 8192 pixels).
     #[arg(long, value_name = "PX_PER_MM", value_parser = parse_scale)]
     pub scale: Option<f64>,
-    /// `png` or `svg` writes the picture; `json` prints the summary of every file (layers, extents, apertures, objects, holes by size, the files not read).
+    /// `png` or `svg` writes the picture; `json` prints a summary of every file.
+    ///
+    /// The summary has each file's layers, extents, apertures, objects, holes by size, and the
+    /// files not read.
     #[arg(long, value_enum, default_value = "png")]
     pub format: GerberFormat,
     /// The file to write (default `<package>-<layer>.<png|svg>` in the current folder).

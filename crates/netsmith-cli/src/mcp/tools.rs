@@ -212,15 +212,17 @@ impl Tool {
             properties.insert(param.key.clone(), schema);
             params.push(param);
         }
-        // `--format json` and `--progress json` are what a call asks for unless it chooses (the
-        // server's instructions say so once).
+        // `--format json` and `--progress json` are what a call asks for unless it chooses: the
+        // server's instructions say so once, so the schema gives these no default (the command
+        // line's own, `text`, would be wrong here).
         for key in ["format", "progress"] {
             if let Some(schema) = properties.get_mut(key)
                 && schema["enum"]
                     .as_array()
                     .is_some_and(|e| e.iter().any(|v| v == "json"))
+                && let Some(o) = schema.as_object_mut()
             {
-                schema["default"] = Value::String("json".into());
+                o.remove("default");
             }
         }
         let about = command
@@ -228,17 +230,20 @@ impl Tool {
             .or(command.get_long_about())
             .map(|s| first_line(&s.to_string()))
             .unwrap_or_default();
+        let mut schema = json!({
+            "type": "object",
+            "properties": properties,
+            "additionalProperties": false,
+        });
+        if !required.is_empty() {
+            schema["required"] = Value::Array(required);
+        }
         Tool {
             name: words.join("_").replace('-', "_"),
             words: words.to_vec(),
-            description: format!("`netsmith {}`: {about}", words.join(" ")),
+            description: about,
             help: help(words, command),
-            schema: json!({
-                "type": "object",
-                "properties": properties,
-                "required": required,
-                "additionalProperties": false,
-            }),
+            schema,
             params,
         }
     }
@@ -248,11 +253,11 @@ impl Tool {
         format!("{HELP}{}", self.words.join("-"))
     }
 
-    /// The tool as `tools/list` gives it.
+    /// The tool as `tools/list` gives it. The command's words are the tool's name, so neither a
+    /// title nor the description says them again.
     pub fn listed(&self) -> Value {
         json!({
             "name": self.name,
-            "title": format!("netsmith {}", self.words.join(" ")),
             "description": self.description,
             "inputSchema": self.schema,
         })
@@ -445,28 +450,22 @@ fn param(arg: &clap::Arg) -> (Param, Value) {
         .map(|s| first_line(&s.to_string()))
         .unwrap_or_default();
     // The property is the flag's name unless clap's id differs, so the flag is said only then.
+    // A positional argument's value name is not said: a call gives it by its property.
     let named = |f: &String| f.trim_start_matches('-').replace('-', "_") == key;
     let name = match (&flag, &how) {
         (Some(f), How::Value { optional: true }) => {
             format!("`true` gives `{f}` with no value.")
         }
         (Some(f), _) if !named(f) => format!("The flag `{f}`."),
-        (Some(_), _) => String::new(),
-        (None, _) => {
-            let name = arg
-                .get_value_names()
-                .map(|n| {
-                    n.iter()
-                        .map(|s| s.to_string())
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                })
-                .unwrap_or_else(|| key.to_uppercase());
-            format!("The argument `{name}`.")
-        }
+        _ => String::new(),
     };
-    let description = format!("{said} {name}");
-    schema["description"] = Value::String(description.trim().to_string());
+    let description = format!("{said} {name}").trim().to_string();
+    match schema.as_object_mut() {
+        Some(o) if description.is_empty() => {
+            o.remove("description");
+        }
+        _ => schema["description"] = Value::String(description),
+    }
     let defaults: Vec<String> = arg
         .get_default_values()
         .iter()
@@ -601,7 +600,11 @@ mod tests {
             ["board", "check", "--format=text", "--notes=none"]
         );
         assert!(check.has_json_format());
-        assert_eq!(check.schema["properties"]["format"]["default"], "json");
+        assert!(
+            check.schema["properties"]["format"]
+                .get("default")
+                .is_none()
+        );
         assert!(!check.wants_json(&args(json!({ "format": "text" }))));
     }
 

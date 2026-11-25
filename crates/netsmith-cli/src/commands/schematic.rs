@@ -28,8 +28,9 @@ pub struct Args {
     /// sheet of exits 2 with the list of its sheets.
     #[arg(long, value_name = "NAME")]
     pub sheet: Option<String>,
-    /// The file to write (default `<board>-schematic.<pdf|svg|png>`, with the sheet's name after
-    /// `schematic` when `--sheet` is given).
+    /// The file to write (default `<board>-schematic[-<sheet>].<pdf|svg|png>`).
+    ///
+    /// The sheet's name follows `schematic` when `--sheet` is given.
     #[arg(long, value_name = "FILE")]
     pub picture: Option<PathBuf>,
 }

@@ -51,8 +51,9 @@ pub struct Args {
     /// one layer).
     #[arg(long, value_name = "FILE")]
     pub picture: Option<PathBuf>,
-    /// Light a part (by designator or path), `net:<name>` or `module:<path>` and fade the rest
-    /// (comma-separated or repeated).
+    /// Light a part (designator or path), `net:<name>` or `module:<path>`; comma list or repeated.
+    ///
+    /// The rest is faded.
     ///
     /// A part lights its pads, courtyard and designator; a net its copper and its open
     /// connections; a module (its path in the design, as `layout summary` names it) its parts,
@@ -76,8 +77,11 @@ pub struct Args {
     /// fill` lists it) is the check's `starved_thermal` finding, so it is marked with the rest.
     #[arg(long)]
     pub drc: bool,
-    /// Hatch and outline the copper islands the fill of the pours took out, labelled `I1`, `I2`,
-    /// ..., and print them: copper cut off from its net, which the Gerbers do not have.
+    /// Mark and print the copper islands the pour fill removed (`I1`, ...), absent from the
+    /// Gerbers.
+    ///
+    /// The islands are copper cut off from its net; each is hatched, outlined and labelled `I1`,
+    /// `I2`, ...
     #[arg(long)]
     pub islands: bool,
     /// Draw the stitching vias the export will have that the routes file does not, in a tone of

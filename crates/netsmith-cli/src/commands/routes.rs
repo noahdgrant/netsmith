@@ -70,14 +70,16 @@ pub enum Command {
         after_long_help = "The outline is a polygon given by `--outline X,Y` once for each corner (three or more, in order), by `--rect X,Y,W,H` for a rectangle, or by `--board-outline` for the board's whole outline. Places are mm from the outline's top left corner, y down, as for `add-track`. The zone is filled inside the outline on each `--layer` (`top`, `bottom`, `inner1`, ...; repeat the flag for several), joined to its net; where two zones of a layer overlap the higher `--priority` has the area, and two zones of different nets with the same priority must not overlap. Without a setting the zone has the design's own plane's: the clearance the process's planes keep, a minimum width of 0.25 mm, thermal relief gap and spokes of 0.5 mm, priority 0, a thermal relief at each pad of its net.\n\nA zone of the net of the design's pour or plane on its layer restates it: the pour or plane there is not drawn. With `--patch` it is a patch of it instead (a pad joined solid in a thermal pour, a wider clearance in one place): the pour or plane is kept, and the zone's settings (`--pads`, `--clearance`, `--thermal-gap`, `--spoke-width`) hold inside its outline alone, so the pour need not be restated; `--patch` changes nothing on a layer with no pour or plane of the zone's net. A zone of another net cuts it: the zone has the area it covers, at any priority, and the pour is drawn round it, keeping its clearance (`fab` writes the routes file's zones one priority above the pour so that KiCad's fill agrees). The command says which it is. A zone is refused when a corner is off the board, a setting is wrong, or the design rules check finds an error with it that the board did not have (a short, a clearance, a track of another net it covers); the file is then as it was. The zone is written to the net's record (made, with the net's pad hash, if the net has none); `routes show` numbers it, and `delete`, `lock` and `unlock` name it with `--zone N`."
     )]
     AddZone(AddZoneArgs),
-    /// Route one net, or one connection of it, round the copper there; say which nets stood in
-    /// its way, and with `--rip` route them again after it.
+    /// Route one net or connection round the copper there; say which nets stood in its way.
+    ///
+    /// With `--rip` those nets are routed again after it.
     #[command(
         after_long_help = "The router routes the net (or the connection, `NET:REF.PAD-REF.PAD`: the lines that join those two pads alone) on the board as placed with the routes file's copper, every other net held as it is, and writes its tracks and vias to the net's record, unlocked. A connection joined already is said, and nothing is written. The text says the narrowest place of the new way and the widest track of the net that has room there, with every space of the design rules.\n\nWhen the net has no way round the copper there, it is routed again with the unlocked tracks and vias of the other nets taken away, and the nets whose copper that way crosses are named (exit 1, nothing written); where there is no way even so, what walls it in is said: pads, vias, the copper of locked nets, the edge. With `--rip NET,...` the copper of those nets alone may be taken away: it is removed, the net is routed through the room it left, and each ripped net is routed again after it (it may rip in turn, from the nets named). A locked net or a locked shape is never ripped, nor is a zone. The rounds are bounded by counts, those of the router's rounds of rip-up: 6 rounds, 3 rips of one net, 64 runs of the router. A ripped net left with more connections open than it had, or a result the design rules check finds a new error with, is refused and the file is as it was. `--dry-run` says what it would do and writes nothing."
     )]
     Route(RouteArgs),
-    /// Join a pad the fill leaves unjoined to the fill of its net with a short track, or a track
-    /// and a via, in the direction with room.
+    /// Join a pad the fill leaves unjoined to its net's fill with a short track, or track and via.
+    ///
+    /// It goes in the direction with room.
     #[command(
         name = "join-pad",
         after_long_help = "The pad (`REF.PAD`) is joined when a fill of its net that covers its centre joins it (by a spoke or a track, and not starved: `board fill` says how) or another fill of its net does, or, when no fill covers it, when the design rules check finds it connected; a joined pad is said and nothing is written. Otherwise a track of the net's own width is drawn from the pad's centre straight out, in each of 16 directions, to the first place (0.025 mm at a time, at most 5 mm out) where its round end lies wholly on the fill of its net on that layer, as `board fill --format json` outlines it; the shortest is tried first, and each is checked as `add-track` checks a track. When no track fits, a track to a through via of the process placed on the fill of its net on another layer, clear of the pad. The first one the design rules check takes and that joins the pad is written to the net's record, unlocked. At most 24 are tried; when none is taken the command is refused (exit 1, nothing written) and says how many were tried and why the shortest was refused. `--dry-run` says what it would add and writes nothing. With `--format json`: `board`, `pad`, `net`, `before` (how the fill had the pad), `already`, `join` (`layer`, `from`, `to`, `width`, `length`, `direction` in degrees counterclockwise from +x, and `via` and `fill_layer` with a via), `tried` (`layer`, `direction`, `length`, `via`, `why`), `refused`, `said`, `dry_run`, `written` and `file`."
@@ -89,15 +91,21 @@ pub enum Command {
     /// Say whether a via fits at a place, and what is in its way by how much.
     #[command(name = "check-via", after_long_help = super::routes_check_via::LONG_HELP)]
     CheckVia(super::routes_check_via::Args),
-    /// Fan out a fine-pitch part as a group: a via site for each pad that needs to escape,
-    /// negotiated across the group or as a plan says, and each pad routed to its via.
+    /// Fan out a fine-pitch part as a group: a via site and a route for each pad that must escape.
+    ///
+    /// The sites are negotiated across the group, or taken as a plan says.
     #[command(after_long_help = super::routes_fanout::LONG_HELP)]
     Fanout(super::routes_fanout::Args),
-    /// Move a via of the routes file and carry every layer's tracks that end in it, laid again in
-    /// 45 degree legs, refused if it breaks the design rules or loses a connection.
+    /// Move a via of the routes file with its tracks; refused if it breaks rules or a connection.
+    ///
+    /// Every layer's tracks that end in it are carried along, laid again in 45 degree legs. The
+    /// move is refused when it breaks the design rules or loses a connection.
     #[command(name = "move-via", after_long_help = super::routes_move_via::LONG_HELP)]
     MoveVia(super::routes_move_via::Args),
-    /// Delete a net's record, or one of its shapes; a locked one is refused. A record of a net the board no longer has (a net renamed, say: `fab` names it) is deleted whole, even when locked.
+    /// Delete a net's record, or one of its shapes; a locked one is refused.
+    ///
+    /// A record of a net the board no longer has (a net renamed, say: `fab` names it) is deleted
+    /// whole, even when locked.
     Delete(ShapeArgs),
     /// Lock a net (the router adds no copper to it) or one shape (kept when the net's pads move).
     #[command(
@@ -106,15 +114,18 @@ pub enum Command {
     Lock(ShapeArgs),
     /// Unlock a net or one shape.
     Unlock(ShapeArgs),
-    /// Cut corners to 45 degrees, merge collinear tracks, remove dangling vias, stubs and acid
-    /// traps, and with `--widen` widen narrow tracks, refusing any change that adds a finding or
-    /// loses a connection.
+    /// Tidy the copper: 45 degree corners, merged tracks, no dangling vias, stubs or acid traps.
+    ///
+    /// With `--widen` narrow tracks are widened too. A change that adds a finding or loses a
+    /// connection is refused.
     #[command(
         after_long_help = "A pass over the routes file's copper (and with `--reuse-routes` the router's copper kept in `.netsmith/routes/`, as `board fab --reuse-routes` starts from it) that makes four repairs (five with `--widen`):\n\n- a corner: two straight tracks of a net that meet outside its pads and bend by more than 45 degrees (the design rules check's `track_angle`) are cut into bends of 45 degrees at most, a 45 degree chamfer at a right angle; the chamfer starts four widths from the corner, and two and one width when the larger is refused;\n- a collinear pair: two straight tracks of one net, layer and width that meet end to end on one line, with nothing else there, become one;\n- a dangling via or a stub: a via joined to copper of its net on fewer than two layers (`via_dangling`) and a track with an end that touches nothing (`track_dangling`) are removed when the copper makes every connection of the net (the router may still start from a stub of a net it has to finish), and a via that joins nothing at all is removed in any net;\n- an acid trap (`acid_trap`): a track that leaves a pad or a via at an acute angle to its edge is made to leave it at a right angle and bend after the edge, and a track that ends on the middle of another at an acute angle is made to meet it at a right angle.\n\nWith `--widen`, a fifth: a narrow track, a straight track narrower than the width its net wants on its layer (the width the router draws the net at there: for its current, its class or its impedance target, and for a net with pins that state the current of their branch the narrowest of its lines), is widened to it; a widening the check refuses (the wider track comes too near copper of another net) is tried at three quarters, half and a quarter of the way, so that each track is as wide as the clearance to its neighbours allows. A track is never made narrower; the text lists each widening with the width it had, the width it has and the width its net wants (`counts.widened` in the JSON, and each change's `width_before` and `width_after`).\n\nWith `--widen-to-guideline`, what `--widen` does, and each track of a net whose path drops more than its track-drop budget (the `track drop` guideline of `board fab`, the path `board nets` lists) is widened towards the width the guideline suggests for it (the path's `needs`), by the same steps and the same rule; a track with room for none of the steps is tried at the width its net wants. The drop is measured again before each pass, and the text ends with the drop of each net that was over, before and after (`drops` in the JSON). A net within its budget is widened as `--widen` widens it.\n\nEach change is made only when the design rules check of the board with it (the check `add-track` makes, with its warnings) finds nothing it did not find before and the connections left to route are the same; a refused change is listed with the first new finding or the connection it changes, and left as it was. The changes of each net are checked together where they are: over the copper, pads and zones within the board's largest space of what they change, with and without them, and the whole board is checked once after each pass, which checks the pass's changes again against the whole board when it finds what they add beyond where they are. The text ends with how many checks ran and the items they looked at (`checks` and `items_checked` in the JSON). A locked net or shape, an arc, a zone and a record whose pads moved are never touched. `--dry-run` says what would change, by kind, net, layer and place, and writes nothing. With `--reuse-routes` the kept file is written again, so that `board fab --reuse-routes` still starts from it; without it, a change to the routes file makes a kept file stale, and the command says so. The exit code is 0 when the pass ran (whether or not it changed or refused anything), 2 when it could not run.\n\nOn stderr each pass says how far it has got, net by net: the net, how many of the pass's nets, the changes made so far and about how long the pass has left; `--progress json` prints each line as `{\"board\", \"stage\": \"tidying\", \"unit\": \"nets tidied\", \"done\", \"total\", \"detail\", \"elapsedMs\", \"message\"}`, and `--to-editor` sends them to a running editor, as `board fab` does. With `--format json` the progress is printed only with `--progress json`. Nothing is written until the whole pass has run, so Ctrl+C leaves the files as they were."
     )]
     Tidy(TidyArgs),
-    /// Widen each track of the named nets (or of every net) to the widest that keeps the
-    /// clearances, up to the width its net wants, and list each left narrower with what is in the way.
+    /// Widen each track of the named nets (or all) as far as clearance allows, up to its net's
+    /// width.
+    ///
+    /// Each track left narrower than its net wants is listed with what is in the way.
     #[command(after_long_help = WIDEN_HELP)]
     Widen(WidenArgs),
 }
@@ -157,8 +168,10 @@ pub struct TidyArgs {
     /// allows.
     #[arg(long)]
     pub widen: bool,
-    /// As `--widen`, and widen each track of a net whose path drops more than its track-drop
-    /// budget towards the width the guideline suggests, as far as the clearance allows.
+    /// As `--widen`, and widen tracks of nets over their track-drop budget, as clearance allows.
+    ///
+    /// Each track of a net whose path drops more than its budget is widened towards the width the
+    /// guideline suggests.
     #[arg(long)]
     pub widen_to_guideline: bool,
     /// Text for a person, or one JSON document on stdout.
@@ -180,15 +193,17 @@ pub struct ImportArgs {
     /// The port's parts file: the KiCad board's reference of each member path.
     #[arg(long, value_name = "PARTS.TOML")]
     pub parts: Option<PathBuf>,
-    /// Write no places to the layout file, and say nothing of how each part would be placed (a
-    /// count of the places not imported instead).
+    /// Write no places to the layout file, and do not say how each part would be placed.
+    ///
+    /// A count of the places not imported is said instead.
     #[arg(long)]
     pub no_places: bool,
     /// Leave every net unlocked: the router may add copper to complete it.
     #[arg(long)]
     pub unlocked: bool,
-    /// Take the zones that are the process's own planes and pours (as `fab` wrote them, changed
-    /// since or not) as hand zones too, instead of leaving them out.
+    /// Also take the process's own planes and pours as hand zones, instead of leaving them out.
+    ///
+    /// These are the zones as `fab` wrote them, changed since or not.
     #[arg(long)]
     pub process_zones: bool,
     /// Text for a person, or one JSON document on stdout.
@@ -236,8 +251,9 @@ pub struct RouteArgs {
     pub net: Option<String>,
     #[command(flatten)]
     pub target: Target,
-    /// Rip up the unlocked copper inside a box and route every connection it carried again,
-    /// `X,Y,W,H` in mm (the outline's frame, or the one `--frame` names).
+    /// Rip up unlocked copper in a box and reroute it: `X,Y,W,H` mm, outline frame or `--frame`'s.
+    ///
+    /// Every connection the copper carried is routed again.
     ///
     /// Tracks crossing the box's edge are cut there and their outside part kept; the nets whose
     /// connections the cut opens, and those with a connection open before through the box, are
@@ -262,8 +278,10 @@ pub struct RouteArgs {
     /// that were not put back first; each try is reported, and each may run the router 64 times.
     #[arg(long, value_name = "N", default_value_t = netsmith_fabricate::route_net::TRIES, value_parser = super::route::parse_tries)]
     pub tries: usize,
-    /// How the bends of the copper it lays turn, for this run: `rounded` (arcs, where they keep
-    /// the rules' space) or `mitered` (45 degree corners). Default: the board's `.corner`.
+    /// How the bends it lays turn: `rounded` (arcs) or `mitered` (45 degrees); default: `.corner`.
+    ///
+    /// For this run only; the default is the board's `.corner`. Arcs are drawn where they keep the
+    /// rules' space.
     ///
     /// A net of a `TrackPath` whose `.corner` is `Mitered` is mitered whatever this says.
     #[arg(long, value_enum, value_name = "STYLE")]
@@ -410,9 +428,10 @@ pub struct AddViaArgs {
     /// The drill in mm (default: the process's via drill).
     #[arg(long, value_name = "MM")]
     pub drill: Option<f64>,
-    /// A blind or a buried via: the two layers it ends on, `top,inner1`, a via the board's HDI
-    /// process makes; its size is then that via's (the laser's for a blind via). Default: a
-    /// through via.
+    /// A blind or buried via's two end layers, `top,inner1` (HDI process); default: a through via.
+    ///
+    /// The via is one the board's HDI process makes; its size is then that via's (the laser's for a
+    /// blind via).
     #[arg(long, value_name = "LAYER,LAYER", value_parser = parse_layer_pair)]
     pub layers: Option<[CopperLayer; 2]>,
     /// Lock the via: it is kept when the net's pads move.
@@ -459,9 +478,11 @@ pub struct AddZoneArgs {
     /// How the zone joins its net's pads.
     #[arg(long, value_enum, default_value = "thermal")]
     pub pads: PadConnection,
-    /// A patch of the pour or plane of the zone's net on its layer: the pour is kept and the
-    /// zone's settings (`--pads`, `--clearance`, `--thermal-gap`, `--spoke-width`) hold inside
-    /// its outline alone. Without it, a zone of that net replaces the pour on the layer.
+    /// A patch: keep the net's pour on the layer, these zone settings holding in the outline only.
+    ///
+    /// It patches the pour or plane of the zone's net: the settings are `--pads`, `--clearance`,
+    /// `--thermal-gap` and `--spoke-width`. Without it, a zone of that net replaces the pour on the
+    /// layer.
     #[arg(long)]
     pub patch: bool,
     /// Lock the zone: it is kept when the net's pads move.

@@ -29,8 +29,10 @@ pub struct Args {
     /// Cut the scene as `view 3d --section` does, or `none` for no cut.
     #[arg(long, value_name = "AXIS=MM|none", value_parser = parse_view_section)]
     pub section: Option<String>,
-    /// Light a part, `net:<name>`, `limit:<name>`, `case:<name>` (a case model) or `module:<path>`,
-    /// comma-separated or repeated; `none` for nothing.
+    /// Light a part, `net:<name>`, `limit:<name>`, `case:<name>`, `module:<path>`; `none`: nothing.
+    ///
+    /// `case:<name>` is a case model. Several ids are comma-separated, or the flag is repeated;
+    /// `none` lights nothing.
     ///
     /// `module:<path>` lights the parts of a module instance in the 2D and 3D views, each module
     /// in its own colour in the order given, as a click in the PCB panel's Modules tab does. In

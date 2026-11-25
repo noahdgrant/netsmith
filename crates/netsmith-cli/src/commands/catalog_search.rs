@@ -30,7 +30,9 @@ pub struct Args {
     /// Look for a manufacturer's number, or part of one, instead of words.
     #[arg(long, value_name = "MPN", conflicts_with = "keywords")]
     pub mpn: Option<String>,
-    /// A parametric filter, an attribute's short name and a value (repeatable; a name twice takes both values).
+    /// A parametric filter, an attribute's short name and a value; repeatable.
+    ///
+    /// A name given twice takes both values.
     #[arg(long = "filter", value_name = "NAME=VALUE", value_parser = parse_filter)]
     pub filters: Vec<(String, String)>,
     /// Only parts some seller has in stock.
@@ -39,7 +41,9 @@ pub struct Args {
     /// How many parts to list (1 to 100; Digi-Key gives at most 50).
     #[arg(long, value_name = "N", default_value_t = 5, value_parser = clap::value_parser!(u32).range(1..=100))]
     pub limit: u32,
-    /// Also ask Nexar for the values, the package and the datasheet (a Nexar plan that includes them; Digi-Key gives its values and datasheet always).
+    /// Also ask Nexar for values, package and datasheet (needs a plan; Digi-Key always gives them).
+    ///
+    /// The Nexar plan must include them; Digi-Key gives its values and datasheet always.
     #[arg(long)]
     pub details: bool,
     /// The search provider to ask: `nexar` or `digikey` (default the one the project names; with both, nexar).

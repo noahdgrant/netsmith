@@ -13,7 +13,9 @@ pub struct Args {
 pub enum Command {
     /// Print the [[library]] stanzas for kicad.toml from a KiCad project's library tables (ADR 0021).
     Libraries(LibrariesArgs),
-    /// Print the [[model]] rows for netsmith.toml from the 3D models a footprint library table's libraries name (the model table, issue #1005).
+    /// Print netsmith.toml's [[model]] rows from the 3D models a footprint library table names.
+    ///
+    /// They are the rows of the model table (issue #1005), from the libraries of the table.
     ///
     /// Each footprint's first `(model ...)` line that names a STEP file becomes a row with its offset and rotation; notes on stderr count the footprints left out (no model line, a model that is not STEP, a scaled model).
     Models(ModelsArgs),

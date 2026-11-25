@@ -202,7 +202,6 @@ fn every_tool_is_a_command_with_its_arguments_and_every_command_a_tool() {
             .iter()
             .find(|t| t["name"] == name.as_str())
             .unwrap_or_else(|| panic!("no tool for `netsmith {}`", words.join(" ")));
-        assert_eq!(tool["title"], format!("netsmith {}", words.join(" ")));
         let mut properties: Vec<String> = tool["inputSchema"]["properties"]
             .as_object()
             .unwrap()
@@ -378,17 +377,81 @@ fn the_projects_files_and_the_guide_are_resources_and_the_skills_prompts() {
     assert!(text.ends_with("The request: add an LED"), "{text}");
 }
 
-/// The listed tools are short (issue #1133): a host sends the whole list to its model. The limit
-/// counts the bytes of the list, not a time; the list was about 140 KB with each command's
-/// whole help, and is under half of that now.
+/// The listed tools are short (issue #1133): a host sends the whole list to its model. The limits
+/// count bytes of the list, not a time; the list was about 140 KB with each command's whole help,
+/// and is under 80 KB now.
 ///
-/// A PR that adds a flag and trips this limit cuts text; it does not raise the limit. An argument
-/// that many tools take with one help (`format`, `file`, `board`, the placer's flags) is said
-/// once in the server's instructions (`tools::share`), so give a new flag that is common to many
-/// commands one shared help line (a `#[command(flatten)]` struct, as `Placing`), and keep the
-/// first line of a flag's help short: its detail goes in the line after it, which the tool does
-/// not carry, and in the command's help resource.
+/// A PR that adds a flag and trips a limit cuts text; it does not raise the limit.
 const MOST_BYTES: usize = 90_000;
+
+/// The most bytes of one help line in the list: a command's, or an argument's (issue #1721).
+const MOST_LINE_BYTES: usize = 120;
+
+/// The most bytes of help one tool may have in the list, its own line and its arguments' together
+/// (issue #1721), so that no command grows without a limit while the whole list has room.
+const MOST_TOOL_HELP_BYTES: usize = 2_000;
+
+/// How to make a help line shorter, said by each limit's failure.
+const HOW_TO_CUT: &str = "Cut text, do not raise the limit. A tool carries only the first \
+    paragraph of a command's or a flag's doc comment: keep that to what an agent needs to use it \
+    (what it does, its syntax and choices), and move the rest to a paragraph after an empty `///` \
+    line, which `--help` and the command's help resource keep. A flag that many commands take, \
+    with one help, is said once in the server's instructions (`tools::share`): give it the same \
+    help in each command (a `#[command(flatten)]` struct, as `Placing`)";
+
+/// The help one tool carries in the list.
+struct Help {
+    /// `netsmith board fab`.
+    command: String,
+    /// The bytes of the tool as listed.
+    bytes: usize,
+    /// Each help line, as what to change (`netsmith board fab --strict`) and its bytes, the
+    /// longest first.
+    lines: Vec<(String, usize)>,
+}
+
+impl Help {
+    fn of(tool: &Value, commands: &[(Vec<String>, clap::Command)]) -> Help {
+        let (words, model) = commands
+            .iter()
+            .find(|(words, _)| tool["name"] == words.join("_").replace('-', "_").as_str())
+            .unwrap_or_else(|| panic!("no command for {}", tool["name"]));
+        let command = format!("netsmith {}", words.join(" "));
+        let own = tool["description"].as_str().unwrap_or_default();
+        let mut lines = vec![(format!("`{command}` (the command's own help)"), own.len())];
+        for (key, property) in tool["inputSchema"]["properties"].as_object().unwrap() {
+            let arg = model
+                .get_arguments()
+                .find(|a| a.get_id() == key.as_str())
+                .unwrap_or_else(|| panic!("`{command}` has no argument {key}"));
+            let flag = match arg.get_long() {
+                Some(long) => format!("--{long}"),
+                None => format!("<{key}>"),
+            };
+            let help = property["description"].as_str().unwrap_or_default();
+            lines.push((format!("`{command} {flag}`"), help.len()));
+        }
+        lines.sort_by_key(|(_, bytes)| std::cmp::Reverse(*bytes));
+        Help {
+            command,
+            bytes: serde_json::to_string(tool).unwrap().len(),
+            lines,
+        }
+    }
+
+    fn total(&self) -> usize {
+        self.lines.iter().map(|(_, bytes)| bytes).sum()
+    }
+
+    /// The longest `n` lines, one to a row.
+    fn longest(&self, n: usize) -> String {
+        self.lines
+            .iter()
+            .take(n)
+            .map(|(what, bytes)| format!("\n    {what}: {bytes} bytes"))
+            .collect()
+    }
+}
 
 #[test]
 fn the_tool_list_is_short() {
@@ -398,13 +461,25 @@ fn the_tool_list_is_short() {
     let tools = listed["result"]["tools"].as_array().unwrap();
     let bytes = serde_json::to_string(tools).unwrap().len();
     eprintln!("{} tools, {bytes} bytes", tools.len());
+    let commands = commands();
+    let mut helps: Vec<Help> = tools.iter().map(|t| Help::of(t, &commands)).collect();
+    helps.sort_by_key(|h| std::cmp::Reverse(h.bytes));
+    let biggest: String = helps
+        .iter()
+        .take(5)
+        .map(|h| {
+            format!(
+                "\n  `{}`, {} bytes; its longest help:{}",
+                h.command,
+                h.bytes,
+                h.longest(3)
+            )
+        })
+        .collect();
     assert!(
         bytes < MOST_BYTES,
-        "the tool list is {bytes} bytes, over the {MOST_BYTES} it may have: cut text, do not raise \
-         the limit. Find the biggest tools with `netsmith mcp` and tools/list; shorten the first \
-         line of the help of the commands and flags you added (a tool has only that line); a flag \
-         that many commands take, with one help, is stated once in the server's instructions \
-         already (`tools::share`), so give it the same help in each command"
+        "the tool list is {bytes} bytes, over the {MOST_BYTES} it may have. {HOW_TO_CUT}. The \
+         biggest tools:{biggest}"
     );
     for tool in tools {
         // The first line of the command's help, and one line for each argument.
@@ -412,15 +487,56 @@ fn the_tool_list_is_short() {
         assert!(!description.contains('\n'), "{description}");
         for (key, property) in tool["inputSchema"]["properties"].as_object().unwrap() {
             // An argument many tools share has its help in the instructions, not here.
-            let help = property["description"].as_str().unwrap_or_default();
+            let Some(help) = property["description"].as_str() else {
+                assert!(
+                    server.instructions.contains(&format!("`{key}`: ")),
+                    "{}: {key} has no help, here or in the instructions",
+                    tool["name"]
+                );
+                continue;
+            };
             assert!(!help.contains('\n'), "{}: {key}: {help}", tool["name"]);
         }
     }
-    // The choices and the default of an argument are in its schema.
+    // The choices of an argument are in its schema. That a call asks for `json` is said once, in
+    // the instructions, so the command line's own default is not.
     let check = tools.iter().find(|t| t["name"] == "board_check").unwrap();
     let format = &check["inputSchema"]["properties"]["format"];
     assert_eq!(format["enum"], json!(["text", "json"]), "{format}");
-    assert_eq!(format["default"], "json");
+    assert!(format.get("default").is_none(), "{format}");
+    assert!(
+        server.instructions.contains("a call asks for `json`"),
+        "{}",
+        server.instructions
+    );
+}
+
+#[test]
+fn no_help_line_and_no_tool_has_more_help_than_its_share() {
+    let root = led("mcp-help-share");
+    let mut server = Server::start(&root);
+    let listed = server.request("tools/list", json!({}));
+    let commands = commands();
+    let mut over = Vec::new();
+    for tool in listed["result"]["tools"].as_array().unwrap() {
+        let help = Help::of(tool, &commands);
+        for (what, bytes) in &help.lines {
+            if *bytes > MOST_LINE_BYTES {
+                over.push(format!(
+                    "{what}: its help line is {bytes} bytes, over {MOST_LINE_BYTES}"
+                ));
+            }
+        }
+        if help.total() > MOST_TOOL_HELP_BYTES {
+            over.push(format!(
+                "`{}`: {} bytes of help, over {MOST_TOOL_HELP_BYTES}; cut the longest:{}",
+                help.command,
+                help.total(),
+                help.longest(8)
+            ));
+        }
+    }
+    assert!(over.is_empty(), "{}\n{HOW_TO_CUT}.", over.join("\n"));
 }
 
 #[test]

@@ -32,7 +32,9 @@ pub struct Args {
         conflicts_with = "except"
     )]
     pub part: Vec<String>,
-    /// Take new picks for every part but these (by path, comma-separated); with `--check`, judge every part but these and say which were not judged.
+    /// Take new picks for every part but these (by path, comma-separated)
+    ///
+    /// With `--check`, judge every part but these and say which were not judged.
     #[arg(long, value_name = "PATH", value_delimiter = ',')]
     pub except: Vec<String>,
     /// With `--update`, number every part again by its path from 1, in place of keeping the designators the lock records.

@@ -30,7 +30,7 @@ pub struct Args {
     /// When the time is spent, `fab` stops and lists the connections left. The default is 300.
     #[arg(long, value_name = "SECS")]
     pub route_timeout: Option<u64>,
-    /// Rounds of rip-up and re-route of whole nets for connections the router leaves; 0 is none.
+    /// Rounds of rip-up and re-route for connections left open; 0 is none.
     ///
     /// When a try of the router ends with connections open, each round routes every one of them
     /// through the copper of the nets in its way, removes those nets and routes them again after
@@ -47,7 +47,7 @@ pub struct Args {
     /// netsmith.toml or `--constraints warn`.
     #[arg(long)]
     pub allow_drc_violations: bool,
-    /// Write the files to look at of a board with findings, marked FOR REVIEW, never to order.
+    /// Write review files of a board with findings, marked FOR REVIEW, never to order.
     ///
     /// Without a flag the design rules check stops `fab` and no package is written;
     /// `--allow-drc-violations` packages the board to order from, and this packages it to look
@@ -81,18 +81,17 @@ pub struct Args {
     /// order --all-refusals` adds the order's own (a fictional fabricator, vias in pads).
     #[arg(long, conflicts_with_all = ["allow_drc_violations", "for_review", "save_placed", "reuse_routes"])]
     pub all_refusals: bool,
-    /// With `--for-review`, leave the pictures of the copper (`<board>-<layer>-REVIEW.png`) out.
+    /// With `--for-review`, leave the copper pictures (`<board>-<layer>-REVIEW.png`) out.
     ///
     /// The pictures an earlier run left are removed.
     #[arg(long, requires = "for_review")]
     pub no_pictures: bool,
-    /// Check the Gerbers against the board, with netsmith's own viewer and with KiCad's own plot and check.
+    /// Check the Gerbers against the board with netsmith's viewer, and with KiCad if installed.
     ///
     /// Each copper layer of the Gerbers is drawn as `view gerber` draws it and compared with the board as `view pcb` draws it (the limits are in the language guide); a difference stops `fab`, lists each place as a `--region` box and is a finding of `fab-notes.txt`. This needs no KiCad. With KiCad's command-line tool installed (`$KICAD_CLI`, then `kicad-cli` or `kicad-cli.exe` on `PATH`, then Windows KiCad 9 under WSL) the files and the findings are compared with KiCad's own plot and check too; without it only the viewer comparison runs, and `fab-notes.txt` says so.
     #[arg(long)]
     pub cross_check: bool,
-    /// Make a guideline finding, and a part with no room among the locked parts, an error for
-    /// this run.
+    /// Make guideline findings, and a part with no room among locked parts, errors for this run.
     #[arg(long)]
     pub strict: bool,
     /// Stop when the pick lock or the pin file would change; implies `--pins locked`.
@@ -101,14 +100,14 @@ pub struct Args {
     /// file rewritten (`--locked` wins over `--pins auto`).
     #[arg(long)]
     pub locked: bool,
-    /// Whether an unmet requirement on where a part goes stops `fab`, over netsmith.toml.
+    /// Whether an unmet part placement requirement stops `fab`, over netsmith.toml.
     ///
     /// It wins over `constraints` in netsmith.toml for this run.
     #[arg(long, value_enum)]
     pub constraints: Option<Constraints>,
-    /// What a board that does not route may do with its pins, over netsmith.toml (ADR 0101).
+    /// What a board that does not route may do with its pins, over netsmith.toml.
     ///
-    /// `pins` in netsmith.toml sets it for a project; the default is `auto`.
+    /// `pins` in netsmith.toml sets it for a project; the default is `auto` (ADR 0101).
     #[arg(long, value_enum)]
     pub pins: Option<Pins>,
     /// Leave the board's 3D scene (`<board>.glb`) out of the package.
@@ -159,7 +158,7 @@ pub struct Args {
     /// found is a warning and the footprint has none. `project order` does not take it.
     #[arg(long)]
     pub portable: bool,
-    /// Ask no supplier for stock or price; say in `fab-notes.txt` that they were not checked.
+    /// Ask no supplier for stock or price; `fab-notes.txt` says they were not checked.
     ///
     /// No provider that would use the network is asked, and an answer kept earlier is used at any
     /// age. `fab-notes.txt` (and `order.txt` of an order) then says that the stock and price of
