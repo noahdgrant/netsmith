@@ -21,7 +21,7 @@
 //! copper on any layer.
 
 use crate::Output;
-use crate::artwork::{Artwork, Graphic, Pad, PadKind, PadShape, Shape, TrackShape};
+use crate::artwork::{Artwork, Graphic, Pad, PadKind, Shape, TrackShape};
 use crate::edge::{self, Outline as BoardEdge};
 use crate::fill;
 use crate::font;
@@ -279,10 +279,7 @@ pub fn mask(
 }
 
 /// The stencil openings: pads on the paste layer, shrunk or grown by their margin and
-/// ratio. As KiCad does, the ratio is of each side of the pad: a pad 1.6 by 1.0 with a ratio
-/// of -0.1 is shrunk by 0.16 along its length and by 0.1 across (both sides), and a rounded
-/// rectangle keeps its corner ratio. A trapezoid or custom pad is shrunk evenly by the
-/// ratio of its shorter side.
+/// ratio ([`pads::paste_opening`]).
 fn paste(
     g: &mut dyn Pen,
     art: &Artwork,
@@ -294,23 +291,7 @@ fn paste(
         .iter()
         .filter(|p| p.layers.iter().any(|l| l == layer))
     {
-        let ratio = pad.paste_ratio.unwrap_or(art.paste_ratio);
-        let base = pad.paste_margin.unwrap_or(art.paste_margin);
-        let (w, h) = pad.size;
-        let opening = match pad.shape {
-            PadShape::Circle | PadShape::Rect | PadShape::RoundRect | PadShape::Oval => {
-                let mut resized = pad.clone();
-                resized.size = (w + 2.0 * (base + ratio * w), h + 2.0 * (base + ratio * h));
-                if resized.size.0 <= 0.0 || resized.size.1 <= 0.0 {
-                    continue;
-                }
-                Ok(Some(pads::outline(&resized)))
-            }
-            PadShape::Trapezoid | PadShape::Custom => {
-                pads::outline(pad).grow(base + ratio * w.min(h))
-            }
-        };
-        match opening {
+        match pads::paste_opening(pad, art) {
             Ok(Some(s)) => s.draw(g, None, &component_attrs(pad)),
             Ok(None) => {}
             Err(e) => {
