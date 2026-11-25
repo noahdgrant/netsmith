@@ -13,6 +13,8 @@ Every change below that makes source an error was a pull request whose title has
 
 ## Unreleased
 
+- **`board check`, `board build` and `board drc`: `fab`'s placement check (issue #1654).** A layout file whose entries `fab` refused (two courtyards that overlap, a part on the bottom under a through-hole part whose pins come out under it, a part past the outline, in a keepout or a cutout) passed `board check` and `board build`, and `board drc` judged only its design rules. They now stop with the error `fab` gives, in its words: `error: <board>: the courtyards of <a part> and <another> overlap by <area> mm2; the pins of the through-hole part <path> come out under the other; ...`. Move the part with `netsmith layout set` (`netsmith layout fit` finds a place), or, when the pins are cut short after soldering, state how far they protrude (`.j1.pin_protrusion &= 0.2mm`) in the physical file. `layout check` lists the same faults with the line of each entry. No source spelling changes.
+
 ## 0.9.0: changes since 0.8.0
 
 ### Places in the outline's frame, and the new findings of diff pairs
