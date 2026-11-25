@@ -267,6 +267,21 @@ struct Carrier {
     /// The range of the signed current in amperes, or `None` while the solver has not worked
     /// the current out.
     range: Option<(f64, f64)>,
+    /// The heating (rms) current a rail states (`.rms_current`, issue #1690), in amperes: the
+    /// larger end of its range in size.
+    stated_rms: Option<f64>,
+    /// The most its heating current can be, in amperes, and whether a stated rms current made
+    /// it (see [`heats`]); `None` while its current is not known.
+    heat: Option<Heat>,
+}
+
+/// What a carrier's copper heats with at most (issue #1690): its rms current, or its peak.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Heat {
+    amps: f64,
+    /// Whether a stated `.rms_current` brought it below the peak, on this carrier or on the
+    /// ones it was worked out from.
+    rms: bool,
 }
 
 impl Carrier {
@@ -508,6 +523,184 @@ fn grouped_ranges(model: &netsmith_check::Model, counted: &[&Carrier]) -> Vec<Op
     ranges
 }
 
+/// The statements of a heating (rms) current that cannot hold (issue #1690): an
+/// `.rms_current` on a rail or a pin whose `.current` is not known (stated or worked out by
+/// the solver), and one above the most that `.current` (or, for a load that bursts, its
+/// `.peak_current`) reaches in size, since the rms of a current is never more than its peak.
+/// Each fails the build.
+pub fn rms_errors(model: &Model) -> Vec<String> {
+    let mut errors = Vec::new();
+    for (id, inst) in model.instances() {
+        let rail = inst.kind == InstKind::Interface && model.draw_of(id).is_some();
+        if !(rail || inst.kind == InstKind::Pin) || model.unused_by(id).is_some() {
+            continue;
+        }
+        let Some((lo, hi)) = signed_range(model, model.member(id, "rms_current")) else {
+            continue;
+        };
+        let rms = lo.abs().max(hi.abs());
+        let path = model.path_of(id);
+        match signed_range(model, model.member(id, "current")) {
+            None => errors.push(format!(
+                "`{path}.rms_current` is stated but `{path}.current` is not known: the rms current sizes the copper for heat beside the peak in `.current`, which the track drop measures at; state `{path}.current` (the most it carries at an instant), or leave the rms current out"
+            )),
+            Some((clo, chi)) => {
+                // A load that bursts states its average as `.current` and its burst as
+                // `.peak_current` (issue #1279): its rms lies between the two.
+                let burst = signed_range(model, model.member(id, "peak_current"))
+                    .map(|(lo, hi)| lo.abs().max(hi.abs()));
+                let peak = clo.abs().max(chi.abs()).max(burst.unwrap_or(0.0));
+                let named = if burst.is_some_and(|b| b >= chi.abs().max(clo.abs())) {
+                    format!("`{path}.peak_current` reaches")
+                } else {
+                    format!("`{path}.current` reaches")
+                };
+                if rms > peak * (1.0 + 1e-9) + 1e-15 {
+                    errors.push(format!(
+                        "`{path}.rms_current` reaches {}, above the most {named}, {}: the rms of a current is never more than its peak; state an rms current of at most {}, or a `.current` that reaches the peak",
+                        amps(rms),
+                        amps(peak),
+                        amps(peak),
+                    ));
+                }
+            }
+        }
+    }
+    errors
+}
+
+/// The most each carrier's heating current can be (issue #1690), by index into `carriers`;
+/// `counted` is the carriers counted on each net.
+///
+/// A rail that states an `.rms_current` heats with it (never more than its peak). Any other
+/// carrier heats with its peak, unless Kirchhoff's current law bounds it lower: what flows
+/// through it into a net is, at every instant, what the other carriers on that net take out,
+/// and the rms of a sum is never more than the sum of the rms values (the triangle inequality,
+/// which holds whether the loads burst together or not), so a fuse in front of a load, or the
+/// supply that feeds it, heats with no more than the sum of the heating currents of the others
+/// on the net. That needs every other current on the net to be known. Each bound only lowers
+/// a figure, so a pass is repeated until none changes.
+fn heats(model: &Model, carriers: &[Carrier], counted: &[Vec<usize>]) -> Vec<Option<Heat>> {
+    let mut heat: Vec<Option<Heat>> = carriers
+        .iter()
+        .map(|c| {
+            let (lo, hi) = c.range?;
+            let peak = lo.abs().max(hi.abs());
+            Some(match c.stated_rms {
+                Some(rms) if rms < peak => Heat {
+                    amps: rms,
+                    rms: true,
+                },
+                _ => Heat {
+                    amps: peak,
+                    rms: false,
+                },
+            })
+        })
+        .collect();
+    // On each net, the carriers with one end on it: what flows through it.
+    let through: Vec<Vec<usize>> = model
+        .nets()
+        .iter()
+        .zip(counted)
+        .map(|(net, ks)| {
+            ks.iter()
+                .copied()
+                .filter(|&k| {
+                    let c = &carriers[k];
+                    net.pins.contains(&c.from) != c.to.is_some_and(|t| net.pins.contains(&t))
+                })
+                .collect()
+        })
+        .collect();
+    for _ in 0..=carriers.len() {
+        let mut changed = false;
+        for ks in &through {
+            if ks.len() < 2 || ks.iter().any(|&k| heat[k].is_none()) {
+                continue;
+            }
+            for &k in ks {
+                if carriers[k].stated_rms.is_some() {
+                    continue;
+                }
+                let others = ks.iter().filter(|&&d| d != k).filter_map(|&d| heat[d]);
+                let (sum, rms) = others.fold((0.0, false), |(s, r), h| (s + h.amps, r || h.rms));
+                let Some(own) = heat[k] else { continue };
+                if sum < own.amps * (1.0 - 1e-9) {
+                    heat[k] = Some(Heat {
+                        amps: sum,
+                        rms: rms || own.rms,
+                    });
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    heat
+}
+
+/// The heating (rms) current of a net and its words (issue #1690), where a stated
+/// `.rms_current` brings it below the net's peak `total`; `None` where it does not, and the
+/// copper is sized by the peak as before. It is the larger of the two sides of the net's flow,
+/// each the sum of its terms' heating currents (no more than the term), and never more than
+/// the peak.
+fn net_rms(flow: &Flow, total: f64) -> Option<(f64, String)> {
+    fn side<'a>(v: &[(&'a Carrier, f64, bool)]) -> (f64, bool, Vec<(&'a Carrier, f64)>) {
+        let terms: Vec<(&Carrier, f64)> = v
+            .iter()
+            .filter_map(|t| Some((t.0, t.0.heat?.amps.min(t.1))))
+            .collect();
+        let sum: f64 = terms.iter().map(|t| t.1).sum();
+        let rms = v.iter().any(|t| t.0.heat.is_some_and(|h| h.rms));
+        (sum, rms, terms)
+    }
+    let (taken, given) = (side(&flow.taken), side(&flow.given));
+    let (sum, rms, mut terms) = if (given.0 - taken.0).abs() <= 1e-9 * taken.0.max(given.0) {
+        // The side with the statements is the one named.
+        let stated = |v: &[(&Carrier, f64)]| v.iter().filter(|t| t.0.stated_rms.is_some()).count();
+        if stated(&given.2) > stated(&taken.2) {
+            given
+        } else {
+            taken
+        }
+    } else if given.0 > taken.0 {
+        given
+    } else {
+        taken
+    };
+    if !rms || sum >= total * (1.0 - 1e-9) {
+        return None;
+    }
+    terms.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let shown: Vec<String> = terms
+        .iter()
+        .take(4)
+        .map(|(c, amps_of)| {
+            let how = match c.heat {
+                Some(h) if h.rms && c.stated_rms.is_some() => "rms",
+                Some(h) if h.rms => "rms, what the others on a net it joins carry",
+                _ => "its peak: it states no `.rms_current`",
+            };
+            format!("{} {} ({how})", c.who, amps(*amps_of))
+        })
+        .collect();
+    let more = match terms.len() - shown.len() {
+        0 => String::new(),
+        n => format!(" and {n} more"),
+    };
+    Some((
+        sum,
+        format!(
+            "the sum of the rms currents on it, below its peak of {}: {}{more}",
+            amps(total),
+            shown.join(" + ")
+        ),
+    ))
+}
+
 /// The longest the board's shorter side can be, in mm, when its outline states a limit on at
 /// least one side: the smaller of the two largest sizes the outline allows. A board with no
 /// outline, or with none of its sides limited, has none that is known (a board as big as its
@@ -576,6 +769,9 @@ pub struct PinCurrent {
     pub net: String,
     /// The most that flows through the pin, in amperes.
     pub current: f64,
+    /// Its heating (rms) current, where a stated `.rms_current` brings it below `current`
+    /// (issue #1690).
+    pub rms: Option<f64>,
 }
 
 /// A pin of a part that states the current of its branch (issue #1113): the copper from the
@@ -595,6 +791,9 @@ pub struct Branch {
     pub inner_least_width: Option<f64>,
     /// How many of the process's vias, side by side, carry it.
     pub vias: usize,
+    /// Its heating (rms) current, where the pin states an `.rms_current` below its `.current`
+    /// (issue #1690): the widths and the vias are sized for it.
+    pub rms: Option<f64>,
 }
 
 /// The tracks of every net against the current the net carries, by IPC-2221 (ADR 0036).
@@ -688,6 +887,9 @@ pub fn plan_tracks(
                     from: pos,
                     to: neg,
                     range: signed_range(model, model.member(id, "current")),
+                    stated_rms: signed_range(model, model.member(id, "rms_current"))
+                        .map(|(lo, hi)| lo.abs().max(hi.abs())),
+                    heat: None,
                 });
             }
             InstKind::Part => {
@@ -702,6 +904,8 @@ pub fn plan_tracks(
                     from: a,
                     to: Some(b),
                     range: signed_range(model, Some(Member::Field(through))),
+                    stated_rms: None,
+                    heat: None,
                 });
             }
             _ => {}
@@ -737,31 +941,50 @@ pub fn plan_tracks(
         }
     }
 
+    // The carriers counted on each net, by index into `carriers`. A module's port stands for
+    // what is inside the module (ADR 0007) and the rails and parts inside it are the same
+    // current seen closer up. Where something inside the module is on the net, the port is
+    // left out and the inside counts; a module with nothing modelled inside on the net keeps
+    // its port, which is all that is known of it.
+    let counted_on: Vec<Vec<usize>> = model
+        .nets()
+        .iter()
+        .map(|net| {
+            let on_net: Vec<usize> = (0..carriers.len())
+                .filter(|&k| touching(&carriers[k], net))
+                .collect();
+            let inside = |module: InstId, d: &Carrier| {
+                let mut up = model.instance(d.holder).parent;
+                while let Some(p) = up {
+                    if p == module {
+                        return d.holder != module;
+                    }
+                    up = model.instance(p).parent;
+                }
+                false
+            };
+            let covered = |c: &Carrier| {
+                c.is_rail
+                    && model.instance(c.holder).kind == InstKind::Module
+                    && on_net.iter().any(|&d| inside(c.holder, &carriers[d]))
+            };
+            on_net
+                .iter()
+                .copied()
+                .filter(|&k| !covered(&carriers[k]))
+                .collect()
+        })
+        .collect();
+    let heat_of = heats(model, &carriers, &counted_on);
+    for (c, heat) in carriers.iter_mut().zip(heat_of) {
+        c.heat = heat;
+    }
+
     for (index, net) in model.nets().iter().enumerate() {
         if net.terminals.len() < 2 || planes.contains(&net.name.as_str()) {
             continue;
         }
-        let on_net: Vec<&Carrier> = carriers.iter().filter(|c| touching(c, net)).collect();
-        // A module's port stands for what is inside the module (ADR 0007) and the rails and
-        // parts inside it are the same current seen closer up. Where something inside the
-        // module is on the net, the port is left out and the inside counts; a module with
-        // nothing modelled inside on the net keeps its port, which is all that is known of it.
-        let inside = |module: InstId, d: &Carrier| {
-            let mut up = model.instance(d.holder).parent;
-            while let Some(p) = up {
-                if p == module {
-                    return d.holder != module;
-                }
-                up = model.instance(p).parent;
-            }
-            false
-        };
-        let covered = |c: &Carrier| {
-            c.is_rail
-                && model.instance(c.holder).kind == InstKind::Module
-                && on_net.iter().any(|d| inside(c.holder, d))
-        };
-        let counted: Vec<&Carrier> = on_net.iter().copied().filter(|c| !covered(c)).collect();
+        let counted: Vec<&Carrier> = counted_on[index].iter().map(|&k| &carriers[k]).collect();
 
         let mut flow = Flow::default();
         let mut unknown: Vec<&str> = Vec::new();
@@ -813,6 +1036,9 @@ pub fn plan_tracks(
         };
         let mut what = current_source(from, plain, analysed, largest, &terms);
         let mut worst_inst = terms.first().map(|t| t.0.inst);
+        // Whether a storage element's discharge set the net's current: it states no rms, so
+        // the net heats with its peak (issue #1690).
+        let mut by_storage = false;
         // A storage element whose terminal is on the net and that states a larger discharge
         // current than the net carries otherwise sets it (issue #1689), as a part's stated
         // current does (issue #1584): the part's figure is the design's word, and the DC
@@ -856,6 +1082,7 @@ pub fn plan_tracks(
                     amps(s.current)
                 );
                 worst_inst = Some(s.inst);
+                by_storage = true;
                 (s.current, CurrentFrom::Carrier)
             }
             _ => (total, from),
@@ -863,24 +1090,38 @@ pub fn plan_tracks(
         if analysed.is_some() {
             unknown.clear();
         }
+        // The heating (rms) current, where a stated `.rms_current` brings it below the peak
+        // (issue #1690): the copper is sized for heat by it, and `total` stays the peak, which
+        // the track drop reads.
+        let rms = if by_storage {
+            None
+        } else {
+            net_rms(&flow, total)
+        };
+        let heat = rms.as_ref().map_or(total, |r| r.0);
         // The currents that are known are a lower bound on the net's current: loads only add
         // up, so a current that is not known can make the sum larger and never smaller. A net
         // is drawn at least as wide as the known part needs, which is no guess (ADR 0036,
         // amendment 3).
         // Sized for the narrowest track the fabricator's tolerance allows (issue #431): a track
         // drawn at `needs` is finished no narrower than the width IPC-2221 asks.
-        let needs = sizing.least_width(total);
+        let needs = sizing.least_width(heat);
         if total > 0.0 {
             plan.currents.push(NetCurrent {
                 net: net.name.clone(),
                 current: total,
                 least_width: needs,
                 // On an inner signal layer: the inner constant and the inner copper (issue #833).
-                inner_least_width: sizing.inner_least_width(total),
-                vias: sizing.vias(total),
+                inner_least_width: sizing.inner_least_width(heat),
+                vias: sizing.vias(heat),
                 source: with_unknown(&what, &unknown),
                 from,
                 lower_bound: !unknown.is_empty(),
+                rms: rms.as_ref().map(|r| r.0),
+                rms_source: rms
+                    .as_ref()
+                    .map(|r| with_unknown(&r.1, &unknown))
+                    .unwrap_or_default(),
             });
         }
         // Rounded up to the 0.01 mm that a width is written in, so that asking for what the
@@ -894,11 +1135,11 @@ pub fn plan_tracks(
         // tracks are no lower bound, they are enough.
         let width = if sized { asks } else { process.min_track };
         let enough = bounded.is_some_and(|more| {
-            ipc2221_width(total + more, copper, rise, layer) / (1.0 - tolerance)
+            ipc2221_width(heat + more, copper, rise, layer) / (1.0 - tolerance)
                 <= width * (1.0 + 1e-9)
         });
         if !unknown.is_empty() && stated.is_none() && supplied[index] && !enough {
-            let known = (total > 0.0).then_some(total);
+            let known = (heat > 0.0).then_some(heat);
             plan.notes
                 .push(unknown_note(&net.name, &unknown, width, known, sized));
         }
@@ -913,7 +1154,7 @@ pub fn plan_tracks(
         {
             plan.findings.push(wide_net(
                 &net.name,
-                total,
+                heat,
                 asks,
                 side,
                 !unknown.is_empty(),
@@ -936,6 +1177,10 @@ pub fn plan_tracks(
         if width >= needs {
             continue;
         }
+        let what = match &rms {
+            Some((_, words)) => words.clone(),
+            None => what,
+        };
         let (carries_word, what) = if unknown.is_empty() {
             ("up to", what)
         } else {
@@ -952,7 +1197,11 @@ pub fn plan_tracks(
             message: format!(
                 "net `{}` carries {carries_word} {} ({what}) but its tracks are {} mm wide (a rail's `.min_track`), in {} oz ({} mm) {} copper; at a temperature rise of {} K{} that width carries {} (at its narrowest, {}% under, the fabricator's tolerance) and IPC-2221 needs {} mm: give a rail on the net `.min_track &= {}mm..`, or allow a higher `.process.max_temperature_rise`",
                 net.name,
-                amps(total),
+                if rms.is_some() {
+                    format!("{} rms", amps(heat))
+                } else {
+                    amps(heat)
+                },
                 mm(width),
                 mm(process.stackup.copper_weight),
                 mm(copper),
@@ -1032,6 +1281,7 @@ fn pin_currents(model: &Model, carriers: &[Carrier], storages: &[Storage], plan:
                         pin,
                         net: net.name.clone(),
                         current: 0.0,
+                        rms: None,
                     });
                 }
                 continue;
@@ -1040,11 +1290,23 @@ fn pin_currents(model: &Model, carriers: &[Carrier], storages: &[Storage], plan:
                 continue;
             };
             let current = current.max(discharge);
+            // Its heating current (issue #1690): the sum of the carriers', where a stated
+            // `.rms_current` brings it below the peak; a discharge states no rms and counts at
+            // its peak.
+            let heats: Vec<Heat> = carriers
+                .iter()
+                .filter(|c| c.pins().any(|p| same.contains(&p)))
+                .filter_map(|c| c.heat)
+                .collect();
+            let heat: f64 = heats.iter().map(|h| h.amps).sum::<f64>().max(discharge);
+            let rms =
+                (heats.iter().any(|h| h.rms) && heat < current * (1.0 - 1e-9)).then_some(heat);
             if current < total * (1.0 - 1e-9) {
                 plan.pin_currents.push(PinCurrent {
                     pin,
                     net: net.name.clone(),
                     current,
+                    rms,
                 });
             }
         }
@@ -1142,6 +1404,12 @@ fn branches(
             continue;
         };
         let current = lo.abs().max(hi.abs());
+        // The heating (rms) current of the branch (issue #1690), never above its peak: a pin
+        // that states one above it is refused by `rms_errors`.
+        let rms = signed_range(model, model.member(id, "rms_current"))
+            .map(|(lo, hi)| lo.abs().max(hi.abs()))
+            .filter(|&r| r < current);
+        let heat = rms.unwrap_or(current);
         // What the model says flows through the pin: the copper cannot carry less.
         for c in carriers.iter().filter(|c| c.pins().any(|p| p == id)) {
             let Some((clo, chi)) = c.range else { continue };
@@ -1157,7 +1425,7 @@ fn branches(
                 ));
             }
         }
-        let least_width = sizing.least_width(current);
+        let least_width = sizing.least_width(heat);
         let stated = features
             .net_widths
             .iter()
@@ -1172,8 +1440,9 @@ fn branches(
             current,
             width,
             least_width,
-            inner_least_width: sizing.inner_least_width(current),
-            vias: sizing.vias(current),
+            inner_least_width: sizing.inner_least_width(heat),
+            vias: sizing.vias(heat),
+            rms,
         });
     }
 }
