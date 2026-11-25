@@ -547,6 +547,7 @@ mod tests {
                 .collect(),
             carrying: None,
             source: None,
+            distance: None,
         }
     }
 

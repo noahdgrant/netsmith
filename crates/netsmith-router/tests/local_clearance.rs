@@ -162,6 +162,7 @@ fn least_gap(board: &Board) -> f64 {
 
 fn check(board: &Board) -> DrcReport {
     let extras = DrcExtras {
+        margin: 0.0,
         mask_web: Some(board.rules.mask_bridge),
         via_in_pad: Some(board.process.via_in_pad),
         excused_courtyards: board.excused_courtyards(),

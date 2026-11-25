@@ -768,6 +768,7 @@ fn pair_skew_finding(art: &Artwork, pair: &PairRow, drc: &DrcExtras) -> DrcFindi
         items: vec![item(&pair.p, pair.length_p), item(&pair.n, pair.length_n)],
         carrying: None,
         source: None,
+        distance: None,
     }
 }
 

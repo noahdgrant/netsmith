@@ -72,6 +72,10 @@ pub(crate) fn finding(m: &Model<'_>, v: &VCut) -> Option<Finding> {
         items: Vec::new(),
         carrying: None,
         source: v.source.clone(),
+        distance: Some(super::Distance {
+            required: least,
+            measured: near.distance,
+        }),
     })
 }
 

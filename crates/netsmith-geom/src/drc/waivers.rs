@@ -189,6 +189,7 @@ pub(super) fn apply(report: &mut Report, waivers: &[Waiver]) {
             }],
             carrying: None,
             source: None,
+            distance: None,
         });
     }
     kept.sort_by_key(|f| std::cmp::Reverse(f.severity));
@@ -219,6 +220,7 @@ mod tests {
             items,
             carrying: None,
             source: None,
+            distance: None,
         }
     }
 

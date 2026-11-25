@@ -22,7 +22,7 @@
 //! every copper, as KiCad's single number invites: it refuses land patterns the page does not,
 //! or, at 0.28 mm, makes every via wider in effect.
 
-use super::checks::{EPS, Out, pad_copper, ring_width, same_net};
+use super::checks::{EPS, Out, margin, pad_copper, ring_width, same_net};
 use super::model::{Kind, Model};
 use super::shape::{Shape, gap, near_pairs};
 use super::{Carrying, Item, Rule};
@@ -459,14 +459,14 @@ fn pad_hole_to_hole(out: &mut Out<'_>) {
             || h.owner.is_none()
     };
     let boxes: Vec<Bounds> = m.holes.iter().map(|h| h.shape.bounds).collect();
-    for (i, j) in near_pairs(&boxes, least_gap) {
+    for (i, j) in near_pairs(&boxes, least_gap + margin(m)) {
         let (a, b) = (&m.holes[i], &m.holes[j]);
         if (a.owner.is_some() && a.owner == b.owner) || !(is_pad(a) || is_pad(b)) {
             continue;
         }
         let g = gap(&a.shape, &b.shape);
-        if g.d < least_gap - EPS {
-            out.push(
+        if g.d < least_gap - EPS + margin(m) {
+            out.push_measured(
                 Rule::PadHoleToHole,
                 format!(
                     "holes are {:.4} mm apart ({} and {}); the process asks {:.4} mm when one is a pad's",
@@ -475,6 +475,11 @@ fn pad_hole_to_hole(out: &mut Out<'_>) {
                 g.middle(),
                 None,
                 vec![a.item.clone(), b.item.clone()],
+                super::Distance {
+                    required: least_gap,
+                    measured: g.d,
+                },
+                g.d < least_gap - EPS,
             );
         }
     }
@@ -541,7 +546,7 @@ fn hole_to_track(out: &mut Out<'_>) {
     let mut boxes: Vec<Bounds> = holes.iter().map(|&h| m.holes[h].shape.bounds).collect();
     boxes.extend(tracks.iter().map(|&t| m.items[t].bounds));
     let n = holes.len();
-    for (i, j) in near_pairs(&boxes, most) {
+    for (i, j) in near_pairs(&boxes, most + margin(m)) {
         if i >= n || j < n {
             continue;
         }
@@ -559,8 +564,8 @@ fn hole_to_track(out: &mut Out<'_>) {
         let Some(g) = least(&c.shapes, std::slice::from_ref(&h.shape)) else {
             continue;
         };
-        if g.d < least_gap - EPS {
-            out.push(
+        if g.d < least_gap - EPS + margin(m) {
+            out.push_measured(
                 Rule::HoleToTrack,
                 format!(
                     "{:.4} mm between {} and the hole of {}; the process asks {:.4} mm from such a hole to a track",
@@ -569,6 +574,11 @@ fn hole_to_track(out: &mut Out<'_>) {
                 g.middle(),
                 None,
                 vec![c.item.clone(), h.item.clone()],
+                super::Distance {
+                    required: least_gap,
+                    measured: g.d,
+                },
+                g.d < least_gap - EPS,
             );
         }
     }
@@ -587,7 +597,7 @@ fn pad_to_pad(out: &mut Out<'_>) {
         })
         .collect();
     let boxes: Vec<Bounds> = pads.iter().map(|&p| m.items[p].bounds).collect();
-    for (i, j) in near_pairs(&boxes, least_gap) {
+    for (i, j) in near_pairs(&boxes, least_gap + margin(m)) {
         let (a, b) = (&m.items[pads[i]], &m.items[pads[j]]);
         if same_net(&a.net, &b.net) || !a.layers.iter().any(|l| b.layers.contains(l)) {
             continue;
@@ -596,8 +606,8 @@ fn pad_to_pad(out: &mut Out<'_>) {
             continue;
         };
         // Pads that touch or overlap are the clearance check's (a short), not this one's.
-        if g.d > 0.0 && g.d < least_gap - EPS {
-            out.push(
+        if g.d > 0.0 && g.d < least_gap - EPS + margin(m) {
+            out.push_measured(
                 Rule::PadToPad,
                 format!(
                     "{:.4} mm between {} and {}; the process asks {:.4} mm between surface-mount pads of different nets",
@@ -606,6 +616,11 @@ fn pad_to_pad(out: &mut Out<'_>) {
                 g.middle(),
                 None,
                 vec![a.item.clone(), b.item.clone()],
+                super::Distance {
+                    required: least_gap,
+                    measured: g.d,
+                },
+                g.d < least_gap - EPS,
             );
         }
     }
@@ -635,7 +650,7 @@ fn mask_to_track(out: &mut Out<'_>) {
         let mut boxes: Vec<Bounds> = openings.iter().map(|(_, s)| Model::bounds_of(s)).collect();
         boxes.extend(tracks.iter().map(|&t| m.items[t].bounds));
         let n = openings.len();
-        for (i, j) in near_pairs(&boxes, least_gap) {
+        for (i, j) in near_pairs(&boxes, least_gap + margin(m)) {
             if i >= n || j < n {
                 continue;
             }
@@ -646,8 +661,8 @@ fn mask_to_track(out: &mut Out<'_>) {
             let Some(g) = least(&c.shapes, opening) else {
                 continue;
             };
-            if g.d < least_gap - EPS {
-                out.push(
+            if g.d < least_gap - EPS + margin(m) {
+                out.push_measured(
                     Rule::MaskToTrack,
                     format!(
                         "{:.4} mm between {} and the solder mask opening of pad {} of {}; the process asks {:.4} mm",
@@ -656,6 +671,11 @@ fn mask_to_track(out: &mut Out<'_>) {
                     g.middle(),
                     Some(mask),
                     vec![c.item.clone(), pad_item(pad)],
+                    super::Distance {
+                        required: least_gap,
+                        measured: g.d,
+                    },
+                    g.d < least_gap - EPS,
                 );
             }
         }
