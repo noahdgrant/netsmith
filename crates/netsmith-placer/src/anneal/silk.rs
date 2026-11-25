@@ -10,7 +10,7 @@ const SAGITTA: f64 = 0.01;
 /// board, relative to the part's origin. Drawing a pin 1 circle or an arc round a body as a
 /// box would count every pad inside it as under the silkscreen; this measures the line.
 #[derive(Debug, Clone)]
-pub(super) struct Piece {
+pub(crate) struct Piece {
     /// The line the stroke follows; the outline of an area, whose last point is its first.
     points: Vec<Pt>,
     /// Half the stroke's width: how far the silkscreen reaches from `points`.
@@ -46,14 +46,14 @@ impl Piece {
     }
 
     /// The box round the piece.
-    pub(super) fn bounds(&self) -> Rect {
+    pub(crate) fn bounds(&self) -> Rect {
         self.bounds
     }
 
     /// How far the piece, with its origin at `at`, is in `rect` or nearer to it than `gap`:
     /// the gap that is missing, and more if the two touch; `0` when they are `gap` apart or
     /// more. Distances are straight, not along the axes.
-    pub(super) fn depth(&self, at: Pt, rect: &Rect, gap: f64) -> f64 {
+    pub(crate) fn depth(&self, at: Pt, rect: &Rect, gap: f64) -> f64 {
         let local = rect.translated(Pt::new(-at.x, -at.y));
         if !self.bounds.expanded(gap).overlaps(&local) {
             return 0.0;
@@ -157,7 +157,7 @@ fn crosses(a: Pt, b: Pt, r: &Rect) -> bool {
 /// origin: each drawing on the silkscreen layer as its line (an arc and a circle as chords
 /// within [`SAGITTA`] of the curve), a filled rectangle, circle or polygon as an area, and the
 /// text the footprint prints besides the designator as boxes.
-pub(super) fn pieces(part: &Placed, rules: &Rules) -> Vec<Piece> {
+pub(crate) fn pieces(part: &Placed, rules: &Rules) -> Vec<Piece> {
     let mut found: Vec<Piece> = part
         .footprint
         .graphics

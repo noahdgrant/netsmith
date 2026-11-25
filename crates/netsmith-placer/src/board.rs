@@ -122,7 +122,19 @@ pub fn board_from_design_placed(
             wanted.corner_radius,
         ),
     };
-    Ok(u.into_board(design, outline, corner_radius))
+    // The texts the layout file does not place are placed from their own neighbourhood
+    // (issue #1729): a part the file locks keeps the side its entry gives; one a requirement
+    // pins is the placer's.
+    let kept: std::collections::BTreeSet<String> = u
+        .placement
+        .fixed
+        .keys()
+        .filter(|r| !u.pinned.contains(*r))
+        .cloned()
+        .collect();
+    let mut board = u.into_board(design, outline, corner_radius);
+    crate::labels::settle_labels(&mut board, |p| !kept.contains(&p.refdes));
+    Ok(board)
 }
 
 /// The board as the placer ended with it when it refused with `error` (the parts do not fit,

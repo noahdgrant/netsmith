@@ -1744,6 +1744,14 @@ fn fab_board_tallied(
         for hang in board.hangs() {
             say(format!("{}: warning: {hang}", built.label()));
         }
+        // A designator the placer could keep off no pad (issue #1729).
+        for warning in board
+            .labels
+            .iter()
+            .filter_map(netsmith_pcb::LabelPlace::warning)
+        {
+            say(format!("{}: warning: {warning}", built.label()));
+        }
         // A pad other parts wall in where they are placed (issue #1313), said before a route is
         // tried: the router would report it `walled in` after trying.
         for walled in board.walled_pads() {
@@ -2299,6 +2307,15 @@ fn fab_board_tallied(
         // The notes say which part hangs over which edge, how far, and who said it may; each
         // is a warning (owner decision, 2026-11-03, ADR 0045 section 10).
         extras.extend(board.hangs().into_iter().map(|h| format!("warning: {h}")));
+        // The designators placed off their own side, and why (issue #1729).
+        extras.extend(netsmith_pcb::labels_note(&board.labels));
+        extras.extend(
+            board
+                .labels
+                .iter()
+                .filter_map(netsmith_pcb::LabelPlace::warning)
+                .map(|w| format!("warning: {w}")),
+        );
         extras.extend(unchecked.iter().map(|u| format!("warning: {u}")));
         extras.extend(unknown.iter().map(|w| format!("warning: {w}")));
         extras.extend(netsmith_pipeline::heights::notes(

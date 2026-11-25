@@ -185,7 +185,7 @@ pub(super) fn carried_box(part: &mut Placed, angle: f64, local: Rect) -> Rect {
 /// How far two boxes overlap, as the least of the overlaps along the axes after growing the
 /// first by `gap`: positive when they are nearer than `gap` (and overlapping if more than
 /// `gap`).
-pub(super) fn penetration(a: &Rect, b: &Rect, gap: f64) -> f64 {
+pub(crate) fn penetration(a: &Rect, b: &Rect, gap: f64) -> f64 {
     let dx = a.max.x.min(b.max.x) - a.min.x.max(b.min.x);
     let dy = a.max.y.min(b.max.y) - a.min.y.max(b.min.y);
     if dx > -gap && dy > -gap {

@@ -53,6 +53,7 @@ mod geometry;
 mod impedance;
 mod keep_apart;
 mod kelvin;
+mod labels;
 mod laid_out;
 mod layout;
 pub mod layout_notes;
@@ -154,6 +155,7 @@ pub use kelvin::{
     KelvinSense, SenseCarve, SenseCopper, SensedPad, kelvin_findings, kelvin_senses, net_is_poured,
     sense_carves, sense_copper,
 };
+pub use labels::{LabelPlace, labels_note, side_word};
 pub use layout::{
     BoardLayout, DesignatorEntry, Face as LayoutFace, IMPORT_SOURCE, KeepoutPlace, Layout,
     LayoutError, PartPlace, RuleWaiver, Waiver, apply_layout, check_drawn_keepout, copper_layers,

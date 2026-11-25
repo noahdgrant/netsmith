@@ -21,6 +21,7 @@ mod anneal;
 mod board;
 mod counts;
 mod fit;
+mod labels;
 mod place;
 mod regenerate;
 
@@ -31,6 +32,7 @@ mod testlib;
 
 pub use board::{board_from_design, board_from_design_placed, board_where_ended, precheck};
 pub use counts::{RoutingCounts, routing_counts};
+pub use labels::settle_labels;
 pub use netsmith_pcb::{DecouplingDistance, Quality, crossings};
 pub use place::{PlaceError, place_subset};
 pub use regenerate::{
