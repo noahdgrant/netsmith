@@ -646,6 +646,11 @@ enum Soldering {
 ///   life, as the datasheet's drawing allows: a column of the row, added to its height before a
 ///   height limit is checked.
 /// - `.soldering` is how the part may be soldered (`Soldering`), a column of the row.
+/// - `.discharge_peak_current` is the most current the part gives when it discharges, as its
+///   datasheet states it (its peak or pulse current), an optional column of the row, or stated
+///   by the board for the current the circuit draws from it. Stated, it is a current on the nets
+///   of `.p` and `.n`, as a part's stated current is (issue #1689): those nets carry at least it,
+///   so a hold-up burst sizes their tracks and vias, though the DC analysis sees the part block.
 ///
 /// The standard catalog `supercap` has no row yet: no part has a recorded source
 /// (`data/jlcpcb/README.md`). A project adds rows in a file of its own catalog `supercap`, in a
@@ -705,11 +710,14 @@ generic Supercap {
     .capacitance_at_end_of_life: Number optional
     /// How many times its ESR is at the end of its life, as `Capacitor`'s.
     .esr_growth: Number optional
+    /// The most current it gives when it discharges: a current on the nets of `.p` and `.n`.
+    .discharge_peak_current: Current optional
     bridge .p ~> .n
 
     .package: Package
     catalog supercap {
         .capacitance, .esr, .dc_esr, .leakage_current, .max_voltage, .cells, .soldering, .package,
-        .height_growth optional, .capacitance_at_end_of_life optional, .esr_growth optional
+        .height_growth optional, .capacitance_at_end_of_life optional, .esr_growth optional,
+        .discharge_peak_current optional
     }
 }
