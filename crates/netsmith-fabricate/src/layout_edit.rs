@@ -440,7 +440,7 @@ pub enum Severity {
 pub struct Finding {
     pub severity: Severity,
     /// `no_entry`, `no_part`, `bad_turn`, `bad_place`, `bad_designator`, `requirement`, `placement`,
-    /// `walled_in`, `soft_margin`, `no_room` or `unmeasured`.
+    /// `walled_in`, `soft_margin`, `no_room`, `height_unchecked` or `unmeasured`.
     pub kind: &'static str,
     /// The part's path.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -607,6 +607,11 @@ fn placement_faults(
         walled: board.walled_pads(),
         soft: board.soft_margins_broken(),
         apart: board.kept_apart_broken(),
+        unchecked: board
+            .heights_unchecked()
+            .into_iter()
+            .map(|u| (u.path.clone(), u.to_string()))
+            .collect(),
     })
 }
 
@@ -618,6 +623,9 @@ struct PlacementChecks {
     soft: Vec<netsmith_pcb::SoftMarginBroken>,
     /// Two parts nearer each other than a `keep` statement asks (issue 1277).
     apart: Vec<netsmith_pcb::ApartBroken>,
+    /// A part that states no height under a height limit, its path and `fab`'s warning
+    /// (`height_unchecked`, issue #1727).
+    unchecked: Vec<(String, String)>,
 }
 
 /// What the layout file at `file` has wrong against `design`: a part with no entry (a note: the
@@ -631,8 +639,9 @@ struct PlacementChecks {
 /// margin` of another (`soft_margin`, issue 1310); and, as an error, two parts the file places
 /// nearer each other than a `keep` statement asks (`requirement`, issue 1277); and, as a warning (an error when `strict`), a part the placer places that has no
 /// room among the parts that stay where they are (`no_room`, issue #1283,
-/// [`netsmith_pcb::parts_without_room`]), as `fab` says it before placing. Each finding has the
-/// line of its entry.
+/// [`netsmith_pcb::parts_without_room`]), as `fab` says it before placing; and, as a warning, a
+/// part the file places that states no height under a height limit (`height_unchecked`, issue
+/// #1727), as `fab` warns of it. Each finding has the line of its entry.
 pub fn check(
     design: &Design,
     file: &Path,
@@ -723,7 +732,20 @@ pub fn check(
                 walled,
                 soft,
                 apart,
+                unchecked,
             }) => {
+                // A part that states no height under a limit (issue #1727): `fab`'s warning,
+                // which does not stop it unless its constraints are strict.
+                for (path, message) in unchecked {
+                    findings.push(Finding {
+                        severity: Severity::Warning,
+                        kind: "height_unchecked",
+                        line: lines.get(&path).copied(),
+                        path: Some(path),
+                        message,
+                        fault: None,
+                    });
+                }
                 // Two parts the file places nearer each other than a `keep` statement asks
                 // (issue 1277): a requirement, an error as `fab` says it.
                 for b in apart {
