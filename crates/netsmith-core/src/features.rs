@@ -20,7 +20,8 @@ pub enum CurrentFrom {
     Analysis,
     /// The current of one rail or part on the net, more than the DC analysis finds: a part that
     /// states it carries more (a bypass diode's discharge, which a DC analysis does not see) is
-    /// never sized below what it states.
+    /// never sized below what it states. So is a storage element that states a
+    /// `.discharge_peak_current`, on the nets of its terminals (issue #1689).
     Carrier,
 }
 

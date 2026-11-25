@@ -290,6 +290,68 @@ impl Carrier {
     }
 }
 
+/// A storage element that states the most current it gives when it discharges (issue #1689):
+/// a part with a `.discharge_peak_current` (`std::parts::passive::Supercap`,
+/// `std::sources::Cell`, or a project's own part with a member of that name). The DC analysis
+/// sees a supercapacitor block and a cell give only what the loads draw at their steady state,
+/// so the burst of a hold-up never reaches the copper unless the part's own figure does.
+struct Storage {
+    /// `part `hold``.
+    who: String,
+    inst: InstId,
+    /// Its terminals: the two ends of its `bridge` (a supercapacitor's `.p` and `.n`), or the
+    /// `pos` and `neg` of the rails it holds (a cell's `.terminals`). The current flows through
+    /// these two pins and so through the copper of their nets; a balance tap carries none.
+    terminals: Vec<InstId>,
+    /// The larger end of its stated range, in size, in amperes.
+    current: f64,
+}
+
+/// The storage elements of the design whose `.discharge_peak_current` is known (issue #1689).
+fn storages(model: &Model) -> Vec<Storage> {
+    let mut out = Vec::new();
+    for (id, inst) in model.instances() {
+        if inst.kind != InstKind::Part {
+            continue;
+        }
+        let Some((lo, hi)) = signed_range(model, model.member(id, "discharge_peak_current")) else {
+            continue;
+        };
+        let current = lo.abs().max(hi.abs());
+        if current <= 0.0 {
+            continue;
+        }
+        let terminals: Vec<InstId> = match inst.bridge {
+            Some((a, b)) => vec![a, b],
+            None => inst
+                .children
+                .iter()
+                .filter_map(|(_, m)| match m {
+                    Member::Inst(rail) if model.draw_of(*rail).is_some() => Some(*rail),
+                    _ => None,
+                })
+                .flat_map(|rail| {
+                    ["pos", "neg"].map(|end| match model.member(rail, end) {
+                        Some(Member::Inst(pin)) => Some(pin),
+                        _ => None,
+                    })
+                })
+                .flatten()
+                .collect(),
+        };
+        if terminals.is_empty() {
+            continue;
+        }
+        out.push(Storage {
+            who: format!("part `{}`", model.path_of(id)),
+            inst: id,
+            terminals,
+            current,
+        });
+    }
+    out
+}
+
 /// The range of a current field, signed, in amperes.
 fn signed_range(model: &Model, member: Option<Member>) -> Option<(f64, f64)> {
     let Some(Member::Field(f)) = member else {
@@ -750,8 +812,10 @@ pub struct Branch {
 /// Where the DC analysis solved the net, its worst case over the corners is the net's current,
 /// unless one rail or part on the net draws more than that through it (a part's stated
 /// `.current`, which a DC analysis may not see: a bypass diode's discharge): then that one is
-/// (issue #1584). Each [`NetCurrent`] says which (`from`) and whether a current on the net is
-/// not known (`lower_bound`).
+/// (issue #1584). A storage element that states a `.discharge_peak_current` ([`Storage`], issue
+/// #1689) does the same on the nets of its terminals, analysed or not, and no pin of those nets
+/// but an input is held to less ([`pin_currents`]). Each [`NetCurrent`] says which (`from`) and
+/// whether a current on the net is not known (`lower_bound`).
 ///
 /// A module's port stands for what is inside the module (ADR 0007), so each current is
 /// counted once: at the port when nothing inside the module is on the net, otherwise inside.
@@ -847,6 +911,8 @@ pub fn plan_tracks(
             _ => {}
         }
     }
+
+    let storages = storages(model);
 
     // The nets a supply reaches: those with a rail's pin, and, through the parts that pass
     // a current, the nets on the other side of them. Only these are worth a note when their
@@ -968,13 +1034,70 @@ pub fn plan_tracks(
             (Some(a), _) => (a, CurrentFrom::Analysis),
             (None, _) => (plain, CurrentFrom::Sum),
         };
+        let mut what = current_source(from, plain, analysed, largest, &terms);
+        let mut worst_inst = terms.first().map(|t| t.0.inst);
+        // Whether a storage element's discharge set the net's current: it states no rms, so
+        // the net heats with its peak (issue #1690).
+        let mut by_storage = false;
+        // A storage element whose terminal is on the net and that states a larger discharge
+        // current than the net carries otherwise sets it (issue #1689), as a part's stated
+        // current does (issue #1584): the part's figure is the design's word, and the DC
+        // analysis does not see a burst. Only the nets of its own terminals: a part in series
+        // with it (a diode in its return leg, a switch, a fuse) passes the current on to a net
+        // that other currents share, and is sized there by its own stated `.current`.
+        let (total, from) = match storages
+            .iter()
+            .filter(|s| {
+                let on: Vec<bool> = s.terminals.iter().map(|t| net.pins.contains(t)).collect();
+                // Both terminals on one net: shorted, nothing flows through the copper.
+                on.iter().any(|&b| b) && !on.iter().all(|&b| b)
+            })
+            .max_by(|a, b| a.current.total_cmp(&b.current))
+        {
+            Some(s) if s.current > total * (1.0 + 1e-9) => {
+                let than = match from {
+                    _ if total <= 0.0 => String::new(),
+                    CurrentFrom::Analysis => {
+                        format!(
+                            ", more than the {} the DC analysis finds into the net",
+                            amps(total)
+                        )
+                    }
+                    CurrentFrom::Carrier => match largest {
+                        Some((c, _)) => {
+                            format!(", more than the {} {} carries", amps(total), c.who)
+                        }
+                        None => String::new(),
+                    },
+                    CurrentFrom::Sum => {
+                        format!(
+                            ", more than the {} of the rails and parts on it",
+                            amps(total)
+                        )
+                    }
+                };
+                what = format!(
+                    "{} states a `.discharge_peak_current` of {}{than}",
+                    s.who,
+                    amps(s.current)
+                );
+                worst_inst = Some(s.inst);
+                by_storage = true;
+                (s.current, CurrentFrom::Carrier)
+            }
+            _ => (total, from),
+        };
         if analysed.is_some() {
             unknown.clear();
         }
         // The heating (rms) current, where a stated `.rms_current` brings it below the peak
         // (issue #1690): the copper is sized for heat by it, and `total` stays the peak, which
         // the track drop reads.
-        let rms = net_rms(&flow, total);
+        let rms = if by_storage {
+            None
+        } else {
+            net_rms(&flow, total)
+        };
         let heat = rms.as_ref().map_or(total, |r| r.0);
         // The currents that are known are a lower bound on the net's current: loads only add
         // up, so a current that is not known can make the sum larger and never smaller. A net
@@ -991,10 +1114,7 @@ pub fn plan_tracks(
                 // On an inner signal layer: the inner constant and the inner copper (issue #833).
                 inner_least_width: sizing.inner_least_width(heat),
                 vias: sizing.vias(heat),
-                source: with_unknown(
-                    &current_source(from, plain, analysed, largest, &terms),
-                    &unknown,
-                ),
+                source: with_unknown(&what, &unknown),
                 from,
                 lower_bound: !unknown.is_empty(),
                 rms: rms.as_ref().map(|r| r.0),
@@ -1023,7 +1143,7 @@ pub fn plan_tracks(
             plan.notes
                 .push(unknown_note(&net.name, &unknown, width, known, sized));
         }
-        let Some(&(worst, _)) = terms.first() else {
+        let Some(worst) = worst_inst else {
             continue;
         };
         if total <= 0.0 {
@@ -1038,7 +1158,7 @@ pub fn plan_tracks(
                 asks,
                 side,
                 !unknown.is_empty(),
-                worst.inst,
+                worst,
             ));
         }
         if sized {
@@ -1059,7 +1179,7 @@ pub fn plan_tracks(
         }
         let what = match &rms {
             Some((_, words)) => words.clone(),
-            None => current_source(from, plain, analysed, largest, &terms),
+            None => what,
         };
         let (carries_word, what) = if unknown.is_empty() {
             ("up to", what)
@@ -1093,12 +1213,12 @@ pub fn plan_tracks(
                 mm(asks),
                 mm(asks),
             ),
-            at: Some(worst.inst),
+            at: Some(worst),
         });
     }
     plan.widths.sort_by(|a, b| a.0.cmp(&b.0));
     branches(model, process, features, &sizing, &carriers, &mut plan);
-    pin_currents(model, &carriers, &mut plan);
+    pin_currents(model, &carriers, &storages, &mut plan);
     plan
 }
 
@@ -1116,7 +1236,7 @@ pub fn plan_tracks(
 /// the nets with a known current ([`TrackPlan::currents`]) are read: the others are not held
 /// to a width. The router does not read these; a pin that states its own current
 /// ([`branches`]) is drawn for it.
-fn pin_currents(model: &Model, carriers: &[Carrier], plan: &mut TrackPlan) {
+fn pin_currents(model: &Model, carriers: &[Carrier], storages: &[Storage], plan: &mut TrackPlan) {
     for net in model.nets() {
         let Some(total) = plan
             .currents
@@ -1126,6 +1246,14 @@ fn pin_currents(model: &Model, carriers: &[Carrier], plan: &mut TrackPlan) {
         else {
             continue;
         };
+        // A storage element that discharges through this net (issue #1689): the burst flows
+        // through its terminal and on through some other pin of the net, which the model does
+        // not say, so no pin but an input is held to less than it.
+        let discharge = storages
+            .iter()
+            .filter(|s| s.terminals.iter().any(|t| net.pins.contains(t)))
+            .map(|s| s.current)
+            .fold(0.0, f64::max);
         for &pin in &net.terminals {
             if model.instance(pin).kind != InstKind::Pin
                 || plan.branches.iter().any(|b| b.pin == pin)
@@ -1161,14 +1289,16 @@ fn pin_currents(model: &Model, carriers: &[Carrier], plan: &mut TrackPlan) {
             let Some(current) = through.sum::<Option<f64>>() else {
                 continue;
             };
+            let current = current.max(discharge);
             // Its heating current (issue #1690): the sum of the carriers', where a stated
-            // `.rms_current` brings it below the peak.
+            // `.rms_current` brings it below the peak; a discharge states no rms and counts at
+            // its peak.
             let heats: Vec<Heat> = carriers
                 .iter()
                 .filter(|c| c.pins().any(|p| same.contains(&p)))
                 .filter_map(|c| c.heat)
                 .collect();
-            let heat: f64 = heats.iter().map(|h| h.amps).sum();
+            let heat: f64 = heats.iter().map(|h| h.amps).sum::<f64>().max(discharge);
             let rms =
                 (heats.iter().any(|h| h.rms) && heat < current * (1.0 - 1e-9)).then_some(heat);
             if current < total * (1.0 - 1e-9) {

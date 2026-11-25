@@ -1,1 +1,1 @@
-mpn,name,label,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,height_growth,capacitance_at_end_of_life,esr_growth,height,temp_min,temp_max,assembly,price,stock,date,checked,source,notes,qualification
+mpn,name,label,capacitance,esr,dc_esr,leakage_current,max_voltage,cells,soldering,package,height_growth,capacitance_at_end_of_life,esr_growth,discharge_peak_current,height,temp_min,temp_max,assembly,price,stock,date,checked,source,notes,qualification
