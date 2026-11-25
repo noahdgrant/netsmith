@@ -160,47 +160,107 @@ pub enum Widen {
 /// so on (`routes widen`).
 pub const FIT_HALVINGS: usize = 4;
 
-/// How close (mm) the widest fit is found: the width is found to this and rounded down to it.
-pub const FIT_STEP: f64 = 0.001;
+/// What the widest fit keeps to spare beyond each space, mm: [`netsmith_geom::Room::widest`]
+/// is exact, and a widened track is drawn this much narrower, rounded down to the micrometre.
+pub const FIT_MARGIN: f64 = 0.002;
 
-/// The widest width that a straight track of `net` on `layer` from `from` to `to` keeps every
-/// space of the design rules check at ([`netsmith_geom::Room`]: the clearances to copper of
-/// other nets, holes, the edge, mask openings and keepouts), from `width`, its width now, up to
-/// `wants` at most; found by halving the range to [`FIT_STEP`] and rounded down to it. With it,
-/// what is in the way of a wider track (`a track of net q`), or none when it reaches `wants`,
-/// and how many widths were tried: the work. A track that keeps no space at its own width is
-/// left at it.
+/// One thing that keeps a track from being drawn wider (issue #1691's [`netsmith_geom::Room::widest`]),
+/// in the routes file's frame.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Holder {
+    /// What it is, as the check names it (`Track [GND] on F.Cu, length 4.0000 mm`).
+    pub what: String,
+    /// What kind: `track`, `via`, `pad`, `teardrop`, `drawing`, `copper`, `hole`, `edge`,
+    /// `mask_opening` or `rule_area`.
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub net: Option<String>,
+    /// The rule that keeps the space (`clearance`, `hole_clearance`, ...).
+    pub rule: String,
+    /// Its point nearest the track's centre line, mm from the outline's top left corner.
+    pub at: [f64; 2],
+    /// The space the rule asks, the space there is now, and the widest width it allows, mm.
+    pub required: f64,
+    pub measured: f64,
+    pub allows: f64,
+}
+
+impl Holder {
+    /// `Track [q] on F.Cu, length 2.0000 mm of net q at (9, 2.275) allows 0.33 mm (clearance 0.1 mm)`, moved by `by`.
+    pub fn words(&self, by: [f64; 2]) -> String {
+        let net = match &self.net {
+            Some(n) => format!(" of net {n}"),
+            None => String::new(),
+        };
+        format!(
+            "{}{net} at ({}, {}) allows {:.3} mm ({} {:.3} mm)",
+            self.what,
+            to_um(self.at[0] + by[0]),
+            to_um(self.at[1] + by[1]),
+            self.allows,
+            self.rule,
+            self.required
+        )
+    }
+}
+
+/// How many neighbours that allow least a [`Short`] names.
+const HOLDERS: usize = 3;
+
+/// The widest width that straight track `track` (of the board `room` was made of, with the
+/// board's outline corner `origin`) keeps every space of the design rules check at, up to
+/// `wants`: [`netsmith_geom::Room::widest`] less [`FIT_MARGIN`], rounded down to the micrometre,
+/// never below its width now; and what allows less than `wants`, the one that allows least
+/// first (none when `wants` fits). A track the artwork does not have is left as it is.
 pub fn widest_fit(
     room: &netsmith_geom::Room<'_>,
+    art: &netsmith_geom::Artwork,
+    origin: Pt,
     track: &Track,
     wants: f64,
-) -> (f64, Option<String>, usize) {
-    let Some(layer) = room.layer(track.layer.name()) else {
-        return (track.width, None, 0);
+) -> (f64, Vec<Holder>) {
+    let Some(k) = art_track(art, track) else {
+        return (track.width, Vec::new());
     };
-    let (a, b) = (
-        netsmith_geom::Pt::new(track.from.x, track.from.y),
-        netsmith_geom::Pt::new(track.to.x, track.to.y),
-    );
-    let shape = |w: f64| netsmith_geom::DrcShape::capsule(a, b, w / 2.0);
-    let mut tried = 1;
-    let fits = |w: f64| room.fits(&shape(w), &track.net, layer, false);
-    if fits(wants) {
-        return (wants, None, tried);
+    let Some(widest) = room.widest(k, wants) else {
+        return (track.width, Vec::new());
+    };
+    let holders: Vec<Holder> = widest
+        .limits
+        .iter()
+        .take(HOLDERS)
+        .map(|l| Holder {
+            what: l.item.what.clone(),
+            kind: l.kind.to_string(),
+            net: l.item.net.clone(),
+            rule: l.rule.id().to_string(),
+            at: [to_um(l.at.x - origin.x), to_um(l.at.y - origin.y)],
+            required: l.distance.required,
+            measured: l.distance.measured,
+            allows: l.width,
+        })
+        .collect();
+    if widest.fits() {
+        return (wants, holders);
     }
-    let held = |w: f64| room.in_the_way(&shape(w), &track.net, layer, false, &[]);
-    let (mut lo, mut hi) = (track.width, wants);
-    tried += 1;
-    if !fits(lo) {
-        return (track.width, held(lo), tried);
-    }
-    while hi - lo > FIT_STEP {
-        let mid = (lo + hi) / 2.0;
-        tried += 1;
-        if fits(mid) { lo = mid } else { hi = mid }
-    }
-    let width = ((lo / FIT_STEP) + 1e-9).floor() * FIT_STEP;
-    (width.max(track.width), held(hi), tried)
+    let width = (((widest.width - FIT_MARGIN) * 1000.0) + 1e-9).floor() / 1000.0;
+    (width.max(track.width), holders)
+}
+
+/// The index in `art` of straight track `t`: the track of its net and layer with its two ends.
+fn art_track(art: &netsmith_geom::Artwork, t: &Track) -> Option<usize> {
+    let near = |p: netsmith_geom::Pt, q: Pt| (p.x - q.x).abs() < 1e-6 && (p.y - q.y).abs() < 1e-6;
+    art.tracks.iter().position(|a| {
+        a.net.as_deref() == Some(t.net.as_str())
+            && a.layer == t.layer.name()
+            && match &a.shape {
+                netsmith_geom::TrackShape::Line(p, q) => {
+                    (near(*p, t.from) && near(*q, t.to)) || (near(*p, t.to) && near(*q, t.from))
+                }
+                _ => false,
+            }
+            && (a.width - t.width).abs() < 1e-9
+    })
 }
 
 /// A track of a net `routes widen` widens that is left narrower than its net wants: the widest
@@ -215,11 +275,10 @@ pub struct Short {
     /// The width it has now (widened, or as it was), and the width its net wants, in mm.
     pub width: f64,
     pub wants: f64,
-    /// What a wider track comes too near (`a track of net q`, `pad 2 of R1 (net GND)`, `the
-    /// board edge`): the binding neighbour. None where the spaces allow more and the design
-    /// rules check refused it for another rule (`why`).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub held_by: Option<String>,
+    /// What keeps it from being drawn wider, the binding neighbour (the one that allows least)
+    /// first, up to three. Empty where the spaces allow more and the design rules check refused
+    /// it wider for another rule (`why`).
+    pub held_by: Vec<Holder>,
     /// The check's refusal of a wider track, when one was refused.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub why: Option<String>,
@@ -374,8 +433,8 @@ pub struct Tidied {
     /// way, in the order of the copper.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub short: Vec<Short>,
-    /// With `fit`, how many widths of a track the fit tried ([`widest_fit`]), in all: the work
-    /// besides the checks.
+    /// With `fit`, how many tracks the fit sized ([`widest_fit`]), in all: the work besides the
+    /// checks.
     #[serde(skip_serializing_if = "is_zero")]
     pub fits_tried: usize,
     pub counts: Counts,
@@ -514,9 +573,12 @@ impl Tidied {
                 t.width,
                 t.wants
             );
-            match (&t.held_by, &t.why) {
+            match (t.held_by.first(), &t.why) {
                 (Some(held), _) => {
-                    let _ = write!(s, ": {held} is in the way");
+                    let _ = write!(s, ": held by {}", held.words(by));
+                    if t.held_by.len() > 1 {
+                        let _ = write!(s, ", and {} more", t.held_by.len() - 1);
+                    }
                 }
                 (None, Some(why)) => {
                     let _ = write!(
@@ -889,7 +951,7 @@ struct Work<'a> {
     /// With [`Widen::Fit`], the nets whose tracks are widened (every net when empty): widenings
     /// only, each to the widest fit.
     fit: Option<BTreeSet<String>>,
-    /// The widths the fit tried ([`widest_fit`]), in all.
+    /// The tracks the fit sized ([`widest_fit`]), in all.
     fits_tried: std::cell::Cell<usize>,
     /// The pads of each net, for the passes of [`shapes`].
     spots: BTreeMap<String, Vec<shapes::Spot>>,
@@ -1631,7 +1693,7 @@ impl<'a> Work<'a> {
             let rules = netsmith_geom::DrcRules::from_project(&self.project).unwrap_or_default();
             let room = netsmith_geom::Room::new(&art, &rules, &self.extras);
             for i in 0..self.copper.wires.len() {
-                push(self.fit_widening(i, &room, &attempt), &mut out);
+                push(self.fit_widening(i, &room, &art, &attempt), &mut out);
             }
             return out;
         }
@@ -1754,6 +1816,7 @@ impl<'a> Work<'a> {
         &self,
         i: usize,
         room: &netsmith_geom::Room<'_>,
+        art: &netsmith_geom::Artwork,
         attempt: &dyn Fn(&Key) -> usize,
     ) -> Option<Candidate> {
         if !self.editable(i) || self.copper.wires[i].widened {
@@ -1774,13 +1837,13 @@ impl<'a> Work<'a> {
         if tried > FIT_HALVINGS + 1 {
             return None;
         }
-        let (fit, held, n) = widest_fit(room, t, wants);
-        self.fits_tried.set(self.fits_tried.get() + n);
+        let (fit, held) = widest_fit(room, art, self.board.outline.min, t, wants);
+        self.fits_tried.set(self.fits_tried.get() + 1);
         let width = if tried <= 1 {
             fit
         } else {
             let share = 0.5f64.powi(tried as i32 - 1);
-            ((t.width + share * (fit - t.width)) / FIT_STEP + 1e-9).floor() * FIT_STEP
+            ((t.width + share * (fit - t.width)) * 1000.0 + 1e-9).floor() / 1000.0
         };
         if width <= t.width + 1e-6 {
             return None;
@@ -1792,11 +1855,14 @@ impl<'a> Work<'a> {
             )
         } else if tried <= 1 {
             format!(
-                "widened from {:.3} mm to {:.3} mm, of the {:.3} mm its net wants: {} is in the way",
+                "widened from {:.3} mm to {:.3} mm, of the {:.3} mm its net wants: {}",
                 t.width,
                 width,
                 wants,
-                held.as_deref().unwrap_or("nothing")
+                held.first().map_or(
+                    "the design rules check allows no more".to_string(),
+                    |h| format!("held by {}", h.words([0.0, 0.0]))
+                )
             )
         } else {
             format!(
@@ -1848,8 +1914,8 @@ impl<'a> Work<'a> {
             if t.width >= wants - 1e-6 {
                 continue;
             }
-            let (_, held, n) = widest_fit(&room, t, wants);
-            self.fits_tried.set(self.fits_tried.get() + n);
+            let (_, held) = widest_fit(&room, &art, self.board.outline.min, t, wants);
+            self.fits_tried.set(self.fits_tried.get() + 1);
             let mid = Pt::new((t.from.x + t.to.x) / 2.0, (t.from.y + t.to.y) / 2.0);
             let key = self.key(Kind::Widen, &t.net, Some(t.layer), mid);
             let q = mid - self.board.outline.min;
