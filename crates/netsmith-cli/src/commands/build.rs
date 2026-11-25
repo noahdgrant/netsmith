@@ -403,6 +403,49 @@ pub(super) fn run_build(run: &BuildRun) -> ExitCode {
                     &format!("error: {}: {}\n", found.board, run.framing.placer(error)),
                 );
             }
+            if !found.errors.is_empty() {
+                continue;
+            }
+            // The placement check `fab` makes before it places, of the parts the layout file
+            // places, with `fab`'s words (issue #1654). Nothing is placed: the parts the
+            // placer places are not judged, which a note says.
+            let Some(judged) =
+                netsmith_fabricate::fab::entry_placement(b, layout.as_ref(), &libraries, false)
+            else {
+                continue;
+            };
+            for fault in &judged.faults {
+                unplaceable = true;
+                fail(
+                    &mut report,
+                    Finding {
+                        board: Some(found.board.clone()),
+                        conflicts: judged.conflicts.clone(),
+                        placement: vec![fault.clone()],
+                        ..Finding::plain(Severity::Error, "place", fault.text.clone())
+                    },
+                    &format!(
+                        "error: {}: {}\n",
+                        found.board,
+                        run.framing.placer(&fault.text)
+                    ),
+                );
+            }
+            let left = judged.parts.saturating_sub(judged.judged);
+            if !run.write && judged.faults.is_empty() && left > 0 && run.notes != NotesMode::None {
+                let note = format!(
+                    "the placement check judged the {} part(s) the layout file places; the {left} part(s) the placer places are not judged, as nothing is placed here: `board fab` and `board drc` place them and judge the whole board",
+                    judged.judged
+                );
+                if json {
+                    report.findings.push(Finding {
+                        board: Some(found.board.clone()),
+                        ..Finding::plain(Severity::Note, "place", note)
+                    });
+                } else {
+                    eprintln!("note: {}: {note}", found.board);
+                }
+            }
         }
         if unplaceable {
             code = ExitCode::FAILURE;

@@ -536,6 +536,28 @@ pub fn entry_check(
     layout: &(Layout, String),
     libraries: &netsmith_pipeline::Libraries,
 ) -> Result<(Vec<PlacementFault>, Vec<netsmith_pcb::Conflict>), String> {
+    entry_judgement(design, layout, libraries).map(|j| (j.faults, j.conflicts))
+}
+
+/// What [`entry_check`] judged: its faults and conflicts, and how many of the design's parts
+/// the board it measured has (the parts the layout file places, or a requirement pins), so that
+/// a check that does not place can say what it left to the placer (issue #1654).
+#[derive(Debug, Clone, Default)]
+pub struct EntryJudgement {
+    pub faults: Vec<PlacementFault>,
+    pub conflicts: Vec<netsmith_pcb::Conflict>,
+    /// The parts with a place, which were judged.
+    pub judged: usize,
+    /// The parts of the board, placed or not.
+    pub parts: usize,
+}
+
+/// [`entry_check`] with the count of the parts it judged.
+pub fn entry_judgement(
+    design: &Design,
+    layout: &(Layout, String),
+    libraries: &netsmith_pipeline::Libraries,
+) -> Result<EntryJudgement, String> {
     let options = netsmith_pcb::place_options(design, Some(&layout.0));
     let board = Board::laid_out_entries(
         design,
@@ -553,7 +575,14 @@ pub fn entry_check(
             .map(|r| r.proofs)
             .unwrap_or_default()
     };
-    Ok((faults, conflicts))
+    let parts = Board::unplaced(design, &libraries.mapping, &libraries.footprints, &options)
+        .map_or(board.parts.len(), |u| u.parts.len());
+    Ok(EntryJudgement {
+        faults,
+        conflicts,
+        judged: board.parts.len(),
+        parts,
+    })
 }
 
 fn placement_faults(
