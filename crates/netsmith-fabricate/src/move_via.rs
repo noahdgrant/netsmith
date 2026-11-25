@@ -74,6 +74,9 @@ pub struct MovedVia {
     pub findings: Vec<Found>,
     /// What the edit said, when it was made.
     pub said: Option<String>,
+    /// The new islands the via in its new place cuts a pour, a plane or a zone into, on a layer
+    /// it passes ([`crate::via_pockets`]): a note, which does not refuse the move.
+    pub pockets: Vec<crate::via_pockets::Pocket>,
     /// The routes file with the move, when it was not refused.
     #[serde(skip)]
     pub routes: Option<Routes>,
@@ -101,6 +104,9 @@ impl MovedVia {
         );
         if self.tracks.is_empty() {
             out.push_str("no track ends in it\n");
+        }
+        for p in &self.pockets {
+            out.push_str(&format!("note: the via {}\n", p.text_moved(by)));
         }
         for t in &self.tracks {
             let way = |w: &[[f64; 2]]| w.iter().map(|p| at(*p)).collect::<Vec<_>>().join(" -> ");
@@ -283,6 +289,7 @@ pub fn move_via(
         refused: None,
         findings: Vec::new(),
         said: None,
+        pockets: Vec::new(),
         routes: None,
         counts: EditCounts::default(),
     };
@@ -314,7 +321,8 @@ pub fn move_via(
                 Some(b) => b,
                 None => with_routes(board, &next)?.0,
             };
-            let was = open(&with_routes(board, routes)?.0);
+            let before = with_routes(board, routes)?.0;
+            let was = open(&before);
             let now = open(&after);
             if now.len() > was.len() {
                 let lost = now.iter().find(|l| !was.contains(l)).unwrap_or(&now[0]);
@@ -323,6 +331,12 @@ pub fn move_via(
                 ));
             } else {
                 moved.said = Some(summary(&said));
+                moved.pockets = crate::via_pockets::Pockets::new().of_change_at(
+                    &before,
+                    &after,
+                    &[netsmith_pcb::Pt::new(to[0], to[1]) + board.outline.min],
+                    v.diameter,
+                )?;
                 moved.routes = Some(next);
             }
         }

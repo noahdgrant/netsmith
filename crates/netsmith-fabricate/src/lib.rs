@@ -54,4 +54,5 @@ pub mod system3d;
 pub mod system_areas;
 pub mod track_drop;
 pub mod via_check;
+pub mod via_pockets;
 pub mod via_sites;

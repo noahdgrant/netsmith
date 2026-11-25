@@ -976,6 +976,45 @@ pub fn edit_file_all(board: &Board, file: &Path, changes: &[Edit]) -> Result<Str
     Ok(format!("{said}; wrote {}", file.display()))
 }
 
+/// [`edit_file_all`], and the new islands the vias the changes add cut a pour, a plane or a zone
+/// into ([`crate::via_pockets`], issue #1668): what `routes add-via` notes, which does not refuse
+/// the change.
+pub fn edit_file_all_noting(
+    board: &Board,
+    file: &Path,
+    changes: &[Edit],
+) -> Result<(String, Vec<crate::via_pockets::Pocket>), Refusal> {
+    let mut routes = load(file)?;
+    let before = routes.clone();
+    let said = edit_all(board, &mut routes, changes)?;
+    save(file, &routes)?;
+    let places: Vec<Pt> = changes
+        .iter()
+        .filter_map(|c| match c {
+            Edit::AddVia { at, .. } => Some(Pt::new(at[0], at[1]) + board.outline.min),
+            _ => None,
+        })
+        .collect();
+    let pockets = if places.is_empty() {
+        Vec::new()
+    } else {
+        let after = with_routes(board, &routes)?.0;
+        let diameter = after
+            .vias
+            .iter()
+            .filter(|v| places.iter().any(|p| p.distance(v.at) < 1e-6))
+            .map(|v| v.diameter)
+            .fold(0.0, f64::max);
+        crate::via_pockets::Pockets::new().of_change_at(
+            &with_routes(board, &before)?.0,
+            &after,
+            &places,
+            diameter,
+        )?
+    };
+    Ok((format!("{said}; wrote {}", file.display()), pockets))
+}
+
 /// The most vias a group of `routes add-via` may have (`--count`): a row longer than this is a
 /// slip of the hand, and the design rules check of every via is made once for all of them.
 pub const MOST_VIAS_IN_A_GROUP: usize = 64;

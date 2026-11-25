@@ -79,7 +79,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith routes route` | new | `--file`, `--board`, `--rip`, `--rip-depth`, `--tries`, `--corner`, `--length-weight`, `--via-weight`, `--layer-change-weight`, `--reroute`, `--region`, `--via`, `--layer`, `--dry-run`, `--format`, `--frame` |
 | `netsmith routes join-pad` | new (#1293) | `--file`, `--board`, `--dry-run`, `--format`, `--frame` |
 | `netsmith routes move-via` | new (#1644) | `--file`, `--board`, `--net`, `--via`, `--to`, `--dry-run`, `--format`, `--frame` |
-| `netsmith routes sites` | new (#1628) | `--file`, `--board`, `--net`, `--format`, `--frame` |
+| `netsmith routes sites` | new (#1628) | `--file`, `--board`, `--net`, `--zone-safe`, `--format`, `--frame` |
 | `netsmith routes check-via` | new (#1643) | `--file`, `--board`, `--at`, `--net`, `--diameter`, `--drill`, `--layers`, `--format`, `--frame` |
 | `netsmith routes fanout` | new (#1640) | `--file`, `--board`, `--net`, `--pads`, `--plan`, `--sites`, `--dry-run`, `--format`, `--frame` |
 | `netsmith routes delete` | the same | `--file` (was `--into`), `--board`, `--net`, `--track`, `--via`, `--zone` |
