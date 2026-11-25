@@ -432,7 +432,7 @@ fn finish(board: &Board, routes: &Routes, state: &Routes, out: &mut Routed) -> R
 }
 
 /// A place to the micrometre, as the routes file keeps it.
-fn um(v: f64) -> f64 {
+pub(crate) fn um(v: f64) -> f64 {
     (v * 1e6).round() / 1e6
 }
 
@@ -935,7 +935,7 @@ fn candidates(
 
 /// What the copper of `nets` in `routes` costs by `w`, in mm of track: its length and its vias
 /// ([`netsmith_router::Weights::measure`]).
-fn total(
+pub(crate) fn total(
     board: &Board,
     routes: &Routes,
     nets: &BTreeSet<String>,
@@ -981,7 +981,7 @@ fn strip(board: &Board, routes: &Routes, nets: &BTreeSet<String>) -> Routes {
 }
 
 /// The copper of `way` added to `net`'s record in `routes`, as unlocked shapes.
-fn add(board: &Board, routes: &mut Routes, net: &str, way: &One) {
+pub(crate) fn add(board: &Board, routes: &mut Routes, net: &str, way: &One) {
     if way.tracks.is_empty() && way.vias.is_empty() {
         return;
     }
