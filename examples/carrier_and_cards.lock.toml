@@ -4,6 +4,8 @@
 # with `netsmith project lock --update`, and number the parts again by path with `--renumber`.
 # Nothing in it is edited by hand but `held = "reason"`, which a person adds to a part's entry
 # to keep the part on its row, and a part's designator, which a renamed part takes by hand.
+# Each part's footprint has the hash of its pads and courtyard: a change to the footprint shows
+# here, and `netsmith project lock --update` takes it.
 version = 2
 
 [CarrierAndCards.providers."carrier.process"]
@@ -57,3 +59,10 @@ sku = { jlcpcb-assembly = "C42431810", lcsc-retail = "C42431810" }
 "sensor.sensor" = "U1"
 "serial.chip" = "U1"
 "serial.j1" = "J1"
+
+[CarrierAndCards.footprints]
+"carrier.fuse" = { footprint = "Fuse:Fuse_1206_3216Metric", hash = "5d0f150c24407705" }
+"carrier.slot_a" = { footprint = "Connector_PinSocket_2.54mm:PinSocket_1x10_P2.54mm_Vertical", hash = "64efe1fd9fd8b8db" }
+"carrier.slot_b" = { footprint = "Connector_PinSocket_2.54mm:PinSocket_1x10_P2.54mm_Vertical", hash = "64efe1fd9fd8b8db" }
+"sensor.j1" = { footprint = "Connector_PinHeader_2.54mm:PinHeader_1x10_P2.54mm_Vertical", hash = "64efe1fd9fd8b8db" }
+"serial.j1" = { footprint = "Connector_PinHeader_2.54mm:PinHeader_1x10_P2.54mm_Vertical", hash = "64efe1fd9fd8b8db" }

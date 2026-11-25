@@ -16,9 +16,11 @@ use std::path::{Path, PathBuf};
 use netsmith_check::{Assignment, Loader, Model};
 use netsmith_core::Design;
 use netsmith_solve::lock::CHANNELS;
-use netsmith_solve::{Catalogs, Designators, LockedProvider, LockedRow, PickLock, Solution};
+use netsmith_solve::{
+    Catalogs, Designators, LockedFootprint, LockedProvider, LockedRow, PickLock, Solution,
+};
 
-use crate::{outcome_with, render_problems};
+use crate::{Libraries, outcome_with, render_problems};
 
 /// The version of the file's format. Version 2 (ADR 0143) records each part's `manufacturer`
 /// and `mpn`, its identity, and the `sku` of its offer for each supply channel
@@ -32,7 +34,7 @@ const VERSION: i64 = 2;
 const READS: [i64; 2] = [1, 2];
 
 /// The first lines of a written file.
-const HEADER: &str = "# The catalog row each part of each board was picked as, written by `netsmith board build` and\n# `netsmith board fab` when this file does not exist. Commit it: a change to a catalog or to the\n# solver that would move a pick shows here and not only in the bill of materials. Refresh it\n# with `netsmith project lock --update`, and number the parts again by path with `--renumber`.\n# Nothing in it is edited by hand but `held = \"reason\"`, which a person adds to a part's entry\n# to keep the part on its row, and a part's designator, which a renamed part takes by hand.\n";
+const HEADER: &str = "# The catalog row each part of each board was picked as, written by `netsmith board build` and\n# `netsmith board fab` when this file does not exist. Commit it: a change to a catalog or to the\n# solver that would move a pick shows here and not only in the bill of materials. Refresh it\n# with `netsmith project lock --update`, and number the parts again by path with `--renumber`.\n# Nothing in it is edited by hand but `held = \"reason\"`, which a person adds to a part's entry\n# to keep the part on its row, and a part's designator, which a renamed part takes by hand.\n# Each part's footprint has the hash of its pads and courtyard: a change to the footprint shows\n# here, and `netsmith project lock --update` takes it.\n";
 
 /// The lock of a source file: `led.nsm` has `led.lock.toml`.
 pub fn lock_path(source: &Path) -> PathBuf {
@@ -184,11 +186,20 @@ fn parse(text: &str, name: &str) -> Result<PickLock, String> {
         })?;
         if let Some(extra) = unit_table
             .keys()
-            .find(|k| !["parts", "providers", "designators"].contains(&k.as_str()))
+            .find(|k| !["parts", "providers", "designators", "footprints"].contains(&k.as_str()))
         {
             return Err(wrong(format!(
-                "`[{unit}]` has `{extra}`; it holds only `parts`, `providers` and `designators`"
+                "`[{unit}]` has `{extra}`; it holds only `parts`, `providers`, `designators` and `footprints`"
             )));
+        }
+        if let Some(value) = unit_table.get("footprints") {
+            let table = value.as_table().ok_or_else(|| {
+                wrong(format!(
+                    "`[{unit}.footprints]` must be a table of a footprint for each part's path"
+                ))
+            })?;
+            lock.footprints
+                .set(unit, parse_footprints(unit, table, &wrong)?);
         }
         if let Some(value) = unit_table.get("designators") {
             let table = value.as_table().ok_or_else(|| {
@@ -226,7 +237,8 @@ fn parse(text: &str, name: &str) -> Result<PickLock, String> {
                 .as_table()
                 .ok_or_else(|| wrong(format!("`[{unit}.parts]` must be a table of parts")))?,
             None if unit_table.contains_key("providers")
-                || unit_table.contains_key("designators") =>
+                || unit_table.contains_key("designators")
+                || unit_table.contains_key("footprints") =>
             {
                 continue;
             }
@@ -334,6 +346,47 @@ fn is_designator(text: &str) -> bool {
         && digits.chars().all(|c| c.is_ascii_digit())
 }
 
+/// The `[<unit>.footprints]` table of one board or system: for each part's path, its
+/// `footprint` and the `hash` of its geometry (issue #1683).
+fn parse_footprints(
+    unit: &str,
+    table: &toml::Table,
+    wrong: &dyn Fn(String) -> String,
+) -> Result<BTreeMap<String, LockedFootprint>, String> {
+    let mut footprints = BTreeMap::new();
+    for (path, entry) in table {
+        let at = format!("[{unit}.footprints] `{path}`");
+        let entry = entry.as_table().ok_or_else(|| {
+            wrong(format!(
+                "{at} must be a table of its `footprint` and `hash`, such as {{ footprint = \"Resistor_SMD:R_0402_1005Metric\", hash = \"0123456789abcdef\" }}"
+            ))
+        })?;
+        if let Some(extra) = entry
+            .keys()
+            .find(|k| !["footprint", "hash"].contains(&k.as_str()))
+        {
+            return Err(wrong(format!(
+                "{at} has `{extra}`; it holds `footprint` and `hash`"
+            )));
+        }
+        let text = |key: &str| -> Result<String, String> {
+            match entry.get(key) {
+                Some(toml::Value::String(s)) => Ok(s.clone()),
+                Some(other) => Err(wrong(format!("{at} `{key}` must be text, not {other}"))),
+                None => Err(wrong(format!("{at} has no `{key}`"))),
+            }
+        };
+        footprints.insert(
+            path.clone(),
+            LockedFootprint {
+                id: text("footprint")?,
+                hash: text("hash")?,
+            },
+        );
+    }
+    Ok(footprints)
+}
+
 /// The `[<unit>.providers."<path>"]` entries of one board or system: each its `generic` and
 /// its `provider`.
 fn parse_providers(
@@ -399,6 +452,7 @@ pub fn render(lock: &PickLock) -> String {
         .map(|(u, _)| u)
         .chain(lock.provider_units().map(|(u, _)| u))
         .chain(lock.designators.units().map(|(u, _)| u))
+        .chain(lock.footprints.units().map(|(u, _)| u))
         .collect();
     units.sort_unstable();
     units.dedup();
@@ -438,6 +492,22 @@ pub fn render(lock: &PickLock) -> String {
             paths.sort_by(|a, b| netsmith_design::natural_path_order(a, b));
             for path in paths {
                 let _ = writeln!(out, "{} = {}", string(path), string(&designators[path]));
+            }
+        }
+        // The footprints after them, in the same order.
+        if let Some(footprints) = lock.footprints.of(unit) {
+            let _ = writeln!(out, "\n[{}.footprints]", key(unit));
+            let mut paths: Vec<&String> = footprints.keys().collect();
+            paths.sort_by(|a, b| netsmith_design::natural_path_order(a, b));
+            for path in paths {
+                let f = &footprints[path];
+                let _ = writeln!(
+                    out,
+                    "{} = {{ footprint = {}, hash = {} }}",
+                    string(path),
+                    string(&f.id),
+                    string(&f.hash)
+                );
             }
         }
     }
@@ -586,8 +656,123 @@ pub fn diff(old: &PickLock, new: &PickLock) -> Vec<String> {
             found.push((unit.to_string(), path, line));
         }
     }
+    // The footprints (issue #1683): a line for each part whose footprint or its geometry
+    // changed. A lock with no record of a board's footprints has one line for the board.
+    for (unit, before, after) in footprint_units(old, new) {
+        let Some(before) = before else {
+            if !no_file && let Some(after) = after {
+                found.push((
+                    unit.to_string(),
+                    String::new(),
+                    format!(
+                        "{unit}: footprints recorded for {} parts, as they are built now",
+                        after.len()
+                    ),
+                ));
+            }
+            continue;
+        };
+        let Some(after) = after else { continue };
+        for (path, change) in footprint_changes(old, new, unit, before, after) {
+            let line = match change {
+                FootprintChange::New(now) => {
+                    format!("{unit}: `{path}`: footprint `{}` recorded", now.id)
+                }
+                FootprintChange::Gone(was) => format!(
+                    "{unit}: `{path}`: footprint `{}` dropped (it is no longer a part of the board)",
+                    was.id
+                ),
+                FootprintChange::Other(was, now) => {
+                    format!("{unit}: `{path}`: footprint `{}` -> `{}`", was.id, now.id)
+                }
+                FootprintChange::Changed(was, now) => format!(
+                    "{unit}: `{path}`: footprint changed: `{}` (hash {} -> {})",
+                    now.id, was.hash, now.hash
+                ),
+            };
+            found.push((unit.to_string(), path, line));
+        }
+    }
     found.sort();
     found.into_iter().map(|(_, _, line)| line).collect()
+}
+
+/// Every board or system either lock records footprints for, in name order, with the
+/// footprints of each lock.
+type FootprintUnit<'a> = (
+    &'a str,
+    Option<&'a BTreeMap<String, LockedFootprint>>,
+    Option<&'a BTreeMap<String, LockedFootprint>>,
+);
+
+fn footprint_units<'a>(old: &'a PickLock, new: &'a PickLock) -> Vec<FootprintUnit<'a>> {
+    let mut units: Vec<&str> = old
+        .footprints
+        .units()
+        .chain(new.footprints.units())
+        .map(|(u, _)| u)
+        .collect();
+    units.sort_unstable();
+    units.dedup();
+    units
+        .into_iter()
+        .map(|u| (u, old.footprints.of(u), new.footprints.of(u)))
+        .collect()
+}
+
+/// How a part's footprint differs between two locks.
+enum FootprintChange<'a> {
+    /// A part the old lock records no footprint for.
+    New(&'a LockedFootprint),
+    /// The footprint of a part the board no longer has.
+    Gone(&'a LockedFootprint),
+    /// A part built with another footprint now.
+    Other(&'a LockedFootprint, &'a LockedFootprint),
+    /// The same footprint, whose geometry is not the one the lock records: its file or its
+    /// generator changed.
+    Changed(&'a LockedFootprint, &'a LockedFootprint),
+}
+
+/// The footprints of one board that differ between `before` (the old lock's) and `after`, by
+/// path. A part that is added or gone is left out when its row or its designator already says
+/// so.
+fn footprint_changes<'a>(
+    old: &PickLock,
+    new: &PickLock,
+    unit: &str,
+    before: &'a BTreeMap<String, LockedFootprint>,
+    after: &'a BTreeMap<String, LockedFootprint>,
+) -> Vec<(String, FootprintChange<'a>)> {
+    let has_row = |lock: &PickLock, path: &str| lock.rows(unit).iter().any(|r| r.path == path);
+    let numbered = |lock: &PickLock, path: &str| {
+        lock.designators
+            .of(unit)
+            .is_some_and(|d| d.contains_key(path))
+    };
+    let both_numbered = old.designators.of(unit).is_some() && new.designators.of(unit).is_some();
+    let said = |path: &str| {
+        has_row(old, path) != has_row(new, path)
+            || (both_numbered && numbered(old, path) != numbered(new, path))
+    };
+    let mut changes = Vec::new();
+    for (path, now) in after {
+        match before.get(path) {
+            None if !said(path) => changes.push((path.clone(), FootprintChange::New(now))),
+            Some(was) if was.id != now.id => {
+                changes.push((path.clone(), FootprintChange::Other(was, now)))
+            }
+            Some(was) if was.hash != now.hash => {
+                changes.push((path.clone(), FootprintChange::Changed(was, now)))
+            }
+            _ => {}
+        }
+    }
+    for (path, was) in before {
+        if !after.contains_key(path) && !said(path) {
+            changes.push((path.clone(), FootprintChange::Gone(was)));
+        }
+    }
+    changes
 }
 
 /// Every board or system either lock records designators for, in name order, with the
@@ -802,7 +987,8 @@ impl Parts {
 /// Solves each board and system of the source called `name` (with text `text`, at `source`)
 /// twice: held to the rows of its lock file as it is, to say what no longer holds, and then
 /// with no lock, to find the rows the solver picks now. Writes nothing, and reads no KiCad
-/// library. `catalogs` must hold no pick lock. An error is the message to print: the file
+/// library, so the footprints the lock records are kept as they are ([`refresh_with`] reads
+/// them). `catalogs` must hold no pick lock. An error is the message to print: the file
 /// cannot be read or is not a lock, or the source does not build even with no lock.
 pub fn refresh(
     source: &Path,
@@ -830,7 +1016,16 @@ pub fn refresh_parts(
     catalogs: &Catalogs,
     parts: &Parts,
 ) -> Result<Refresh, String> {
-    refresh_with(source, name, text, loader, catalogs, parts, Numbering::Keep)
+    refresh_with(
+        source,
+        name,
+        text,
+        loader,
+        catalogs,
+        parts,
+        Numbering::Keep,
+        None,
+    )
 }
 
 /// What `project lock --update` does with the designators the lock records (issue #1653).
@@ -844,7 +1039,10 @@ pub enum Numbering {
     Renumber,
 }
 
-/// [`refresh_parts`], with the designators the lock records kept or renumbered by path.
+/// [`refresh_parts`], with the designators the lock records kept or renumbered by path, and with
+/// `libraries` the footprint of each part read and its hash recorded as it is now (issue #1683),
+/// as `build` reads them; with none, the footprints the lock records are kept as they are.
+#[allow(clippy::too_many_arguments)]
 pub fn refresh_with(
     source: &Path,
     name: &str,
@@ -853,6 +1051,7 @@ pub fn refresh_with(
     catalogs: &Catalogs,
     parts: &Parts,
     numbering: Numbering,
+    libraries: Option<&Libraries>,
 ) -> Result<Refresh, String> {
     crate::picks::refuse(source)?;
     let file = lock_path(source);
@@ -940,9 +1139,18 @@ pub fn refresh_with(
         }
     };
     let mut now = outcome.lock;
-    // A source with no part to pick needs no lock, whatever its designators.
+    // The footprints as `build` reads them; a run that reads none keeps the lock's.
+    now.footprints = match libraries {
+        Some(libraries) => footprints_of(&outcome.boards, libraries)?,
+        None => old
+            .as_ref()
+            .map(|o| o.footprints.clone())
+            .unwrap_or_default(),
+    };
+    // A source with no part to pick needs no lock, whatever its designators and footprints.
     if now.is_empty() {
         now.designators = Designators::default();
+        now.footprints = Default::default();
     }
     // The rows held on purpose keep their reason, when the pick is still the row the lock has.
     let mut held = Vec::new();
@@ -1001,6 +1209,50 @@ pub fn refresh_with(
     })
 }
 
+/// The footprint of each part of `boards` and the hash of its geometry, by board or system and
+/// path (a board of a system under its name in the system), as `build` records them (issue
+/// #1683): a part the mapping has no row for has none, as `build` draws none; a footprint that
+/// cannot be read is the error `build` would stop with. Only footprints are read, no symbol.
+pub fn footprints_of(
+    boards: &[crate::Built],
+    libraries: &Libraries,
+) -> Result<netsmith_solve::Footprints, String> {
+    let mut units: BTreeMap<String, BTreeMap<String, LockedFootprint>> = BTreeMap::new();
+    for built in boards {
+        let (unit, prefix) = match &built.system {
+            Some(system) => (system.clone(), format!("{}.", built.board)),
+            None => (built.board.clone(), String::new()),
+        };
+        let found = units.entry(unit).or_default();
+        for (s, part) in built.sourcing.iter().zip(&built.design.parts) {
+            let Ok(mapped) = libraries
+                .mapping
+                .map_part(&part.path, &s.kind, s.package.as_deref())
+            else {
+                continue;
+            };
+            let footprint = libraries.footprints.load(&mapped.footprint).map_err(|e| {
+                let why = libraries
+                    .footprint_needs_kicad(&s.refdes, &s.kind, s.package.as_deref(), &mapped, &e)
+                    .unwrap_or_else(|| format!("{}: {e}", s.refdes));
+                format!("error: {}: {why}\n", built.label())
+            })?;
+            found.insert(
+                format!("{prefix}{}", part.path),
+                LockedFootprint {
+                    id: mapped.footprint.clone(),
+                    hash: footprint.geometry_hash(),
+                },
+            );
+        }
+    }
+    let mut footprints = netsmith_solve::Footprints::default();
+    for (unit, found) in units {
+        footprints.set(&unit, found);
+    }
+    Ok(footprints)
+}
+
 /// What the solver says of a build held to the rows of `old`: the rows that no longer pass or
 /// are no longer in a catalog, in its own words. Empty when every locked row still holds.
 fn report_old(
@@ -1046,6 +1298,7 @@ fn migrate(old: &PickLock, catalogs: &Catalogs) -> (Option<PickLock>, Vec<String
         lock.set_providers(unit, providers.to_vec());
     }
     lock.designators = old.designators.clone();
+    lock.footprints = old.footprints.clone();
     ((!moved.is_empty()).then_some(lock), moved)
 }
 
@@ -1065,6 +1318,10 @@ pub struct Changes {
     /// the lock records none for, or whose part is gone (issue #1653), for the boards the lock
     /// records designators for, in the order board, part.
     pub designators: Vec<String>,
+    /// A line for each part whose footprint, or its geometry, differs from the one the lock
+    /// records (issue #1683), for the boards the lock records footprints for, in the order
+    /// board, part.
+    pub footprints: Vec<String>,
 }
 
 impl Changes {
@@ -1074,6 +1331,7 @@ impl Changes {
             && self.changed.is_empty()
             && self.providers.is_empty()
             && self.designators.is_empty()
+            && self.footprints.is_empty()
     }
 
     /// One line for each difference, in the order board, part.
@@ -1096,6 +1354,7 @@ impl Changes {
         }
         lines.extend(self.providers.iter().cloned());
         lines.extend(self.designators.iter().cloned());
+        lines.extend(self.footprints.iter().cloned());
         lines
     }
 }
@@ -1166,6 +1425,32 @@ pub fn compare(old: &PickLock, new: &PickLock) -> Changes {
                 DesignatorChange::Moved(was, now) => {
                     format!("{unit}: `{path}` is {was} in the lock and is numbered {now}")
                 }
+            });
+        }
+    }
+    // A board the lock records no footprints for, or a run that read no footprint, is no
+    // change (issue #1683); nor is a part built with another footprint than the lock's.
+    for (unit, before, after) in footprint_units(old, new) {
+        let (Some(before), Some(after)) = (before, after) else {
+            continue;
+        };
+        for (path, change) in footprint_changes(old, new, unit, before, after) {
+            changes.footprints.push(match change {
+                FootprintChange::New(now) => format!(
+                    "{unit}: `{path}` has no footprint in the lock (it is built with `{}`)",
+                    now.id
+                ),
+                FootprintChange::Gone(was) => format!(
+                    "{unit}: `{path}` is in the lock with the footprint `{}` and is no longer a part of the board",
+                    was.id
+                ),
+                // Another footprint follows the part's row or the mapping, which the source and
+                // the row's own line say; `project lock --check` lists it.
+                FootprintChange::Other(..) => continue,
+                FootprintChange::Changed(was, now) => format!(
+                    "{unit}: `{path}`: footprint changed: `{}` is not the one the lock records (hash {} in the lock, {} now)",
+                    now.id, was.hash, now.hash
+                ),
             });
         }
     }
@@ -1297,6 +1582,68 @@ mod tests {
         assert_eq!(parse(&both_text, "a.lock.toml").unwrap(), both);
         // Two writes of the same picks are the same bytes.
         assert_eq!(render(&made), text);
+    }
+
+    fn footprint(id: &str, hash: &str) -> LockedFootprint {
+        LockedFootprint {
+            id: id.into(),
+            hash: hash.into(),
+        }
+    }
+
+    #[test]
+    fn a_lock_records_each_parts_footprint_and_tells_one_that_changed() {
+        let mut made = lock(&[("Board", row("r1", "resistor", "330Ω", None))]);
+        made.footprints.set(
+            "Board",
+            BTreeMap::from([
+                ("r1".to_string(), footprint("Lib:R", "0123456789abcdef")),
+                ("tp1".to_string(), footprint("Lib:TP", "fedcba9876543210")),
+            ]),
+        );
+        let text = render(&made);
+        assert!(
+            text.contains("\n[Board.footprints]\n\"r1\" = { footprint = \"Lib:R\", hash = \"0123456789abcdef\" }\n\"tp1\" = { footprint = \"Lib:TP\", hash = \"fedcba9876543210\" }\n"),
+            "{text}"
+        );
+        assert_eq!(parse(&text, "a.lock.toml").unwrap(), made);
+        let mut now = made.clone();
+        now.footprints.set(
+            "Board",
+            BTreeMap::from([
+                ("r1".to_string(), footprint("Lib:R", "1111111111111111")),
+                ("tp1".to_string(), footprint("Lib:TP2", "fedcba9876543210")),
+            ]),
+        );
+        assert_eq!(
+            diff(&made, &now),
+            vec![
+                "Board: `r1`: footprint changed: `Lib:R` (hash 0123456789abcdef -> 1111111111111111)",
+                "Board: `tp1`: footprint `Lib:TP` -> `Lib:TP2`",
+            ]
+        );
+        assert_eq!(
+            compare(&made, &now).lines(),
+            vec![
+                "Board: `r1`: footprint changed: `Lib:R` is not the one the lock records (hash 0123456789abcdef in the lock, 1111111111111111 now)",
+            ]
+        );
+        // A lock with no footprints: one line for `--check`, and no change for a build.
+        let mut old = made.clone();
+        old.footprints = Default::default();
+        assert_eq!(
+            diff(&old, &made),
+            vec!["Board: footprints recorded for 2 parts, as they are built now"]
+        );
+        assert!(compare(&old, &made).is_empty());
+        // A run that read no footprint is no change either.
+        assert!(compare(&made, &old).is_empty());
+        let wrong = text.replace("hash = ", "sum = ");
+        assert!(
+            parse(&wrong, "a.lock.toml")
+                .unwrap_err()
+                .contains("has `sum`; it holds `footprint` and `hash`")
+        );
     }
 
     fn provider(path: &str, id: &str) -> LockedProvider {
@@ -1484,10 +1831,9 @@ mod tests {
         assert!(wrong("").contains("no `version`"));
         assert!(wrong("version = 3").contains("version 3 is not a version"));
         assert!(wrong("version = 1\nB = 3").contains("`B` must be a table"));
-        assert!(
-            wrong("version = 1\n[B]\nx = 1")
-                .contains("`[B]` has `x`; it holds only `parts`, `providers` and `designators`")
-        );
+        assert!(wrong("version = 1\n[B]\nx = 1").contains(
+            "`[B]` has `x`; it holds only `parts`, `providers`, `designators` and `footprints`"
+        ));
         let no_row = wrong("version = 1\n[B.parts.\"r1\"]\ncatalog = \"resistor\"");
         assert!(no_row.contains("[B.parts.\"r1\"] has no `row`"), "{no_row}");
         let extra = wrong("version = 1\n[B.parts.\"r1\"]\ncatalog = \"a\"\nrow = \"b\"\nprice = 1");

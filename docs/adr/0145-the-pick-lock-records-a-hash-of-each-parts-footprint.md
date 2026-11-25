@@ -1,0 +1,17 @@
+---
+status: accepted
+---
+
+# The pick lock records a hash of each part's footprint
+
+Owner decision, issue #1683. A footprint's pads were resized in a project library under a routed board and nothing said so: `project lock --check` passed, and `routes show` sees only a pad whose centre moved. It meets two of the three tests: it is hard to reverse (committed lock files carry the table) and it rejects an obvious alternative (a note of the routes file).
+
+**Decision.** The pick lock (`<stem>.lock.toml`, ADR 0100) has a table `[<Board>.footprints]` for each board and system, keyed by each part's path as the designators are (ADR 0144): `"r1" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "3f9a0c1e2b4d5a6f" }`. The hash (`netsmith_pcb::Footprint::geometry_hash`) is the first 16 hexadecimal digits of the SHA-256 of a canonical text of what the board is built from: the pads with every setting of theirs, the footprint's own `attr`, clearance, mask, paste and connection settings, the shapes on the courtyard (without line width), mask, paste, copper and edge layers, and the keepout zones. Silkscreen and fabrication drawings, texts, properties, the 3D model, uuids, the version and generator are left out; items are a set and numbers are rounded to 0.1 µm, as netsmith writes them. `build` and `fab` write the table with the lock and never rewrite it; a footprint whose hash is not the recorded one is a difference, a note, and with `--locked` an error, as a pick that moved is (a part built with another footprint id follows its row or the mapping, which say so themselves, and is listed by `--check` only). `project lock --check` calls it not current (`footprint changed: ...`) and `project lock --update` records it, for every part whatever `--part` names. `project lock` reads the footprint libraries as `build` does.
+
+**Why.** The lock is the file that holds a board to what it was and shows a change as a reviewable line, and it is checked in CI already; a footprint is part of what a board was. Hashing geometry and not the file's bytes keeps a cosmetic edit (a moved value text, a redrawn silkscreen, a re-save with new uuids) from tripping it, while a pad resize trips it whether or not its centre moves.
+
+**Rejected: a note of `routes show` or the design rules check** that the footprint differs from the one the routes file was written against. It needs the routes file to carry the footprints, says nothing for a board with no routes file, and is not a gate a CI job already runs. **Rejected: a hash of the file's bytes.** Every re-save, silkscreen fix or KiCad library release that touches text would report. **Rejected: one entry per footprint id.** The owner's decision is a hash of each part's footprint, and a part's entry names the part a person reviews.
+
+**Cost.** A generated footprint reports when its generator changes, so a release that changes a generator moves the hashes of the locks that use it, to review and `--update`. A footprint read from an installed KiCad library hashes that machine's file, so two machines with different KiCad releases may disagree; the lock then says so, which is the point. `project lock` now reads footprints, so a project that needs KiCad for a footprint needs it there too. Every committed lock without the table is not current until `--update` records it; `build --locked` does not refuse such a lock.
+
+**Left open.** A hash of a part's symbol. Naming in `routes show` the copper that a changed pad no longer covers.

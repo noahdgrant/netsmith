@@ -4,6 +4,8 @@
 # with `netsmith project lock --update`, and number the parts again by path with `--renumber`.
 # Nothing in it is edited by hand but `held = "reason"`, which a person adds to a part's entry
 # to keep the part on its row, and a part's designator, which a renamed part takes by hand.
+# Each part's footprint has the hash of its pads and courtyard: a change to the footprint shows
+# here, and `netsmith project lock --update` takes it.
 version = 2
 
 [LedExample.providers."process"]
@@ -32,3 +34,8 @@ sku = { jlcpcb-assembly = "C25104", lcsc-retail = "C25104" }
 "led" = "D1"
 "power_in" = "J1"
 "r1" = "R1"
+
+[LedExample.footprints]
+"led" = { footprint = "LED_SMD:LED_0603_1608Metric", hash = "2a500898dd78be5f" }
+"power_in" = { footprint = "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical", hash = "4f0b767adeef1876" }
+"r1" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }

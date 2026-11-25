@@ -4,6 +4,8 @@
 # with `netsmith project lock --update`, and number the parts again by path with `--renumber`.
 # Nothing in it is edited by hand but `held = "reason"`, which a person adds to a part's entry
 # to keep the part on its row, and a part's designator, which a renamed part takes by hand.
+# Each part's footprint has the hash of its pads and courtyard: a change to the footprint shows
+# here, and `netsmith project lock --update` takes it.
 version = 2
 
 [OutlineAndPours.providers."process"]
@@ -53,3 +55,16 @@ sku = { jlcpcb-assembly = "C5446", lcsc-retail = "C5446" }
 "stage.input_cap" = "C1"
 "stage.output_cap" = "C2"
 "stage.regulator" = "U1"
+
+[OutlineAndPours.footprints]
+"fiducial1" = { footprint = "Fiducial:Fiducial_1mm_Mask2mm", hash = "02c8540978625e62" }
+"fiducial2" = { footprint = "Fiducial:Fiducial_1mm_Mask2mm", hash = "02c8540978625e62" }
+"hole1" = { footprint = "MountingHole:MountingHole_3.2mm_M3", hash = "c33b06d8a4f117ee" }
+"hole2" = { footprint = "MountingHole:MountingHole_3.2mm_M3", hash = "c33b06d8a4f117ee" }
+"hole3" = { footprint = "MountingHole:MountingHole_3.2mm_M3", hash = "c33b06d8a4f117ee" }
+"hole4" = { footprint = "MountingHole:MountingHole_3.2mm_M3", hash = "c33b06d8a4f117ee" }
+"power_in" = { footprint = "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical", hash = "4f0b767adeef1876" }
+"power_out" = { footprint = "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical", hash = "4f0b767adeef1876" }
+"stage.input_cap" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"stage.output_cap" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"stage.regulator" = { footprint = "Package_TO_SOT_SMD:SOT-23", hash = "30dbca44a426f51f" }
