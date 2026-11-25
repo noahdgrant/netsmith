@@ -365,6 +365,9 @@ pub struct Solution {
     pub dc: DcSummary,
     /// What the DC analysis found into the nets it solved (ADR 0076, amendment 8).
     pub net_currents: Vec<NetCurrent>,
+    /// The hand picks of the parts of the board or system, by path: what `project lock` says
+    /// of a row it takes for one (issue #1706).
+    pub hand_picks: BTreeMap<String, HandPick>,
 }
 
 /// The most current that flows into a net, over every corner of the ranges of the DC analysis of
@@ -1237,6 +1240,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         current_bounds,
         dc,
         net_currents,
+        hand_picks: s.chosen,
     }
 }
 
@@ -1352,15 +1356,33 @@ impl Budget {
 
 /// A part's hand pick (ADR 0122, ADR 0143): the `.mpn` the design narrowed it to, with the
 /// `.manufacturer` when two parts share the number, and where.
-#[derive(Debug, Clone)]
-struct HandPick {
-    mpn: Option<String>,
-    manufacturer: Option<String>,
-    /// The narrowing a message points at: the last statement that narrowed either member.
-    at: Option<(SourceId, Span)>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HandPick {
+    pub mpn: Option<String>,
+    pub manufacturer: Option<String>,
+    /// The last statement that narrowed each of the two members.
+    pub mpn_at: Option<(SourceId, Span)>,
+    pub manufacturer_at: Option<(SourceId, Span)>,
+    /// Set when no statement names the `.mpn`: it is the order code that the part's
+    /// `.variants` leave (issue #1311), and `mpn_at` is what left it.
+    pub order_code: Option<OrderCodeBy>,
+}
+
+/// What left a part one order code of its `.variants`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrderCodeBy {
+    /// The design's `.needs`: the place is the last of them.
+    Needs,
+    /// The table, which has one code, with nothing needed of it: the place is the table.
+    Table,
 }
 
 impl HandPick {
+    /// The narrowing a message points at: that of `.manufacturer`, or else of `.mpn`.
+    fn at(&self) -> Option<(SourceId, Span)> {
+        self.manufacturer_at.or(self.mpn_at)
+    }
+
     /// Whether `c` is the row the hand pick names: it has every number the pick states.
     /// A row made in code may carry a number only as a column of that name.
     fn is(&self, c: &Candidate) -> bool {
@@ -1411,7 +1433,9 @@ fn hand_picks(model: &Model) -> BTreeMap<String, HandPick> {
         let mut pick = HandPick {
             mpn: None,
             manufacturer: None,
-            at: None,
+            mpn_at: None,
+            manufacturer_at: None,
+            order_code: None,
         };
         for name in ["mpn", "manufacturer"] {
             let Some(Member::Field(f)) = model.member(id, name) else {
@@ -1421,15 +1445,23 @@ fn hand_picks(model: &Model) -> BTreeMap<String, HandPick> {
             let Domain::Text(text) = &field.domain else {
                 continue;
             };
-            if let Some(&at) = field.narrowed_at.last() {
-                pick.at = Some(at);
-            }
+            let at = field.narrowed_at.last().copied();
             match name {
-                "mpn" => pick.mpn = Some(text.clone()),
-                _ => pick.manufacturer = Some(text.clone()),
+                "mpn" => (pick.mpn, pick.mpn_at) = (Some(text.clone()), at),
+                _ => (pick.manufacturer, pick.manufacturer_at) = (Some(text.clone()), at),
             }
         }
         if pick.mpn.is_some() {
+            // The checker narrows the `.mpn` of a part with `.variants` at the last `.needs`,
+            // or at the table, when no statement names it.
+            pick.order_code = model.variants.get(&id).and_then(|v| {
+                let at = pick.mpn_at?;
+                if v.needs.iter().any(|n| n.at == at) {
+                    Some(OrderCodeBy::Needs)
+                } else {
+                    (v.at == at).then_some(OrderCodeBy::Table)
+                }
+            });
             picks.insert(model.path_of(id), pick);
         }
     }

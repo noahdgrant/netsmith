@@ -48,8 +48,8 @@ pub use lock::{Designators, Footprints, LockedFootprint, LockedProvider, LockedR
 pub use place::{PlaceOffset, Window, offsets, window};
 pub use preferred::Preferred;
 pub use solve::{
-    CurrentBound, DcSummary, HeldBy, NetCurrent, OpenCircle, Passed, PassedWhy, Pick, Seeded,
-    Solution, UnconstrainedPick, Unpicked, Unresolved, UnsolvedNet, UnstatedValue, solve,
-    solve_system,
+    CurrentBound, DcSummary, HandPick, HeldBy, NetCurrent, OpenCircle, OrderCodeBy, Passed,
+    PassedWhy, Pick, Seeded, Solution, UnconstrainedPick, Unpicked, Unresolved, UnsolvedNet,
+    UnstatedValue, solve, solve_system,
 };
 pub use table::{Record, Supplier, Table, parse_csv};

@@ -251,7 +251,7 @@ impl Solver<'_> {
             }
             if let Some(chosen) = self.chosen.get(&job.path).cloned() {
                 let (source, span) = chosen
-                    .at
+                    .at()
                     .unwrap_or_else(|| self.model.instance(job.part).at());
                 self.report(
                     source,
