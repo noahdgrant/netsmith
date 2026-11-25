@@ -7,6 +7,7 @@
 pub mod board3d;
 pub mod buying;
 pub mod case_fit;
+pub mod decoupling_loop;
 pub mod dependency_lock;
 pub mod drc;
 pub mod fab;

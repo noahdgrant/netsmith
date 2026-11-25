@@ -22,6 +22,19 @@
 //!
 //! Places are footprint origins in the layout file's frame (mm from the outline's top left
 //! corner, y down), and distances are from the point to the centre of the courtyard.
+//!
+//! What it is near is a part (the centre of its courtyard), a pad (`PART.PAD`, the pad's centre,
+//! issue #1728) or a point. Each pose says why the places nearer than its answer were refused,
+//! counted by the kind of finding with the sentence of the nearest (`refusals`, issue #1727),
+//! and a place where the part's height cannot be compared with a limit over it carries `fab`'s
+//! `height_unchecked` warning (a warning there too, so the place is offered). With a count,
+//! [`Board::fit_part_ranked`] also gives that many places that fit over every pose, nearest
+//! first (`ranked`, issue #1728).
+//!
+//! The height limits are the placement check's (a keepout's `.max_height`, the case's and a
+//! mate's, an underside keepout, the standoff of a body): whatever limits a part's height over
+//! a place reaches the fit through [`Board::placement_problems_of`], so a new kind of limit
+//! (a module's underside of several depths, issue #1726) is judged here once the check has it.
 
 use serde::Serialize;
 
@@ -79,6 +92,9 @@ pub struct FitTarget {
     pub y: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub part: Option<PartRef>,
+    /// The pad it is the centre of, `REFDES.NUMBER`, when it is one (issue #1728).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pad: Option<String>,
     /// Whether it is where the part is now (no `--near`).
     #[serde(skip)]
     pub itself: bool,
@@ -110,6 +126,26 @@ pub struct FitPlace {
     /// The sentences of `placement`, `requirements` and `margins`, in that order.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub messages: Vec<String>,
+    /// What `fab` warns of the part here and does not refuse: its height cannot be compared
+    /// with a limit over it (`height_unchecked`, in `fab`'s words).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+    /// Why the places tried before this one (nearer the target, on the grid) were refused, by
+    /// the kind of finding (issue #1727). Empty for a place that is not a pose's answer.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub refusals: Vec<Refusals>,
+}
+
+/// The places of one pose refused for one kind of finding (issue #1727).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Refusals {
+    /// The placement check's kind (`overlap`, `too_tall`, `in_keepout`, ...), `requirement`
+    /// or `routing_margin`.
+    pub kind: &'static str,
+    /// How many places it refused.
+    pub places: usize,
+    /// Its sentence at the nearest of them, in `fab`'s words.
+    pub text: String,
 }
 
 /// A part nearer the fitted part than their routing margins ask for (issue #1313).
@@ -142,6 +178,10 @@ pub struct PartFit {
     /// For each turn and face tried: the nearest place that fits, or the closest try. The poses
     /// with a place come first, nearest first, then those without.
     pub poses: Vec<FitPlace>,
+    /// The places that fit over every pose, nearest first, as many as asked
+    /// ([`Board::fit_part_ranked`], issue #1728); left out when none were asked for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ranked: Option<Vec<FitPlace>>,
 }
 
 impl PartFit {
@@ -179,10 +219,11 @@ impl PartFit {
     pub fn text_moved(&self, by: [f64; 2], says: &str) -> String {
         let (mx, my) = (|x: f64| x + by[0], |y: f64| y + by[1]);
         let sentence = |m: &str| crate::prose::placer_moved(m, by, says);
-        let near = match &self.near.part {
-            Some(p) => format!("{} ({})", p.refdes, p.path),
-            None if self.near.itself => "where it is".to_string(),
-            None => format!("{},{}", num(mx(self.near.x)), num(my(self.near.y))),
+        let near = match (&self.near.part, &self.near.pad) {
+            (Some(p), Some(pad)) => format!("the pad {pad} of {}", p.path),
+            (Some(p), None) => format!("{} ({})", p.refdes, p.path),
+            (None, _) if self.near.itself => "where it is".to_string(),
+            (None, _) => format!("{},{}", num(mx(self.near.x)), num(my(self.near.y))),
         };
         let mut out = format!(
             "{} ({}) of {}, nearest {near}, on a grid of {} mm:\n",
@@ -212,6 +253,9 @@ impl PartFit {
                     num(p.turn),
                     p.side
                 );
+                for w in &p.warnings {
+                    out += &format!("    warning: {}\n", sentence(w));
+                }
             } else {
                 out += &format!(
                     "  no place turned {} on the {}; the closest try, {},{}, has:\n",
@@ -222,6 +266,36 @@ impl PartFit {
                 );
                 for m in &p.messages {
                     out += &format!("    {}\n", sentence(m));
+                }
+            }
+            for r in &p.refusals {
+                out += &format!(
+                    "    {} nearer place{} refused, {}: {}\n",
+                    r.places,
+                    if r.places == 1 { "" } else { "s" },
+                    r.kind.replace('_', " "),
+                    sentence(&r.text)
+                );
+            }
+        }
+        if let Some(ranked) = &self.ranked {
+            if ranked.is_empty() {
+                out += "  no ranked place: no place fits\n";
+            }
+            for (k, c) in ranked.iter().enumerate() {
+                out += &format!(
+                    "  place {}: {}, {} mm away: netsmith layout set {} --at {},{} --turn {} --side {} --lock\n",
+                    k + 1,
+                    pose(c, by),
+                    num(c.distance),
+                    self.part.path,
+                    num(c.at[0]),
+                    num(c.at[1]),
+                    num(c.turn),
+                    c.side
+                );
+                for w in &c.warnings {
+                    out += &format!("    warning: {}\n", sentence(w));
                 }
             }
         }
@@ -267,6 +341,21 @@ impl Board {
         step: f64,
         face: Option<Side>,
     ) -> Result<PartFit, String> {
+        self.fit_part_ranked(design, name, near, step, face, None)
+    }
+
+    /// [`Board::fit_part`], and with `count` that many places that fit over every pose, nearest
+    /// first (`ranked`, issue #1728): each pose gives its nearest `count` places on the
+    /// grid, and the nearest `count` of them all are kept (ties by turn, then face).
+    pub fn fit_part_ranked(
+        &self,
+        design: &Design,
+        name: &str,
+        near: &FitNear,
+        step: f64,
+        face: Option<Side>,
+        count: Option<usize>,
+    ) -> Result<PartFit, String> {
         if !(step.is_finite() && step > 0.0) {
             return Err(format!("the grid step must be above 0 mm, not {step}"));
         }
@@ -280,26 +369,16 @@ impl Board {
                     x: round(c.x - origin.x),
                     y: round(c.y - origin.y),
                     part: None,
+                    pad: None,
                     itself: true,
                 }
             }
-            FitNear::Part(other) => {
-                let other = &self.parts[self.find_part(other)?];
-                let c = other.courtyard().centre();
-                FitTarget {
-                    x: round(c.x - origin.x),
-                    y: round(c.y - origin.y),
-                    part: Some(PartRef {
-                        refdes: other.refdes.clone(),
-                        path: other.path.clone(),
-                    }),
-                    itself: false,
-                }
-            }
+            FitNear::Part(other) => self.near_target(other)?,
             FitNear::Point(x, y) => FitTarget {
                 x: *x,
                 y: *y,
                 part: None,
+                pad: None,
                 itself: false,
             },
         };
@@ -337,13 +416,17 @@ impl Board {
         };
         let base = part.rotation.rem_euclid(90.0);
         let mut poses = Vec::new();
+        let mut ranked = Vec::new();
+        let ask = count.unwrap_or(0);
         for side in faces {
             for q in 0..4 {
                 let turn = round(base + 90.0 * f64::from(q));
                 if !turn_ok(turn) {
                     continue;
                 }
-                poses.push(board.fit_pose(design, index, point, step, turn, side));
+                let (pose, more) = board.fit_pose(design, index, point, step, turn, side, ask);
+                poses.push(pose);
+                ranked.extend(more);
             }
         }
         poses.sort_by(|a, b| {
@@ -352,6 +435,13 @@ impl Board {
                 .then(a.distance.total_cmp(&b.distance))
                 .then(a.turn.total_cmp(&b.turn))
         });
+        ranked.sort_by(|a, b| {
+            a.distance
+                .total_cmp(&b.distance)
+                .then(a.turn.total_cmp(&b.turn))
+                .then(a.side.cmp(b.side))
+        });
+        ranked.truncate(ask);
         Ok(PartFit {
             board: self.name.clone(),
             part: PartRef {
@@ -363,6 +453,47 @@ impl Board {
             now,
             others,
             poses,
+            ranked: count.map(|_| ranked),
+        })
+    }
+
+    /// The point a part or a pad is: `name` a part (path or designator, the centre of its
+    /// courtyard) or, when no part is called that, `PART.PAD` (the centre of the pad; the first,
+    /// where the footprint has several of that number), as `layout summary --between` names a
+    /// pad. A name that is neither is refused with the nearest part names, a pad the part does
+    /// not have with its pads.
+    fn near_target(&self, name: &str) -> Result<FitTarget, String> {
+        let origin = self.outline.min;
+        let part_ref = |p: &Placed| PartRef {
+            refdes: p.refdes.clone(),
+            path: p.path.clone(),
+        };
+        if let Ok(i) = self.find_part(name) {
+            let other = &self.parts[i];
+            let c = other.courtyard().centre();
+            return Ok(FitTarget {
+                x: round(c.x - origin.x),
+                y: round(c.y - origin.y),
+                part: Some(part_ref(other)),
+                pad: None,
+                itself: false,
+            });
+        }
+        let is_pad = name
+            .rsplit_once('.')
+            .is_some_and(|(part, _)| self.find_part(part).is_ok());
+        if !is_pad {
+            return Err(crate::summary::no_part(self, name));
+        }
+        let (refdes, number, pads) = crate::summary::find_pads(self, name)?;
+        let c = pads[0].0;
+        let other = &self.parts[self.find_part(&refdes)?];
+        Ok(FitTarget {
+            x: round(c.x - origin.x),
+            y: round(c.y - origin.y),
+            part: Some(part_ref(other)),
+            pad: Some(format!("{refdes}.{number}")),
+            itself: false,
         })
     }
 
@@ -395,6 +526,12 @@ impl Board {
             .chain(requirements.iter().map(|m| m.text.clone()))
             .chain(margins.iter().map(|m| m.text.clone()))
             .collect();
+        let warnings = self
+            .heights_unchecked()
+            .iter()
+            .filter(|u| u.refdes == part.refdes)
+            .map(ToString::to_string)
+            .collect();
         let at = part.at - self.outline.min;
         FitPlace {
             turn: round(part.rotation),
@@ -406,6 +543,8 @@ impl Board {
             requirements,
             margins,
             messages,
+            warnings,
+            refusals: Vec::new(),
         }
     }
 
@@ -442,7 +581,10 @@ impl Board {
     }
 
     /// The nearest place of the part at `index` turned `turn` on `side` where nothing is found,
-    /// or the closest try. The part is left where it was.
+    /// or the closest try, with why the places tried before it were refused; and the nearest
+    /// `count` places where nothing is found (the first of them the answer). The part is left
+    /// where it was.
+    #[allow(clippy::too_many_arguments)]
     fn fit_pose(
         &mut self,
         design: &Design,
@@ -451,7 +593,8 @@ impl Board {
         step: f64,
         turn: f64,
         side: Side,
-    ) -> FitPlace {
+        count: usize,
+    ) -> (FitPlace, Vec<FitPlace>) {
         let was = (
             self.parts[index].at,
             self.parts[index].rotation,
@@ -501,15 +644,51 @@ impl Board {
         });
         let mut best: Option<(usize, f64, Pt)> = None;
         let mut found = None;
+        let mut fitting: Vec<Pt> = Vec::new();
+        // Why the places before the answer were refused: each kind once, counted, with the
+        // sentence of the nearest (issue #1727).
+        let mut refusals: Vec<Refusals> = Vec::new();
+        let mut refused = |kind: &'static str, text: &dyn Fn() -> String| match refusals
+            .iter_mut()
+            .find(|r| r.kind == kind)
+        {
+            Some(r) => r.places += 1,
+            None => refusals.push(Refusals {
+                kind,
+                places: 1,
+                text: text(),
+            }),
+        };
         for &(d, at) in &grid {
             self.parts[index].at = o.min + at;
             let refdes = &self.parts[index].refdes;
-            let faults = self.placement_problems_of(refdes).len()
-                + unmet(design, &self.parts, Some(&self.parts[index].path)).len()
-                + self.margins_of(index).len();
+            let problems = self.placement_problems_of(refdes);
+            let unmet = unmet(design, &self.parts, Some(&self.parts[index].path));
+            let margins = self.margins_of(index);
+            let faults = problems.len() + unmet.len() + margins.len();
             if faults == 0 {
-                found = Some(at);
-                break;
+                found.get_or_insert(at);
+                fitting.push(at);
+                if fitting.len() >= count.max(1) {
+                    break;
+                }
+                continue;
+            }
+            if found.is_none() {
+                // A kind counts a place once, however many of its findings the place has.
+                let mut kinds: Vec<&'static str> = Vec::new();
+                for p in &problems {
+                    if !kinds.contains(&p.rule()) {
+                        kinds.push(p.rule());
+                        refused(p.rule(), &|| self.fault_of(p).text);
+                    }
+                }
+                if let Some(m) = unmet.first() {
+                    refused("requirement", &|| m.1.text.clone());
+                }
+                if let Some(m) = margins.first() {
+                    refused("routing_margin", &|| m.text.clone());
+                }
             }
             if best.is_none_or(|(n, _, _)| faults < n) {
                 best = Some((faults, d, at));
@@ -517,10 +696,22 @@ impl Board {
         }
         let at = found.or(best.map(|b| b.2)).expect("one try at least");
         self.parts[index].at = o.min + at;
-        let place = self.measure(design, index, point);
+        let mut place = self.measure(design, index, point);
+        place.refusals = refusals;
+        let more = if count == 0 {
+            Vec::new()
+        } else {
+            fitting
+                .into_iter()
+                .map(|at| {
+                    self.parts[index].at = o.min + at;
+                    self.measure(design, index, point)
+                })
+                .collect()
+        };
         let p = &mut self.parts[index];
         (p.at, p.rotation, p.side) = was;
-        place
+        (place, more)
     }
 }
 

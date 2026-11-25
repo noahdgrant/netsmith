@@ -691,6 +691,8 @@ fn connect(art: &Artwork, net: &str, segs: &[&Seg], pads: &[&ArtworkPad]) -> Con
 pub(crate) struct Way {
     pub length: f64,
     pub vias: usize,
+    /// The narrowest track of the way, in mm; `None` for a way of no track (two pads joined).
+    pub narrowest: Option<f64>,
 }
 
 /// The shortest [`Way`] through the tracks of `net` (of `segs`, the board's straight pieces)
@@ -737,6 +739,7 @@ pub(crate) fn way(
         return Some(Way {
             length: 0.0,
             vias: 0,
+            narrowest: None,
         });
     }
     let edge = |e: usize| (g.node[2 * e], g.node[2 * e + 1]);
@@ -802,5 +805,13 @@ pub(crate) fn way(
             g.pieces[later].1 != g.pieces[earlier].1 && via_nodes.contains(&joint)
         })
         .count();
-    Some(Way { length, vias })
+    let narrowest = path
+        .iter()
+        .map(|&(e, _)| g.pieces[e].4)
+        .min_by(f64::total_cmp);
+    Some(Way {
+        length,
+        vias,
+        narrowest,
+    })
 }

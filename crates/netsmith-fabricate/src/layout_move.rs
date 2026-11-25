@@ -8,7 +8,11 @@
 //! ([`Board::laid_out_entries`], as `layout check` makes it), once with the entry where it is and
 //! once moved, and a fault of the second board about the part that the first does not have
 //! refuses the move (a fault the part had already does not: a move out of an overlap in two
-//! steps is allowed). An end is on a pad as the ratsnest joins copper to a pad
+//! steps is allowed). A height limit is the check's (a keepout's `.max_height`, the case's, a
+//! mate's, an underside keepout, a body's standoff), so a move under a limit the part is too
+//! tall for is refused with `fab`'s `too tall` sentence (issue #1727); a move that puts a part
+//! that states no height under a limit is allowed with `fab`'s `height_unchecked` warning, as
+//! `fab` warns of it. An end is on a pad as the ratsnest joins copper to a pad
 //! ([`netsmith_pcb::ratsnest_on_pad`]): its copper (half the track's width round the end, the
 //! via's radius) runs into the pad's box on the track's layer.
 //!
@@ -72,7 +76,8 @@ pub struct Moved {
     pub turn_to: f64,
     /// Whether the move makes no fault; when it does not, nothing is written.
     pub ok: bool,
-    /// The faults the move makes, as `layout check` has its `placement` findings.
+    /// The faults the move makes, as `layout check` has its `placement` findings, and the
+    /// warnings of `fab` it makes (`height_unchecked`, issue #1727), which do not refuse it.
     pub findings: Vec<Finding>,
     /// The routes file read, when there is one.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -106,15 +111,22 @@ impl Moved {
                 number(self.turn_to),
             ));
         }
+        let (errors, warnings): (Vec<&Finding>, Vec<&Finding>) = self
+            .findings
+            .iter()
+            .partition(|f| f.severity == Severity::Error);
         if !self.ok {
             out.push_str(&format!(
                 "the move makes {} fault(s) of the placement check, and {} is as it was:\n",
-                self.findings.len(),
+                errors.len(),
                 self.file
             ));
-            for f in &self.findings {
+            for f in &errors {
                 out.push_str(&format!("  {}\n", f.message));
             }
+        }
+        for f in &warnings {
+            out.push_str(&format!("warning: {}\n", f.message));
         }
         match &self.routes {
             None => out.push_str("no routes file: no copper to miss its pad\n"),
@@ -264,6 +276,31 @@ pub fn propose(
             fault: Some(fault),
         })
         .collect();
+    // What `fab` warns of and does not refuse: the part's height, unknown, under a limit.
+    let unchecked = |board: &Board| -> Vec<String> {
+        board
+            .heights_unchecked()
+            .iter()
+            .filter(|u| u.path == part.path)
+            .map(ToString::to_string)
+            .collect()
+    };
+    let was_unchecked = unchecked(&before);
+    let ok = findings.is_empty();
+    let mut findings = findings;
+    findings.extend(
+        unchecked(&after)
+            .into_iter()
+            .filter(|m| !was_unchecked.contains(m))
+            .map(|message| Finding {
+                severity: Severity::Warning,
+                kind: "height_unchecked",
+                path: Some(part.path.clone()),
+                line: lines.get(&part.path).copied(),
+                message,
+                fault: None,
+            }),
+    );
 
     let (missed, still_on) = match &routes {
         Some((routes, _)) => pad_ends(&before, &after, routes, &part.refdes),
@@ -281,7 +318,7 @@ pub fn propose(
             turn_by: turn,
             turn_from: old.rotation,
             turn_to,
-            ok: findings.is_empty(),
+            ok,
             findings,
             routes: routes.map(|(_, name)| name),
             missed,

@@ -505,6 +505,13 @@ The router routes a decoupling capacitor (a _Decoupling pair_ of the placer, see
 
 Which part a capacitor decouples is found from the nets, not from names (issue #821). A part whose pin table calls its supply and return pins `power` is decoupled by a capacitor between those two nets. A capacitor between two supply nets (nets that a `power` pin of some part is on) also decouples an IC, a connector or a part with no kind that has a pin of any kind on its rail, whatever the pin table calls that pin: an `input` or `passive` supply pin of a module, an imported part or a header is next to its capacitor as a `power` pin is. A resistor, a diode or an LED that hangs on a rail is not decoupled by its pin, and a capacitor between two signal nets (no `power` pin on either) decouples nothing. Of the parts, the ones that share most of the capacitor's path are kept, so a module's capacitor goes with the module's own part.
 
+`netsmith board nets --decoupling` lists each decoupling capacitor's loop on the board's copper, geometry only, so that a move of a capacitor can be compared before and after (issue #1730); it estimates no inductance. The capacitors are those of the decoupling pairs, bulk capacitors of a rail among them, and the return of each is the net the router takes for it (the one with a pour or a plane, else the one with more pads), the other its supply. The **pin it serves** is the decoupled part's pin on the supply net whose pad is nearest the capacitor's supply pad, and the return pin that part's pin on the return net nearest the capacitor's other pad. For each leg, supply (the capacitor's pad to the pin) and return (the pin back to the capacitor), it gives the distance centre to centre and the routed length, the narrowest track and the vias of the shortest way through the net's tracks, measured as a net's connection is; then the loop, the two added; and the **return copper**, the nearest copper layer (to the capacitor's own outer layer) with a zone of the return net over the capacitor's return pad, and its height through the stackup, copper centre to copper centre (0 mm for a pour on the capacitor's own layer). A pour or a plane carries current but has no path, so a leg that only a pour or a plane joins has no track and its loop is not complete: its length is of the other leg. With `--compare FILE` each capacitor's loop length, vias, narrowest track and return copper are set before and after: the earlier state is the JSON of an earlier `board nets --decoupling --format json` (the one to keep before moving a capacitor in the layout file) or a routes file, measured with the placement as it is now.
+
+```sh
+netsmith board nets --decoupling --format json > before.json   # before the move
+netsmith board nets --decoupling --route --compare before.json # after it: each loop before -> after
+```
+
 A part's datasheet may say more, in the part's `layout` block (chapter _Parts_, _What the datasheet says about layout_): each part a `near` statement finds from the nets is pulled toward the pin it names as a decoupling capacitor is to its part, a part a `loop` finds toward both its pins, a part an `away` finds is pushed out to the distance it gives, and the nearest pad of an `edge` statement's pin is pulled to the outline at the same weight. A `keepout` statement is a keepout the part carries, which the placer, the router and the pour keep to as they keep to any other; a `route` width is the least width of the pin's net; and the router puts the vias a `vias` statement asks for in the pin's pads, after routing and before the pours are stitched, where the process fills vias in pads and the net has a plane or the other outer layer's pour to reach. `fab` warns when the board does not meet a number the datasheet gives, unless the layout file waives the guideline with a reason.
 
 ### Kelvin sense connections
@@ -1898,11 +1905,59 @@ error: Flat: `r.standoff` is 6 mm and `r.height` is 2 mm: the body stands from i
 A module that stands on sockets or spacers covers more of the board than its footprint: the footprint's outline holds only what is soldered (two socket rows), and the maker allows only parts lower than a figure under the module's body (a "0.5 mm under-height" rule). A part states that area as its member `.underside_keepout`, of `std::pcb::UndersideKeepout` (issue #1335), in its own frame (the footprint's, as on the top face), declared where the part is defined or in a use's block:
 
 - a rectangle, `.x` and `.y` (the corner nearest the footprint's origin), `.width` and `.height`; or a `polygon` of straight edges in its block, `polygon (-10mm, -5mm) (10mm, -5mm) (10mm, 5mm) (-10mm, 5mm)`, for a body that is not a rectangle (no `round` or `arc through`, and not with the four fields);
-- `.max_height`, the tallest a part may stand under the body, from the face of the board, one length above zero.
+- `.max_height`, the tallest a part may stand under the body, from the face of the board, one length above zero: the depth under the body there;
+- `.solder_allowance` and `.margin`, two lengths of zero or more that may be left out (issue #1726): a module soldered flat sits on its solder, which lifts its body by the allowance, and the margin is what is kept clear between a part under it and the body. A part under it may stand the depth plus the allowance less the margin, and that is the figure the check and its messages give; a depth that leaves nothing is an error.
 
 It is a keepout the part carries that limits only height: every other part on the face the part is on whose body is in the area, at its height grown by its `.height_growth`, may stand at most `.max_height`, wherever the placer puts the part and whichever face (it turns over with a part on the bottom). A part on the other face is not under the body, and the part itself is not measured. A part too tall is `too tall`, and the finding names it and the part whose keepout it is; a part of no known height under it is unchecked, as under a lid. The placer keeps a part too tall for it out of the box round it (the box of a polygon); the check measures the polygon. Where the part is a connector of a system's mate, the other board's parts are under it too: the area goes over the other connector, turned and mirrored as the mate puts the two together (the pads say how, so neither needs a place), and limits the parts on that board's facing face to the same `.max_height` from its own face, named `System/member.connector.underside_keepout`. A `.standoff` is a different limit: the gap under the footprint's own outline.
 
-The name is the member's: an `UndersideKeepout` under another name, or one of a board or a module, is an error, and a part has one.
+The name is the member's: `.underside_keepout`, or `.underside_keepout_` and a word for each more area. An `UndersideKeepout` under another name, or one of a board or a module, is an error.
+
+**An underside of several depths (issue #1726).** A module soldered flat over other parts rarely has one depth under it: a holder sits in a pocket, small packages and bare areas leave less. Each area is its own member with its own depth, `.underside_keepout` and as many `.underside_keepout_` and a word as the module needs, all in the footprint's frame, and every one is checked wherever the module is placed: by `board check` and `fab`, by `layout fit` (no place is offered where the part stands taller than the area there allows, and the refusals say which area), and by `layout move` and `layout set`. A part under two areas is held to each. A message names the area (`the underside keepout `.underside_keepout_bare` of `module``). Here a pocket on the left of the footprint leaves 1.4 mm (1.5 mm deep, 0.1 mm of solder, 0.2 mm kept clear), and a bare area on the right 0.2 mm:
+
+```nsm solve
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::passive::Resistor
+import std::pcb::UndersideKeepout
+import std::sources::Rail
+
+board Flat {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .rail: Rail { .voltage &= 5V +/- 5%; .pos.net &= "VCC" }
+    // Stands for a module whose body covers 20 by 10 mm round its footprint.
+    .module: Resistor {
+        .resistance &= 15kohm +/- 1%
+        .underside_keepout: UndersideKeepout {
+            .x &= -10mm
+            .y &= -5mm
+            .width &= 10mm
+            .height &= 10mm
+            .max_height &= 1.5mm
+            .solder_allowance &= 0.1mm
+            .margin &= 0.2mm
+        }
+        .underside_keepout_bare: UndersideKeepout {
+            .x &= 0mm
+            .y &= -5mm
+            .width &= 10mm
+            .height &= 10mm
+            .max_height &= 0.3mm
+            .solder_allowance &= 0.1mm
+            .margin &= 0.2mm
+        }
+    }
+    .low: Resistor { .resistance &= 15kohm +/- 1% }
+    .rail.pos ~> .module ~> .rail.neg
+    .rail.pos ~> .low ~> .rail.neg
+    .module.height &= 4mm
+    .low.height &= 1.2mm
+}
+```
+
+`low` may stand in the pocket; put under the bare area by hand, the check says:
+
+```text
+error: Flat: `low` (R1) stands 1.20 mm tall on the top face, and the underside keepout `.underside_keepout_bare` of `module` allows 0.20 mm there (1.00 mm too tall), where its body is, around (26.0, 15.0) mm from the board's top left corner
+```
 
 ```nsm solve place
 import std::mfg::jlcpcb::TwoLayer
@@ -1968,7 +2023,7 @@ board Loose {
 ```
 
 ```text
-error: Loose: `area` is an `UndersideKeepout`, and it is the area under a part's body: declare it in the part as its member `.underside_keepout` (issue #1335)
+error: Loose: `area` is an `UndersideKeepout`, and it is the area under a part's body: declare it in the part as its member `.underside_keepout`, or `.underside_keepout_` and a word (`.underside_keepout_sim`) for each more area with its own depth (issues #1335, #1726)
 ```
 
 ### Pin protrusion
@@ -3309,10 +3364,11 @@ netsmith layout capture            # an entry for every part, and the seed, in m
 netsmith layout capture --dry-run  # what it would write
 ```
 
-**Where one part fits.** `netsmith layout fit PATH` says where one part fits with every other part where it is (issue #780): the board is placed as `dev board3d` places it, and the part (a path or a designator) is tried on a grid of origins every `--step` mm (0.5 by default) from the outline's top left corner, for each of the four right-angle turns from its own and on each face (one face when a requirement of the physical file states it, or `--side` names it; a turn a requirement rules out is not tried). Each place is measured as `fab` and `layout check` measure it, by the same function (issue #1224): the placement check of the part against every other part where it is (courtyards, each shape of a courtyard of several counted as its own, holes, keepouts, height limits, the edge, cutouts) and the requirements about it (its windows, its modules' and the relations it is an end of). For each turn and face it gives the place nearest `--near` where nothing is found (a part, by the centre of its courtyard, or a point `X,Y`; with none, where the part is), or, when there is none, the closest try with what is in the way there. It writes nothing; the text gives the `layout set ... --lock` that writes each place, locked: the place is free with every other part where it is, and `fab`'s placer places the parts with no entry round a locked part, where an unlocked entry is put where it says after placing and may find one of them there. The exit code is 1 when no turn or face has a place. `--format json` is one document: `board`, `part`, `near`, `step`, `now` (the part where it is) and `poses`, each with `turn`, `side`, `at` (the footprint's origin, as `at` in the layout file), `distance`, `fits` and, where it does not fit, `placement` (as `board fab --format json` has it), `requirements` and `messages`.
+**Where one part fits.** `netsmith layout fit PATH` says where one part fits with every other part where it is (issue #780): the board is placed as `dev board3d` places it, and the part (a path or a designator) is tried on a grid of origins every `--step` mm (0.5 by default) from the outline's top left corner, for each of the four right-angle turns from its own and on each face (one face when a requirement of the physical file states it, or `--side` names it; a turn a requirement rules out is not tried). Each place is measured as `fab` and `layout check` measure it, by the same function (issue #1224): the placement check of the part against every other part where it is (courtyards, each shape of a courtyard of several counted as its own, holes, keepouts, height limits, the edge, cutouts) and the requirements about it (its windows, its modules' and the relations it is an end of). For each turn and face it gives the place nearest `--near` where nothing is found (a part, by the centre of its courtyard; a pad, `PART.PAD` as `layout summary --between` names one, by the pad's centre; or a point `X,Y`; with none, where the part is), or, when there is none, the closest try with what is in the way there, and why the places tried nearer were refused (issue #1727): how many for each kind of finding, with `fab`'s sentence at the nearest of them (`1016 nearer places refused, too tall: ...`). The height limits are the placement check's, so a part too tall for a limit is offered no place under it: a keepout's `.max_height`, the case's and a mate's, an underside keepout and the standoff of a body, each at the part's height grown by its `.height_growth`. A place where a part that states no height stands under a limit is offered with `fab`'s `height_unchecked` warning beside it, as `fab` warns of it. `--count N` (issue #1728) also lists the N nearest places that fit over every turn and face, nearest first, each with its distance, turn and face and the line that writes it (`place 1: ...`; several may be one grid step apart: a larger `--step` spreads them). It writes nothing; the text gives the `layout set ... --lock` that writes each place, locked: the place is free with every other part where it is, and `fab`'s placer places the parts with no entry round a locked part, where an unlocked entry is put where it says after placing and may find one of them there. The exit code is 1 when no turn or face has a place. `--format json` is one document: `board`, `part`, `near`, `step`, `now` (the part where it is) and `poses`, each with `turn`, `side`, `at` (the footprint's origin, as `at` in the layout file), `distance`, `fits` and, where it does not fit, `placement` (as `board fab --format json` has it), `requirements` and `messages`, with `warnings` (`fab`'s warnings there) and `refusals` (each `kind`, `places` and `text`); with `--count`, `ranked`, the places that fit as `poses` has them, nearest first, and `near` has the `pad` when it is one.
 
 ```sh
 netsmith layout fit stage.r1 --near U1           # the nearest place of each pose, beside U1
+netsmith layout fit C4 --near U1.7 --count 5     # the five nearest legal places to pad 7 of U1
 netsmith layout fit R7 --near 12,30 --side top   # near a point, on the top face only
 netsmith layout fit R7 --as-laid-out             # no placement: the board as the layout file has it
 ```
