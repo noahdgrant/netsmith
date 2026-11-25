@@ -250,3 +250,96 @@ fn an_underside_keepout_that_is_not_a_parts_or_says_no_limit_is_refused() {
     .expect_err("a fillet");
     assert!(e.contains("has straight edges"), "{e}");
 }
+
+/// An underside of two depths (issue #1726): a pocket 1.5 mm deep left of the footprint and a
+/// bare area 0.3 mm deep right of it, under a module its solder lifts 0.1 mm, with 0.2 mm kept
+/// clear: a part may stand 1.4 mm in the pocket and 0.2 mm in the bare area.
+const AREAS: &str = "        .underside_keepout: UndersideKeepout {
+            .x &= -10mm
+            .y &= -5mm
+            .width &= 10mm
+            .height &= 10mm
+            .max_height &= 1.5mm
+            .solder_allowance &= 0.1mm
+            .margin &= 0.2mm
+        }
+        .underside_keepout_bare: UndersideKeepout {
+            .x &= 0mm
+            .y &= -5mm
+            .width &= 10mm
+            .height &= 10mm
+            .max_height &= 0.3mm
+            .solder_allowance &= 0.1mm
+            .margin &= 0.2mm
+        }
+";
+
+#[test]
+fn each_area_of_an_underside_has_its_own_depth_with_the_allowance_and_margin() {
+    let b = built(AREAS);
+    let limit = |name: &str| {
+        b.design
+            .features
+            .keepouts
+            .iter()
+            .find(|k| k.name == name)
+            .unwrap_or_else(|| panic!("{name}"))
+            .max_height
+    };
+    assert_eq!(limit("module.underside_keepout"), Some(1.4));
+    assert_eq!(limit("module.underside_keepout_bare"), Some(0.2));
+}
+
+#[test]
+fn a_part_under_the_module_is_refused_where_it_exceeds_the_depth_there_and_accepted_where_not() {
+    let b = built(AREAS);
+    // `tall` (1.2 mm) in the pocket, `low` (0.4 mm) also in the pocket: both fit.
+    assert!(too_tall(&arranged(&b, (-6.0, 3.0), (-6.0, -3.0))).is_empty());
+    // `tall` in the bare area, 0.2 mm deep: refused, by that area's name.
+    let found = too_tall(&arranged(&b, (-6.0, 0.0), (6.0, 0.0)));
+    assert_eq!(found.len(), 1, "{found:?}");
+    let (path, keepout, text) = &found[0];
+    assert_eq!((path.as_str(), keepout.as_str()), ("tall", "module.underside_keepout_bare"));
+    assert!(
+        text.contains("the underside keepout `.underside_keepout_bare` of `module` allows 0.20 mm there"),
+        "{text}"
+    );
+    // `low` (0.4 mm) in the bare area is too tall too, by the margin: 0.3 + 0.1 - 0.2 = 0.2.
+    let found = too_tall(&arranged(&b, (6.0, 3.0), (-6.0, 0.0)));
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].0, "low");
+}
+
+#[test]
+fn the_placer_keeps_parts_out_of_an_area_too_shallow_for_them() {
+    let board = placed(&built(AREAS));
+    assert!(too_tall(&board).is_empty(), "{:?}", too_tall(&board));
+}
+
+#[test]
+fn an_area_named_otherwise_or_left_no_room_by_its_margin_is_refused() {
+    let e = build(
+        "        .bare: UndersideKeepout { .x &= 0mm; .y &= 0mm; .width &= 1mm; .height &= 1mm; .max_height &= 1mm }\n",
+        "",
+    )
+    .map(|_| ())
+    .expect_err("another name");
+    assert!(e.contains("`.underside_keepout_sim`) for each more area"), "{e}");
+    let e = build(
+        "        .underside_keepout_bare: UndersideKeepout { .x &= 0mm; .y &= 0mm; .width &= 1mm; .height &= 1mm; .max_height &= 0.2mm; .margin &= 0.2mm }\n",
+        "",
+    )
+    .map(|_| ())
+    .expect_err("no room");
+    assert!(
+        e.contains("`module.underside_keepout_bare.max_height` is 0.2 mm, which with its 0 mm `.solder_allowance` and less its 0.2 mm `.margin` leaves 0 mm"),
+        "{e}"
+    );
+    let e = build(
+        "        .underside_keepout: UndersideKeepout { .x &= 0mm; .y &= 0mm; .width &= 1mm; .height &= 1mm; .max_height &= 1mm; .margin &= -0.1mm }\n",
+        "",
+    )
+    .map(|_| ())
+    .expect_err("a negative margin");
+    assert!(e.contains("`module.underside_keepout.margin` is -0.1 mm"), "{e}");
+}

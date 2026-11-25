@@ -11,7 +11,7 @@ use netsmith_core::{
     LogoLayer, NetPair, Offset, OffsetEnd, Outline, PadConnection, PadContactOffset, PartHeight,
     PartHeightGrowth, PartKind, PartRoutingMargin, PartSilk, PartSoftMargin, PartStandoff,
     PinProtrusion, PlaceBound, PlaceField, Placement, Pour, SilkPrint, StepModel,
-    UNDERSIDE_KEEPOUT,
+    UNDERSIDE_KEEPOUT, is_underside_member,
 };
 use netsmith_lang::Span;
 use std::collections::{BTreeMap, BTreeSet};
@@ -1767,8 +1767,10 @@ pub(crate) fn features_of(
 /// the tallest a part may stand there, as a keepout the part carries that limits only height, on
 /// the face the part is on wherever the placer puts it. It is a rectangle (`.x`, `.y`,
 /// `.width`, `.height`) or a `polygon` of straight edges, never both; `.max_height` is one
-/// length above zero. It is a part's member named `underside_keepout`, and anything else is an
-/// error that says so.
+/// length above zero, the depth under the body there, to which `.solder_allowance` is added and
+/// from which `.margin` is taken (issue #1726), and what is left is the limit. It is a part's
+/// member named `underside_keepout`, or `underside_keepout_` and a word for each more area
+/// (issue #1726), and anything else is an error that says so.
 fn underside_keepout(
     model: &Model,
     id: InstId,
@@ -1777,21 +1779,44 @@ fn underside_keepout(
 ) -> Option<Keepout> {
     let parent = model.instance(id).parent;
     let part = parent.filter(|p| model.instance(*p).kind == InstKind::Part);
-    let Some(part) = part.filter(|_| model.instance(id).name == UNDERSIDE_KEEPOUT) else {
+    let Some(part) = part.filter(|_| is_underside_member(&model.instance(id).name)) else {
         errors.push(format!(
-            "`{path}` is an `UndersideKeepout`, and it is the area under a part's body: declare it in the part as its member `.{UNDERSIDE_KEEPOUT}` (issue #1335)"
+            "`{path}` is an `UndersideKeepout`, and it is the area under a part's body: declare it in the part as its member `.{UNDERSIDE_KEEPOUT}`, or `.{UNDERSIDE_KEEPOUT}_` and a word (`.{UNDERSIDE_KEEPOUT}_sim`) for each more area with its own depth (issues #1335, #1726)"
         ));
         return None;
     };
-    let Some(limit) = exact(model, id, "max_height", errors) else {
+    let Some(depth) = exact(model, id, "max_height", errors) else {
         errors.push(format!(
             "`{path}` states no `.max_height`: say how tall a part may stand under the body, for example `.max_height &= 0.5mm`"
         ));
         return None;
     };
-    if limit <= 0.0 {
+    // The solder under the part's own pads lifts its body by `.solder_allowance`, and
+    // `.margin` is kept clear under it (issue #1726): a part under it stands at most the depth,
+    // plus the one, less the other.
+    let mut extra = |name: &str| -> Option<f64> {
+        let v = exact(model, id, name, errors).unwrap_or(0.0);
+        if v < 0.0 {
+            errors.push(format!(
+                "`{path}.{name}` is {v} mm, and it is a length of zero or more: leave it out for none"
+            ));
+            return None;
+        }
+        Some(v)
+    };
+    let (allowance, margin) = (extra("solder_allowance")?, extra("margin")?);
+    let limit = depth + allowance - margin;
+    if depth <= 0.0 || limit <= 1e-9 {
+        let what = if allowance > 0.0 || margin > 0.0 {
+            format!(
+                "is {depth} mm, which with its {allowance} mm `.solder_allowance` and less its {margin} mm `.margin` leaves {} mm,",
+                (limit * 1e6).round() / 1e6
+            )
+        } else {
+            format!("is {depth} mm,")
+        };
         errors.push(format!(
-            "`{path}.max_height` is {limit} mm, and a part cannot stand under a limit of nothing: give the figure the part's maker allows under its body"
+            "`{path}.max_height` {what} and a part cannot stand under a limit of nothing: give the figure the part's maker allows under its body"
         ));
         return None;
     }
@@ -1851,7 +1876,7 @@ fn underside_keepout(
         vias: false,
         copper: false,
         parts: false,
-        max_height: Some(limit),
+        max_height: Some((limit * 1e6).round() / 1e6),
         on_carrier_face: true,
         polygon,
     })
