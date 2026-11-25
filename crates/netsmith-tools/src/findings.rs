@@ -134,6 +134,11 @@ pub struct Finding {
     /// the footprint's, which the board cannot fix, and the layout file may waive it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub footprint: Option<String>,
+    /// For a finding within one part's own footprint: the numbers of its pads that the finding
+    /// names, each once. A `solder_mask_bridge` finding for a part whose pads no mask web fits
+    /// between (issue #1685) stands for many pairs, and lists every pad of them here.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub pads: Vec<String>,
     /// For a waived finding of the design rules check: the layout file's key of the waiver
     /// (`reg.ic.pad_to_pad`), its reason and its source.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -228,6 +233,7 @@ impl Finding {
             parts: Vec::new(),
             waived: None,
             footprint: None,
+            pads: Vec::new(),
             waiver: None,
             reason: None,
             source: None,
@@ -275,6 +281,7 @@ pub fn of_drc_finding(f: &netsmith_geom::DrcFinding, board: Option<&str>) -> Fin
         nets,
         parts: f.parts(),
         footprint: f.own_part().map(str::to_string),
+        pads: own_pads(f),
         carrying: f.carrying.as_ref().map(Carrying::from),
         source: f.source.clone(),
         ..Finding::plain(
@@ -288,6 +295,20 @@ pub fn of_drc_finding(f: &netsmith_geom::DrcFinding, board: Option<&str>) -> Fin
             f.with_items(),
         )
     }
+}
+
+/// The numbers of the pads a finding within one part's own footprint names, each once; none for
+/// another finding.
+fn own_pads(f: &netsmith_geom::DrcFinding) -> Vec<String> {
+    let mut pads: Vec<String> = Vec::new();
+    if f.own_part().is_some() {
+        for p in f.items.iter().filter_map(|i| i.pad.clone()) {
+            if !pads.contains(&p) {
+                pads.push(p);
+            }
+        }
+    }
+    pads
 }
 
 /// A finding of the design rules check that a waiver of the layout file covers, as [`of_drc`]

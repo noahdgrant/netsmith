@@ -133,3 +133,77 @@ fn a_legal_footprint_and_a_part_of_the_board_report_none() {
     assert_eq!(run.status.code(), Some(1), "{}", text(&run));
     assert!(text(&run).contains("no part `U9`"), "{}", text(&run));
 }
+
+/// A footprint of eight surface-mount pads 0.28 mm wide at a pitch of 0.4 mm: 0.12 mm of copper
+/// between neighbours, under the process's 0.13 mm mask web.
+fn fine_pitch() -> String {
+    let pads: String = (0..8)
+        .map(|k| {
+            format!(
+                "  (pad \"{}\" smd rect (at {:.1} 0) (size 0.28 0.8) (layers \"F.Cu\" \"F.Paste\" \"F.Mask\"))\n",
+                k + 1,
+                k as f64 * 0.4 - 1.4
+            )
+        })
+        .collect();
+    format!(
+        "(footprint \"Fine\" (layer \"F.Cu\") (attr smd)
+  (property \"Reference\" \"REF**\" (at 0 -1.5) (layer \"F.SilkS\") (effects (font (size 1 1) (thickness 0.15))))
+  (fp_rect (start -2 -1) (end 2 1) (stroke (width 0.05) (type solid)) (layer \"F.CrtYd\"))
+{pads})\n"
+    )
+}
+
+#[test]
+fn a_0_4_mm_pitch_footprint_has_one_mask_bridge_line_with_the_count_and_spacing() {
+    // Issue #1685: seven pairs no mask web fits between are one line, with every pad.
+    let dir = project("check-footprint-fine");
+    fs::write(dir.join("Fine.kicad_mod"), fine_pitch()).unwrap();
+    let run = netsmith(
+        &dir,
+        &["board", "check-footprint", "Fine.kicad_mod", "led.nsm"],
+    );
+    let out = text(&run);
+    let bridges: Vec<&str> = out
+        .lines()
+        .filter(|l| l.contains("[solder_mask_bridge]"))
+        .collect();
+    assert_eq!(bridges.len(), 1, "{out}");
+    assert!(
+        bridges[0].contains("pads 1, 2, 3, 4, 5, 6, 7 and 8: 7 pairs, needs 0.1300 mm, has 0.1200 mm"),
+        "{out}"
+    );
+
+    let run = netsmith(
+        &dir,
+        &[
+            "board",
+            "check-footprint",
+            "Fine.kicad_mod",
+            "led.nsm",
+            "--format",
+            "json",
+        ],
+    );
+    let doc: serde_json::Value =
+        serde_json::from_slice(&run.stdout).unwrap_or_else(|e| panic!("{e}: {}", text(&run)));
+    let bridges: Vec<&serde_json::Value> = doc["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|w| w["rule"] == "solder_mask_bridge")
+        .collect();
+    assert_eq!(bridges.len(), 1, "{doc:#}");
+    assert_eq!(
+        bridges[0]["pads"],
+        serde_json::json!(["1", "2", "3", "4", "5", "6", "7", "8"]),
+        "{doc:#}"
+    );
+    assert!(
+        bridges[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("7 pairs of"),
+        "{doc:#}"
+    );
+}

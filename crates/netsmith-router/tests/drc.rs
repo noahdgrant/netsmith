@@ -54,6 +54,7 @@ fn ours(board: &Board) -> DrcReport {
         net_currents: Vec::new(),
         waivers: Vec::new(),
         strict_guidelines: false,
+        mask_web_summary: false,
         open: Vec::new(),
     };
     drc_check(&kicad_pcb(board), Some(&kicad_pro(board)), &extras)
