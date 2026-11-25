@@ -188,7 +188,7 @@ fn terminal(pads: &[&ArtworkPad], net: &str, names: &[String]) -> Result<Vec<usi
 
 /// The height of each copper layer of `art` in the board, in mm from its top: from its stackup,
 /// or its thickness (1.6 mm when the file gives none) shared evenly between the layers.
-fn heights(art: &Artwork) -> Vec<f64> {
+pub(crate) fn heights(art: &Artwork) -> Vec<f64> {
     let n = art.copper.len();
     let mut at = Vec::new();
     let mut z = 0.0;
