@@ -255,46 +255,56 @@ pub fn add(
                 let host_part = part_path(host_path, &host.name);
                 let partner_part = part_path(partner_path, &partner.name);
                 let label = boards[host.index].label();
-                // The other connector's underside keepout (issue #1335) limits the parts of
-                // this board under it, carried over this board's connector.
-                let underside = format!("{partner_part}.{}", netsmith_core::UNDERSIDE_KEEPOUT);
-                let stated = boards[partner.index]
+                // The other connector's underside keepouts (issue #1335, several with their
+                // depths, issue #1726) limit the parts of this board under it, carried over
+                // this board's connector.
+                let stated: Vec<Keepout> = boards[partner.index]
                     .design
                     .features
                     .keepouts
                     .iter()
-                    .find(|k| k.name == underside && k.part.as_deref() == Some(&partner_part))
-                    .cloned();
-                if let Some(stated) = stated
-                    && let Some((host_pads, partner_pads)) =
-                        local_pads(host, &host_part, partner, &partner_part)
-                {
+                    .filter(|k| {
+                        k.part.as_deref() == Some(&partner_part)
+                            && netsmith_core::underside_of(&k.name)
+                                .is_some_and(|(p, _)| p == partner_part)
+                    })
+                    .cloned()
+                    .collect();
+                let pads = if stated.is_empty() {
+                    None
+                } else {
+                    local_pads(host, &host_part, partner, &partner_part)
+                };
+                if let Some((host_pads, partner_pads)) = pads {
                     let pairs = pairs_of(&host_pads, window);
-                    match carried_underside(&host_pads, &partner_pads, &stated, &pairs) {
-                        Ok((at, size, corners)) => found.push((
-                            host.index,
-                            Keepout {
-                                name: format!("{}/{}.{underside}", system.name, partner.name),
-                                part: Some(host_part.clone()),
-                                at: Some(at),
-                                size,
-                                layers: vec!["top".to_string()],
-                                tracks: false,
-                                vias: false,
-                                copper: false,
-                                parts: false,
-                                max_height: stated.max_height,
-                                on_carrier_face: true,
-                                polygon: Some(corners),
-                            },
-                        )),
-                        Err(why) => notes.push((
-                            label.clone(),
-                            format!(
-                                "the underside keepout of `{}.{partner_part}` is not carried over `{host_part}`, so `{}` does not keep its parts under it low: {why}",
-                                partner.name, host.name
-                            ),
-                        )),
+                    for stated in &stated {
+                        let underside = &stated.name;
+                        match carried_underside(&host_pads, &partner_pads, stated, &pairs) {
+                            Ok((at, size, corners)) => found.push((
+                                host.index,
+                                Keepout {
+                                    name: format!("{}/{}.{underside}", system.name, partner.name),
+                                    part: Some(host_part.clone()),
+                                    at: Some(at),
+                                    size,
+                                    layers: vec!["top".to_string()],
+                                    tracks: false,
+                                    vias: false,
+                                    copper: false,
+                                    parts: false,
+                                    max_height: stated.max_height,
+                                    on_carrier_face: true,
+                                    polygon: Some(corners),
+                                },
+                            )),
+                            Err(why) => notes.push((
+                                label.clone(),
+                                format!(
+                                    "the underside keepout `{}.{underside}` is not carried over `{host_part}`, so `{}` does not keep its parts under it low: {why}",
+                                    partner.name, host.name
+                                ),
+                            )),
+                        }
                     }
                 }
                 match area_of(

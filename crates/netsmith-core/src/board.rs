@@ -150,9 +150,29 @@ pub struct Keepout {
 }
 
 /// The name of a part's member that is the area under its body (issue #1335): a keepout whose
-/// name ends with `.underside_keepout` is one, and a message calls it the underside keepout of
-/// the part.
+/// name ends with `.underside_keepout` (or `.underside_keepout_` and a word, issue #1726,
+/// [`is_underside_member`]) is one, and a message calls it the underside keepout of the part.
 pub const UNDERSIDE_KEEPOUT: &str = "underside_keepout";
+
+/// Whether a part's member named `member` is an area under its body: `underside_keepout`, or
+/// `underside_keepout_` and a word (`underside_keepout_sim`) for one of several, each with the
+/// depth under it (issue #1726).
+pub fn is_underside_member(member: &str) -> bool {
+    member == UNDERSIDE_KEEPOUT
+        || member
+            .strip_prefix(UNDERSIDE_KEEPOUT)
+            .and_then(|r| r.strip_prefix('_'))
+            .is_some_and(|w| !w.is_empty())
+}
+
+/// The part a keepout named `name` is the area under, and the member it is
+/// (`m1.underside_keepout_sim` is `("m1", "underside_keepout_sim")`, and
+/// `Kit/card.j1.underside_keepout`, carried over the connector it is mated with, is
+/// `("Kit/card.j1", "underside_keepout")`), or `None` for any other keepout.
+pub fn underside_of(name: &str) -> Option<(&str, &str)> {
+    let (part, member) = name.rsplit_once('.')?;
+    (!part.is_empty() && is_underside_member(member)).then_some((part, member))
+}
 
 /// How tall a part stands above the board, as the design states it (ADR 0045, "Height
 /// limits"). A part the design does not state a height for is not here: its

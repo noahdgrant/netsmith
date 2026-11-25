@@ -77,7 +77,7 @@ impl Checker<'_> {
             self.error(
                 p.span,
                 if underside {
-                    "the underside keepout already has a `polygon`, and a body has one area"
+                    "the underside keepout already has a `polygon`, and it is one area: give another area its own member, `.underside_keepout_` and a word (issue #1726)"
                 } else {
                     "the outline already has a `polygon`, and a board has one edge"
                 },

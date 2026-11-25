@@ -184,7 +184,13 @@ interface CaseModel {
 ///   `.height`; or a polygon of straight edges, `polygon (-20mm, -12mm) (20mm, -12mm) (20mm,
 ///   12mm) (-20mm, 12mm)`, in its block, for a body that is not a rectangle;
 /// - `.max_height`, the tallest a part may stand under it, from the face of the board the part
-///   is on.
+///   is on: the depth under the body there;
+/// - `.solder_allowance` and `.margin`, when stated: a part under it may stand the depth plus
+///   the allowance (the solder that lifts the body) less the margin (what is kept clear).
+///
+/// An underside that is not one depth (a holder in a pocket, bare areas, small packages) is
+/// several areas, each its own member and its own depth: `.underside_keepout` and
+/// `.underside_keepout_` and a word (`.underside_keepout_sim`), as many as it needs.
 ///
 /// It limits the height of every other part on that face whose body is in the area, as a
 /// keepout's `.max_height` does, on whichever face the placer puts the part; a part on the other
@@ -200,6 +206,13 @@ interface UndersideKeepout {
     .y: Length
     .width: Length
     .height: Length
-    /// The tallest a part may stand under the body, from the board's face.
+    /// The tallest a part may stand under the body, from the board's face: the depth under the
+    /// body in this area.
     .max_height: Length
+    /// How far the solder under the part's own pads lifts its body off the board, added to the
+    /// depth (zero when left out).
+    .solder_allowance: Length
+    /// What is kept clear between a part under the body and the body, taken from the depth
+    /// (zero when left out).
+    .margin: Length
 }
