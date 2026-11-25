@@ -22,8 +22,9 @@ pub struct Args {
     /// Its own pads and copper are then no other net's, and only its pads are sites in a pad.
     #[arg(long, value_name = "NET")]
     pub net: Option<String>,
-    /// List apart the sites whose via would cut a pour, a plane or a zone into a new island that
-    /// holds pads or vias, with the island.
+    /// List apart the sites whose via would cut a new island with pads or vias off a pour or zone.
+    ///
+    /// The pour, plane or zone is named with the island, which holds pads or vias.
     #[arg(long)]
     pub zone_safe: bool,
     /// Text for a person, or one JSON document on stdout.

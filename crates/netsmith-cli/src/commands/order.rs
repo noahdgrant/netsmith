@@ -24,7 +24,7 @@ pub struct Args {
     /// Seconds the router may take for a board; 0 is no limit (default 300).
     #[arg(long, value_name = "SECS")]
     pub route_timeout: Option<u64>,
-    /// Rounds of rip-up and re-route of whole nets for connections the router leaves; 0 is none.
+    /// Rounds of rip-up and re-route for connections left open; 0 is none.
     ///
     /// As `board fab --rip-rounds`; `rip_rounds` in netsmith.toml sets it for a project, and this
     /// wins.
@@ -33,11 +33,13 @@ pub struct Args {
     /// Package a board that fails the design rules check (never an unmet `[constraint]`).
     #[arg(long)]
     pub allow_drc_violations: bool,
-    /// Check the Gerbers against the board with netsmith's viewer (no KiCad), and with KiCad's plot and check when KiCad is installed.
+    /// Check the Gerbers against the board with netsmith's viewer, and with KiCad when installed.
+    ///
+    /// The viewer comparison needs no KiCad; KiCad's own plot and check run when KiCad is
+    /// installed.
     #[arg(long)]
     pub cross_check: bool,
-    /// Make a guideline finding, and a part with no room among the locked parts, an error for
-    /// this run.
+    /// Make guideline findings, and a part with no room among locked parts, errors for this run.
     #[arg(long)]
     pub strict: bool,
     /// Stop when the pick lock or the pin file of a source file of the order would change.

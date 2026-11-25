@@ -34,7 +34,10 @@ pub enum Command {
         after_long_help = "Writes the entry at PATH to the schematic layout file (made if it does not exist), reading and writing the file as the editor does: every other table is kept, and so is a comment in the file (a comment goes with its entry and stays above it or after it). A part takes `--by DX,DY` (moved by that much from where the drawing puts its block) or `--pin X,Y` (at that place from the sheet's reference part), `--rotate` (0, 90, 180 or 270 degrees counterclockwise, replacing the automatic turn) and `--mirror` or `--no-mirror` (replacing the automatic mirror); a flag left out keeps what the entry has, and `--by` and `--pin` replace one another. A note takes `--by`. A sheet takes `--at X,Y`, the top-left corner of its box on the page of a board drawn by module. `--clear` removes the entry of a part or note, or a sheet's `at`. Refused, with the file as it was: a PATH the board has no part (or, for `--at` and `--clear`, sheet) by (the nearest names are listed), a length that is not on the 1.27 mm grid (the nearest two are said), a turn that is not 0, 90, 180 or 270, flags that do not go together, and a file with a fault in its text. An entry the drawing then cannot honour (its block would lie on another part, or its box on another sheet's) is written and said as a warning; `check` says it again."
     )]
     Set(SetArgs),
-    /// Say which entries name no sheet or part of the board, which the drawing could not honour, and which lines of the file are wrong.
+    /// Say which entries match no sheet or part or cannot be drawn, and which lines are wrong.
+    ///
+    /// An entry names no sheet or part of the board, or the drawing could not honour it; the wrong
+    /// lines are those of the file.
     #[command(
         after_long_help = "One line for each finding, with the line of the entry in the file: an entry for a sheet, part or note the board does not have (or one that is on another sheet, with where it belongs), a table for a board the source does not have, an entry the drawing could not honour (a block that would lie on another part or stand too far from the drawing, a box that would lie on another sheet's, a `at` of a board drawn as one sheet), and a fault in the file's text, which makes the drawing ignore the whole file. These are the notes and warnings the editor lists for the file (stage `layout`). The exit code is 1 when there is any finding. `--format json` prints one JSON document on stdout: the `board`, the `file`, `exists`, `ok` and the `findings`, each with a `kind` (`invalid`, `stale_sheet`, `stale_entry`, `wrong_sheet`, `unknown_board`, `unusable`), the `line`, the `entry` (the table as the file names it) and the `message`."
     )]
@@ -60,7 +63,10 @@ pub struct ShowArgs {
 
 #[derive(Debug, PartialEq, ClapArgs)]
 pub struct SetArgs {
-    /// The part by its path in the design (`stage.output_cap`), a note by its path and `#doc` or `#relation`, or a sheet by its name (`--at`, `--clear`).
+    /// A part's path (`stage.output_cap`), a note's path with `#doc` or `#relation`, or a sheet's
+    /// name.
+    ///
+    /// A sheet is named for `--at` and `--clear`.
     #[arg(value_name = "PATH")]
     pub path: String,
     #[command(flatten)]

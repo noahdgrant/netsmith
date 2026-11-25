@@ -21,7 +21,7 @@ pub struct Args {
     /// Seconds the router may take; 0 is no limit.
     #[arg(long, value_name = "SECS")]
     pub route_timeout: Option<u64>,
-    /// Rounds of rip-up and re-route of whole nets for connections the router leaves; 0 is none.
+    /// Rounds of rip-up and re-route for connections left open; 0 is none.
     ///
     /// As `board fab --rip-rounds`: when a try ends with connections open, each round routes every one
     /// of them through the copper of the nets in its way, removes those nets and routes them
@@ -64,16 +64,17 @@ pub struct Args {
     /// the tile. The header of the router's `plan.rs` has what it was measured to do.
     #[arg(long, value_name = "WHEN", value_parser = parse_plan)]
     pub plan: Option<netsmith_fabricate::placed::CoarsePlan>,
-    /// Route the lines by class, the most important first, with the protection: `off`, `every`
-    /// try, or `later`, from the second try on (the router's own).
+    /// Route lines by class, most important first: `off`, `every` try, or `later` (router's own).
+    ///
+    /// `later` is from the second try on; the classes are routed with the protection.
     ///
     /// For experiments on the router. The classes, their order and which of them keep their
     /// copper against a later class are in the language guide's "How the router orders the
     /// nets".
     #[arg(long, value_name = "WHEN", value_parser = parse_classes)]
     pub classes: Option<netsmith_fabricate::placed::LineClasses>,
-    /// The largest radius of the arc drawn at each bend, in widths of its track (the router's own
-    /// is 4); 0 draws none, and every bend keeps its 45 degree corner.
+    /// Largest radius of a bend's arc, in track widths (router's own: 4); 0 keeps 45 degree
+    /// corners.
     ///
     /// For experiments on the router. The arcs are drawn after the routing, where they keep the
     /// rules' space, and change nothing the search does.

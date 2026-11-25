@@ -43,7 +43,9 @@ pub struct Args {
     /// its true thickness in its own colour, unless `--no-caps` leaves them open.
     #[arg(long, value_name = "AXIS=MM", value_parser = netsmith_3d::parse_render_section)]
     pub section: Option<(netsmith_3d::Axis, f64)>,
-    /// Light a part, `net:<name>`, `limit:<name>`, `case:<name>` or `module:<path>` and dim the rest (comma-separated or repeated).
+    /// Light a part, `net:<name>`, `limit:<name>`, `case:<name>` or `module:<path>`; dim the rest.
+    ///
+    /// Several ids are comma-separated, or the flag is repeated.
     ///
     /// A part is named by its designator or its path. `module:<path>` lights every part of a
     /// module instance, by its path in the design as `layout summary` and the editor's Modules tab

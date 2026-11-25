@@ -32,8 +32,9 @@ pub struct Args {
         conflicts_with = "git_ref"
     )]
     pub b: Option<String>,
-    /// Compare the project, found from the current folder, with its state at this git ref
-    /// (a branch, a tag or a commit) instead of two designs.
+    /// Compare the project with its state at this git ref (branch, tag, commit), not two designs.
+    ///
+    /// The project is the one found from the current folder.
     ///
     /// Says what changed in the circuit since the ref, as the editor's compare view does (ADR
     /// 0059): parts, values, nets, rails, modules, systems, the PCB, the bill of materials and

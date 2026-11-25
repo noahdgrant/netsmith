@@ -98,7 +98,9 @@ pub struct ModelArgs {
     /// The board's thickness, in mm: its bottom face is at z = -THICKNESS (for the limits of the bottom face).
     #[arg(long, value_name = "MM", default_value_t = 1.6)]
     pub thickness: f64,
-    /// How finely `--limits` follows a sloped or curved underside, in mm: the height of a step of a slope and of a slab of a curve.
+    /// Step in mm by which `--limits` follows a sloped or curved underside.
+    ///
+    /// It is the height of a step of a slope and of a slab of a curve.
     #[arg(long, value_name = "MM", default_value_t = 0.5)]
     pub limit_step: f64,
     /// The board, when the file `--write` names has several.

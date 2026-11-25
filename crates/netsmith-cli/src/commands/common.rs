@@ -140,7 +140,7 @@ pub(super) fn parse_amps(value: &str) -> Result<f64, String> {
 /// `layer_change_weight`, issue #1536), which `project order` and the editor's routing read too.
 #[derive(Debug, PartialEq, ClapArgs)]
 pub struct Weighing {
-    /// What a mm of a signal net's track costs the router, as a share of its own (1).
+    /// A signal net's cost per mm of track, as a share of the router's own (1).
     ///
     /// From 0.1 to 10. Any of the three weights turns on the router's polish pass, which routes
     /// each signal line again on a finished board and keeps the cheaper copper, and its reroute
@@ -150,12 +150,12 @@ pub struct Weighing {
     /// current needs no vias side by side.
     #[arg(long, value_name = "SHARE", value_parser = parse_weight)]
     pub length_weight: Option<f64>,
-    /// What a via of a signal net costs the router, in mm of track (its own is 15).
+    /// A signal net's cost per via, in mm of track (default 15).
     ///
     /// Raise it for fewer vias at the price of longer tracks; 0 to 1000.
     #[arg(long, value_name = "MM", value_parser = parse_weight)]
     pub via_weight: Option<f64>,
-    /// What a signal net's change of layer costs beyond its via, in mm of track (its own is 0).
+    /// A signal net's cost of a layer change beyond its via, in mm of track (default 0).
     ///
     /// Each via of a line is one change of layer, so the router pays the two together; `board
     /// nets` counts them apart. 0 to 1000.

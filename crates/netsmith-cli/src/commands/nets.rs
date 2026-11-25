@@ -38,9 +38,11 @@ pub struct Args {
     /// List the nets longest first instead of by name.
     #[arg(long)]
     pub lengths: bool,
-    /// Print each switching regulator's power stage instead of the table: its input
-    /// capacitors' loop, its support capacitors' routes, its feedback route and the copper of
-    /// other nets near its switch node.
+    /// Print each switching regulator's power stage instead of the table: loops, routes, near
+    /// copper.
+    ///
+    /// Its input capacitors' loop, its support capacitors' routes, its feedback route and the
+    /// copper of other nets near its switch node.
     #[arg(long, conflicts_with_all = ["lengths", "gate", "currents", "compare", "at_current"])]
     pub power_stage: bool,
     /// Route the board first, from the routes file's and the kept copper, as `board fab
@@ -50,8 +52,10 @@ pub struct Args {
     /// Seconds the router may take with `--route`; 0 is no limit (default 300).
     #[arg(long, value_name = "SECS", requires = "route")]
     pub route_timeout: Option<u64>,
-    /// Also list each net's one current, with where it comes from: what the design rules check
-    /// holds its tracks and vias to and the track drop measures it at.
+    /// Also list each net's one current and where it comes from.
+    ///
+    /// It is what the design rules check holds the net's tracks and vias to and the track drop
+    /// measures it at.
     #[arg(long)]
     pub currents: bool,
     #[command(flatten)]

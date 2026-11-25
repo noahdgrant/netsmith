@@ -27,7 +27,10 @@ pub struct Args {
     /// Only the board of this name (`Board`, or `System/Board` or just `Board` for a board of a system).
     #[arg(long, value_name = "BOARD")]
     pub board: Option<String>,
-    /// Write this alternative into the source: its row name as listed (`240Ω 1% 0402 C25094`), its LCSC number (`C25094`) or its number in the list (`1`).
+    /// Write this alternative into the source, by its row name, LCSC number or number in the list.
+    ///
+    /// Give its row name as listed (`240Ω 1% 0402 C25094`), its LCSC number (`C25094`) or its
+    /// number in the list (`1`).
     #[arg(long, value_name = "ALTERNATIVE")]
     pub apply: Option<String>,
     /// Text for a person, or one JSON document on stdout.
