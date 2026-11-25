@@ -359,3 +359,97 @@ fn join_pad_takes_a_via_into_a_plane_when_the_pads_layer_has_no_fill_and_refuses
     }
 
 }
+
+/// A loop of 3V3 track on the top of the four-layer example round C1 (outline frame): the
+/// pour inside it holds C1.2 (GND) and none of the rest of GND.
+const LOOP_3V3: &str = r#"version = 1
+
+[OutlineAndPours.nets.3V3]
+pads = "x"
+tracks = [
+  { layer = "top", width = 0.2, from = [15.2, 27.3], to = [18.6, 27.3] },
+  { layer = "top", width = 0.2, from = [18.6, 27.3], to = [18.6, 29.55] },
+  { layer = "top", width = 0.2, from = [18.6, 29.55], to = [15.2, 29.55] },
+  { layer = "top", width = 0.2, from = [15.2, 29.55], to = [15.2, 27.3] },
+]
+"#;
+
+#[test]
+fn islands_compare_names_the_new_pocket_and_the_track_that_closed_it_and_an_unchanged_board_says_so()
+{
+    // Issue #1705.
+    let dir = pours_project("fill-islands-compare");
+    let run = |args: &[&str]| {
+        let run = netsmith(&dir, &[&["board", "fill", "main.nsm", "--islands"], args].concat());
+        let said = String::from_utf8_lossy(&run.stdout).into_owned();
+        assert!(run.status.success(), "{said}{}", String::from_utf8_lossy(&run.stderr));
+        said
+    };
+    // The earlier state: the JSON of a run, in each frame, and the routes file.
+    let before = netsmith(&dir, &["board", "fill", "main.nsm", "--islands", "--format", "json"]);
+    fs::write(dir.join("before.json"), &before.stdout).unwrap();
+    let outline = netsmith(
+        &dir,
+        &["board", "fill", "main.nsm", "--islands", "--format", "json", "--frame", "outline"],
+    );
+    fs::write(dir.join("outline.json"), &outline.stdout).unwrap();
+    fs::write(dir.join("loop.routes.toml"), LOOP_3V3).unwrap();
+
+    // Nothing changed yet.
+    for against in ["before.json", "outline.json"] {
+        let said = run(&["--compare", against]);
+        assert!(said.contains(&format!("nothing changed: the 4 region(s) are as in {against}")), "{said}");
+    }
+
+    // With the loop: one new region, cut off, holding C1.2, bounded by the loop's tracks.
+    fs::write(dir.join("main.routes.toml"), LOOP_3V3).unwrap();
+    for against in ["before.json", "outline.json"] {
+        let said = run(&["--compare", against]);
+        assert!(said.contains("new: top pour on GND region at "), "{said}");
+        assert!(said.contains("cut off from the net's main region; joins C1.2"), "{said}");
+        assert!(
+            said.contains("    bounded by track [3V3] (35.200, 47.300) to (38.600, 47.300), 0.200 mm wide, "),
+            "{said}"
+        );
+        assert!(said.contains("no longer joins C1.2"), "{said}");
+        assert!(said.contains("1 new, 0 gone, 1 changed, 3 unchanged"), "{said}");
+        assert!(said.contains("the nets of the new boundary items: 3V3, VIN"), "{said}");
+    }
+    // In the outline's frame, the track's place is the routes file's.
+    let said = run(&["--compare", "before.json", "--frame", "outline"]);
+    assert!(said.contains("bounded by track [3V3] (15.200, 27.300) to (18.600, 27.300)"), "{said}");
+    let doc = json(&dir, &["board", "fill", "main.nsm", "--islands", "--compare", "before.json"]);
+    assert_eq!(doc["against"], "before.json");
+    assert_eq!((&doc["cut_off_before"], &doc["cut_off_after"]), (&0.into(), &1.into()), "{doc}");
+    let new = doc["new"].as_array().unwrap();
+    assert_eq!(new.len(), 1, "{doc}");
+    assert_eq!((&new[0]["layer"], &new[0]["net"], &new[0]["main"]), (&"top".into(), &"GND".into(), &false.into()));
+    assert!(
+        new[0]["bounded_by"].as_array().unwrap().iter().any(|b| b["kind"] == "track"
+            && b["net"] == "3V3"
+            && b["parts_from_main"] == true),
+        "{doc}"
+    );
+    assert!(doc["nets"].as_array().unwrap().iter().any(|n| n == "3V3"), "{doc}");
+
+    // A routes file as the earlier state: the board with the loop, against the board without it
+    // (the loop's file compared, measured in place of the one beside the source).
+    fs::remove_file(dir.join("main.routes.toml")).unwrap();
+    let said = run(&["--compare", "loop.routes.toml"]);
+    assert!(said.contains("gone: top pour on GND region at "), "{said}");
+    assert!(said.contains("now joins C1.2"), "{said}");
+    assert!(said.contains("0 new, 1 gone, 1 changed, 3 unchanged"), "{said}");
+    let doc = json(&dir, &["board", "fill", "main.nsm", "--islands", "--compare", "loop.routes.toml"]);
+    assert_eq!(doc["gone"].as_array().unwrap().len(), 1, "{doc}");
+    assert_eq!(doc["nets"], serde_json::json!([]), "{doc}");
+
+    // `--compare` asks for `--islands`, a file that is not there and a JSON of another run are
+    // refused.
+    assert_eq!(netsmith(&dir, &["board", "fill", "main.nsm", "--compare", "before.json"]).status.code(), Some(2));
+    assert_eq!(netsmith(&dir, &["board", "fill", "main.nsm", "--islands", "--compare", "none.json"]).status.code(), Some(2));
+    let plain = netsmith(&dir, &["board", "fill", "main.nsm", "--format", "json"]);
+    fs::write(dir.join("plain.json"), &plain.stdout).unwrap();
+    let refused = netsmith(&dir, &["board", "fill", "main.nsm", "--islands", "--compare", "plain.json"]);
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("give the JSON of `board fill --islands --format json`"));
+}

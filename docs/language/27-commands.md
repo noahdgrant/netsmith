@@ -57,7 +57,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith board system` | new | `--name`, `--format` |
 | `netsmith board panel` | new | `--name`, `--format` |
 | `netsmith board copper` | new | `--board`, `--format` |
-| `netsmith board fill` | new (#1187) | `--board`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--islands`, `--format`, `--frame` |
+| `netsmith board fill` | new (#1187) | `--board`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--islands`, `--compare`, `--format`, `--frame` |
 | `netsmith board nets` | new (#1223) | `--board`, `--lengths`, `--power-stage`, `--route`, `--route-timeout`, `--currents`, `--at-current`, `--gate`, `--max-crossings`, `--max-duplicates`, `--max-unneeded`, `--max-short`, `--max-via-pairs`, `--compare`, `--tolerance`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
 | `netsmith layout show` | the same | `--file` (was `--into`), `--board`, `--format`, `--frame` |
 | `netsmith layout set` | the same | `--file` (was `--into`), `--board`, `--at`, `--turn`, `--side`, `--lock`, `--unlock`, `--designator`, `--format`, `--frame` |

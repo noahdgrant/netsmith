@@ -295,7 +295,7 @@ impl IslandsReport {
 }
 
 /// What a region joins, after its state: `; joins D1.1, R2.2 and 1 via`.
-fn joins(r: &FillRegion) -> String {
+pub(crate) fn joins(r: &FillRegion) -> String {
     let mut parts: Vec<String> = r.pads.iter().map(|p| pad_name(&p.part, &p.pad)).collect();
     match r.vias.len() {
         0 => {}
@@ -309,7 +309,7 @@ fn joins(r: &FillRegion) -> String {
     }
 }
 
-fn bound_text(b: &RegionBound, at: &dyn Fn(Pt) -> String) -> String {
+pub(crate) fn bound_text(b: &RegionBound, at: &dyn Fn(Pt) -> String) -> String {
     let net = |n: &Option<String>| match n {
         Some(n) => format!(" [{n}]"),
         None => " [no net]".into(),
