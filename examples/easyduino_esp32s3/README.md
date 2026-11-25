@@ -699,8 +699,11 @@ that need a number are listed as not evaluated. Documents were fetched on 2026-1
     +-1.2 mm (2.4 mm between the columns), and the datasheet's soldering footprint (page 4) has
     0.80 x 0.90 mm pads with the single pad 2.00 mm from the line of the other two. The numbers
     and the sides agree; the farthest pad centre is 0.26 mm from the reference's and the largest
-    size difference 0.475 mm (the test bounds both). No `SOT-23W` is a generator, and no
-    drawing of one was read.
+    size difference 0.475 mm (the test bounds both). No `SOT-23W` is a generator. The footprint's
+    outline on `F.Fab` is the body of Allegro's package LH, 3-pin SOT-23W (A1120-DS Rev. 22, page
+    15, DWG-0000628: 1.91 +0.19/-0.06 x 2.975 +0.125/-0.075 mm), wider than the SS8050's body
+    (page 4: B 1.10 to 1.50, A 2.70 to 3.10 mm), so `catalog check` and the build note that the
+    footprint's body does not fit a `SOT-23` (issue #1662): a real difference of the drawing, kept.
 - **D2 and D3, the Schottky diodes** (std `Schottky`, package `SMD1006`): ROHM's RB161QS-40
   (LCSC and JLCPCB's **C2837790** is the RB161QS-40T18R, taped), 40 V, 1 A, **Extended**. Source:
   ROHM's "RB161QS-40" datasheet, 2016.02 - Rev.001 (the LCSC copy, 3 pages): page 1 for VR and

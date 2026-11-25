@@ -186,8 +186,8 @@ pub const KNOWN: &[KnownPackage] = &[
         name: "SOIC-8",
         aliases: &[],
         pads: 8,
-        body: (Span::of(3.90, 3.90), Span::of(4.90, 4.90)),
-        source: "Microchip ATtiny13A datasheet DS40002307A, page 175, drawing C04-057-SN Rev F (8-Lead Plastic Small Outline, narrow 3.90 mm body): E1 3.90 BSC, D 4.90 BSC",
+        body: (Span::of(3.80, 4.00), Span::of(4.80, 5.00)),
+        source: "Microchip ATtiny13A datasheet DS40002307A, page 175, drawing C04-057-SN Rev F (8-Lead Plastic Small Outline, narrow 3.90 mm body): E1 3.90 BSC, D 4.90 BSC; onsemi SOIC-8 NB case 751-07 (issue AK, 16 Feb 2011, 98ASB42564B): B 3.80 to 4.00, A 4.80 to 5.00",
     },
 ];
 

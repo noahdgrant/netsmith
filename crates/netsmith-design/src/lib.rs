@@ -1401,7 +1401,12 @@ pub fn design_panel(panel: &Panel) -> Result<PanelSpec, Vec<String>> {
 /// The design stage for one solved board: its [`Design`] with the sourcing of each part, or
 /// every mistake the stage found.
 pub fn design_board(board: &Board, solution: &Solution) -> Result<Designed, Vec<String>> {
-    design_model(&board.name, &solution.model, solution)
+    design_model(
+        &board.name,
+        &solution.model,
+        solution,
+        &solution.designators,
+    )
 }
 
 /// One board of a solved system. The design is named after the board's definition, so the
@@ -1413,7 +1418,15 @@ pub fn design_system_board(
 ) -> Result<Designed, Vec<String>> {
     debug_assert!(system.boards.iter().any(|b| b.inst == member.inst));
     let model = solution.model.scoped_to(member.inst);
-    let mut designed = design_model(&member.type_name, &model, solution)?;
+    // The system's lock records a member's parts under the member's name (`power.r1`); each
+    // board is numbered on its own.
+    let prefix = format!("{}.", member.name);
+    let held: BTreeMap<String, String> = solution
+        .designators
+        .iter()
+        .filter_map(|(path, d)| Some((path.strip_prefix(&prefix)?.to_string(), d.clone())))
+        .collect();
+    let mut designed = design_model(&member.type_name, &model, solution, &held)?;
     // A mate that works turned end for end is a guideline (ADR 0040), said once, by the board
     // of the first connector the system names.
     for mate in solution.model.mates() {
@@ -1430,7 +1443,49 @@ pub fn design_system_board(
     Ok(designed)
 }
 
-fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Designed, Vec<String>> {
+/// `R12` as its letters and its number, when it is capital letters and a number from 1.
+fn split_designator(designator: &str) -> Option<(&str, usize)> {
+    let digits = designator.trim_start_matches(|c: char| c.is_ascii_uppercase());
+    let letters = &designator[..designator.len() - digits.len()];
+    if letters.is_empty() || digits.is_empty() || digits.starts_with('0') {
+        return None;
+    }
+    if !digits.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    Some((letters, digits.parse().ok()?))
+}
+
+/// The highest number of each set of letters among the designators the pick lock records for a
+/// board (issue #1653), the parts it no longer has too. Two parts recorded with one designator
+/// are an error that names both: a person edited the lock, and the board would have two parts
+/// of one name.
+fn held_designators(
+    held: &BTreeMap<String, String>,
+    errors: &mut Vec<String>,
+) -> BTreeMap<String, usize> {
+    let mut highest: BTreeMap<String, usize> = BTreeMap::new();
+    let mut owner: HashMap<&str, &str> = HashMap::new();
+    for (path, designator) in held {
+        if let Some(first) = owner.insert(designator.as_str(), path.as_str()) {
+            errors.push(format!(
+                "the pick lock gives `{first}` and `{path}` the same designator {designator}, and a designator names one part: give one of them another in the lock's `designators` table, or renumber with `netsmith project lock --update --renumber`"
+            ));
+        }
+        if let Some((letters, n)) = split_designator(designator) {
+            let top = highest.entry(letters.to_string()).or_insert(0);
+            *top = (*top).max(n);
+        }
+    }
+    highest
+}
+
+fn design_model(
+    name: &str,
+    model: &Model,
+    solution: &Solution,
+    held: &BTreeMap<String, String>,
+) -> Result<Designed, Vec<String>> {
     let mut errors: Vec<String> = Vec::new();
 
     // The project's default for who assembles a part nothing else speaks for (ADR 0028).
@@ -1448,8 +1503,9 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     // letters, the parts sorted by their full path in the board in natural order (a number at
     // the end of a segment counts as a number, `tp2` before `tp10`, and an index too,
     // `decoupling[2]` before `decoupling[10]`), from 1. The path alone decides it, so the order
-    // of statements, the layout engine, KiCad and how a part is drawn change nothing. The
-    // parts of the design are in the same order, which the placer and the drawing read.
+    // of statements, the layout engine, KiCad and how a part is drawn change nothing. A part the
+    // pick lock records a designator for keeps it (owner decision, issue #1653, below). The
+    // parts of the design are in path order, which the placer and the drawing read.
     let declared: Vec<InstId> = model
         .instances()
         .filter(|(_, i)| i.kind == InstKind::Part)
@@ -1459,19 +1515,45 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
         declared.iter().map(|&id| (model.path_of(id), id)).collect();
     ids.sort_by(|a, b| natural_path_order(&a.0, &b.0));
 
-    // The letters and the first number of each part, and how many parts it is (a bank is one
+    // The letters and the designators of each part, one for each part it is (a bank is one
     // part in the design for each of its capacitors, numbered one after the other, ADR 0052).
-    let mut counters: BTreeMap<String, usize> = BTreeMap::new();
-    let mut lettered: HashMap<InstId, (String, usize, usize)> = HashMap::new();
-    for (_, id) in &ids {
+    // A part the pick lock records a designator for, with the letters it has now, keeps it; the
+    // others take, in path order, the number after the highest of their letters that the lock
+    // records or a part has (issue #1653), so a number the lock remembers is not taken again.
+    // With no record every part is new, and the parts are numbered by path from 1.
+    let mut highest = held_designators(held, &mut errors);
+    let mut lettered: HashMap<InstId, (String, Vec<Option<usize>>)> = HashMap::new();
+    for (path, id) in &ids {
         let id = *id;
         netsmith_core::job::checkpoint();
         let letters = designator_of(model, id, &mut errors);
         let bank = bank_of(model, id, &mut errors);
-        let n = counters.entry(letters.clone()).or_insert(0);
-        let first = *n + 1;
-        *n += bank;
-        lettered.insert(id, (letters, first, bank));
+        let kept = (0..bank)
+            .map(|k| {
+                let member = bank_member_path(path, k, bank);
+                held.get(&member)
+                    .and_then(|d| split_designator(d))
+                    .filter(|(l, _)| *l == letters)
+                    .map(|(_, n)| n)
+            })
+            .collect();
+        lettered.insert(id, (letters, kept));
+    }
+    let mut refdes_by_part: HashMap<InstId, Vec<String>> = HashMap::new();
+    for (_, id) in &ids {
+        let (letters, kept) = &lettered[id];
+        let numbers = kept
+            .iter()
+            .map(|n| {
+                let n = n.unwrap_or_else(|| {
+                    let top = highest.entry(letters.clone()).or_insert(0);
+                    *top += 1;
+                    *top
+                });
+                format!("{letters}{n}")
+            })
+            .collect();
+        refdes_by_part.insert(*id, numbers);
     }
 
     let kinds: HashMap<InstId, String> = declared
@@ -1495,7 +1577,8 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
     for (_, id) in &ids {
         netsmith_core::job::checkpoint();
         let inst = model.instance(*id);
-        let (letters, first, bank) = lettered[id].clone();
+        let numbers = refdes_by_part[id].clone();
+        let bank = numbers.len();
         // What each part the design makes is: the part's own kind, or for a bank (ADR 0123) the
         // generic its parts are, so a member of a `CapacitorBank` is drawn, mapped to a footprint
         // and listed as the `Capacitor` it is.
@@ -1580,8 +1663,7 @@ fn design_model(name: &str, model: &Model, solution: &Solution) -> Result<Design
                 .cloned()
                 .collect(),
         };
-        for k in 0..bank {
-            let refdes = format!("{letters}{}", first + k);
+        for (k, refdes) in numbers.into_iter().enumerate() {
             let path = bank_member_path(&model.path_of(*id), k, bank);
             sourcing.push(Sourced {
                 refdes: refdes.clone(),

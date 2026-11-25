@@ -546,6 +546,10 @@ pub fn outcome_observed(
         observe(step(Stage::Design));
         let mut designed = timings::stage("design", &board.name, || design_board(board, solution))
             .map_err(|errors| design_problems(Some(&board.name), &board.name, &errors))?;
+        lock.designators.set(
+            &board.name,
+            pick_lock::designators_of(&designed.design, None),
+        );
         designed
             .guidelines
             .extend(open_circle_findings(solution, sources, None));
@@ -749,12 +753,17 @@ pub fn outcome_observed(
             )
             .issues
         });
+        let mut designators = std::collections::BTreeMap::new();
         for member in &system.boards {
             let label = format!("{}/{}", system.name, member.name);
             let mut designed = timings::stage("design", &label, || {
                 design_system_board(system, member, solution)
             })
             .map_err(|errors| design_problems(Some(&label), &label, &errors))?;
+            designators.extend(pick_lock::designators_of(
+                &designed.design,
+                Some(&member.name),
+            ));
             designed
                 .guidelines
                 .extend(open_circle_findings(solution, sources, Some(member.inst)));
@@ -859,6 +868,7 @@ pub fn outcome_observed(
                 heights::from_catalog_rows(&mut one.design, &one.sourcing, catalogs);
             built.push(one);
         }
+        lock.designators.set(&system.name, designators);
         solved.push(SolvedSystem {
             mates,
             name: system.name.clone(),

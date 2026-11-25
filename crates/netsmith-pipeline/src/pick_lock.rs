@@ -9,12 +9,14 @@
 //! behind a person's back. `netsmith project lock --update` rewrites it on purpose and `project lock --check`
 //! says whether it is current ([`refresh`]).
 
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use netsmith_check::{Assignment, Loader, Model};
+use netsmith_core::Design;
 use netsmith_solve::lock::CHANNELS;
-use netsmith_solve::{Catalogs, LockedProvider, LockedRow, PickLock, Solution};
+use netsmith_solve::{Catalogs, Designators, LockedProvider, LockedRow, PickLock, Solution};
 
 use crate::{outcome_with, render_problems};
 
@@ -30,7 +32,7 @@ const VERSION: i64 = 2;
 const READS: [i64; 2] = [1, 2];
 
 /// The first lines of a written file.
-const HEADER: &str = "# The catalog row each part of each board was picked as, written by `netsmith board build` and\n# `netsmith board fab` when this file does not exist. Commit it: a change to a catalog or to the\n# solver that would move a pick shows here and not only in the bill of materials. Refresh it\n# with `netsmith project lock --update`. Nothing in it is edited by hand but `held = \"reason\"`,\n# which a person adds to a part's entry to keep the part on its row.\n";
+const HEADER: &str = "# The catalog row each part of each board was picked as, written by `netsmith board build` and\n# `netsmith board fab` when this file does not exist. Commit it: a change to a catalog or to the\n# solver that would move a pick shows here and not only in the bill of materials. Refresh it\n# with `netsmith project lock --update`, and number the parts again by path with `--renumber`.\n# Nothing in it is edited by hand but `held = \"reason\"`, which a person adds to a part's entry\n# to keep the part on its row, and a part's designator, which a renamed part takes by hand.\n";
 
 /// The lock of a source file: `led.nsm` has `led.lock.toml`.
 pub fn lock_path(source: &Path) -> PathBuf {
@@ -54,6 +56,22 @@ pub fn rows_of(solution: &Solution) -> Vec<LockedRow> {
         .picks
         .iter()
         .map(|p| LockedRow::of_pick(solution.model.path_of(p.part), p))
+        .collect()
+}
+
+/// The designator of each part of a design, by its path: under `member.` for a board of a system
+/// (`power.r1`), as the system's lock records them (issue #1653).
+pub fn designators_of(design: &Design, member: Option<&str>) -> BTreeMap<String, String> {
+    design
+        .parts
+        .iter()
+        .map(|p| {
+            let path = match member {
+                Some(m) => format!("{m}.{}", p.path),
+                None => p.path.clone(),
+            };
+            (path, p.refdes.clone())
+        })
         .collect()
 }
 
@@ -166,11 +184,32 @@ fn parse(text: &str, name: &str) -> Result<PickLock, String> {
         })?;
         if let Some(extra) = unit_table
             .keys()
-            .find(|k| *k != "parts" && *k != "providers")
+            .find(|k| !["parts", "providers", "designators"].contains(&k.as_str()))
         {
             return Err(wrong(format!(
-                "`[{unit}]` has `{extra}`; it holds only `parts` and `providers`"
+                "`[{unit}]` has `{extra}`; it holds only `parts`, `providers` and `designators`"
             )));
+        }
+        if let Some(value) = unit_table.get("designators") {
+            let table = value.as_table().ok_or_else(|| {
+                wrong(format!(
+                    "`[{unit}.designators]` must be a table of a designator for each part's path"
+                ))
+            })?;
+            let mut designators = BTreeMap::new();
+            for (path, value) in table {
+                match value {
+                    toml::Value::String(d) if is_designator(d) => {
+                        designators.insert(path.clone(), d.clone());
+                    }
+                    other => {
+                        return Err(wrong(format!(
+                            "[{unit}.designators] `{path}` is {other}, which is not a designator: capital letters and a number from 1, such as \"R1\" or \"TP12\""
+                        )));
+                    }
+                }
+            }
+            lock.designators.set(unit, designators);
         }
         let providers = match unit_table.get("providers") {
             None => Vec::new(),
@@ -186,7 +225,11 @@ fn parse(text: &str, name: &str) -> Result<PickLock, String> {
             Some(parts) => parts
                 .as_table()
                 .ok_or_else(|| wrong(format!("`[{unit}.parts]` must be a table of parts")))?,
-            None if unit_table.contains_key("providers") => continue,
+            None if unit_table.contains_key("providers")
+                || unit_table.contains_key("designators") =>
+            {
+                continue;
+            }
             None => return Err(wrong(format!("`[{unit}]` has no table `parts`"))),
         };
         let mut rows = Vec::new();
@@ -282,6 +325,15 @@ fn parse(text: &str, name: &str) -> Result<PickLock, String> {
     Ok(lock)
 }
 
+/// Whether `text` is a reference designator: capital letters, then a number from 1 (`R1`, `TP12`).
+fn is_designator(text: &str) -> bool {
+    let digits = text.trim_start_matches(|c: char| c.is_ascii_uppercase());
+    digits.len() < text.len()
+        && !digits.is_empty()
+        && !digits.starts_with('0')
+        && digits.chars().all(|c| c.is_ascii_digit())
+}
+
 /// The `[<unit>.providers."<path>"]` entries of one board or system: each its `generic` and
 /// its `provider`.
 fn parse_providers(
@@ -346,6 +398,7 @@ pub fn render(lock: &PickLock) -> String {
         .units()
         .map(|(u, _)| u)
         .chain(lock.provider_units().map(|(u, _)| u))
+        .chain(lock.designators.units().map(|(u, _)| u))
         .collect();
     units.sort_unstable();
     units.dedup();
@@ -376,6 +429,15 @@ pub fn render(lock: &PickLock) -> String {
             }
             if let Some(reason) = &row.held {
                 let _ = writeln!(out, "held = {}", string(reason));
+            }
+        }
+        // The designators last, in the order the parts are numbered in (`tp2` before `tp10`).
+        if let Some(designators) = lock.designators.of(unit) {
+            let _ = writeln!(out, "\n[{}.designators]", key(unit));
+            let mut paths: Vec<&String> = designators.keys().collect();
+            paths.sort_by(|a, b| netsmith_design::natural_path_order(a, b));
+            for path in paths {
+                let _ = writeln!(out, "{} = {}", string(path), string(&designators[path]));
             }
         }
     }
@@ -492,8 +554,105 @@ pub fn diff(old: &PickLock, new: &PickLock) -> Vec<String> {
         ),
         (None, None) => unreachable!("a line is about a provider in one lock or the other"),
     }));
+    // The designators: a line for each that changes, but not for a part whose row is added or
+    // dropped, whose own line says so (issue #1653). A lock with no record of a board's
+    // designators has one line for the board.
+    let no_file = old.is_empty() && old.designators.is_empty();
+    for (unit, before, after) in designator_units(old, new) {
+        let Some(before) = before else {
+            if !no_file && let Some(after) = after {
+                found.push((
+                    unit.to_string(),
+                    String::new(),
+                    format!(
+                        "{unit}: designators recorded for {} parts, as they are numbered now",
+                        after.len()
+                    ),
+                ));
+            }
+            continue;
+        };
+        let after = after.cloned().unwrap_or_default();
+        for (path, line) in designator_changes(old, new, unit, before, &after) {
+            let line = match line {
+                DesignatorChange::New(now) => format!("{unit}: `{path}`: numbered {now}"),
+                DesignatorChange::Gone(was) => format!(
+                    "{unit}: `{path}`: designator {was} dropped (it is no longer a part of the board)"
+                ),
+                DesignatorChange::Moved(was, now) => {
+                    format!("{unit}: `{path}`: designator {was} -> {now}")
+                }
+            };
+            found.push((unit.to_string(), path, line));
+        }
+    }
     found.sort();
     found.into_iter().map(|(_, _, line)| line).collect()
+}
+
+/// Every board or system either lock records designators for, in name order, with the
+/// designators of each lock.
+type DesignatorUnit<'a> = (
+    &'a str,
+    Option<&'a BTreeMap<String, String>>,
+    Option<&'a BTreeMap<String, String>>,
+);
+
+fn designator_units<'a>(old: &'a PickLock, new: &'a PickLock) -> Vec<DesignatorUnit<'a>> {
+    let mut units: Vec<&str> = old
+        .designators
+        .units()
+        .chain(new.designators.units())
+        .map(|(u, _)| u)
+        .collect();
+    units.sort_unstable();
+    units.dedup();
+    units
+        .into_iter()
+        .map(|u| (u, old.designators.of(u), new.designators.of(u)))
+        .collect()
+}
+
+/// How a part's designator differs between two locks.
+enum DesignatorChange {
+    /// A part the old lock records no designator for, numbered so now.
+    New(String),
+    /// A designator of a part the board no longer has.
+    Gone(String),
+    /// A part with another designator now: its letters changed, or it was renumbered.
+    Moved(String, String),
+}
+
+/// The designators of one board that differ between `before` (the old lock's) and `after`, by
+/// path, leaving out a part whose row is added or dropped between `old` and `new`.
+fn designator_changes(
+    old: &PickLock,
+    new: &PickLock,
+    unit: &str,
+    before: &BTreeMap<String, String>,
+    after: &BTreeMap<String, String>,
+) -> Vec<(String, DesignatorChange)> {
+    let has_row = |lock: &PickLock, path: &str| lock.rows(unit).iter().any(|r| r.path == path);
+    let row_said = |path: &str| has_row(old, path) != has_row(new, path);
+    let mut changes = Vec::new();
+    for (path, now) in after {
+        match before.get(path) {
+            None if !row_said(path) => {
+                changes.push((path.clone(), DesignatorChange::New(now.clone())))
+            }
+            Some(was) if was != now => changes.push((
+                path.clone(),
+                DesignatorChange::Moved(was.clone(), now.clone()),
+            )),
+            _ => {}
+        }
+    }
+    for (path, was) in before {
+        if !after.contains_key(path) && !row_said(path) {
+            changes.push((path.clone(), DesignatorChange::Gone(was.clone())));
+        }
+    }
+    changes
 }
 
 /// A line for each use whose provider differs between `old` and `new` (added, changed or
@@ -671,9 +830,39 @@ pub fn refresh_parts(
     catalogs: &Catalogs,
     parts: &Parts,
 ) -> Result<Refresh, String> {
+    refresh_with(source, name, text, loader, catalogs, parts, Numbering::Keep)
+}
+
+/// What `project lock --update` does with the designators the lock records (issue #1653).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Numbering {
+    /// Each part keeps the designator the lock records for it, and a new part takes the next
+    /// free number of its letters.
+    #[default]
+    Keep,
+    /// The record is left out, and the parts are numbered by path from 1 (`--renumber`).
+    Renumber,
+}
+
+/// [`refresh_parts`], with the designators the lock records kept or renumbered by path.
+pub fn refresh_with(
+    source: &Path,
+    name: &str,
+    text: &str,
+    loader: &Loader,
+    catalogs: &Catalogs,
+    parts: &Parts,
+    numbering: Numbering,
+) -> Result<Refresh, String> {
     crate::picks::refuse(source)?;
     let file = lock_path(source);
     let old = read(&file)?;
+    // The designators the parts are given: the lock's, unless the parts are renumbered.
+    let designators = match (&old, numbering) {
+        (Some(old), Numbering::Keep) => old.designators.clone(),
+        _ => Designators::default(),
+    };
+    let catalogs = &catalogs.clone().with_designators(designators.clone());
     let mut reported = String::new();
     // The rows whose part a release added to a built-in catalog under another name (issue
     // #1119): they are rewritten to the built-in row, and stay on it with no other change.
@@ -705,6 +894,7 @@ pub fn refresh_parts(
         Some(old) if narrowed => {
             let from = migrated.as_ref().unwrap_or(old);
             let mut held = PickLock::new(&old.file);
+            held.designators = designators.clone();
             for (unit, rows) in from.units() {
                 let kept = rows.iter().filter(|r| held_by(unit, &r.path)).cloned();
                 held.set(unit, kept.collect());
@@ -750,6 +940,10 @@ pub fn refresh_parts(
         }
     };
     let mut now = outcome.lock;
+    // A source with no part to pick needs no lock, whatever its designators.
+    if now.is_empty() {
+        now.designators = Designators::default();
+    }
     // The rows held on purpose keep their reason, when the pick is still the row the lock has.
     let mut held = Vec::new();
     let mut not_judged = Vec::new();
@@ -816,7 +1010,11 @@ fn report_old(
     catalogs: &Catalogs,
     old: &PickLock,
 ) -> String {
-    let held = catalogs.clone().with_pick_lock(old.clone());
+    // With the designators the run gives the parts, so that a lock renumbered for its
+    // duplicates does not report them.
+    let mut old = old.clone();
+    old.designators = catalogs.designators().clone();
+    let held = catalogs.clone().with_pick_lock(old);
     match outcome_with(name, text, loader, &held, None) {
         Ok(_) => String::new(),
         Err(problems) => render_problems(&problems),
@@ -847,6 +1045,7 @@ fn migrate(old: &PickLock, catalogs: &Catalogs) -> (Option<PickLock>, Vec<String
     for (unit, providers) in old.provider_units() {
         lock.set_providers(unit, providers.to_vec());
     }
+    lock.designators = old.designators.clone();
     ((!moved.is_empty()).then_some(lock), moved)
 }
 
@@ -862,6 +1061,10 @@ pub struct Changes {
     /// A line for each use of a generic whose provider is not the locked one, or that the lock
     /// has no entry for, or that is gone (ADR 0113), in the order board, use.
     pub providers: Vec<String>,
+    /// A line for each part whose designator differs from the one the lock records, or that
+    /// the lock records none for, or whose part is gone (issue #1653), for the boards the lock
+    /// records designators for, in the order board, part.
+    pub designators: Vec<String>,
 }
 
 impl Changes {
@@ -870,6 +1073,7 @@ impl Changes {
             && self.gone.is_empty()
             && self.changed.is_empty()
             && self.providers.is_empty()
+            && self.designators.is_empty()
     }
 
     /// One line for each difference, in the order board, part.
@@ -891,6 +1095,7 @@ impl Changes {
             ));
         }
         lines.extend(self.providers.iter().cloned());
+        lines.extend(self.designators.iter().cloned());
         lines
     }
 }
@@ -945,6 +1150,25 @@ pub fn compare(old: &PickLock, new: &PickLock) -> Changes {
     });
     providers.sort();
     changes.providers = providers.into_iter().map(|(_, _, l)| l).collect();
+    // A board the lock records no designators for is numbered by path, as before the lock
+    // recorded them, and that is no change.
+    for (unit, before, after) in designator_units(old, new) {
+        let Some(before) = before else { continue };
+        let after = after.cloned().unwrap_or_default();
+        for (path, change) in designator_changes(old, new, unit, before, &after) {
+            changes.designators.push(match change {
+                DesignatorChange::New(now) => {
+                    format!("{unit}: `{path}` has no designator in the lock (it is numbered {now})")
+                }
+                DesignatorChange::Gone(was) => format!(
+                    "{unit}: `{path}` is in the lock as {was} and is no longer a part of the board"
+                ),
+                DesignatorChange::Moved(was, now) => {
+                    format!("{unit}: `{path}` is {was} in the lock and is numbered {now}")
+                }
+            });
+        }
+    }
     changes
 }
 
@@ -1262,7 +1486,7 @@ mod tests {
         assert!(wrong("version = 1\nB = 3").contains("`B` must be a table"));
         assert!(
             wrong("version = 1\n[B]\nx = 1")
-                .contains("`[B]` has `x`; it holds only `parts` and `providers`")
+                .contains("`[B]` has `x`; it holds only `parts`, `providers` and `designators`")
         );
         let no_row = wrong("version = 1\n[B.parts.\"r1\"]\ncatalog = \"resistor\"");
         assert!(no_row.contains("[B.parts.\"r1\"] has no `row`"), "{no_row}");
@@ -1386,5 +1610,103 @@ mod tests {
         };
         assert!(wrong("\"  \"").contains("[B.parts.\"r1\"] `held` is empty"));
         assert!(wrong("true").contains("`held` must be text"));
+    }
+
+    fn numbered(list: &[(&str, &str)]) -> BTreeMap<String, String> {
+        list.iter()
+            .map(|(p, d)| (p.to_string(), d.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn designators_are_read_back_as_written_in_the_order_parts_are_numbered() {
+        let mut made = lock(&[("Board", row("r1", "resistor", "330Ω", Some("C25104")))]);
+        made.designators.set(
+            "Board",
+            numbered(&[
+                ("tp10", "TP2"),
+                ("tp2", "TP1"),
+                ("r1", "R1"),
+                ("bulk[1]", "C2"),
+            ]),
+        );
+        // A board with designators and no part to pick.
+        made.designators.set("Holes", numbered(&[("hole", "H1")]));
+        let text = render(&made);
+        assert!(
+            text.contains(
+                "\n[Board.designators]\n\"bulk[1]\" = \"C2\"\n\"r1\" = \"R1\"\n\"tp2\" = \"TP1\"\n\"tp10\" = \"TP2\"\n"
+            ),
+            "{text}"
+        );
+        assert_eq!(parse(&text, "a.lock.toml").unwrap(), made);
+        // Designators alone do not make a lock.
+        let mut bare = PickLock::new("");
+        bare.designators.set("Holes", numbered(&[("hole", "H1")]));
+        assert!(bare.is_empty());
+        for wrong in ["R0", "R01", "r1", "R", "1", "R1A"] {
+            let text = format!("version = 2\n[B.designators]\nr1 = \"{wrong}\"\n");
+            let e = parse(&text, "x.lock.toml").unwrap_err();
+            assert!(e.contains("which is not a designator"), "{wrong}: {e}");
+        }
+    }
+
+    #[test]
+    fn the_diff_and_the_changes_name_each_designator_that_moved_is_new_or_is_gone() {
+        let rows = || {
+            lock(&[
+                ("Board", row("r1", "resistor", "330Ω", None)),
+                ("Board", row("r2", "resistor", "330Ω", None)),
+            ])
+        };
+        let mut old = rows();
+        old.designators.set(
+            "Board",
+            numbered(&[("r1", "R1"), ("r2", "R2"), ("hole", "H1")]),
+        );
+        let mut new = rows();
+        new.designators.set(
+            "Board",
+            numbered(&[("r1", "R2"), ("r2", "R1"), ("pad", "TP1")]),
+        );
+        assert_eq!(
+            diff(&old, &new),
+            vec![
+                "Board: `hole`: designator H1 dropped (it is no longer a part of the board)",
+                "Board: `pad`: numbered TP1",
+                "Board: `r1`: designator R1 -> R2",
+                "Board: `r2`: designator R2 -> R1",
+            ]
+        );
+        assert_eq!(
+            compare(&old, &new).lines(),
+            vec![
+                "Board: `pad` has no designator in the lock (it is numbered TP1)",
+                "Board: `r1` is R1 in the lock and is numbered R2",
+                "Board: `r2` is R2 in the lock and is numbered R1",
+                "Board: `hole` is in the lock as H1 and is no longer a part of the board",
+            ]
+        );
+        // A part whose row is added or dropped has the row's line only.
+        let mut added = lock(&[
+            ("Board", row("r1", "resistor", "330Ω", None)),
+            ("Board", row("r2", "resistor", "330Ω", None)),
+            ("Board", row("r3", "resistor", "330Ω", None)),
+        ]);
+        added.designators.set(
+            "Board",
+            numbered(&[("r1", "R1"), ("r2", "R2"), ("r3", "R3"), ("hole", "H1")]),
+        );
+        assert_eq!(diff(&old, &added).len(), 1, "{:?}", diff(&old, &added));
+        assert!(compare(&old, &added).designators.is_empty());
+        // A lock with no record: one line for the board, and no change for a run.
+        let bare = rows();
+        assert_eq!(
+            diff(&bare, &new),
+            vec!["Board: designators recorded for 3 parts, as they are numbered now"]
+        );
+        assert!(compare(&bare, &new).is_empty());
+        // No file: the rows say it all.
+        assert_eq!(diff(&PickLock::new(""), &new).len(), 2);
     }
 }

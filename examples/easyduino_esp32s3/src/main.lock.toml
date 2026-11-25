@@ -1,8 +1,9 @@
 # The catalog row each part of each board was picked as, written by `netsmith board build` and
 # `netsmith board fab` when this file does not exist. Commit it: a change to a catalog or to the
 # solver that would move a pick shows here and not only in the bill of materials. Refresh it
-# with `netsmith project lock --update`. Nothing in it is edited by hand but `held = "reason"`,
-# which a person adds to a part's entry to keep the part on its row.
+# with `netsmith project lock --update`, and number the parts again by path with `--renumber`.
+# Nothing in it is edited by hand but `held = "reason"`, which a person adds to a part's entry
+# to keep the part on its row, and a part's designator, which a renamed part takes by hand.
 version = 2
 
 [EasyduinoEsp32s3.providers."process"]
@@ -220,3 +221,40 @@ catalog = "capacitor"
 row = "22uF 10% 10V tantalum CASE-A-3216-18 C11366"
 mpn = "TAJA226K010RNJ"
 sku = { jlcpcb-assembly = "C11366", lcsc-retail = "C11366" }
+
+[EasyduinoEsp32s3.designators]
+"auto_reset.q_boot" = "Q1"
+"auto_reset.q_en" = "Q2"
+"auto_reset.r_dtr" = "R1"
+"auto_reset.r_rts" = "R2"
+"boot" = "SW1"
+"boot_100n" = "C1"
+"bridge" = "U1"
+"bridge_reset_pullup.resistor" = "R3"
+"bridge_vdd_cap" = "C2"
+"en_100n[0]" = "C3"
+"en_100n[1]" = "C4"
+"en_pullup.resistor" = "R4"
+"headers" = "J1"
+"mcu" = "U2"
+"power_led" = "D1"
+"power_led_resistor" = "R5"
+"regulator" = "U3"
+"reset" = "SW2"
+"suspend_pulldown.resistor" = "R6"
+"usb_native.cc1_rd" = "R7"
+"usb_native.cc2_rd" = "R8"
+"usb_native.receptacle" = "J2"
+"usb_native_diode" = "D2"
+"usb_uart.cc1_rd" = "R9"
+"usb_uart.cc2_rd" = "R10"
+"usb_uart.receptacle" = "J3"
+"usb_uart_diode" = "D3"
+"user_led" = "D4"
+"user_led_resistor" = "R11"
+"v3v3_100n" = "C5"
+"v3v3_22u[0]" = "C6"
+"v3v3_22u[1]" = "C7"
+"vbus_100n" = "C8"
+"vbus_1u" = "C9"
+"vbus_22u" = "C10"

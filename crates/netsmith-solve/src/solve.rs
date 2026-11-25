@@ -336,6 +336,9 @@ pub struct Solution {
     /// The project's default for who assembles a part (`fab`, `hand` or `none`), from the
     /// catalogs the board was solved with (ADR 0028). The design stage applies it.
     pub default_assembly: Option<String>,
+    /// The designator the pick lock records for each part, by path (issue #1653), from the
+    /// catalogs the board was solved with: the design stage keeps them. Empty with no record.
+    pub designators: std::collections::BTreeMap<String, String>,
     /// The logic level and absolute maximum checks that could not be made, and why
     /// (ADR 0046): never a pass.
     pub not_evaluated: Vec<crate::levels::NotEvaluated>,
@@ -1225,6 +1228,7 @@ fn solve_model(model: &Model, catalogs: &Catalogs, unit: &str) -> Solution {
         seeded: s.seeded,
         diagnostics: s.diagnostics,
         default_assembly: catalogs.default_assembly().map(str::to_string),
+        designators: catalogs.designators().of(unit).cloned().unwrap_or_default(),
         not_evaluated,
         trials: s.trials,
         work: s.work,
