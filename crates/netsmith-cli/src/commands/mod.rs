@@ -43,6 +43,7 @@ mod port;
 mod power;
 mod project_show;
 mod render;
+mod resistance;
 mod route;
 mod routes;
 mod routes_check_via;
@@ -170,6 +171,8 @@ pub enum Board {
     Fill(fill::Args),
     /// Print each net's routed and straight length, vias, layer changes and layers, and each diff pair's lengths, skew, coupled length, gaps and vias side by side.
     Nets(nets::Args),
+    /// The DC resistance of a net's copper between two pads, its drop at a current and the hottest copper on the way.
+    Resistance(resistance::Args),
 }
 
 /// `netsmith view ...`.
@@ -260,6 +263,7 @@ fn dispatch(command: Command) -> ExitCode {
             Board::Copper(args) => copper::run(args),
             Board::Fill(args) => fill::run(args),
             Board::Nets(args) => nets::run(args),
+            Board::Resistance(args) => resistance::run(args),
         },
         Command::Layout(args) => layout::run(args),
         Command::Routes(args) => routes::run(args),

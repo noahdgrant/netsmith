@@ -85,6 +85,34 @@ pub fn via_current(drill: f64, plating: f64, rise: f64) -> f64 {
     Layer::Internal.k() * rise.powf(0.44) * area.powf(0.725)
 }
 
+/// The temperature rise in kelvin of a track of `width` mm in copper `copper` mm thick that
+/// carries `current` amperes (issue #1703): the formula of [`ipc2221_current`] solved for the
+/// rise. 0 for no current; infinite for no copper.
+pub fn ipc2221_rise(current: f64, width: f64, copper: f64, layer: Layer) -> f64 {
+    if current <= 0.0 {
+        return 0.0;
+    }
+    let area = (width / MIL) * (copper / MIL);
+    if area <= 0.0 {
+        return f64::INFINITY;
+    }
+    (current / (layer.k() * area.powf(0.725))).powf(1.0 / 0.44)
+}
+
+/// The temperature rise in kelvin of a via of [`via_current`]'s hole and plating that carries
+/// `current` amperes (issue #1703): its formula solved for the rise.
+pub fn via_rise(current: f64, drill: f64, plating: f64) -> f64 {
+    if current <= 0.0 {
+        return 0.0;
+    }
+    // The current at a rise of 1 K is `k * A^0.725`, and the current goes as the rise to 0.44.
+    let at_one = via_current(drill, plating, 1.0);
+    if at_one <= 0.0 {
+        return f64::INFINITY;
+    }
+    (current / at_one).powf(1.0 / 0.44)
+}
+
 /// How copper is sized for a current on one board (issue #1113): the process's copper, the
 /// temperature rise the board allows and the fabricator's width tolerance, as the design stage
 /// sizes a net's tracks with them (ADR 0036, amendment 5: a track is sized for the narrowest
@@ -136,6 +164,30 @@ impl TrackSizing {
         } else {
             1
         }
+    }
+
+    /// The temperature rise in kelvin of a track drawn `width` mm wide, on an inner signal layer
+    /// when `inner`, that carries `current` amperes (issue #1703): IPC-2221 at the narrowest
+    /// finished track the tolerance allows, in the copper [`TrackSizing::least_width_on`] sizes
+    /// that layer in, so the rise is over [`TrackSizing::rise`] exactly when the width is under
+    /// the least width.
+    pub fn track_rise(&self, current: f64, width: f64, inner: bool) -> f64 {
+        let (copper, layer) = match (inner, self.inner_copper.filter(|&c| c > 0.0)) {
+            (true, Some(c)) => (c, Layer::Internal),
+            _ => (self.copper, Layer::External),
+        };
+        ipc2221_rise(
+            current,
+            width * (1.0 - self.tolerance.clamp(0.0, 0.9)),
+            copper,
+            layer,
+        )
+    }
+
+    /// The most current a via with a hole of `drill` mm carries at the board's rise, in amperes:
+    /// [`via_current`] in the process's plating.
+    pub fn via_capacity(&self, drill: f64) -> f64 {
+        via_current(drill, self.via_plating, self.rise)
     }
 
     fn width(&self, current: f64, copper: f64, layer: Layer) -> f64 {

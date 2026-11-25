@@ -113,15 +113,21 @@ fn parse_at_current(text: &str) -> Result<AtCurrent, String> {
         .rsplit_once('=')
         .filter(|(net, _)| !net.is_empty())
         .ok_or_else(|| format!("`{text}` is not `NET=A`, such as `3V3=0.5`"))?;
+    Ok(AtCurrent {
+        net: net.to_string(),
+        current: parse_amps(value)?,
+    })
+}
+
+/// Reads a current above 0 in `A` (the unit may be left out), `mA` or `uA`, in amperes: of
+/// `--at-current` and `board resistance --amps`.
+pub(super) fn parse_amps(value: &str) -> Result<f64, String> {
     let (number, scale) = [("mA", 1e-3), ("uA", 1e-6), ("A", 1.0)]
         .iter()
         .find_map(|&(unit, scale)| Some((value.strip_suffix(unit)?, scale)))
         .unwrap_or((value, 1.0));
     match number.parse::<f64>() {
-        Ok(n) if n.is_finite() && n > 0.0 => Ok(AtCurrent {
-            net: net.to_string(),
-            current: n * scale,
-        }),
+        Ok(n) if n.is_finite() && n > 0.0 => Ok(n * scale),
         _ => Err(format!(
             "`{value}` is not a current above 0: give amperes (`0.5`, `0.5A`, `500mA`)"
         )),
@@ -688,8 +694,8 @@ pub(crate) mod testing {
         Board, Command, Dev, Import, Project, View, board3d, bom, build, case, catalog, check,
         check_footprint, common, compare, copper, drc, dxf, editor, explain, fab, fill, fmt,
         footprint, gerber, init, kicad_libs, layout, lint, lock, mcp, migrate_offers, nets, order,
-        panel, parity, part, pcb, pins, port, power, project_show, render, route, routes, rules,
-        schematic, schematic_layout, show, swap, system, view,
+        panel, parity, part, pcb, pins, port, power, project_show, render, resistance, route,
+        routes, rules, schematic, schematic_layout, show, swap, system, view,
     };
 
     /// The command line as main.rs has it.
@@ -730,6 +736,7 @@ pub(crate) mod testing {
         Copper(copper::Args),
         Fill(fill::Args),
         Nets(nets::Args),
+        Resistance(resistance::Args),
         Layout(layout::Args),
         Routes(routes::Args),
         SchematicLayout(schematic_layout::Args),
@@ -784,6 +791,7 @@ pub(crate) mod testing {
                     Board::Copper(a) => Leaf::Copper(a),
                     Board::Fill(a) => Leaf::Fill(a),
                     Board::Nets(a) => Leaf::Nets(a),
+                    Board::Resistance(a) => Leaf::Resistance(a),
                 },
                 Command::Layout(a) => Leaf::Layout(a),
                 Command::Routes(a) => Leaf::Routes(a),

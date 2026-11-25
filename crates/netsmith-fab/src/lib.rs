@@ -88,6 +88,7 @@ mod panel;
 pub mod power_stage;
 mod raster;
 pub mod replaced_pour;
+pub mod resistance;
 mod rotation;
 mod score;
 pub mod viewer;
