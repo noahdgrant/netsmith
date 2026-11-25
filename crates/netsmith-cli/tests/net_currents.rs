@@ -203,3 +203,66 @@ fn a_storage_elements_discharge_peak_current_is_the_current_of_its_return_leg_in
         "{line}"
     );
 }
+
+/// A load that draws 2 A at its peak and 0.3 A rms, fed from a header (issue #1690).
+const MODEM: &str = "\
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+board B {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .modem: Rail { .pos.net &= \"VBAT\"; .current &= 0A..2A; .rms_current &= 0.3A }
+    .source: Rail { .pos.net &= \"VBAT\"; .current &= -2A..0A }
+    .supply: Header1x2
+    .out: Header1x2
+    .supply.p1 ~ .source.pos
+    .supply.p2 ~ .source.neg
+    .out.p1 ~ .modem.pos
+    .out.p2 ~ .modem.neg
+}
+";
+
+#[test]
+fn a_net_with_an_rms_current_lists_both_figures_and_its_copper_is_held_to_the_rms() {
+    let dir = TempDir::new("net-currents-rms");
+    fs::write(dir.join("b.nsm"), MODEM).unwrap();
+    let listed = json(&netsmith(
+        &dir,
+        &["board", "nets", "b.nsm", "--currents", "--format", "json"],
+    ));
+    let currents = listed["currents"].as_array().expect("a currents list");
+    let vbat = currents
+        .iter()
+        .find(|c| c["net"] == "VBAT")
+        .unwrap_or_else(|| panic!("no current for VBAT: {currents:?}"));
+    println!("{vbat}");
+    // The peak stays the net's current (the track drop reads it); the rms sizes the copper.
+    assert!((vbat["current"].as_f64().unwrap() - 2.0).abs() < 1e-9, "{vbat}");
+    assert!((vbat["rms"].as_f64().unwrap() - 0.3).abs() < 1e-9, "{vbat}");
+    assert!(
+        vbat["rms_source"]
+            .as_str()
+            .unwrap()
+            .contains("rail `modem` 300 mA (rms)"),
+        "{vbat}"
+    );
+    let rules = json(&netsmith(&dir, &["board", "rules", "b.nsm", "--format", "json"]));
+    let held = rules["nets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["net"] == "VBAT")
+        .expect("rules for VBAT");
+    // 0.3 A needs less than the process's least track, which 2 A would not.
+    assert!(held["least_width"].as_f64().unwrap() < 0.2, "{held}");
+
+    let run = netsmith(&dir, &["board", "nets", "b.nsm", "--currents"]);
+    let text = String::from_utf8_lossy(&run.stdout);
+    assert!(run.status.success(), "{text}");
+    let line = text
+        .lines()
+        .find(|l| l.trim_start().starts_with("VBAT: "))
+        .unwrap_or_else(|| panic!("no line for VBAT in:\n{text}"));
+    assert!(line.contains(": 2 A (") && line.contains(", 300 mA rms ("), "{line}");
+}

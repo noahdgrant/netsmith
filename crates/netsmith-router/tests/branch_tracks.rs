@@ -71,6 +71,7 @@ fn with_a_branch(seed: u64) -> Option<(Board, String, PinRef)> {
         least_width: SIZING.least_width(0.001),
         inner_least_width: None,
         vias: 1,
+        rms: None,
     });
     Some((board, net.name, pin))
 }

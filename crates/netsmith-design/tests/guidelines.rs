@@ -1266,3 +1266,151 @@ fn a_part_in_a_module_that_states_more_than_the_dc_analysis_finds_sets_its_nets_
     assert_eq!(width_of(&l, &node.net), Some(0.38));
     assert_eq!(node.vias, 2, "{node:?}");
 }
+
+// ---- a heating (rms) current beside the peak (issue #1690) ------------------------------
+
+/// The one current of net `net`.
+fn net_current_of(l: &netsmith_design::Designed, net: &str) -> netsmith_core::NetCurrent {
+    l.design
+        .features
+        .net_currents
+        .iter()
+        .find(|c| c.net == net)
+        .unwrap_or_else(|| panic!("net `{net}` has a current"))
+        .clone()
+}
+
+/// The errors of the design stage for `src`.
+fn design_errors(src: &str) -> Vec<String> {
+    let c = check("t.nsm", src, &Loader::std());
+    assert!(c.is_ok(), "{}", c.render());
+    let s = solve(&c.boards[0], &Catalogs::jlcpcb());
+    assert!(s.diagnostics.is_empty(), "{:?}", s.diagnostics);
+    match design_board(&c.boards[0], &s) {
+        Ok(_) => Vec::new(),
+        Err(errors) => errors,
+    }
+}
+
+#[test]
+fn a_rail_with_a_2_a_peak_and_0_3_a_rms_is_sized_by_the_rms_and_keeps_the_peak_for_the_drop() {
+    let l = designed_of(&board(2.0, "        .rms_current &= 0.3A\n", ""));
+    let five = net_current_of(&l, "5V");
+    // The peak stays the net's current, which the track drop measures at.
+    assert!((five.current - 2.0).abs() < 1e-9, "{five:?}");
+    assert_eq!(five.rms, Some(0.3), "{five:?}");
+    // The copper is sized for heat by the rms: 0.3 A needs what a plain 0.3 A rail needs.
+    let plain = net_current_of(&designed_of(&board(0.3, "", "")), "5V");
+    assert!((five.least_width - plain.least_width).abs() < 1e-12, "{five:?}");
+    assert_eq!(five.vias, plain.vias);
+    assert_eq!(width_of(&l, "5V"), width_of(&designed_of(&board(0.3, "", "")), "5V"));
+    // The supply's current is bounded by what its load carries, so the return is sized alike.
+    assert_eq!(net_current_of(&l, "GND").rms, Some(0.3));
+    assert_eq!(
+        five.rms_source,
+        "the sum of the rms currents on it, below its peak of 2 A: rail `load` 300 mA (rms)"
+    );
+    assert!(l.guidelines.is_empty(), "{:?}", l.guidelines);
+}
+
+#[test]
+fn a_plain_current_is_sized_by_its_peak_as_before() {
+    let l = designed_of(&board(2.0, "", ""));
+    let five = net_current_of(&l, "5V");
+    assert_eq!(five.rms, None, "{five:?}");
+    assert!(five.rms_source.is_empty());
+    assert_eq!(width_of(&l, "5V"), Some(0.98));
+}
+
+#[test]
+fn rms_currents_on_one_net_add_up_and_a_rail_with_none_counts_at_its_peak() {
+    // Linear sum, the conservative rule: the rms of a sum is never more than the sum of the
+    // rms values. The 5 V load's 0.3 A rms and the 3.3 V load's 1 A (no rms) share the ground.
+    let l = designed_of(&shared_ground("2A", "1A", "        .rms_current &= 0.3A\n"));
+    let ground = net_current_of(&l, "GND");
+    assert!((ground.current - 3.0).abs() < 1e-9, "{ground:?}");
+    let rms = ground.rms.expect("the ground has an rms current");
+    assert!((rms - 1.3).abs() < 1e-9, "{ground:?}");
+    assert!(
+        ground.rms_source.contains("rail `load_a` 300 mA (rms)")
+            && ground
+                .rms_source
+                .contains("1 A (its peak: it states no `.rms_current`)"),
+        "{}",
+        ground.rms_source
+    );
+    // The 3.3 V net has no rms stated on it and is sized by its peak.
+    assert_eq!(net_current_of(&l, "3V3").rms, None);
+}
+
+#[test]
+fn the_nets_of_a_chain_in_front_of_a_load_take_its_rms() {
+    // The fuse and the diode pass what the load draws, so the node between them heats with no
+    // more than the load's rms (Kirchhoff's current law), though no part on it states one.
+    let l = designed_of(&fuse_diode(
+        "        .current &= 1A..2A\n        .rms_current &= 0.5A\n",
+        "",
+        "",
+    ));
+    let node = l
+        .design
+        .features
+        .net_currents
+        .iter()
+        .find(|c| c.net.contains("diode") || c.net.contains("fuse"))
+        .expect("the node has a current");
+    assert!((node.current - 2.0).abs() < 1e-9, "{node:?}");
+    assert_eq!(node.rms, Some(0.5), "{node:?}");
+    assert!(
+        node.rms_source
+            .contains("(rms, what the others on a net it joins carry)"),
+        "{}",
+        node.rms_source
+    );
+}
+
+#[test]
+fn an_rms_current_above_the_peak_is_an_error() {
+    let errors = design_errors(&board(2.0, "        .rms_current &= 3A\n", ""));
+    assert_eq!(
+        errors,
+        vec![
+            "`load.rms_current` reaches 3 A, above the most `load.current` reaches, 2 A: the rms of a current is never more than its peak; state an rms current of at most 2 A, or a `.current` that reaches the peak"
+                .to_string()
+        ]
+    );
+}
+
+#[test]
+fn an_rms_current_with_no_current_beside_it_is_an_error() {
+    let errors = design_errors(&board(2.0, "", "").replace(
+        "    .out.p1 ~ .load.pos\n",
+        "    .out.p1 ~ .load.pos\n    .out.p1.rms_current &= 0.1A\n",
+    ));
+    assert_eq!(
+        errors,
+        vec![
+            "`out.p1.rms_current` is stated but `out.p1.current` is not known: the rms current sizes the copper for heat beside the peak in `.current`, which the track drop measures at; state `out.p1.current` (the most it carries at an instant), or leave the rms current out"
+                .to_string()
+        ]
+    );
+}
+
+#[test]
+fn a_pin_s_rms_current_sizes_its_branch() {
+    let l = designed_of(&board(2.0, "", "").replace(
+        "    .out.p1 ~ .load.pos\n",
+        "    .out.p1 ~ .load.pos\n    .out.p1.current &= 2A\n    .out.p1.rms_current &= 0.3A\n",
+    ));
+    let branch = l
+        .design
+        .features
+        .branch_currents
+        .iter()
+        .find(|b| b.path == "out.p1")
+        .expect("the pin states its branch");
+    assert!((branch.current - 2.0).abs() < 1e-9, "{branch:?}");
+    assert_eq!(branch.rms, Some(0.3));
+    let plain = net_current_of(&designed_of(&board(0.3, "", "")), "5V");
+    assert!((branch.least_width - plain.least_width).abs() < 1e-12, "{branch:?}");
+}
