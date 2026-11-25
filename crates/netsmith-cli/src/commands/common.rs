@@ -12,6 +12,8 @@ use netsmith_pipeline::Libraries;
 use netsmith_solve::Catalogs;
 use netsmith_tools::findings::{Finding, Report, Severity};
 
+use crate::release_warning;
+
 /// The port `netsmith view editor` listens on unless told otherwise.
 pub const DEFAULT_PORT: u16 = 8787;
 
@@ -208,7 +210,10 @@ pub struct Output {
     /// `guideline`, `power`, `lock`, `place`, `fab`), or `note.` and the cause of a note
     /// (`note.not_stated`, `note.part_model`, `note.unjudged`, `note.circular`, `note.supply`,
     /// `note.pick`, `note.track`, `note.other`). With `--notes summary` or `none` the notes are
-    /// left out of the findings; their counts are always there.
+    /// left out of the findings; their counts are always there. A note of the code `release` is
+    /// about the netsmith the project is written for (`netsmith` in netsmith.toml): the first
+    /// finding when it names another minor release than this one, or the last for a project with
+    /// none whose board failed its check. `--notes` leaves it in, and it is not counted.
     #[arg(long, value_enum, default_value = "text")]
     pub format: Format,
     /// Print each note, a count of the notes for each cause, or none.
@@ -276,7 +281,7 @@ impl From<Notes> for netsmith_tools::findings::NotesMode {
 /// exit code of the command when it stops, `None` to go on.
 pub(super) fn sync_pins(file: Option<&str>, locked: bool) -> Option<ExitCode> {
     // Only what the check needs: the catalogs are loaded, and timed, by the command itself.
-    let Ok(target) = Target::resolve(file) else {
+    let Ok(target) = resolve(file) else {
         // The command says it again.
         return None;
     };
@@ -302,6 +307,14 @@ pub(super) fn sync_pins(file: Option<&str>, locked: bool) -> Option<ExitCode> {
     None
 }
 
+/// [`Target::resolve`] for a command that builds or checks what it finds: a project written for
+/// another minor release than this netsmith is warned of, once in the run (issue #1657).
+pub(super) fn resolve(file: Option<&str>) -> Result<Target, String> {
+    let target = Target::resolve(file)?;
+    release_warning::open(target.project.as_ref());
+    Ok(target)
+}
+
 /// What a command acts on: the named file or the project's top-level files, what their
 /// imports can reach, and the catalogs to pick parts from. A problem is printed and is the
 /// exit code.
@@ -323,7 +336,7 @@ pub(super) fn target_offline(
         eprintln!("{e}");
         ExitCode::from(2)
     };
-    let target = Target::resolve(file).map_err(fail)?.with_offline(offline);
+    let target = resolve(file).map_err(fail)?.with_offline(offline);
     let loader = target.loader().map_err(fail)?;
     let mut catalogs = timings::stage("catalogs", "", || target.catalogs()).map_err(fail)?;
     // `--strict` makes guideline findings errors for this run; the manifest's
@@ -334,21 +347,25 @@ pub(super) fn target_offline(
     Ok((target, loader, catalogs))
 }
 
-/// After a run in which a board failed its check: when the target's project is written for
-/// another netsmith release, or says none, the note that an error may be a spelling that changed
-/// and where the changes are listed (`netsmith_fabricate::release`, issue #740). Printed as text,
-/// or kept as a finding for `--format json`. A file outside a project gets no note.
+/// After a run in which a board failed its check: when the target's project says no netsmith
+/// release, the note that an error may be a spelling that changed and where the changes are
+/// listed (`netsmith_fabricate::release`, issue #740). Printed as text, or kept as a finding for
+/// `--format json`. A file outside a project gets no note, and a project written for another
+/// release has had its warning, which says the same ([`resolve`]).
 pub(super) fn release_note(target: &Target, report: Option<&mut Report>) {
     let Some(project) = &target.project else {
         return;
     };
-    let Some(note) = netsmith_fabricate::release::note(project.manifest.netsmith.as_deref()) else {
+    let written_for = project.manifest.netsmith.as_deref();
+    let Some(note) = netsmith_fabricate::release::no_release_note(written_for) else {
         return;
     };
     match report {
-        Some(report) => report
-            .findings
-            .push(Finding::plain(Severity::Note, "release", note)),
+        Some(report) => {
+            report
+                .findings
+                .push(Finding::plain(Severity::Note, release_warning::CODE, note))
+        }
         None => eprintln!("note: {note}"),
     }
 }

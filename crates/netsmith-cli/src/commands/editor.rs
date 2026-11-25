@@ -3,7 +3,6 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use clap::Args as ClapArgs;
-use netsmith_fabricate::project::Target;
 use netsmith_workspace::Workspace;
 
 use super::common::DEFAULT_PORT;
@@ -47,7 +46,7 @@ fn run_editor(file: Option<&str>, port: u16, offline: bool) -> ExitCode {
         }
     };
     let port = listener.local_addr().map_or(port, |a| a.port());
-    let target = match Target::resolve(file) {
+    let target = match super::common::resolve(file) {
         Ok(t) => t.with_offline(offline),
         Err(e) => {
             eprintln!("{e}");
@@ -69,6 +68,9 @@ fn run_editor(file: Option<&str>, port: u16, offline: bool) -> ExitCode {
     if swept > 0 {
         eprintln!("removed {swept} leftover scratch folder(s) of earlier comparisons");
     }
+    // Said here, as the project is opened: the server runs until it is stopped. The page lists
+    // it among its problems too (issue #1657).
+    crate::release_warning::say();
     println!(
         "editing {} at http://127.0.0.1:{port}/ (Ctrl-C to stop)",
         workspace.title()

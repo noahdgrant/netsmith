@@ -84,6 +84,9 @@ pub fn run(args: Args) -> ExitCode {
             let corner = made.outline_at.as_ref().map(|p| (p.x, p.y));
             let mut report = Report::new("drc");
             report.ok = clean;
+            // A project written for another release is warned of, as the first finding
+            // (issue #1657).
+            report.findings.extend(crate::release_warning::finding());
             report.boards.push(BoardOut {
                 board: made.board.clone(),
                 dir: None,

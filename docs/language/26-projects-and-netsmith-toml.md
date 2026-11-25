@@ -2,7 +2,7 @@
 
 A project is a directory with a `netsmith.toml` at its root (ADR 0011). `netsmith project init` makes one in the current directory. It writes `netsmith.toml`, `src/main.nsm` (a working LED board), `.gitignore` (the output folders, and `/.netsmith/`, netsmith's cache of the router's copper, ADR 0138) and `README.md`, and for the agents that work in the project an `AGENTS.md`, a `CLAUDE.md` of the one line `@AGENTS.md` (Claude Code reads `CLAUDE.md`), the skills in `.agents/skills/` (with `.claude/skills` linking to them) and this guide as `docs/netsmith/LANGUAGE.md` (ADR 0015). It never overwrites a file; an `AGENTS.md` or `CLAUDE.md` that exists is left alone and `init` says what to add. It also writes `.agents/netsmith-files.sha256`, the SHA-256 of each agent file it wrote. After a netsmith upgrade, `netsmith project refresh` (in the project or a folder of it) brings those files up to date: it writes the ones that are missing, rewrites the ones that still have a text netsmith wrote (by the record, or by a list of every earlier version for a project made before the record), and leaves the others alone, listing each with a diff in which `-` is your file and `+` is what netsmith writes now; delete such a file and refresh again to take netsmith's text. It deletes nothing: a chapter or skill that a newer netsmith dropped is named and left. A project's `.gitignore`, `README.md` and sources are never touched.
 
-A release may change how a board spells something (one spelling for each thing, with no release in which both work, ADR 0001), so a project that built on an earlier netsmith can stop with many errors. The manifest's `netsmith` key names the release the project is written for, and `init` writes the running one. When `build`, `check` or `fab` stops because a board failed its check and the key names an older release, or the manifest has none, the run ends with a note that says so and points to `docs/MIGRATING.md` in netsmith's repository, which lists every such change, release by release, with the old and the new spelling (ADR 0134). Set the key to the new release when the project builds again. A key newer than the running netsmith gets a note that asks for that release. The key never stops a build.
+The manifest's `netsmith` key names the release the project is written for, and `init` writes the running one. Another netsmith may give other results for the same project (_The release a project is written for_, below).
 
 ```toml
 [project]
@@ -19,7 +19,7 @@ Only `name` is required.
 | Key | Meaning |
 |---|---|
 | `name` | The project name. |
-| `netsmith` | Optional. The netsmith release the project is written for, such as `"0.2.0"`; `project init` writes the running one. A failed check of a project of another release, or of none, ends with a note that points to `docs/MIGRATING.md` (above). A value that is not three whole numbers is refused. |
+| `netsmith` | Optional. The netsmith release the project is written for: `"0.9.0"`, or `"0.9"`, which any patch of 0.9 matches; `project init` writes the running one, with its patch. A command that builds or checks the project with another minor release warns of it and refuses nothing (_The release a project is written for_, below). A value that is not two or three whole numbers is refused. netsmith 0.9.0 and earlier read only the three-number form. |
 | `revision` | Optional. The revision of the project's boards: text on one line, up to 32 characters (`"A"`, `"1.2"`, a tag), as `netsmith` is a key of this table (issue #1134). The title block of every page of the schematic PDF shows `Rev A` beside the sheet's name (with "Drawn by netsmith ..." still in it), the first line of each board's `fab-notes.txt` is `fab-notes for <board>, revision A; places in mm from the outline's top left corner, y down`, and an order's `order.txt` begins `<project>, revision A`. It is one revision for the project, not one for each board: the boards of a project all say it. No file name carries it (the Gerber zip, `bom.csv` and `cpl.csv` keep theirs), `project init` does not write it, and a manifest without it gives the output it gave before. A value that is empty, over 32 characters or not on one line is refused with the manifest's line. |
 | `top_level` | The files that hold boards or systems. `top_level = []` is a project of modules only: `build` and `fab` with no file then say `error: this project has no boards`. |
 | `out` | Where `netsmith board build` writes. |
@@ -43,6 +43,38 @@ Only `name` is required.
 | `pdf` | Optional. Whether `fab` writes the board's schematic as `<board>-schematic.pdf` into the fab package, a page for each sheet: `true`, the default, writes it; `pdf = false` leaves it out, and removes the one of an earlier run. `board fab --no-pdf` leaves it out for one run. See chapter 27, "The schematic as a document". |
 
 Beside `[project]`, the file may have `[order.<name>.boards]` tables, with `via_in_pad` in an order's own `[order.<name>]` table (_Orders_, below), a `[supply]` table (the project's supply channels and its supply provider, and in `[supply.parts]` the parts that name a channel of their own, keyed as the pick lock is: _Supply channels_ in the chapter on catalogs), a `[dependencies]` table (_Dependencies_, below), a `[lint]` table (the rules of `netsmith project lint` turned off for the project, `off = ["naming"]`, and `findings = "warn"` or `"error"`, which `--strict` asks for one run: _The linter_, in the chapter on commands), and a model table: a `[models]` table with `folder`, and `[[model]]` rows with `footprint`, `file`, `offset` and `rotation`, the STEP model a part is drawn from when it states none (_A model table_ in the chapter on the shape of a board). Any other table is refused.
+
+### The release a project is written for
+
+Another minor release of netsmith may pick other parts, find other design rules findings on the same copper and write other output, and may change how a board spells something (one spelling for each thing, with no release in which both work, ADR 0001), so a project that built on an earlier netsmith can stop with many errors. So that results of two releases are not mixed without notice:
+
+- Every command that builds or checks a project warns, once in a run, when the running netsmith's major or minor release is not the one the `netsmith` key names: the `board`, `layout`, `routes` and `schematic` commands; `view 3d`, `view pcb`, `view schematic` and `view editor`; `project lock`, `lint`, `fmt` (of the whole project), `order` and `show`; `catalog check`, `dev board3d` and `dev parity`. Nothing is refused, and the exit code is what it would be without the warning.
+- A patch release is silent (`"0.9.0"` with netsmith 0.9.3), a value with no patch (`"0.9"`) matches any patch, and a project with no `netsmith` key gets no warning.
+- In text it is a `warning:` line on stderr as the command ends, after the errors it may explain. With `--format json`, `board check`, `build`, `explain`, `fab` and `drc` and `project lint`, `lock` and `order` have it as the first of their `findings`, with `severity` `note` and `code` `release`, and say nothing of it on stderr; every other command says it on stderr and leaves its document as it is.
+- `netsmith view editor` says it in the terminal as it opens the project, and the page lists it first among its problems, as a warning. `netsmith mcp` says it on its stderr and in the server's instructions as it starts in the project's folder, and the commands it runs do not repeat it, unless the key has changed since.
+- No file netsmith writes carries it: `fab-notes.txt`, the design files and the rest of the output are the same with the warning or without.
+
+The warning of a project written for an older release points to `docs/MIGRATING.md` in netsmith's repository, which lists every change that makes source an error, release by release, with the old and the new spelling (ADR 0134). To move a project, check it with the new release and, when it builds, set the key to that release. The warning of a project written for a newer one asks for that release. A project with no `netsmith` key whose `board check`, `build` or `fab` stops because a board failed its check ends with a note that it was made before the key, which points to the same file.
+
+#### Running the project's release
+
+Releases install side by side, each in a folder of its own, and a project is run with the one it is written for by that program's path. From the source of a tag, which needs Rust (and Node 20 or newer for the editor's page):
+
+```sh
+cargo install --git https://github.com/noahdgrant/netsmith --tag v0.9.0 --root ~/netsmith-0.9.0 netsmith-cli --locked
+~/netsmith-0.9.0/bin/netsmith --version
+~/netsmith-0.9.0/bin/netsmith board check
+```
+
+`--root` puts the program in `bin/` below that folder and leaves the netsmith already on your `PATH` as it is. Or take the archive of the release from `https://github.com/noahdgrant/netsmith/releases/tag/v0.9.0`, with no Rust: `netsmith-0.9.0-x86_64-unknown-linux-gnu.tar.gz`, `netsmith-0.9.0-aarch64-apple-darwin.tar.gz` or `netsmith-0.9.0-x86_64-pc-windows-msvc.zip`, each with its `.sha256` file (v0.1.0 and v0.3.0 have no archives). Check it and unpack it; the program is in the folder the archive holds:
+
+```sh
+sha256sum -c netsmith-0.9.0-x86_64-unknown-linux-gnu.tar.gz.sha256
+tar -xzf netsmith-0.9.0-x86_64-unknown-linux-gnu.tar.gz
+./netsmith-0.9.0-x86_64-unknown-linux-gnu/netsmith --version
+```
+
+(`shasum -a 256 -c` on macOS.) netsmith has no switch that chooses a release for you. An agent host takes that release's program as its server (`claude mcp add netsmith -- ~/netsmith-0.9.0/bin/netsmith mcp`), and `project refresh` writes the agent files of the netsmith that runs it. A release earlier than the one that added the warning says nothing of the key on a run that succeeds.
 
 ### Orders
 

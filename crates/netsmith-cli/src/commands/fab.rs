@@ -634,6 +634,10 @@ fn run_fab(
             }
         }
         report.ok = code == ExitCode::SUCCESS;
+        // A project written for another release is warned of, as the first finding (issue #1657).
+        if let Some(finding) = crate::release_warning::finding() {
+            report.findings.insert(0, finding);
+        }
         match output.framing.report_json(&report) {
             Ok(text) => print!("{text}"),
             Err(e) => return crate::frame::refused(&e),
@@ -739,6 +743,13 @@ fn finding_of_line(line: &str) -> Option<Finding> {
     })
 }
 
+/// Prints a document of `project order --format json`, with the warning of a project written for
+/// another release among its findings (issue #1657).
+fn print_order(mut document: serde_json::Value) {
+    crate::release_warning::add_to(&mut document);
+    common::print_json(&document);
+}
+
 /// `netsmith project order`: list the project's orders, or make one (ADR 0035).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_order(
@@ -775,7 +786,7 @@ pub(super) fn run_order(
     let name = match request {
         OrderRequest::List => {
             if json {
-                common::print_json(&serde_json::json!({
+                print_order(serde_json::json!({
                     "command": "order",
                     "ok": true,
                     "orders": orders.iter().map(|o| serde_json::json!({
@@ -890,7 +901,7 @@ pub(super) fn run_order(
         out,
     ) {
         Err(problems) if json => {
-            common::print_json(&serde_json::json!({
+            print_order(serde_json::json!({
                 "command": "order",
                 "ok": false,
                 "order": order.name,
@@ -907,7 +918,7 @@ pub(super) fn run_order(
             ExitCode::FAILURE
         }
         Ok(made) if json => {
-            common::print_json(&serde_json::json!({
+            print_order(serde_json::json!({
                 "command": "order",
                 "ok": true,
                 "order": made.name,

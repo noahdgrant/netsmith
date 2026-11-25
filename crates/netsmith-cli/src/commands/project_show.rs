@@ -10,7 +10,6 @@ use std::process::ExitCode;
 use clap::Args as ClapArgs;
 use netsmith_editor::api::{Analysis, FileRole, OrderInfo, Project, Severity};
 use netsmith_editor::{Backend, served_project};
-use netsmith_fabricate::project::Target;
 use netsmith_workspace::Workspace;
 use serde_json::json;
 
@@ -41,7 +40,7 @@ pub fn run(args: Args) -> ExitCode {
         eprintln!("{e}");
         ExitCode::from(2)
     };
-    let target = match Target::resolve(args.file.as_deref()) {
+    let target = match super::common::resolve(args.file.as_deref()) {
         Ok(t) => t,
         Err(e) => return fail(e),
     };

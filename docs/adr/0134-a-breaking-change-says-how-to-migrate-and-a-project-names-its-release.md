@@ -9,8 +9,8 @@ Issue #740. ADR 0001 keeps one spelling for each thing, with no grace period, so
 **Decision.**
 
 - `docs/MIGRATING.md` lists, release by release, every change that makes source (or a file beside it, or a command line) that built on the release before an error: the error it gives, the old spelling and the new one side by side, and the ADR. A pull request that makes such a change has `!` in its title (Conventional Commits) and adds its entry under _Unreleased_ in the same pull request. The `PR title` workflow fails a `!` title whose pull request does not change `docs/MIGRATING.md`. Releasing renames _Unreleased_ to the release (`docs/RELEASING.md`). A change that only changes a result (a pick, a via, a new check) is listed under _What changed with no error_.
-- `netsmith.toml` names the release a project is written for, `netsmith = "0.2.0"` in `[project]`. `netsmith init` writes the running release. The key is optional; a manifest without it was made before the key, with 0.1.0 or earlier. A value that is not `major.minor.patch` is refused when the manifest is read.
-- When `build`, `check` or `fab` stops because a board failed its check, and the project names another release or none, the run ends with one note: an older release (or none) points to `docs/MIGRATING.md` and says to set the key when the project builds; a newer one says to install that netsmith. The release never refuses a build: an unchanged project of an older release that still builds, builds, and says nothing.
+- `netsmith.toml` names the release a project is written for, `netsmith = "0.2.0"` in `[project]`. `netsmith init` writes the running release. The key is optional; a manifest without it was made before the key, with 0.1.0 or earlier. A value that is not `major.minor.patch`, or `major.minor` for any patch of it, is refused when the manifest is read.
+- Every command that builds or checks a project warns, once in a run, when the project names another minor release (the owner, issue #1657): an older one points to `docs/MIGRATING.md` and says to set the key when the project builds, a newer one says to install that netsmith, and a patch release is silent. A project that names none gets no warning; when its `build`, `check` or `fab` stops because a board failed its check, the run ends with a note that it was made before the key. The release never refuses a build.
 
 **Rejected.**
 
@@ -20,6 +20,6 @@ Issue #740. ADR 0001 keeps one spelling for each thing, with no grace period, so
 - *Refusing a project of another release.* Most releases change nothing a given project uses.
 - *Nothing, because the project is before 1.0.* The issue is what that cost.
 
-**Cost.** Every breaking pull request writes an entry, and its author must see that a change breaks source (a change that only adds is not one). The key goes stale in a project that moves without setting it; it then points to sections the project has already been through, which say nothing it does not know. A project made before the key gets the note on any failed check, a typo too, until it adds the key.
+**Cost.** Every breaking pull request writes an entry, and its author must see that a change breaks source (a change that only adds is not one). The key goes stale in a project that moves without setting it; every run then warns until it is set. A project made before the key gets the note on any failed check, a typo too, until it adds the key.
 
-**Left open.** Whether the editor's Problems list shows the note; whether `init --refresh` should offer to set the key (it touches no source today, ADR 0131); a rewriter for a large change.
+**Left open.** Whether `init --refresh` should offer to set the key (it touches no source today, ADR 0131); a rewriter for a large change.

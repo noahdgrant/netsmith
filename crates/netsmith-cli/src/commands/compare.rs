@@ -6,7 +6,6 @@ use std::sync::Arc;
 use clap::Args as ClapArgs;
 use netsmith_core::job::Cancel;
 use netsmith_editor::{Backend, Observer};
-use netsmith_fabricate::project::Target;
 use netsmith_tools::compare::{Request, Verdict, compare_files};
 use netsmith_tools::findings::Format;
 use netsmith_workspace::{Workspace, render_compare};
@@ -97,6 +96,11 @@ pub fn run(args: Args) -> ExitCode {
         eprintln!("error: `compare` takes two designs, or `--ref`");
         return ExitCode::from(2);
     };
+    // A design that is a source is built, so its project's release is looked at (issue #1657);
+    // a file that cannot be read is the comparison's to say.
+    for source in [a, b].into_iter().filter(|p| p.ends_with(".nsm")) {
+        let _ = super::common::resolve(Some(source));
+    }
     run_compare(
         &Request {
             a,
@@ -116,7 +120,7 @@ pub fn run(args: Args) -> ExitCode {
 /// it differs, 2 when the project cannot be compared (no git, no such ref, a ref that does not
 /// build).
 fn run_ref(rev: &str, against: Option<&str>, board: Option<&str>, format: Format) -> ExitCode {
-    let target = match Target::resolve(None) {
+    let target = match super::common::resolve(None) {
         Ok(t) => t,
         Err(e) => {
             eprintln!("error: {}", e.trim_end());
