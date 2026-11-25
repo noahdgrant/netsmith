@@ -1,7 +1,9 @@
 //! The netsmith release a project is written for (`netsmith = "0.2.0"` in `netsmith.toml`). A
 //! command of another minor release warns of it and refuses nothing ([`mismatch`], issue #1657),
 //! and a command whose check fails on a project that names none says that the project was made
-//! before the key ([`no_release_note`], issue #740, ADR 0134).
+//! before the key ([`no_release_note`], issue #740, ADR 0134). A manifest that cannot be read
+//! stops a command before any warning, so its error says the release ([`beside_error`], issue
+//! #1673).
 //!
 //! Another minor release may pick other parts, find other faults on the same copper and write
 //! other output, and may change how a board spells what it already wrote (ADR 0001 keeps one
@@ -69,6 +71,44 @@ fn mismatch_for(written_for: &str, this: &str) -> Option<String> {
         )),
         std::cmp::Ordering::Greater => Some(format!(
             "the project is written for netsmith {written_for} (`netsmith` in netsmith.toml), which is newer than this netsmith {this}: {differs} this release does not know yet; nothing is refused. Install netsmith {major}.{minor} ({SIDE_BY_SIDE})"
+        )),
+    }
+}
+
+/// `error`, which says why the manifest `text` cannot be read, followed, on a line of its own,
+/// by the release the manifest is written for when that is another minor release than this one:
+/// what is wrong may be a key or a value this release does not know (issue #1673). The `netsmith`
+/// key is read by itself, whatever else the file holds. The error is as it was when there is no
+/// such key, when its value is not a release or is of this minor release, and when the file is
+/// not TOML.
+pub fn beside_error(text: &str, error: String) -> String {
+    beside_error_for(text, error, RELEASE)
+}
+
+fn beside_error_for(text: &str, error: String, this: &str) -> String {
+    let written_for = toml::from_str::<toml::Table>(text)
+        .ok()
+        .and_then(|file| Some(file.get("project")?.get("netsmith")?.as_str()?.to_string()));
+    match written_for.and_then(|written_for| unread_for(&written_for, this)) {
+        Some(release) => format!("{}\n{release}", error.trim_end()),
+        None => error,
+    }
+}
+
+fn unread_for(written_for: &str, this: &str) -> Option<String> {
+    let (written, running) = (parse(written_for)?, parse(this)?);
+    let wanted = (written.major, written.minor);
+    let (major, minor) = wanted;
+    let says = format!(
+        "the manifest is written for netsmith {written_for} (its `netsmith` key), and this is netsmith {this}"
+    );
+    match wanted.cmp(&(running.major, running.minor)) {
+        std::cmp::Ordering::Equal => None,
+        std::cmp::Ordering::Less => Some(format!(
+            "{says}, a newer release, which may spell it another way. {MIGRATING} lists every change after {written_for} with what to write instead. Or run netsmith {major}.{minor} beside this one ({SIDE_BY_SIDE})"
+        )),
+        std::cmp::Ordering::Greater => Some(format!(
+            "{says}, an older release, which may not know what the file says. Install netsmith {major}.{minor} ({SIDE_BY_SIDE})"
         )),
     }
 }
@@ -156,6 +196,53 @@ mod tests {
         assert!(n.contains("0.1.0 or earlier"), "{n}");
         assert!(n.contains(MIGRATING), "{n}");
         assert!(n.contains("add `netsmith = \"0.2.0\"`"), "{n}");
+    }
+
+    #[test]
+    fn an_error_of_a_manifest_of_another_minor_release_says_the_release() {
+        let manifest = |keys: &str| format!("[project]\nname = \"a\"\n{keys}colour = \"red\"\n");
+        let of = |text: &str| beside_error_for(text, "bad\n".to_string(), "0.2.0");
+
+        let newer = of(&manifest("netsmith = \"0.3.1\"\n"));
+        assert!(
+            newer.starts_with(
+                "bad\nthe manifest is written for netsmith 0.3.1 (its `netsmith` key), and this is netsmith 0.2.0, an older release"
+            ),
+            "{newer}"
+        );
+        assert!(newer.contains("Install netsmith 0.3 "), "{newer}");
+        assert!(!newer.contains(MIGRATING), "{newer}");
+
+        let older = of(&manifest("netsmith = \"0.1\"\n"));
+        assert!(
+            older.starts_with(
+                "bad\nthe manifest is written for netsmith 0.1 (its `netsmith` key), and this is netsmith 0.2.0, a newer release"
+            ),
+            "{older}"
+        );
+        assert!(older.contains(MIGRATING), "{older}");
+        assert!(
+            older.contains("Or run netsmith 0.1 beside this one"),
+            "{older}"
+        );
+
+        // The key is read whatever else is wrong: a table this release does not know.
+        let table = of("[project]\nname = \"a\"\nnetsmith = \"0.3.0\"\n[later]\n");
+        assert!(table.contains("written for netsmith 0.3.0"), "{table}");
+
+        // The error as it was: this minor release, no key, a value that is no release or no
+        // text, a key outside [project], and a file that is not TOML.
+        for text in [
+            manifest("netsmith = \"0.2.7\"\n"),
+            manifest("netsmith = \"0.2\"\n"),
+            manifest(""),
+            manifest("netsmith = \"v0.3.0\"\n"),
+            manifest("netsmith = 3\n"),
+            "netsmith = \"0.3.0\"\n".to_string(),
+            "[project]\nnetsmith = \"0.3.0\"\nname = a\n".to_string(),
+        ] {
+            assert_eq!(of(&text), "bad\n", "{text}");
+        }
     }
 
     #[test]

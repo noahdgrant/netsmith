@@ -187,6 +187,40 @@ fn a_failed_check_of_an_older_project_has_one_message_of_the_release() {
     assert_eq!(release.len(), 1, "{doc:#}");
 }
 
+/// A key this release does not know stops the run before any warning, so the error says the
+/// release the manifest is written for (issue #1673).
+#[test]
+fn a_manifest_that_cannot_be_read_says_the_release_it_is_written_for() {
+    const SAYS: &str = "the manifest is written for netsmith";
+    let check = |label: &str, release: &str| {
+        let root = project(label, &format!("{release}later_key = true\n"), false);
+        let run = run(&root, &["board", "check"]);
+        let said = stderr(&run);
+        assert_ne!(run.status.code(), Some(0), "{label}: {said}");
+        assert!(said.contains("unknown field `later_key`"), "{label}: {said}");
+        assert!(!said.contains(WARNED), "{label}: {said}");
+        said
+    };
+    for (label, written_for) in [("unread-newer", "999.0.0"), ("unread-older", "0.0.1")] {
+        let said = check(label, &format!("netsmith = \"{written_for}\"\n"));
+        assert_eq!(said.matches(SAYS).count(), 1, "{said}");
+        assert!(
+            said.contains(&format!(
+                "{SAYS} {written_for} (its `netsmith` key), and this is netsmith {THIS}"
+            )),
+            "{said}"
+        );
+    }
+    for (label, release) in [
+        ("unread-this", format!("netsmith = \"{THIS}\"\n")),
+        ("unread-unnamed", String::new()),
+    ] {
+        let said = check(label, &release);
+        assert!(!said.contains(SAYS), "{label}: {said}");
+        assert!(!said.contains(MIGRATING), "{label}: {said}");
+    }
+}
+
 #[test]
 fn a_failed_check_of_a_project_with_no_release_says_it_was_made_before_the_key() {
     let root = project("release-none", "", true);
