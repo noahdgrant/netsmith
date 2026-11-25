@@ -9,7 +9,7 @@ A manufacturing process that makes blind and buried vias besides through vias: `
 _Avoid_: High-density board (says nothing about the vias)
 
 **Heating current**:
-The DC current at which an inductor warms by the rise its datasheet states: `Inductor`'s optional `.rms_current`, a catalog column that the standard rows leave empty because the rise differs between makers and no row has a recorded value (ADR 0055, proposed). Distinct from the saturation current, which is where the inductance falls.
+The DC current at which an inductor warms by the rise its datasheet states: `Inductor`'s optional `.rms_current`, a catalog column that the standard rows leave empty because the rise differs between makers and no row has a recorded value (ADR 0055, proposed). Distinct from the saturation current, which is where the inductance falls, and from a load's _RMS current_, the heating current it draws, which its copper is sized by.
 _Avoid_: Rated current (a rating of what?), temperature-rise current, Irms (the symbol, not the term)
 
 **Height coverage**:

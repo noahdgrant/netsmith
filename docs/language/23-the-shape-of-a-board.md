@@ -871,7 +871,59 @@ the current of rail `load`, part `r` is not known (it is not stated and the solv
 
 Where the DC analysis solved the net (see "DC analysis": every pin on it is one the analysis models, which no net with a connector, an unmodelled pin or an open island is), the current is the one the analysis found into it (ADR 0076, amendment 8): at each corner of the ranges, the sum of what the elements put into the net, and the largest of those over the corners. It is complete, so a net the analysis solved has no note, and it is not larger than the sum above, which takes every load at its largest at the same time, and smaller where the loads follow one voltage: a regulator that draws most when the supply is low next to a resistor that draws most when it is high is never both at once, and the net is sized for the corner that carries the most. It is used for the nets between two elements that no rail holds (the nets of a chain, a regulator's input behind a fuse), which one island contains; a supply, a ground or a regulator's output is on many islands and keeps the sum above. A net with an open-drain pin that was only inferred keeps it too. A finding that a stated width is too narrow says `the most the DC analysis finds into it over every corner of its ranges` and the sum it replaces. A current a part or a rail on the net states is never dropped by the analysis (issue #1584): where one of them draws more through the net than the analysis finds into it, the net carries that one's current instead. A clamp or bypass diode that states `.current &= 0A..1A`, the current it discharges, is blocking in the DC analysis, which finds none through it; its net is a 1 A net, and the findings say ``part `clamp.bypass` carries 1 A, more than the 1.21 mA the DC analysis finds into the net`` (a 12 V supply through a 1 ohm link to a 10 kohm load). The stated current is the design's word and the larger of the two is the safer, so it wins, inside a module as on the board. A supply's range is a budget and not a draw, and does not win over the analysis.
 
-Each net has one current, and every check that reads a net's current reads that one: the track width the router draws and `track_current` holds the tracks to, the vias side by side that the router lays and `via_current` counts, and the current the track drop measures the net at (issue #1584). It comes from one of three places: `sum`, the rails and parts on the net added up with every load on at once (above); `analysis`, what the DC analysis finds into it; or `carrier`, one rail or part on the net that draws more than the analysis finds. Where a current on the net is not known, the current is the part that is known, a lower bound. Copper that only feeds the pins of branches is held to what those pins carry, by their `.current` or what the model finds through them; several such pins can state more together than their net carries (a pin's `.current` is often a rating), and copper of a net whose current is known in full is never held to more than the net's current. `netsmith board nets --currents` lists each net's current with its source and the track and vias it needs (chapter _Commands_). It is not `board power`'s `demand`, which adds the rails' loads on a rail and leaves out the parts that pass a current and a supply's budget: the net's current is what its copper carries.
+Each net has one current, and every check that reads a net's current reads that one: the track width the router draws and `track_current` holds the tracks to, the vias side by side that the router lays and `via_current` counts, and the current the track drop measures the net at (issue #1584). Where a rail on the net states an `.rms_current`, the net has a heating current beside it, and the width and the vias are sized by that one (below, _A peak and a heating current_). It comes from one of three places: `sum`, the rails and parts on the net added up with every load on at once (above); `analysis`, what the DC analysis finds into it; or `carrier`, one rail or part on the net that draws more than the analysis finds. Where a current on the net is not known, the current is the part that is known, a lower bound. Copper that only feeds the pins of branches is held to what those pins carry, by their `.current` or what the model finds through them; several such pins can state more together than their net carries (a pin's `.current` is often a rating), and copper of a net whose current is known in full is never held to more than the net's current. `netsmith board nets --currents` lists each net's current with its source and the track and vias it needs (chapter _Commands_). It is not `board power`'s `demand`, which adds the rails' loads on a rail and leaves out the parts that pass a current and a supply's budget: the net's current is what its copper carries.
+
+#### A peak and a heating current
+
+A load that draws its current in bursts heats its copper far less than its peak says: a modem that draws 2 A in slots of a few milliseconds and tens of milliamperes between them heats a track as a steady 0.3 A would, while the voltage its track drops during a slot is that of the 2 A. A rail states both (issue #1690): `.current` stays the most it draws at an instant, and the optional `.rms_current` is its heating (rms) current. The rms sizes the copper for heat: the width IPC-2221 needs, which the router draws and `track_current` holds the tracks to, and the vias side by side that the router lays and `via_current` counts. The peak stays the net's current, which the track drop measures the net at (and `--at-current` scales). A pin that states its branch's `.current` may state its `.rms_current` beside it, and the branch's copper is sized by it the same way. A rail or a pin that states no `.rms_current` is sized by its `.current`, as before.
+
+```nsm solve
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+board Modem {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .modem: Rail { .pos.net &= "VBAT"; .current &= 0A..2A; .rms_current &= 0.3A }
+    .source: Rail { .pos.net &= "VBAT"; .current &= -2A..0A }
+    .supply: Header1x2
+    .out: Header1x2
+    .supply.p1 ~ .source.pos
+    .supply.p2 ~ .source.neg
+    .out.p1 ~ .modem.pos
+    .out.p2 ~ .modem.neg
+}
+```
+
+`VBAT` and `GND` are drawn at the 0.15 mm that 0.3 A needs, not at the 0.98 mm of 2 A, and the track drop measures them at 2 A. How the rms currents of a net add up:
+
+- **On a net, the rms currents add.** The net's heating current is the sum of the heating currents of the rails and parts on it, each no more than its share of the peak. The rms of a sum is never more than the sum of the rms values (the triangle inequality), so the sum holds whether the loads burst together or never at once. Loads that never burst together would give the root of the sum of the squares, which is less, but nothing in the design says which loads are like that, so the sum is the conservative rule. A rail on the net that states no `.rms_current` counts at its peak. The net is never held to more than its peak: a heating current that does not come out below the peak is left out, and the net is sized by its peak.
+- **Across a series path, Kirchhoff's current law.** A fuse, a diode or a resistor in a `~>` chain, and the supply that feeds the net, state no rms of their own. What flows through one of them into a net is, at every instant, what the others on that net take out, so its heating current is no more than the sum of theirs, and the nets of a chain in front of a load take the load's rms. That needs every other current on the net to be known; a net with a current that is not known keeps the peak for the parts on it. The capacitors on a net are not in the model's balance, as everywhere, so the current they give during a burst is not taken off what the source carries.
+- **An rms with no current, or above it, is an error.** `.rms_current` is stated only beside a `.current` that is known (stated, or worked out by the solver), and never above the most it reaches, since the rms of a current is never more than its peak. The build fails:
+
+```nsm fails
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+board Modem {
+    .process: TwoLayer { .stackup.thickness &= 1.6mm }
+    .modem: Rail { .pos.net &= "VBAT"; .current &= 0A..2A; .rms_current &= 3A }
+    .source: Rail { .pos.net &= "VBAT"; .current &= -2A..0A }
+    .supply: Header1x2
+    .out: Header1x2
+    .supply.p1 ~ .source.pos
+    .supply.p2 ~ .source.neg
+    .out.p1 ~ .modem.pos
+    .out.p2 ~ .modem.neg
+}
+```
+
+```text
+error: Modem: `modem.rms_current` reaches 3 A, above the most `modem.current` reaches, 2 A: the rms of a current is never more than its peak; state an rms current of at most 2 A, or a `.current` that reaches the peak
+```
+
+`.rms_current` is not `.peak_current`: that one is the inrush or the burst of a load whose `.current` is its average (see Load current), which the source must give and no copper is sized by. `netsmith board nets --currents` lists a net's heating current after its peak, with the rms currents that add up to it, and the `track_current` and `via_current` findings say the rms and where it comes from (`rms: the sum of the rms currents on it, below its peak of 2 A: rail `modem` 300 mA (rms)`).
 
 A current that is not known can still be bounded from above, by Ohm's law for a resistor (see "Resistor power"). The width does not change with the bound. The note goes only when the width the net is drawn at carries the known current and every bound on the net together, in whichever direction they flow, which is so for the pull-down of a logic line (a few hundred microamperes, which the process's least track carries many times over) and not for a part whose bound is amperes. A net with a current that has no bound, a rail's or a transistor's, keeps its note.
 

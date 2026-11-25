@@ -2179,6 +2179,14 @@ impl<'a> Checker<'a> {
             .model
             .add_field(pin, "current", FieldKind::Quantity(Dimension::CURRENT));
         self.model.add_member(pin, "current", Member::Field(f));
+        // The heating (rms) current of the same branch (issue #1690): `.current` stays the most
+        // it carries at an instant, which the track drop reads, and this sizes the branch's
+        // copper and vias for heat. Stated only beside a `.current` and never above it; a pin
+        // that states none is sized by its `.current`.
+        let f = self
+            .model
+            .add_field(pin, "rms_current", FieldKind::Quantity(Dimension::CURRENT));
+        self.model.add_member(pin, "rms_current", Member::Field(f));
         // How a pour of the pin's net joins its pads (issue #1276): a variant of the std enum
         // `PadConnection`, `Solid` or `Thermal`, and the width of the spokes of its thermal
         // relief. Stated on the pin of a part (`.gnd.pour_connection &= PadConnection::Solid`),

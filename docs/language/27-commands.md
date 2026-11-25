@@ -325,7 +325,7 @@ The text is a line for each kind of rule, then the net classes, the clearance be
 
 A part of the board, by designator or path (`U1`, `reg.ic`), is its footprint with the nets the design gives its pads, so two pads of one net are not held apart. A `.kicad_mod` file is judged on the process of the board the source and `--board` pick, each pad number on a net of its own (`pad-1`, `pad-2`, ...), so every two pads of different numbers are held apart; pads that share a number are one net, as a board joins them, and a pad with no number has none. The count of pads it prints (`pads` in JSON) is of the terminal pads, those on copper: a paste aperture is checked and not counted. The process gives no space between paste openings, so none is measured; a finding of the check about a pad's paste is listed as the others are.
 
-```
+```text
 $ netsmith board check-footprint Tight.kicad_mod
 Tight.kicad_mod: 2 pad(s), each pad number on a net of its own, against the process JLCPCB TwoLayer of LedExample: 1 rule(s) broken
   error [pad_to_pad] pads 1 and 2: needs 0.1500 mm, has 0.1000 mm, short by 0.0500 mm at (0.000, -0.300)
