@@ -300,6 +300,33 @@ pub(crate) fn offset_convex(poly: &[Pt], d: f64) -> Option<Vec<Pt>> {
     Some(out)
 }
 
+/// The stencil opening of a pad on its paste layer: its copper shrunk or grown by its paste
+/// margin and ratio, its own or else the board's (`pad_to_paste_clearance` and its ratio).
+/// As KiCad does, the ratio is of each side of the pad: a pad 1.6 by 1.0 with a ratio of -0.1
+/// is shrunk by 0.16 along its length and by 0.1 across (both sides), and a rounded rectangle
+/// keeps its corner ratio. A trapezoid or custom pad is shrunk evenly by the ratio of its
+/// shorter side. `Ok(None)` when the margin and ratio leave no opening. Whether the pad is on a
+/// paste layer at all is the caller's to ask.
+pub(crate) fn paste_opening(
+    pad: &Pad,
+    art: &crate::artwork::Artwork,
+) -> Result<Option<Outline>, String> {
+    let ratio = pad.paste_ratio.unwrap_or(art.paste_ratio);
+    let base = pad.paste_margin.unwrap_or(art.paste_margin);
+    let (w, h) = pad.size;
+    match pad.shape {
+        PadShape::Circle | PadShape::Rect | PadShape::RoundRect | PadShape::Oval => {
+            let mut resized = pad.clone();
+            resized.size = (w + 2.0 * (base + ratio * w), h + 2.0 * (base + ratio * h));
+            if resized.size.0 <= 0.0 || resized.size.1 <= 0.0 {
+                return Ok(None);
+            }
+            Ok(Some(outline(&resized)))
+        }
+        PadShape::Trapezoid | PadShape::Custom => outline(pad).grow(base + ratio * w.min(h)),
+    }
+}
+
 impl Outline {
     /// The shape with its edge moved out by `d` (or in, if `d` is negative): the opening a
     /// margin makes, or the clearance a zone keeps. `Ok(None)` if nothing is left.

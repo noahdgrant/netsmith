@@ -201,6 +201,7 @@ mod branches;
 mod checks;
 mod connect;
 pub(crate) mod constraints;
+mod exposed_pad;
 mod fab_rules;
 mod marks;
 mod model;
@@ -437,10 +438,15 @@ pub enum Rule {
     /// its hole does not come within `.via_hole_pad_reach` (netsmith's, issue #1579;
     /// `via_pad.rs`): a weaker sign than [`Rule::ViaHoleNearPad`]. A note, which fails nothing.
     ViaRingNearPad,
+    /// An exposed pad of a part with no solder paste over its copper: no paste layer, no
+    /// paste-only pad or drawing of the footprint over it, or a paste margin or ratio that
+    /// leaves no opening (netsmith's, issue #1686; `exposed_pad.rs`). A note, which fails
+    /// nothing.
+    ExposedPadPaste,
 }
 
 impl Rule {
-    pub const ALL: [Rule; 66] = [
+    pub const ALL: [Rule; 67] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -507,6 +513,7 @@ impl Rule {
         Rule::PourReplaced,
         Rule::ViaHoleNearPad,
         Rule::ViaRingNearPad,
+        Rule::ExposedPadPaste,
     ];
 
     /// KiCad's name for the rule (its `type` in a JSON report).
@@ -578,6 +585,7 @@ impl Rule {
             Rule::PourReplaced => "pour_replaced",
             Rule::ViaHoleNearPad => "via_hole_near_pad",
             Rule::ViaRingNearPad => "via_ring_near_pad",
+            Rule::ExposedPadPaste => "exposed_pad_paste",
         }
     }
 
@@ -626,6 +634,7 @@ impl Rule {
                 | Rule::PourReplaced
                 | Rule::ViaHoleNearPad
                 | Rule::ViaRingNearPad
+                | Rule::ExposedPadPaste
         )
     }
 
@@ -667,7 +676,8 @@ impl Rule {
             | Rule::SwitchNodeCopper
             | Rule::PourReplaced
             | Rule::ViaHoleNearPad
-            | Rule::ViaRingNearPad => Severity::Note,
+            | Rule::ViaRingNearPad
+            | Rule::ExposedPadPaste => Severity::Note,
             _ => Severity::Error,
         })
     }

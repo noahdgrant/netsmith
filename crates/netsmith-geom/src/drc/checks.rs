@@ -142,6 +142,7 @@ pub(crate) fn run(m: &Model<'_>, findings: &mut Vec<Finding>) {
     super::vias::run(&mut out);
     super::near::run(&mut out);
     super::via_pad::run(&mut out);
+    super::exposed_pad::run(&mut out);
 }
 
 /// Whether two holes share a layer: a hole through the board meets every hole, a blind or a
