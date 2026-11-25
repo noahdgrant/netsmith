@@ -480,7 +480,8 @@ pub fn sites(
         .filter(|p| near::meets(&near::part_box(p), &hood))
         .flat_map(|p| {
             let net_of = &net_of;
-            p.footprint.pads.iter().map(move |pad| {
+            let terminals = p.footprint.pads.iter().filter(|pad| pad.is_terminal());
+            terminals.map(move |pad| {
                 (
                     format!("{}.{}", p.refdes, pad.number),
                     net_of
@@ -506,11 +507,13 @@ pub fn sites(
             .collect::<Vec<_>>()
     };
 
-    // The sites between the part's pads.
+    // The sites between the part's pads: its terminals, so that the windows of its paste make
+    // no pitch and no site.
     let centres: Vec<Pt> = part
         .footprint
         .pads
         .iter()
+        .filter(|p| p.is_terminal())
         .map(|p| part.pad_centre(p))
         .collect();
     let pitch = centres

@@ -239,7 +239,7 @@ pub(crate) fn selects(
     j: usize,
     nets: &Nets,
 ) -> bool {
-    let numbers = other.footprint.pad_numbers();
+    let numbers = other.footprint.terminal_numbers();
     let on = |number: &str| nets.of(j, number);
     match select {
         NearSelect::Bridging { .. } => bridges(&numbers, &sides[0], &sides[1], on).is_some(),
@@ -292,7 +292,7 @@ fn pairs_of(parts: &[Placed], nets: &[BoardNet], away: bool) -> Vec<NearPair> {
                 if j == i || !selects(select, &sides, other, j, &index) {
                     continue;
                 }
-                let numbers = other.footprint.pad_numbers();
+                let numbers = other.footprint.terminal_numbers();
                 let all: Vec<String> = numbers.iter().map(|x| x.to_string()).collect();
                 let other_pads = if away {
                     all
@@ -345,7 +345,7 @@ pub fn loop_pairs(parts: &[Placed], nets: &[BoardNet]) -> Vec<LoopPair> {
                 if j == i {
                     continue;
                 }
-                let numbers = other.footprint.pad_numbers();
+                let numbers = other.footprint.terminal_numbers();
                 let Some((x, y)) = bridges(&numbers, &a, &b, |n| index.of(j, n)) else {
                     continue;
                 };
