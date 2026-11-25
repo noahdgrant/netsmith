@@ -248,7 +248,8 @@ struct MovedPad {
 fn moved_pads(board: &Board, moved: &[&Placed]) -> Vec<MovedPad> {
     let mut pads = Vec::new();
     for part in moved {
-        for pad in &part.footprint.pads {
+        // A paste aperture is no pad of the part's copper, and in nothing's way.
+        for pad in part.footprint.pads.iter().filter(|p| p.is_terminal()) {
             let (front, back) = part.pad_layers(pad);
             // A hole with no copper is in the way on both faces.
             let (front, back) = if !front && !back {

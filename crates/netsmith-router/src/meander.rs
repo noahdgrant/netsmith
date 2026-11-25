@@ -151,6 +151,7 @@ impl Pads {
             .map(|art| {
                 art.pads
                     .iter()
+                    .filter(|p| p.is_terminal())
                     .map(|p| (p.net.clone(), netsmith_geom::pad_copper(p), p.at))
                     .collect()
             })

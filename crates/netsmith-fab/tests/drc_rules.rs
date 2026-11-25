@@ -505,3 +505,126 @@ fn a_project_file_that_is_not_json_and_a_file_that_is_not_a_board_are_refused() 
     let e = drc_check("(not_a_board)", None, &DrcExtras::default()).unwrap_err();
     assert!(e.to_string().contains("not a KiCad board"), "{e}");
 }
+
+/// A part `U1` of `n` pads 0.3 mm wide at a pitch of 0.4 mm (0.1 mm of copper between
+/// neighbours), on nets of their own, on a board whose process needs a mask web of 0.13 mm.
+fn fine_pitch(n: usize) -> Pcb {
+    const NETS: [&str; 8] = ["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8"];
+    let mut b = Pcb::new(2);
+    let pads: Vec<P> = (0..n)
+        .map(|k| {
+            let number: &'static str = ["1", "2", "3", "4", "5", "6", "7", "8"][k];
+            smd(number, k as f64 * 0.4, 0.0, 0.3, 0.8, NETS[k])
+        })
+        .collect();
+    b.part("U1", (10.0, 10.0), 0.0, &pads, NONE);
+    b.setup("(solder_mask_min_width 0.13)");
+    b
+}
+
+fn summarised(pcb: &str, pro: &str) -> DrcReport {
+    let extras = DrcExtras {
+        mask_web_summary: true,
+        ..DrcExtras::default()
+    };
+    drc_check(pcb, Some(pro), &extras).unwrap_or_else(|e| panic!("{e}"))
+}
+
+#[test]
+fn a_fine_pitch_part_whose_pads_no_mask_web_fits_between_is_one_line_with_the_count_and_spacing() {
+    // Issue #1685: 7 neighbouring pairs, each 0.1 mm apart, under the 0.13 mm web.
+    let mut b = fine_pitch(8);
+    let (pcb, pro) = (b.pcb(), b.pro());
+    let each = drc_check(&pcb, Some(&pro), &DrcExtras::default()).unwrap();
+    assert_eq!(each.count(DrcRule::SolderMaskBridge), 7, "{each}");
+    let r = summarised(&pcb, &pro);
+    let f = only(&r, DrcRule::SolderMaskBridge);
+    assert!(
+        f.message.contains("7 pairs of U1's own pads")
+            && f.message.contains("0.1000 mm apart")
+            && f.message.contains("0.1300 mm")
+            && f.message.contains("gang opening"),
+        "{}",
+        f.message
+    );
+    // The severity of the pairs it replaces, each pad once, within the part's own footprint.
+    let pair = each
+        .findings
+        .iter()
+        .find(|f| f.rule == DrcRule::SolderMaskBridge)
+        .unwrap();
+    assert_eq!(f.severity, pair.severity);
+    let pads: Vec<_> = f.items.iter().map(|i| i.pad.as_deref().unwrap()).collect();
+    assert_eq!(pads, ["1", "2", "3", "4", "5", "6", "7", "8"]);
+    assert_eq!(f.own_part(), Some("U1"));
+    assert_eq!(f.layer.as_deref(), Some("F.Mask"));
+    let d = f.distance.unwrap();
+    assert!((d.required - 0.13).abs() < 1e-9 && (d.measured - 0.1).abs() < 1e-6, "{d:?}");
+}
+
+#[test]
+fn a_mask_web_between_pads_of_two_parts_still_reports_pair_by_pair() {
+    let mut b = fine_pitch(4);
+    // R1's pad and R2's pad 0.1 mm apart, twice: the board's, which it can change.
+    for (k, y) in [(0, 14.0), (1, 18.0)] {
+        let (r, s) = (["R1", "R3"][k], ["R2", "R4"][k]);
+        b.part(r, (10.0, y), 0.0, &[smd("1", 0.0, 0.0, 0.6, 0.6, "A")], NONE);
+        b.part(s, (10.7, y), 0.0, &[smd("1", 0.0, 0.0, 0.6, 0.6, "B")], NONE);
+    }
+    let (pcb, pro) = (b.pcb(), b.pro());
+    let r = summarised(&pcb, &pro);
+    let bridges: Vec<_> = r
+        .findings
+        .iter()
+        .filter(|f| f.rule == DrcRule::SolderMaskBridge)
+        .collect();
+    assert_eq!(bridges.len(), 3, "{r}");
+    assert_eq!(
+        bridges
+            .iter()
+            .filter(|f| f.message.contains("3 pairs of U1's own pads"))
+            .count(),
+        1,
+        "{r}"
+    );
+    assert_eq!(bridges.iter().filter(|f| f.own_part().is_none()).count(), 2, "{r}");
+}
+
+#[test]
+fn a_part_with_a_mask_web_it_could_make_keeps_every_pair() {
+    // U1's pads 1-2 and 3-4 have 0.1 mm of copper between them, too little for the 0.13 mm web;
+    // pads 2 and 3 have 0.2 mm, room for it. A margin of 0.08 mm of pad 3's own leaves 0.12 mm of
+    // mask between 2 and 3: a breach the footprint can fix, so the part keeps every pair.
+    let mut b = Pcb::new(2);
+    b.part(
+        "U1",
+        (10.0, 10.0),
+        0.0,
+        &[
+            smd("1", 0.0, 0.0, 0.3, 0.8, "N1"),
+            smd("2", 0.4, 0.0, 0.3, 0.8, "N2"),
+            smd("3", 0.9, 0.0, 0.3, 0.8, "N3"),
+            smd("4", 1.3, 0.0, 0.3, 0.8, "N4"),
+        ],
+        NONE,
+    );
+    b.setup("(solder_mask_min_width 0.13)");
+    let (pcb, pro) = (b.pcb(), b.pro());
+    // Without the margin: pads 1-2 and 3-4 are 0.1 mm apart, one line; 2-3 passes.
+    let r = summarised(&pcb, &pro);
+    assert_eq!(r.count(DrcRule::SolderMaskBridge), 1, "{r}");
+    let pcb = pcb.replacen(
+        "(pad \"3\" smd rect",
+        "(pad \"3\" smd rect (solder_mask_margin 0.08)",
+        1,
+    );
+    let r = summarised(&pcb, &pro);
+    assert_eq!(r.count(DrcRule::SolderMaskBridge), 3, "{r}");
+    assert!(
+        r.findings
+            .iter()
+            .filter(|f| f.rule == DrcRule::SolderMaskBridge)
+            .all(|f| f.items.len() == 2),
+        "{r}"
+    );
+}

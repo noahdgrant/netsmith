@@ -113,6 +113,34 @@ pub enum Command {
         after_long_help = "A pass over the routes file's copper (and with `--reuse-routes` the router's copper kept in `.netsmith/routes/`, as `board fab --reuse-routes` starts from it) that makes four repairs (five with `--widen`):\n\n- a corner: two straight tracks of a net that meet outside its pads and bend by more than 45 degrees (the design rules check's `track_angle`) are cut into bends of 45 degrees at most, a 45 degree chamfer at a right angle; the chamfer starts four widths from the corner, and two and one width when the larger is refused;\n- a collinear pair: two straight tracks of one net, layer and width that meet end to end on one line, with nothing else there, become one;\n- a dangling via or a stub: a via joined to copper of its net on fewer than two layers (`via_dangling`) and a track with an end that touches nothing (`track_dangling`) are removed when the copper makes every connection of the net (the router may still start from a stub of a net it has to finish), and a via that joins nothing at all is removed in any net;\n- an acid trap (`acid_trap`): a track that leaves a pad or a via at an acute angle to its edge is made to leave it at a right angle and bend after the edge, and a track that ends on the middle of another at an acute angle is made to meet it at a right angle.\n\nWith `--widen`, a fifth: a narrow track, a straight track narrower than the width its net wants on its layer (the width the router draws the net at there: for its current, its class or its impedance target, and for a net with pins that state the current of their branch the narrowest of its lines), is widened to it; a widening the check refuses (the wider track comes too near copper of another net) is tried at three quarters, half and a quarter of the way, so that each track is as wide as the clearance to its neighbours allows. A track is never made narrower; the text lists each widening with the width it had, the width it has and the width its net wants (`counts.widened` in the JSON, and each change's `width_before` and `width_after`).\n\nWith `--widen-to-guideline`, what `--widen` does, and each track of a net whose path drops more than its track-drop budget (the `track drop` guideline of `board fab`, the path `board nets` lists) is widened towards the width the guideline suggests for it (the path's `needs`), by the same steps and the same rule; a track with room for none of the steps is tried at the width its net wants. The drop is measured again before each pass, and the text ends with the drop of each net that was over, before and after (`drops` in the JSON). A net within its budget is widened as `--widen` widens it.\n\nEach change is made only when the design rules check of the board with it (the check `add-track` makes, with its warnings) finds nothing it did not find before and the connections left to route are the same; a refused change is listed with the first new finding or the connection it changes, and left as it was. The changes of each net are checked together where they are: over the copper, pads and zones within the board's largest space of what they change, with and without them, and the whole board is checked once after each pass, which checks the pass's changes again against the whole board when it finds what they add beyond where they are. The text ends with how many checks ran and the items they looked at (`checks` and `items_checked` in the JSON). A locked net or shape, an arc, a zone and a record whose pads moved are never touched. `--dry-run` says what would change, by kind, net, layer and place, and writes nothing. With `--reuse-routes` the kept file is written again, so that `board fab --reuse-routes` still starts from it; without it, a change to the routes file makes a kept file stale, and the command says so. The exit code is 0 when the pass ran (whether or not it changed or refused anything), 2 when it could not run.\n\nOn stderr each pass says how far it has got, net by net: the net, how many of the pass's nets, the changes made so far and about how long the pass has left; `--progress json` prints each line as `{\"board\", \"stage\": \"tidying\", \"unit\": \"nets tidied\", \"done\", \"total\", \"detail\", \"elapsedMs\", \"message\"}`, and `--to-editor` sends them to a running editor, as `board fab` does. With `--format json` the progress is printed only with `--progress json`. Nothing is written until the whole pass has run, so Ctrl+C leaves the files as they were."
     )]
     Tidy(TidyArgs),
+    /// Widen each track of the named nets (or of every net) to the widest that keeps the
+    /// clearances, up to the width its net wants, and list each left narrower with what is in the way.
+    #[command(after_long_help = WIDEN_HELP)]
+    Widen(WidenArgs),
+}
+
+const WIDEN_HELP: &str = "A pass over the routes file's copper (and with `--reuse-routes` the router's copper kept in `.netsmith/routes/`) that only widens: each straight track of the named nets (with no `--net`, of every net) narrower than the width its net wants on its layer (the width the router draws the net at there: for its current, its class or its impedance target, and for a net with pins that state the current of their branch the narrowest of its lines; the width `routes tidy --widen` widens to) is widened to the widest width at which it keeps every space of the design rules check (the clearance to copper of other nets, to holes, to the board edge, to the solder mask openings of other nets' pads, and no keepout), found for each track to 0.001 mm, never wider than its net wants. A track is never made narrower, and no corner, stub, via or other track is changed (`routes tidy` makes those repairs).\n\nEach widening is made only when the design rules check of the board with it (the check `add-track` makes, with its warnings) finds nothing it did not find before and the connections left to route are the same, as `routes tidy` judges a change: a widening refused by a rule the spaces do not cover is tried again at the widest fit on the copper as it is then, then at half the way from its width, a quarter, an eighth and a sixteenth, and left as it was when all are refused.\n\nThe text lists each widening with the width it had and the width it has, then each track still narrower than its net wants: its net, layer and middle, the width it has, the width its net wants, and what is in the way of it wider (`a track of net SDA`, `pad 2 of R1 (net GND)`, `the hole of a via`, `the board edge`, `the solder mask opening of pad 1 of U1`, `keepout NAME`), or the check's refusal. It ends with the checks run, the items they looked at and the widths the fit tried: the work. A locked net or shape, an arc and a record whose pads moved are never touched.\n\nWith `--format json`: what `routes tidy --format json` gives (`changes`, each with `width_before` and `width_after`, `refused`, `counts.widened`, `checks`, `items_checked`, `wrote`), and `fit` (true), `nets` (the nets named), `short` (each with `net`, `layer`, `at`, `width`, `wants`, `held_by` and `why`) and `fits_tried`. Places are in the outline's frame, as the routes file's, or the one `--frame` names. `--dry-run` says what would change and writes nothing. The exit code is 0 when the pass ran (whether or not it widened or left anything), 1 when the board has no such net or could not be built, 2 when the pass could not run.";
+
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct WidenArgs {
+    #[command(flatten)]
+    pub target: Target,
+    /// A net to widen; repeat for several (every net when none is named).
+    #[arg(long = "net", value_name = "NET")]
+    pub nets: Vec<String>,
+    /// Say what would change and write nothing.
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Widen the router's copper kept on disk too, as `board fab --reuse-routes` would start from it.
+    #[arg(long)]
+    pub reuse_routes: bool,
+    /// Text for a person, or one JSON document on stdout.
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: common::Format,
+    #[command(flatten)]
+    pub framing: crate::frame::Framing,
+    #[command(flatten)]
+    pub watching: common::Watching,
 }
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -599,7 +627,41 @@ pub fn run(args: Args) -> ExitCode {
             shape: shape(&a),
             on: false,
         }),
-        Command::Tidy(a) => tidy(&a),
+        Command::Tidy(a) => {
+            use netsmith_fabricate::routes_tidy::Widen;
+            let pass = TidyPass {
+                name: "routes tidy",
+                target: &a.target,
+                dry_run: a.dry_run,
+                reuse_routes: a.reuse_routes,
+                format: a.format,
+                framing: &a.framing,
+                watching: &a.watching,
+            };
+            tidy(&pass, |voltages| {
+                if a.widen_to_guideline {
+                    Widen::ToGuideline(voltages)
+                } else if a.widen {
+                    Widen::ToNet
+                } else {
+                    Widen::Off
+                }
+            })
+        }
+        Command::Widen(a) => {
+            let pass = TidyPass {
+                name: "routes widen",
+                target: &a.target,
+                dry_run: a.dry_run,
+                reuse_routes: a.reuse_routes,
+                format: a.format,
+                framing: &a.framing,
+                watching: &a.watching,
+            };
+            tidy(&pass, |_| {
+                netsmith_fabricate::routes_tidy::Widen::Fit(a.nets.clone())
+            })
+        }
     }
 }
 
@@ -615,17 +677,31 @@ fn text_by(framing: &crate::frame::Framing) -> Result<[f64; 2], ExitCode> {
     }
 }
 
-/// `routes tidy` (issue #1192): `netsmith_fabricate::routes_tidy::tidy_files` of the target's
-/// board; exit 0 when the pass ran, 2 when it could not.
-fn tidy(args: &TidyArgs) -> ExitCode {
+/// What `routes tidy` and `routes widen` share: the command's name and the arguments of the pass.
+struct TidyPass<'a> {
+    name: &'static str,
+    target: &'a Target,
+    dry_run: bool,
+    reuse_routes: bool,
+    format: common::Format,
+    framing: &'a crate::frame::Framing,
+    watching: &'a common::Watching,
+}
+
+/// `routes tidy` (issue #1192) and `routes widen` (issue #1692):
+/// `netsmith_fabricate::routes_tidy::tidy_files` of the target's board, widening as `widen` says
+/// of the rails' voltages; exit 0 when the pass ran, 2 when it could not.
+fn tidy(
+    args: &TidyPass<'_>,
+    widen: impl Fn(Vec<(String, f64)>) -> netsmith_fabricate::routes_tidy::Widen,
+) -> ExitCode {
     // As `fab`: with `--format json` the progress is printed only when it is asked for as JSON
     // (issue #1225).
     args.watching.tell_progress(
-        "routes tidy",
+        args.name,
         args.format == common::Format::Json
             && args.watching.progress == crate::progress::Print::Text,
     );
-    use netsmith_fabricate::routes_tidy::Widen;
     let tidied = common::with_stage_events(|| {
         common::with_placed_board(
             args.target.file.as_deref(),
@@ -639,13 +715,7 @@ fn tidy(args: &TidyArgs) -> ExitCode {
                         netsmith_fabricate::track_drop::rail_voltages(&built.trace.model),
                     )
                 })?;
-                let widen = if args.widen_to_guideline {
-                    Widen::ToGuideline(voltages)
-                } else if args.widen {
-                    Widen::ToNet
-                } else {
-                    Widen::Off
-                };
+                let widen = widen(voltages);
                 let sink = netsmith_fabricate::layout::tidy_progress(
                     board.name.clone(),
                     crate::progress::tell,
@@ -665,10 +735,10 @@ fn tidy(args: &TidyArgs) -> ExitCode {
     });
     crate::progress::ended(
         tidied.is_ok(),
-        if tidied.is_ok() {
-            "routes tidy: done"
+        &if tidied.is_ok() {
+            format!("{}: done", args.name)
         } else {
-            "routes tidy: failed (its output says why)"
+            format!("{}: failed (its output says why)", args.name)
         },
     );
     match tidied {
@@ -685,7 +755,7 @@ fn tidy(args: &TidyArgs) -> ExitCode {
                     }
                 }
                 common::Format::Text => {
-                    let by = match text_by(&args.framing) {
+                    let by = match text_by(args.framing) {
                         Ok(by) => by,
                         Err(code) => return code,
                     };

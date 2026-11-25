@@ -71,6 +71,18 @@ fn netsmith(dir: &Path, args: &[&str]) -> Output {
         .unwrap()
 }
 
+/// The feed board in a folder of its own, its rail routed into the routes file beside the
+/// source, so that every command reads the same copper.
+fn routed(name: &str) -> TempDir {
+    let dir = TempDir::new(name);
+    fs::write(dir.join("feed.nsm"), FEED).unwrap();
+    fs::write(dir.join("feed.physical.nsm"), PHYSICAL).unwrap();
+    fs::write(dir.join("feed.pcb.toml"), LAYOUT).unwrap();
+    ok(&netsmith(&dir, &["routes", "route", "3V3", "--file", "feed.nsm"]));
+    assert!(dir.join("feed.routes.toml").exists());
+    dir
+}
+
 fn ok(run: &Output) -> String {
     let said = format!(
         "{}{}",
@@ -92,14 +104,7 @@ fn message(text: &str) -> String {
 
 #[test]
 fn board_nets_and_board_drc_measure_the_drop_fab_warns_of() {
-    let dir = TempDir::new("track-drop-alone");
-    fs::write(dir.join("feed.nsm"), FEED).unwrap();
-    fs::write(dir.join("feed.physical.nsm"), PHYSICAL).unwrap();
-    fs::write(dir.join("feed.pcb.toml"), LAYOUT).unwrap();
-    // Route the rail into the routes file beside the source, so that every command reads the
-    // same copper.
-    ok(&netsmith(&dir, &["routes", "route", "3V3", "--file", "feed.nsm"]));
-    assert!(dir.join("feed.routes.toml").exists());
+    let dir = routed("track-drop-alone");
 
     // `board nets` lists the drop, in text and JSON, over the budget.
     let said = ok(&netsmith(&dir, &["board", "nets", "feed.nsm"]));
@@ -164,4 +169,95 @@ fn board_nets_and_board_drc_measure_the_drop_fab_warns_of() {
     let notes = fs::read_to_string(dir.join("out").join("Feed").join("fab-notes.txt"))
         .unwrap_or_else(|e| panic!("{e}: {made}"));
     assert_eq!(message(&notes), noted, "fab:\n{notes}\ndrc:\n{checked}");
+}
+
+/// What a run printed on stdout, with its exit code.
+fn printed(dir: &Path, args: &[&str]) -> (Option<i32>, String) {
+    let run = netsmith(dir, args);
+    (
+        run.status.code(),
+        String::from_utf8_lossy(&run.stdout).into_owned(),
+    )
+}
+
+fn json_of(text: &str) -> serde_json::Value {
+    serde_json::from_str(text).unwrap_or_else(|e| panic!("{e}: {text}"))
+}
+
+/// `--at-current` (issue #1694): the rail at half its design current shows both drops with
+/// their shares of the budget, and nothing else of the output changes.
+#[test]
+fn a_rail_at_half_its_current_shows_both_drops_and_the_rest_is_unchanged() {
+    let dir = routed("track-drop-at-current");
+    for command in ["nets", "drc"] {
+        let plain = ["board", command, "feed.nsm"];
+        let half = ["board", command, "feed.nsm", "--at-current", "3V3=1A"];
+
+        // In text, the flag adds its lines and changes no other.
+        let (code, before) = printed(&dir, &plain);
+        let (with_code, after) = printed(&dir, &half);
+        assert_eq!(code, with_code, "{after}");
+        assert!(!before.contains("another current"), "{before}");
+        let added: Vec<&str> = after
+            .lines()
+            .filter(|l| !before.lines().any(|b| b == *l))
+            .collect();
+        let line = added
+            .iter()
+            .find(|l| l.contains("3V3: design 2 A: "))
+            .unwrap_or_else(|| panic!("no line at 1 A in:\n{after}"));
+        println!("{line}");
+        assert!(line.contains("; at 1 A: "), "{line}");
+        assert_eq!(line.matches("% of the budget").count(), 2, "{line}");
+        assert!(line.contains("; budget 33 mV, J"), "{line}");
+        assert!(added.iter().all(|l| l.contains("another current") || l == line), "{added:?}");
+        let rest: Vec<&str> = after.lines().filter(|l| !added.contains(l)).collect();
+        assert_eq!(rest, before.lines().collect::<Vec<_>>());
+
+        // In JSON, one list more, and the rest as it was.
+        let (_, before) = printed(&dir, &[&plain[..], &["--format", "json"]].concat());
+        let (_, after) = printed(&dir, &[&half[..], &["--format", "json"]].concat());
+        let before = json_of(&before);
+        let mut after = json_of(&after);
+        let holder = if command == "nets" {
+            &mut after
+        } else {
+            &mut after["boards"][0]
+        };
+        let rows = holder
+            .as_object_mut()
+            .unwrap()
+            .remove("track_drops_at_current")
+            .expect("the list of the flag");
+        assert_eq!(after, before);
+        let rows = rows.as_array().unwrap();
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        let row = &rows[0];
+        println!("{row}");
+        assert_eq!(row["net"], "3V3", "{row}");
+        let number = |v: &serde_json::Value| v.as_f64().unwrap();
+        let close = |a: f64, b: f64| assert!((a - b).abs() < 1e-9, "{a} is not {b}: {row}");
+        let (design, alternative) = (&row["design"], &row["alternative"]);
+        close(number(&row["allowed"]), 0.033);
+        close(number(&design["current"]), 2.0);
+        close(number(&alternative["current"]), 1.0);
+        close(number(&alternative["drop"]), number(&design["drop"]) / 2.0);
+        close(number(&alternative["share"]), number(&design["share"]) / 2.0);
+        close(number(&design["share"]), number(&design["drop"]) / 0.033);
+        assert_eq!(design["over"], true, "{row}");
+        assert_eq!(alternative["over"], false, "{row}");
+    }
+
+    // A net that has no drop to give, and one the board does not have, stop the command.
+    for (command, flag, said) in [
+        ("nets", "GND=1", "net `GND` has no track drop"),
+        ("drc", "GND=1", "net `GND` has no track drop"),
+        ("nets", "5V=1", "the board has no net `5V`"),
+        ("drc", "5V=1", "the board has no net `5V`"),
+    ] {
+        let run = netsmith(&dir, &["board", command, "feed.nsm", "--at-current", flag]);
+        let err = String::from_utf8_lossy(&run.stderr);
+        assert_eq!(run.status.code(), Some(2), "{command} {flag}: {err}");
+        assert!(err.contains(said), "{command} {flag}: {err}");
+    }
 }

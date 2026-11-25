@@ -90,7 +90,7 @@ pub fn net_drop(d: TrackDrop, volts: f64, budget: f64) -> Option<NetDrop> {
     }
     let allowed = volts * budget;
     let drop = d.drop();
-    let over = drop > allowed * (1.0 + 1e-9);
+    let over = over_budget(drop, allowed);
     Some(NetDrop {
         net: d.net.clone(),
         volts,
@@ -113,6 +113,11 @@ pub fn net_drop(d: TrackDrop, volts: f64, budget: f64) -> Option<NetDrop> {
         },
         measured: d,
     })
+}
+
+/// Whether a drop of `drop` volts is more than a budget of `allowed`.
+fn over_budget(drop: f64, allowed: f64) -> bool {
+    drop > allowed * (1.0 + 1e-9)
 }
 
 impl NetDrop {
@@ -182,6 +187,141 @@ impl NetDrop {
             .then(|| finding(&self.measured, self.volts, self.allowed / self.volts))
             .flatten()
     }
+}
+
+/// A net, and a current to evaluate its track drop at besides the design's (issue #1694), as
+/// `--at-current NET=A` says them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AtCurrent {
+    pub net: String,
+    /// The net's current, in amperes.
+    pub current: f64,
+}
+
+/// One net's track drop at the design's current and at another (issue #1694): a report only,
+/// which no finding and no width reads.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct DropAt {
+    pub net: String,
+    /// The rail's voltage and what the budget allows of it, in volts.
+    pub volts: f64,
+    pub allowed: f64,
+    /// The two pads of the path, the same for both figures.
+    pub from: String,
+    pub to: String,
+    pub design: DropFigure,
+    pub alternative: DropFigure,
+}
+
+/// The drop of a net's path at one current of the net.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+pub struct DropFigure {
+    /// The net's current, in amperes.
+    pub current: f64,
+    /// What the path drops, in volts.
+    pub drop: f64,
+    /// `drop` over the budget's volts: more than 1 is over.
+    pub share: f64,
+    pub over: bool,
+}
+
+/// Each net of `asked`, in that order, at the design's current and at the one asked for (issue
+/// #1694), from the `drops` measured on `board` (all of them, over budget or not). The design's
+/// current is the net's one current ([`Board::net_currents`], issue #1584). At another current
+/// every run of the copper carries its design current times that one over the net's, so the pins
+/// share it as in the design, the worst path is the same, and the drop is in proportion.
+///
+/// An error for a net asked for twice, one the board does not have, or one with no drop in
+/// `drops`.
+pub fn drops_at(
+    board: &Board,
+    drops: &[NetDrop],
+    asked: &[AtCurrent],
+) -> Result<Vec<DropAt>, String> {
+    let mut rows: Vec<DropAt> = Vec::new();
+    for a in asked {
+        if rows.iter().any(|r| r.net == a.net) {
+            return Err(format!("--at-current names net `{}` twice", a.net));
+        }
+        if !board.nets.iter().any(|n| n.name == a.net) {
+            return Err(format!("--at-current: the board has no net `{}`", a.net));
+        }
+        let measured = drops.iter().find(|d| d.net == a.net);
+        let design = board.net_currents.iter().find(|c| c.net == a.net);
+        let (Some(d), Some(design)) = (measured, design) else {
+            let others: Vec<String> = drops.iter().map(|d| format!("`{}`", d.net)).collect();
+            let others = if others.is_empty() {
+                "no net of the board has one".to_string()
+            } else {
+                format!("the nets with one: {}", others.join(", "))
+            };
+            return Err(format!(
+                "--at-current: net `{}` has no track drop: one is measured for a net whose rail states a voltage and whose current is known, that no plane, pour or zone carries and whose pads a track joins; {others}",
+                a.net
+            ));
+        };
+        let drop = d.drop * (a.current / design.current);
+        rows.push(DropAt {
+            net: d.net.clone(),
+            volts: d.volts,
+            allowed: d.allowed,
+            from: d.from.clone(),
+            to: d.to.clone(),
+            design: DropFigure {
+                current: design.current,
+                drop: d.drop,
+                share: d.share,
+                over: d.over,
+            },
+            alternative: DropFigure {
+                current: a.current,
+                drop,
+                share: drop / d.allowed,
+                over: over_budget(drop, d.allowed),
+            },
+        });
+    }
+    Ok(rows)
+}
+
+impl DropAt {
+    /// The line of `board nets` and `board drc`: both figures, each with its share of the
+    /// budget.
+    pub fn line(&self) -> String {
+        let figure = |f: &DropFigure| {
+            format!(
+                "{}: {} mV, {} of the budget{}",
+                amps(f.current),
+                sig(f.drop * 1e3),
+                percent(f.share),
+                if f.over { ", over" } else { "" },
+            )
+        };
+        format!(
+            "{}: design {}; at {}; budget {} mV, {} to {}",
+            self.net,
+            figure(&self.design),
+            figure(&self.alternative),
+            sig(self.allowed * 1e3),
+            self.from,
+            self.to,
+        )
+    }
+}
+
+/// The section of `board nets` for `--at-current`: a line for each net asked for, or nothing
+/// when none is.
+pub fn at_text(rows: &[DropAt]) -> String {
+    if rows.is_empty() {
+        return String::new();
+    }
+    let mut out = String::from(
+        "track drop at another current (a report only: the checks and the widths keep the design's):\n",
+    );
+    for r in rows {
+        out.push_str(&format!("  {}\n", r.line()));
+    }
+    out
 }
 
 /// The text of `board nets`' `track drop` section (issue #1540): a line for each net, worst

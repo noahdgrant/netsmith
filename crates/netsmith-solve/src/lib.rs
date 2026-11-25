@@ -44,7 +44,7 @@ pub use generic::{
 };
 pub use jlcpcb::built_in_files;
 pub use levels::NotEvaluated;
-pub use lock::{Designators, LockedProvider, LockedRow, PickLock};
+pub use lock::{Designators, Footprints, LockedFootprint, LockedProvider, LockedRow, PickLock};
 pub use place::{PlaceOffset, Window, offsets, window};
 pub use preferred::Preferred;
 pub use solve::{

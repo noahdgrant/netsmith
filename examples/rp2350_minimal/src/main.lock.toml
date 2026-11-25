@@ -4,6 +4,8 @@
 # with `netsmith project lock --update`, and number the parts again by path with `--renumber`.
 # Nothing in it is edited by hand but `held = "reason"`, which a person adds to a part's entry
 # to keep the part on its row, and a part's designator, which a renamed part takes by hand.
+# Each part's footprint has the hash of its pads and courtyard: a change to the footprint shows
+# here, and `netsmith project lock --update` takes it.
 version = 2
 
 [Rp2350Minimal.providers."process"]
@@ -288,3 +290,48 @@ sku = { jlcpcb-assembly = "C77075", lcsc-retail = "C77075" }
 "v3v3_bulk[1]" = "C17"
 "v3v3_bulk_c" = "C18"
 "vbus_bulk" = "C19"
+
+[Rp2350Minimal.footprints]
+"avdd_filter" = { footprint = "rp2350_original:generic_resc1005x35", hash = "2346b17986d9f3f1" }
+"avdd_filter_cap" = { footprint = "rp2350_original:generic_capc1005x50", hash = "7aa1238339b1fa51" }
+"bootsel" = { footprint = "rp2350_original:wurthelek_434133025816", hash = "d6c998dced48c386" }
+"bootsel_series" = { footprint = "rp2350_original:generic_resc1005x35", hash = "2346b17986d9f3f1" }
+"core_inductor" = { footprint = "rp2350_original:abracon_aota-b201610s3r3-101-t", hash = "e917272d845a2580" }
+"debug" = { footprint = "rp2350_original:jst_sm03b-srss-tb-lf--sn-", hash = "91ede77877da873a" }
+"flash" = { footprint = "rp2350_original:generic_soic127p790x195-8", hash = "c3b716f7275d206b" }
+"gpio0_link" = { footprint = "rp2350_original:generic_resc1005x35", hash = "2346b17986d9f3f1" }
+"header_high" = { footprint = "rp2350_original:PinHeader_2x18_P2.54mm_Samtec_TSW-118-07-L-D", hash = "d2dd3c8d4dfc9ebd" }
+"header_low" = { footprint = "rp2350_original:PinHeader_2x18_P2.54mm_Samtec_TSW-118-07-L-D", hash = "d2dd3c8d4dfc9ebd" }
+"hole1" = { footprint = "rp2350_original:none_mh_npth_fd2p75mm_sm3p15mm_ko6mm", hash = "88f3f38774ca76c0" }
+"hole2" = { footprint = "rp2350_original:none_mh_npth_fd2p75mm_sm3p15mm_ko6mm", hash = "88f3f38774ca76c0" }
+"hole3" = { footprint = "rp2350_original:none_mh_npth_fd2p75mm_sm3p15mm_ko6mm", hash = "88f3f38774ca76c0" }
+"hole4" = { footprint = "rp2350_original:none_mh_npth_fd2p75mm_sm3p15mm_ko6mm", hash = "88f3f38774ca76c0" }
+"mcu" = { footprint = "rp2350_original:rpi_rp2350a_vias", hash = "8743d1c4c72e6826" }
+"oscillator.crystal" = { footprint = "rp2350_original:generic_xtalcc320x250x80-4", hash = "fa14f538bd376aa9" }
+"oscillator.damping" = { footprint = "rp2350_original:generic_resc1005x35", hash = "2346b17986d9f3f1" }
+"oscillator.load_in" = { footprint = "rp2350_original:generic_capc1005x50", hash = "7aa1238339b1fa51" }
+"oscillator.load_out" = { footprint = "rp2350_original:generic_capc1005x50", hash = "7aa1238339b1fa51" }
+"regulator" = { footprint = "rp2350_original:onsemi_ncp1117st33t3g", hash = "68f83154183fabaf" }
+"reset" = { footprint = "rp2350_original:wurthelek_434133025816", hash = "d6c998dced48c386" }
+"reset_series" = { footprint = "rp2350_original:generic_resc1005x35", hash = "2346b17986d9f3f1" }
+"ss_link" = { footprint = "rp2350_original:generic_resc1005x35", hash = "2346b17986d9f3f1" }
+"ss_pullup.resistor" = { footprint = "rp2350_original:generic_resc1005x35", hash = "2346b17986d9f3f1" }
+"usb" = { footprint = "rp2350_original:amphenol_10103594-0001lf", hash = "8fdaaef9340b3bbf" }
+"usb_dm_series" = { footprint = "rp2350_original:generic_resc1005x35", hash = "2346b17986d9f3f1" }
+"usb_dp_series" = { footprint = "rp2350_original:generic_resc1005x35", hash = "2346b17986d9f3f1" }
+"v1v1_100n[0]" = { footprint = "rp2350_original:generic_capc1005x50", hash = "7aa1238339b1fa51" }
+"v1v1_100n[1]" = { footprint = "rp2350_original:generic_capc1005x50", hash = "7aa1238339b1fa51" }
+"v1v1_100n[2]" = { footprint = "rp2350_original:generic_capc1005x50", hash = "7aa1238339b1fa51" }
+"v1v1_bulk" = { footprint = "rp2350_original:generic_capc1005x50_wide", hash = "e16d8775635f1860" }
+"v3v3_100n[0]" = { footprint = "rp2350_original:generic_capc1005x50", hash = "7aa1238339b1fa51" }
+"v3v3_100n[1]" = { footprint = "rp2350_original:generic_capc1005x50", hash = "7aa1238339b1fa51" }
+"v3v3_100n[2]" = { footprint = "rp2350_original:generic_capc1005x50", hash = "7aa1238339b1fa51" }
+"v3v3_100n[3]" = { footprint = "rp2350_original:generic_capc1005x50", hash = "7aa1238339b1fa51" }
+"v3v3_100n[4]" = { footprint = "rp2350_original:generic_capc1005x50", hash = "7aa1238339b1fa51" }
+"v3v3_100n[5]" = { footprint = "rp2350_original:generic_capc1005x50", hash = "7aa1238339b1fa51" }
+"v3v3_100n[6]" = { footprint = "rp2350_original:generic_capc1005x50", hash = "7aa1238339b1fa51" }
+"v3v3_100n[7]" = { footprint = "rp2350_original:generic_capc1005x50", hash = "7aa1238339b1fa51" }
+"v3v3_bulk[0]" = { footprint = "rp2350_original:generic_capc2012x125", hash = "caacbbf775d875eb" }
+"v3v3_bulk[1]" = { footprint = "rp2350_original:generic_capc2012x125", hash = "caacbbf775d875eb" }
+"v3v3_bulk_c" = { footprint = "rp2350_original:generic_capc1005x50_wide", hash = "e16d8775635f1860" }
+"vbus_bulk" = { footprint = "rp2350_original:generic_capc2012x125", hash = "caacbbf775d875eb" }

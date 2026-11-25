@@ -11,6 +11,7 @@ mod catalog;
 mod catalog_check;
 mod catalog_search;
 mod check;
+mod check_footprint;
 pub(crate) mod common;
 mod compare;
 mod copper;
@@ -143,6 +144,8 @@ pub enum Board {
     Drc(drc::Args),
     /// Print the rules the design rules check holds the board to: clearances, widths per net, mask, holes, vias, rule areas, classes, layers.
     Rules(rules::Args),
+    /// Check one footprint's pads against the board's process, alone: a part of the board or a .kicad_mod file.
+    CheckFootprint(check_footprint::Args),
     /// Print what the solve left a part or member with, and why each part has its row.
     Explain(explain::Args),
     /// Say whether two designs are the same circuit.
@@ -244,6 +247,7 @@ fn dispatch(command: Command) -> ExitCode {
             Board::Fab(args) => fab::run(args),
             Board::Drc(args) => drc::run(args),
             Board::Rules(args) => rules::run(args),
+            Board::CheckFootprint(args) => check_footprint::run(&args),
             Board::Explain(args) => explain::run(args),
             Board::Compare(args) => compare::run(args),
             Board::Pins(args) => pins::run(args),

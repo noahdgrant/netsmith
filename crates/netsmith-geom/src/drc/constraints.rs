@@ -695,7 +695,7 @@ fn distance_of(art: &Artwork, d: &PinDistanceRule) -> Outcome {
     let centres = |part: &str, pads: &[String]| -> Vec<Pt> {
         art.pads
             .iter()
-            .filter(|p| p.part == part && pads.contains(&p.number))
+            .filter(|p| p.part == part && p.is_terminal() && pads.contains(&p.number))
             .map(|p| p.at)
             .collect()
     };

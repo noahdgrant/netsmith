@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Proves that every example's pick lock is current (ADR 0100): runs `netsmith project lock --check` over
-# every board of examples/, with KiCad hidden (the lock is the solver's picks and needs no KiCad).
+# every board of examples/, with KiCad hidden (the lock is the solver's picks and the hashes of the
+# footprints, which the examples read from generators, std/libs/ and project libraries, not KiCad).
 # It fails when a lock is stale (a catalog, `std/` or the solver would now pick another row) or
 # missing (a new example with no lock), and says how to fix it.
 #

@@ -4,6 +4,8 @@
 # with `netsmith project lock --update`, and number the parts again by path with `--renumber`.
 # Nothing in it is edited by hand but `held = "reason"`, which a person adds to a part's entry
 # to keep the part on its row, and a part's designator, which a renamed part takes by hand.
+# Each part's footprint has the hash of its pads and courtyard: a change to the footprint shows
+# here, and `netsmith project lock --update` takes it.
 version = 2
 
 [TwoBuck.providers."process"]
@@ -346,3 +348,64 @@ sku = { jlcpcb-assembly = "C113962", lcsc-retail = "C113962" }
 "tp_gnd_b" = "TP7"
 "tp_raw" = "TP8"
 "tp_vin" = "TP9"
+
+[TwoBuck.footprints]
+"buck_3v3.bulk" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"buck_3v3.decoupling" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"buck_3v3.input_decoupling" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"buck_3v3.light" = { footprint = "LED_SMD:LED_0603_1608Metric", hash = "2a500898dd78be5f" }
+"buck_3v3.light_resistor" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"buck_3v3.pg_pullup.resistor" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"buck_3v3.pg_test" = { footprint = "TestPoint:TestPoint_Pad_D1.5mm", hash = "f674a73c983c91cc" }
+"buck_3v3.stage.divider.rbottom" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"buck_3v3.stage.divider.rtop" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"buck_3v3.stage.ic" = { footprint = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", hash = "be9007de33ae5f5e" }
+"buck_3v3.stage.ic.boost" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"buck_3v3.stage.ic.enable_bottom" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"buck_3v3.stage.ic.enable_top" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"buck_3v3.stage.inductor" = { footprint = "Inductor_SMD:L_1210_3225Metric", hash = "3125d5432e8cc029" }
+"buck_3v3.stage.input_cap[0]" = { footprint = "Capacitor_SMD:C_1210_3225Metric", hash = "df1cda3b99042958" }
+"buck_3v3.stage.input_cap[1]" = { footprint = "Capacitor_SMD:C_1210_3225Metric", hash = "df1cda3b99042958" }
+"buck_3v3.stage.output_cap" = { footprint = "Capacitor_SMD:C_0805_2012Metric", hash = "57bea96f2863e6f2" }
+"buck_5v.bulk" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"buck_5v.decoupling" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"buck_5v.input_decoupling" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"buck_5v.light" = { footprint = "LED_SMD:LED_0603_1608Metric", hash = "2a500898dd78be5f" }
+"buck_5v.light_resistor" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"buck_5v.pg_pullup.resistor" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"buck_5v.pg_test" = { footprint = "TestPoint:TestPoint_Pad_D1.5mm", hash = "f674a73c983c91cc" }
+"buck_5v.stage.divider.rbottom" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"buck_5v.stage.divider.rtop" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"buck_5v.stage.ic" = { footprint = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", hash = "be9007de33ae5f5e" }
+"buck_5v.stage.ic.boost" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"buck_5v.stage.ic.enable_bottom" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"buck_5v.stage.ic.enable_top" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"buck_5v.stage.inductor" = { footprint = "Inductor_SMD:L_1210_3225Metric", hash = "3125d5432e8cc029" }
+"buck_5v.stage.input_cap[0]" = { footprint = "Capacitor_SMD:C_1210_3225Metric", hash = "df1cda3b99042958" }
+"buck_5v.stage.input_cap[1]" = { footprint = "Capacitor_SMD:C_1210_3225Metric", hash = "df1cda3b99042958" }
+"buck_5v.stage.output_cap" = { footprint = "Capacitor_SMD:C_0805_2012Metric", hash = "57bea96f2863e6f2" }
+"bulk_5v" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"bulk_a" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"bulk_b" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"bulk_c" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"input_light" = { footprint = "LED_SMD:LED_0603_1608Metric", hash = "2a500898dd78be5f" }
+"input_light_resistor" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"ldo" = { footprint = "Package_TO_SOT_SMD:SOT-23", hash = "30dbca44a426f51f" }
+"ldo_bulk" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"ldo_in" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"ldo_light" = { footprint = "LED_SMD:LED_0603_1608Metric", hash = "2a500898dd78be5f" }
+"ldo_light_resistor" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"ldo_out" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"power_3v3" = { footprint = "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical", hash = "4f0b767adeef1876" }
+"power_3v3a" = { footprint = "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical", hash = "4f0b767adeef1876" }
+"power_5v" = { footprint = "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical", hash = "4f0b767adeef1876" }
+"power_in" = { footprint = "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical", hash = "4f0b767adeef1876" }
+"reverse_diode" = { footprint = "Diode_SMD:D_SMA", hash = "a3f42cf1cf34ca20" }
+"surge" = { footprint = "Diode_SMD:D_SMA", hash = "a3f42cf1cf34ca20" }
+"tp_3v3" = { footprint = "TestPoint:TestPoint_Pad_D1.5mm", hash = "f674a73c983c91cc" }
+"tp_3v3a" = { footprint = "TestPoint:TestPoint_Pad_D1.5mm", hash = "f674a73c983c91cc" }
+"tp_5v" = { footprint = "TestPoint:TestPoint_Pad_D1.5mm", hash = "f674a73c983c91cc" }
+"tp_gnd" = { footprint = "TestPoint:TestPoint_Pad_D1.5mm", hash = "f674a73c983c91cc" }
+"tp_gnd_b" = { footprint = "TestPoint:TestPoint_Pad_D1.5mm", hash = "f674a73c983c91cc" }
+"tp_raw" = { footprint = "TestPoint:TestPoint_Pad_D1.5mm", hash = "f674a73c983c91cc" }
+"tp_vin" = { footprint = "TestPoint:TestPoint_Pad_D1.5mm", hash = "f674a73c983c91cc" }

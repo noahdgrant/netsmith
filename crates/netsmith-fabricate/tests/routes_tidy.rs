@@ -420,6 +420,71 @@ fn widen_makes_each_narrow_track_as_wide_as_its_net_wants_or_its_neighbours_allo
     );
 }
 
+/// `routes widen` (issue #1692) on the board of `--widen`: the first track of `p`, with room,
+/// reaches the 0.5 mm its net wants; the second is widened to the widest width the clearance to
+/// the locked track of net `q` allows (no fixed step: wider than the half way `--widen` makes),
+/// and listed with that track as what holds it.
+#[test]
+fn widen_to_fit_widens_each_track_to_the_widest_that_fits_and_names_what_holds_it() {
+    let (board, routes) = narrow();
+    let widths = |t: &Tidied| -> Vec<f64> {
+        t.routes.boards["narrow"].nets["p"]
+            .tracks
+            .iter()
+            .map(|t| t.width)
+            .collect()
+    };
+    let fit = |nets: &[&str]| {
+        routes_tidy::tidy_passes(
+            &board,
+            &routes,
+            None,
+            routes_tidy::Checking::Near,
+            routes_tidy::Widen::Fit(nets.iter().map(|n| n.to_string()).collect()),
+        )
+    };
+    for nets in [&[][..], &["p"][..]] {
+        let tidied = fit(nets).unwrap();
+        let said = tidied.text();
+        assert!(tidied.fit, "{said}");
+        assert_eq!(tidied.counts.widened, 2, "{said}");
+        assert!(tidied.refused.is_empty(), "{said}");
+        let w = widths(&tidied);
+        assert_eq!(w[0], 0.5, "the free track reaches the need: {said}");
+        // 0.35 mm from centre to centre, the locked track 0.15 mm wide: the widest fit less the
+        // margin, more than the 0.31 mm the fixed steps of `--widen` reach.
+        assert!(w[1] > 0.31 && w[1] < 0.5, "{w:?}: {said}");
+        assert_eq!(tidied.short.len(), 1, "{said}");
+        let short = &tidied.short[0];
+        assert_eq!((short.net.as_str(), short.layer.as_str()), ("p", "top"), "{said}");
+        assert_eq!((short.width, short.wants), (w[1], 0.5), "{said}");
+        let held = &short.held_by[0];
+        assert_eq!(held.net.as_deref(), Some("q"), "{said}");
+        assert_eq!((held.kind.as_str(), held.rule.as_str()), ("track", "clearance"), "{said}");
+        assert!(
+            held.allows > w[1] && held.allows - w[1] < 0.004,
+            "the binding neighbour allows {} mm: {said}",
+            held.allows
+        );
+        assert!(said.contains("1 left narrower than its net wants"), "{said}");
+        assert!(said.contains("net p on top at (9.245, 2): "), "{said}");
+        assert!(said.contains("held by Track [q]"), "{said}");
+        // Widening only: no other repair, and nothing the check did not find before.
+        assert_eq!(tidied.findings_after, tidied.findings_before, "{said}");
+        let c = tidied.counts;
+        assert_eq!(c.corners + c.merges + c.stubs + c.vias + c.acid_traps, 0, "{said}");
+        assert_eq!(tidied.routes.boards["narrow"].nets["q"], routes.boards["narrow"].nets["q"]);
+        // The work counted: each narrow track sized once to widen it, once to report it.
+        assert_eq!(tidied.fits_tried, 3, "{said}");
+    }
+    // The locked net is not widened; a net the board lacks is an error.
+    let locked = fit(&["q"]).unwrap();
+    assert_eq!(locked.counts.widened, 0, "{}", locked.text());
+    assert!(locked.short.is_empty(), "{}", locked.text());
+    let err = fit(&["nope"]).unwrap_err();
+    assert!(err.contains("no net nope"), "{err}");
+}
+
 /// One net of `n` straight tracks of 1 mm along one line (the widths alternate, so that no two
 /// make a collinear pair) from a resistor to another, with a track of 0.5 mm inside the middle
 /// one, which the overlap pass removes (issue 1492).

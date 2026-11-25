@@ -4,6 +4,8 @@
 # with `netsmith project lock --update`, and number the parts again by path with `--renumber`.
 # Nothing in it is edited by hand but `held = "reason"`, which a person adds to a part's entry
 # to keep the part on its row, and a part's designator, which a renamed part takes by hand.
+# Each part's footprint has the hash of its pads and courtyard: a change to the footprint shows
+# here, and `netsmith project lock --update` takes it.
 version = 2
 
 [SchematicBench.providers."process"]
@@ -295,3 +297,51 @@ sku = { jlcpcb-assembly = "C42431808", lcsc-retail = "C42431808" }
 "modem.serial" = "J2"
 "obd.j" = "J3"
 "ten.j" = "J4"
+
+[SchematicBench.footprints]
+"adc.amp" = { footprint = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", hash = "be9007de33ae5f5e" }
+"adc.c_filter" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"adc.r_bottom" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"adc.r_filter" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"adc.r_top" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"buck.c_boot" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"buck.c_in" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"buck.c_out" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"buck.c_vcc" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"buck.ic" = { footprint = "bench:Buck1V8", hash = "adb298740e9619f8" }
+"buck.l" = { footprint = "Inductor_SMD:L_1210_3225Metric", hash = "3125d5432e8cc029" }
+"buck.r_bottom" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"buck.r_pg" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"buck.r_rt" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"buck.r_top" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"ldo.c_in" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"ldo.c_out" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"ldo.u" = { footprint = "gen:DFN_body2.95-3.05x2.95-3.05mm_ep1.55x2.4mm_lead_length0.3-0.5mm_lead_width0.2-0.3mm_pins8_pitch0.65mm", hash = "6641e781aa79fedc" }
+"mcu.bulk" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"mcu.bypass" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"mcu.crystal" = { footprint = "Crystal:Crystal_SMD_5032-2Pin_5.0x3.2mm", hash = "31306dbcd283da89" }
+"mcu.mcu" = { footprint = "bench:Mcu97", hash = "dba13e948bb4d1e4" }
+"modem.c_a" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"modem.c_b" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"modem.c_c" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"modem.cf_a" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"modem.cf_b" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"modem.cf_c" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"modem.cf_d" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"modem.cf_e" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"modem.control" = { footprint = "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical", hash = "510df150f59e6888" }
+"modem.led" = { footprint = "LED_SMD:LED_0603_1608Metric", hash = "2a500898dd78be5f" }
+"modem.r_cts" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"modem.r_led" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"modem.r_rts" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"modem.r_rx" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"modem.r_stat" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"modem.r_tx" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"modem.rc_a" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"modem.rc_b" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"modem.rc_c" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"modem.rc_d" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"modem.rc_e" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"modem.serial" = { footprint = "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical", hash = "510df150f59e6888" }
+"obd.j" = { footprint = "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical", hash = "f0ccd07b316a45e9" }
+"ten.j" = { footprint = "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical", hash = "f0ccd07b316a45e9" }
