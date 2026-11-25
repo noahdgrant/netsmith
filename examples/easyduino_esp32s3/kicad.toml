@@ -43,6 +43,13 @@ footprint = "easyduino_original:ESP32-S3-WROOM-1"
 
 # Q1 and Q2: the SS8050 on Easyduino's footprint, KiCad's wide-lead `SOT-23W` (the datasheet's
 # package outline and soldering footprint, page 4, are the plain SOT-23).
+#
+# The build's note that the footprint's body does not fit a `SOT-23` is real and is kept (issue
+# #1662): the footprint draws the body of Allegro's package LH, 3-pin SOT-23W, 1.91 x 2.98 mm
+# (Allegro A1120-DS Rev. 22, page 15, DWG-0000628: 1.91 +0.19/-0.06 x 2.975 +0.125/-0.075 mm),
+# while the SS8050's own drawing (page 4) gives a body of 1.10 to 1.50 x 2.70 to 3.10 mm. The
+# outline on `F.Fab` is wider than the part; the lands still take its leads (README, Parts), and
+# the footprint stays Easyduino's.
 [[part]]
 kind = "Ss8050"
 package = "SOT-23"
