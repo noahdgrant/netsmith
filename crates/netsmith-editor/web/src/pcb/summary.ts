@@ -156,14 +156,12 @@ export function fillStarvedLine(s: FillStarved): string {
   return `${s.part}.${s.pad} on ${s.layer} (${s.net}) at (${mm(s.at.x)}, ${mm(s.at.y)}): ${s.joinedSpokes} of ${s.spokes} spokes${tracks}`;
 }
 
-/** A switching regulator's ground pad a fill does not join solid (issue 1586), and the pin to state it solid on:
- * `U1.2 on top (GND) at (8, 15), the ground of the switching regulator reg.ic: a thermal relief, 4 of 4 spokes; ...`. The words are `board fill`'s. */
+/** A switching regulator's ground pad no fill joins solid (issues 1586, 1666 and 1667), with how each fill holds it and
+ * the pin to state it solid on: `U1.2 on top (GND) at (8, 15), the ground of the switching regulator reg.ic: the pour holds
+ * it on a thermal relief, 4 of 4 spokes; ...`. The words after the place are `board fill`'s, from the server, with its
+ * code quotes left out. */
 export function fillRegulatorGroundLine(g: FillRegulatorGround): string {
-  let how = 'not joined (the fill\u2019s pad connection is none)';
-  if (g.join === 'thermal') how = g.spokes === null || g.joinedSpokes === null ? 'a thermal relief' : `a thermal relief, ${g.joinedSpokes} of ${g.spokes} spokes${g.starved ? ', starved' : ''}`;
-  else if (g.join === 'solid') how = 'solid, but the fill does not reach it';
-  const pin = g.statedBy ?? `${g.path}.vin.neg`;
-  return `${g.part}.${g.pad} on ${g.layer} (${g.net}) at (${mm(g.at.x)}, ${mm(g.at.y)}), the ground of the switching regulator ${g.path}: ${how}; a regulator\u2019s ground carries its switched current and its heat: join it solid with .pour_connection &= PadConnection::Solid on its pin ${pin}`;
+  return `${g.part}.${g.pad} on ${g.layer} (${g.net}) at (${mm(g.at.x)}, ${mm(g.at.y)}), ${g.warning.replaceAll('`', '')}`;
 }
 
 /** A net of the table of the routed board (issue 1223, `netsmith board nets`): `CANH: 63.09 mm routed, straight 60.2 mm (1.05x), 2 vias, 2 layer changes, on F.Cu B.Cu`. */

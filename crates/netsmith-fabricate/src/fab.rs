@@ -1059,6 +1059,26 @@ pub fn precheck_board(
     report
 }
 
+/// The placement check `fab` makes before it places (issue 1309), of the parts the layout file
+/// places (its locked and its seed entries, and the parts a requirement pins), each where it
+/// says, as `layout check` makes it: courtyards that overlap (a through-hole part's pins that
+/// come out under a part on the other face too), a part past the edge, in a keepout or a
+/// cutout. `board check` and `board build` make the same check with the same words (issue
+/// #1654); `for_review` leaves out the faults `--for-review` waives. `None` with no layout file,
+/// or a board the entries cannot be measured on (the placer's to refuse).
+pub fn entry_placement(
+    built: &Built,
+    layout: Option<&(netsmith_pcb::Layout, String)>,
+    libraries: &Libraries,
+    for_review: bool,
+) -> Option<crate::layout_edit::EntryJudgement> {
+    let mut judged = crate::layout_edit::entry_judgement(&built.design, layout?, libraries).ok()?;
+    judged
+        .faults
+        .retain(|f| !(for_review && review_waives(f.kind)));
+    Some(judged)
+}
+
 /// The file in the board's fab folder that lists every part's final place and state when
 /// the parts do not fit (PROVISIONAL, ADR 0033).
 const PLACEMENT_FAILURE: &str = "placement-failure.txt";
@@ -1304,24 +1324,15 @@ fn fab_board(
         // them (courtyards that overlap, a part past the edge, in a keepout or a cutout) is
         // found now, as `layout check` finds it, with no placing (issue 1309). The faults
         // `--for-review` waives are left to the check after placing, which lists them.
-        if let Some(layout) = layout.as_ref() {
-            // A board the entries cannot be measured on is the placer's to refuse.
-            if let Ok((faults, conflicts)) =
-                crate::layout_edit::entry_check(&built.design, layout, libraries)
-            {
-                let faults: Vec<_> = faults
-                    .into_iter()
-                    .filter(|f| !(options.for_review && review_waives(f.kind)))
-                    .collect();
-                if !faults.is_empty() {
-                    return Err(FabFailure {
-                        text: faults.iter().map(|f| fail(f.text.clone())).collect(),
-                        conflicts: conflicts.into(),
-                        placement: faults.into(),
-                        ..FabFailure::default()
-                    });
-                }
-            }
+        if let Some(judged) = entry_placement(built, layout.as_ref(), libraries, options.for_review)
+            && !judged.faults.is_empty()
+        {
+            return Err(FabFailure {
+                text: judged.faults.iter().map(|f| fail(f.text.clone())).collect(),
+                conflicts: judged.conflicts.into(),
+                placement: judged.faults.into(),
+                ..FabFailure::default()
+            });
         }
         say(format!(
             "{}: placing {} parts",

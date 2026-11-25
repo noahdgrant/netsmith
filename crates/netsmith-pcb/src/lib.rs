@@ -42,6 +42,7 @@ mod copper;
 mod copper_areas;
 mod explain;
 mod export;
+mod fill_islands;
 mod fill_report;
 mod fit_report;
 mod footprint;
@@ -58,6 +59,7 @@ mod miss;
 mod modules;
 mod origin;
 mod overhang;
+mod package_check;
 mod part_fit;
 mod part_geometry;
 mod part_layout;
@@ -120,9 +122,12 @@ pub use export::{
     FilledPcb, PATH_PROPERTY, kicad_dru, kicad_pcb, kicad_pcb_filled, kicad_pro, process_zone_uuid,
     process_zones,
 };
+pub use fill_islands::{
+    FillRegion, FillRegions, IslandsReport, RegionBound, RegionBoundKind, RegionPad, RegionVia,
+};
 pub use fill_report::{
     ClearedPad, FillArea, FillIsland, FillPad, FillPolygon, FillReport, FillSource, JoinCounts,
-    JoinKind, RegulatorGround, StarvedPad, UnjoinablePad,
+    JoinKind, RegulatorFill, RegulatorGround, StarvedPad, UnjoinablePad,
 };
 pub use fit_report::{FitReport, PartRef, Size};
 pub use footprint::{
@@ -162,6 +167,7 @@ pub use overhang::{
     Edge, Edges, Overhang, clip as clip_to_outline, needs as overhang_needs,
     reached as overhang_reached,
 };
+pub use package_check::{PackageCheck, check_package, package_body};
 pub use part_fit::{FIT_STEP, FitNear, FitPlace, FitTarget, MarginShort, PartFit};
 pub use part_geometry::{NoEntry, PadGeometry, PartFrame, PartGeometries, PartGeometry};
 pub use part_layout::{

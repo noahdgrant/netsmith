@@ -13,7 +13,7 @@ Every board goes through the same steps. Do them in this order and say what each
 
 1. `netsmith project init` in an empty directory makes the project (skip it in an existing one). After a netsmith upgrade `netsmith project refresh` updates the agent files you have not edited.
 2. Write or change `src/*.nsm`: the requirements as numbers, never part numbers (`netsmith-write-nsm`, `netsmith-design-a-board`).
-3. `netsmith board check` checks and solves the boards and writes nothing. Read the first error only, fix it and run it again (`netsmith-read-errors`).
+3. `netsmith board check` checks and solves the boards and writes nothing; with a layout file it also makes `fab`'s placement check of the parts the file places (courtyards, edge, keepouts), places nothing, and notes what it left to the placer. Read the first error only, fix it and run it again (`netsmith-read-errors`).
 4. `netsmith board build` does the same and writes the schematic to `out/`, the pick lock and the pin file. Run it before you say a design works.
 5. Look at what you made, with the commands that draw it; you read the picture with your image viewer:
    - `netsmith view schematic`: the schematic as a PDF, an SVG or a PNG.
@@ -71,6 +71,7 @@ The files a run writes that you do not commit (git ignores them): `out/` (the sc
 - A document with places has a `frame` key: `outline` (the layout and routes files' frame) or `board-file` (`board nets`, `board drc`, `board fill`, `board rules`, 20 mm off). `--frame outline` puts any of them in the outline's frame, so places from two commands can be compared. `board check`, `build` and `fab` take `--frame` too, and `fab` says every place of its text and of `fab-notes.txt` in the outline's frame (the design rules lines too, which `board drc` says in the board file's), as the notes' first line says; with text the flag moves the places of every command that says one (the guide lists them), also the places the placer's and the design rules check's sentences say, in text and in the `message`, `said`, `why`, `refused` and `walls[].vias` strings of the JSON; only `layout capture` says none. `layout fit`'s `--at X,Y` stays in the layout file's frame.
 - `--progress json` prints the progress of `board fab`, `project order` and `dev board3d` as JSON lines on stderr, so a program can follow a long run (placing, routing) without parsing text.
 - `NETSMITH_TIMINGS=1` prints the time of each stage to stderr.
+- A project names the netsmith release it is written for (`netsmith = "0.9.0"` or `"0.9"` in `netsmith.toml`). Run with another minor release, each command that builds or checks warns once (`warning:` on stderr, or the `findings` note of code `release`; `netsmith mcp` says it in its instructions) and refuses nothing. Check `netsmith --version` against the key before you compare results, and run the project's release by its own path (chapter 26, "Running the project's release"); `netsmith-read-errors` says what to tell the person.
 
 ## An agent host
 

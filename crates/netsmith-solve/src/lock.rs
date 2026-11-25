@@ -90,6 +90,45 @@ pub struct PickLock {
     pub outdated: Option<String>,
     units: BTreeMap<String, Vec<LockedRow>>,
     providers: BTreeMap<String, Vec<LockedProvider>>,
+    /// The reference designator of each part of each board and system (issue #1653): what the
+    /// design stage keeps when parts are added. It does not make a lock: a source with no part
+    /// to pick has no lock, and its parts are numbered by path.
+    pub designators: Designators,
+}
+
+/// The reference designator of each part of each board and system, by the name of the board or
+/// system and the part's path in it (`r1`, `bulk[0]`; a board of a system by its name in the
+/// system, `power.r1`), as a pick lock records them (issue #1653). The design stage gives a part
+/// recorded with the letters it has now that designator, and the others the next free number of
+/// their letters.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Designators {
+    units: BTreeMap<String, BTreeMap<String, String>>,
+}
+
+impl Designators {
+    /// Sets the designators of one board or system; one with none has no entry.
+    pub fn set(&mut self, unit: &str, designators: BTreeMap<String, String>) {
+        if designators.is_empty() {
+            self.units.remove(unit);
+        } else {
+            self.units.insert(unit.to_string(), designators);
+        }
+    }
+
+    /// The designators of one board or system, by path: `None` when nothing is recorded for it.
+    pub fn of(&self, unit: &str) -> Option<&BTreeMap<String, String>> {
+        self.units.get(unit)
+    }
+
+    /// Every board or system with designators, in name order.
+    pub fn units(&self) -> impl Iterator<Item = (&str, &BTreeMap<String, String>)> {
+        self.units.iter().map(|(n, d)| (n.as_str(), d))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.units.is_empty()
+    }
 }
 
 impl PickLock {
@@ -99,6 +138,7 @@ impl PickLock {
             outdated: None,
             providers: BTreeMap::new(),
             units: BTreeMap::new(),
+            designators: Designators::default(),
         }
     }
 
@@ -141,7 +181,7 @@ impl PickLock {
             .map(|(n, p)| (n.as_str(), p.as_slice()))
     }
 
-    /// Whether no part and no provider is locked.
+    /// Whether no part and no provider is locked. Designators alone do not make a lock.
     pub fn is_empty(&self) -> bool {
         self.units.values().all(Vec::is_empty) && self.providers.values().all(Vec::is_empty)
     }

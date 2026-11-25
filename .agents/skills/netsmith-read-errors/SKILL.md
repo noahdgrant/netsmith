@@ -7,7 +7,9 @@ description: Read netsmith's checker, solver, design-stage and design-rule messa
 
 Fix errors one at a time, from the first one. Later errors are often caused by earlier ones. The language guide (`docs/netsmith/LANGUAGE.md` lists its chapters, in `docs/netsmith/language/`) has each message with its cause, under the construct it belongs to.
 
-Many errors at once after a netsmith upgrade, in a project that built before, are usually spellings the new release changed: the run ends with a note that names the project's release (`netsmith` in `netsmith.toml`) and points to `docs/MIGRATING.md` (https://github.com/noahdgrant/netsmith/blob/main/docs/MIGRATING.md), which lists each change with the old and the new spelling. Make those changes first, then set `netsmith` to the new release.
+A `warning: the project is written for netsmith X ... and this is netsmith Y` (a note of the code `release` first among the `findings` with `--format json`) means the netsmith you run is of another minor release than the project's `netsmith` key. Nothing is refused, but parts picked, findings and output may differ from that release's. Tell the person; do not mix the results of two releases, and do not change the key to silence it. Run the project's release beside this one (chapter 26 of the guide, "Running the project's release"), or move the project if the person asks.
+
+Many errors at once after a netsmith upgrade, in a project that built before, are usually spellings the new release changed: that warning (or, for a project with no `netsmith` key, a note at the end of the run) points to `docs/MIGRATING.md` (https://github.com/noahdgrant/netsmith/blob/main/docs/MIGRATING.md), which lists each change with the old and the new spelling. To move the project, make those changes first, then set `netsmith` to the new release.
 
 ## The shape
 
@@ -75,6 +77,7 @@ Many errors at once after a netsmith upgrade, in a project that built before, ar
 | ``.lcsc &= "C..."` on `x`: a hand pick is by the manufacturer's part number now ...`` | A hand pick written with a supplier's number (ADR 0143). Write the `.mpn &=` the message gives in its place, or run `netsmith project migrate-offers` to rewrite every one of the project. |
 | ``... is held by `.mpn &= "..."` to one row of the X catalog, and no other row was tried for it`` | Follows a failed relation: the hand-picked row does not meet the design. Change the design so the row fits, or change or remove the hand pick; it is the user's choice of part, so ask before you drop it. |
 | ``... is locked to `A` and was picked as `B` `` (a note) after you added a hand pick | The hand pick comes before the lock, which still records the old row. Run `netsmith project lock --update` and commit the lock. |
+| ``the pick lock gives `a` and `b` the same designator R1 ...`` | The lock's `designators` table was edited by hand. Give one part another designator there, or run `netsmith project lock --update --renumber` (it renumbers every part by path; ask the user first). |
 | ```x.manufacturer` holds the part to a catalog row, but `x` (`K`) picks from no catalog`` | Only a part with a catalog has rows. Remove the narrowing. |
 | `X.picks.toml: netsmith no longer reads a picks file (ADR 0122) ...` | The file held hand picks once. Write each narrowing the message lists in the body of its board (`.boot1_cap.mpn &= "CL05B104KB54PNC"`), delete the file, and check that `netsmith project lock --check` still passes (the rows are the same). |
 | `... rows were left out because package P has no pin` | No catalog row's package has a pin the board connects. Use another package or leave the pin unconnected. |

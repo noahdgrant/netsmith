@@ -181,6 +181,7 @@ fn every_json_document_with_places_says_their_frame() {
         (&["board", "nets", f], "board-file"),
         (&["board", "drc", f], "board-file"),
         (&["board", "fill", f], "board-file"),
+        (&["board", "fill", f, "--islands"], "board-file"),
         (&["board", "rules", f], "board-file"),
         (&["board", "check", f], "outline"),
         (&["board", "build", f, "--out", out], "outline"),

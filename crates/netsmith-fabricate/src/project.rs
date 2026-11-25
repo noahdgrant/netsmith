@@ -53,10 +53,11 @@ pub const MAX_REVISION: usize = 32;
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
     pub name: String,
-    /// The netsmith release the project's source is written for, `netsmith = "0.2.0"`, which
-    /// `netsmith project init` writes. A command whose check fails on a project written for another
-    /// release says so and points to `docs/MIGRATING.md` (`crate::release`, ADR 0134). Without
-    /// it the project was made before the key, with netsmith 0.1.0 or earlier.
+    /// The netsmith release the project's source is written for, `netsmith = "0.2.0"` (or
+    /// `"0.2"`, which any patch matches), which `netsmith project init` writes. A command of
+    /// another minor release warns of it, refusing nothing (`crate::release`, issue #1657).
+    /// Without it nothing is warned of: the project was made before the key, with netsmith 0.1.0
+    /// or earlier, which a failed check says (ADR 0134).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub netsmith: Option<String>,
     /// The revision of the project's boards, `revision = "A"` or `"1.2"`: text on one line, up
@@ -797,8 +798,13 @@ impl Manifest {
     }
 
     /// Read manifest text. TOML mistakes are reported by the `toml` crate with the line,
-    /// column and key; values that cannot work are named by field.
+    /// column and key; values that cannot work are named by field. An error of a manifest that
+    /// is written for another minor release says so ([`crate::release::beside_error`]).
     pub fn parse(text: &str) -> Result<Manifest, String> {
+        Manifest::read(text).map_err(|e| crate::release::beside_error(text, e))
+    }
+
+    fn read(text: &str) -> Result<Manifest, String> {
         let file: File = toml::from_str(text).map_err(|e| format!("{MANIFEST}: {e}"))?;
         let mut manifest = file.project;
         manifest.supply = file.supply;
@@ -859,7 +865,7 @@ impl Manifest {
             && crate::release::parse(release).is_none()
         {
             return Err(format!(
-                "{MANIFEST}: netsmith = {release:?} is not a release such as \"{}\"",
+                "{MANIFEST}: netsmith = {release:?} is not a release such as \"{}\" (or \"major.minor\", which any patch of it matches)",
                 crate::release::RELEASE
             ));
         }
@@ -2741,10 +2747,18 @@ mod tests {
             "{text}"
         );
         assert_eq!(parse(&text).unwrap(), Manifest::new("a"));
+        // A release with no patch, which any patch of 0.1 matches (issue #1657).
         assert_eq!(
-            parse("[project]\nname = \"a\"\nnetsmith = \"0.1\"\n").unwrap_err(),
+            parse("[project]\nname = \"a\"\nnetsmith = \"0.1\"\n")
+                .unwrap()
+                .netsmith
+                .as_deref(),
+            Some("0.1")
+        );
+        assert_eq!(
+            parse("[project]\nname = \"a\"\nnetsmith = \"v0.1.0\"\n").unwrap_err(),
             format!(
-                "netsmith.toml: netsmith = \"0.1\" is not a release such as \"{}\"",
+                "netsmith.toml: netsmith = \"v0.1.0\" is not a release such as \"{}\" (or \"major.minor\", which any patch of it matches)",
                 crate::release::RELEASE
             )
         );

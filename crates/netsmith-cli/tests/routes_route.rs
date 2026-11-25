@@ -134,3 +134,96 @@ fn routes_route_through_a_via_writes_it_and_refuses_one_in_the_way() {
     assert_eq!(run.status.code(), Some(2), "{}", said(&run));
     assert!(said(&run).contains("is not `X,Y` or `X,Y,LAYER,LAYER`"));
 }
+
+/// The four-layer example in a folder of its own, with its second inner layer a signal layer
+/// instead of the 3.3 V plane when `signal` (issue #1656).
+fn four_layer(tag: &str, signal: bool) -> TempDir {
+    let dir = TempDir::new(tag);
+    let source = fs::read_to_string(repo().join("examples/four_layer.nsm")).unwrap();
+    let source = if signal {
+        source.replace(".inner2.net &= \"3V3\"", ".inner2.use &= \"signal\"")
+    } else {
+        source
+    };
+    assert!(!signal || source.contains(".inner2.use &= \"signal\""));
+    fs::write(dir.join("four_layer.nsm"), source).unwrap();
+    fs::copy(
+        repo().join("examples/four_layer.lock.toml"),
+        dir.join("four_layer.lock.toml"),
+    )
+    .unwrap();
+    dir
+}
+
+fn route_four(dir: &Path, args: &[&str]) -> Output {
+    let mut all = vec!["routes", "route"];
+    all.extend_from_slice(args);
+    all.extend_from_slice(&["--file", "four_layer.nsm"]);
+    netsmith(dir, &all)
+}
+
+#[test]
+fn routes_route_on_a_layer_routes_on_an_inner_signal_layer_with_vias_at_the_ends() {
+    // Issue #1656: VIN of the four-layer example, on In2.Cu once it is a signal layer.
+    let dir = four_layer("routes-route-layer", true);
+    let file = dir.join("four_layer.routes.toml");
+
+    let run = route_four(&dir, &["VIN", "--layer", "In2.Cu", "--dry-run"]);
+    let text = said(&run);
+    assert!(run.status.success(), "{text}");
+    assert!(text.contains("on inner2:"), "{text}");
+    assert!(!file.exists(), "a dry run writes no file");
+
+    let run = route_four(&dir, &["VIN", "--layer", "inner2", "--format", "json"]);
+    let text = said(&run);
+    assert!(run.status.success(), "{text}");
+    let doc: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+    assert_eq!(doc["written"], true, "{text}");
+    assert_eq!(doc["layer"], "inner2");
+    assert!(doc["refused"].is_null(), "{text}");
+    let change = &doc["nets"][0];
+    assert!(change["left"].as_array().unwrap().is_empty(), "{text}");
+    // A via at each end that is not a plated hole, and the way between them on inner2.
+    let through = doc["through"].as_array().unwrap();
+    assert!(!through.is_empty(), "{text}");
+    for t in through {
+        assert_eq!(t["added"], true, "{text}");
+        assert!(
+            t["layers"].as_array().unwrap().iter().any(|l| l == "inner2"),
+            "{text}"
+        );
+    }
+    let tracks = change["tracks"].as_array().unwrap();
+    assert!(tracks.iter().any(|t| t["layer"] == "inner2"), "{text}");
+    assert!(doc["end_checks"].as_u64().unwrap() >= through.len() as u64);
+    let written = fs::read_to_string(&file).unwrap();
+    assert!(written.contains("layer = \"inner2\""), "{written}");
+
+    // Routed already: nothing to do.
+    let run = route_four(&dir, &["VIN", "--layer", "inner2"]);
+    assert!(said(&run).contains("joined already"), "{}", said(&run));
+}
+
+#[test]
+fn routes_route_on_a_layer_refuses_a_plane_and_an_outer_layer_naming_the_layers() {
+    // As the example is, both inner layers are planes: the board has no inner signal layer,
+    // which is why its router routes the outer layers only.
+    let dir = four_layer("routes-route-layer-plane", false);
+    let run = route_four(&dir, &["VIN", "--layer", "inner2"]);
+    let text = said(&run);
+    assert_eq!(run.status.code(), Some(1), "{text}");
+    assert!(text.contains("is a plane on net 3V3"), "{text}");
+    assert!(
+        text.contains("inner1: plane on GND, inner2: plane on 3V3")
+            && text.contains("no inner signal layer")
+            && text.contains(".use &= \"signal\""),
+        "{text}"
+    );
+    let run = route_four(&dir, &["VIN", "--layer", "top"]);
+    let text = said(&run);
+    assert_eq!(run.status.code(), Some(1), "{text}");
+    assert!(text.contains("is an outer layer"), "{text}");
+    let run = route_four(&dir, &["VIN", "--layer", "inner5"]);
+    assert!(said(&run).contains("has no layer `inner5`"), "{}", said(&run));
+    assert!(!dir.join("four_layer.routes.toml").exists());
+}

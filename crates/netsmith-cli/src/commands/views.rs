@@ -10,7 +10,6 @@ use std::process::ExitCode;
 use clap::Args as ClapArgs;
 use netsmith_editor::api::{Analysis, Severity};
 use netsmith_editor::{ApiError, Backend};
-use netsmith_fabricate::project::Target;
 use netsmith_workspace::Workspace;
 
 use super::common::Format;
@@ -35,7 +34,9 @@ pub(super) fn open(file: Option<&str>, offline: bool) -> Result<(Workspace, Anal
         eprintln!("{e}");
         ExitCode::from(2)
     };
-    let target = Target::resolve(file).map_err(fail)?.with_offline(offline);
+    let target = super::common::resolve(file)
+        .map_err(fail)?
+        .with_offline(offline);
     if super::common::no_boards(&target) {
         return Err(ExitCode::from(2));
     }

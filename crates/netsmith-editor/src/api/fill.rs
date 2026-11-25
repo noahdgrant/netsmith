@@ -143,8 +143,8 @@ pub struct FillUnjoinable {
     pub why: String,
 }
 
-/// A switching regulator's ground pad that a fill of its net holds and does not join with solid
-/// copper (issue #1586), a warning of `board fill`: `netsmith_pcb::RegulatorGround`.
+/// A switching regulator's ground pad that no fill of its net on its layer joins with solid
+/// copper (issues #1586 and #1666), a warning of `board fill`: `netsmith_pcb::RegulatorGround`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct FillRegulatorGround {
@@ -167,6 +167,34 @@ pub struct FillRegulatorGround {
     /// The path of the pin that states the pad's connection, when one does (`reg.ic.vin.neg`).
     #[serde(default)]
     pub stated_by: Option<String>,
+    /// The path of the IC's pin that has the pad (`reg.ic.gnd2`), whose `.pour_connection` the
+    /// fill takes for it (issue #1667), and the pads of the part that its setting reaches.
+    #[serde(default)]
+    pub pin: String,
+    #[serde(default)]
+    pub pin_pads: Vec<String>,
+    /// Each fill of the net on the layer that holds the pad; none joins it solid.
+    #[serde(default)]
+    pub fills: Vec<FillRegulatorFill>,
+    /// The warning in words after the pad and its place, as `board fill` prints it.
+    #[serde(default)]
+    pub warning: String,
+}
+
+/// How one fill holds a regulator's ground pad: `netsmith_pcb::RegulatorFill`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct FillRegulatorFill {
+    /// `pour`, `plane` or `zone`.
+    pub source: String,
+    /// `thermal`, `none`, or `solid` where the fill does not reach it.
+    pub join: String,
+    pub joined: bool,
+    #[serde(default)]
+    pub spokes: Option<u32>,
+    #[serde(default)]
+    pub joined_spokes: Option<u32>,
+    pub starved: bool,
 }
 
 /// How the fill of the board's pours joins its pads.

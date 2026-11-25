@@ -4,14 +4,14 @@ use std::process::ExitCode;
 use clap::{ArgGroup, Args as ClapArgs};
 use netsmith_fabricate::dependency_lock;
 use netsmith_fabricate::project::{Project, Target};
-use netsmith_pipeline::pick_lock::{Kept, Parts};
+use netsmith_pipeline::pick_lock::{Kept, Numbering, Parts};
 
-use super::common::{Format, no_boards, print_json, target};
+use super::common::{self, Format, no_boards, target};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
 #[command(
-    after_long_help = "`project lock --update` solves each board without the pick lock's holding (a hand pick in the source, `.lcsc &= ...`, still holds its part) and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed). `project lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist (for CI). Both exit 2 when they cannot tell: the lock is not readable, a picks file from an older netsmith is beside the source (move its entries into the source as the message says), or the design does not build. With no file it acts on the project's boards. A source the project leaves out of the locks (`lock` in netsmith.toml) is skipped. A project with a dependency by `git` has a dependency lock too, `dependencies.lock.toml` beside netsmith.toml, the commit each one was read at: `--update` fetches each again and takes the commit its `rev` or `version` names now, printing the entries that changed, and `--check` fails when the lock lacks an entry for one or holds one no manifest asks for, fetching nothing. `project lock --update --part r1,stage.cap` takes new picks for those parts only, and `--except r1` for every part but those: the other parts stay on the row the lock has for them, which is judged by everything the design says, and an error says so when it no longer passes. `project lock --check --except r1,stage.cap` judges every part but those, which stay on the row the lock has for them and are listed as not judged (text and JSON). A lock row can say it is held on purpose: a person adds `held = \"reason\"` to its entry. A held row is not called not current whatever the solver would pick now; it is listed as held with its reason (text and JSON, `--update` too), and is judged by everything the design says as any locked row is, so a held row that no longer passes is an error. `--update` keeps a held row and its `held` key unless the part is named by `--part`, which takes a new pick and drops the key. A part named is looked for by its path in every board of the file (or of the project), and one that no board has is an error that lists the parts there are. A release can add to a built-in catalog a part that a project's own catalog already has: the build then stops with \"a part is in a catalog once\", naming the built-in row and what differs. Remove the project's row by hand; a lock row that names it (its `row`) is then no longer a row of the catalog, and `--update` rewrites it to the built-in row that has the same LCSC number (or manufacturer part number), and changes no other row, also with `--part` or `--except` (a part `--part` names takes a new pick as it does without a collision). `--check` prints that change and exits 1 until `--update` has written it. A pick lock of version 1, which an older netsmith wrote and which records no manufacturer, is read and holds its parts as before; `--check` calls it not current (`version 1 -> 2`) and `--update` writes it as version 2, which records each part's manufacturer beside its LCSC number and manufacturer part number (ADR 0143)."
+    after_long_help = "`project lock --update` solves each board without the pick lock's holding (a hand pick in the source, `.lcsc &= ...`, still holds its part) and writes the lock with the rows the solver picks now, printing for each part that changed the old row and the new one (nothing when nothing changed). `project lock --check` does the same without writing, prints the same and exits 1 when the lock is not current or does not exist (for CI). Both exit 2 when they cannot tell: the lock is not readable, a picks file from an older netsmith is beside the source (move its entries into the source as the message says), or the design does not build. With no file it acts on the project's boards. A source the project leaves out of the locks (`lock` in netsmith.toml) is skipped. A project with a dependency by `git` has a dependency lock too, `dependencies.lock.toml` beside netsmith.toml, the commit each one was read at: `--update` fetches each again and takes the commit its `rev` or `version` names now, printing the entries that changed, and `--check` fails when the lock lacks an entry for one or holds one no manifest asks for, fetching nothing. `project lock --update --part r1,stage.cap` takes new picks for those parts only, and `--except r1` for every part but those: the other parts stay on the row the lock has for them, which is judged by everything the design says, and an error says so when it no longer passes. `project lock --check --except r1,stage.cap` judges every part but those, which stay on the row the lock has for them and are listed as not judged (text and JSON). A lock row can say it is held on purpose: a person adds `held = \"reason\"` to its entry. A held row is not called not current whatever the solver would pick now; it is listed as held with its reason (text and JSON, `--update` too), and is judged by everything the design says as any locked row is, so a held row that no longer passes is an error. `--update` keeps a held row and its `held` key unless the part is named by `--part`, which takes a new pick and drops the key. A part named is looked for by its path in every board of the file (or of the project), and one that no board has is an error that lists the parts there are. A release can add to a built-in catalog a part that a project's own catalog already has: the build then stops with \"a part is in a catalog once\", naming the built-in row and what differs. Remove the project's row by hand; a lock row that names it (its `row`) is then no longer a row of the catalog, and `--update` rewrites it to the built-in row that has the same LCSC number (or manufacturer part number), and changes no other row, also with `--part` or `--except` (a part `--part` names takes a new pick as it does without a collision). `--check` prints that change and exits 1 until `--update` has written it. A pick lock of version 1, which an older netsmith wrote and which records no manufacturer, is read and holds its parts as before; `--check` calls it not current (`version 1 -> 2`) and `--update` writes it as version 2, which records each part's manufacturer beside its LCSC number and manufacturer part number (ADR 0143). The lock records each part's reference designator too (`[Board.designators]`, issue #1653): a part keeps the designator the lock records, a new part takes the number after the highest of its letters that the lock records, and `--update` keeps them; `--update --renumber` numbers every part again by its path from 1. A lock that records no designators (an older netsmith wrote it) numbers the parts by path; `--check` calls it not current and `--update` records them as they are numbered now."
 )]
 #[command(group(ArgGroup::new("mode").required(true).args(["update", "check"])))]
 pub struct Args {
@@ -35,6 +35,9 @@ pub struct Args {
     /// Take new picks for every part but these (by path, comma-separated); with `--check`, judge every part but these and say which were not judged.
     #[arg(long, value_name = "PATH", value_delimiter = ',')]
     pub except: Vec<String>,
+    /// With `--update`, number every part again by its path from 1, in place of keeping the designators the lock records.
+    #[arg(long)]
+    pub renumber: bool,
     /// Text for a person, or one JSON document on stdout.
     ///
     /// `json` prints one JSON document on stdout and nothing else there: `command` (`lock`),
@@ -61,6 +64,15 @@ impl Args {
         }
     }
 
+    /// What the run does with the designators the lock records.
+    pub fn numbering(&self) -> Numbering {
+        if self.renumber {
+            Numbering::Renumber
+        } else {
+            Numbering::Keep
+        }
+    }
+
     /// The parts that take a new pick.
     pub fn parts(&self) -> Parts {
         if !self.part.is_empty() {
@@ -81,10 +93,17 @@ pub fn run(args: Args) -> ExitCode {
         );
         return ExitCode::from(2);
     }
+    if args.mode() == LockMode::Check && args.renumber {
+        eprintln!(
+            "error: --renumber goes with --update; a check compares the lock with the designators it records"
+        );
+        return ExitCode::from(2);
+    }
     run_lock(
         args.file.as_deref(),
         args.mode(),
         &args.parts(),
+        args.numbering(),
         args.format,
     )
 }
@@ -93,11 +112,17 @@ pub fn run(args: Args) -> ExitCode {
 /// no holding. The diff goes to stdout; what the lock held that no longer passes, the reason a
 /// check fails and every error go to stderr. Exit 0 when nothing is wrong (a lock was written,
 /// or is current), 1 when `--check` finds a lock that is not current, 2 when it cannot tell.
-fn run_lock(file: Option<&str>, mode: LockMode, parts: &Parts, format: Format) -> ExitCode {
+fn run_lock(
+    file: Option<&str>,
+    mode: LockMode,
+    parts: &Parts,
+    numbering: Numbering,
+    format: Format,
+) -> ExitCode {
     let json = format == Format::Json;
     // The dependency lock first: `--update` fetches the dependencies by `git` again, and the
     // boards are then solved with what it took.
-    let dependencies = match Target::resolve(file) {
+    let dependencies = match common::resolve(file) {
         Ok(Target {
             project: Some(project),
             ..
@@ -124,7 +149,7 @@ fn run_lock(file: Option<&str>, mode: LockMode, parts: &Parts, format: Format) -
     if target.files.is_empty() && has_git {
         let stale = dependencies.as_ref().is_some_and(|d| d.stale);
         if json {
-            print_json(&document(
+            print_document(document(
                 mode,
                 stale,
                 &[],
@@ -147,13 +172,14 @@ fn run_lock(file: Option<&str>, mode: LockMode, parts: &Parts, format: Format) -
                 return ExitCode::from(2);
             }
         };
-        match netsmith_pipeline::pick_lock::refresh_parts(
+        match netsmith_pipeline::pick_lock::refresh_with(
             &source.path,
             &source.name,
             &text,
             &loader,
             &catalogs,
             parts,
+            numbering,
         ) {
             Ok(f) => found.push(f),
             Err(e) => {
@@ -271,7 +297,7 @@ fn run_lock(file: Option<&str>, mode: LockMode, parts: &Parts, format: Format) -
     }
     let stale = stale || dependencies.as_ref().is_some_and(|d| d.stale);
     if json {
-        print_json(&document(
+        print_document(document(
             mode,
             stale,
             &files,
@@ -291,6 +317,13 @@ struct Locked {
     /// The rows held on purpose, and the parts a check did not judge.
     held: Vec<Kept>,
     not_judged: Vec<Kept>,
+}
+
+/// Prints the document of `project lock --format json`, with the warning of a project written for
+/// another release among its findings (issue #1657).
+fn print_document(mut document: serde_json::Value) {
+    crate::release_warning::add_to(&mut document);
+    common::print_json(&document);
 }
 
 /// The document of `project lock --format json`.
@@ -448,7 +481,7 @@ mod tests {
     use crate::commands::common::testing::{kind, parse};
     use crate::commands::lock;
     use clap::error::ErrorKind;
-    use netsmith_pipeline::pick_lock::Parts;
+    use netsmith_pipeline::pick_lock::{Numbering, Parts};
 
     #[test]
     fn lock_takes_update_or_check_and_not_both() {
@@ -490,6 +523,15 @@ mod tests {
         assert_eq!(
             kind(&["project", "lock", "--update", "--check"]),
             ErrorKind::ArgumentConflict
+        );
+        let numbering = |args: &[&str]| match parse(args) {
+            Ok(Leaf::Lock(l)) => l.numbering(),
+            other => panic!("{args:?}: {other:?}"),
+        };
+        assert_eq!(numbering(&["project", "lock", "--update"]), Numbering::Keep);
+        assert_eq!(
+            numbering(&["project", "lock", "--update", "--renumber"]),
+            Numbering::Renumber
         );
     }
 }

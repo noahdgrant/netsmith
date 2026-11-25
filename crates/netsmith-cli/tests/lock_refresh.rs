@@ -352,10 +352,16 @@ fn a_part_new_to_the_design_is_added_and_the_rows_of_the_others_stay() {
     let kept = |text: &str| -> Vec<String> {
         text.split("\n\n")
             .filter(|t| t.contains("\"r1\"") || t.contains("\"led\"]"))
+            .filter(|t| !t.contains(".designators]"))
             .map(|t| t.trim_end().to_string())
             .collect()
     };
     assert_eq!(kept(&after), kept(&before));
+    // And so are the designators, with the new parts' after them (issue #1653).
+    assert!(
+        after.contains("\"led\" = \"D1\"\n\"led2\" = \"D2\"\n\"power_in\" = \"J1\"\n\"r1\" = \"R1\"\n\"r2\" = \"R2\"\n"),
+        "{after}"
+    );
     assert!(netsmith(&root, &["project", "lock", "--check"]).status.success());
 }
 

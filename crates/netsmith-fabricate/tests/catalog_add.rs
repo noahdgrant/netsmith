@@ -65,6 +65,7 @@ fn a_row_gets_the_records_number_package_and_source_and_its_offer_the_number() {
         "C2286",
         Some(((&path, "catalogs/zled.csv"), (&offers, OFFERS))),
         fake.network(None, NOW),
+        &mut |_, _| Ok(Vec::new()),
     )
     .unwrap();
     let after = fs::read_to_string(&path).unwrap();
@@ -143,6 +144,7 @@ fn an_offers_file_that_is_not_there_is_made_with_its_header() {
         "C2286",
         Some(((&path, "catalogs/zled.csv"), (&offers, OFFERS))),
         fake.network(None, NOW),
+        &mut |_, _| Ok(Vec::new()),
     )
     .unwrap();
     let text = fs::read_to_string(&offers).unwrap();
@@ -169,6 +171,7 @@ fn a_file_with_a_manufacturer_column_gets_the_records_manufacturer_with_its_sour
         "C2286",
         Some(((&path, "catalogs/zled.csv"), (&offers, OFFERS))),
         fake.network(None, NOW),
+        &mut |_, _| Ok(Vec::new()),
     )
     .unwrap();
     let row = rows(&fs::read_to_string(&path).unwrap()).pop().unwrap();
@@ -214,7 +217,7 @@ fn a_number_the_offers_have_a_part_the_file_has_or_one_lcsc_does_not_is_refused_
     );
     let fake = Fake::fixtures();
     let files = Some(((path.as_path(), "catalogs/zled.csv"), (offers.as_path(), OFFERS)));
-    match add("C2290", files, fake.network(None, NOW)) {
+    match add("C2290", files, fake.network(None, NOW), &mut |_, _| Ok(Vec::new())) {
         Err(AddError::Refused(why)) => assert!(
             why.contains("offers/lcsc.csv:2: the file already has an offer of C2290"),
             "{why}"
@@ -223,13 +226,13 @@ fn a_number_the_offers_have_a_part_the_file_has_or_one_lcsc_does_not_is_refused_
     }
     // The offers are read before LCSC is asked: nothing went out for a number they have.
     assert!(fake.seen().is_empty());
-    match add("C999999999", files, fake.network(None, NOW)) {
+    match add("C999999999", files, fake.network(None, NOW), &mut |_, _| Ok(Vec::new())) {
         Err(AddError::Refused(why)) => {
             assert!(why.contains("LCSC has no record of C999999999"), "{why}")
         }
         other => panic!("{other:?}"),
     }
-    match add("not-a-number", files, fake.network(None, NOW)) {
+    match add("not-a-number", files, fake.network(None, NOW), &mut |_, _| Ok(Vec::new())) {
         Err(AddError::Stopped(why)) => assert!(why.contains("is not an LCSC part number"), "{why}"),
         other => panic!("{other:?}"),
     }
@@ -249,6 +252,7 @@ fn a_catalog_with_the_old_columns_is_refused_with_the_migration() {
         "C2286",
         Some(((&path, "catalogs/zled.csv"), (&offers, OFFERS))),
         fake.network(None, NOW),
+        &mut |_, _| Ok(Vec::new()),
     ) {
         Err(AddError::Stopped(why)) => {
             assert!(why.contains("netsmith project migrate-offers"), "{why}")
@@ -261,7 +265,7 @@ fn a_catalog_with_the_old_columns_is_refused_with_the_migration() {
 #[test]
 fn without_a_file_the_record_is_printed_and_nothing_is_written() {
     let fake = Fake::fixtures();
-    let added = add("C2286", None, fake.network(None, NOW)).unwrap();
+    let added = add("C2286", None, fake.network(None, NOW), &mut |_, _| Ok(Vec::new())).unwrap();
     assert_eq!(added.written, None);
     assert_eq!(added.offer, None);
     let said = render_added(&added);
@@ -277,7 +281,7 @@ fn offline_with_nothing_kept_says_so() {
     let fake = Fake::fixtures();
     let mut network = fake.network(None, NOW);
     network.offline = true;
-    match add("C2286", None, network) {
+    match add("C2286", None, network, &mut |_, _| Ok(Vec::new())) {
         Err(AddError::Stopped(why)) => assert!(why.contains("--offline"), "{why}"),
         other => panic!("{other:?}"),
     }

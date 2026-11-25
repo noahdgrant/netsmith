@@ -298,6 +298,16 @@ fn general(message: String) -> Problem {
     }
 }
 
+/// The warning of a project written for another release ([`netsmith_fabricate::release`]), which
+/// refuses nothing.
+pub(super) fn release_problem(message: String) -> Problem {
+    Problem {
+        severity: Severity::Warning,
+        rendered: format!("warning: {message}\n"),
+        ..general(message)
+    }
+}
+
 /// The message of a panic, as the panic hook would print it.
 fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
     payload

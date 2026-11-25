@@ -546,6 +546,10 @@ pub fn outcome_observed(
         observe(step(Stage::Design));
         let mut designed = timings::stage("design", &board.name, || design_board(board, solution))
             .map_err(|errors| design_problems(Some(&board.name), &board.name, &errors))?;
+        lock.designators.set(
+            &board.name,
+            pick_lock::designators_of(&designed.design, None),
+        );
         designed
             .guidelines
             .extend(open_circle_findings(solution, sources, None));
@@ -749,12 +753,17 @@ pub fn outcome_observed(
             )
             .issues
         });
+        let mut designators = std::collections::BTreeMap::new();
         for member in &system.boards {
             let label = format!("{}/{}", system.name, member.name);
             let mut designed = timings::stage("design", &label, || {
                 design_system_board(system, member, solution)
             })
             .map_err(|errors| design_problems(Some(&label), &label, &errors))?;
+            designators.extend(pick_lock::designators_of(
+                &designed.design,
+                Some(&member.name),
+            ));
             designed
                 .guidelines
                 .extend(open_circle_findings(solution, sources, Some(member.inst)));
@@ -859,6 +868,7 @@ pub fn outcome_observed(
                 heights::from_catalog_rows(&mut one.design, &one.sourcing, catalogs);
             built.push(one);
         }
+        lock.designators.set(&system.name, designators);
         solved.push(SolvedSystem {
             mates,
             name: system.name.clone(),
@@ -1565,6 +1575,7 @@ fn export(
             // footprint file says which it is. The footprint and the symbol must also
             // agree with the part's pin table (ADR 0016, decision 8).
             let mut disagreements = Vec::new();
+            let mut pick_notes: Vec<String> = Vec::new();
             for (s, part) in sourcing.iter_mut().zip(&design.parts) {
                 let Ok(mapped) =
                     libraries
@@ -1624,12 +1635,33 @@ fn export(
                 };
                 // The datasheet's table of the row, when it states one (issue #1281).
                 disagreements.extend(validate_table(&subject, &mapped, &footprint));
+                // A part picked from a catalog row whose package is not the footprint it names
+                // (issue #1658): a note on the pick, which `netsmith catalog check` reports too.
+                if s.mpn.is_some()
+                    && let Some(package) = s.package.as_deref()
+                    && let netsmith_pcb::PackageCheck::Disagrees(_, problems) =
+                        netsmith_pcb::check_package(package, &mapped.footprint, &footprint)
+                {
+                    pick_notes.extend(problems.into_iter().map(|p| {
+                        format!(
+                            "{}: the catalog row {}'s package does not fit its footprint: {p}",
+                            s.refdes,
+                            s.mpn.as_deref().unwrap_or_default()
+                        )
+                    }));
+                }
                 // Any other symbol that cannot be read is named by the schematic below.
                 if let (Some(pinout), Ok(symbol)) = (Pinout::of(part), symbol) {
                     disagreements.extend(validate_pinout(
                         &subject, &pinout, &mapped, &symbol, &footprint,
                     ));
                 }
+            }
+            // Among the solver's notes, before those of the design stage.
+            let at = notes.len() - design_notes;
+            for note in pick_notes.into_iter().rev() {
+                notes.insert(at, note);
+                note_causes.insert(at, Cause::Pick);
             }
             if !disagreements.is_empty() {
                 return Err(disagreements

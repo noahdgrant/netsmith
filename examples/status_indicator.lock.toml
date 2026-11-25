@@ -1,8 +1,9 @@
 # The catalog row each part of each board was picked as, written by `netsmith board build` and
 # `netsmith board fab` when this file does not exist. Commit it: a change to a catalog or to the
 # solver that would move a pick shows here and not only in the bill of materials. Refresh it
-# with `netsmith project lock --update`. Nothing in it is edited by hand but `held = "reason"`,
-# which a person adds to a part's entry to keep the part on its row.
+# with `netsmith project lock --update`, and number the parts again by path with `--renumber`.
+# Nothing in it is edited by hand but `held = "reason"`, which a person adds to a part's entry
+# to keep the part on its row, and a part's designator, which a renamed part takes by hand.
 version = 2
 
 [IndicatorExample.providers."process"]
@@ -38,3 +39,10 @@ catalog = "led"
 row = "LTST-C190KGKT GREEN LED 0603 C125094"
 mpn = "LTST-C190KGKT"
 sku = { jlcpcb-assembly = "C125094", lcsc-retail = "C125094" }
+
+[IndicatorExample.designators]
+"enable_in" = "J1"
+"power_in" = "J2"
+"status_indicator.bypass" = "C1"
+"status_indicator.current_limit" = "R1"
+"status_indicator.led" = "D1"

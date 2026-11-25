@@ -8,6 +8,7 @@ mod bom;
 mod build;
 mod case;
 mod catalog;
+mod catalog_check;
 mod catalog_search;
 mod check;
 pub(crate) mod common;
@@ -44,6 +45,7 @@ mod render;
 mod route;
 mod routes;
 mod routes_check_via;
+mod routes_fanout;
 mod routes_move_via;
 mod routes_sites;
 mod rules;
@@ -217,6 +219,14 @@ pub enum Dev {
 }
 
 pub fn run(command: Command) -> ExitCode {
+    let code = dispatch(command);
+    // The warning of a project written for another release, when no document of the run took it
+    // (issue #1657).
+    crate::release_warning::say();
+    code
+}
+
+fn dispatch(command: Command) -> ExitCode {
     match command {
         Command::Project(command) => match command {
             Project::Init(args) => init::run(args),
