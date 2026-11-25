@@ -1093,6 +1093,30 @@ Rules.
       #3 track (40, 0) to (70, 0) on F.Cu, 0.4 mm wide, 30 mm long, 300 mA: 11.1 mV (29% of the drop)
   ```
 
+### The resistance between two pads
+
+The track drop judges a whole net by one path of least resistance; to ask what the copper between two places does with a current, such as a hold-up or inrush current the analysis does not model, `board resistance NET FROM TO` measures the DC resistance of the net's copper between two ends (issue #1703). Each end is a pad (`R1.1`), a part's pads on the net (`R1`), or several by commas (`J1.1,J1.2`); a group of pads is one end at one voltage. The copper is solved as a network of resistors, so a current shares between parallel ways as the copper shares it, and the command prints the resistance, the voltage the current drops through it, the narrowest track and the vias the current passes (each piece that carries 1 % of it or more), and those pieces, the hottest first, each with its share of the current, what it drops and its temperature rise by IPC-2221, the rule of `track_current` and `via_current` (above): a track at the narrowest finished width the fabricator's tolerance allows, with the width it needs at the board's allowed rise, and a via with the current it carries at that rise, by its own hole; `over` where it rises more. The current is `--amps A` (`2`, `500mA`), or the net's one current (`board nets --currents`) when it is not given; with neither the resistance alone is said.
+
+Rules.
+
+- A track is `rho * length / (width * thickness)`, as the track drop has it (copper at 20 °C, at the drawn width), in the outer copper on an outer layer and the inner copper on an inner one; its length is a leg's (each leg into a pad measured to the pad's centre, as `board nets` measures a net).
+- A via is its barrel between the layers, `rho * height / (pi * ((r + t)^2 - r^2))`, for its finished hole of radius `r` and the process's hole plating `t`; the height is the stackup's between the two layers, or the board's thickness shared evenly between its layers.
+- A pad has no resistance, and joins the copper that ends in it.
+- Not modelled: a pour, a plane and a zone of the routes file (their copper is an area), so the figure is of the net's tracks and vias alone, an upper bound where a pour also joins the two ends, and the text names the pour; a teardrop; the resistance a warm track adds.
+- It is a report: it judges nothing and changes no file. Places are in the board file's frame, or the one `--frame` asks for, and `--format json` prints `resistance` (ohms), `current` (A), `drop` (V), `narrowest`, `vias` and `segments` (each with `kind`, `layer`, `from`, `to`, `width`, `length`, `resistance`, `share`, `current`, `drop`, `rise`, `needs` or `carries` and `over`), with the solve's `iterations`.
+
+```text
+netsmith board resistance VIN J1.1 C4 --amps 3
+Feed:
+net VIN from J1.1 to C4.1: 9.861 mΩ
+  at 3.000 A: 29.583 mV
+  narrowest track: 0.400 mm on F.Cu, (31.000, 24.000) to (41.000, 24.000), 33.4 % of the current
+  vias the current passes: 2
+  the copper the current passes (1 % of it or more), the hottest first (IPC-2221, 10 K allowed):
+    track (31.000, 24.000) to (41.000, 24.000) on F.Cu, 0.400 mm wide, 10.000 mm long: 12.286 mΩ, 33.4 %, 1.002 A, 12.311 mV, rises 7.30 K, needs 0.351 mm
+    ...
+```
+
 ### The outline and cutouts
 
 The member `.outline` of a board's physical file (in its `case` section) is the board edge: a rectangle with rounded corners, or a polygon (_A polygon outline_, below). A range is a limit, and the placer takes the smallest board that holds the parts inside it: `.width &= 0mm..60mm` is at most 60 mm. A single value is exactly that size. Without an `.outline` the board is as big as its parts need. A `Cutout` is a rectangular hole inside the outline, with an optional corner radius. Its corner nearest the origin is `.x`, `.y`, or the layout file's entry for its name; stating both is an error. A hole that crosses the outline is refused (`the cutout is not wholly inside the board outline`): a notch in the board's edge is a polygon outline, not a cutout.

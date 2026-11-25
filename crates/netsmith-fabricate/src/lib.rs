@@ -27,6 +27,7 @@ pub mod models;
 pub mod move_via;
 pub mod net_currents;
 pub mod net_quality;
+pub mod net_resistance;
 pub mod net_table;
 pub mod no_supplier;
 pub mod order;

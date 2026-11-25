@@ -37,7 +37,7 @@ use netsmith_geom::{
 use crate::net_table::Seg;
 
 /// Points closer than this are one point, in mm.
-const SAME: f64 = 1e-3;
+pub(crate) const SAME: f64 = 1e-3;
 
 /// What a piece of copper not counted is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
@@ -95,13 +95,13 @@ pub(crate) struct Connection {
 }
 
 /// A small union of sets.
-struct Union(Vec<usize>);
+pub(crate) struct Union(pub(crate) Vec<usize>);
 
 impl Union {
-    fn new(n: usize) -> Self {
+    pub(crate) fn new(n: usize) -> Self {
         Union((0..n).collect())
     }
-    fn find(&mut self, k: usize) -> usize {
+    pub(crate) fn find(&mut self, k: usize) -> usize {
         let mut r = k;
         while self.0[r] != r {
             r = self.0[r];
@@ -114,7 +114,7 @@ impl Union {
         }
         r
     }
-    fn join(&mut self, a: usize, b: usize) {
+    pub(crate) fn join(&mut self, a: usize, b: usize) {
         let (a, b) = (self.find(a), self.find(b));
         if a != b {
             self.0[a.max(b)] = a.min(b);
@@ -165,7 +165,7 @@ enum Target {
 /// A join only a track's round end makes: the end `end` (0 for the start, 1 for the end) of track
 /// `from`, and what it runs into.
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct Reach {
+pub(crate) struct Reach {
     from: usize,
     end: usize,
     to: Target,
@@ -174,20 +174,30 @@ struct Reach {
 /// The graph of a net's tracks: the pieces, and the point each end of a piece, each via and each
 /// pad is (`node[2 * e]` and `node[2 * e + 1]` the ends of piece `e`, then the vias, then the
 /// pads).
-struct Graph {
-    pieces: Vec<Seg>,
-    node: Vec<usize>,
+pub(crate) struct Graph {
+    pub(crate) pieces: Vec<Seg>,
+    pub(crate) node: Vec<usize>,
+}
+
+/// Whether [`graph`] joins a via's copper on every layer into one point, as a net's length does,
+/// or keeps a point of it on each copper layer, `node[2 * pieces + vias + pads + v * layers + l]`
+/// for via `v` on layer `l`, which the resistance of a net joins through the via's barrel (issue
+/// #1703).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Vias {
+    Joined,
+    ByLayer,
 }
 
 /// The copper of a via, as the design rules check has it.
-fn via_copper(v: &ArtworkVia) -> [DrcShape; 1] {
+pub(crate) fn via_copper(v: &ArtworkVia) -> [DrcShape; 1] {
     [DrcShape::disc(v.at, v.diameter / 2.0)]
 }
 
 /// The length of the piece `e` of the graph measured to the centres of the pads its ends are joined
 /// to (issue #1670): of the pads at an end's point of the graph, the one whose copper holds the
 /// end, else the nearest.
-fn piece_length(
+pub(crate) fn piece_length(
     g: &Graph,
     e: usize,
     pad0: usize,
@@ -230,13 +240,14 @@ fn spans(span: Option<(usize, usize)>, layer: Option<usize>) -> bool {
 /// Builds the graph: points that meet are joined (an end on an end, an end on a track's copper
 /// beside its middle, an end in a via's or a pad's copper, pads and vias whose copper runs into
 /// each other), and so are the joins of `reaches`.
-fn graph(
+pub(crate) fn graph(
     art: &Artwork,
     segs: &[&Seg],
     vias: &[&ArtworkVia],
     pads: &[&ArtworkPad],
     copper: &[Vec<DrcShape>],
     reaches: &[Reach],
+    by: Vias,
 ) -> Graph {
     let layer_index = |layer: &str| art.copper.iter().position(|c| c == layer);
     let end_of = |r: &Reach| {
@@ -301,7 +312,23 @@ fn graph(
     // design rules check makes.
     let ends = 2 * pieces.len();
     let (via0, pad0) = (ends, ends + vias.len());
-    let mut union = Union::new(ends + vias.len() + pads.len());
+    // A via's point on each copper layer, after the pads: joined into the via's own point unless
+    // the vias are kept by layer.
+    let layers = art.copper.len();
+    let lay0 = pad0 + pads.len();
+    let mut union = Union::new(lay0 + vias.len() * layers);
+    if by == Vias::Joined {
+        for v in 0..vias.len() {
+            for l in 0..layers {
+                union.join(via0 + v, lay0 + v * layers + l);
+            }
+        }
+    }
+    // The via's point on `layer` (a name), or its own point for a layer the board does not list.
+    let via_on = |v: usize, layer: &str| match layer_index(layer) {
+        Some(l) => lay0 + v * layers + l,
+        None => via0 + v,
+    };
     let end = |k: usize| -> (Pt, &str) {
         let s = &pieces[k / 2];
         (if k.is_multiple_of(2) { s.2 } else { s.3 }, s.1.as_str())
@@ -324,7 +351,7 @@ fn graph(
         }
         for (v, via) in vias.iter().enumerate() {
             if spans(via.span, layer_index(layer)) && end_joins(p, SAME, &via_copper(via)) {
-                union.join(k, via0 + v);
+                union.join(k, via_on(v, layer));
             }
         }
         for (d, _) in pads.iter().enumerate() {
@@ -345,7 +372,7 @@ fn graph(
         let (p, layer) = (end_of(r), segs[r.from].1.as_str());
         let node = match r.to {
             Target::Track(_) => continue,
-            Target::Via(v) => via0 + v,
+            Target::Via(v) => via_on(v, layer),
             Target::Pad(d) => pad0 + d,
         };
         for k in at(p, layer) {
@@ -370,9 +397,15 @@ fn graph(
             }
         }
         for (v, via) in vias.iter().enumerate() {
-            let share = pad_layers[d].iter().any(|&l| via.on(l));
-            if share && copper_joins(&copper[d], &via_copper(via)) {
-                union.join(pad0 + d, via0 + v);
+            let share: Vec<usize> = pad_layers[d]
+                .iter()
+                .copied()
+                .filter(|&l| via.on(l))
+                .collect();
+            if !share.is_empty() && copper_joins(&copper[d], &via_copper(via)) {
+                for l in share {
+                    union.join(pad0 + d, lay0 + v * layers + l);
+                }
             }
         }
     }
@@ -386,7 +419,7 @@ fn graph(
 /// copper (or is on a track's copper only beside its end), where the two are in parts of the
 /// graph that nothing else joins, nearest first. Taking such a join where the copper is joined
 /// already would cut short a stair of tracks shorter than their width, or a track into a via.
-fn reaches(
+pub(crate) fn reaches(
     art: &Artwork,
     segs: &[&Seg],
     vias: &[&ArtworkVia],
@@ -465,10 +498,10 @@ fn connect(art: &Artwork, net: &str, segs: &[&Seg], pads: &[&ArtworkPad]) -> Con
         .filter(|v| v.net.as_deref() == Some(net))
         .collect();
     let copper: Vec<Vec<DrcShape>> = pads.iter().map(|p| pad_copper(p)).collect();
-    let mut g = graph(art, segs, &vias, pads, &copper, &[]);
+    let mut g = graph(art, segs, &vias, pads, &copper, &[], Vias::Joined);
     let needed = reaches(art, segs, &vias, &copper, &g);
     if !needed.is_empty() {
-        g = graph(art, segs, &vias, pads, &copper, &needed);
+        g = graph(art, segs, &vias, pads, &copper, &needed, Vias::Joined);
     }
     let pad0 = 2 * g.pieces.len() + vias.len();
     let lengths: Vec<f64> = (0..g.pieces.len())
@@ -683,10 +716,10 @@ pub(crate) fn way(
         .filter(|v| v.net.as_deref() == Some(net))
         .collect();
     let copper: Vec<Vec<DrcShape>> = pads.iter().map(|p| pad_copper(p)).collect();
-    let mut g = graph(art, &segs, &vias, &pads, &copper, &[]);
+    let mut g = graph(art, &segs, &vias, &pads, &copper, &[], Vias::Joined);
     let needed = reaches(art, &segs, &vias, &copper, &g);
     if !needed.is_empty() {
-        g = graph(art, &segs, &vias, &pads, &copper, &needed);
+        g = graph(art, &segs, &vias, &pads, &copper, &needed, Vias::Joined);
     }
     let ends = 2 * g.pieces.len();
     let pad0 = ends + vias.len();
