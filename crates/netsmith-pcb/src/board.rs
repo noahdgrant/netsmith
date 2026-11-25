@@ -294,6 +294,11 @@ pub struct Board {
     /// them to the design rules check.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub drc_waivers: Vec<crate::layout::RuleWaiver>,
+    /// The designators the placer put off their own side, above the part, or could keep off no
+    /// pad (issue #1729, [`crate::LabelPlace`]): `fab` lists them in `fab-notes.txt`. Empty for a
+    /// board whose labels the placer did not place.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub labels: Vec<crate::LabelPlace>,
     /// The design's switching regulators with their pins by role and the capacitors round them
     /// (issue #1585, [`netsmith_core::switching_regulators`]): the power-stage report and the
     /// `switch_node_copper` note read them, since the board file does not say which part is a

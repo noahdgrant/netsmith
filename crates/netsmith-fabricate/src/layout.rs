@@ -803,6 +803,7 @@ pub fn place(
                 if let Some((layout, file)) = layout {
                     netsmith_pcb::apply_layout(&mut board, layout, file)
                         .map_err(|e| PlaceFailure::Layout(e.to_string()))?;
+                    settle_labels(&mut board, layout, &design.name);
                 }
                 let (blockers, badness) =
                     blockers_of(&board, design, &options, layout.map(|l| &l.0), lines_warn);
@@ -823,6 +824,16 @@ pub fn place(
         options,
         seeds,
     })
+}
+
+/// Place again the designators of the parts the layout file has no entry for, now that its
+/// entries stand where it says (issue #1729): an unlocked entry is put there after placing,
+/// so a text the placer placed round where the part was is placed round where it is.
+fn settle_labels(board: &mut netsmith_pcb::Board, layout: &Layout, name: &str) {
+    let Some(entries) = layout.boards.get(name).filter(|b| !b.parts.is_empty()) else {
+        return;
+    };
+    netsmith_placer::settle_labels(board, |p| !entries.parts.contains_key(&p.path));
 }
 
 /// The board of a placement the layout file makes the placer refuse, with the layout file's

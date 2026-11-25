@@ -295,7 +295,7 @@ mod pose;
 mod rooms;
 pub(crate) mod routing;
 mod shapes;
-mod silk;
+pub(crate) mod silk;
 #[cfg(test)]
 mod tests;
 
@@ -323,9 +323,9 @@ pub(crate) const HEIGHT_ZONE_MARGIN: f64 = KEEPOUT_GAP;
 const PAD_SLACK: f64 = 1e-6;
 /// What the box of reference text is grown by on every side: the letters' strokes and the
 /// slack of the estimate of their size, found by trying boards against KiCad's check.
-const TEXT_PAD: f64 = 0.15;
+pub(crate) const TEXT_PAD: f64 = 0.15;
 /// The space wanted between reference text and the silkscreen or text of another part.
-const SILK_CLEAR: f64 = 0.2;
+pub(crate) const SILK_CLEAR: f64 = 0.2;
 /// Extra space round a part for each of its pads, to a most of [`MAX_ESCAPE`], in mm.
 const ESCAPE_PER_PAD: f64 = 0.03;
 const MAX_ESCAPE: f64 = 2.5;
