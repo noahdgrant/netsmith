@@ -43,6 +43,7 @@ pub mod regenerate;
 pub mod release;
 pub mod reuse;
 pub mod route_net;
+pub mod route_region;
 pub mod routes;
 pub mod routes_tidy;
 pub mod schematic;

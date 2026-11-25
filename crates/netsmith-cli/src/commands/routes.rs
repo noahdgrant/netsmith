@@ -200,10 +200,20 @@ pub struct ShowArgs {
 #[derive(Debug, PartialEq, ClapArgs)]
 pub struct RouteArgs {
     /// The net, or one connection of it: `NET` or `NET:REF.PAD-REF.PAD` (`VCC:U1.3-C2.1`).
-    #[arg(value_name = "NET[:PAD-PAD]")]
-    pub net: String,
+    #[arg(value_name = "NET[:PAD-PAD]", required_unless_present = "region")]
+    pub net: Option<String>,
     #[command(flatten)]
     pub target: Target,
+    /// Rip up the unlocked copper inside a box and route every connection it carried again,
+    /// `X,Y,W,H` in mm (the outline's frame, or the one `--frame` names).
+    ///
+    /// Tracks crossing the box's edge are cut there and their outside part kept; the nets whose
+    /// connections the cut opens, and those with a connection open before through the box, are
+    /// routed together by the router's negotiation round the copper outside. Written only when
+    /// no connection is left open that was made before and the copper costs no more by the
+    /// weights (or fewer connections are open).
+    #[arg(long, value_name = "X,Y,W,H", value_parser = parse_rect, allow_hyphen_values = true, conflicts_with_all = ["net", "rip", "reroute"])]
+    pub region: Option<[f64; 4]>,
     /// Nets whose unlocked tracks and vias may be removed and routed again after it, `A,B`.
     #[arg(long, value_name = "NET,...", value_delimiter = ',')]
     pub rip: Vec<String>,
@@ -884,10 +894,14 @@ fn route(args: &RouteArgs) -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    if let Some(rect) = args.region {
+        return region(args, rect, weights);
+    }
+    let net = args.net.as_deref().unwrap_or_default();
     let done = with_board(&args.target, |layout, board| {
         let file = routes_file(layout);
         let routes = lib::load(&file)?;
-        let ask = match route_net::Ask::of(board, &args.net, &args.rip) {
+        let ask = match route_net::Ask::of(board, net, &args.rip) {
             Ok(ask) => route_net::Ask {
                 depth: args.rip_depth,
                 tries: args.tries,
@@ -899,17 +913,8 @@ fn route(args: &RouteArgs) -> ExitCode {
             Err(lib::Refusal::Failed(e)) => return Err(e),
         };
         // `--corner` is the style of this run's copper (issue #1508).
-        let styled;
-        let board = match args.corner {
-            Some(c) => {
-                let mut b = board.clone();
-                b.corner = c.track_corner();
-                styled = b;
-                &styled
-            }
-            None => board,
-        };
-        let routed = route_net::route_net(board, &routes, &ask)?;
+        let board = styled(board, args.corner);
+        let routed = route_net::route_net(&board, &routes, &ask)?;
         let written = match (&routed.routes, args.dry_run) {
             (Some(r), false) => {
                 lib::save(&file, r)?;
@@ -925,6 +930,90 @@ fn route(args: &RouteArgs) -> ExitCode {
             eprintln!("error: {}", args.framing.routes_drc(&e));
             return ExitCode::FAILURE;
         }
+        Err(code) => return code,
+    };
+    match args.format {
+        common::Format::Json => {
+            let mut doc = serde_json::to_value(&routed).expect("plain data");
+            doc["dry_run"] = args.dry_run.into();
+            doc["written"] = written.into();
+            doc["file"] = file.display().to_string().into();
+            if let Err(e) = args.framing.print(
+                &doc,
+                crate::frame::Frame::Outline,
+                Some(crate::frame::design_corner()),
+                true,
+            ) {
+                return crate::frame::refused(&e);
+            }
+        }
+        common::Format::Text => {
+            let by = match text_by(&args.framing) {
+                Ok(by) => by,
+                Err(code) => return code,
+            };
+            print!("{}", routed.text_moved(by));
+            if written {
+                println!("wrote {}", file.display());
+            } else if args.dry_run && routed.routes.is_some() {
+                println!("dry run: {} is not written", file.display());
+            }
+        }
+    }
+    match &routed.refused {
+        Some(e) => {
+            if args.format == common::Format::Text {
+                eprintln!("error: {}", args.framing.routes_drc(e));
+            }
+            ExitCode::FAILURE
+        }
+        None => ExitCode::SUCCESS,
+    }
+}
+
+/// The board with `--corner`'s style for this run (issue #1508), or the board as it is.
+fn styled(board: &Board, corner: Option<Corner>) -> std::borrow::Cow<'_, Board> {
+    match corner {
+        Some(c) => {
+            let mut b = board.clone();
+            b.corner = c.track_corner();
+            std::borrow::Cow::Owned(b)
+        }
+        None => std::borrow::Cow::Borrowed(board),
+    }
+}
+
+/// `routes route --region` (issue #1641, `netsmith_fabricate::route_region`): exit 0 when the
+/// region is routed again (or would be, with `--dry-run`), has nothing to route, or costs more
+/// (nothing written, both totals said), 1 when it cannot be closed, 2 when it could not be tried.
+fn region(args: &RouteArgs, rect: [f64; 4], weights: Option<netsmith_router::Weights>) -> ExitCode {
+    use netsmith_fabricate::route_region;
+    // The box in the routes file's frame (the outline's): `--frame board-file` gives it in the
+    // board file's.
+    let rect = match args.framing.frame {
+        Some(crate::frame::Frame::BoardFile) => {
+            let (cx, cy) = crate::frame::design_corner();
+            [rect[0] - cx, rect[1] - cy, rect[2], rect[3]]
+        }
+        _ => rect,
+    };
+    let done = with_board(&args.target, |layout, board| {
+        let file = routes_file(layout);
+        let routes = lib::load(&file)?;
+        let board = styled(board, args.corner);
+        let ask = route_region::RegionAsk { rect, weights };
+        let routed = route_region::route_region(&board, &routes, &ask)?;
+        let written = match (&routed.routes, args.dry_run) {
+            (Some(r), false) => {
+                lib::save(&file, r)?;
+                true
+            }
+            _ => false,
+        };
+        Ok((routed, file, written))
+    });
+    let (routed, file, written) = match done {
+        Ok(done) => done,
         Err(code) => return code,
     };
     match args.format {
@@ -1261,6 +1350,31 @@ mod tests {
     use crate::commands::common::testing::{kind, parse};
     use crate::commands::routes;
     use clap::error::ErrorKind;
+
+    #[test]
+    fn route_takes_a_net_or_a_region_and_not_both() {
+        assert!(matches!(
+            parse(&["routes", "route", "--region", "1,2.5,3,4", "--dry-run"]),
+            Ok(Leaf::Routes(routes::Args {
+                command: routes::Command::Route(routes::RouteArgs {
+                    net: None,
+                    region: Some([1.0, 2.5, 3.0, 4.0]),
+                    dry_run: true,
+                    ..
+                })
+            }))
+        ));
+        assert!(matches!(
+            parse(&["routes", "route", "VCC"]),
+            Ok(Leaf::Routes(routes::Args {
+                command: routes::Command::Route(routes::RouteArgs { region: None, .. })
+            }))
+        ));
+        assert!(parse(&["routes", "route"]).is_err());
+        assert!(parse(&["routes", "route", "VCC", "--region", "1,2,3,4"]).is_err());
+        assert!(parse(&["routes", "route", "--region", "1,2,3,4", "--rip", "A"]).is_err());
+        assert!(parse(&["routes", "route", "--region", "1,2,0,4"]).is_err());
+    }
 
     #[test]
     fn routes_takes_its_subcommands() {
