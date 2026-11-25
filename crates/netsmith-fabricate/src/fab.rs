@@ -193,6 +193,15 @@ pub struct FabOptions {
     /// --no-pictures`. A package that is not for review has none, and the ones an earlier run
     /// left are removed.
     pub review_pictures: bool,
+    /// Find every refusal the package would meet and write no package (`board fab
+    /// --all-refusals`, issue #1707). It goes the way `for_review` goes, which the caller sets
+    /// with it, past each refusal a later stage can still be checked after (a part over a height
+    /// limit, an error of the design rules check), and past the part refusals and the strict
+    /// guidelines too, and lists them all in [`FabFailure::refusals`]; where a refusal leaves a
+    /// later stage nothing to check (the parts do not fit, a connection is not routed), the
+    /// refusal says which checks were not reached. The caller gives a scratch folder as `out`,
+    /// removes it after, and leaves `pins` out; a seed that changed is said, not written.
+    pub all_refusals: bool,
     /// After the files are written, compare the copper of each layer of the Gerbers with the
     /// board model's with netsmith's own viewer (`gerber_compare`, issue #1158; needs no KiCad),
     /// and with KiCad installed plot each board with KiCad too and compare the two sets
@@ -421,6 +430,7 @@ impl Default for FabOptions {
             allow_drc_violations: false,
             for_review: false,
             review_pictures: true,
+            all_refusals: false,
             cross_check: false,
             only: None,
             strict_heights: false,
@@ -570,7 +580,7 @@ pub struct FabFailure {
     pub problems: Vec<netsmith_pipeline::Problem>,
     /// The requirements on where parts go that the board does not meet, as data (#816), when
     /// that is why the run stopped: where the placer ended, or on the board file after routing.
-    pub requirements: Vec<netsmith_pcb::RequirementMiss>,
+    pub requirements: Box<[netsmith_pcb::RequirementMiss]>,
     /// The parts that do not fit the outline, as data (#817), when that is why the run
     /// stopped.
     pub does_not_fit: Option<Box<netsmith_pcb::FitReport>>,
@@ -582,6 +592,54 @@ pub struct FabFailure {
     pub placement: Box<[netsmith_pcb::PlacementFault]>,
     /// The package `--for-review` made, when it made one (issue #1212).
     pub review: Option<Box<Review>>,
+    /// With `--all-refusals` (issue #1707), every refusal each board would meet, a board at a
+    /// time; `text` lists them too.
+    pub refusals: Option<Box<Vec<Refusals>>>,
+}
+
+impl FabFailure {
+    /// What `--all-refusals` found, a board at a time; empty without it.
+    pub fn refusals(&self) -> &[Refusals] {
+        self.refusals.as_deref().map_or(&[], |r| r.as_slice())
+    }
+}
+
+/// What `board fab --all-refusals` found of one board (issue #1707): every refusal a plain `fab`
+/// would stop at, and the checks a refusal among them left nothing to check.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Refusals {
+    /// The board, as its label, or the source file for a refusal of the file (its pick lock).
+    pub board: String,
+    /// Each refusal, in the order the stages meet them.
+    pub found: Vec<Waived>,
+    /// The checks not reached, because a refusal among `found` stops what comes after it: empty
+    /// when every check ran.
+    pub not_reached: Option<String>,
+    /// The requirements on where parts go that the board does not meet, as data.
+    pub requirements: Vec<netsmith_pcb::RequirementMiss>,
+}
+
+impl Refusals {
+    /// The lines `fab` prints: a heading, each refusal, and what was not reached.
+    pub fn text(&self) -> String {
+        let n = self.found.len();
+        let mut text = format!(
+            "error: {}: {n} refusal{} a fab would make (`--all-refusals`: no package was written):\n",
+            self.board,
+            if n == 1 { "" } else { "s" }
+        );
+        for f in &self.found {
+            for (i, line) in f.line().trim_end().lines().enumerate() {
+                text.push_str(if i == 0 { "  " } else { "    " });
+                text.push_str(line.trim_start_matches("error: "));
+                text.push('\n');
+            }
+        }
+        if let Some(not) = &self.not_reached {
+            text.push_str(&format!("  not reached: {not}\n"));
+        }
+        text
+    }
 }
 
 /// A package made for review: its board, and what `--for-review` waived of it (issue #1212).
@@ -616,6 +674,17 @@ impl Waived {
         match &self.drc {
             Some(f) => f.to_string(),
             None => format!("error [{}] {}", self.rule, self.message),
+        }
+    }
+
+    /// A refusal with no data but its words: `rule` and the message, without the `error: ` and
+    /// the board's label that `fab` puts before it.
+    fn plain(rule: &str, message: &str) -> Waived {
+        Waived {
+            rule: rule.to_string(),
+            message: message.trim_end().to_string(),
+            placement: None,
+            drc: None,
         }
     }
 
@@ -704,15 +773,26 @@ pub fn fab_detailed(
                 ..FabFailure::default()
             }
         })?;
+    // With `--all-refusals`, what each board would refuse, and the pick lock's refusal, which is
+    // the file's (issue #1707).
+    let mut refusals: Vec<Refusals> = Vec::new();
     if let Some(using) = &options.lock {
-        let settled =
-            netsmith_pipeline::pick_lock::settle(using, catalogs.pick_lock(), &outcome.lock)
-                .map_err(|e| format!("{e}\n"))?;
-        if let Some(file) = settled.wrote {
-            say(format!("wrote {}", file.display()));
-        }
-        for note in settled.notes {
-            say(format!("note: {note}"));
+        match netsmith_pipeline::pick_lock::settle(using, catalogs.pick_lock(), &outcome.lock) {
+            Ok(settled) => {
+                if let Some(file) = settled.wrote {
+                    say(format!("wrote {}", file.display()));
+                }
+                for note in settled.notes {
+                    say(format!("note: {note}"));
+                }
+            }
+            Err(e) if options.all_refusals => refusals.push(Refusals {
+                board: name.to_string(),
+                found: refusal_lines(name, "lock", &e),
+                not_reached: None,
+                requirements: Vec::new(),
+            }),
+            Err(e) => return Err(format!("{e}\n").into()),
         }
     }
     let mut pin_state = PinState::new(&outcome.pins);
@@ -865,7 +945,7 @@ pub fn fab_detailed(
             Some((layout, options)) => (layout, options),
             None => (&layout, options),
         };
-        let mut run = fab_board_pinned(
+        let mut run = match fab_board_pinned(
             &Pass { name, text, loader },
             built,
             &mut pin_state,
@@ -876,7 +956,14 @@ pub fn fab_detailed(
             options,
             catalogs,
             &say,
-        )?;
+        ) {
+            Ok(run) => run,
+            Err(failure) if options.all_refusals => {
+                refusals.extend(all_refusals_of(&label, failure));
+                continue;
+            }
+            Err(failure) => return Err(failure),
+        };
         run.fabricated.stages_run = timings::stages_run() - stages_before;
         // A plain `fab` leaves what an order needs to reuse the package, unless pins were moved:
         // the package is then of a pin file that is no longer the one on disk.
@@ -901,7 +988,7 @@ pub fn fab_detailed(
             .map(|b| routed.get(&b.label()).map(|board| (*b, board)))
             .collect();
         let Some(boards) = boards else { continue };
-        fab_system(
+        if let Err(e) = fab_system(
             system,
             &boards,
             out,
@@ -909,7 +996,12 @@ pub fn fab_detailed(
             options,
             catalogs.strict_guidelines(),
             &say,
-        )?;
+        ) {
+            if !options.all_refusals {
+                return Err(e.into());
+            }
+            refusals.extend(all_refusals_of(&system.name, e.into()));
+        }
     }
     // The panels of the file (ADR 0040): each repeats a board of it, which is made again, in
     // the panel's own folder.
@@ -929,7 +1021,7 @@ pub fn fab_detailed(
             "{}: making {}, its board, first",
             panel.name, panel.cell
         ));
-        let run = fab_board_pinned(
+        let made_panel = fab_board_pinned(
             &Pass { name, text, loader },
             built,
             &mut pin_state,
@@ -940,14 +1032,51 @@ pub fn fab_detailed(
             options,
             catalogs,
             &say,
-        )?;
-        say(format!(
-            "{}: {} x {} cells of {}",
-            panel.name, panel.columns, panel.rows, panel.cell
-        ));
-        made.push(fab_panel(panel, &run, &dir, kicad, options, &say)?);
+        )
+        .and_then(|run| {
+            say(format!(
+                "{}: {} x {} cells of {}",
+                panel.name, panel.columns, panel.rows, panel.cell
+            ));
+            fab_panel(panel, &run, &dir, kicad, options, &say).map_err(FabFailure::from)
+        });
+        match made_panel {
+            Ok(p) => made.push(p),
+            Err(e) if options.all_refusals => refusals.extend(all_refusals_of(&panel.name, e)),
+            Err(e) => return Err(e),
+        }
+    }
+    if !refusals.is_empty() {
+        let mut text: String = refusals.iter().map(Refusals::text).collect();
+        for m in &made {
+            text.push_str(&format!("{}: no refusal\n", m.board));
+        }
+        return Err(FabFailure {
+            text,
+            requirements: refusals
+                .iter()
+                .flat_map(|r| r.requirements.iter().cloned())
+                .collect(),
+            refusals: Some(Box::new(refusals)),
+            ..FabFailure::default()
+        });
     }
     Ok(made)
+}
+
+/// The refusals of a board, a system or a panel that `--all-refusals` stopped at (issue
+/// #1707): those its board gathered, or the failure's text as one.
+fn all_refusals_of(label: &str, failure: FabFailure) -> Vec<Refusals> {
+    if failure.refusals().is_empty() {
+        vec![Refusals {
+            board: label.to_string(),
+            found: refusal_lines(label, "fab", &failure.text),
+            not_reached: None,
+            requirements: failure.requirements.into_vec(),
+        }]
+    } else {
+        failure.refusals.map(|r| *r).unwrap_or_default()
+    }
 }
 
 /// What the requirements prove about a board before any placing (ADR 0045 section 14): lines
@@ -1211,6 +1340,13 @@ fn settle_seed(
             "{note}, and --locked says {name} must not be written: run without --locked to write `seed = {}` to it, and commit it",
             seeds.used
         ))),
+        // `--all-refusals` writes nothing beside the source (issue #1707).
+        (Some(_), false) if options.all_refusals => {
+            say(format!(
+                "{label}: note: {note}; `fab` writes it to {name}, and `--all-refusals` does not"
+            ));
+            Ok(())
+        }
         (Some(path), false) => {
             crate::layout::write_seed(path, board, seeds.used).map_err(fail)?;
             say(format!("{label}: note: {note}, and is written to {name}"));
@@ -1237,6 +1373,84 @@ struct BoardRun {
 
 type LayoutFile = Option<(netsmith_pcb::Layout, String)>;
 
+/// How far `fab_board_tallied` got, and the refusals `--all-refusals` went past (issue #1707).
+#[derive(Default)]
+struct Tally {
+    found: Vec<Waived>,
+    reached: Reached,
+}
+
+/// The last stage of a board that ran to its end.
+#[derive(Default, Clone, Copy, PartialEq)]
+enum Reached {
+    /// Nothing is placed yet.
+    #[default]
+    Start,
+    /// The parts are placed.
+    Placed,
+    /// The board is routed, every connection.
+    Routed,
+    /// The router left connections open.
+    Unrouted,
+}
+
+impl Reached {
+    /// The checks a refusal at this stage leaves nothing to check, if any.
+    fn not_reached(self) -> Option<String> {
+        match self {
+            Reached::Start => Some("placing, the placement check after placing, routing, the design rules check and the checks of the package: a refusal above stops before the parts are placed".to_string()),
+            Reached::Placed => Some("routing, the design rules check and the checks of the package: a refusal above stops after placing".to_string()),
+            Reached::Unrouted => Some("the guidelines of the routed tracks and `--cross-check`, which need every connection routed, and the move of unlocked pins `fab` tries when a board does not route (ADR 0101); the design rules check ran on the copper the router made".to_string()),
+            Reached::Routed => None,
+        }
+    }
+}
+
+/// The refusals of `text`, one for each line `error: ` starts, with the board's label taken off.
+fn refusal_lines(label: &str, rule: &str, text: &str) -> Vec<Waived> {
+    let mut found: Vec<String> = Vec::new();
+    for line in text.trim_end().lines() {
+        match line.strip_prefix("error: ") {
+            Some(rest) => {
+                let rest = rest
+                    .strip_prefix(label)
+                    .and_then(|r| r.strip_prefix(": "))
+                    .unwrap_or(rest);
+                found.push(rest.to_string());
+            }
+            None => match found.last_mut() {
+                Some(last) => {
+                    last.push('\n');
+                    last.push_str(line);
+                }
+                None if !line.trim().is_empty() => found.push(line.to_string()),
+                None => {}
+            },
+        }
+    }
+    found.iter().map(|m| Waived::plain(rule, m)).collect()
+}
+
+/// With `--all-refusals` (issue #1707), records `text` as refusals of `rule` and goes on; else
+/// stops with it.
+fn refuse(
+    tally: &mut Tally,
+    options: &FabOptions,
+    label: &str,
+    rule: &str,
+    text: String,
+) -> Result<(), FabFailure> {
+    if options.all_refusals {
+        tally.found.extend(refusal_lines(label, rule, &text));
+        Ok(())
+    } else {
+        Err(text.into())
+    }
+}
+
+/// One board, made, as [`fab_board_tallied`] makes it; with `--all-refusals` (issue #1707) its
+/// refusals are gathered into [`FabFailure::refusals`], with the checks a refusal left nothing
+/// to check, and a board with none is made as usual.
 #[allow(clippy::too_many_arguments)]
 fn fab_board(
     built: &Built,
@@ -1250,6 +1464,72 @@ fn fab_board(
     stuck: &mut Option<Stuck>,
     pin_notes: &[String],
     pin_map_of: &PinMapOf,
+) -> Result<BoardRun, FabFailure> {
+    let mut tally = Tally::default();
+    let result = fab_board_tallied(
+        built, out, layout, libraries, kicad, options, catalogs, say, stuck, pin_notes, pin_map_of,
+        &mut tally,
+    );
+    if !options.all_refusals {
+        return result;
+    }
+    let label = built.label();
+    let mut requirements = Vec::new();
+    let mut not_reached = None;
+    match result {
+        Ok(run) if tally.found.is_empty() => return Ok(run),
+        Ok(_) => {}
+        Err(failure) => {
+            requirements = failure.requirements.into_vec();
+            let stopped = match failure.review {
+                // The package made for review: what it waived is what a plain `fab` refuses.
+                Some(review) => {
+                    tally.found.extend(review.waived);
+                    tally.reached == Reached::Unrouted
+                }
+                None => true,
+            };
+            if stopped {
+                let rule = match tally.reached {
+                    Reached::Start | Reached::Placed => "place",
+                    Reached::Unrouted => "route",
+                    Reached::Routed => "fab",
+                };
+                tally
+                    .found
+                    .extend(refusal_lines(&label, rule, &failure.text));
+                not_reached = tally.reached.not_reached();
+            }
+        }
+    }
+    let refusals = Refusals {
+        board: label,
+        found: tally.found,
+        not_reached,
+        requirements: requirements.clone(),
+    };
+    Err(FabFailure {
+        text: refusals.text(),
+        requirements: requirements.into(),
+        refusals: Some(Box::new(vec![refusals])),
+        ..FabFailure::default()
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn fab_board_tallied(
+    built: &Built,
+    out: &Path,
+    layout: &LayoutFile,
+    libraries: &Libraries,
+    kicad: Option<&dyn KicadCli>,
+    options: &FabOptions,
+    catalogs: &Catalogs,
+    say: &dyn Fn(String),
+    stuck: &mut Option<Stuck>,
+    pin_notes: &[String],
+    pin_map_of: &PinMapOf,
+    tally: &mut Tally,
 ) -> Result<BoardRun, FabFailure> {
     {
         let fail = |what: String| format!("error: {}: {what}\n", built.label());
@@ -1289,13 +1569,24 @@ fn fab_board(
                     catalogs.channels(),
                 )));
             }
-            return Err(errors.into());
+            refuse(tally, options, &label, "part", errors)?;
         }
 
         // The generic parts are judged against the board's environment with the rows they were
         // resolved to: a row outside it would have been ordered, so nothing is placed (ADR 0099).
-        let environment = crate::fab_environment::judge_resolved(built, &sourcing)
-            .map_err(|errors| errors.into_iter().map(fail).collect::<String>())?;
+        let environment = match crate::fab_environment::judge_resolved(built, &sourcing) {
+            Ok(environment) => environment,
+            Err(errors) => {
+                refuse(
+                    tally,
+                    options,
+                    &label,
+                    "environment",
+                    errors.into_iter().map(fail).collect::<String>(),
+                )?;
+                crate::fab_environment::Resolved::default()
+            }
+        };
 
         // What the requirements prove cannot be placed is said now, before the placer starts
         // (it can take a minute on a tight board).
@@ -1314,7 +1605,7 @@ fn fab_board(
         if !precheck.errors.is_empty() {
             return Err(FabFailure {
                 text: precheck.errors.into_iter().map(fail).collect(),
-                requirements: precheck.requirements,
+                requirements: precheck.requirements.into(),
                 conflicts: precheck.conflicts.into(),
                 placement: precheck.placement.into(),
                 ..FabFailure::default()
@@ -1324,8 +1615,13 @@ fn fab_board(
         // them (courtyards that overlap, a part past the edge, in a keepout or a cutout) is
         // found now, as `layout check` finds it, with no placing (issue 1309). The faults
         // `--for-review` waives are left to the check after placing, which lists them.
-        if let Some(judged) = entry_placement(built, layout.as_ref(), libraries, options.for_review)
-            && !judged.faults.is_empty()
+        // `--all-refusals` lists them all when one it cannot go past stops it (issue #1707).
+        let waiving = options.for_review && !options.all_refusals;
+        if let Some(judged) = entry_placement(built, layout.as_ref(), libraries, waiving)
+            && judged
+                .faults
+                .iter()
+                .any(|f| !(options.for_review && review_waives(f.kind)))
         {
             return Err(FabFailure {
                 text: judged.faults.iter().map(|f| fail(f.text.clone())).collect(),
@@ -1384,13 +1680,16 @@ fn fab_board(
             options: placement,
             seeds,
         } = placing;
-        settle_seed(
+        tally.reached = Reached::Placed;
+        if let Err(e) = settle_seed(
             (label.as_str(), name.as_str()),
             &seeds,
             layout,
             options,
             say,
-        )?;
+        ) {
+            refuse(tally, options, &label, "seed", e)?;
+        }
         // `--for-review` waives the faults of the board's own limits (issue #1212): they are
         // listed under FOR REVIEW in the notes, and the rest still stop `fab`.
         let (waived_faults, faults): (Vec<_>, Vec<_>) = board
@@ -1413,9 +1712,12 @@ fn fab_board(
             }
             errors.extend(problems.iter().map(|p| fail(p.clone())));
             let (requirements, conflicts) = unmet.map(|r| (r.misses, r.proofs)).unwrap_or_default();
+            if options.all_refusals {
+                tally.found.append(&mut waived);
+            }
             return Err(FabFailure {
                 text: errors,
-                requirements,
+                requirements: requirements.into(),
                 conflicts: conflicts.into(),
                 placement: faults.into(),
                 ..FabFailure::default()
@@ -1434,7 +1736,7 @@ fn fab_board(
             return Err(FabFailure {
                 text: no_seed.unwrap_or_default()
                     + &fail(requirement_failure(&report, &[], &board, out)),
-                requirements: report.misses,
+                requirements: report.misses.into(),
                 conflicts: report.proofs.into(),
                 ..FabFailure::default()
             });
@@ -1451,15 +1753,20 @@ fn fab_board(
         // kept it out where it could. A warning, and an error when the run is strict.
         let broken = board.soft_margins_broken();
         if catalogs.strict_guidelines() && !broken.is_empty() {
-            return Err(broken
-                .iter()
-                .map(|b| {
-                    fail(format!(
-                        "{b}; this is an error because the run is strict (`--strict` or `guidelines = \"error\"`)"
-                    ))
-                })
-                .collect::<String>()
-                .into());
+            refuse(
+                tally,
+                options,
+                &label,
+                "soft_margin",
+                broken
+                    .iter()
+                    .map(|b| {
+                        fail(format!(
+                            "{b}; this is an error because the run is strict (`--strict` or `guidelines = \"error\"`)"
+                        ))
+                    })
+                    .collect::<String>(),
+            )?;
         }
         for b in &broken {
             say(format!("{}: warning: {b}", built.label()));
@@ -1567,7 +1874,7 @@ fn fab_board(
             .map(|f| fail(case_refusal(f)))
             .collect();
         if !refused.is_empty() {
-            return Err(refused.concat().into());
+            refuse(tally, options, &label, "case", refused.concat())?;
         }
         for f in fit
             .findings
@@ -1799,6 +2106,11 @@ fn fab_board(
                     .collect(),
             }
         });
+        tally.reached = if incomplete.is_some() {
+            Reached::Unrouted
+        } else {
+            Reached::Routed
+        };
         if let Some(incomplete) = &incomplete {
             say(format!(
                 "{}: INCOMPLETE: {} connections are not routed; writing the board and the Gerbers anyway, marked incomplete",
@@ -1852,8 +2164,12 @@ fn fab_board(
                 .map(|m| format!("{}: {IMPEDANCE_RULE} guideline: {m}", built.label())),
         );
         if catalogs.strict_guidelines() && !drops.is_empty() {
-            return Err(FabFailure {
-                text: drops
+            refuse(
+                tally,
+                options,
+                &label,
+                "guideline",
+                drops
                     .iter()
                     .map(|d| {
                         format!(
@@ -1861,8 +2177,7 @@ fn fab_board(
                         )
                     })
                     .collect(),
-                ..FabFailure::default()
-            });
+            )?;
         }
         for d in &drops {
             say(format!("warning: {d}"));
@@ -2040,7 +2355,10 @@ fn fab_board(
         }
         // A board the router left open is packaged as before, marked INCOMPLETE, unless a
         // finding was waived for review before routing: it is never packaged to order from.
-        let for_review = options.for_review && (incomplete.is_none() || !waived.is_empty());
+        // `--all-refusals` checks an incomplete board as one for review, to list what the design
+        // rules check finds on its copper (issue #1707).
+        let for_review = options.for_review
+            && (incomplete.is_none() || !waived.is_empty() || options.all_refusals);
         let pictures = if for_review && options.review_pictures {
             review_pictures(&board, name)
         } else {
@@ -2131,7 +2449,7 @@ fn fab_board(
             }
             return Err(FabFailure {
                 text: fail(write_incomplete(&incomplete, &dir, packaged)),
-                requirements,
+                requirements: requirements.into(),
                 review,
                 ..FabFailure::default()
             });
@@ -2153,7 +2471,7 @@ fn fab_board(
                 }
                 e => e.to_string(),
             }),
-            requirements: unmet_requirements(&e),
+            requirements: unmet_requirements(&e).into(),
             ..FabFailure::default()
         })?;
         let mut pkg = pkg;

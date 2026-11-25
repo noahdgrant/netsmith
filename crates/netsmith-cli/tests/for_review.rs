@@ -403,3 +403,92 @@ fn the_pictures_of_a_review_package_are_the_bytes_view_pcb_draws_of_the_board_fa
     let run = netsmith_here(&root, &["board", "fab", "--no-pictures"]);
     assert_eq!(run.status.code(), Some(2), "{}", said(&run));
 }
+
+/// Issue #1707: `--all-refusals` lists every refusal a fab would make, here the part over the
+/// lid's height and the errors of the design rules check (the requirements on where the header
+/// goes), writes no package, and exits 1 as a refusing fab does; a plain `fab` still stops at the
+/// first, the height, and says nothing of the check.
+#[test]
+fn all_refusals_lists_a_height_and_the_design_rules_errors_and_writes_nothing() {
+    let root = widget("all-refusals");
+    let board = root.join("fab/Widget");
+
+    let run = netsmith_here(&root, &["board", "fab", "--out", "fab", "--all-refusals"]);
+    assert_eq!(run.status.code(), Some(1), "{}", said(&run));
+    let text = said(&run);
+    let heading = text
+        .lines()
+        .find(|l| l.starts_with("error: Widget: "))
+        .unwrap_or_else(|| panic!("{text}"));
+    assert!(
+        heading.contains("refusals a fab would make (`--all-refusals`: no package was written)"),
+        "{text}"
+    );
+    assert!(
+        text.contains("  error [too_tall] `power_in` (J1) stands 9.00 mm tall"),
+        "{text}"
+    );
+    assert!(text.contains("[constraint] ") && text.contains("power_in.place.left"), "{text}");
+    assert!(!text.contains("not reached"), "{text}");
+    assert!(!root.join("fab").exists(), "{:?}", files_of(&board));
+
+    // As JSON each refusal is an error of code `fab` with its rule, none of them waived.
+    let run = netsmith_here(
+        &root,
+        &["board", "fab", "--out", "fab", "--all-refusals", "--format", "json"],
+    );
+    assert_eq!(run.status.code(), Some(1), "{}", said(&run));
+    let doc: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+    assert_eq!(doc["ok"], false, "{doc}");
+    let refusals: Vec<&serde_json::Value> = doc["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|f| f["code"] == "fab" && f["severity"] == "error")
+        .collect();
+    for rule in ["too_tall", "constraint"] {
+        assert!(
+            refusals
+                .iter()
+                .any(|f| f["rule"] == rule && f["board"] == "Widget" && f["waived"].is_null()),
+            "{rule} in {doc}"
+        );
+    }
+    assert!(!root.join("fab").exists());
+
+    // Without the flag `fab` stops at the height, as before, and says nothing of the check.
+    let run = netsmith_here(&root, &["board", "fab", "--out", "fab"]);
+    assert_eq!(run.status.code(), Some(1), "{}", said(&run));
+    assert!(said(&run).contains("stands 9.00 mm tall"), "{}", said(&run));
+    assert!(!said(&run).contains("[constraint]"), "{}", said(&run));
+    assert!(!said(&run).contains("--all-refusals"), "{}", said(&run));
+
+    // The order lists the board's refusals, and writes nothing of the order.
+    let run = netsmith_here(&root, &["project", "order", "kit", "--out", "fab", "--all-refusals"]);
+    assert_eq!(run.status.code(), Some(1), "{}", said(&run));
+    assert!(said(&run).contains("[too_tall]"), "{}", said(&run));
+    assert!(said(&run).contains("[constraint]"), "{}", said(&run));
+    assert!(!root.join("fab/orders").exists());
+}
+
+/// Issue #1707: a refusal that leaves the stages after it nothing to check (the parts do not
+/// fit the board) says which checks were not reached.
+#[test]
+fn all_refusals_says_which_checks_a_board_that_does_not_fit_did_not_reach() {
+    let root = widget("all-refusals-not-reached");
+    // The header moved off the board: the entries' check refuses it before placing.
+    fs::write(
+        root.join("src/main.pcb.toml"),
+        "version = 1\n[Widget.parts.power_in]\nat = [60.0, 5.0]\nlock = true\n",
+    )
+    .unwrap();
+    let run = netsmith_here(&root, &["board", "fab", "--out", "fab", "--all-refusals"]);
+    assert_eq!(run.status.code(), Some(1), "{}", said(&run));
+    assert!(said(&run).contains("  error [place] the requirements on where parts go cannot all be met"), "{}", said(&run));
+    assert!(
+        said(&run).contains("  not reached: placing, the placement check after placing, routing, the design rules check"),
+        "{}",
+        said(&run)
+    );
+    assert!(!root.join("fab").exists());
+}

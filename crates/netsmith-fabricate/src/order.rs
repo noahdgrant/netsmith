@@ -1233,8 +1233,15 @@ pub fn fab_order(
             ))
         })
         .collect();
+    // With `--all-refusals` (issue #1707) each refusal of the order is listed and the order goes
+    // on to the next check; nothing of the order is written.
+    let all = options.all_refusals;
+    let mut problems = String::new();
     if !fictional.is_empty() {
-        return Err(fictional.concat());
+        if !all {
+            return Err(fictional.concat());
+        }
+        problems.push_str(&fictional.concat());
     }
     // The boards of the order that each source file builds, and the lock of each of those files.
     let mut files: Vec<(usize, Vec<String>, Opened)> = Vec::new();
@@ -1250,38 +1257,66 @@ pub fn fab_order(
         let opened = match locks {
             OrderLocks::Ignored => {
                 // A picks file is refused even where the lock is left out (ADR 0122).
-                netsmith_pipeline::picks::refuse(&source.path)?;
+                match netsmith_pipeline::picks::refuse(&source.path) {
+                    Err(e) if all => {
+                        problems.push_str(&format!(
+                            "{}\n  not reached: the boards of {}\n",
+                            e.trim_end(),
+                            source.name
+                        ));
+                        continue;
+                    }
+                    r => r?,
+                }
                 None
             }
-            OrderLocks::Held | OrderLocks::Locked => Some(pick_lock::open(
+            OrderLocks::Held | OrderLocks::Locked => match pick_lock::open(
                 &source.path,
                 catalogs,
                 locks == OrderLocks::Locked,
                 target.locks(source),
-            )?),
+            ) {
+                Ok(opened) => Some(opened),
+                Err(e) if all => {
+                    problems.push_str(&format!(
+                        "{}\n  not reached: the boards of {}, which are made only with its pick lock\n",
+                        e.trim_end(),
+                        source.name
+                    ));
+                    continue;
+                }
+                Err(e) => return Err(e),
+            },
         };
         files.push((i, mine, opened));
     }
     if locks == OrderLocks::Locked {
         let opened: Vec<(usize, &Opened)> = files.iter().map(|(i, _, o)| (*i, o)).collect();
-        refuse_changed_locks(&opened, target, loader, catalogs)?;
+        match refuse_changed_locks(&opened, target, loader, catalogs) {
+            Err(e) if all => problems.push_str(&e),
+            r => r?,
+        }
     }
     // The price of a line is for the quantity of the whole order (issue #804). A project with no
     // `[supply]` table has no provider, and its summary says nothing of price. Read before
     // anything is removed or written, so a supply file that is wrong stops the order whole.
-    let supply = match &target.project {
-        Some(project) => project.supply()?,
+    let supply = match target.project.as_ref().map(|p| p.supply()) {
+        Some(Ok(supply)) => supply,
+        Some(Err(e)) if all => {
+            problems.push_str(&e);
+            Supply::none()
+        }
+        Some(Err(e)) => return Err(e),
         None => Supply::none(),
     };
     let dir = out.join(ORDERS_DIR).join(&order.name);
     // An order folder netsmith made before is replaced whole, so that a board dropped from
     // the order does not stay in it. Anything else at that path is left alone.
-    if dir.join(SUMMARY_FILE).is_file() {
+    if !all && dir.join(SUMMARY_FILE).is_file() {
         fs::remove_dir_all(&dir).map_err(|e| format!("error: {}: {e}\n", dir.display()))?;
     }
 
     let mut made: Vec<(Selected, Fabricated)> = Vec::new();
-    let mut problems = String::new();
     for (i, mine, opened) in files {
         let source = &target.files[i];
         let text =
@@ -1330,7 +1365,7 @@ pub fn fab_order(
             }
         }
     }
-    if !problems.is_empty() {
+    if !all && !problems.is_empty() {
         return Err(problems);
     }
     // In the project's order.
@@ -1340,7 +1375,24 @@ pub fn fab_order(
         .iter()
         .map(|(s, f)| (s.label.as_str(), &f.facts))
         .collect();
-    refuse_vias_in_pads(order, &facts)?;
+    match refuse_vias_in_pads(order, &facts) {
+        Err(e) if all => problems.push_str(&e),
+        r => r?,
+    }
+    if all {
+        if !problems.is_empty() {
+            return Err(problems);
+        }
+        // Nothing refused: the order would be made; nothing of it is written.
+        return Ok(Made {
+            name: order.name.clone(),
+            dir,
+            boards: made,
+            bom: Vec::new(),
+            summary: String::new(),
+            files: Vec::new(),
+        });
+    }
 
     let rows: Vec<(Selected, &BoardFacts)> =
         made.iter().map(|(s, f)| (s.clone(), &f.facts)).collect();

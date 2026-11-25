@@ -67,6 +67,20 @@ pub struct Args {
     /// `--allow-drc-violations` nor `--cross-check`, and `project order` does not take it.
     #[arg(long, conflicts_with_all = ["allow_drc_violations", "cross_check"])]
     pub for_review: bool,
+    /// List every refusal `fab` would make; write no package.
+    ///
+    /// It runs the checks the package needs, as `--for-review` does, into a scratch folder it
+    /// removes, and goes past each refusal a later check can still run after: the part refusals
+    /// (no row, no supplier number), the pick lock and the seed with `--locked`, the board's own
+    /// limits at placement (`too_tall`, `in_keepout`, `over_pins`, a case model), the
+    /// requirements on where parts go, the strict guidelines and the errors of the design rules
+    /// check. A refusal that leaves the stages after it nothing to check (the parts do not fit,
+    /// connections not routed) says which checks were not reached. Nothing beside the source is
+    /// written but what `fab` writes before it checks (a pick lock that does not exist yet); no
+    /// pin is moved and a seed is said, not written. Without a refusal it exits 0. `project
+    /// order --all-refusals` adds the order's own (a fictional fabricator, vias in pads).
+    #[arg(long, conflicts_with_all = ["allow_drc_violations", "for_review", "save_placed", "reuse_routes"])]
+    pub all_refusals: bool,
     /// With `--for-review`, leave the pictures of the copper (`<board>-<layer>-REVIEW.png`) out.
     ///
     /// The pictures an earlier run left are removed.
@@ -213,6 +227,7 @@ fn run_chosen(args: &Args, format: Format) -> ExitCode {
             (args.rip_rounds, &args.weighing),
             args.allow_drc_violations,
             (args.for_review, !args.no_pictures),
+            args.all_refusals,
             args.cross_check,
             args.strict,
             args.locked,
@@ -341,6 +356,7 @@ fn run_fab(
     (rip_rounds, weighing): (Option<usize>, &common::Weighing),
     allow_drc_violations: bool,
     (for_review, review_pictures): (bool, bool),
+    all_refusals: bool,
     cross_check: bool,
     strict: bool,
     locked: bool,
@@ -375,7 +391,12 @@ fn run_fab(
     if let Err(code) = common::write_dependency_lock(&target) {
         return code;
     }
-    let out = out.unwrap_or(&target.fab_out);
+    // `--all-refusals` packages into a scratch folder, removed when the run ends (issue #1707).
+    let scratch = all_refusals.then(Scratch::new);
+    let out = match &scratch {
+        Some(s) => s.0.as_path(),
+        None => out.unwrap_or(&target.fab_out),
+    };
     let libraries = match timings::stage("libraries", "", || libraries(&target)) {
         Ok(l) => l,
         Err(code) => return code,
@@ -411,8 +432,9 @@ fn run_fab(
         }),
         layout: None,
         allow_drc_violations,
-        for_review,
-        review_pictures,
+        for_review: for_review || all_refusals,
+        review_pictures: review_pictures && !all_refusals,
+        all_refusals,
         cross_check,
         only: None,
         strict_heights: strict_heights(&target, constraints_warn),
@@ -436,8 +458,12 @@ fn run_fab(
         seed_writes: netsmith_fabricate::fab::SeedWrites::Write,
         offline,
         portable,
-        // What an order reuses a package by (issue #841).
-        reuse: netsmith_fabricate::fab::Reuse::Record,
+        // What an order reuses a package by (issue #841); none of a scratch folder.
+        reuse: if all_refusals {
+            netsmith_fabricate::fab::Reuse::Off
+        } else {
+            netsmith_fabricate::fab::Reuse::Record
+        },
     };
     let (pins_mode, locked_by) = pins_mode(&target, pins_locked, locked);
     let mut code = ExitCode::SUCCESS;
@@ -474,7 +500,8 @@ fn run_fab(
                 .and_then(|p| p.manifest.revision.clone()),
             lock: Some(using),
             pin_map_source: Some(source.stable_name(target.project.as_ref())),
-            pins: Some(netsmith_fabricate::fab::PinsUse {
+            // `--all-refusals` moves no pin (issue #1707).
+            pins: (!all_refusals).then(|| netsmith_fabricate::fab::PinsUse {
                 locked_by,
                 ..netsmith_fabricate::fab::PinsUse::new(
                     pins_mode,
@@ -496,7 +523,9 @@ fn run_fab(
             Err(failure) => {
                 code = ExitCode::FAILURE;
                 unchecked |= !failure.problems.is_empty();
-                if json {
+                if json && !failure.refusals().is_empty() {
+                    report.findings.extend(refusal_findings(failure.refusals()));
+                } else if json {
                     if failure.problems.is_empty() {
                         // What `--for-review` waived is a finding of its own each (issue #1212).
                         let waived: Vec<Finding> = failure
@@ -510,7 +539,7 @@ fn run_fab(
                             })
                             .collect();
                         report.findings.push(Finding {
-                            requirements: failure.requirements,
+                            requirements: failure.requirements.into_vec(),
                             does_not_fit: failure.does_not_fit,
                             conflicts: failure.conflicts.into_vec(),
                             placement: failure.placement.into_vec(),
@@ -577,7 +606,7 @@ fn run_fab(
                         }
                         report.boards.push(BoardOut {
                             board: b.board.clone(),
-                            dir: Some(b.dir.display().to_string()),
+                            dir: (!all_refusals).then(|| b.dir.display().to_string()),
                             parts: b.origins.clone(),
                             outline_at: None,
                             routes: b.routes.clone(),
@@ -588,6 +617,13 @@ fn run_fab(
                             track_drops: Vec::new(),
                             track_drops_at_current: Vec::new(),
                         });
+                        continue;
+                    }
+                    if all_refusals {
+                        println!(
+                            "{}: no refusal: `board fab` would write its package",
+                            b.board
+                        );
                         continue;
                     }
                     // The summary lists the notes, in the outline's frame (issue #1614).
@@ -645,6 +681,51 @@ fn run_fab(
         }
     }
     code
+}
+
+/// The scratch folder `board fab --all-refusals` packages into, removed when it is dropped.
+struct Scratch(PathBuf);
+
+impl Scratch {
+    fn new() -> Scratch {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
+        Scratch(std::env::temp_dir().join(format!(
+            "netsmith-all-refusals-{}-{nanos}",
+            std::process::id()
+        )))
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+/// The refusals `board fab --all-refusals` found (issue #1707): each an error of code `fab` with
+/// its rule and data, as `--for-review` gives what it waived, and a note of the checks not
+/// reached.
+fn refusal_findings(refusals: &[netsmith_fabricate::fab::Refusals]) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    for r in refusals {
+        for w in &r.found {
+            findings.push(Finding {
+                board: Some(r.board.clone()),
+                waived: None,
+                ..waived_finding(w)
+            });
+        }
+        if let Some(not) = &r.not_reached {
+            findings.push(Finding {
+                board: Some(r.board.clone()),
+                ..Finding::plain(Severity::Note, "fab", format!("not reached: {not}"))
+            });
+        }
+    }
+    findings
 }
 
 /// How `fab` prints: `--quiet`, `--format` and `--notes` (#455).
@@ -763,6 +844,7 @@ pub(super) fn run_order(
     strict: bool,
     locked: bool,
     accept_via_in_pad: bool,
+    all_refusals: bool,
     constraints_warn: Option<bool>,
     no_glb: bool,
     no_step: bool,
@@ -844,9 +926,11 @@ pub(super) fn run_order(
         layout: None,
         only: None,
         allow_drc_violations,
-        // An order is never made for review.
-        for_review: false,
+        // An order is never made for review; `--all-refusals` goes its way, to list every
+        // refusal (issue #1707).
+        for_review: all_refusals,
         review_pictures: false,
+        all_refusals,
         cross_check,
         strict_heights: strict_heights(&target, constraints_warn),
         lock: None,
@@ -875,10 +959,20 @@ pub(super) fn run_order(
         reuse: netsmith_fabricate::fab::Reuse::Off,
     };
     let out = out.unwrap_or(&target.fab_out);
-    // A board a plain `fab` made into this folder from the same inputs is copied, not made again.
+    // A board a plain `fab` made into this folder from the same inputs is copied, not made again;
+    // `--all-refusals` checks each board and writes into a scratch folder it removes.
+    let scratch = all_refusals.then(Scratch::new);
     let options = FabOptions {
-        reuse: netsmith_fabricate::fab::Reuse::From(out.to_path_buf()),
+        reuse: if all_refusals {
+            netsmith_fabricate::fab::Reuse::Off
+        } else {
+            netsmith_fabricate::fab::Reuse::From(out.to_path_buf())
+        },
         ..options
+    };
+    let out = match &scratch {
+        Some(s) => s.0.as_path(),
+        None => out,
     };
     // `--accept-via-in-pad` accepts the cost of vias in pads for this run (issue #1118).
     let order = &netsmith_fabricate::order::Order {
@@ -917,6 +1011,22 @@ pub(super) fn run_order(
         Err(problems) => {
             eprint!("{problems}");
             ExitCode::FAILURE
+        }
+        Ok(made) if all_refusals => {
+            if json {
+                print_order(serde_json::json!({
+                    "command": "order",
+                    "ok": true,
+                    "order": made.name,
+                    "findings": [],
+                }));
+            } else {
+                println!(
+                    "order `{}`: no refusal: `project order` would make it",
+                    made.name
+                );
+            }
+            ExitCode::SUCCESS
         }
         Ok(made) if json => {
             print_order(serde_json::json!({
@@ -1012,6 +1122,7 @@ mod tests {
                 allow_drc_violations: false,
                 for_review: false,
                 no_pictures: false,
+                all_refusals: false,
                 cross_check: false,
                 strict: false,
                 locked: false,
@@ -1074,6 +1185,14 @@ mod tests {
         let e = parse(&["board", "fab", "--no-pictures"]).unwrap_err();
         assert!(e.contains("--for-review"), "{e}");
         assert!(parse(&["project", "order", "d", "--no-pictures"]).is_err());
+        // Issue #1707: every refusal, no package; not with the flags that package anyway.
+        assert!(fab(&["--all-refusals"]).all_refusals);
+        assert!(!fab(&[]).all_refusals);
+        for other in ["--allow-drc-violations", "--for-review", "--reuse-routes"] {
+            let e = parse(&["board", "fab", "--all-refusals", other]).unwrap_err();
+            assert!(e.contains("cannot be used with"), "{other}: {e}");
+        }
+        assert!(parse(&["project", "order", "d", "--all-refusals"]).is_ok());
         assert!(parse(&["board", "build", "--for-review"]).is_err());
         assert!(parse(&["board", "build", "--cross-check"]).is_err());
         assert!(parse(&["board", "build", "--no-glb"]).is_err());

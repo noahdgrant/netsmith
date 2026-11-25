@@ -50,6 +50,13 @@ pub struct Args {
     /// `via_in_pad = "accepted"` in the order's table of netsmith.toml (issue #1118).
     #[arg(long)]
     pub accept_via_in_pad: bool,
+    /// List every refusal of the order and its boards; write nothing.
+    ///
+    /// As `board fab --all-refusals` for each board of the order, with the order's own refusals
+    /// too (a fictional fabricator, a pick lock, the supply file, vias in pads not accepted).
+    /// Exits 1 when there is one.
+    #[arg(long, conflicts_with = "allow_drc_violations")]
+    pub all_refusals: bool,
     /// Whether an unmet requirement on where a part goes stops the order, over netsmith.toml.
     #[arg(long, value_enum)]
     pub constraints: Option<Constraints>,
@@ -114,6 +121,7 @@ pub fn run(args: Args) -> ExitCode {
             args.strict,
             args.locked,
             args.accept_via_in_pad,
+            args.all_refusals,
             args.constraints.map(|c| c == Constraints::Warn),
             args.no_glb,
             args.no_step,
