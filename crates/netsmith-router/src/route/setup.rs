@@ -17,7 +17,15 @@ impl<'a> Router<'a> {
             .enumerate()
             .map(|(i, n)| (n.name.as_str(), i))
             .collect();
-        let one_layer = one_layer_of(board);
+        let mut one_layer = one_layer_of(board);
+        // A net `routes route --layer` pins to a layer (issue #1656) is on that one alone.
+        if let Some(layer) = options.on_layer {
+            for (k, net) in board.nets.iter().enumerate() {
+                if !board.fixed.is_locked(&net.name) {
+                    one_layer[k] = stack.index(layer);
+                }
+            }
+        }
         // A net a routes file locks gets no copper (`netsmith_pcb::Routes`).
         let open = |l: &Ratline| !board.fixed.is_locked(&l.net);
         // Every pad of a plane net gets its own way to the plane first, whatever a pour of its
