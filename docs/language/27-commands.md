@@ -68,7 +68,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith layout compare` | the same | `--file` (was `--into`), `--board`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
 | `netsmith layout regenerate` | the same | `--file` (was `--into`), `--board`, `--seed`, `--margin`, `--write`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
 | `netsmith layout capture` | the same | `--file` (was `--into`), `--board`, `--dry-run`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
-| `netsmith layout fit` | the same | `--file` (was `--into`), `--board`, `--near`, `--step`, `--side`, `--as-laid-out`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--progress`, `--to-editor`, `--format`, `--frame` |
+| `netsmith layout fit` | the same | `--file` (was `--into`), `--board`, `--near`, `--count`, `--step`, `--side`, `--as-laid-out`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--progress`, `--to-editor`, `--format`, `--frame` |
 | `netsmith layout parts` | the same | `--file` (was `--into`), `--board`, `--as-laid-out`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
 | `netsmith layout export` | the same | `--file` (was `--into`), `--board`, `--kicad-pcb` (was `--out`), `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
 | `netsmith layout import` | the same | `--file` (was `--into`), `--board`, `--lock`, `--dry-run`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
