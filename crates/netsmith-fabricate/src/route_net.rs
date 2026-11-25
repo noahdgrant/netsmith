@@ -63,7 +63,7 @@ use netsmith_router::{RIP_MOST, RIP_ROUNDS};
 
 use crate::routes::{Edit, Refusal, edit_all, with_routes};
 
-mod through;
+pub(crate) mod through;
 pub use through::{SAME_PLACE, Through, ViaAsked};
 
 /// The most times one try of `routes route` runs the router (each run routes one net): what
@@ -1026,7 +1026,7 @@ pub(crate) fn add(board: &Board, routes: &mut Routes, net: &str, way: &One) {
 }
 
 /// What walls in each line of `why`, in the routes file's places.
-fn walls(board: &Board, why: &[LineReport]) -> Vec<Wall> {
+pub(crate) fn walls(board: &Board, why: &[LineReport]) -> Vec<Wall> {
     why.iter()
         .map(|r| Wall {
             line: r.line.to_string(),

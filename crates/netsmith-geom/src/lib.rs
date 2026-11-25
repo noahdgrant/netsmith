@@ -75,8 +75,9 @@ pub use drc::{
 pub use drill::{Hole as DrillHole, files as drill_files, holes as drill_holes};
 pub use edge::{Outline as EdgeOutline, cut_lines as edge_cut_lines, outline as edge_outline};
 pub use fill::{
-    Blocker as SpokeBlocker, Join as PadJoin, MIN_SPOKES, PadAt, ThermalJoin, Unjoinable,
-    ZoneJoins, pad_joins, pour as fill_pour, thermal_joins, zone_fills, zones_overlap,
+    Blocker as SpokeBlocker, Bounding as RegionBounding, Join as PadJoin, MIN_SPOKES, PadAt,
+    Region as FillRegion, RegionBound, ThermalJoin, Unjoinable, ZoneJoins, ZoneRegions,
+    fill_regions, pad_joins, pour as fill_pour, thermal_joins, zone_fills, zones_overlap,
 };
 pub use font::strokes as font_strokes;
 pub use gbr::{Ap, Contour, Gerber, Pen, Seg as GerberSeg, escape as gerber_escape};
