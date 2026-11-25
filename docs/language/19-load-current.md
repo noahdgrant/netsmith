@@ -416,7 +416,7 @@ error: during a burst of `radio` (`radio.peak_current` 500mA for 200us) the othe
 
 Rules.
 
-- The copper of the net is sized by `.current`, the average, as for any load; the burst's heating current is the rail's `.rms_current` (see "A peak and a heating current" in _The shape of a board_), which may lie between the average and `.peak_current` and never above the peak.
+- The copper of the net is sized by `.current`, the average, as for any load, and the track drop is measured at it. The rail's `.rms_current` (see "A peak and a heating current" in _The shape of a board_) may lie between the average and `.peak_current`, never above the peak, but one above `.current` does not raise the copper (issue #1712).
 - `.burst` and `.duty` are optional (ADR 0074) and the load's own: `~` shares neither, as it does not share `.peak_current`. A rail with a peak and no burst is an inrush, checked alone (_A peak current_). A net whose source states no `.max_peak_current` is not judged.
 - `.duty` is the fraction of the time the load bursts (one 3 ms slot in every 100 ms is `0.03`). The bursts alone average the peak times the duty, so the most of the stated average must be at least that: `max(.current) >= max(.peak_current) * max(.duty)`, which a radio of `10mA..40mA` with `.duty &= 0.1` and a 500 mA peak fails (40 mA is below 50 mA).
 - A peak above the source's limit alone is refused by `Rail`'s own `.peak_current <= .max_peak_current`, which also makes the solver pick a regulator that gives it. The capacitance across the rail helps only with the other loads' share.
