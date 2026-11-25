@@ -25,6 +25,8 @@ pub enum Command {
     Age(AgeArgs),
     /// Find parts by words, a manufacturer's number or parametric filters, with each supplier's sku, stock and price (Nexar or Digi-Key; opt-in).
     Search(super::catalog_search::Args),
+    /// Compare each row's package with the footprint it names: its pads and its body against the package's known size.
+    Check(super::catalog_check::Args),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, ClapArgs)]
@@ -67,7 +69,7 @@ pub struct RefreshArgs {
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(group(ArgGroup::new("record").required(true).args(["lcsc", "from"])))]
 #[command(
-    after_long_help = concat!("`catalog add --lcsc <C123> --to <catalog.csv>` asks LCSC's record of the number (never JLCPCB's) and appends a row with `mpn`, `package` and a `source` that names the record and the day, and `manufacturer` as LCSC spells it when the file has that column (check it against the datasheet), leaving every other cell empty and listing the columns that need the datasheet; the number itself is an offer (ADR 0143), appended to the project's `offers/lcsc.csv` (the first folder of `offer_dirs`, or `offers/` beside the folder the command runs in outside a project; the file is made when there is none) with the same `source` and the day in `checked`. A part JLCPCB assembles also needs the offer's `class`, the library from JLCPCB's page, which the command does not write (an offer with no `class` is not in the `jlcpcb-assembly` channel). Without `--to` it prints the record and writes nothing.\n\n`catalog add --from <supplier> <sku or mpn> --to <catalog.csv>` asks the project's search provider (`--provider`, else for `--from digikey` Digi-Key's own API when the project names `[supply.digikey]`, else the one the project names, Nexar when both) for the record of the part that `supplier` (`lcsc`, `digikey` or `mouser`) offers under that sku, or whose manufacturer's number is exactly that, and writes nothing unless the record names one such part with one offer of that supplier (two packagings of one supplier, two manufacturers of one number: give the sku). It appends a row with `mpn`, `manufacturer` when the file has the column, `package` when the record states it (on Nexar with `--details`, which needs a plan that includes it; Digi-Key's record names no package, so it is listed to fill), a `source` that names the record and the day, and `notes`; and an offer for the named supplier and for each other supplier with one offer in the record, in the project's `offers/<supplier>.csv` (made when there is none), each with a `source` and the day in `checked`. A supplier with several offers is listed and not written. Every other cell stays empty and is listed as needing the datasheet, with the `class` of an LCSC offer (JLCPCB's library, which no record read here gives).\n\n", super::catalog_search::terms!())
+    after_long_help = concat!("`catalog add --lcsc <C123> --to <catalog.csv>` asks LCSC's record of the number (never JLCPCB's) and appends a row with `mpn`, `package` and a `source` that names the record and the day, and `manufacturer` as LCSC spells it when the file has that column (check it against the datasheet), leaving every other cell empty and listing the columns that need the datasheet; the number itself is an offer (ADR 0143), appended to the project's `offers/lcsc.csv` (the first folder of `offer_dirs`, or `offers/` beside the folder the command runs in outside a project; the file is made when there is none) with the same `source` and the day in `checked`. A part JLCPCB assembles also needs the offer's `class`, the library from JLCPCB's page, which the command does not write (an offer with no `class` is not in the `jlcpcb-assembly` channel). Without `--to` it prints the record and writes nothing.\n\nBefore it writes a row, `catalog add` checks the record's package as `netsmith catalog check` does (issue #1658): the footprint the package names for the kinds of the catalog the file is named for, measured against the package's known size, and each description the record gives, which must not name another package (LCSC writes `SOT-23` in the package field of a part its description calls a SOT-323). When either disagrees it prints what it found, with both values and the source, and asks whether to write the row anyway, on a terminal; with no terminal to ask on (a script, an agent, `--format json`) it writes nothing and exits 1, unless `--accept-package-mismatch` is given. What was accepted is printed after the row and is the `package_check` of the JSON.\n\n`catalog add --from <supplier> <sku or mpn> --to <catalog.csv>` asks the project's search provider (`--provider`, else for `--from digikey` Digi-Key's own API when the project names `[supply.digikey]`, else the one the project names, Nexar when both) for the record of the part that `supplier` (`lcsc`, `digikey` or `mouser`) offers under that sku, or whose manufacturer's number is exactly that, and writes nothing unless the record names one such part with one offer of that supplier (two packagings of one supplier, two manufacturers of one number: give the sku). It appends a row with `mpn`, `manufacturer` when the file has the column, `package` when the record states it (on Nexar with `--details`, which needs a plan that includes it; Digi-Key's record names no package, so it is listed to fill), a `source` that names the record and the day, and `notes`; and an offer for the named supplier and for each other supplier with one offer in the record, in the project's `offers/<supplier>.csv` (made when there is none), each with a `source` and the day in `checked`. A supplier with several offers is listed and not written. Every other cell stays empty and is listed as needing the datasheet, with the `class` of an LCSC offer (JLCPCB's library, which no record read here gives).\n\n", super::catalog_search::terms!())
 )]
 #[command(args_override_self = true)]
 pub struct AddArgs {
@@ -95,9 +97,12 @@ pub struct AddArgs {
     /// Keep no answer.
     #[arg(long)]
     pub no_cache: bool,
+    /// Write the row even when its package disagrees with the footprint it names or with the record's description (otherwise a run with no terminal to ask on writes nothing).
+    #[arg(long)]
+    pub accept_package_mismatch: bool,
     /// Text for a person, or one JSON document on stdout.
     ///
-    /// `json` prints one JSON document on stdout and nothing else there: `command` (`catalog add`), `ok`, the `lcsc` number, the `manufacturer` as LCSC spells it (null when the record names none), the `mpn`, the `package` (null when LCSC lists none), the day it was `read`, `written` (the `file` and `line` of the row added, null with no `--to`), `offer` (the `file` and `line` of the LCSC offer added, null with no `--to`), the columns `filled`, and `to_fill`, the columns that need the datasheet and the offer's class to write. A number LCSC has no record of, one the offers file already has, or a part the catalog file already has, is `ok` false with a `findings` list of one error (the code `catalog`) and exit code 1; a run that could not be made is an error on stderr with exit code 2 and nothing on stdout.
+    /// `json` prints one JSON document on stdout and nothing else there: `command` (`catalog add`), `ok`, the `lcsc` number, the `manufacturer` as LCSC spells it (null when the record names none), the `mpn`, the `package` (null when LCSC lists none), the day it was `read`, `written` (the `file` and `line` of the row added, null with no `--to`), `offer` (the `file` and `line` of the LCSC offer added, null with no `--to`), the columns `filled`, `to_fill`, the columns that need the datasheet and the offer's class to write, and `package_check`, what the check of the package found and was accepted (empty when the package agrees). A number LCSC has no record of, one the offers file already has, or a part the catalog file already has, is `ok` false with a `findings` list of one error (the code `catalog`) and exit code 1; a run that could not be made is an error on stderr with exit code 2 and nothing on stdout.
     #[arg(long, value_enum, default_value = "text")]
     pub format: Format,
 }
@@ -130,6 +135,7 @@ pub fn run(args: Args) -> ExitCode {
         Command::Add(a) => run_catalog_add(&a),
         Command::Age(a) => run_catalog_age(&a),
         Command::Search(a) => super::catalog_search::run(a),
+        Command::Check(a) => super::catalog_check::run(a),
     }
 }
 
@@ -166,7 +172,14 @@ fn run_catalog_add(request: &AddArgs) -> ExitCode {
     let files = to
         .zip(shown.as_deref())
         .zip(offers.as_ref().map(|(p, s)| (p.as_path(), s.as_str())));
-    match refresh::add(lcsc, files, network) {
+    let mut vet = match package_vet(request) {
+        Ok(vet) => vet,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    match refresh::add(lcsc, files, network, &mut vet) {
         Ok(added) => {
             if request.format == Format::Json {
                 print_json(&refresh::json_added(&added));
@@ -225,12 +238,17 @@ fn run_catalog_add_from(request: &AddArgs, (supplier, number): (&str, &str)) -> 
     let to: Option<&Path> = request.to.as_deref();
     let shown = to.map(|p| p.display().to_string());
     let offers = |supplier: &str| offers_file(supplier);
+    let mut vet = match package_vet(request) {
+        Ok(vet) => vet,
+        Err(e) => return fail(e),
+    };
     match add::add_from(
         provider.as_mut(),
         (supplier, number),
         request.details,
         to.zip(shown.as_deref()),
         &offers,
+        &mut vet,
     ) {
         Ok(added) => {
             if request.format == Format::Json {
@@ -254,6 +272,65 @@ fn run_catalog_add_from(request: &AddArgs, (supplier, number): (&str, &str)) -> 
         }
         Err(AddError::Stopped(why)) => fail(why),
     }
+}
+
+/// The check `catalog add` makes before it writes a row to `--to` (issue #1658): the footprints
+/// the record's package names for the kinds of the catalog the file is named for, and the
+/// record's descriptions ([`netsmith_fabricate::package_check::Context::check_record`]). What it
+/// finds is accepted with `--accept-package-mismatch`, or by the person on a terminal (a text run
+/// whose stdin and stderr are terminals); otherwise the row is refused. With no `--to` nothing is
+/// written and nothing is checked.
+type PackageVet = Box<dyn FnMut(Option<&str>, &[&str]) -> Result<Vec<String>, String>>;
+
+fn package_vet(request: &AddArgs) -> Result<PackageVet, String> {
+    use std::io::IsTerminal;
+    let checked = match &request.to {
+        Some(to) => {
+            let cwd = env::current_dir().map_err(|e| e.to_string())?;
+            let project = Project::find(&cwd)?;
+            let context = netsmith_fabricate::package_check::Context::of(project.as_ref())?;
+            let catalog = to
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_string();
+            Some((context, catalog))
+        }
+        None => None,
+    };
+    let accept = request.accept_package_mismatch;
+    let ask = request.format == Format::Text
+        && std::io::stdin().is_terminal()
+        && std::io::stderr().is_terminal();
+    Ok(Box::new(
+        move |package: Option<&str>, descriptions: &[&str]| {
+            let Some((context, catalog)) = &checked else {
+                return Ok(Vec::new());
+            };
+            let found = context.check_record(catalog, package, descriptions);
+            if found.is_empty() || accept {
+                return Ok(found);
+            }
+            if ask {
+                for f in &found {
+                    eprintln!("package check: {f}");
+                }
+                eprint!("write the row anyway? [y/N] ");
+                let mut answer = String::new();
+                std::io::stdin()
+                    .read_line(&mut answer)
+                    .map_err(|e| e.to_string())?;
+                if matches!(answer.trim(), "y" | "Y" | "yes") {
+                    return Ok(found);
+                }
+                return Err("the package was not confirmed: nothing was written".to_string());
+            }
+            Err(format!(
+                "{}: nothing was written; check the package against the datasheet, and give `--accept-package-mismatch` to write the row as the record has it",
+                found.join("; ")
+            ))
+        },
+    ))
 }
 
 /// Where `catalog add` writes an offer of `supplier`: the offers file of that supplier of the
@@ -395,6 +472,7 @@ mod tests {
                     to: Some(PathBuf::from("catalogs/led.csv")),
                     offline: false,
                     no_cache: false,
+                    accept_package_mismatch: false,
                     format: Format::Text,
                 })
             }))

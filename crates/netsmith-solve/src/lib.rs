@@ -42,6 +42,7 @@ pub use generic::{
     Alternative, CHANGE_THE_VALUE, Generic, Need, Orderable, Sense, Series, Spec, alternatives,
     nearest, resolve,
 };
+pub use jlcpcb::built_in_files;
 pub use levels::NotEvaluated;
 pub use lock::{LockedProvider, LockedRow, PickLock};
 pub use place::{PlaceOffset, Window, offsets, window};

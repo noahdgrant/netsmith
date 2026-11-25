@@ -50,6 +50,13 @@ impl Loader {
         loader
     }
 
+    /// Every module it holds, as its display name and its text, in no set order.
+    pub fn texts(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.modules
+            .values()
+            .map(|(name, text)| (name.as_str(), text.as_str()))
+    }
+
     pub fn insert(&mut self, module: &str, file_name: &str, text: &str) {
         self.modules.insert(
             module.to_string(),

@@ -8,6 +8,7 @@ mod bom;
 mod build;
 mod case;
 mod catalog;
+mod catalog_check;
 mod catalog_search;
 mod check;
 pub(crate) mod common;
