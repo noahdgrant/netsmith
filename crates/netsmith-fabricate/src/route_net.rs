@@ -46,6 +46,10 @@
 //! ([`crate::routes::edit_all`]), so the design rules check is applied as `routes add-track`
 //! applies it: a result that adds a finding is refused and the file is as it was.
 //!
+//! **Through a via** (`--via`, issue #1642). The net is routed through vias placed where they
+//! are asked for, or that its record has there: each pad joined to the nearest of them first,
+//! then the rest of the net ([`through`]'s header).
+//!
 //! **The narrowest place.** The narrowest place of the new way, and the widest track of the net it has
 //! room for there ([`netsmith_router::one::narrowest`]).
 
@@ -58,6 +62,9 @@ use netsmith_router::walk::Ground;
 use netsmith_router::{RIP_MOST, RIP_ROUNDS};
 
 use crate::routes::{Edit, Refusal, edit_all, with_routes};
+
+mod through;
+pub use through::{SAME_PLACE, Through, ViaAsked};
 
 /// The most times one try of `routes route` runs the router (each run routes one net): what
 /// bounds the search for the nets in the way and the rounds of ripped nets together.
@@ -89,6 +96,9 @@ pub struct Ask {
     /// `rip` names are taken away, the net is routed first and they after it, and the change is
     /// kept only when their total by the weights gets shorter (the module's header).
     pub reroute: bool,
+    /// The vias the net is routed through (`--via`, issue #1642, [`through`]'s header): each
+    /// pad joined to the nearest of them first, then the rest of the net.
+    pub through: Vec<ViaAsked>,
 }
 
 impl Ask {
@@ -133,6 +143,7 @@ impl Ask {
             tries: TRIES,
             weights: None,
             reroute: false,
+            through: Vec::new(),
         })
     }
 }
@@ -192,6 +203,8 @@ pub struct Routed {
     pub refused: Option<String>,
     /// What `--reroute` found: the totals before and after, and whether the change is kept.
     pub rerouted: Option<Total>,
+    /// The vias asked for with `--via`, and the pads joined through each.
+    pub through: Vec<Through>,
     /// The runs of the router in all, and the rounds of routing ripped nets again (of the try
     /// kept, or the last).
     pub runs: usize,
@@ -333,6 +346,7 @@ pub fn route_net(board: &Board, routes: &Routes, ask: &Ask) -> Result<Routed, St
         walls: Vec::new(),
         refused: None,
         rerouted: None,
+        through: Vec::new(),
         runs: 0,
         rounds: 0,
         routes: None,
@@ -477,6 +491,9 @@ impl Runs<'_> {
             }
         }
         let (real, _) = with_routes(self.board, routes)?;
+        if !self.ask.through.is_empty() {
+            return self.through(routes, out);
+        }
         if self.ask.reroute {
             return self.reroute(&real, routes, out);
         }
@@ -1165,6 +1182,25 @@ impl Routed {
                 who.join("; ")
             };
             let _ = writeln!(s, "{}: walled in by {who}", w.line);
+        }
+        for t in &self.through {
+            let _ = writeln!(
+                s,
+                "the via at ({}, {}) on {}{}: {}",
+                um(t.at[0] + by[0]) + 0.0,
+                um(t.at[1] + by[1]) + 0.0,
+                t.layers.join(" to "),
+                if t.added {
+                    ", added"
+                } else {
+                    ", the routes file's"
+                },
+                if t.pads.is_empty() {
+                    "no pad goes through it".to_string()
+                } else {
+                    format!("pad(s) {} joined through it", t.pads.join(", "))
+                }
+            );
         }
         if self.refused.is_none() {
             for (k, n) in self.nets.iter().enumerate() {

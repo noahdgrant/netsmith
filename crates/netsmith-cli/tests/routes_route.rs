@@ -86,3 +86,51 @@ fn routes_route_writes_a_net_and_a_dry_run_writes_nothing() {
     assert_eq!(run.status.code(), Some(1), "{}", said(&run));
     assert!(said(&run).contains("no net `NOPE`"));
 }
+
+/// Issue #1642: `--via` routes a net through a via there; `--dry-run` writes nothing, the JSON
+/// says the via and the pads through it, and a via in another net's copper is refused with that
+/// net named and nothing written.
+#[test]
+fn routes_route_through_a_via_writes_it_and_refuses_one_in_the_way() {
+    let dir = TempDir::new("routes-route-via");
+    for name in ["led.nsm", "led.lock.toml"] {
+        fs::copy(repo().join("examples").join(name), dir.join(name)).unwrap();
+    }
+    let file = dir.join("led.routes.toml");
+
+    let run = route(&dir, &["GND", "--via", "5.78625,1.4", "--dry-run"]);
+    let text = said(&run);
+    assert!(run.status.success(), "{text}");
+    assert!(text.contains("the via at (5.78625, 1.4) on top to bottom, added"), "{text}");
+    assert!(text.contains("joined through it"), "{text}");
+    assert!(!file.exists(), "a dry run writes no file");
+
+    let run = route(&dir, &["GND", "--via", "5.78625,1.4", "--format", "json"]);
+    assert!(run.status.success(), "{}", said(&run));
+    let doc: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+    assert_eq!(doc["written"], true);
+    assert_eq!(doc["through"][0]["at"], serde_json::json!([5.78625, 1.4]));
+    assert_eq!(doc["through"][0]["added"], true);
+    assert_eq!(doc["through"][0]["pads"].as_array().unwrap().len(), 2);
+    let written = fs::read_to_string(&file).unwrap();
+    assert!(written.contains("5.78625"), "{written}");
+
+    // A via in the middle of another net's track is refused, naming the net.
+    let run = route(&dir, &["VCC", "--format", "json"]);
+    assert!(run.status.success(), "{}", said(&run));
+    let doc: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+    let t = &doc["nets"][0]["tracks"][0];
+    let mid = |k: usize| (t["from"][k].as_f64().unwrap() + t["to"][k].as_f64().unwrap()) / 2.0;
+    let written = fs::read_to_string(&file).unwrap();
+    let at = format!("{},{}", mid(0), mid(1));
+    let run = route(&dir, &["GND", "--via", &at]);
+    let text = said(&run);
+    assert_eq!(run.status.code(), Some(1), "{text}");
+    assert!(text.contains("refused") && text.contains("VCC"), "{text}");
+    assert_eq!(fs::read_to_string(&file).unwrap(), written, "a refusal writes nothing");
+
+    // A via is `X,Y` or `X,Y,LAYER,LAYER`.
+    let run = route(&dir, &["GND", "--via", "1,2,top"]);
+    assert_eq!(run.status.code(), Some(2), "{}", said(&run));
+    assert!(said(&run).contains("is not `X,Y` or `X,Y,LAYER,LAYER`"));
+}
