@@ -46,7 +46,7 @@ pub use artwork::{
     Pad as ArtworkPad, PadKind as ArtworkPadKind, PadShape as ArtworkPadShape,
     Primitive as ArtworkPrimitive, Shape as ArtworkShape, StackupLayer as ArtworkStackupLayer,
     Text as ArtworkText, Track as ArtworkTrack, TrackShape, VAlign, Via as ArtworkVia,
-    Zone as ArtworkZone, outline_points,
+    Zone as ArtworkZone, is_terminal_pad, outline_points,
 };
 pub use drc::constraints::{
     BARE_COURTYARD_MARGIN, Constraint, Constraints, Measure as ConstraintMeasure, OneLayerRule,

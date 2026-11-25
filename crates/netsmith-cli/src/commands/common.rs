@@ -8,6 +8,7 @@ use clap::{Args as ClapArgs, ValueEnum};
 use netsmith_check::Loader;
 use netsmith_core::timings;
 use netsmith_fabricate::project::Target;
+use netsmith_fabricate::track_drop::AtCurrent;
 use netsmith_pipeline::Libraries;
 use netsmith_solve::Catalogs;
 use netsmith_tools::findings::{Finding, Report, Severity};
@@ -87,6 +88,43 @@ impl Placing {
             target.project.as_ref(),
             self.routing_objective,
         )
+    }
+}
+
+/// `--at-current`, of `board nets` and `board drc` (issue #1694).
+#[derive(Debug, PartialEq, ClapArgs)]
+pub struct AtCurrents {
+    /// Also report a net's track drop at this current, `NET=A`; repeatable.
+    ///
+    /// A is the net's current, in amperes (`1`, `1.5A`, `500mA`), such as the typical figure of
+    /// a rail whose design current is its worst case. The drop and its share of the budget are
+    /// listed at the design's current and at A: every run carries its design current times A
+    /// over the net's current, so the drop is in proportion. A report only: the findings, the
+    /// widths, `--gate` and the exit code keep the design's current. A net with no track drop
+    /// is an error (exit code 2).
+    #[arg(long, value_name = "NET=A", value_parser = parse_at_current)]
+    pub at_current: Vec<AtCurrent>,
+}
+
+/// Reads one `--at-current`: `NET=A`, A a current above 0 in `A` (the unit may be left out),
+/// `mA` or `uA`.
+fn parse_at_current(text: &str) -> Result<AtCurrent, String> {
+    let (net, value) = text
+        .rsplit_once('=')
+        .filter(|(net, _)| !net.is_empty())
+        .ok_or_else(|| format!("`{text}` is not `NET=A`, such as `3V3=0.5`"))?;
+    let (number, scale) = [("mA", 1e-3), ("uA", 1e-6), ("A", 1.0)]
+        .iter()
+        .find_map(|&(unit, scale)| Some((value.strip_suffix(unit)?, scale)))
+        .unwrap_or((value, 1.0));
+    match number.parse::<f64>() {
+        Ok(n) if n.is_finite() && n > 0.0 => Ok(AtCurrent {
+            net: net.to_string(),
+            current: n * scale,
+        }),
+        _ => Err(format!(
+            "`{value}` is not a current above 0: give amperes (`0.5`, `0.5A`, `500mA`)"
+        )),
     }
 }
 

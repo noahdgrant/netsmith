@@ -128,11 +128,7 @@ pub fn check_package(package: &str, id: &str, footprint: &Footprint) -> PackageC
             known.name, known.source
         )
     };
-    let pads = footprint
-        .pad_numbers()
-        .into_iter()
-        .filter(|n| !n.is_empty())
-        .count();
+    let pads = footprint.terminal_numbers().len();
     if pads != known.pads {
         problems.push(format!(
             "the footprint `{id}` has {pads} pads, but {}",

@@ -219,7 +219,12 @@ fn crossed_parts(
         else {
             continue;
         };
-        let pads = &ours.footprint.pads;
+        let pads: Vec<_> = ours
+            .footprint
+            .pads
+            .iter()
+            .filter(|p| p.is_terminal())
+            .collect();
         let [p, q] = pads.as_slice() else { continue };
         let mirrored = (p.at.x + q.at.x).abs() < 1e-6
             && (p.at.y + q.at.y).abs() < 1e-6

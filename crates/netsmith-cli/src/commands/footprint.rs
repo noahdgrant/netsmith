@@ -200,8 +200,8 @@ fn write_footprint(
     fs::create_dir_all(&target.folder).map_err(|e| format!("{}: {e}", target.folder.display()))?;
     fs::write(&path, &imported.text).map_err(|e| format!("{}: {e}", path.display()))?;
 
-    // Counted as the table counts them: an unnumbered pad (a hole, a paste opening) is none.
-    let pads = read.pad_numbers().iter().filter(|n| !n.is_empty()).count();
+    // Counted as the table counts them: an unnumbered pad (a hole) and a paste opening are none.
+    let pads = read.terminal_numbers().len();
     let mut out = format!(
         "wrote {} ({pads} pad{}",
         relative(root, &path),

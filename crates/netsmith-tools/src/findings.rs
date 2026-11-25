@@ -525,6 +525,10 @@ pub struct BoardOut {
     /// none.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub track_drops: Vec<netsmith_fabricate::track_drop::NetDrop>,
+    /// For `board drc --at-current`: each net it names, its track drop at the design's current
+    /// and at the one given (issue #1694). Left out without the flag.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub track_drops_at_current: Vec<netsmith_fabricate::track_drop::DropAt>,
 }
 
 /// The count of the notes of the run, for each cause, whether or not they are listed.

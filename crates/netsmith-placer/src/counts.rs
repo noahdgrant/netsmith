@@ -4,8 +4,8 @@
 
 use netsmith_pcb::{Board, Rect, Side};
 
-use crate::anneal::fine_pitch;
 use crate::anneal::routing::{chain_nets, find_buses};
+use crate::anneal::{fine_pitch, terminals};
 
 /// How far the escape ring of a fine-pitch part reaches past its pads, in mm (`RING` of the
 /// annealer).
@@ -64,7 +64,7 @@ pub fn routing_counts(board: &Board) -> RoutingCounts {
             .footprint
             .pads
             .iter()
-            .filter(|p| p.drill.is_none())
+            .filter(|p| p.drill.is_none() && p.is_terminal())
             .map(|p| part.pad_bounds(p))
             .reduce(|a, b| a.union(&b))
             .map(|r| r.expanded(RING))
@@ -97,7 +97,7 @@ pub fn routing_counts(board: &Board) -> RoutingCounts {
             for pad in &net.pads {
                 if let Some(i) = index(&pad.refdes) {
                     for (k, q) in parts[i].footprint.pads.iter().enumerate() {
-                        if q.number == pad.number {
+                        if q.number == pad.number && q.is_terminal() {
                             found.push((i, k));
                         }
                     }
@@ -106,7 +106,7 @@ pub fn routing_counts(board: &Board) -> RoutingCounts {
             (planes.contains(&net.name), found)
         })
         .collect();
-    let pads_of: Vec<usize> = parts.iter().map(|p| p.footprint.pads.len()).collect();
+    let pads_of: Vec<usize> = parts.iter().map(terminals).collect();
     for (part, host, ids) in find_buses(&pads, &pads_of) {
         counts.buses += 1;
         if parts[part].side != parts[host].side {

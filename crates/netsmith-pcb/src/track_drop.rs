@@ -620,7 +620,7 @@ impl Board {
                     continue;
                 };
                 let draws = self.draw_of(&c.net, r);
-                for p in part.footprint.pads.iter().filter(|p| p.number == r.number) {
+                for p in part.footprint.pads_numbered(&r.number) {
                     let b = part.pad_bounds(p);
                     pads.push(NetPad {
                         pad: r.clone(),

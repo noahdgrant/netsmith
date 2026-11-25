@@ -68,7 +68,7 @@ pub(super) fn shape_of(
         part.footprint
             .pads
             .iter()
-            .filter(|p| p.drill.is_none())
+            .filter(|p| p.drill.is_none() && p.is_terminal())
             .map(|p| part.pad_bounds(p))
             .reduce(|a, b| a.union(&b))
             .map(|span| span.expanded(RING))
@@ -102,9 +102,19 @@ pub(super) fn shape_of(
     }
 }
 
+/// How many terminal pads a part has: what its escape room and a bus's host are judged by. A
+/// paste aperture is none ([`netsmith_pcb::Pad::is_terminal`]).
+pub(crate) fn terminals(part: &Placed) -> usize {
+    part.footprint
+        .pads
+        .iter()
+        .filter(|p| p.is_terminal())
+        .count()
+}
+
 /// Whether a part is fine-pitch and gets an escape ring: the router's test for escape lanes
-/// (`fine_pitch` in `netsmith_router::route`), on every surface-mount pad and not only the
-/// pads on a net. At least 16 surface-mount pads, two of them 0.55 mm apart or nearer (pads at
+/// (`fine_pitch` in `netsmith_router::route`), on every surface-mount terminal pad (a paste
+/// aperture is none) and not only the pads on a net. At least 16 surface-mount pads, two of them 0.55 mm apart or nearer (pads at
 /// one centre, the pieces of an exposed pad, are not counted apart), facing at least three
 /// sides of the box round them: a QFN or a QFP, not a connector's single row.
 pub(crate) fn fine_pitch(part: &Placed) -> bool {
@@ -112,7 +122,7 @@ pub(crate) fn fine_pitch(part: &Placed) -> bool {
         .footprint
         .pads
         .iter()
-        .filter(|p| p.drill.is_none())
+        .filter(|p| p.drill.is_none() && p.is_terminal())
         .collect();
     if pads.len() < 16 {
         return false;

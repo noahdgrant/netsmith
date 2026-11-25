@@ -422,10 +422,11 @@ fn score(
         .count();
     widths.sort_by(f64::total_cmp);
 
-    // The pad shapes of each net, for "inside a pad".
+    // The pad shapes of each net, for "inside a pad" and the copper's paths.
     let pad_shapes: Vec<(Option<&str>, &netsmith_geom::ArtworkPad, Vec<DrcShape>)> = art
         .pads
         .iter()
+        .filter(|p| p.is_terminal())
         .map(|p| (p.net.as_deref(), p, drc_outline_shapes(&pad_outline(p))))
         .collect();
     // Inside the copper of a pad or a via of the net: a joint there is no corner.
@@ -553,7 +554,7 @@ fn bends(tracks: &[Seg], in_pad: &dyn Fn(Pt, &str, &str) -> bool) -> (Bends, Vec
 /// The shortest tree of straight lines between the centres of each unpoured net's pads.
 fn spanning(art: &Artwork, poured: &[&str]) -> f64 {
     let mut by_net: BTreeMap<&str, Vec<Pt>> = BTreeMap::new();
-    for p in &art.pads {
+    for p in art.pads.iter().filter(|p| p.is_terminal()) {
         if let Some(net) = p.net.as_deref()
             && !net.is_empty()
             && !poured.contains(&net)
@@ -783,10 +784,10 @@ fn pour_pieces(
     )
 }
 
-/// The part a pad belongs to, by name.
+/// How many terminal pads each part has, by its name: a paste aperture is none.
 fn part_pads(art: &Artwork) -> BTreeMap<&str, usize> {
     let mut count = BTreeMap::new();
-    for p in &art.pads {
+    for p in art.pads.iter().filter(|p| p.is_terminal()) {
         *count.entry(p.part.as_str()).or_insert(0) += 1;
     }
     count
@@ -808,8 +809,11 @@ fn decoupling(
         if n != 2 || !is_cap(part) {
             continue;
         }
-        let pads: Vec<&netsmith_geom::ArtworkPad> =
-            art.pads.iter().filter(|p| p.part == part).collect();
+        let pads: Vec<&netsmith_geom::ArtworkPad> = art
+            .pads
+            .iter()
+            .filter(|p| p.part == part && p.is_terminal())
+            .collect();
         let nets: Vec<Option<&str>> = pads.iter().map(|p| p.net.as_deref()).collect();
         let (Some(a), Some(b)) = (nets[0], nets[1]) else {
             continue;

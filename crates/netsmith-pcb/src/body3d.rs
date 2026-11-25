@@ -454,7 +454,9 @@ pub fn header_of_file(footprint: &Footprint) -> Option<Package> {
     }
     let pitch = crate::generate::header::pitch_of(pitch)?;
     let (pin, plastic) = crate::generate::header::family(pitch)?;
-    let pads = &footprint.pads;
+    // The pins' pads: a paste aperture (pin in paste) is no pin.
+    let pads: Vec<&crate::footprint::Pad> =
+        footprint.pads.iter().filter(|p| p.is_terminal()).collect();
     if pads.len() != rows * per_row {
         return None;
     }
@@ -463,13 +465,13 @@ pub fn header_of_file(footprint: &Footprint) -> Option<Package> {
             && p.drill
                 .is_some_and(|d| d.width > 0.0 && (d.width - d.height).abs() < 1e-6)
     };
-    if !pads.iter().all(round) {
+    if !pads.iter().all(|p| round(p)) {
         return None;
     }
     // The pads as steps of the pitch from the first: whole steps, each place once.
     let first = pads[0].at;
     let mut steps = Vec::with_capacity(pads.len());
-    for p in pads {
+    for p in &pads {
         let (i, j) = ((p.at.x - first.x) / pitch, (p.at.y - first.y) / pitch);
         let (ri, rj) = (i.round(), j.round());
         if (i - ri).abs() > 1e-3 || (j - rj).abs() > 1e-3 {
