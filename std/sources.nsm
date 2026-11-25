@@ -382,6 +382,12 @@ enum Chemistry {
 ///   range (`4.2V +/- 50mV`): a charger's regulation voltage must lie within it.
 /// - `.max_charge_current` is the largest charge current the datasheet allows (its standard or
 ///   its fastest charge, as the datasheet gives it, the row's `notes` say which).
+/// - `.discharge_peak_current` is the most current the cell gives when it discharges, as its
+///   datasheet states it (its peak or pulse discharge current), an optional column of the row,
+///   or stated by the board for the current the circuit draws from it. Stated, it is a current
+///   on the nets of `.terminals.pos` and `.terminals.neg`, as a part's stated current is (issue
+///   #1689): those nets carry at least it, so a burst sizes their tracks and vias, though the DC
+///   analysis gives the cell only what the loads draw at their steady state.
 ///
 /// The standard catalog `cell` has no row yet: no cell has a recorded source
 /// (`data/jlcpcb/README.md`). A project adds rows in a file of its own catalog `cell`. The
@@ -419,10 +425,12 @@ generic Cell {
     .float_voltage: Voltage
     /// The largest charge current the datasheet allows.
     .max_charge_current: Current
+    /// The most current it gives when it discharges: a current on the nets of its terminals.
+    .discharge_peak_current: Current optional
 
     .package: Package
     catalog cell {
         .chemistry, .capacity, .internal_resistance, .charge_temperature, .discharge_temperature,
-        .float_voltage, .max_charge_current, .package
+        .float_voltage, .max_charge_current, .package, .discharge_peak_current optional
     }
 }
