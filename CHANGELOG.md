@@ -1,5 +1,74 @@
 # Changelog
 
+## [0.10.0](https://github.com/noahdgrant/netsmith/compare/v0.9.0...v0.10.0) (2026-11-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **design:** a load's peak current sizes its copper, its rms the heat ([#1720](https://github.com/noahdgrant/netsmith/issues/1720))
+* **lang:** an rms current beside the peak sizes copper for heat, the drop stays at the peak ([#1715](https://github.com/noahdgrant/netsmith/issues/1715))
+* **drc:** a storage element's discharge_peak_current is a current on its terminals' nets ([#1711](https://github.com/noahdgrant/netsmith/issues/1711))
+* **check:** a pinout naming a paste-only pad number is reported at the pinout check ([#1710](https://github.com/noahdgrant/netsmith/issues/1710))
+* **drc:** one solder_mask_bridge line per part whose pads no mask web fits between ([#1699](https://github.com/noahdgrant/netsmith/issues/1699))
+* **check:** refuse a pad setting on a module's port or a rail ([#1680](https://github.com/noahdgrant/netsmith/issues/1680))
+* **routes:** measure each leg of a net into a pad to the pad's centre ([#1677](https://github.com/noahdgrant/netsmith/issues/1677))
+* **check:** board check, build and drc make fab's placement check ([#1659](https://github.com/noahdgrant/netsmith/issues/1659))
+
+### Features
+
+* **board:** board resistance gives the DC resistance of a net's copper between two pads ([#1716](https://github.com/noahdgrant/netsmith/issues/1716)) ([3310d8e](https://github.com/noahdgrant/netsmith/commit/3310d8ee62893f9941678afce94d35663a976b86))
+* **catalog:** check a row's package against the footprint it names ([#1663](https://github.com/noahdgrant/netsmith/issues/1663)) ([e4d1acb](https://github.com/noahdgrant/netsmith/commit/e4d1acb762b2c3e578235e41d243b0b87ae83dbb)), closes [#1658](https://github.com/noahdgrant/netsmith/issues/1658)
+* **catalog:** measure a footprint's body apart from the leads it draws on F.Fab ([#1671](https://github.com/noahdgrant/netsmith/issues/1671)) ([6e0ef9c](https://github.com/noahdgrant/netsmith/commit/6e0ef9c9107f86dc4c0ec48a60142f7c8fabdc58)), closes [#1662](https://github.com/noahdgrant/netsmith/issues/1662)
+* **cli:** board check-footprint checks one footprint's pads against the process ([#1687](https://github.com/noahdgrant/netsmith/issues/1687)) ([9bb168e](https://github.com/noahdgrant/netsmith/commit/9bb168e1176bfb9460640efe230088130d7f50d2)), closes [#1684](https://github.com/noahdgrant/netsmith/issues/1684)
+* **cli:** board nets --decoupling lists each decoupling capacitor's loop, with --compare ([#1732](https://github.com/noahdgrant/netsmith/issues/1732)) ([a6c28b6](https://github.com/noahdgrant/netsmith/commit/a6c28b65567d0ad30adc865f819ea891aee2f987)), closes [#1730](https://github.com/noahdgrant/netsmith/issues/1730)
+* **drc:** exposed_pad_paste notes an exposed pad with no solder paste ([#1695](https://github.com/noahdgrant/netsmith/issues/1695)) ([7a841f2](https://github.com/noahdgrant/netsmith/commit/7a841f22dc707bfb40d595860856420df503f44d))
+* **drc:** one solder_mask_bridge line per part whose pads no mask web fits between ([#1699](https://github.com/noahdgrant/netsmith/issues/1699)) ([fc1f8ed](https://github.com/noahdgrant/netsmith/commit/fc1f8ed7bff7fc75a9a6bc4bfe275a80065caaa8))
+* **drc:** track_current names what stops the widening and the width it allows ([#1700](https://github.com/noahdgrant/netsmith/issues/1700)) ([4fbe426](https://github.com/noahdgrant/netsmith/commit/4fbe426c07ce51be229e678a5da841437116fad1)), closes [#1691](https://github.com/noahdgrant/netsmith/issues/1691)
+* **fab:** board fab --all-refusals lists every refusal a fab would make and writes no package ([#1719](https://github.com/noahdgrant/netsmith/issues/1719)) ([21aedd9](https://github.com/noahdgrant/netsmith/commit/21aedd9d9361018e7924a8b332e3b0810a861e96)), closes [#1707](https://github.com/noahdgrant/netsmith/issues/1707)
+* **fill:** board fill --islands --compare lists the regions new, gone or changed ([#1717](https://github.com/noahdgrant/netsmith/issues/1717)) ([d4ecc11](https://github.com/noahdgrant/netsmith/commit/d4ecc11b5dbb5be640a02226a6dbe65725e969f9)), closes [#1705](https://github.com/noahdgrant/netsmith/issues/1705)
+* **fill:** board fill --islands lists each region of a fill and what cuts one off ([#1660](https://github.com/noahdgrant/netsmith/issues/1660)) ([4914bfd](https://github.com/noahdgrant/netsmith/commit/4914bfd2f78d955abdf59b13d81240d74f81968c)), closes [#1655](https://github.com/noahdgrant/netsmith/issues/1655)
+* **lang:** an rms current beside the peak sizes copper for heat, the drop stays at the peak ([#1715](https://github.com/noahdgrant/netsmith/issues/1715)) ([5fb5fcc](https://github.com/noahdgrant/netsmith/commit/5fb5fcc88b667740495a3b26071918ef212ad973)), closes [#1690](https://github.com/noahdgrant/netsmith/issues/1690)
+* **layout:** a part's underside is several areas, each with its depth, a solder allowance and a margin ([#1734](https://github.com/noahdgrant/netsmith/issues/1734)) ([d340d12](https://github.com/noahdgrant/netsmith/commit/d340d12cde3a2604696a2c829782cdfe16912e2f)), closes [#1726](https://github.com/noahdgrant/netsmith/issues/1726)
+* **layout:** layout fit ranks legal places near a pad and says why nearer places were refused ([#1731](https://github.com/noahdgrant/netsmith/issues/1731)) ([56ca872](https://github.com/noahdgrant/netsmith/commit/56ca872ce31ce59d0611255faf1793ba4ee517b3))
+* **layout:** layout move --turn DEG turns a part, with the move's checks and route report ([#1713](https://github.com/noahdgrant/netsmith/issues/1713)) ([5726453](https://github.com/noahdgrant/netsmith/commit/57264534623081e8a54ed318573fdbed43a927a3)), closes [#1704](https://github.com/noahdgrant/netsmith/issues/1704)
+* **lock:** the lock diff says a row was taken for a hand pick, with its place in the source ([#1718](https://github.com/noahdgrant/netsmith/issues/1718)) ([5bec361](https://github.com/noahdgrant/netsmith/commit/5bec36157b7b928c9287fc4dda43a73c4d88fa39)), closes [#1706](https://github.com/noahdgrant/netsmith/issues/1706)
+* **lock:** the pick lock records a hash of each part's footprint ([#1697](https://github.com/noahdgrant/netsmith/issues/1697)) ([6b8aa3f](https://github.com/noahdgrant/netsmith/commit/6b8aa3f9ac9d6aea23d4e1bbb14e38c67b69e063)), closes [#1683](https://github.com/noahdgrant/netsmith/issues/1683)
+* **lock:** the pick lock records each part's designator, and new parts take the next free number ([#1664](https://github.com/noahdgrant/netsmith/issues/1664)) ([03eaf7b](https://github.com/noahdgrant/netsmith/commit/03eaf7bd1de3decb36a9b2cad1b6f5852e18f070)), closes [#1653](https://github.com/noahdgrant/netsmith/issues/1653)
+* **project:** say which netsmith release a manifest it cannot read is written for ([#1676](https://github.com/noahdgrant/netsmith/issues/1676)) ([8788e0a](https://github.com/noahdgrant/netsmith/commit/8788e0a71b8281a4490f32c813db6df59e1c0230)), closes [#1673](https://github.com/noahdgrant/netsmith/issues/1673)
+* **project:** warn when netsmith's minor release is not the project's ([#1672](https://github.com/noahdgrant/netsmith/issues/1672)) ([f25b2eb](https://github.com/noahdgrant/netsmith/commit/f25b2ebbaaef027a1f1615081298f9b2ca5d1081)), closes [#1657](https://github.com/noahdgrant/netsmith/issues/1657)
+* **routes:** routes check-via says whether a via fits at a place and what blocks it by how much ([#1650](https://github.com/noahdgrant/netsmith/issues/1650)) ([da2b215](https://github.com/noahdgrant/netsmith/commit/da2b215a6d905acacbb7bb79eacdfb736f0034dd)), closes [#1643](https://github.com/noahdgrant/netsmith/issues/1643)
+* **routes:** routes fanout fans out a fine-pitch part as a group to via sites ([#1661](https://github.com/noahdgrant/netsmith/issues/1661)) ([2db82cc](https://github.com/noahdgrant/netsmith/commit/2db82cc61d099ad479f66bd13c3345ab8a604c13))
+* **routes:** routes move-via moves a via with every layer's tracks that end in it ([#1648](https://github.com/noahdgrant/netsmith/issues/1648)) ([037cbf2](https://github.com/noahdgrant/netsmith/commit/037cbf2c15deb16eb57474813abb39ca08c6e1ae)), closes [#1644](https://github.com/noahdgrant/netsmith/issues/1644)
+* **routes:** routes route --layer routes a net on an inner signal layer with vias at the ends ([#1665](https://github.com/noahdgrant/netsmith/issues/1665)) ([7d7ee4f](https://github.com/noahdgrant/netsmith/commit/7d7ee4ff05168bcf2f1ca8a1ebaa26db431438b5)), closes [#1656](https://github.com/noahdgrant/netsmith/issues/1656)
+* **routes:** routes route --region rips up a box and routes what it carried again ([#1651](https://github.com/noahdgrant/netsmith/issues/1651)) ([3f9b71f](https://github.com/noahdgrant/netsmith/commit/3f9b71fafeb5b63dc1af06a523f97482752e232a))
+* **routes:** routes route --region rips up a box and routes what it carried again with the negotiated router ([3f9b71f](https://github.com/noahdgrant/netsmith/commit/3f9b71fafeb5b63dc1af06a523f97482752e232a)), closes [#1641](https://github.com/noahdgrant/netsmith/issues/1641)
+* **routes:** routes route --via connects a net through a pinned via ([#1652](https://github.com/noahdgrant/netsmith/issues/1652)) ([7f534cc](https://github.com/noahdgrant/netsmith/commit/7f534cc3cde4262e9de21a0680740df7395cdff6))
+* **routes:** routes sites says who holds a site and which sites cut a fill into islands ([#1678](https://github.com/noahdgrant/netsmith/issues/1678)) ([625a880](https://github.com/noahdgrant/netsmith/commit/625a880fff260dd6dbf579ca69118766582d8b2f)), closes [#1668](https://github.com/noahdgrant/netsmith/issues/1668) [#1669](https://github.com/noahdgrant/netsmith/issues/1669)
+* **routes:** routes widen widens each track to the widest that fits and names what holds it ([#1709](https://github.com/noahdgrant/netsmith/issues/1709)) ([f1e103a](https://github.com/noahdgrant/netsmith/commit/f1e103a607f6fd521fefc436ccac9676f3fb2b00))
+* **routes:** track drops at a second current with --at-current ([#1708](https://github.com/noahdgrant/netsmith/issues/1708)) ([caaf250](https://github.com/noahdgrant/netsmith/commit/caaf250b56308185f1d1c963e8dfbb1f6728b372)), closes [#1694](https://github.com/noahdgrant/netsmith/issues/1694)
+
+
+### Bug Fixes
+
+* **check:** a pinout naming a paste-only pad number is reported at the pinout check ([#1710](https://github.com/noahdgrant/netsmith/issues/1710)) ([ec64364](https://github.com/noahdgrant/netsmith/commit/ec643644389d1e573105a2162bb1caccaa7a6d9a)), closes [#1702](https://github.com/noahdgrant/netsmith/issues/1702)
+* **check:** board check, build and drc make fab's placement check ([#1659](https://github.com/noahdgrant/netsmith/issues/1659)) ([8c55bf4](https://github.com/noahdgrant/netsmith/commit/8c55bf4898b88739691d713dfb23267d60e05f7e)), closes [#1654](https://github.com/noahdgrant/netsmith/issues/1654)
+* **check:** refuse a pad setting on a module's port or a rail ([#1680](https://github.com/noahdgrant/netsmith/issues/1680)) ([bd90c7e](https://github.com/noahdgrant/netsmith/commit/bd90c7eb64c8a9d32578f1418ebff8fcd59f0c42)), closes [#1674](https://github.com/noahdgrant/netsmith/issues/1674)
+* **ci:** main green again: level tests on this release, pin-map lock with designators, no issue number in api.ts ([#1681](https://github.com/noahdgrant/netsmith/issues/1681)) ([373abe0](https://github.com/noahdgrant/netsmith/commit/373abe0647333ebc314f420f61257b2b1b61450f)), closes [#1679](https://github.com/noahdgrant/netsmith/issues/1679)
+* **design:** a load's peak current sizes its copper, its rms the heat ([#1720](https://github.com/noahdgrant/netsmith/issues/1720)) ([c09b903](https://github.com/noahdgrant/netsmith/commit/c09b90391d20c12eea19643dc0d06046fec0cf55)), closes [#1712](https://github.com/noahdgrant/netsmith/issues/1712)
+* **drc:** a storage element's discharge_peak_current is a current on its terminals' nets ([#1711](https://github.com/noahdgrant/netsmith/issues/1711)) ([f26fc76](https://github.com/noahdgrant/netsmith/commit/f26fc76ebdb1c9ae1c20b983de54d402e5e7f5a2)), closes [#1689](https://github.com/noahdgrant/netsmith/issues/1689)
+* **fab:** paste-only apertures are not pads in the pitch check ([#1701](https://github.com/noahdgrant/netsmith/issues/1701)) ([e351fa3](https://github.com/noahdgrant/netsmith/commit/e351fa378c738f0aace53d52ac67fd92a81c2110)), closes [#1693](https://github.com/noahdgrant/netsmith/issues/1693)
+* **fill:** the regulator-ground warning counts the fill that joins the pad and names the pin that has it ([#1675](https://github.com/noahdgrant/netsmith/issues/1675)) ([5487a27](https://github.com/noahdgrant/netsmith/commit/5487a2768ec8da9c7d83bb3f9f38d632836a0c60)), closes [#1666](https://github.com/noahdgrant/netsmith/issues/1666) [#1667](https://github.com/noahdgrant/netsmith/issues/1667)
+* **mcp:** make room in the tool list and limit each help line and tool ([#1723](https://github.com/noahdgrant/netsmith/issues/1723)) ([d019c55](https://github.com/noahdgrant/netsmith/commit/d019c55a730adee71b5fd4cdf98465d87863d4ee)), closes [#1721](https://github.com/noahdgrant/netsmith/issues/1721)
+* **placer:** a designator keeps its place while its part and what lies round it do not move, and fab lists the ones off their side ([#1735](https://github.com/noahdgrant/netsmith/issues/1735)) ([d7253fb](https://github.com/noahdgrant/netsmith/commit/d7253fbb49f9a07ff79a5071216f55564cd2386a)), closes [#1729](https://github.com/noahdgrant/netsmith/issues/1729)
+* **routes:** measure each leg of a net into a pad to the pad's centre ([#1677](https://github.com/noahdgrant/netsmith/issues/1677)) ([cab79d8](https://github.com/noahdgrant/netsmith/commit/cab79d899fc5641e0131104c5425d9ca70f56419)), closes [#1670](https://github.com/noahdgrant/netsmith/issues/1670)
+
+
+### Documentation
+
+* **migrating:** changes of 0.10.0 ([#1736](https://github.com/noahdgrant/netsmith/issues/1736)) ([532835f](https://github.com/noahdgrant/netsmith/commit/532835fc342eed8100f944e119714a332c61e4e1))
+* record that no page states a least space between paste openings ([#1714](https://github.com/noahdgrant/netsmith/issues/1714)) ([5abbe42](https://github.com/noahdgrant/netsmith/commit/5abbe4287e3257154eb1af9390bde3dd1772f4aa))
+* say how to finish issues and merge batches in AGENTS.md ([#1733](https://github.com/noahdgrant/netsmith/issues/1733)) ([a712c01](https://github.com/noahdgrant/netsmith/commit/a712c017425218628d43753d8dedebfffd690234))
+
 ## [0.9.0](https://github.com/noahdgrant/netsmith/compare/v0.8.0...v0.9.0) (2026-11-24)
 
 
