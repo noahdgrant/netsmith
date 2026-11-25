@@ -127,7 +127,7 @@ pub use fill_islands::{
 };
 pub use fill_report::{
     ClearedPad, FillArea, FillIsland, FillPad, FillPolygon, FillReport, FillSource, JoinCounts,
-    JoinKind, RegulatorGround, StarvedPad, UnjoinablePad,
+    JoinKind, RegulatorFill, RegulatorGround, StarvedPad, UnjoinablePad,
 };
 pub use fit_report::{FitReport, PartRef, Size};
 pub use footprint::{

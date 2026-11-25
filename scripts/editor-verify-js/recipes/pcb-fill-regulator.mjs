@@ -1,7 +1,7 @@
 // The warning of a switching regulator's ground pad in the Summary tab of the PCB view (issues 1586 and 1635):
-// a ground pad of a part that provides `BuckIc` that a pour holds and does not join solid is listed under
-// "Pads in the pours", with the pin to state `.pour_connection &= PadConnection::Solid` on, as
-// `netsmith board fill` warns of it. The list is the server's (`regulatorGrounds` of `GET /api/pcb/fill`).
+// a ground pad of a part that provides `BuckIc` that no fill of its net on its layer joins solid is listed under
+// "Pads in the pours", with how each fill holds it and the pin that has the pad to state
+// `.pour_connection &= PadConnection::Solid` on (issues 1666 and 1667), in the words `netsmith board fill` warns with. The list is the server's (`regulatorGrounds` of `GET /api/pcb/fill`).
 import { whenIdle } from '../settle.mjs';
 
 export const fixture = 'buck_pours';
@@ -30,7 +30,7 @@ export async function run(tools) {
   await warning.scrollIntoViewIfNeeded();
   await whenIdle(page);
   const text = await warning.innerText();
-  expect(text.includes('the ground of the switching regulator reg.ic') && text.includes(`${ground.joinedSpokes} of ${ground.spokes} spokes`), `what is wrong with it (${text})`);
-  expect(text.includes('.pour_connection &= PadConnection::Solid') && text.endsWith('on its pin reg.ic.vin.neg'), `what to state, and on which pin (${text})`);
+  expect(text.includes('the ground of the switching regulator reg.ic') && text.includes(`the pour holds it on a thermal relief, ${ground.joinedSpokes} of ${ground.spokes} spokes`), `what is wrong with it (${text})`);
+  expect(ground.pin === 'reg.ic.vin.neg' && text.includes(`.pour_connection &= PadConnection::Solid on its pin ${ground.pin}, which reaches`), `what to state, and on which pin (${text})`);
   await shot('fill-regulator-ground');
 }

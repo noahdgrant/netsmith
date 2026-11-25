@@ -239,3 +239,162 @@ fn the_fill_says_a_relief_another_fill_of_its_net_joins() {
         "{joins:?}: {fill:?}"
     );
 }
+
+/// Two buck stages on one ground, each IC (an invented one) with its ground on two pins, `GND`
+/// (`.vin.neg`, pad 6) and `GND2` (`.gnd2`, pad 7), on a board poured with ground on both faces.
+const TWO_GROUND: &str = r#"//! Two buck stages on one ground, each IC with its ground on two pins, on a two-layer board poured
+//! with ground on both faces: for the warning of a switching regulator's ground pad on a relief
+//! and the pin it names (issue #1667).
+
+import std::mfg::jlcpcb::TwoLayer
+import std::mfg::stackup::PadConnection
+import std::parts::connector::Header1x2
+import std::parts::passive::Capacitor
+import std::parts::regulator::{Buck, BuckIc}
+import std::sources::Rail
+
+/// An invented buck IC in an SOIC-8 with its ground on two pins: `GND` (pad 6) and `GND2`
+/// (pad 7). Not a real part.
+part TwoGroundBuck provides BuckIc {
+    .vref &= 0.8V +/- 1%
+    .fsw &= 1.2MHz +/- 15%
+    .min_input_voltage &= 4.5V
+    .max_input_voltage &= 60V
+    .max_output_current &= 3A
+    .efficiency &= 0.85..0.95
+    .min_inductance &= 1.5uH
+    .min_inductor_saturation &= 3A
+    .max_inductor_dcr &= 0.1ohm
+    .min_input_capacitance &= 2uF
+    .min_output_capacitance &= 10uF
+    .vin.current == -.sw.current * .sw.voltage / (.vin.voltage * .efficiency)
+    dc switching_regulator .vin .sw .efficiency
+
+    .gnd2 ~ .vin.neg
+
+    pins {
+        //  pin     kind     name   pads
+        .bst     passive "BST"  "1" required
+        .vin.pos power   "VIN"  "2"
+        .en      input   "EN"   "3"
+        .pg      output  "PG"   "4"
+        .fb      input   "FB"   "5"
+        .vin.neg power   "GND"  "6"
+        .gnd2    power   "GND2" "7"
+        .sw.pos  power   "SW"   "8"
+    }
+
+    .package: Package
+    .package &= "SOIC-8"
+
+    support {
+        .boost: Capacitor { .capacitance &= 100nF +/- 20% }
+        .bst ~> .boost ~> .sw.pos
+        .en ~ .vin.pos
+    }
+}
+
+board TwoGround {
+    /// JLCPCB's two-layer process, both faces poured with ground.
+    .process: TwoLayer { .stackup.thickness &= 1.6mm; .top.net &= "GND"; .bottom.net &= "GND" }
+
+    .input: Rail { .voltage &= 12V +/- 5%; .pos.net &= "VIN"; .neg.net &= "GND" }
+    .out_a: Rail { .pos.net &= "5V"; .current &= 0mA..500mA }
+    .out_b: Rail { .pos.net &= "3V3"; .current &= 0mA..500mA }
+
+    .a: Buck<TwoGroundBuck> { .vout.voltage &= 5V +/- 5% }
+    .b: Buck<TwoGroundBuck> { .vout.voltage &= 3.3V +/- 5% }
+    .input ~ .a.vin
+    .input ~ .b.vin
+    .a.vout ~ .out_a
+    .b.vout ~ .out_b
+
+    .power_in: Header1x2
+    .power_a: Header1x2
+    .power_b: Header1x2
+    .input.pos ~ .power_in.p1
+    .input.neg ~ .power_in.p2
+    .out_a.pos ~ .power_a.p1
+    .out_a.neg ~ .power_a.p2
+    .out_b.pos ~ .power_b.p1
+    .out_b.neg ~ .power_b.p2
+}
+"#;
+
+/// A project of [`TWO_GROUND`] with `extra` added to the board's body.
+fn two_ground_project(name: &str, extra: &str) -> (TempDir, Workspace) {
+    let root = TempDir::new(&format!("editor-fill-{name}"));
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(root.join("netsmith.toml"), "[project]\nname = \"fill\"\n").unwrap();
+    // The IC is drawn from its pin table, on a footprint a generator answers.
+    fs::write(
+        root.join("kicad.toml"),
+        "[[part]]\nkind = \"TwoGroundBuck\"\npackage = \"SOIC-8\"\ndefault = true\nfootprint = \"Package_SO:SOIC-8_3.9x4.9mm_P1.27mm\"\n",
+    )
+    .unwrap();
+    let source = TWO_GROUND.replace(
+        "    .b.vout ~ .out_b\n",
+        &format!("    .b.vout ~ .out_b\n{extra}"),
+    );
+    assert!(source.contains(extra), "the source moved");
+    fs::write(root.join("src/main.nsm"), source).unwrap();
+    let editor = Workspace::open(Target::resolve_from(&root, None).unwrap())
+        .unwrap_or_else(|e| panic!("{e}"));
+    (root, editor)
+}
+
+/// Issue #1667: each warning of a regulator's ground pad names the IC's pin that has the pad,
+/// and stating `Solid` on that pin, as the warning says, clears it.
+#[test]
+fn following_each_regulator_ground_warning_clears_it() {
+    let (_root, editor) = two_ground_project("two-ground", "");
+    let fill = editor.pcb_fill("TwoGround").unwrap();
+    let mut pins: Vec<(String, String, String)> = fill
+        .regulator_grounds
+        .iter()
+        .map(|g| (g.path.clone(), g.pad.clone(), g.pin.clone()))
+        .collect();
+    pins.sort();
+    assert_eq!(
+        pins,
+        [
+            ("a.ic".into(), "6".into(), "a.ic.vin.neg".into()),
+            ("a.ic".into(), "7".into(), "a.ic.gnd2".into()),
+            ("b.ic".into(), "6".into(), "b.ic.vin.neg".into()),
+            ("b.ic".into(), "7".into(), "b.ic.gnd2".into()),
+        ],
+        "{fill:?}"
+    );
+    for g in &fill.regulator_grounds {
+        assert_eq!(g.pin_pads, std::slice::from_ref(&g.pad), "{g:?}");
+        assert!(
+            g.warning.contains(&format!(
+                "join it solid with `.pour_connection &= PadConnection::Solid` on its pin `{}`",
+                g.pin
+            )),
+            "{}",
+            g.warning
+        );
+        let (_root, followed) = two_ground_project(
+            "two-ground-followed",
+            &format!(
+                "    .{}.pour_connection &= PadConnection::Solid\n",
+                g.pin
+            ),
+        );
+        let after = followed.pcb_fill("TwoGround").unwrap();
+        assert!(
+            !after
+                .regulator_grounds
+                .iter()
+                .any(|a| (&a.part, &a.pad, &a.layer) == (&g.part, &g.pad, &g.layer)),
+            "stating `Solid` on `{}` clears the warning of {}.{}: {:?}",
+            g.pin,
+            g.part,
+            g.pad,
+            after.regulator_grounds
+        );
+        // And it reaches that pad alone of the four.
+        assert_eq!(after.regulator_grounds.len(), 3, "{:?}", after.regulator_grounds);
+    }
+}

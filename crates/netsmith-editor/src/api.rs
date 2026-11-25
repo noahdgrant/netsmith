@@ -2603,6 +2603,7 @@ pub fn typescript() -> String {
         FillArea,
         FillStarved,
         FillUnjoinable,
+        FillRegulatorFill,
         FillRegulatorGround,
         PcbFill,
         StitchingVia,

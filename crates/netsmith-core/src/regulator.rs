@@ -48,6 +48,29 @@ pub struct SwitchingRegulator {
 pub struct RegulatorPin {
     pub net: String,
     pub pads: Vec<String>,
+    /// The IC's pin of each of `pads`, in the same order, by the name the part declares it
+    /// (`vin.neg`, `gnd2`): a ground may be on several pins of the IC, and a pin's own setting
+    /// (`.pour_connection`) reaches its pads and no other's. Empty where it is not known.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pins: Vec<String>,
+}
+
+impl RegulatorPin {
+    /// The IC's pin that has `pad`, by the name the part declares it, if it is known.
+    pub fn pin_of(&self, pad: &str) -> Option<&str> {
+        let i = self.pads.iter().position(|p| p == pad)?;
+        self.pins.get(i).map(String::as_str)
+    }
+
+    /// The pads of the IC's pin `pin`, in the order of `pads`.
+    pub fn pads_of(&self, pin: &str) -> Vec<&str> {
+        self.pads
+            .iter()
+            .zip(&self.pins)
+            .filter(|(_, p)| *p == pin)
+            .map(|(pad, _)| pad.as_str())
+            .collect()
+    }
 }
 
 /// A capacitor on a pin of the IC that is none of its roles.
@@ -100,6 +123,7 @@ pub fn switching_regulators(design: &Design) -> Vec<SwitchingRegulator> {
             Some(RegulatorPin {
                 net: net.to_string(),
                 pads: pin.pads.clone(),
+                pins: vec![pin.name.clone(); pin.pads.len()],
             })
         };
         let (Some(vin), Some(gnd), Some(sw)) = (role("vin.pos"), role("vin.neg"), role("sw.pos"))
@@ -113,6 +137,7 @@ pub fn switching_regulators(design: &Design) -> Vec<SwitchingRegulator> {
                 for pad in &pin.pads {
                     if net_of(&part.refdes, pad) == Some(r.net.as_str()) && !r.pads.contains(pad) {
                         r.pads.push(pad.clone());
+                        r.pins.push(pin.name.clone());
                     }
                 }
             }

@@ -2587,7 +2587,8 @@ mod tests {
     use super::*;
     use netsmith_pcb::{
         ClearedPad, FillArea, FillIsland, FillPad, FillPolygon, FillReport, FillSource, Glimpse,
-        GlimpsePart, JoinCounts, JoinKind, Pt, Rect, RegulatorGround, StarvedPad, UnjoinablePad,
+        GlimpsePart, JoinCounts, JoinKind, Pt, Rect, RegulatorFill, RegulatorGround, StarvedPad,
+        UnjoinablePad,
     };
     use std::sync::{Arc, Mutex};
 
@@ -2744,6 +2745,17 @@ mod tests {
                 joined_spokes: Some(1),
                 starved: true,
                 stated_by: Some(word()),
+                pin: word(),
+                pin_pads: vec![word()],
+                fills: vec![RegulatorFill {
+                    source: FillSource::Pour,
+                    join: JoinKind::Thermal,
+                    joined: true,
+                    spokes: Some(4),
+                    joined_spokes: Some(1),
+                    starved: true,
+                }],
+                warning: word(),
             }],
         };
         let mut printed = BTreeSet::new();

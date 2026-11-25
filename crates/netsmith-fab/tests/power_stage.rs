@@ -13,6 +13,7 @@ fn pin(net: &str, pads: &[&str]) -> RegulatorPin {
     RegulatorPin {
         net: net.to_string(),
         pads: pads.iter().map(|p| p.to_string()).collect(),
+        pins: Vec::new(),
     }
 }
 
