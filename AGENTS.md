@@ -41,6 +41,11 @@ A part number goes into a catalog only with a recorded source (`data/jlcpcb/READ
 Stage files by explicit path when committing, so other people's in-progress files stay out.
 Write commit messages (and pull request titles) as [Conventional Commits](https://www.conventionalcommits.org): `type(scope): summary`, with a type such as `feat`, `fix`, `docs`, `refactor`, `test`, `ci` or `chore`, and `!` after the type for a breaking change. A change that makes source, a file beside it or a command line that worked on the last release an error has `!` after its type and adds an entry under _Unreleased_ in `docs/MIGRATING.md` (the error, the old and the new spelling, the ADR) in the same pull request; the `PR title` workflow fails a `!` title without one (ADR 0134). Pull requests are squash-merged, so the title is the commit on main: the `pr-title` check (`.github/workflows/pr-title.yml`) fails a title that is not a Conventional Commit, and release-please (`.github/workflows/release-please.yml`) reads the commits on main to open the release pull request with the next version and the changelog.
 
+## Orchestrating issue work
+
+- Each agent finishes its whole issue, with a pull request that closes it (`Closes #N`). It stops short only when the rest needs the owner's decision or a design it can't settle alone, and then it opens a `status:ready-for-agent` issue that states exactly what is left.
+- Merge many issues' pull requests in batches. Let 5 to 10 open, merge them together, and let the run on main, which runs everything, check them. Between merges, rebase the next pull request onto the new main and merge it without waiting for its CI, checking only `cargo check` or the CLI table tests locally; conflicts in the shared command table are usually adjacent added lines, so keep both. Agents work on the next batch while main runs, and it merges once main is green. A red main is fixed first, and a pull request that fails on its own waits for its fix.
+
 ## Skills
 
 Agent skills are in `.agents/skills/<name>/SKILL.md`; `.claude/skills` links to that folder.
