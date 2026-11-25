@@ -166,6 +166,13 @@ pub struct Carrying {
     pub width: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub needed_width: Option<f64>,
+    /// For a track (issue #1691): the widest it may be drawn where it lies, up to the width
+    /// needed, mm, and each thing that holds it narrower, the one that allows least first (empty,
+    /// and left out, when the width needed fits).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub widest: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub held_by: Vec<Holder>,
     /// The vias side by side a cluster has, and how many its current needs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vias: Option<usize>,
@@ -181,6 +188,52 @@ pub struct Carrying {
     pub tolerance: Option<f64>,
 }
 
+/// A thing that holds a track narrower than its current needs (issue #1691), as `routes sites`
+/// names the copper that holds a site.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Holder {
+    /// Its net, `None` for a thing of no net (a hole of no pad, the edge, a rule area).
+    pub net: Option<String>,
+    /// `track`, `via`, `pad`, `teardrop`, `drawing`, `copper`, `hole`, `edge`, `mask_opening`
+    /// or `rule_area`.
+    pub what: String,
+    /// The thing as the check names it (`Track [GND] on F.Cu, length 1.0000 mm`).
+    pub item: String,
+    /// The part it belongs to, and the pad.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub part: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pad: Option<String>,
+    /// Its point nearest the track's centre line, mm in the frame of the board file, as the
+    /// finding's `place`.
+    pub at: [f64; 2],
+    /// The rule that keeps the space (`clearance`, `hole_clearance`, `hole_to_track`,
+    /// `copper_edge_clearance`, `mask_to_track`, `items_not_allowed`).
+    pub rule: String,
+    /// The space the rule asks and the space from the track as drawn, mm.
+    pub required: f64,
+    pub measured: f64,
+    /// The widest the track may be drawn and keep that space, mm.
+    pub width: f64,
+}
+
+impl From<&netsmith_geom::DrcLimit> for Holder {
+    fn from(l: &netsmith_geom::DrcLimit) -> Holder {
+        Holder {
+            net: l.item.net.clone(),
+            what: l.kind.to_string(),
+            item: l.item.what.clone(),
+            part: l.item.part.clone(),
+            pad: l.item.pad.clone(),
+            at: [l.at.x, l.at.y],
+            rule: l.rule.id().to_string(),
+            required: l.distance.required,
+            measured: l.distance.measured,
+            width: l.width,
+        }
+    }
+}
+
 impl From<&netsmith_geom::DrcCarrying> for Carrying {
     fn from(c: &netsmith_geom::DrcCarrying) -> Carrying {
         Carrying {
@@ -188,6 +241,8 @@ impl From<&netsmith_geom::DrcCarrying> for Carrying {
             current_from: c.current_from.clone(),
             width: c.width,
             needed_width: c.needed_width,
+            widest: c.widest,
+            held_by: c.held_by.iter().map(Holder::from).collect(),
             vias: c.vias,
             needed_vias: c.needed_vias,
             copper: c.copper,
@@ -593,6 +648,7 @@ mod tests {
             current_from: "rail `a` 2.5 A".to_string(),
             width: Some(0.2),
             needed_width: Some(0.55),
+            widest: Some(0.55),
             copper: Some(0.035),
             rise: Some(10.0),
             tolerance: Some(0.2),
@@ -609,6 +665,48 @@ mod tests {
             (0.035.into(), 10.0.into())
         );
         assert!(json.get("vias").is_none(), "{json}");
+        // Issue #1691: the widest width and nothing that holds it, when the width fits.
+        assert_eq!(json["widest"], 0.55);
+        assert!(json.get("held_by").is_none(), "{json}");
+        let held = finding(Some(DrcCarrying {
+            width: Some(0.2),
+            needed_width: Some(0.55),
+            widest: Some(0.3),
+            held_by: vec![netsmith_geom::DrcLimit {
+                item: netsmith_geom::DrcItem {
+                    what: "Track [Q] on F.Cu, length 4.0000 mm".to_string(),
+                    at: Default::default(),
+                    part: None,
+                    pad: None,
+                    net: Some("Q".to_string()),
+                },
+                kind: "track",
+                rule: DrcRule::Clearance,
+                at: netsmith_geom::Pt::new(1.0, 2.0),
+                distance: netsmith_geom::DrcDistance {
+                    required: 0.127,
+                    measured: 0.2,
+                },
+                width: 0.3,
+            }],
+            ..DrcCarrying::default()
+        }));
+        let json = serde_json::to_value(of_drc_finding(&held, None)).unwrap();
+        let h = &json["held_by"][0];
+        assert_eq!(json["widest"], 0.3);
+        assert_eq!(
+            (h["net"].clone(), h["what"].clone()),
+            ("Q".into(), "track".into())
+        );
+        assert_eq!(
+            (h["rule"].clone(), h["width"].clone()),
+            ("clearance".into(), 0.3.into())
+        );
+        assert_eq!(
+            (h["required"].clone(), h["measured"].clone()),
+            (0.127.into(), 0.2.into())
+        );
+        assert_eq!(h["at"], serde_json::json!([1.0, 2.0]));
         let without = serde_json::to_value(of_drc_finding(&finding(None), None)).unwrap();
         for key in ["width", "needed_width", "current", "current_from"] {
             assert!(without.get(key).is_none(), "{key}: {without}");

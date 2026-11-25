@@ -240,6 +240,46 @@ fn via_current(out: &mut Out<'_>) {
     }
 }
 
+/// The words of a `track_current` finding for how wide the track may be drawn where it lies
+/// (issue #1691): that the width needed fits, or the widest width and what holds it there, the
+/// three that allow least.
+fn room_words(w: &super::Widest) -> String {
+    const NAMED: usize = 3;
+    if w.fits() {
+        return format!("; where it lies the {:.4} mm fits", w.width);
+    }
+    let named: Vec<String> = w
+        .limits
+        .iter()
+        .take(NAMED)
+        .map(|l| {
+            let net = match &l.item.net {
+                Some(n) => format!(" of net `{n}`"),
+                None => " of no net".to_string(),
+            };
+            format!(
+                "{}{net} at ({:.3}, {:.3}) allows {:.4} mm ({} {:.4} mm, {:.4} mm now)",
+                l.item.what,
+                l.at.x,
+                l.at.y,
+                l.width,
+                l.rule.id(),
+                l.distance.required,
+                l.distance.measured
+            )
+        })
+        .collect();
+    let more = match w.limits.len().saturating_sub(NAMED) {
+        0 => String::new(),
+        n => format!(", and {n} more"),
+    };
+    format!(
+        "; where it lies it may be no wider than {:.4} mm: {}{more}",
+        w.width,
+        named.join("; ")
+    )
+}
+
 /// A track narrower than its net's current needs on its layer, unless it lies within the
 /// neck-down reach of one of the net's pads.
 fn track_current(out: &mut Out<'_>) {
@@ -248,6 +288,9 @@ fn track_current(out: &mut Out<'_>) {
     if x.least_widths.is_empty() && x.inner_least_widths.is_empty() {
         return;
     }
+    // The solder mask openings, which say how wide a track may be drawn (issue #1691), made
+    // once and only for a board with a finding.
+    let mut openings = None;
     for (k, c) in m.items.iter().enumerate() {
         let Kind::Track(i) = c.kind else { continue };
         let t = &m.art.tracks[i];
@@ -307,10 +350,14 @@ fn track_current(out: &mut Out<'_>) {
             Some(i) => format!("{}, which needs", carries(through.is_some(), net, i, &from)),
             None => "its net's current needs".to_string(),
         };
+        // What stops it widening to that where it lies (issue #1691).
+        let openings = openings.get_or_insert_with(|| super::widen::openings(m));
+        let widest = super::widen::widest(m, openings, &[], i, needed);
+        let room = widest.as_ref().map(room_words).unwrap_or_default();
         out.push_carrying(
             Rule::TrackCurrent,
             format!(
-                "{} is {:.4} mm wide; {held} {needed:.4} mm ({basis}), and only within {:.2} mm of the box round the pad centres of a part on the net (measured from the centres of its pads, not from their edges) may a track be narrower: widen it to {needed:.2} mm or more, or lower the current",
+                "{} is {:.4} mm wide; {held} {needed:.4} mm ({basis}), and only within {:.2} mm of the box round the pad centres of a part on the net (measured from the centres of its pads, not from their edges) may a track be narrower: widen it to {needed:.2} mm or more, or lower the current{room}",
                 c.item.what, t.width, x.neck_reach
             ),
             c.item.at,
@@ -321,6 +368,8 @@ fn track_current(out: &mut Out<'_>) {
                 current_from: from,
                 width: Some(t.width),
                 needed_width: Some(needed),
+                widest: widest.as_ref().map(|w| w.width),
+                held_by: widest.map(|w| w.limits).unwrap_or_default(),
                 copper,
                 rise: sizing.map(|s| s.rise),
                 tolerance: sizing.map(|s| s.tolerance),
