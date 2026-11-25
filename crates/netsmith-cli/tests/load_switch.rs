@@ -120,7 +120,10 @@ fn project(root: &Path, source: &str) {
     fs::create_dir_all(root.join("src")).unwrap();
     fs::write(
         root.join("netsmith.toml"),
-        "[project]\nname = \"switched\"\nnetsmith = \"0.4.0\"\n",
+        format!(
+            "[project]\nname = \"switched\"\nnetsmith = \"{}\"\n",
+            env!("CARGO_PKG_VERSION")
+        ),
     )
     .unwrap();
     fs::write(root.join("kicad.toml"), KICAD).unwrap();

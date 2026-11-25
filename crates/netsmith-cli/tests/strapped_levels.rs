@@ -88,7 +88,10 @@ fn check(root: &Path, source: &str) -> std::process::Output {
     fs::create_dir_all(root.join("src")).unwrap();
     fs::write(
         root.join("netsmith.toml"),
-        "[project]\nname = \"radio\"\nnetsmith = \"0.4.0\"\n",
+        format!(
+            "[project]\nname = \"radio\"\nnetsmith = \"{}\"\n",
+            env!("CARGO_PKG_VERSION")
+        ),
     )
     .unwrap();
     fs::write(root.join("kicad.toml"), KICAD).unwrap();
