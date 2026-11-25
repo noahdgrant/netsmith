@@ -98,6 +98,8 @@ pub const PLACE_KEYS: &[&str] = &[
     "origin",
     "body_centre",
     "region",
+    "way_before",
+    "way_after",
 ];
 
 /// The keys whose value holds lists of objects with an `x` and a `y` of their own, which are
