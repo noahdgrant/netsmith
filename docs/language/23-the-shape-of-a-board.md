@@ -1341,7 +1341,7 @@ What a pin states holds for each of its pads, in every package, and in every pou
 
 A switching regulator's ground carries its switched current and its heat, so its pads want solid copper, and `board fill` warns of each one that no fill of its net on its layer joins solid (issue #1586): the fills that hold it relieve it (a thermal relief, however many of its spokes reach the fill), do not join it, or are solid and do not reach it. One fill that joins the pad solid is enough, whichever it is (issue #1666): a patch zone over the pad (`patch = true`, with `pads = "solid"`) joins it solid and the pour round the patch keeps its reliefs elsewhere, and there is no warning. The regulator is a part that provides `BuckIc`, as `board nets --power-stage` finds them, and its ground pads are the IC's pads on the net of its `vin.neg`, of whichever of its pins: an IC with a `GND2` pin or an exposed pad on the same net has those pads among them. The warning names the pad, how each fill that holds it holds it, and the IC's pin that has the pad, with the pads its setting reaches (`warning: U1.7 on top (GND) at (...), the ground of the switching regulator `reg.ic`: the pour holds it on a thermal relief, 3 of 4 spokes; ... join it solid with `.pour_connection &= PadConnection::Solid` on its pin `reg.ic.gnd2`, which reaches the pad U1.7`), and `--format json` lists the same as `regulator_grounds` (with `pin`, `pin_pads`, `fills` and `warning`). It is a warning of `board fill` and not a finding of `board drc`: a relief on a regulator's ground is no fault of the copper, and the board house makes it.
 
-What one setting reaches (issue #1667): the pads of that one pin of a part, every pad its row names (`.vin.neg power "GND" "6" "7"` is pads 6 and 7), and no pad of another pin, though the other pin is on the same net: an IC whose ground is on `vin.neg` and `gnd2` takes a setting on each, and the warnings name each pad's own pin. Stated on the board at the pin's path (`.reg.ic.gnd2.pour_connection &= PadConnection::Solid`) it reaches that one IC; stated in the IC's part (`.gnd2.pour_connection &= PadConnection::Solid`) it follows the part to every board and every use of it; stated in a module's body at the path inside it (`.stage.ic.gnd2...`) it reaches the IC in each use of the module. A port of a module or a rail (`.reg.vin.neg`, `.input.neg`) is no pin of a part, has no pads, and a setting on it reaches none: name the part's pin, as the warning does. Following the warning makes the fills that relieve the pad solid copper up to it, and only that changes: a pad no fill reaches (`the pour is solid but does not reach it`, cut off by the copper of another net, a keepout or the edge) is not reached by any setting of its pin, and the warning says so; lay a patch zone over it, or clear what keeps the fill off. A solid join changes the fill round the pad, too: the copper that floods to the pad fills the gap its relief left, and the fill of the pads beside it is made again, so a relief of a pad of the net nearby can lose a spoke to it and become starved (`starved_thermal`). Run `board fill` again after the change, and read the starved reliefs it lists with the warnings.
+What one setting reaches (issue #1667): the pads of that one pin of a part, every pad its row names (`.vin.neg power "GND" "6" "7"` is pads 6 and 7), and no pad of another pin, though the other pin is on the same net: an IC whose ground is on `vin.neg` and `gnd2` takes a setting on each, and the warnings name each pad's own pin. Stated on the board at the pin's path (`.reg.ic.gnd2.pour_connection &= PadConnection::Solid`) it reaches that one IC; stated in the IC's part (`.gnd2.pour_connection &= PadConnection::Solid`) it follows the part to every board and every use of it; stated in a module's body at the path inside it (`.stage.ic.gnd2...`) it reaches the IC in each use of the module. A port of a module or a rail (`.reg.vin.neg`, `.input.neg`) is no pin of a part and has no pads, so a setting on it would reach none: it is an error (issue #1674), from the board, in the module's own body or on a rail of the board, and the error names the pins of parts on the port's net inside the module (on the board, for a rail of its own), one of which is the pin to state it on, as the warning names it (the last example of this section). Following the warning makes the fills that relieve the pad solid copper up to it, and only that changes: a pad no fill reaches (`the pour is solid but does not reach it`, cut off by the copper of another net, a keepout or the edge) is not reached by any setting of its pin, and the warning says so; lay a patch zone over it, or clear what keeps the fill off. A solid join changes the fill round the pad, too: the copper that floods to the pad fills the gap its relief left, and the fill of the pads beside it is made again, so a relief of a pad of the net nearby can lose a spoke to it and become starved (`starved_thermal`). Run `board fill` again after the change, and read the starved reliefs it lists with the warnings.
 
 ```nsm evaluate
 import std::mfg::jlcpcb::TwoLayer
@@ -1392,6 +1392,49 @@ board Unjoined {
 
 ```text
 error: Unjoined: `in.p2.pour_connection` is `PadConnection::None`, and a pin states only `Solid` or `Thermal` for its pads: a pour joins every pad of its net, so keep it off this one with a keepout that forbids copper, or join no pad of the pour (its `.pads`)
+```
+
+A setting on a port of a module, or on a rail, is refused with the pins of parts on its net that it may have meant (issue #1674):
+
+```nsm fails
+import std::mfg::stackup::PadConnection
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+/// An invented converter with its ground on two pins. Illustrative; not a real part.
+part GroundedConv {
+    .designator &= "U"
+    .vin: Rail
+    pins {
+        .vin.pos power "VIN"  "1"
+        .vin.neg power "GND"  "2"
+        .gnd2    power "GND2" "3"
+    }
+}
+
+module Stage {
+    .vin: Rail
+    .ic: GroundedConv
+    .vin ~ .ic.vin
+    .ic.gnd2 ~ .vin.neg
+}
+
+board PortSetting {
+    .feed: Header1x2
+    .reg: Stage
+    .feed.p1 ~ .reg.vin.pos
+    .feed.p2 ~ .reg.vin.neg
+    .feed.p2.net &= "GND"
+    .reg.vin.neg.pour_connection &= PadConnection::Solid
+}
+```
+
+```text
+error: `.reg.vin.neg.pour_connection` reaches no pad: `.reg.vin.neg` is a pin of `.reg.vin`, a `Rail` port of module `Stage`, not a pin of a part, and has no pads; a pour joins the pads of a part's pin as that pin states: state it on the pin of the part you mean, such as `.reg.ic.gnd2.pour_connection`; the pins of parts on its net inside `.reg` are `.reg.ic.gnd2`, `.reg.ic.vin.neg`
+   --> main.nsm:29:5
+   |
+29 |     .reg.vin.neg.pour_connection &= PadConnection::Solid
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 A pour on a net the board does not have is an error that lists the nets, as for a plane. A pad of the pour's net that is on a plane too gives up the via the router puts beside it where the pour joins it to a stitching via (issue #834; the router's passes over vias are described after Diff pairs); netsmith fills the pour itself, for the Gerbers, the design rules check and the KiCad board `fab` writes, which opens with the pour filled (below, with the zones of the routes file).
