@@ -20,7 +20,8 @@ pub enum CurrentFrom {
     Analysis,
     /// The current of one rail or part on the net, more than the DC analysis finds: a part that
     /// states it carries more (a bypass diode's discharge, which a DC analysis does not see) is
-    /// never sized below what it states.
+    /// never sized below what it states. So is a storage element that states a
+    /// `.discharge_peak_current`, on the nets of its terminals (issue #1689).
     Carrier,
 }
 
@@ -54,6 +55,24 @@ pub struct NetCurrent {
     /// a lower bound (ADR 0036, amendment 3).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub lower_bound: bool,
+    /// The net's heating (rms) current, in amperes, where a rail on it states an
+    /// `.rms_current` that brings it below `current` (issue #1690): what the copper is sized
+    /// for heat by (`least_width`, `inner_least_width`, `vias`, the router's width and the
+    /// `track_current` and `via_current` checks). `current` stays the peak, which the track
+    /// drop measures at. `None` on a net sized by its peak, as every net was before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rms: Option<f64>,
+    /// Where `rms` comes from, in words: the rms currents that add up to it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub rms_source: String,
+}
+
+impl NetCurrent {
+    /// The current the net's copper is sized for heat by: its rms current where it has one,
+    /// and otherwise its peak.
+    pub fn heating(&self) -> f64 {
+        self.rms.unwrap_or(self.current)
+    }
 }
 
 /// A branch of a net that carries a current of its own (issue #1113): the copper from the pads
@@ -80,6 +99,18 @@ pub struct BranchCurrent {
     pub inner_least_width: Option<f64>,
     /// How many of the process's vias, side by side, carry it.
     pub vias: usize,
+    /// The branch's heating (rms) current, in amperes, where its pin states an `.rms_current`
+    /// (issue #1690): the widths and the vias above are sized for it, and `current` stays the
+    /// peak, which the track drop reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rms: Option<f64>,
+}
+
+impl BranchCurrent {
+    /// The current the branch's copper is sized for heat by.
+    pub fn heating(&self) -> f64 {
+        self.rms.unwrap_or(self.current)
+    }
 }
 
 /// A pin on a net with a known current whose own current the model knows and is less than the
@@ -96,6 +127,17 @@ pub struct PinCurrent {
     pub pins: Vec<PinRef>,
     /// The most that flows through the pin, in amperes.
     pub current: f64,
+    /// Its heating (rms) current, where a rail through it states an `.rms_current` (issue
+    /// #1690): what the copper to it is checked for heat at.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rms: Option<f64>,
+}
+
+impl PinCurrent {
+    /// The current the copper to the pin is sized for heat by.
+    pub fn heating(&self) -> f64 {
+        self.rms.unwrap_or(self.current)
+    }
 }
 
 /// How a pour joins the pads of one pin, as the pin of its part states it (issue #1276):

@@ -1,6 +1,6 @@
-//! `netsmith layout move` (issue #1627): one part's entry moved by an offset, refused when the
-//! move makes courtyards overlap or leaves the outline, with the ends of the routes file that
-//! miss the part's pads after it. The board is the invented one of `layout.rs`, a 40 by 24 mm
+//! `netsmith layout move` (issue #1627): one part's entry moved by an offset, or turned (issue
+//! #1704), refused when that makes courtyards overlap or leaves the outline, with the ends of the
+//! routes file that miss the part's pads after it. The board is the invented one of `layout.rs`, a 40 by 24 mm
 //! board with a resistor R1 at (20, 12) and an LED D1 at (30, 12).
 
 use std::fs;
@@ -213,6 +213,88 @@ fn a_move_into_another_courtyard_is_refused_naming_the_overlap() {
 }
 
 #[test]
+fn a_turn_of_180_in_place_changes_the_rotation_and_lists_the_ends_that_miss_their_pad() {
+    let dir = project("layout-turn");
+    let run = netsmith(&dir, &["r1", "--turn", "180"]);
+    let out = String::from_utf8_lossy(&run.stdout);
+    assert_eq!(
+        run.status.code(),
+        Some(0),
+        "{out}{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert!(
+        out.contains("move `r1` (R1) by 0, 0 mm: from 20, 12 to 20, 12"),
+        "{out}"
+    );
+    assert!(
+        out.contains("turn by 180 degrees counterclockwise: rotation 0 to 180"),
+        "{out}"
+    );
+    // The pads have swapped: every end that was on one misses it.
+    for end in [
+        "net `net-led.anode`: track 1's end at 20.51, 12 misses R1.2",
+        "net `net-led.anode`: track 2's end at 20.25, 12 misses R1.2",
+        "net `VCC`: via 1 at 19.49, 12 misses R1.1",
+    ] {
+        assert!(out.contains(end), "{end}: {out}");
+    }
+    assert!(!out.contains("still on their pad"), "{out}");
+    let file = layout_file(&dir);
+    assert_eq!(file.matches("rotation = 180.0").count(), 1, "{file}");
+    assert!(file.contains("at = [20.0, 12.0]"), "{file}");
+    assert!(file.contains("at = [30.0, 12.0]"), "{file}");
+    assert!(file.contains("# The resistor, placed by hand."), "{file}");
+    assert_eq!(
+        fs::read_to_string(dir.join("main.routes.toml")).unwrap(),
+        ROUTES
+    );
+
+    // The turn is relative and wraps: 270 more on 180 is 90, with an offset too, in JSON and in
+    // the board file's frame, which moves the places and not the turns.
+    let run = netsmith(
+        &dir,
+        &[
+            "R1", "0,1", "--turn", "270", "--format", "json", "--frame", "board-file",
+        ],
+    );
+    let doc = json(&run);
+    assert_eq!(run.status.code(), Some(0), "{doc}");
+    assert_eq!(doc["turn_by"], 270.0);
+    assert_eq!(doc["turn_from"], 180.0);
+    assert_eq!(doc["turn_to"], 90.0);
+    assert_eq!(doc["by"], serde_json::json!([0.0, 1.0]));
+    assert_eq!(doc["to"], serde_json::json!([40.0, 33.0]));
+    assert_eq!(doc["written"], true);
+    let file = layout_file(&dir);
+    assert!(file.contains("rotation = 90.0"), "{file}");
+    assert!(file.contains("at = [20.0, 13.0]"), "{file}");
+}
+
+/// R1 with D1 close below it: they are clear of each other as they are, and R1 turned by a
+/// quarter turn reaches into D1's courtyard.
+#[test]
+fn a_turn_into_an_overlap_is_refused_naming_it() {
+    let dir = project("layout-turn-overlap");
+    let near = LAYOUT.replace("at = [30.0, 12.0]", "at = [20.0, 13.5]");
+    fs::write(dir.join("main.pcb.toml"), &near).unwrap();
+    // The same board is allowed to turn end for end, which takes no more room.
+    let run = netsmith(&dir, &["r1", "--turn", "180", "--dry-run"]);
+    let out = String::from_utf8_lossy(&run.stdout);
+    assert_eq!(run.status.code(), Some(0), "{out}");
+
+    let run = netsmith(&dir, &["r1", "--turn", "90"]);
+    let out = String::from_utf8_lossy(&run.stdout);
+    assert_eq!(run.status.code(), Some(1), "{out}");
+    assert!(
+        out.contains("the courtyards of `led` (D1) and `r1` (R1) overlap"),
+        "{out}"
+    );
+    assert!(out.contains("not written: the move is refused"), "{out}");
+    assert_eq!(layout_file(&dir), near);
+}
+
+#[test]
 fn dry_run_writes_nothing_and_says_the_same() {
     let dir = project("layout-move-dry");
     let before = layout_file(&dir);
@@ -226,7 +308,15 @@ fn dry_run_writes_nothing_and_says_the_same() {
     let run = netsmith(&dir, &["r1", "0.1,0", "--dry-run", "--format", "json"]);
     let doc = json(&run);
     assert_eq!(doc["written"], false);
+    assert_eq!(doc["turn_by"], 0.0);
     assert_eq!(doc["missed"][0]["pad"], "R1.2");
+    assert_eq!(layout_file(&dir), before);
+
+    let run = netsmith(&dir, &["r1", "--turn", "180", "--dry-run"]);
+    let out = String::from_utf8_lossy(&run.stdout);
+    assert_eq!(run.status.code(), Some(0), "{out}");
+    assert!(out.contains("rotation 0 to 180"), "{out}");
+    assert!(out.contains("not written (--dry-run)"), "{out}");
     assert_eq!(layout_file(&dir), before);
 }
 

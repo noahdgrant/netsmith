@@ -3783,6 +3783,8 @@ fn drc_branches(
 pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
     netsmith_geom::DrcExtras {
         mask_web: Some(board.rules.mask_bridge),
+        // One line for a part whose pads no mask web fits between (issue #1685).
+        mask_web_summary: true,
         via_in_pad: Some(board.process.via_in_pad),
         excused_courtyards: board.excused_courtyards(),
         mask_to_track: Some(board.rules.mask_to_track),
@@ -3813,22 +3815,28 @@ pub fn drc_extras(board: &Board) -> netsmith_geom::DrcExtras {
         branches: board
             .branch_currents
             .iter()
-            .flat_map(|b| drc_branches(&b.net, &b.path, &b.pins, b.current))
+            .flat_map(|b| drc_branches(&b.net, &b.path, &b.pins, b.heating()))
             .collect(),
         // The pins whose current the model knows (issue #1333).
         pin_currents: board
             .pin_currents
             .iter()
-            .flat_map(|l| drc_branches(&l.net, &l.path, &l.pins, l.current))
+            .flat_map(|l| drc_branches(&l.net, &l.path, &l.pins, l.heating()))
             .collect(),
         sizing: netsmith_design::guidelines::sizing_of(&board.process),
         net_currents: board
             .net_currents
             .iter()
+            // The copper is checked for heat: at the net's rms current where it has one (issue
+            // #1690), and its words say so.
             .map(|c| netsmith_geom::DrcNetCurrent {
                 net: c.net.clone(),
-                current: c.current,
-                source: c.source.clone(),
+                current: c.heating(),
+                source: if c.rms.is_some() {
+                    format!("rms: {}", c.rms_source)
+                } else {
+                    c.source.clone()
+                },
                 lower_bound: c.lower_bound,
             })
             .collect(),

@@ -72,6 +72,19 @@ interface Rail {
     /// #1279). Not shared by `~`. Left unstated, the average is taken as stated.
     .duty: Number optional
     max(.current) >= max(.peak_current) * max(.duty)
+    /// The heating (rms) current of the load behind the rail, as a positive number (issue
+    /// #1690): a modem that draws 2 A in short slots and 0.3 A rms states `.current &=
+    /// 0A..2A` and `.rms_current &= 0.3A`. `current` stays the most it draws, which the
+    /// track-drop guideline measures the net's copper at; this one sizes the copper for heat
+    /// (the width IPC-2221 needs, the vias side by side, the router's widths, `track_current`
+    /// and `via_current`). On a net the rms currents add up (the rms of a sum is never more
+    /// than the sum of the rms values, so loads that burst together are covered too), a rail
+    /// or part that states none counts at its `current`, and the net is never held to more
+    /// than its peak. Not shared by `~`: each load states its own. It is stated only beside a
+    /// known `current` and never above it (above `peak_current` for a load that bursts, whose
+    /// `current` is its average), or the build fails. Left unstated, the copper is sized by
+    /// `current` as before (ADR 0074).
+    .rms_current: Current optional
     /// The least voltage the rail may fall to while the regulator behind it is in dropout, below
     /// the least of `.voltage` (issue #1301): an MCU that runs from 1.8 V on a 3.3 V regulator
     /// fed from a falling cell lets the output follow the input down, and the board says how far
@@ -382,6 +395,12 @@ enum Chemistry {
 ///   range (`4.2V +/- 50mV`): a charger's regulation voltage must lie within it.
 /// - `.max_charge_current` is the largest charge current the datasheet allows (its standard or
 ///   its fastest charge, as the datasheet gives it, the row's `notes` say which).
+/// - `.discharge_peak_current` is the most current the cell gives when it discharges, as its
+///   datasheet states it (its peak or pulse discharge current), an optional column of the row,
+///   or stated by the board for the current the circuit draws from it. Stated, it is a current
+///   on the nets of `.terminals.pos` and `.terminals.neg`, as a part's stated current is (issue
+///   #1689): those nets carry at least it, so a burst sizes their tracks and vias, though the DC
+///   analysis gives the cell only what the loads draw at their steady state.
 ///
 /// The standard catalog `cell` has no row yet: no cell has a recorded source
 /// (`data/jlcpcb/README.md`). A project adds rows in a file of its own catalog `cell`. The
@@ -419,10 +438,12 @@ generic Cell {
     .float_voltage: Voltage
     /// The largest charge current the datasheet allows.
     .max_charge_current: Current
+    /// The most current it gives when it discharges: a current on the nets of its terminals.
+    .discharge_peak_current: Current optional
 
     .package: Package
     catalog cell {
         .chemistry, .capacity, .internal_resistance, .charge_temperature, .discharge_temperature,
-        .float_voltage, .max_charge_current, .package
+        .float_voltage, .max_charge_current, .package, .discharge_peak_current optional
     }
 }

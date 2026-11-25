@@ -107,11 +107,13 @@ fn place(source: &str, text: &str) -> String {
     format!("src/main.nsm:{}", line + 1)
 }
 
-/// The lines of a run's output about the part at `path` of the LED board.
+/// The lines of a run's output about the row of the part at `path` of the LED board (not the
+/// line about its footprint).
 fn lines_of(said: &str, path: &str) -> Vec<String> {
     let head = format!("  LedExample: `{path}`: ");
     said.lines()
         .filter_map(|l| l.strip_prefix(&head))
+        .filter(|l| !l.starts_with("footprint"))
         .map(str::to_string)
         .collect()
 }

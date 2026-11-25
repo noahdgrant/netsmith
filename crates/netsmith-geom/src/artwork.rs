@@ -158,7 +158,25 @@ pub struct Pad {
     pub clearance: Option<f64>,
 }
 
+/// Whether a pad on `layers` (KiCad's names: `F.Cu`, `In1.Cu`, `*.Cu`, `F&B.Cu`) is a
+/// **terminal pad**: one on a copper layer. A paste aperture drawn as a pad (paste and no
+/// copper: the windows of an exposed pad) is none, nor is an opening of the mask alone.
+///
+/// What counts or measures the terminals of a part asks this: a count of pads, a pitch, an
+/// escape, a distance to a pad. What makes the board's files and pictures keeps every pad: the
+/// paste and mask layers and their Gerbers, the paste openings over an exposed pad, the board
+/// file, the drawings. A hole with no plating may list copper layers: a caller that means a
+/// connection leaves it out by its kind.
+pub fn is_terminal_pad<S: AsRef<str>>(layers: &[S]) -> bool {
+    layers.iter().any(|l| l.as_ref().ends_with(".Cu"))
+}
+
 impl Pad {
+    /// Whether the pad is a terminal pad ([`is_terminal_pad`]): not a paste aperture.
+    pub fn is_terminal(&self) -> bool {
+        is_terminal_pad(&self.layers)
+    }
+
     /// The centre of the pad's hole on the board: the copper's centre less the drill's
     /// offset, turned with the pad. `None` for a pad with no hole.
     pub fn hole_at(&self) -> Option<Pt> {
@@ -359,6 +377,9 @@ pub struct Footprint {
     pub angle: f64,
     /// On the back of the board.
     pub back: bool,
+    /// Not fitted: the footprint's `attr` says `dnp` (what a part that is not fitted is
+    /// written as, issue #1273), so its pads are not soldered.
+    pub not_fitted: bool,
 }
 
 impl Footprint {
@@ -1294,6 +1315,9 @@ impl<'a> Reader<'a> {
             at,
             angle,
             back: fp.find("layer").and_then(|l| l.items().get(1)?.text()) == Some("B.Cu"),
+            not_fitted: fp
+                .find("attr")
+                .is_some_and(|a| a.items().iter().any(|i| i.text() == Some("dnp"))),
         });
         for item in fp.items().iter().skip(2) {
             match item.head() {

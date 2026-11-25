@@ -676,9 +676,30 @@ impl Footprint {
         self.courtyard_shapes = vec![court];
     }
 
-    /// Every pad that carries this number.
+    /// Every pad that carries this number: its terminal pads ([`Pad::is_terminal`]), so that a
+    /// paste aperture drawn with the number of a pad (an exposed pad's windows) is none of it.
+    /// A number that no terminal pad carries gives every pad that has it.
     pub fn pads_numbered<'a>(&'a self, number: &'a str) -> impl Iterator<Item = &'a Pad> {
-        self.pads.iter().filter(move |p| p.number == number)
+        let terminal = self
+            .pads
+            .iter()
+            .any(|p| p.number == number && p.is_terminal());
+        self.pads
+            .iter()
+            .filter(move |p| p.number == number && (!terminal || p.is_terminal()))
+    }
+
+    /// The numbers of the terminal pads ([`Pad::is_terminal`]), in the order the file lists
+    /// them, each once: what a pin names and a count of pads counts. An unnumbered pad is none,
+    /// and so is a paste aperture, numbered or not.
+    pub fn terminal_numbers(&self) -> Vec<&str> {
+        let mut numbers: Vec<&str> = Vec::new();
+        for p in self.pads.iter().filter(|p| p.is_terminal()) {
+            if !p.number.is_empty() && !numbers.contains(&p.number.as_str()) {
+                numbers.push(&p.number);
+            }
+        }
+        numbers
     }
 
     /// The pad numbers in the order the file lists them, each once.
@@ -694,6 +715,12 @@ impl Footprint {
 }
 
 impl Pad {
+    /// Whether the pad is a terminal pad ([`netsmith_geom::is_terminal_pad`]): not a paste
+    /// aperture.
+    pub fn is_terminal(&self) -> bool {
+        netsmith_geom::is_terminal_pad(&self.layers)
+    }
+
     /// The centre of the pad's hole in the footprint's frame: the copper's centre less the
     /// drill's offset turned with the pad. `None` for a pad with no hole.
     pub fn hole_at(&self) -> Option<Pt> {

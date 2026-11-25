@@ -2478,14 +2478,15 @@ impl Model {
     /// a `Rail`, the most that one load draws at an instant (an inrush): two loads on one rail
     /// each have their own, and each is checked against the rail's `max_peak_current`, which `~`
     /// does share. So are a `Rail`'s `burst` and `duty`, which say how that load draws its peak
-    /// (issue #1279). So are the `classes` of a `Sim`, the voltage classes one side of a SIM bus
+    /// (issue #1279), and its `rms_current`, the heating current of that one load (issue #1690).
+    /// So are the `classes` of a `Sim`, the voltage classes one side of a SIM bus
     /// supports (issue 1280).
     pub fn is_pin_figure(&self, field: FieldId) -> bool {
         let f = self.field(field);
         let kind = match f.name.as_str() {
-            "peak_current" | "burst" | "duty" => {
+            "peak_current" | "rms_current" | "burst" | "duty" => {
                 let dimension = match f.name.as_str() {
-                    "peak_current" => Dimension::CURRENT,
+                    "peak_current" | "rms_current" => Dimension::CURRENT,
                     "burst" => Dimension::TIME,
                     _ => Dimension::NONE,
                 };

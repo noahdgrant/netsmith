@@ -720,6 +720,51 @@ fn a_track_too_narrow_for_its_current_is_named_with_the_width_needed_and_the_cur
 }
 
 #[test]
+fn widen_says_what_it_would_widen_writes_nothing_on_a_dry_run_then_widens() {
+    // Issue #1692: net VCC carries 1.2 A or more and wants a wide track; one of 0.15 mm, as a
+    // hand edit leaves it, is widened towards it.
+    let dir = heavy_rail("routes-widen");
+    ok(&netsmith(
+        &dir,
+        &[
+            "routes", "add-track", "--file", "led.nsm", "--net", "VCC", "--layer", "top",
+            "--width", "1.0", "--from", "5.0,5.0", "--to", "7.0,5.0",
+        ],
+    ));
+    let file = dir.join("led.routes.toml");
+    let before = fs::read_to_string(&file).unwrap();
+    let line = before
+        .lines()
+        .find(|l| l.contains("from = [5.0, 5.0]"))
+        .unwrap()
+        .to_string();
+    let thin = line.replace("width = 1.0", "width = 0.15");
+    assert_ne!(thin, line, "{line}");
+    fs::write(&file, before.replace(&line, &thin)).unwrap();
+    let written = fs::read_to_string(&file).unwrap();
+
+    let run = routes(&dir, &["widen", "--net", "VCC", "--dry-run", "--format", "json"]);
+    let said = ok(&run);
+    let json: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
+    assert_eq!((json["dry_run"].clone(), json["fit"].clone()), (true.into(), true.into()), "{said}");
+    assert_eq!(json["nets"], serde_json::json!(["VCC"]), "{said}");
+    assert_eq!(json["counts"]["widened"], 1, "{said}");
+    let change = &json["changes"][0];
+    assert_eq!(change["width_before"], 0.15, "{said}");
+    assert!(change["width_after"].as_f64().unwrap() > 0.15, "{said}");
+    assert!(json["wrote"].as_array().unwrap().is_empty(), "{said}");
+    assert_eq!(fs::read_to_string(&file).unwrap(), written, "a dry run writes nothing");
+
+    let said = ok(&routes(&dir, &["widen", "--net", "VCC"]));
+    assert!(said.contains("widened 1 track(s) of net(s) VCC"), "{said}");
+    assert!(said.contains("wrote led.routes.toml"), "{said}");
+    assert_ne!(fs::read_to_string(&file).unwrap(), written);
+    // A net the board lacks: the pass does not run.
+    let run = routes(&dir, &["widen", "--net", "NOPE"]);
+    assert_eq!(run.status.code(), Some(1), "{}", text(&run));
+}
+
+#[test]
 fn tidy_says_what_it_would_change_then_cuts_a_corner_and_merges_a_pair() {
     // Issue #1192.
     let dir = led("routes-tidy");

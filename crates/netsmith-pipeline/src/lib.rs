@@ -64,6 +64,9 @@ pub struct Built {
     pub sheets: Vec<(String, String)>,
     /// The text of the `.kicad_pro`.
     pub project: String,
+    /// The footprint each part is built with and the hash of its geometry, by the part's path,
+    /// for the pick lock (issue #1683). Empty when the build read no footprint library.
+    pub footprints: std::collections::BTreeMap<String, netsmith_solve::LockedFootprint>,
     /// What was decided, for a person to read.
     pub report: String,
     /// Things worth knowing that did not stop the build: what the solver decided and left
@@ -640,6 +643,7 @@ pub fn outcome_observed(
         });
         unresolved_generics(&mut one, &board.name, catalogs, sources)?;
         one.catalog_heights = heights::from_catalog_rows(&mut one.design, &one.sourcing, catalogs);
+        lock.footprints.set(&board.name, one.footprints.clone());
         built.push(one);
     }
     let standalone = total - checked.systems.len();
@@ -760,6 +764,7 @@ pub fn outcome_observed(
             .issues
         });
         let mut designators = std::collections::BTreeMap::new();
+        let mut footprints = std::collections::BTreeMap::new();
         for member in &system.boards {
             let label = format!("{}/{}", system.name, member.name);
             let mut designed = timings::stage("design", &label, || {
@@ -872,9 +877,15 @@ pub fn outcome_observed(
             unresolved_generics(&mut one, &label, catalogs, sources)?;
             one.catalog_heights =
                 heights::from_catalog_rows(&mut one.design, &one.sourcing, catalogs);
+            footprints.extend(
+                one.footprints
+                    .iter()
+                    .map(|(path, f)| (format!("{}.{path}", member.name), f.clone())),
+            );
             built.push(one);
         }
         lock.designators.set(&system.name, designators);
+        lock.footprints.set(&system.name, footprints);
         solved.push(SolvedSystem {
             mates,
             name: system.name.clone(),
@@ -1574,6 +1585,7 @@ fn export(
     constraints::name_case_model_sources(&mut design, &designed.case_model_sites, sources);
     constraints::name_logo_sources(&mut design, &designed.logo_sites, sources);
     let mut sourcing = designed.sourcing;
+    let mut footprints = std::collections::BTreeMap::new();
     let (schematic, sheets, project) = match libraries {
         None => (String::new(), Vec::new(), String::new()),
         Some(libraries) => {
@@ -1613,6 +1625,13 @@ fn export(
                         .on_board(&label),
                     ]
                 })?;
+                footprints.insert(
+                    part.path.clone(),
+                    netsmith_solve::LockedFootprint {
+                        id: mapped.footprint.clone(),
+                        hash: footprint.geometry_hash(),
+                    },
+                );
                 if footprint.mount == netsmith_pcb::Mount::ThroughHole && !s.assembly_stated {
                     s.assembly = Assembly::Hand;
                 }
@@ -1728,6 +1747,7 @@ fn export(
             None => String::new(),
         },
         project,
+        footprints,
         design,
         sourcing,
         catalog_heights: Vec::new(),

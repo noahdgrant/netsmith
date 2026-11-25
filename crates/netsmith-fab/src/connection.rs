@@ -147,7 +147,7 @@ pub(crate) fn of(art: &Artwork, segs: &[Seg]) -> BTreeMap<String, Connection> {
             let pads: Vec<&ArtworkPad> = art
                 .pads
                 .iter()
-                .filter(|p| p.net.as_deref() == Some(net))
+                .filter(|p| p.is_terminal() && p.net.as_deref() == Some(net))
                 .collect();
             (!pads.is_empty()).then(|| (net.to_string(), connect(art, net, &segs, &pads)))
         })
@@ -674,7 +674,7 @@ pub(crate) fn way(
 ) -> Option<Way> {
     let segs: Vec<&Seg> = segs.iter().filter(|s| s.0 == net).collect();
     let index: Vec<usize> = (0..art.pads.len())
-        .filter(|&i| art.pads[i].net.as_deref() == Some(net))
+        .filter(|&i| art.pads[i].is_terminal() && art.pads[i].net.as_deref() == Some(net))
         .collect();
     let pads: Vec<&ArtworkPad> = index.iter().map(|&i| &art.pads[i]).collect();
     let vias: Vec<&ArtworkVia> = art

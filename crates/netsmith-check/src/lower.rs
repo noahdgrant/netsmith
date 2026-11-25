@@ -1217,11 +1217,11 @@ impl Checker<'_> {
             && self.model.instance(f.owner).kind == InstKind::Pin
     }
 
-    /// Whether the field is the `.current` of a pin that no part has: a pin of a module, a
+    /// Whether the field is the `.current` or the `.rms_current` of a pin that no part has: a pin of a module, a
     /// board or an interface of one (issue #1113).
     fn is_branch_off_part(&self, field: FieldId) -> bool {
         let f = self.model.field(field);
-        f.name == "current"
+        matches!(f.name.as_str(), "current" | "rms_current")
             && self.model.instance(f.owner).kind == InstKind::Pin
             && self
                 .model
@@ -1243,8 +1243,13 @@ impl Checker<'_> {
         self.error(
             c.span,
             format!(
-                "`{}` is a pin of a {word}, not of a part: the current of a branch is stated on the pin of the part the branch ends at, such as `.ldo.bias.current &= 1mA`, since a {word}'s pin stands for every pin joined to it",
-                owner.to_source()
+                "`{}` is a pin of a {word}, not of a part: the current of a branch is stated on the pin of the part the branch ends at, such as `.ldo.bias.{}`, since a {word}'s pin stands for every pin joined to it",
+                owner.to_source(),
+                if self.model.field(field).name == "rms_current" {
+                    "rms_current &= 1mA"
+                } else {
+                    "current &= 1mA"
+                }
             ),
         );
     }

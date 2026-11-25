@@ -326,7 +326,7 @@ pub(crate) fn rows(art: &Artwork) -> Vec<NetRow> {
         }
     }
     let mut pads: BTreeMap<&str, Vec<Pt>> = BTreeMap::new();
-    for p in &art.pads {
+    for p in art.pads.iter().filter(|p| p.is_terminal()) {
         if let Some(net) = p.net.as_deref().filter(|n| routed(n)) {
             let at = pads.entry(net).or_default();
             if !at.iter().any(|q| q.dist(p.at) <= SAME) {

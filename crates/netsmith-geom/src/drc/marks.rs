@@ -161,9 +161,10 @@ fn fiducial_angle(out: &mut Out<'_>, marks: &Marks) {
 /// ("a flat, less-reflective finish like ENIG or OSP ... is the recommended choice for designs
 /// with ultra-fine-pitch components (e.g., 0.4mm pitch BGAs)"; HASL "leaves a slightly uneven,
 /// domed, and reflective solder surface"). The pitch of a part is the least distance between
-/// the centres of two of its surface mount pads on a side the board house assembles; pads
-/// at one place (a pin drawn twice) are one. One finding for the board, at the part with the
-/// finest pitch.
+/// the centres of two of its surface mount terminal pads ([`Pad::is_terminal`]: a paste
+/// aperture is none) on a side the board house assembles; the pieces of one pad (pads of one
+/// number) are no pitch, and pads at one place (a pin drawn twice) are one. One finding for the
+/// board, at the part with the finest pitch.
 fn finish_fine_pitch(out: &mut Out<'_>, marks: &Marks) {
     let m = out.m;
     let Some(finish) = &marks.uneven_finish else {
@@ -180,6 +181,7 @@ fn finish_fine_pitch(out: &mut Out<'_>, marks: &Marks) {
             marks.assembled_front
         };
         if pad.kind == crate::artwork::PadKind::Smd
+            && pad.is_terminal()
             && assembled
             && !marks.fiducials.contains(&pad.part)
             && !marks.test_points.contains(&pad.part)
@@ -191,6 +193,9 @@ fn finish_fine_pitch(out: &mut Out<'_>, marks: &Marks) {
     for (part, pads) in &parts {
         for (i, a) in pads.iter().enumerate() {
             for b in &pads[i + 1..] {
+                if !a.number.is_empty() && a.number == b.number {
+                    continue;
+                }
                 let d = (a.at.x - b.at.x).hypot(a.at.y - b.at.y);
                 if d > 0.05
                     && d <= marks.fine_pitch + EPS

@@ -1146,6 +1146,7 @@ mod tests {
             least_width: 0.01,
             inner_least_width: None,
             vias: 1,
+            rms: None,
         });
         let rats = Ratsnest::of(&board);
         assert_eq!(rats.len(), 3);

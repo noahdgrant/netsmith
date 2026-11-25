@@ -14,12 +14,13 @@ const PADS: [&str; 6] = ["1", "2", "3", "4", "5", "6"];
 /// Build the `Chip` board with the part's pin table `part`, the symbol's pins and the
 /// footprint's pads; the error text if it does not.
 fn build(part: &str, symbol: &[(&str, &str, &str)], pads: &[&str]) -> Result<(), String> {
+    build_on(part, symbol, &common::chip_footprint(pads))
+}
+
+/// [`build`] with the footprint file's text.
+fn build_on(part: &str, symbol: &[(&str, &str, &str)], footprint: &str) -> Result<(), String> {
     let dir = TempDir::new("pinout");
-    let libraries = common::chip_libraries(
-        dir.path(),
-        &common::chip_symbol(symbol),
-        &common::chip_footprint(pads),
-    );
+    let libraries = common::chip_libraries(dir.path(), &common::chip_symbol(symbol), footprint);
     build_with(
         "t.nsm",
         &common::chip_source(part),
@@ -88,6 +89,42 @@ fn a_pad_the_footprint_lacks_stops_the_build_naming_both() {
         ),
         "{err}"
     );
+}
+
+/// The footprint of `pads`, with a paste window (paste and no copper) numbered `window`.
+fn with_paste_window(pads: &[&str], window: &str) -> String {
+    let aperture =
+        format!("(pad \"{window}\" smd rect (at 0 0) (size 0.5 0.5) (layers \"F.Paste\")) (fp_rect");
+    common::chip_footprint(pads).replace("(fp_rect", &aperture)
+}
+
+#[test]
+fn a_pin_on_a_number_only_a_paste_window_has_stops_the_build_naming_both() {
+    let err = build_on(
+        common::CHIP_PART,
+        &common::CHIP_PINS,
+        &with_paste_window(&PADS[..5], "6"),
+    )
+    .unwrap_err();
+    assert!(
+        err.contains(
+            "error: B: U1 (Chip): the pinout has pad 6 (the power pin `gnd` (`GND`)) but pad 6 \
+             of the footprint `tiny:SOT-6` has no copper (paste or mask only), so nothing can \
+             connect to it; its copper pads are 1, 2, 3, 4, 5"
+        ),
+        "{err}"
+    );
+    assert_eq!(err.matches("error:").count(), 1, "{err}");
+}
+
+#[test]
+fn a_paste_window_with_the_number_of_a_copper_pad_builds() {
+    build_on(
+        common::CHIP_PART,
+        &common::CHIP_PINS,
+        &with_paste_window(&PADS, "6"),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
 }
 
 #[test]

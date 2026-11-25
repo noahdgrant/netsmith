@@ -586,6 +586,7 @@ fn run_fab(
                             long_paths: Vec::new(),
                             quality: None,
                             track_drops: Vec::new(),
+                            track_drops_at_current: Vec::new(),
                         });
                         continue;
                     }

@@ -203,6 +203,7 @@ fn every_json_document_with_places_says_their_frame() {
         (&["routes", "sites", "D1", "--file", f], "outline"),
         (&["routes", "check-via", "--at", "2,2", "--file", f], "outline"),
         (&["routes", "tidy", "--dry-run", "--file", f], "outline"),
+        (&["routes", "widen", "--dry-run", "--file", f], "outline"),
     ];
     for (args, frame) in own {
         let doc = json(&dir, &[args, &["--format", "json"][..]].concat());

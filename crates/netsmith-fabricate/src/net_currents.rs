@@ -1,6 +1,9 @@
 //! The one current of each net (issue #1584), as `board nets --currents` lists it: the number the
 //! design rules check holds the net's tracks (`track_current`) and its vias (`via_current`) to,
-//! and the track-drop guideline measures the net at, with where it comes from.
+//! and the track-drop guideline measures the net at, with where it comes from. Where a rail on
+//! the net states an `.rms_current` (issue #1690), the net has a second figure, its heating
+//! current, and the tracks, the vias and the two checks are held to that one; the track drop
+//! stays at the peak.
 //!
 //! The current is the design stage's (`netsmith_design::guidelines::plan_tracks`, ADR 0036): the
 //! sum of the rails and parts on the net with every load on at once, or the DC analysis' worst
@@ -22,8 +25,16 @@ pub struct NetCurrentRow {
     /// Whether a current on the net is not known, so that `current` is a lower bound.
     pub lower_bound: bool,
     /// Where it comes from, in words: the words of the `track_current` and `via_current`
-    /// findings.
+    /// findings where the net has no rms current.
     pub source: String,
+    /// The heating (rms) current, in amperes, where a rail on the net states an
+    /// `.rms_current` that brings it below `current` (issue #1690): what the widths, the vias
+    /// and the two checks are sized by. `current` stays the peak, which the track drop reads.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rms: Option<f64>,
+    /// Where `rms` comes from, in words.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub rms_source: String,
     /// The least width a track of the net may have away from its pads, in mm, on an outer
     /// layer and on an inner signal layer (`None` on a board with none): what `track_current`
     /// holds it to, never less than the process's least track.
@@ -47,6 +58,8 @@ pub fn of_board(board: &Board) -> Vec<NetCurrentRow> {
             from: c.from,
             lower_bound: c.lower_bound,
             source: c.source.clone(),
+            rms: c.rms,
+            rms_source: c.rms_source.clone(),
             least_width: c.least_width.max(least),
             inner_least_width: c.inner_least_width.map(|w| w.max(least)),
             vias: c.vias,
@@ -62,7 +75,7 @@ pub fn text(rows: &[NetCurrentRow]) -> String {
         return "currents: no net has a known current\n".to_string();
     }
     let mut out = String::from(
-        "currents (what track_current, via_current and the track drop hold each net to):\n",
+        "currents (the peak the track drop measures each net at, and the rms current its tracks and vias are sized for heat by where one is stated):\n",
     );
     for r in rows {
         let at_least = if r.lower_bound { "at least " } else { "" };
@@ -70,8 +83,12 @@ pub fn text(rows: &[NetCurrentRow]) -> String {
             .inner_least_width
             .map(|w| format!(", {w:.2} mm inner"))
             .unwrap_or_default();
+        let rms = r
+            .rms
+            .map(|x| format!(", {at_least}{} rms ({})", amps(x), r.rms_source))
+            .unwrap_or_default();
         out.push_str(&format!(
-            "  {}: {at_least}{} ({}: {}); tracks {:.2} mm{inner}, {} via(s) side by side\n",
+            "  {}: {at_least}{} ({}: {}){rms}; tracks {:.2} mm{inner}, {} via(s) side by side\n",
             r.net,
             amps(r.current),
             from_word(r.from),

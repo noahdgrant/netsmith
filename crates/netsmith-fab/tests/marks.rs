@@ -498,6 +498,66 @@ fn hasl_is_advised_against_for_a_part_of_ultra_fine_pitch() {
     assert!(r.findings.iter().any(|f| f.message.starts_with("U2")), "{r}");
 }
 
+/// A part with an exposed pad (5) whose paste is two windows 0.36 mm apart, drawn as pads with
+/// paste and no copper, one of them numbered as the pad, its terminals 1 and 2 `pitch` apart.
+fn windowed_part(b: &mut Pcb, pitch: f64) {
+    let window = |number: &str, x: f64| {
+        format!(
+            "(pad \"{number}\" smd rect (at {x} 0) (size 0.3 0.8) (layers \"F.Paste\"))"
+        )
+    };
+    b.part_in(
+        "U1",
+        (20.0, 15.0),
+        0.0,
+        &[
+            smd("1", -3.0, 0.0, 0.2, 0.6, "A"),
+            smd("2", -3.0, pitch, 0.2, 0.6, "B"),
+            smd("5", 0.0, 0.0, 1.2, 1.2, "C"),
+        ],
+        Draw::default(),
+        &format!("{}\n\t\t{}", window("", -0.18), window("5", 0.18)),
+    );
+}
+
+#[test]
+fn a_paste_aperture_is_no_pad_of_a_part_s_pitch() {
+    // The windows are 0.36 mm apart, and one is 0.18 mm from the pad it is drawn over.
+    let mut b = Pcb::new(2);
+    windowed_part(&mut b, 1.27);
+    let r = check(&mut b, &hasl());
+    assert_eq!(count(&r, DrcRule::FinishFinePitch), 0, "{r}");
+    // Terminals of ultra-fine pitch are reported with their own pitch, not the windows'.
+    let mut b = Pcb::new(2);
+    windowed_part(&mut b, 0.4);
+    let r = check(&mut b, &hasl());
+    assert_eq!(count(&r, DrcRule::FinishFinePitch), 1, "{r}");
+    assert!(
+        r.findings
+            .iter()
+            .any(|f| f.message.starts_with("U1 has pads 0.40 mm apart")),
+        "{r}"
+    );
+}
+
+#[test]
+fn the_pieces_of_one_pad_are_no_pitch() {
+    let mut b = Pcb::new(2);
+    b.part(
+        "U1",
+        (20.0, 15.0),
+        0.0,
+        &[
+            smd("1", -3.0, 0.0, 0.2, 0.6, "A"),
+            smd("2", 0.0, 0.0, 0.3, 0.8, "B"),
+            smd("2", 0.36, 0.0, 0.3, 0.8, "B"),
+        ],
+        Draw::default(),
+    );
+    let r = check(&mut b, &hasl());
+    assert_eq!(count(&r, DrcRule::FinishFinePitch), 0, "{r}");
+}
+
 #[test]
 fn a_flat_finish_or_a_side_nothing_is_assembled_on_is_not_advised_against() {
     let mut b = Pcb::new(2);

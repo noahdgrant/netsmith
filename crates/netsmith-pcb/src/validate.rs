@@ -6,7 +6,8 @@
 //! does not work. Every disagreement is reported, naming both sides.
 //!
 //! What is checked (ADR 0021, accepted by the owner on 2026-11-04): every pad of the pinout is a
-//! numbered pad of the footprint and a pin of the symbol, and the other way round; the symbol pin
+//! numbered terminal pad of the footprint ([`crate::Pad::is_terminal`]: a number that only a
+//! paste aperture carries is none) and a pin of the symbol, and the other way round; the symbol pin
 //! on a pad has the datasheet name after the mapping's `pin_names` (case does not matter, a symbol
 //! pin named `~` is unnamed and accepted); the symbol pin's electrical type suits the kind. Every
 //! message names the part, the package and both sides. `build` and `fab` run it for every part with
@@ -107,12 +108,8 @@ pub fn validate_pinout(
     let mut problems = Vec::new();
     let mut say = |text: String| problems.push(format!("{subject}: {text}"));
 
-    // Unnumbered pads (paste apertures) are not pins; several pads of one number are one.
-    let pads: Vec<&str> = footprint
-        .pad_numbers()
-        .into_iter()
-        .filter(|n| !n.is_empty())
-        .collect();
+    // Unnumbered pads and paste apertures are not pins; several pads of one number are one.
+    let pads = footprint.terminal_numbers();
     let mut symbol_pins: Vec<&str> = Vec::new();
     for pin in symbol.pins() {
         if !symbol_pins.contains(&pin.number.as_str()) {
@@ -142,11 +139,20 @@ pub fn validate_pinout(
         seen.push(pad);
         let pin = pinout.pin_on(pad).expect("the pad is in the pinout");
         if !pads.contains(&pad) {
-            say(format!(
-                "the pinout has pad {pad} ({}) but the footprint `{footprint_name}` has pads {} only{from}",
-                describe(pin),
-                list(&pads)
-            ));
+            // A number the footprint has, on no pad with copper: a paste aperture.
+            if footprint.pads.iter().any(|p| p.number == pad) {
+                say(format!(
+                    "the pinout has pad {pad} ({}) but pad {pad} of the footprint `{footprint_name}` has no copper (paste or mask only), so nothing can connect to it; its copper pads are {}{from}",
+                    describe(pin),
+                    list(&pads)
+                ));
+            } else {
+                say(format!(
+                    "the pinout has pad {pad} ({}) but the footprint `{footprint_name}` has pads {} only{from}",
+                    describe(pin),
+                    list(&pads)
+                ));
+            }
         }
         let Some(sym) = symbol.pin(pad) else {
             // KiCad's symbols leave a no-connect pad out; the footprint has it and the part
@@ -196,6 +202,7 @@ pub fn validate_pinout(
             ));
         }
     }
+    // A paste aperture drawn with a number of its own needs no pin.
     for pad in &pads {
         if pinout.pin_on(pad).is_none() {
             say(format!(
@@ -220,15 +227,15 @@ pub fn validate_pinout(
     problems
 }
 
-/// The least distance between the centres of two pads of different numbers in one row or one
-/// column of `footprint` (the same y, or the same x, to a micrometre), in mm: the footprint's
+/// The least distance between the centres of two terminal pads ([`crate::Pad::is_terminal`]:
+/// a paste aperture is none) of different numbers in one row or one column of `footprint` (the same y, or the same x, to a micrometre), in mm: the footprint's
 /// pitch as a table states it ([`netsmith_kicad::FootprintTable`]). `None` when no two pads line up.
 pub fn footprint_pitch(footprint: &Footprint) -> Option<f64> {
     const ALIGNED: f64 = 0.001;
     let pads: Vec<_> = footprint
         .pads
         .iter()
-        .filter(|p| !p.number.is_empty())
+        .filter(|p| p.is_terminal() && !p.number.is_empty())
         .collect();
     let mut least: Option<f64> = None;
     for (i, a) in pads.iter().enumerate() {
@@ -269,11 +276,7 @@ pub fn validate_table(subject: &Subject, mapped: &Mapped, footprint: &Footprint)
     let name = &mapped.footprint;
     let row = format!("the table `{}` of {}", table.text, mapped.origin);
     if let Some(pads) = table.pads {
-        let counted = footprint
-            .pad_numbers()
-            .into_iter()
-            .filter(|n| !n.is_empty())
-            .count();
+        let counted = footprint.terminal_numbers().len();
         if counted != pads {
             problems.push(format!(
                 "{subject}: the footprint `{name}` has {counted} pads, but {row} says {pads}; pads are counted by number, so an exposed pad drawn in pieces is one"
@@ -754,6 +757,46 @@ mod table_tests {
             "{}",
             problems[2]
         );
+    }
+
+    /// Terminals 1 and 2 in a column, 1.27 mm apart, and the exposed pad 5, whose paste is
+    /// drawn as three pads with paste and no copper, 0.36 mm apart: one unnumbered, one
+    /// numbered as the pad and one with a number no pad on copper has.
+    fn windowed() -> Footprint {
+        let copper = |n: &str, x: f64, y: f64| {
+            format!("(pad \"{n}\" smd rect (at {x} {y}) (size 0.6 0.6) (layers \"F.Cu\")) ")
+        };
+        let window = |n: &str, x: f64| {
+            format!("(pad \"{n}\" smd rect (at {x} 3) (size 0.3 0.3) (layers \"F.Paste\")) ")
+        };
+        let text = [
+            "(footprint \"W\" (attr smd) ".to_string(),
+            copper("1", -3.0, 0.0),
+            copper("2", -3.0, 1.27),
+            copper("5", 0.0, 3.0),
+            window("", -0.36),
+            window("5", 0.0),
+            window("9", 0.36),
+            ")".to_string(),
+        ]
+        .concat();
+        Footprint::parse("W", &text).unwrap()
+    }
+
+    #[test]
+    fn paste_only_windows_are_in_no_count_of_pads_and_no_pitch() {
+        let fp = windowed();
+        assert_eq!(footprint_pitch(&fp), Some(1.27));
+        assert_eq!(fp.terminal_numbers(), ["1", "2", "5"]);
+        assert_eq!(check("pads=3, pitch=1.27mm", &fp), Vec::<String>::new());
+        // The window numbered as the exposed pad is no piece of it; a number only a window
+        // has still finds the window.
+        let five: Vec<_> = fp.pads_numbered("5").collect();
+        assert_eq!(five.len(), 1);
+        assert!(five[0].is_terminal());
+        assert_eq!(fp.pads_numbered("9").count(), 1);
+        // The footprint keeps every window, for the paste layer.
+        assert_eq!(fp.pads.len(), 6);
     }
 
     #[test]

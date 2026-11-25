@@ -212,7 +212,8 @@ fn pads_of(art: &Artwork, part: &str, numbers: Option<&[String]>, net: &str) -> 
     (0..art.pads.len())
         .filter(|&i| {
             let p = &art.pads[i];
-            p.part == part
+            p.is_terminal()
+                && p.part == part
                 && p.net.as_deref() == Some(net)
                 && numbers.is_none_or(|n| n.contains(&p.number))
         })
@@ -369,8 +370,11 @@ fn foreign(art: &Artwork, r: &SwitchingRegulator, keepout: f64) -> Vec<ForeignCo
         });
     }
     // The IC's body: the box of its pads' copper, and its side's outer layer.
-    let ic_pads: Vec<&netsmith_geom::ArtworkPad> =
-        art.pads.iter().filter(|p| p.part == r.refdes).collect();
+    let ic_pads: Vec<&netsmith_geom::ArtworkPad> = art
+        .pads
+        .iter()
+        .filter(|p| p.part == r.refdes && p.is_terminal())
+        .collect();
     let (mut lo, mut hi) = (Pt::new(f64::MAX, f64::MAX), Pt::new(f64::MIN, f64::MIN));
     for s in ic_pads.iter().flat_map(|p| pad_copper(p)) {
         for q in &s.pts {
