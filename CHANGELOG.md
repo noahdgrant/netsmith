@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.9.0](https://github.com/noahdgrant/netsmith/compare/v0.8.0...v0.9.0) (2026-11-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **fab:** the places of fab-notes.txt and of fab's notes in the outline's frame ([#1623](https://github.com/noahdgrant/netsmith/issues/1623))
+* **cli:** --frame for text, for board check, build and fab, and one frame in fab's waived findings ([#1615](https://github.com/noahdgrant/netsmith/issues/1615))
+* **drc:** one current per net, with its source, for the track and via checks, listed by board nets --currents ([#1605](https://github.com/noahdgrant/netsmith/issues/1605))
+
+### Features
+
+* **cli:** --frame for text, for board check, build and fab, and one frame in fab's waived findings ([#1615](https://github.com/noahdgrant/netsmith/issues/1615)) ([06dae34](https://github.com/noahdgrant/netsmith/commit/06dae342ff12f337da2a13e4744ba6f074655c3b)), closes [#1602](https://github.com/noahdgrant/netsmith/issues/1602)
+* **cli:** --frame for the text of the layout, routes, board3d, check, build and fab commands ([#1620](https://github.com/noahdgrant/netsmith/issues/1620)) ([9635814](https://github.com/noahdgrant/netsmith/commit/96358140d188438a203154f6fe4efa0549f46425)), closes [#1613](https://github.com/noahdgrant/netsmith/issues/1613)
+* **cli:** --frame moves the places said inside the sentences of the JSON of the layout and routes commands ([#1624](https://github.com/noahdgrant/netsmith/issues/1624)) ([a04c9c0](https://github.com/noahdgrant/netsmith/commit/a04c9c0b7c1d94d14aacac77dedcae13ba8f0111)), closes [#1618](https://github.com/noahdgrant/netsmith/issues/1618)
+* **cli:** a frame key in every JSON output with places, and --frame outline|board-file ([#1603](https://github.com/noahdgrant/netsmith/issues/1603)) ([f14215b](https://github.com/noahdgrant/netsmith/commit/f14215b12ae70a65859f2b0623b6852dfa4ce89e)), closes [#1588](https://github.com/noahdgrant/netsmith/issues/1588)
+* **cli:** board nets prints the routing-quality rows and compares them with an earlier state ([#1632](https://github.com/noahdgrant/netsmith/issues/1632)) ([d952825](https://github.com/noahdgrant/netsmith/commit/d952825a6ddda193f8e6b253d2ce5c3d0c2dd734))
+* **drc:** a diff pair over its skew limit is a pair_skew finding ([#1598](https://github.com/noahdgrant/netsmith/issues/1598)) ([67b7239](https://github.com/noahdgrant/netsmith/commit/67b7239ad8a8b51082b794f9938c5d035a4155b5))
+* **drc:** a pour_replaced note when a routes-file zone replaces the pour, and via_dangling names it ([#1612](https://github.com/noahdgrant/netsmith/issues/1612)) ([455889a](https://github.com/noahdgrant/netsmith/commit/455889a196c90fc83dd6aff9148c662ee159b133))
+* **drc:** a pour_replaced note when a routes-file zone replaces the pour, and via_dangling names it ([#1621](https://github.com/noahdgrant/netsmith/issues/1621)) ([455889a](https://github.com/noahdgrant/netsmith/commit/455889a196c90fc83dd6aff9148c662ee159b133))
+* **drc:** a power-stage report per switching regulator and a switch_node_copper note ([#1607](https://github.com/noahdgrant/netsmith/issues/1607)) ([872f64b](https://github.com/noahdgrant/netsmith/commit/872f64bf541f1c89059a02eaa4bb2d4f239973d2))
+* **drc:** near_rule_area notes the parts, tracks, vias and pours near a rule area ([#1604](https://github.com/noahdgrant/netsmith/issues/1604)) ([a31cecf](https://github.com/noahdgrant/netsmith/commit/a31cecf61d18abe45448bf28adc521f119cfea12))
+* **drc:** rank the unknown part heights by how tight the limit above them is ([#1601](https://github.com/noahdgrant/netsmith/issues/1601)) ([0ef79f6](https://github.com/noahdgrant/netsmith/commit/0ef79f6e136ae0deba896fb9d42d3260a21a8324)), closes [#1590](https://github.com/noahdgrant/netsmith/issues/1590)
+* **drc:** via_hole_near_pad and via_ring_near_pad note a via's hole or ring near a pad ([#1639](https://github.com/noahdgrant/netsmith/issues/1639)) ([7b2a5d8](https://github.com/noahdgrant/netsmith/commit/7b2a5d807b60abe799751d3721eb0f65f9955c46))
+* **editor:** the PCB summary's fill warns of a switching regulator's ground pads ([#1638](https://github.com/noahdgrant/netsmith/issues/1638)) ([008e86c](https://github.com/noahdgrant/netsmith/commit/008e86c9bce78c70bb94f68856eee8dc980cc5df)), closes [#1635](https://github.com/noahdgrant/netsmith/issues/1635)
+* **fab:** board fab judges a diff pair over its skew limit as a pair_skew finding ([#1599](https://github.com/noahdgrant/netsmith/issues/1599)) ([718893b](https://github.com/noahdgrant/netsmith/commit/718893bc761ebb8b323595dae4299160ba546858)), closes [#1597](https://github.com/noahdgrant/netsmith/issues/1597)
+* **fab:** say how far copper and pours are from a V-cut edge on a board ordered as a panel ([#1606](https://github.com/noahdgrant/netsmith/issues/1606)) ([49cba8a](https://github.com/noahdgrant/netsmith/commit/49cba8a0d72a1e7fb5b6eff6883662fcccc083ff))
+* **fill:** board fill warns of a switching regulator's ground pad a fill does not join solid ([#1634](https://github.com/noahdgrant/netsmith/issues/1634)) ([aef4302](https://github.com/noahdgrant/netsmith/commit/aef43029840c10e47c9f7fe827e100317b3a7e84))
+* **layout:** layout move PATH DX,DY refuses a move that makes a placement fault and lists the routes that miss their pad ([#1631](https://github.com/noahdgrant/netsmith/issues/1631)) ([a37cfbb](https://github.com/noahdgrant/netsmith/commit/a37cfbb77c799cf3f3b28cca4a6f2401e837d7a0))
+* **layout:** layout parts --format json gives a round_rect pad's corner radius and ratio ([#1630](https://github.com/noahdgrant/netsmith/issues/1630)) ([c13fad3](https://github.com/noahdgrant/netsmith/commit/c13fad34124e3ae37bca72c915a60a9994a29b2f))
+* **routes:** a patch flag on a routes-file zone keeps the pour and overrides the join inside its outline ([#1645](https://github.com/noahdgrant/netsmith/issues/1645)) ([4d06d3b](https://github.com/noahdgrant/netsmith/commit/4d06d3bc647c2821477fe9c54c55bb743daa7532))
+* **routes:** routes import knows a pour fab wrote by its uuid and lists each zone it left out ([#1616](https://github.com/noahdgrant/netsmith/issues/1616)) ([79c0b86](https://github.com/noahdgrant/netsmith/commit/79c0b86b1d0c0b6d09b478837000b38fab164d56))
+* **routes:** routes sites lists the via sites between a part's pads and what holds each ([#1633](https://github.com/noahdgrant/netsmith/issues/1633)) ([31c4a83](https://github.com/noahdgrant/netsmith/commit/31c4a8361bde89fb0cb2a186af2f8842e78900e7))
+* **routes:** routes tidy --widen-to-guideline widens a net over its track-drop budget ([#1619](https://github.com/noahdgrant/netsmith/issues/1619)) ([cfa0da6](https://github.com/noahdgrant/netsmith/commit/cfa0da6e63613eea80d12525e89a4b62f561b943))
+* **routes:** routes tidy --widen-to-guideline widens a net over its track-drop budget towards the width the guideline suggests ([cfa0da6](https://github.com/noahdgrant/netsmith/commit/cfa0da6e63613eea80d12525e89a4b62f561b943)), closes [#1611](https://github.com/noahdgrant/netsmith/issues/1611)
+* **routes:** track_drops lists the path's pieces with their share of the drop and the width each needs ([#1617](https://github.com/noahdgrant/netsmith/issues/1617)) ([9b5f951](https://github.com/noahdgrant/netsmith/commit/9b5f95113f9c9460f1847d4d4c9e7e55f0734b6f))
+
+
+### Bug Fixes
+
+* **drc:** one current per net, with its source, for the track and via checks, listed by board nets --currents ([#1605](https://github.com/noahdgrant/netsmith/issues/1605)) ([5fea4f3](https://github.com/noahdgrant/netsmith/commit/5fea4f31e3ecd25dff998826282e01c0837de555)), closes [#1584](https://github.com/noahdgrant/netsmith/issues/1584)
+* **editor:** the PCB summary follows a source edit and names a pad's own pour setting ([#1647](https://github.com/noahdgrant/netsmith/issues/1647)) ([c12d2b0](https://github.com/noahdgrant/netsmith/commit/c12d2b05b8dc6e2033c357c52e31445e6f9f2f54))
+* **fab:** board nets joins copper by the design rules check's rule, so a branch met through a pad's copper counts in its length ([#1594](https://github.com/noahdgrant/netsmith/issues/1594)) ([aa3d268](https://github.com/noahdgrant/netsmith/commit/aa3d2687b1c2efc8506af28331272e967612730d))
+* **fab:** fab-notes states the signal layers' track counts and the track widths in use ([#1600](https://github.com/noahdgrant/netsmith/issues/1600)) ([bb95d4a](https://github.com/noahdgrant/netsmith/commit/bb95d4a662e157f6ef4eac5c92edb163cadaa844))
+* **fab:** fab-notes states the signal layers' track counts and the track widths in use, with the impedance of each ([#1589](https://github.com/noahdgrant/netsmith/issues/1589)) ([bb95d4a](https://github.com/noahdgrant/netsmith/commit/bb95d4a662e157f6ef4eac5c92edb163cadaa844))
+* **fab:** judge a via in a pad by the pad's copper, and list the vias whose hole touches a pad's edge ([#1580](https://github.com/noahdgrant/netsmith/issues/1580)) ([1b5e697](https://github.com/noahdgrant/netsmith/commit/1b5e697be5301f925eef33f9e37ccc4566f15f3a)), closes [#1578](https://github.com/noahdgrant/netsmith/issues/1578)
+* **fab:** the places of fab-notes.txt and of fab's notes in the outline's frame ([#1623](https://github.com/noahdgrant/netsmith/issues/1623)) ([4369597](https://github.com/noahdgrant/netsmith/commit/4369597bddac77ddb1ac0b72f7c9e0cfca544f7e)), closes [#1614](https://github.com/noahdgrant/netsmith/issues/1614)
+* **routes:** routes show counts the stitching vias fab lays, so an unlocked import counts as a locked one ([#1595](https://github.com/noahdgrant/netsmith/issues/1595)) ([0dba91a](https://github.com/noahdgrant/netsmith/commit/0dba91ac327cdd5781432cb1dbdd57e670b8e229)), closes [#1583](https://github.com/noahdgrant/netsmith/issues/1583)
+
+
+### Documentation
+
+* **migrating:** changes of 0.9.0 ([#1646](https://github.com/noahdgrant/netsmith/issues/1646)) ([88c0a0b](https://github.com/noahdgrant/netsmith/commit/88c0a0b5a21751a67def30706e1b4c4d1e1022e2))
+* **skill:** a review may run fab into a scratch directory to read fab-notes ([#1596](https://github.com/noahdgrant/netsmith/issues/1596)) ([91e6541](https://github.com/noahdgrant/netsmith/commit/91e65412d5fe381bbce40e740207ac952e467615)), closes [#1593](https://github.com/noahdgrant/netsmith/issues/1593)
+
 ## [0.8.0](https://github.com/noahdgrant/netsmith/compare/v0.7.0...v0.8.0) (2026-11-21)
 
 
