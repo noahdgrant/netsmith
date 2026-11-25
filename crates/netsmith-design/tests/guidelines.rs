@@ -1414,3 +1414,76 @@ fn a_pin_s_rms_current_sizes_its_branch() {
     let plain = net_current_of(&designed_of(&board(0.3, "", "")), "5V");
     assert!((branch.least_width - plain.least_width).abs() < 1e-12, "{branch:?}");
 }
+
+// ---- a load's peak sizes the copper, its rms the heat (issue #1712) ----------------------
+
+/// A radio that averages 40 mA and bursts at 2 A, behind a fuse and a diode, with `more`
+/// statements on its rail.
+fn bursting(more: &str) -> String {
+    fuse_diode(
+        &format!(
+            "        .current &= 40mA\n        .peak_current &= 2A\n        .burst &= 3ms\n        .duty &= 0.02\n{more}"
+        ),
+        "",
+        "",
+    )
+}
+
+#[test]
+fn a_bursting_load_s_copper_is_sized_by_its_rms_and_its_drop_by_its_peak() {
+    let l = designed_of(&bursting("        .rms_current &= 0.3A\n"));
+    let plain = designed_of(&fuse_diode("        .current &= 0A..0.3A\n", "", ""));
+    for net in ["VOUT", "VIN", "GND"] {
+        let c = net_current_of(&l, net);
+        println!("{c:?}");
+        // The peak, not the 40 mA average, is the current the track drop measures at.
+        assert!((c.current - 2.0).abs() < 1e-9, "{c:?}");
+        // The copper is sized for heat by the rms, as a plain 0.3 A load's is.
+        assert_eq!(c.rms, Some(0.3), "{c:?}");
+        let p = net_current_of(&plain, net);
+        assert!((c.least_width - p.least_width).abs() < 1e-12, "{c:?} {p:?}");
+        assert_eq!(c.vias, p.vias, "{net}");
+    }
+    let vout = net_current_of(&l, "VOUT");
+    assert!(
+        vout.source
+            .contains("rail `load`: 2 A (its `.peak_current`; its `.current` reaches 40 mA)"),
+        "{}",
+        vout.source
+    );
+    assert!(
+        vout.rms_source.contains("rail `load` 300 mA (rms)"),
+        "{}",
+        vout.rms_source
+    );
+    // The fuse in front carries the burst on to the input, by Kirchhoff's current law.
+    let vin = net_current_of(&l, "VIN");
+    assert!(
+        vin.source
+            .contains("part `fuse`: 2 A (the peak of the loads it alone feeds"),
+        "{}",
+        vin.source
+    );
+}
+
+#[test]
+fn a_bursting_load_with_no_rms_is_sized_by_its_peak_and_not_its_average() {
+    let l = designed_of(&bursting(""));
+    let peak = designed_of(&fuse_diode("        .current &= 0A..2A\n", "", ""));
+    for net in ["VOUT", "VIN", "GND"] {
+        let c = net_current_of(&l, net);
+        assert!((c.current - 2.0).abs() < 1e-9, "{c:?}");
+        assert_eq!(c.rms, None, "{c:?}");
+        let p = net_current_of(&peak, net);
+        assert!((c.least_width - p.least_width).abs() < 1e-12, "{c:?} {p:?}");
+        assert_eq!(width_of(&l, net), width_of(&peak, net), "{net}");
+    }
+}
+
+#[test]
+fn a_load_with_no_peak_current_is_sized_by_its_current_as_before() {
+    let l = designed_of(&fuse_diode("        .current &= 40mA\n", "", ""));
+    let c = net_current_of(&l, "VOUT");
+    assert!((c.current - 0.04).abs() < 1e-9, "{c:?}");
+    assert!(!c.source.contains("peak"), "{}", c.source);
+}

@@ -315,7 +315,7 @@ The power view and `netsmith board power` weigh the demand of a rail against wha
 
 ### A peak current
 
-The DC analysis has no time in it, and a capacitor is open at DC, so a store charged through a resistor draws nothing in the balance. When it is empty, though, it takes the whole rail across the resistor for an instant, and that is the largest current the source in front of it sees. A rail states that current with `.peak_current`, the most its load draws at an instant, as a positive number (issue #750). It is checked and never drawn: the balance of the net, the power of a part, a shunt's window and every other check of the steady state read `.current` and never this one.
+The DC analysis has no time in it, and a capacitor is open at DC, so a store charged through a resistor draws nothing in the balance. When it is empty, though, it takes the whole rail across the resistor for an instant, and that is the largest current the source in front of it sees. A rail states that current with `.peak_current`, the most its load draws at an instant, as a positive number (issue #750). The balance of the net, the power of a part, a shunt's window, `board power` and every other check of the steady state read `.current` and never this one. The copper reads it (issue #1712): the peak flows through the load's tracks at an instant, so the nets of the rail, and the parts in series in front of it, carry the peak where it is above `.current`; the track drop is measured at it, and the tracks and vias are sized for heat by the rail's `.rms_current` where it states one and by the peak where it does not (_The shape of a board_, "A peak and a heating current"). An inrush of a few microseconds heats no track: a rail that states its steady current as its `.rms_current` too (`.rms_current &= 50mA` beside `.current &= 5mA..50mA`) keeps its copper sized as it was.
 
 What the source can give is the rail's `.max_peak_current`, which a regulator states for its output: `Buck` its IC's `.max_output_current`, `LinearRegulator` its `.max_current`. `~` shares it, as it shares `.peak`, so every rail joined to the regulator's output has it, and `Rail` checks its own `.peak_current` against it. `.peak_current` is not shared: two loads on one regulator each state their own, and each is checked alone. The steady current of the other loads is not added to it, so a board whose loads start together states the sum on one of them. Both members are `optional` (ADR 0074): a rail that states no peak has no check, and the build says nothing about it.
 
@@ -350,9 +350,9 @@ board Inrush {
 
 ```text
 error: store.supply.peak_current must always be at most store.supply.max_peak_current, but 3.103A..3.5A is not always below 600mA
-   --> std/sources.nsm:54:5
+   --> std/sources.nsm:58:5
    |
-54 |     .peak_current <= .max_peak_current
+58 |     .peak_current <= .max_peak_current
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
@@ -416,7 +416,7 @@ error: during a burst of `radio` (`radio.peak_current` 500mA for 200us) the othe
 
 Rules.
 
-- The copper of the net is sized by `.current`, the average, as for any load, and the track drop is measured at it. The rail's `.rms_current` (see "A peak and a heating current" in _The shape of a board_) may lie between the average and `.peak_current`, never above the peak, but one above `.current` does not raise the copper (issue #1712).
+- The copper of the net carries the burst, not the average (issue #1712): the track drop is measured at the net's peak, the burst with the other loads' steady current at once (each at its most), and the tracks and vias are sized for heat by the rail's `.rms_current`, which lies between the average and `.peak_current`, or by the burst where it states none (see "A peak and a heating current" in _The shape of a board_). `.current`, the average, sizes no copper. The radio above makes `V3V3` a 650 mA net (the burst and the MCU's 150 mA), and drawn for 650 mA; a radio that states `.rms_current &= 120mA` has it drawn for 270 mA, and its track drop still measured at 650 mA. `board power` shows the average: its loads and `demand` are the balance's.
 - `.burst` and `.duty` are optional (ADR 0074) and the load's own: `~` shares neither, as it does not share `.peak_current`. A rail with a peak and no burst is an inrush, checked alone (_A peak current_). A net whose source states no `.max_peak_current` is not judged.
 - `.duty` is the fraction of the time the load bursts (one 3 ms slot in every 100 ms is `0.03`). The bursts alone average the peak times the duty, so the most of the stated average must be at least that: `max(.current) >= max(.peak_current) * max(.duty)`, which a radio of `10mA..40mA` with `.duty &= 0.1` and a 500 mA peak fails (40 mA is below 50 mA).
 - A peak above the source's limit alone is refused by `Rail`'s own `.peak_current <= .max_peak_current`, which also makes the solver pick a regulator that gives it. The capacitance across the rail helps only with the other loads' share.

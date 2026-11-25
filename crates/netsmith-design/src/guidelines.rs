@@ -179,6 +179,19 @@
 //! guideline of `fab` (issue #652, `netsmith_fabricate::track_drop`), which reads each net's rail
 //! voltage from [`net_voltages`].
 //!
+//! **A load's peak sizes the copper, its rms the heat (issue #1712, decided by the owner).** A
+//! rail that states `.peak_current` (a load that bursts, whose `.current` is its average, or an
+//! inrush beside a steady `.current`) draws its peak through its copper at an instant, which
+//! the DC analysis, at the average, never sees. Its carrier is taken at the peak: its range
+//! reaches `.peak_current` where that is above the top of `.current`, so the net's current (the
+//! sum, or the analysis' worst case with every load's peak above its average added) is the peak
+//! the track drop measures at, and the copper is sized for heat by the rail's `.rms_current`
+//! where it states one and by that peak where it does not (issue #1690). The average stays what
+//! the analysis, the balance and the power budget read. A part in series that alone feeds the
+//! load's net (a fuse, a load switch) carries the peak on to the net in front of it, by
+//! Kirchhoff's current law; a converter does not, and its input is sized by the average its
+//! power balance gives (the burst check reflects the burst through it for the source's limit).
+//!
 //! **As built, not done.** A net whose rail states a `.min_track` gets no note when a current on it
 //! is not known (the guideline names the missing carriers instead), and the note is not a guideline
 //! that `--strict` can turn into an error. **Provisional:** the IPC constants below, until someone
@@ -270,6 +283,13 @@ struct Carrier {
     /// The heating (rms) current a rail states (`.rms_current`, issue #1690), in amperes: the
     /// larger end of its range in size.
     stated_rms: Option<f64>,
+    /// How far `range` was raised above the top of the carrier's `.current` (issue #1712): a
+    /// rail's own `.peak_current`, or, for a part in series, the peaks of the loads it alone
+    /// feeds. Zero for a carrier taken at its `.current`.
+    extra: f64,
+    /// The most of the rail's `.current` in size where its own `.peak_current` raised `range`:
+    /// its average, said beside the peak in the words of a net's current.
+    average: Option<f64>,
     /// The most its heating current can be, in amperes, and whether a stated rms current made
     /// it (see [`heats`]); `None` while its current is not known.
     heat: Option<Heat>,
@@ -287,6 +307,115 @@ struct Heat {
 impl Carrier {
     fn pins(&self) -> impl Iterator<Item = InstId> {
         std::iter::once(self.from).chain(self.to)
+    }
+
+    /// The carrier and its current for a message, with where a peak above its `.current` comes
+    /// from (issue #1712): `rail `modem` 2 A (its `.peak_current`; its `.current` reaches
+    /// 40 mA)`.
+    fn shown(&self, amps_of: f64) -> String {
+        format!("{} {}{}", self.who, amps(amps_of), self.peak_words())
+    }
+
+    /// Where a peak above the carrier's `.current` comes from, in words, or nothing.
+    fn peak_words(&self) -> String {
+        match self.average {
+            Some(average) => format!(
+                " (its `.peak_current`; its `.current` reaches {})",
+                amps(average)
+            ),
+            None if self.extra > 0.0 => {
+                " (the peak of the loads it alone feeds, above its `.current`)".to_string()
+            }
+            None => String::new(),
+        }
+    }
+
+    /// Which side of `net`'s flow the carrier is on: `Some(true)` when it takes current out of
+    /// the net, `Some(false)` when it puts current in, `None` when its range has both signs or
+    /// is not known.
+    fn side_on(&self, net: &netsmith_check::Net) -> Option<bool> {
+        let (lo, hi) = self.range?;
+        let at_from = net.pins.contains(&self.from);
+        if lo >= 0.0 {
+            Some(at_from)
+        } else if hi <= 0.0 {
+            Some(!at_from)
+        } else {
+            None
+        }
+    }
+
+    /// Raises the size of the carrier's current by `by` amperes (issue #1712).
+    fn raise(&mut self, by: f64) {
+        if let Some((lo, hi)) = self.range.as_mut() {
+            if *lo >= 0.0 {
+                *hi += by;
+            } else {
+                *lo -= by;
+            }
+            self.extra += by;
+        }
+    }
+}
+
+/// A rail's range taken at its `.peak_current` (issue #1712): the top of `.current` raised to
+/// the peak where the peak is above it, with the top it had. A rail that only gives current (a
+/// supply) or whose current is not known is left as it is.
+fn at_peak(range: Option<(f64, f64)>, peak: Option<f64>) -> (Option<(f64, f64)>, Option<f64>) {
+    match (range, peak) {
+        (Some((lo, hi)), Some(peak)) if hi >= 0.0 && peak > hi * (1.0 + 1e-9) + 1e-15 => {
+            (Some((lo, peak)), Some(hi.max(-lo)))
+        }
+        _ => (range, None),
+    }
+}
+
+/// Carries the peaks of loads above their `.current` on through the parts in series that feed
+/// them, and to the supply that feeds them (issue #1712), by Kirchhoff's current law: a part or
+/// a supply that alone puts current into a net (or alone takes it out) carries, at every
+/// instant, what the others on the net take out, so it reaches their peaks together. A load is
+/// never raised: its own `.peak_current` says its peak. Each pass only raises a figure, so it is
+/// repeated until none changes. `counted` is the carriers counted on each net.
+fn carry_peaks(model: &Model, carriers: &mut [Carrier], counted: &[Vec<usize>]) {
+    for _ in 0..=carriers.len() {
+        let mut changed = false;
+        for (net, ks) in model.nets().iter().zip(counted) {
+            let through: Vec<usize> = ks
+                .iter()
+                .copied()
+                .filter(|&k| {
+                    let c = &carriers[k];
+                    net.pins.contains(&c.from) != c.to.is_some_and(|t| net.pins.contains(&t))
+                })
+                .collect();
+            if through.len() < 2 || through.iter().any(|&k| carriers[k].range.is_none()) {
+                continue;
+            }
+            for &k in &through {
+                if carriers[k].is_rail && carriers[k].range.is_some_and(|(_, hi)| hi > 0.0) {
+                    continue;
+                }
+                let Some(side) = carriers[k].side_on(net) else {
+                    continue;
+                };
+                let others = through.iter().copied().filter(|&d| d != k);
+                if others
+                    .clone()
+                    .any(|d| carriers[d].side_on(net) != Some(!side))
+                {
+                    continue;
+                }
+                let sum: f64 = others.map(|d| carriers[d].extra).sum();
+                if sum > carriers[k].extra * (1.0 + 1e-9) + 1e-15 {
+                    let by = sum - carriers[k].extra;
+                    carriers[k].raise(by);
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
     }
 }
 
@@ -431,6 +560,13 @@ impl<'a> Flow<'a> {
         if lo < 0.0 {
             self.taken.push((c, -lo, false));
         }
+    }
+
+    /// The peaks above their `.current` of the carriers through the net (issue #1712): the
+    /// larger of the two sides' sums.
+    fn extra(&self) -> f64 {
+        let sum = |v: &[(&Carrier, f64, bool)]| v.iter().map(|t| t.0.extra).sum::<f64>();
+        sum(&self.taken).max(sum(&self.given))
     }
 
     /// The largest single current a carrier on the net draws through it (a load, or a part that
@@ -613,10 +749,28 @@ fn heats(model: &Model, carriers: &[Carrier], counted: &[Vec<usize>]) -> Vec<Opt
                 .collect()
         })
         .collect();
+    // A net where the peaks above `.current` on one side are not matched on the other (two
+    // supplies share a burst, issue #1712) bounds nothing: a carrier there is taken at less
+    // than it carries during the burst, so its figure is no bound on another's heat.
+    let balanced: Vec<bool> = model
+        .nets()
+        .iter()
+        .zip(&through)
+        .map(|(net, ks)| {
+            let side = |taken: bool| {
+                ks.iter()
+                    .filter(|&&k| carriers[k].side_on(net) == Some(taken))
+                    .map(|&k| carriers[k].extra)
+                    .sum::<f64>()
+            };
+            let (t, g) = (side(true), side(false));
+            (t - g).abs() <= 1e-9 * t.max(g) + 1e-15
+        })
+        .collect();
     for _ in 0..=carriers.len() {
         let mut changed = false;
-        for ks in &through {
-            if ks.len() < 2 || ks.iter().any(|&k| heat[k].is_none()) {
+        for (ks, &balanced) in through.iter().zip(&balanced) {
+            if ks.len() < 2 || !balanced || ks.iter().any(|&k| heat[k].is_none()) {
                 continue;
             }
             for &k in ks {
@@ -658,6 +812,7 @@ fn net_rms(flow: &Flow, total: f64) -> Option<(f64, String)> {
         (sum, rms, terms)
     }
     let (taken, given) = (side(&flow.taken), side(&flow.given));
+    let (taken_rms, given_rms) = (taken.1, given.1);
     let (sum, rms, mut terms) = if (given.0 - taken.0).abs() <= 1e-9 * taken.0.max(given.0) {
         // The side with the statements is the one named.
         let stated = |v: &[(&Carrier, f64)]| v.iter().filter(|t| t.0.stated_rms.is_some()).count();
@@ -671,7 +826,9 @@ fn net_rms(flow: &Flow, total: f64) -> Option<(f64, String)> {
     } else {
         taken
     };
-    if !rms || sum >= total * (1.0 - 1e-9) {
+    // A peak above a carrier's `.current` (issue #1712) makes the net's peak more than either
+    // side's heating sum, as a stated rms does: then too the larger sum sizes the heat.
+    if !(rms || taken_rms || given_rms || flow.extra() > 0.0) || sum >= total * (1.0 - 1e-9) {
         return None;
     }
     terms.sort_by(|a, b| b.1.total_cmp(&a.1));
@@ -879,6 +1036,12 @@ pub fn plan_tracks(
                     Some(Member::Inst(neg)) => Some(neg),
                     _ => None,
                 };
+                // A load's peak is what its copper carries at an instant (issue #1712).
+                let (range, average) = at_peak(
+                    signed_range(model, model.member(id, "current")),
+                    signed_range(model, model.member(id, "peak_current"))
+                        .map(|(lo, hi)| lo.abs().max(hi.abs())),
+                );
                 carriers.push(Carrier {
                     who: format!("rail `{}`", model.path_of(id)),
                     inst: id,
@@ -886,9 +1049,14 @@ pub fn plan_tracks(
                     is_rail: true,
                     from: pos,
                     to: neg,
-                    range: signed_range(model, model.member(id, "current")),
+                    extra: match (range, average) {
+                        (Some((_, peak)), Some(average)) => peak - average,
+                        _ => 0.0,
+                    },
+                    range,
                     stated_rms: signed_range(model, model.member(id, "rms_current"))
                         .map(|(lo, hi)| lo.abs().max(hi.abs())),
+                    average,
                     heat: None,
                 });
             }
@@ -905,6 +1073,8 @@ pub fn plan_tracks(
                     to: Some(b),
                     range: signed_range(model, Some(Member::Field(through))),
                     stated_rms: None,
+                    extra: 0.0,
+                    average: None,
                     heat: None,
                 });
             }
@@ -975,6 +1145,7 @@ pub fn plan_tracks(
                 .collect()
         })
         .collect();
+    carry_peaks(model, &mut carriers, &counted_on);
     let heat_of = heats(model, &carriers, &counted_on);
     for (c, heat) in carriers.iter_mut().zip(heat_of) {
         c.heat = heat;
@@ -1020,10 +1191,14 @@ pub fn plan_tracks(
         // The DC analysis solved the net: the most that flows into it over every corner of the
         // ranges, which is complete (every pin on it is modelled, so no current is unknown) and
         // not larger than the sum of every current at its largest (ADR 0076, amendment 8).
+        // The analysis is at the loads' `.current`, the average of one that bursts: the peaks
+        // above it of the carriers through the net are added, on the side that has more of them
+        // (issue #1712).
+        let peaks = flow.extra();
         let analysed = net_currents
             .iter()
             .find(|c| net.pins.contains(&c.pin))
-            .map(|c| c.current);
+            .map(|c| c.current + peaks);
         // One rail or part on the net that draws more than the analysis finds wins over it
         // (issue #1584): a bypass or clamp diode that states the current it discharges carries
         // it through the net's copper, though the DC analysis sees it blocking. The stated
@@ -1035,6 +1210,9 @@ pub fn plan_tracks(
             (None, _) => (plain, CurrentFrom::Sum),
         };
         let mut what = current_source(from, plain, analysed, largest, &terms);
+        if from == CurrentFrom::Analysis && peaks > 0.0 {
+            what = format!("{what}; {}", peaks_added(&flow, peaks));
+        }
         let mut worst_inst = terms.first().map(|t| t.0.inst);
         // Whether a storage element's discharge set the net's current: it states no rms, so
         // the net heats with its peak (issue #1690).
@@ -1327,9 +1505,10 @@ fn current_source(
     match terms {
         _ if from == CurrentFrom::Carrier => match (largest, analysed) {
             (Some((c, hi)), Some(a)) => format!(
-                "{} carries {}, more than the {} the DC analysis finds into the net",
+                "{} carries {}{}, more than the {} the DC analysis finds into the net",
                 c.who,
                 amps(hi),
+                c.peak_words(),
                 amps(a)
             ),
             _ => String::new(),
@@ -1339,17 +1518,14 @@ fn current_source(
             amps(plain)
         ),
         [(c, hi)] => match c.range {
+            _ if c.extra > 0.0 => format!("{}: {}{}", c.who, amps(*hi), c.peak_words()),
             Some((lo, _)) if lo >= 0.0 && lo != *hi => {
                 format!("{}: {} to {}", c.who, amps(lo), amps(*hi))
             }
             _ => format!("{}: {}", c.who, amps(*hi)),
         },
         many => {
-            let shown: Vec<String> = many
-                .iter()
-                .take(4)
-                .map(|(c, hi)| format!("{} {}", c.who, amps(*hi)))
-                .collect();
+            let shown: Vec<String> = many.iter().take(4).map(|(c, hi)| c.shown(*hi)).collect();
             let more = match many.len() - shown.len() {
                 0 => String::new(),
                 n => format!(" and {n} more"),
@@ -1360,6 +1536,37 @@ fn current_source(
             )
         }
     }
+}
+
+/// The words for the peaks added to the DC analysis' current of a net (issue #1712): the
+/// carriers whose peak is above their `.current`, largest first.
+fn peaks_added(flow: &Flow, peaks: f64) -> String {
+    let mut terms: Vec<&Carrier> = flow
+        .taken
+        .iter()
+        .chain(&flow.given)
+        .map(|t| t.0)
+        .filter(|c| c.extra > 0.0)
+        .collect();
+    terms.sort_by(|a, b| b.extra.total_cmp(&a.extra));
+    terms.dedup_by_key(|c| c.inst);
+    let shown: Vec<String> = terms
+        .iter()
+        .take(4)
+        .map(|c| match c.range {
+            Some((lo, hi)) => c.shown(hi.max(-lo)),
+            None => c.who.clone(),
+        })
+        .collect();
+    let more = match terms.len() - shown.len() {
+        0 => String::new(),
+        n => format!(" and {n} more"),
+    };
+    format!(
+        "with {} of peaks above the average the analysis reads added: {}{more}",
+        amps(peaks),
+        shown.join(", ")
+    )
 }
 
 /// `what` with the currents that are not known said after it.

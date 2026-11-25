@@ -53,7 +53,7 @@ A zone of the routes file of the net of a pour or plane on its layer that says `
 _Avoid_: Override zone, overlay
 
 **Peak current**:
-The most current one load draws at an instant, transients included: the `.peak_current` of a `Rail`, such as the inrush of a capacitor charged through a resistor. `.current` is the steady range, and the DC analysis never reads the peak, so it enters no balance or power. Each rail has its own (`~` does not share it), and it is checked against the rail's `.max_peak_current`, what the source gives at an instant, which a regulator states and joined rails share (issue #750). A load that states `.burst` draws it for that long at a stretch, and its `.current` is its average; see _Burst_.
+The most current one load draws at an instant, transients included: the `.peak_current` of a `Rail`, such as the inrush of a capacitor charged through a resistor. `.current` is the steady range, and the DC analysis never reads the peak, so it enters no balance or power. The copper does (issue #1712): the load's nets and the parts in series in front of it carry the peak, the track drop is measured at it, and its heat is sized by the rail's `.rms_current`, or by the peak where it states none. Each rail has its own (`~` does not share it), and it is checked against the rail's `.max_peak_current`, what the source gives at an instant, which a regulator states and joined rails share (issue #750). A load that states `.burst` draws it for that long at a stretch, and its `.current` is its average; see _Burst_.
 _Avoid_: Inrush current (the inrush is one cause; the peak is the number), surge current
 
 **Peak voltage**:
