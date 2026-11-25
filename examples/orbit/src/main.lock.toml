@@ -1,8 +1,9 @@
 # The catalog row each part of each board was picked as, written by `netsmith board build` and
 # `netsmith board fab` when this file does not exist. Commit it: a change to a catalog or to the
 # solver that would move a pick shows here and not only in the bill of materials. Refresh it
-# with `netsmith project lock --update`. Nothing in it is edited by hand but `held = "reason"`,
-# which a person adds to a part's entry to keep the part on its row.
+# with `netsmith project lock --update`, and number the parts again by path with `--renumber`.
+# Nothing in it is edited by hand but `held = "reason"`, which a person adds to a part's entry
+# to keep the part on its row, and a part's designator, which a renamed part takes by hand.
 version = 2
 
 [Orbit.providers."process"]
@@ -296,3 +297,57 @@ catalog = "capacitor"
 row = "4.7uF 10% 16V X5R 0603 C19666"
 mpn = "CL10A475KO8NNNC"
 sku = { jlcpcb-assembly = "C19666", lcsc-retail = "C19666" }
+
+[Orbit.designators]
+"battery" = "J1"
+"boot_pulldown" = "R1"
+"boot_switch" = "SW1"
+"buck_boost.divider.rbottom" = "R2"
+"buck_boost.divider.rtop" = "R3"
+"buck_boost.ic" = "U1"
+"buck_boost.inductor" = "L1"
+"buck_boost.input_cap" = "C1"
+"buck_boost.output_cap" = "C2"
+"buck_boost.pg_pullup.resistor" = "R4"
+"charger.ic" = "U2"
+"charger.rprog" = "R5"
+"charger.status_led" = "D1"
+"charger.status_resistor" = "R6"
+"charger.vbatt_cap" = "C3"
+"charger.vbus_cap" = "C4"
+"eeprom" = "U3"
+"header_east" = "J2"
+"header_west" = "J3"
+"hole1" = "H1"
+"hole2" = "H2"
+"hole3" = "H3"
+"hole4" = "H4"
+"i2c_pullups.scl_pullup" = "R7"
+"i2c_pullups.sda_pullup" = "R8"
+"led1" = "D2"
+"led2" = "D3"
+"led1_resistor" = "R9"
+"led2_resistor" = "R10"
+"mcu" = "U4"
+"oscillator.crystal" = "Y1"
+"oscillator.load_in" = "C5"
+"oscillator.load_out" = "C6"
+"power_switch" = "SW2"
+"reset_button" = "SW3"
+"reset_cap" = "C7"
+"usb" = "J4"
+"usb_uart.ic" = "U5"
+"usb_uart.vbus_100n" = "C8"
+"usb_uart.vbus_1u" = "C9"
+"usb_uart.vdd_100n" = "C10"
+"usb_uart.vdd_bulk" = "C11"
+"user_button" = "SW4"
+"user_node_cap" = "C12"
+"user_pin_cap" = "C13"
+"user_pulldown.resistor" = "R11"
+"user_series" = "R12"
+"v3v3_100n[0]" = "C14"
+"v3v3_100n[1]" = "C15"
+"v3v3_100n[2]" = "C16"
+"v3v3_100n[3]" = "C17"
+"v3v3_bulk" = "C18"

@@ -1,8 +1,9 @@
 # The catalog row each part of each board was picked as, written by `netsmith board build` and
 # `netsmith board fab` when this file does not exist. Commit it: a change to a catalog or to the
 # solver that would move a pick shows here and not only in the bill of materials. Refresh it
-# with `netsmith project lock --update`. Nothing in it is edited by hand but `held = "reason"`,
-# which a person adds to a part's entry to keep the part on its row.
+# with `netsmith project lock --update`, and number the parts again by path with `--renumber`.
+# Nothing in it is edited by hand but `held = "reason"`, which a person adds to a part's entry
+# to keep the part on its row, and a part's designator, which a renamed part takes by hand.
 version = 2
 
 [EnclosureSensor.providers."process"]
@@ -116,3 +117,48 @@ catalog = "resistor"
 row = "10kΩ 1% 0603 C25804"
 mpn = "0603WAF1002T5E"
 sku = { jlcpcb-assembly = "C25804", lcsc-retail = "C25804" }
+
+[EnclosureSensor.designators]
+"antenna" = "AE1"
+"cell" = "BT1"
+"coax" = "J1"
+"fiducial1" = "FID1"
+"fiducial2" = "FID2"
+"hole1" = "H1"
+"hole2" = "H2"
+"hole3" = "H3"
+"hole4" = "H4"
+"ldo.input_cap" = "C1"
+"ldo.output_cap" = "C2"
+"ldo.regulator" = "U1"
+"lights.led_a" = "D1"
+"lights.led_b" = "D2"
+"lights.led_c" = "D3"
+"lights.r_a" = "R1"
+"lights.r_b" = "R2"
+"lights.r_c" = "R3"
+"mcu" = "U2"
+"mcu_bypass" = "C3"
+"pads.tp1" = "TP1"
+"pads.tp2" = "TP2"
+"pads.tp3" = "TP3"
+"pads.tp4" = "TP4"
+"pads.tp5" = "TP5"
+"pads.tp6" = "TP6"
+"pads.tp7" = "TP7"
+"pads.tp8" = "TP8"
+"pads.tp9" = "TP9"
+"pads.tp10" = "TP10"
+"pads.tp11" = "TP11"
+"pads.tp12" = "TP12"
+"plug" = "J2"
+"pullups.scl_pullup" = "R4"
+"pullups.sda_pullup" = "R5"
+"radio.bypass" = "C4"
+"radio.row_a" = "J3"
+"radio.row_b" = "J4"
+"rd1" = "R6"
+"rd2" = "R7"
+"usb" = "J5"
+"wp_pullup" = "R8"
+"wp_switch" = "SW1"

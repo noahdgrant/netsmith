@@ -1,8 +1,9 @@
 # The catalog row each part of each board was picked as, written by `netsmith board build` and
 # `netsmith board fab` when this file does not exist. Commit it: a change to a catalog or to the
 # solver that would move a pick shows here and not only in the bill of materials. Refresh it
-# with `netsmith project lock --update`. Nothing in it is edited by hand but `held = "reason"`,
-# which a person adds to a part's entry to keep the part on its row.
+# with `netsmith project lock --update`, and number the parts again by path with `--renumber`.
+# Nothing in it is edited by hand but `held = "reason"`, which a person adds to a part's entry
+# to keep the part on its row, and a part's designator, which a renamed part takes by hand.
 version = 2
 
 [Rp2350Minimal.providers."process"]
@@ -242,3 +243,48 @@ catalog = "capacitor"
 row = "10uF 10% 16V X5R 0805 C77075"
 mpn = "GRM21BR61C106KE15L"
 sku = { jlcpcb-assembly = "C77075", lcsc-retail = "C77075" }
+
+[Rp2350Minimal.designators]
+"avdd_filter" = "R1"
+"avdd_filter_cap" = "C1"
+"bootsel" = "SW1"
+"bootsel_series" = "R2"
+"core_inductor" = "L1"
+"debug" = "J1"
+"flash" = "U1"
+"gpio0_link" = "R3"
+"header_high" = "J2"
+"header_low" = "J3"
+"hole1" = "H1"
+"hole2" = "H2"
+"hole3" = "H3"
+"hole4" = "H4"
+"mcu" = "U2"
+"oscillator.crystal" = "X1"
+"oscillator.damping" = "R4"
+"oscillator.load_in" = "C2"
+"oscillator.load_out" = "C3"
+"regulator" = "U3"
+"reset" = "SW2"
+"reset_series" = "R5"
+"ss_link" = "R6"
+"ss_pullup.resistor" = "R7"
+"usb" = "J4"
+"usb_dm_series" = "R8"
+"usb_dp_series" = "R9"
+"v1v1_100n[0]" = "C4"
+"v1v1_100n[1]" = "C5"
+"v1v1_100n[2]" = "C6"
+"v1v1_bulk" = "C7"
+"v3v3_100n[0]" = "C8"
+"v3v3_100n[1]" = "C9"
+"v3v3_100n[2]" = "C10"
+"v3v3_100n[3]" = "C11"
+"v3v3_100n[4]" = "C12"
+"v3v3_100n[5]" = "C13"
+"v3v3_100n[6]" = "C14"
+"v3v3_100n[7]" = "C15"
+"v3v3_bulk[0]" = "C16"
+"v3v3_bulk[1]" = "C17"
+"v3v3_bulk_c" = "C18"
+"vbus_bulk" = "C19"

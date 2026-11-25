@@ -2,7 +2,7 @@
 
 The library is `.nsm` source in `std/`. It states only what is always true of a part. Import a definition by its full path, for example `import std::parts::passive::Resistor`.
 
-Parts are numbered by their letters in the order of their paths in the board (a module's parts by their full paths, with the board's own; see Designators), and every kind states its own letters in its definition (`.designator &= "R"` in `Resistor`): `R` resistor, `C` capacitor, `L` inductor, `FB` ferrite bead, `D` LED, diode, Schottky, Zener and TVS, `Q` MOSFET, `Y` crystal, `F` fuse, `RT` thermistor (IEEE 315), `SW` switch, `J` header, socket, coax, USB-C and programming pads, `TP` test point, `H` mounting hole and plated hole, `FID` fiducial, `LBL` label, `U` linear regulator and load switch (ADR 0046; see Designators).
+Parts are numbered by their letters in the order of their paths in the board (a module's parts by their full paths, with the board's own), and keep the numbers the pick lock records when parts are added (see Designators), and every kind states its own letters in its definition (`.designator &= "R"` in `Resistor`): `R` resistor, `C` capacitor, `L` inductor, `FB` ferrite bead, `D` LED, diode, Schottky, Zener and TVS, `Q` MOSFET, `Y` crystal, `F` fuse, `RT` thermistor (IEEE 315), `SW` switch, `J` header, socket, coax, USB-C and programming pads, `TP` test point, `H` mounting hole and plated hole, `FID` fiducial, `LBL` label, `U` linear regulator and load switch (ADR 0046; see Designators).
 
 ### Parts
 

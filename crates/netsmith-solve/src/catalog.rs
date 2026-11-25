@@ -16,7 +16,7 @@ use netsmith_quantity::Quantity;
 use crate::channel::{Channel, PartChannels};
 use crate::curve::Curve;
 use crate::generic::{Generic, Sense, Series};
-use crate::lock::{LockedRow, PickLock};
+use crate::lock::{Designators, LockedRow, PickLock};
 use crate::offers::Offers;
 use crate::preferred::Preferred;
 use crate::table::Table;
@@ -299,6 +299,8 @@ pub struct Catalogs {
     part_channels: Arc<PartChannels>,
     pins: Vec<(String, String)>,
     pick_lock: Option<Arc<PickLock>>,
+    /// The designators a pick lock records (issue #1653), for the design stage.
+    designators: Arc<Designators>,
     search_budget: SearchBudget,
     no_narrowing: bool,
     narrowing_audit: bool,
@@ -527,8 +529,22 @@ impl Catalogs {
     /// without a lock. Unlike [`Self::with_pin`], the design's own statements about the part
     /// stay, and the locked row is judged by them and by every relation (see `PickLock`).
     pub fn with_pick_lock(mut self, lock: PickLock) -> Self {
+        self.designators = Arc::new(lock.designators.clone());
         self.pick_lock = Some(Arc::new(lock));
         self
+    }
+
+    /// Give each part the designator `designators` records for it, without holding any part to
+    /// a row (issue #1653): what `project lock --update` solves with. [`Self::with_pick_lock`]
+    /// sets the lock's own.
+    pub fn with_designators(mut self, designators: Designators) -> Self {
+        self.designators = Arc::new(designators);
+        self
+    }
+
+    /// The designators the parts are given, by board or system and path.
+    pub fn designators(&self) -> &Designators {
+        &self.designators
     }
 
     /// The pick lock these catalogs hold parts to, if any.

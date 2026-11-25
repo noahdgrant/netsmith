@@ -1,8 +1,9 @@
 # The catalog row each part of each board was picked as, written by `netsmith board build` and
 # `netsmith board fab` when this file does not exist. Commit it: a change to a catalog or to the
 # solver that would move a pick shows here and not only in the bill of materials. Refresh it
-# with `netsmith project lock --update`. Nothing in it is edited by hand but `held = "reason"`,
-# which a person adds to a part's entry to keep the part on its row.
+# with `netsmith project lock --update`, and number the parts again by path with `--renumber`.
+# Nothing in it is edited by hand but `held = "reason"`, which a person adds to a part's entry
+# to keep the part on its row, and a part's designator, which a renamed part takes by hand.
 version = 2
 
 [TwoBuck.providers."process"]
@@ -284,3 +285,64 @@ catalog = "tvs"
 row = "SMAJ24A 24V TVS SMA C113962"
 mpn = "SMAJ24A"
 sku = { jlcpcb-assembly = "C113962", lcsc-retail = "C113962" }
+
+[TwoBuck.designators]
+"buck_3v3.bulk" = "C1"
+"buck_3v3.decoupling" = "C2"
+"buck_3v3.input_decoupling" = "C3"
+"buck_3v3.light" = "D1"
+"buck_3v3.light_resistor" = "R1"
+"buck_3v3.pg_pullup.resistor" = "R2"
+"buck_3v3.pg_test" = "TP1"
+"buck_3v3.stage.divider.rbottom" = "R3"
+"buck_3v3.stage.divider.rtop" = "R4"
+"buck_3v3.stage.ic" = "U1"
+"buck_3v3.stage.ic.boost" = "C4"
+"buck_3v3.stage.ic.enable_bottom" = "R5"
+"buck_3v3.stage.ic.enable_top" = "R6"
+"buck_3v3.stage.inductor" = "L1"
+"buck_3v3.stage.input_cap[0]" = "C5"
+"buck_3v3.stage.input_cap[1]" = "C6"
+"buck_3v3.stage.output_cap" = "C7"
+"buck_5v.bulk" = "C8"
+"buck_5v.decoupling" = "C9"
+"buck_5v.input_decoupling" = "C10"
+"buck_5v.light" = "D2"
+"buck_5v.light_resistor" = "R7"
+"buck_5v.pg_pullup.resistor" = "R8"
+"buck_5v.pg_test" = "TP2"
+"buck_5v.stage.divider.rbottom" = "R9"
+"buck_5v.stage.divider.rtop" = "R10"
+"buck_5v.stage.ic" = "U2"
+"buck_5v.stage.ic.boost" = "C11"
+"buck_5v.stage.ic.enable_bottom" = "R11"
+"buck_5v.stage.ic.enable_top" = "R12"
+"buck_5v.stage.inductor" = "L2"
+"buck_5v.stage.input_cap[0]" = "C12"
+"buck_5v.stage.input_cap[1]" = "C13"
+"buck_5v.stage.output_cap" = "C14"
+"bulk_5v" = "C15"
+"bulk_a" = "C16"
+"bulk_b" = "C17"
+"bulk_c" = "C18"
+"input_light" = "D3"
+"input_light_resistor" = "R13"
+"ldo" = "U3"
+"ldo_bulk" = "C19"
+"ldo_in" = "C20"
+"ldo_light" = "D4"
+"ldo_light_resistor" = "R14"
+"ldo_out" = "C21"
+"power_3v3" = "J1"
+"power_3v3a" = "J2"
+"power_5v" = "J3"
+"power_in" = "J4"
+"reverse_diode" = "D5"
+"surge" = "D6"
+"tp_3v3" = "TP3"
+"tp_3v3a" = "TP4"
+"tp_5v" = "TP5"
+"tp_gnd" = "TP6"
+"tp_gnd_b" = "TP7"
+"tp_raw" = "TP8"
+"tp_vin" = "TP9"

@@ -29,7 +29,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 |---|---|---|
 | `netsmith project init` | `netsmith init` | `--name` |
 | `netsmith project refresh` | `netsmith init --refresh` | none |
-| `netsmith project lock` | `netsmith lock` | `--update`, `--check`, `--part`, `--except`, `--format` |
+| `netsmith project lock` | `netsmith lock` | `--update`, `--check`, `--part`, `--except`, `--renumber`, `--format` |
 | `netsmith project lint` | new | `--strict`, `--format` |
 | `netsmith project fmt` | new | `--check` |
 | `netsmith project migrate-offers` | new | `--check` |
