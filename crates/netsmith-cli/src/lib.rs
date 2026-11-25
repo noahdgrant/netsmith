@@ -5,4 +5,5 @@ pub mod commands;
 pub mod frame;
 mod mcp;
 pub mod progress;
+mod release_warning;
 mod view_client;

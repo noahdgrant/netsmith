@@ -7,7 +7,9 @@ description: Read netsmith's checker, solver, design-stage and design-rule messa
 
 Fix errors one at a time, from the first one. Later errors are often caused by earlier ones. The language guide (`docs/netsmith/LANGUAGE.md` lists its chapters, in `docs/netsmith/language/`) has each message with its cause, under the construct it belongs to.
 
-Many errors at once after a netsmith upgrade, in a project that built before, are usually spellings the new release changed: the run ends with a note that names the project's release (`netsmith` in `netsmith.toml`) and points to `docs/MIGRATING.md` (https://github.com/noahdgrant/netsmith/blob/main/docs/MIGRATING.md), which lists each change with the old and the new spelling. Make those changes first, then set `netsmith` to the new release.
+A `warning: the project is written for netsmith X ... and this is netsmith Y` (a note of the code `release` first among the `findings` with `--format json`) means the netsmith you run is of another minor release than the project's `netsmith` key. Nothing is refused, but parts picked, findings and output may differ from that release's. Tell the person; do not mix the results of two releases, and do not change the key to silence it. Run the project's release beside this one (chapter 26 of the guide, "Running the project's release"), or move the project if the person asks.
+
+Many errors at once after a netsmith upgrade, in a project that built before, are usually spellings the new release changed: that warning (or, for a project with no `netsmith` key, a note at the end of the run) points to `docs/MIGRATING.md` (https://github.com/noahdgrant/netsmith/blob/main/docs/MIGRATING.md), which lists each change with the old and the new spelling. To move the project, make those changes first, then set `netsmith` to the new release.
 
 ## The shape
 

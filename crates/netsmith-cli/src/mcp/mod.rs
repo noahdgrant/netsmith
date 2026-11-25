@@ -13,6 +13,10 @@
 //! `notifications/cancelled` notifications. Each tool call runs on a thread of its own, so the
 //! loop goes on reading and a cancel reaches the call it names.
 //!
+//! A project written for another release than this netsmith is warned of once, as the project is
+//! opened (issue #1657): the instructions and the server's stderr say it, and the commands the
+//! server runs do not say it again.
+//!
 //! With `--editor` the server is attached to a running editor (issue #1108, [`attach`]): the
 //! tool of the commands that read or change the page a person looks at, `view_editor_3d`, is
 //! given the editor's port, and its `picture` comes back as an image. The call is the same child
@@ -29,8 +33,11 @@ use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use netsmith_fabricate::project::Project;
+use netsmith_fabricate::release;
 use serde_json::{Map, Value, json};
 
+use crate::release_warning;
 pub use attach::Attach;
 use run::Job;
 use tools::Tool;
@@ -66,6 +73,9 @@ pub fn serve_stdio(project: Option<&Path>, attach: Option<Attach>) -> std::io::R
         ));
     }
     let server = Server::new(std::env::current_exe()?, dir, attach);
+    if let Some(release) = &server.release {
+        eprintln!("warning: {}", release.warning);
+    }
     server.serve(std::io::stdin().lock(), std::io::stdout());
     Ok(())
 }
@@ -80,8 +90,29 @@ struct Server {
     instructions: String,
     /// The running editor the page tool is attached to (`--editor`).
     attach: Option<Attach>,
+    /// The warning of the folder's project, when it is written for another release.
+    release: Option<ReleaseWarning>,
     /// The tool calls running, by their request id (as its JSON text).
     jobs: Mutex<HashMap<String, Arc<Job>>>,
+}
+
+/// The warning of the server's project (issue #1657), said as the server starts.
+struct ReleaseWarning {
+    warning: String,
+    /// What the commands are given as [`release_warning::SAID`], so they do not say it again.
+    key: String,
+}
+
+impl ReleaseWarning {
+    /// What `dir`'s project has to say. A manifest that cannot be read says nothing here: the
+    /// commands say what is wrong with it.
+    fn of(dir: &Path) -> Option<ReleaseWarning> {
+        let project = Project::load(&content::project_root(dir)?).ok()?;
+        Some(ReleaseWarning {
+            warning: release::mismatch(project.manifest.netsmith.as_deref())?,
+            key: release_warning::key(&project)?,
+        })
+    }
 }
 
 /// Where the messages go: one line each, never two at once.
@@ -126,12 +157,20 @@ impl Server {
         if let Some(attach) = attach {
             instructions.push_str(&attach.instructions());
         }
+        let release = ReleaseWarning::of(&dir);
+        if let Some(release) = &release {
+            instructions.push_str(&format!(
+                " Warning about this project, to tell the user: {}.",
+                release.warning
+            ));
+        }
         Server {
             program,
             dir,
             tools,
             instructions,
             attach,
+            release,
             jobs: Mutex::new(HashMap::new()),
         }
     }
@@ -256,7 +295,9 @@ impl Server {
         job: &Job,
         progress: impl FnMut(&str),
     ) -> std::io::Result<run::Ran> {
-        run::run(&self.program, argv, input, &self.dir, job, progress)
+        let said = self.release.as_ref().map(|r| r.key.as_str());
+        let env = said.map(|key| (release_warning::SAID, key));
+        run::run(&self.program, argv, input, &self.dir, env, job, progress)
     }
 
     /// A tool call: runs the command and answers with what it printed, unless it was cancelled

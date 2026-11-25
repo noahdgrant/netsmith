@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::Args as ClapArgs;
-use netsmith_fabricate::project::Target;
 use netsmith_lang::FormatError;
 
 #[derive(Debug, PartialEq, ClapArgs)]
@@ -94,7 +93,7 @@ fn files(named: &[String]) -> Result<Vec<(String, PathBuf)>, String> {
             .map(|n| (n.clone(), PathBuf::from(n)))
             .collect());
     }
-    let target = Target::resolve(None)?;
+    let target = super::common::resolve(None)?;
     let project = target
         .project
         .as_ref()

@@ -1,4 +1,3 @@
-use netsmith_fabricate::project::Target;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -61,7 +60,7 @@ fn run_parity(
 ) -> ExitCode {
     use netsmith_tools::parity::{DesignatorMap, Tolerances, check_text};
     use netsmith_tools::port::PortParts;
-    let reference = Target::resolve(None)
+    let reference = super::common::resolve(None)
         .ok()
         .and_then(|t| t.project.map(|p| p.root))
         .unwrap_or_else(|| Path::new(".").to_path_buf())

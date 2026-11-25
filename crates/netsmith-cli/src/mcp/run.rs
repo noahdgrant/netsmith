@@ -58,18 +58,21 @@ pub struct Ran {
 /// Runs `program` with `argv` in `dir` for `job`, telling `progress` each line it prints on
 /// stderr: the message of a JSON line of `--progress json`, or the line as it is. `input` is
 /// what the command reads on stdin (a document given to the call itself, issue #1472), or
-/// nothing. Returns when the command has ended, also when it was cancelled.
+/// nothing, and the variable `env` set when there is one. Returns when the command has ended,
+/// also when it was cancelled.
 pub fn run(
     program: &Path,
     argv: &[String],
     input: Option<&str>,
     dir: &Path,
+    env: Option<(&str, &str)>,
     job: &Job,
     mut progress: impl FnMut(&str),
 ) -> std::io::Result<Ran> {
     let mut child = Command::new(program)
         .args(argv)
         .current_dir(dir)
+        .envs(env)
         .stdin(if input.is_some() {
             Stdio::piped()
         } else {
@@ -173,7 +176,7 @@ mod tests {
             let job = job.clone();
             let dir = dir.to_path_buf();
             std::thread::spawn(move || {
-                run(&program, &[], None, &dir, &job, |line| {
+                run(&program, &[], None, &dir, None, &job, |line| {
                     let _ = tx.send(line.to_string());
                 })
             })

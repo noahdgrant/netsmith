@@ -65,6 +65,8 @@ struct Server {
     input: Option<ChildStdin>,
     output: Lines<BufReader<ChildStdout>>,
     next: u64,
+    /// What `initialize` answered as the server's instructions.
+    instructions: String,
 }
 
 impl Server {
@@ -88,6 +90,7 @@ impl Server {
             input,
             output,
             next: 1,
+            instructions: String::new(),
         };
         let init = server.request(
             "initialize",
@@ -105,6 +108,7 @@ impl Server {
                 "{init}"
             );
         }
+        server.instructions = init["result"]["instructions"].as_str().unwrap().to_string();
         server.send(json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }));
         server
     }
@@ -240,6 +244,43 @@ fn check_and_build_through_the_server_are_the_command_lines_json() {
         assert_eq!(text, expected, "{tool}");
     }
     assert!(root.join("out").is_dir(), "the build wrote its folder");
+}
+
+/// The server says the warning of a project written for another release as it opens it, and the
+/// commands it runs do not say it again, until the project's release changes (issue #1657).
+#[test]
+fn a_project_of_another_release_is_warned_of_once_as_the_server_opens_it() {
+    const WARNED: &str = "the project is written for netsmith";
+    let root = led("mcp-release");
+    let manifest = |written_for: &str| {
+        fs::write(
+            root.join("netsmith.toml"),
+            format!("[project]\nname = \"led\"\nnetsmith = \"{written_for}\"\n"),
+        )
+        .unwrap();
+    };
+    manifest("0.0.1");
+    let mut server = Server::start(&root);
+    assert_eq!(
+        server.instructions.matches(WARNED).count(),
+        1,
+        "{}",
+        server.instructions
+    );
+    let result = server.call("board_check", json!({}));
+    assert_eq!(result["isError"], false, "{result:#}");
+    assert!(!result.to_string().contains(WARNED), "{result:#}");
+    // The command line on its own says it.
+    let (alone, _) = command_line(&root, &["board", "check"]);
+    assert!(alone.to_string().contains(WARNED), "{alone:#}");
+    // Another release was not said: the command says it.
+    manifest("0.0.2");
+    let result = server.call("board_check", json!({}));
+    assert_eq!(
+        result["structuredContent"]["findings"][0]["code"],
+        "release",
+        "{result:#}"
+    );
 }
 
 #[test]

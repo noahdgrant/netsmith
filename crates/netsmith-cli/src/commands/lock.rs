@@ -6,7 +6,7 @@ use netsmith_fabricate::dependency_lock;
 use netsmith_fabricate::project::{Project, Target};
 use netsmith_pipeline::pick_lock::{Kept, Parts};
 
-use super::common::{Format, no_boards, print_json, target};
+use super::common::{self, Format, no_boards, target};
 
 #[derive(Debug, PartialEq, ClapArgs)]
 #[command(args_override_self = true)]
@@ -97,7 +97,7 @@ fn run_lock(file: Option<&str>, mode: LockMode, parts: &Parts, format: Format) -
     let json = format == Format::Json;
     // The dependency lock first: `--update` fetches the dependencies by `git` again, and the
     // boards are then solved with what it took.
-    let dependencies = match Target::resolve(file) {
+    let dependencies = match common::resolve(file) {
         Ok(Target {
             project: Some(project),
             ..
@@ -124,7 +124,7 @@ fn run_lock(file: Option<&str>, mode: LockMode, parts: &Parts, format: Format) -
     if target.files.is_empty() && has_git {
         let stale = dependencies.as_ref().is_some_and(|d| d.stale);
         if json {
-            print_json(&document(
+            print_document(document(
                 mode,
                 stale,
                 &[],
@@ -271,7 +271,7 @@ fn run_lock(file: Option<&str>, mode: LockMode, parts: &Parts, format: Format) -
     }
     let stale = stale || dependencies.as_ref().is_some_and(|d| d.stale);
     if json {
-        print_json(&document(
+        print_document(document(
             mode,
             stale,
             &files,
@@ -291,6 +291,13 @@ struct Locked {
     /// The rows held on purpose, and the parts a check did not judge.
     held: Vec<Kept>,
     not_judged: Vec<Kept>,
+}
+
+/// Prints the document of `project lock --format json`, with the warning of a project written for
+/// another release among its findings (issue #1657).
+fn print_document(mut document: serde_json::Value) {
+    crate::release_warning::add_to(&mut document);
+    common::print_json(&document);
 }
 
 /// The document of `project lock --format json`.
