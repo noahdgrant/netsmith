@@ -122,15 +122,12 @@ describe('the copper areas', () => {
     expect(fillAreaLine(area)).toBe(`pour on GND, 120.46 mm²: ${fillCountsLine(counts)}; clears 0 pads of other nets; islands: 0 kept, 1 removed`);
     expect(fillStarvedLine({ layer: 'top', net: 'GND', part: 'U1', pad: '2', at: { x: 8, y: 15 }, spokes: 4, joinedSpokes: 1, tracks: 0 })).toBe('U1.2 on top (GND) at (8, 15): 1 of 4 spokes');
   });
-  it('warn of a regulator ground a fill does not join solid, and name the pin to state it on', () => {
-    const ground: FillRegulatorGround = { path: 'reg.ic', layer: 'top', net: 'GND', part: 'U1', pad: '2', at: { x: 8, y: 15 }, join: 'thermal', spokes: 4, joinedSpokes: 4, starved: false, statedBy: null };
+  it('warn of a regulator ground no fill joins solid in the server\u2019s words', () => {
+    const warning = 'the ground of the switching regulator `reg.ic`: the pour holds it on a thermal relief, 4 of 4 spokes; a regulator\u2019s ground carries its switched current and its heat: join it solid with `.pour_connection &= PadConnection::Solid` on its pin `reg.ic.gnd2`, which reaches the pad U1.2';
+    const ground: FillRegulatorGround = { path: 'reg.ic', layer: 'top', net: 'GND', part: 'U1', pad: '2', at: { x: 8, y: 15 }, join: 'thermal', spokes: 4, joinedSpokes: 4, starved: false, statedBy: null, pin: 'reg.ic.gnd2', pinPads: ['2'], fills: [{ source: 'pour', join: 'thermal', joined: true, spokes: 4, joinedSpokes: 4, starved: false }], warning };
     expect(fillRegulatorGroundLine(ground)).toBe(
-      'U1.2 on top (GND) at (8, 15), the ground of the switching regulator reg.ic: a thermal relief, 4 of 4 spokes; a regulator\u2019s ground carries its switched current and its heat: join it solid with .pour_connection &= PadConnection::Solid on its pin reg.ic.vin.neg',
+      'U1.2 on top (GND) at (8, 15), the ground of the switching regulator reg.ic: the pour holds it on a thermal relief, 4 of 4 spokes; a regulator\u2019s ground carries its switched current and its heat: join it solid with .pour_connection &= PadConnection::Solid on its pin reg.ic.gnd2, which reaches the pad U1.2',
     );
-    expect(fillRegulatorGroundLine({ ...ground, joinedSpokes: 1, starved: true })).toContain('a thermal relief, 1 of 4 spokes, starved;');
-    expect(fillRegulatorGroundLine({ ...ground, join: 'none', spokes: null, joinedSpokes: null })).toContain('not joined (the fill\u2019s pad connection is none);');
-    expect(fillRegulatorGroundLine({ ...ground, join: 'solid', spokes: null, joinedSpokes: null })).toContain('solid, but the fill does not reach it;');
-    expect(fillRegulatorGroundLine({ ...ground, statedBy: 'reg.ic.gnd' }).endsWith('on its pin reg.ic.gnd')).toBe(true);
   });
 });
 

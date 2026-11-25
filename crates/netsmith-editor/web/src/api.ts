@@ -1911,6 +1911,16 @@ export type FillStarved = { layer: string, net: string, part: string, pad: strin
 
 export type FillUnjoinable = { layer: string, net: string, part: string, pad: string, at: FillAt, spokes: number, why: string, };
 
+export type FillRegulatorFill = { 
+/**
+ * `pour`, `plane` or `zone`.
+ */
+source: string, 
+/**
+ * `thermal`, `none`, or `solid` where the fill does not reach it.
+ */
+join: string, joined: boolean, spokes: number | null, joinedSpokes: number | null, starved: boolean, };
+
 export type FillRegulatorGround = { 
 /**
  * The regulator IC's path in the design (`reg.ic`).
@@ -1931,7 +1941,20 @@ starved: boolean,
 /**
  * The path of the pin that states the pad's connection, when one does (`reg.ic.vin.neg`).
  */
-statedBy: string | null, };
+statedBy: string | null, 
+/**
+ * The path of the IC's pin that has the pad (`reg.ic.gnd2`), whose `.pour_connection` the
+ * fill takes for it (issue #1667), and the pads of the part that its setting reaches.
+ */
+pin: string, pinPads: Array<string>, 
+/**
+ * Each fill of the net on the layer that holds the pad; none joins it solid.
+ */
+fills: Array<FillRegulatorFill>, 
+/**
+ * The warning in words after the pad and its place, as `board fill` prints it.
+ */
+warning: string, };
 
 export type PcbFill = { board: string, 
 /**
