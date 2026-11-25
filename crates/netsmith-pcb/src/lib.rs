@@ -42,6 +42,7 @@ mod copper;
 mod copper_areas;
 mod explain;
 mod export;
+mod fill_islands;
 mod fill_report;
 mod fit_report;
 mod footprint;
@@ -119,6 +120,9 @@ pub use explain::{
 pub use export::{
     FilledPcb, PATH_PROPERTY, kicad_dru, kicad_pcb, kicad_pcb_filled, kicad_pro, process_zone_uuid,
     process_zones,
+};
+pub use fill_islands::{
+    FillRegion, FillRegions, IslandsReport, RegionBound, RegionBoundKind, RegionPad, RegionVia,
 };
 pub use fill_report::{
     ClearedPad, FillArea, FillIsland, FillPad, FillPolygon, FillReport, FillSource, JoinCounts,
