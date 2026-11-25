@@ -63,6 +63,10 @@ pub struct AddedFrom {
     pub filled: Vec<String>,
     /// The columns, and offer cells, a person must fill from the datasheet or a supplier's page.
     pub to_fill: Vec<String>,
+    /// What the check of the package found and the person accepted
+    /// ([`crate::refresh::Vet`]): empty when the package agrees with its footprint and the
+    /// record's description.
+    pub package_check: Vec<String>,
 }
 
 /// Where the offers of a supplier go: the path and what messages call it.
@@ -231,6 +235,7 @@ pub fn add_from(
     details: bool,
     to: Option<(&Path, &str)>,
     offers_file: OffersFile<'_>,
+    vet: crate::refresh::Vet<'_>,
 ) -> Result<AddedFrom, AddError> {
     let stopped = AddError::Stopped;
     if !SUPPLIERS.contains(&supplier) {
@@ -297,6 +302,7 @@ pub fn add_from(
         not_written: Vec::new(),
         filled: Vec::new(),
         to_fill: Vec::new(),
+        package_check: Vec::new(),
     };
     if supplier == "lcsc" && !is_lcsc_number(&added.sku) {
         return Err(AddError::Refused(format!(
@@ -325,6 +331,8 @@ pub fn add_from(
             part.mpn
         )));
     }
+    let descriptions: Vec<&str> = part.description.as_deref().into_iter().collect();
+    added.package_check = vet(part.package.as_deref(), &descriptions).map_err(AddError::Refused)?;
     let manufacturer = maker_written.then(|| part.manufacturer.clone());
 
     // The offers to write: the named one, and each other supplier's only offer.
@@ -542,6 +550,9 @@ pub fn render_added_from(added: &AddedFrom) -> String {
             }
         }
     }
+    for found in &added.package_check {
+        out.push_str(&format!("package check (accepted): {found}\n"));
+    }
     out
 }
 
@@ -568,6 +579,7 @@ pub fn json_added_from(added: &AddedFrom) -> serde_json::Value {
         "not_written": added.not_written,
         "filled": added.filled,
         "to_fill": added.to_fill,
+        "package_check": added.package_check,
     })
 }
 

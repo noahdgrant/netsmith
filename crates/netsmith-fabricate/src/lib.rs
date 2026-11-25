@@ -29,6 +29,7 @@ pub mod net_quality;
 pub mod net_table;
 pub mod no_supplier;
 pub mod order;
+pub mod package_check;
 pub mod part_layout;
 pub mod pcb_picture;
 pub mod physical;

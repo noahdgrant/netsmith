@@ -19,6 +19,9 @@ pub struct Product {
     pub manufacturer: Option<String>,
     pub mpn: String,
     pub package: Option<String>,
+    /// LCSC's descriptions of the part (`productIntroEn`, `productDescEn`, `productNameEn`), each
+    /// once, which may name a package other than `package` (issue #1658).
+    pub descriptions: Vec<String>,
     /// LCSC's own stock, `stockNumber`. This is not JLCPCB's stock.
     pub stock: Option<u64>,
 }
@@ -55,6 +58,15 @@ pub fn parse_product(body: &str, lcsc: &str) -> Result<Option<Product>, String> 
         mpn: text("productModel")
             .ok_or_else(|| shape(&format!("{WHAT} for {lcsc}"), "productModel"))?,
         package: text("encapStandard"),
+        descriptions: {
+            let mut all: Vec<String> = Vec::new();
+            for field in ["productIntroEn", "productDescEn", "productNameEn"] {
+                if let Some(d) = text(field).filter(|d| !d.is_empty() && !all.contains(d)) {
+                    all.push(d);
+                }
+            }
+            all
+        },
         // A stock that is absent or of another kind is not an error: nothing is then said.
         stock: result.get("stockNumber").and_then(Value::as_u64),
     }))

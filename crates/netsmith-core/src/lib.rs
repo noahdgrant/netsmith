@@ -5,6 +5,7 @@
 
 pub mod design_file;
 pub mod job;
+pub mod package_sizes;
 pub mod png;
 pub mod timings;
 

@@ -1565,6 +1565,7 @@ fn export(
             // footprint file says which it is. The footprint and the symbol must also
             // agree with the part's pin table (ADR 0016, decision 8).
             let mut disagreements = Vec::new();
+            let mut pick_notes: Vec<String> = Vec::new();
             for (s, part) in sourcing.iter_mut().zip(&design.parts) {
                 let Ok(mapped) =
                     libraries
@@ -1624,12 +1625,33 @@ fn export(
                 };
                 // The datasheet's table of the row, when it states one (issue #1281).
                 disagreements.extend(validate_table(&subject, &mapped, &footprint));
+                // A part picked from a catalog row whose package is not the footprint it names
+                // (issue #1658): a note on the pick, which `netsmith catalog check` reports too.
+                if s.mpn.is_some()
+                    && let Some(package) = s.package.as_deref()
+                    && let netsmith_pcb::PackageCheck::Disagrees(_, problems) =
+                        netsmith_pcb::check_package(package, &mapped.footprint, &footprint)
+                {
+                    pick_notes.extend(problems.into_iter().map(|p| {
+                        format!(
+                            "{}: the catalog row {}'s package does not fit its footprint: {p}",
+                            s.refdes,
+                            s.mpn.as_deref().unwrap_or_default()
+                        )
+                    }));
+                }
                 // Any other symbol that cannot be read is named by the schematic below.
                 if let (Some(pinout), Ok(symbol)) = (Pinout::of(part), symbol) {
                     disagreements.extend(validate_pinout(
                         &subject, &pinout, &mapped, &symbol, &footprint,
                     ));
                 }
+            }
+            // Among the solver's notes, before those of the design stage.
+            let at = notes.len() - design_notes;
+            for note in pick_notes.into_iter().rev() {
+                notes.insert(at, note);
+                note_causes.insert(at, Cause::Pick);
             }
             if !disagreements.is_empty() {
                 return Err(disagreements

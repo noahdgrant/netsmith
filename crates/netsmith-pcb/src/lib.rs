@@ -59,6 +59,7 @@ mod miss;
 mod modules;
 mod origin;
 mod overhang;
+mod package_check;
 mod part_fit;
 mod part_geometry;
 mod part_layout;
@@ -166,6 +167,7 @@ pub use overhang::{
     Edge, Edges, Overhang, clip as clip_to_outline, needs as overhang_needs,
     reached as overhang_reached,
 };
+pub use package_check::{PackageCheck, check_package};
 pub use part_fit::{FIT_STEP, FitNear, FitPlace, FitTarget, MarginShort, PartFit};
 pub use part_geometry::{NoEntry, PadGeometry, PartFrame, PartGeometries, PartGeometry};
 pub use part_layout::{

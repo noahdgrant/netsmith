@@ -148,7 +148,7 @@ mod targets;
 
 use std::{fs, path::Path};
 
-pub use add::{AddError, Added, Files, add, json_added, render_added, source_of};
+pub use add::{AddError, Added, Files, Vet, add, json_added, render_added, source_of};
 pub use date::{age_days, date_of, days_of, now_secs};
 pub use http::{
     Endpoints, Fetcher, LCSC_URL_VAR, Network, USER_AGENT, cache_base, check_endpoint,
