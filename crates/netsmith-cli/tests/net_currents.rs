@@ -266,3 +266,118 @@ fn a_net_with_an_rms_current_lists_both_figures_and_its_copper_is_held_to_the_rm
         .unwrap_or_else(|| panic!("no line for VBAT in:\n{text}"));
     assert!(line.contains(": 2 A (") && line.contains(", 300 mA rms ("), "{line}");
 }
+
+/// A radio that averages 40 mA and bursts at 2 A, fed from a header, with `more` statements
+/// on its rail (issue #1712).
+fn radio(more: &str) -> String {
+    format!(
+        "\
+import std::mfg::jlcpcb::TwoLayer
+import std::parts::connector::Header1x2
+import std::sources::Rail
+
+board B {{
+    .process: TwoLayer {{ .stackup.thickness &= 1.6mm }}
+    .radio: Rail {{ .pos.net &= \"VBAT\"; .current &= 40mA; .peak_current &= 2A{more} }}
+    .source: Rail {{ .voltage &= 4V; .pos.net &= \"VBAT\" }}
+    .supply: Header1x2
+    .out: Header1x2
+    .supply.p1 ~ .source.pos
+    .supply.p2 ~ .source.neg
+    .out.p1 ~ .radio.pos
+    .out.p2 ~ .radio.neg
+}}
+"
+    )
+}
+
+/// The `VBAT` entry of `board nets --currents --format json` and of `board rules`.
+fn vbat_of(dir: &Path) -> (serde_json::Value, serde_json::Value) {
+    let listed = json(&netsmith(
+        dir,
+        &["board", "nets", "b.nsm", "--currents", "--format", "json"],
+    ));
+    let vbat = listed["currents"]
+        .as_array()
+        .expect("a currents list")
+        .iter()
+        .find(|c| c["net"] == "VBAT")
+        .unwrap_or_else(|| panic!("no current for VBAT: {listed}"))
+        .clone();
+    let rules = json(&netsmith(dir, &["board", "rules", "b.nsm", "--format", "json"]));
+    let held = rules["nets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["net"] == "VBAT")
+        .expect("rules for VBAT")
+        .clone();
+    (vbat, held)
+}
+
+#[test]
+fn a_bursting_load_s_tracks_follow_its_rms_and_its_drop_its_peak_with_both_sources() {
+    let dir = TempDir::new("net-currents-burst");
+    fs::write(dir.join("b.nsm"), radio("; .rms_current &= 0.3A")).unwrap();
+    let (vbat, held) = vbat_of(&dir);
+    println!("{vbat}\n{held}");
+    // The peak, not the 40 mA average, is the current the track drop measures at.
+    assert!((vbat["current"].as_f64().unwrap() - 2.0).abs() < 1e-9, "{vbat}");
+    assert!(
+        vbat["source"]
+            .as_str()
+            .unwrap()
+            .contains("rail `radio`: 2 A (its `.peak_current`; its `.current` reaches 40 mA)"),
+        "{vbat}"
+    );
+    // The tracks and vias are sized for heat by the rms.
+    assert!((vbat["rms"].as_f64().unwrap() - 0.3).abs() < 1e-9, "{vbat}");
+    assert!(
+        vbat["rms_source"]
+            .as_str()
+            .unwrap()
+            .contains("rail `radio` 300 mA (rms)"),
+        "{vbat}"
+    );
+    assert!(held["least_width"].as_f64().unwrap() < 0.2, "{held}");
+
+    let run = netsmith(&dir, &["board", "nets", "b.nsm", "--currents"]);
+    let text = String::from_utf8_lossy(&run.stdout);
+    assert!(run.status.success(), "{text}");
+    let line = text
+        .lines()
+        .find(|l| l.trim_start().starts_with("VBAT: "))
+        .unwrap_or_else(|| panic!("no line for VBAT in:\n{text}"));
+    assert!(
+        line.contains(": 2 A (sum: rail `radio`: 2 A (its `.peak_current`")
+            && line.contains(", 300 mA rms ("),
+        "{line}"
+    );
+
+    // Routed, the tracks are drawn for the rms and the drop is measured at the peak.
+    let routed = json(&netsmith(
+        &dir,
+        &["board", "nets", "b.nsm", "--route", "--format", "json"],
+    ));
+    let drop = routed["track_drops"]
+        .as_array()
+        .expect("a track drop list")
+        .iter()
+        .find(|d| d["net"] == "VBAT")
+        .unwrap_or_else(|| panic!("no track drop for VBAT: {routed}"));
+    println!("{drop}");
+    assert!((drop["current"].as_f64().unwrap() - 2.0).abs() < 1e-9, "{drop}");
+    assert!(drop["narrowest"].as_f64().unwrap() < 0.2, "{drop}");
+}
+
+#[test]
+fn a_bursting_load_with_no_rms_has_its_tracks_sized_by_its_peak() {
+    let dir = TempDir::new("net-currents-burst-peak");
+    fs::write(dir.join("b.nsm"), radio("")).unwrap();
+    let (vbat, held) = vbat_of(&dir);
+    println!("{vbat}\n{held}");
+    assert!((vbat["current"].as_f64().unwrap() - 2.0).abs() < 1e-9, "{vbat}");
+    assert!(vbat.get("rms").is_none(), "{vbat}");
+    // What 2 A needs (0.98 mm drawn, 0.78 mm at its least), not what the 40 mA average does.
+    assert!(held["least_width"].as_f64().unwrap() > 0.75, "{held}");
+}

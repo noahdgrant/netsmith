@@ -40,8 +40,12 @@ interface Rail {
     /// The most current the load behind the rail draws at an instant, as a positive number: the
     /// inrush of a capacitor charged through a resistor, a motor's start. `current` is the
     /// steady range, and the DC analysis never reads this one, so it enters no balance, no
-    /// power and no shunt window (issue #750). It is the rail's own: two loads joined to one
-    /// source each state theirs, and `~` does not share it. Each is checked against
+    /// power and no shunt window (issue #750). The copper reads it (issue #1712): the load's
+    /// nets, and the parts in series in front of it, carry the peak where it is above
+    /// `current`, which the track drop measures at, and their tracks and vias are sized for heat
+    /// by `rms_current` where the rail states one and by this peak where it does not. It is
+    /// the rail's own: two loads joined to one source each state theirs, and `~` does not
+    /// share it. Each is checked against
     /// `max_peak_current` alone, without the steady current of the other loads, so a board whose
     /// loads start together states the sum on one of them. Left unstated, nothing is checked and
     /// nothing is listed as not evaluated (ADR 0074).
@@ -55,8 +59,9 @@ interface Rail {
     /// How long one burst of the load lasts: the time it draws its `peak_current` at a stretch,
     /// a radio's transmit slot of a few milliseconds (issue #1279). A load that bursts states
     /// `current` as its average, the burst included, and `peak_current` as the current during
-    /// the burst. The average is what the balance, a regulator's dissipation and every other
-    /// check of the steady state read; the peak is what the source must give. While the burst
+    /// the burst. The average is what the balance, a regulator's dissipation, the power budget
+    /// and every other check of the steady state read; the peak is what the source must give,
+    /// and what the copper carries (issue #1712), its heat sized by `rms_current`. While the burst
     /// lasts the other loads on the net keep drawing, so the check after the solve adds their
     /// steady current to the peak and holds the sum against `max_peak_current`. What the source
     /// cannot give comes from the capacitance across the rail: the capacitors between its `pos`
@@ -74,16 +79,18 @@ interface Rail {
     max(.current) >= max(.peak_current) * max(.duty)
     /// The heating (rms) current of the load behind the rail, as a positive number (issue
     /// #1690): a modem that draws 2 A in short slots and 0.3 A rms states `.current &=
-    /// 0A..2A` and `.rms_current &= 0.3A`. `current` stays the most it draws, which the
-    /// track-drop guideline measures the net's copper at; this one sizes the copper for heat
-    /// (the width IPC-2221 needs, the vias side by side, the router's widths, `track_current`
-    /// and `via_current`). On a net the rms currents add up (the rms of a sum is never more
-    /// than the sum of the rms values, so loads that burst together are covered too), a rail
-    /// or part that states none counts at its `current`, and the net is never held to more
-    /// than its peak. Not shared by `~`: each load states its own. It is stated only beside a
-    /// known `current` and never above it (above `peak_current` for a load that bursts, whose
-    /// `current` is its average), or the build fails. Left unstated, the copper is sized by
-    /// `current` as before (ADR 0074).
+    /// 0A..2A` and `.rms_current &= 0.3A`, or, as a load that bursts, its average as `.current`
+    /// and the 2 A as `.peak_current` (issue #1712). The peak (`peak_current` where it is above
+    /// `current`) is what the track-drop guideline measures the net's copper at; this one sizes
+    /// the copper for heat (the width IPC-2221 needs, the vias side by side, the router's
+    /// widths, `track_current` and `via_current`). On a net the rms currents add up (the rms of
+    /// a sum is never more than the sum of the rms values, so loads that burst together are
+    /// covered too), a rail or part that states none counts at its peak, and the net is never
+    /// held to more than its peak. Not shared by `~`: each load states its own. It is stated
+    /// only beside a known `current` and never above it (above `peak_current` for a load that
+    /// bursts, whose `current` is its average), or the build fails. Left unstated, the copper is
+    /// sized by the peak: `peak_current` where the rail states one above `current`, and
+    /// `current` otherwise (ADR 0074).
     .rms_current: Current optional
     /// The least voltage the rail may fall to while the regulator behind it is in dropout, below
     /// the least of `.voltage` (issue #1301): an MCU that runs from 1.8 V on a 3.3 V regulator
