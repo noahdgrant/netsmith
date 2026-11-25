@@ -59,17 +59,30 @@ impl Runs<'_> {
         routes: &Routes,
         out: &mut Routed,
     ) -> Result<Result<Option<Routes>, String>, Refusal> {
-        let board = self.board;
-        let net = self.ask.net.as_str();
         if !self.ask.rip.is_empty() || self.ask.reroute {
             return Ok(Err(
                 "`--via` routes the net round the copper there: it takes no `--rip` or `--reroute`"
                     .to_string(),
             ));
         }
+        let asked = self.ask.through.clone();
+        self.through_vias(routes, out, &asked)
+    }
+
+    /// The net routed through the vias `asked`: the module's header, and with
+    /// [`Ask::layer`] the rest of the net on that layer alone ([`super::layer`]'s header).
+    #[allow(clippy::type_complexity)]
+    pub(super) fn through_vias(
+        &mut self,
+        routes: &Routes,
+        out: &mut Routed,
+        asked: &[ViaAsked],
+    ) -> Result<Result<Option<Routes>, String>, Refusal> {
+        let board = self.board;
+        let net = self.ask.net.as_str();
         let mut state = routes.clone();
         let mut vias: Vec<netsmith_pcb::Via> = Vec::new();
-        for asked in &self.ask.through {
+        for asked in asked {
             let said = at_said(asked.at);
             let record = state.boards.get(&board.name).and_then(|t| t.nets.get(net));
             let found = record.and_then(|r| {
@@ -132,19 +145,34 @@ impl Runs<'_> {
                 }
             };
             let (real, _) = with_routes(board, &state)?;
-            out.through.last_mut().expect("pushed").layers = real
-                .via_layers(&via)
-                .iter()
-                .map(|l| l.word().to_string())
-                .collect();
+            let on = real.via_layers(&via);
+            out.through.last_mut().expect("pushed").layers =
+                on.iter().map(|l| l.word().to_string()).collect();
+            if let Some(layer) = self.ask.layer
+                && !on.contains(&layer)
+            {
+                return Ok(Err(format!(
+                    "the via {said} of net {net} does not reach {}: `--layer` routes the net on that layer from vias that reach it",
+                    layer.word()
+                )));
+            }
             if !vias.iter().any(|v| v.at.distance(via.at) < SAME_PLACE) {
                 vias.push(via);
             } else {
                 out.through.pop();
             }
         }
-        // Each pad and the via it goes to, the nearest to its via first.
-        let pads = self.pads();
+        // Each pad and the via it goes to, the nearest to its via first; with `--layer`, a pad
+        // on that layer (a plated hole's) needs no via.
+        let pads: Vec<(PadRef, Pt)> = match self.ask.layer {
+            Some(layer) => self
+                .pads()
+                .into_iter()
+                .filter(|(p, _)| !super::layer::pad_on(board, p, layer))
+                .collect(),
+            None => self.pads(),
+        };
+        let pads = if vias.is_empty() { Vec::new() } else { pads };
         if pads.len() + 1 > self.limit {
             return Ok(Err(format!(
                 "net {net} has {} pads: `--via` routes each to its via in a run of its own, and a try runs the router at most {} times",
@@ -209,7 +237,11 @@ impl Runs<'_> {
             add(board, &mut state, net, &way);
         }
         let (after, _) = with_routes(board, &state)?;
-        if !self.open(&after, net, true).is_empty() {
+        if let Some(layer) = self.ask.layer {
+            if let Err(why) = self.on_layer(&mut state, &vias, layer, out)? {
+                return Ok(Err(why));
+            }
+        } else if !self.open(&after, net, true).is_empty() {
             let rest = self.route(&state, net, true)?;
             if !rest.complete() {
                 out.walls = walls(board, &rest.why);
@@ -228,7 +260,7 @@ impl Runs<'_> {
 
     /// The pads of the net asked for (of its connection alone, when one is asked) and the centre
     /// of each.
-    fn pads(&self) -> Vec<(PadRef, Pt)> {
+    pub(super) fn pads(&self) -> Vec<(PadRef, Pt)> {
         let net = self.board.nets.iter().find(|n| n.name == self.ask.net);
         net.map(|n| n.pads.clone())
             .unwrap_or_default()

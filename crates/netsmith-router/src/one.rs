@@ -66,6 +66,18 @@ pub fn route_nets_weighed(
     nets: &BTreeSet<String>,
     weights: Option<crate::route::Weights>,
 ) -> One {
+    route_nets_on(board, nets, weights, None)
+}
+
+/// [`route_nets_weighed`], with `nets` pinned to one layer of the router's, routed there alone
+/// with no via ([`RouteOptions::on_layer`], `netsmith routes route --layer`, issue #1656);
+/// `None` pins none.
+pub fn route_nets_on(
+    board: &Board,
+    nets: &BTreeSet<String>,
+    weights: Option<crate::route::Weights>,
+    on_layer: Option<CopperLayer>,
+) -> One {
     if nets.is_empty() {
         return One::default();
     }
@@ -90,6 +102,7 @@ pub fn route_nets_weighed(
             pour_pads: false,
             stitch: false,
             weights,
+            on_layer,
             ..RouteOptions::default()
         },
     );

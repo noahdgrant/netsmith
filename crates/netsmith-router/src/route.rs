@@ -1408,6 +1408,12 @@ pub struct RouteOptions {
     /// [`Negotiation::NONE`] runs none, and the rounds of whole nets have the lines alone. Only
     /// used with `negotiate`.
     pub negotiation: Negotiation,
+    /// One layer of the stack that every net the run routes (each net the board's routes file
+    /// does not lock) is routed on alone, with no via (`netsmith routes route NET --layer L`,
+    /// issue #1656, which locks every other net): as a net on one layer is (issue #1274), on the
+    /// layer named, which must be one the router draws on (an outer layer or an inner signal
+    /// layer); its lines start and end on that layer only. `None`, the default, pins none.
+    pub on_layer: Option<CopperLayer>,
 }
 
 /// The bounds of the negotiation ([`RouteOptions::negotiation`], issue #1533), counts both:
@@ -1636,6 +1642,7 @@ impl Default for RouteOptions {
             reroute: Reroute::DEFAULT,
             power_groups: true,
             negotiation: Negotiation::DEFAULT,
+            on_layer: None,
         }
     }
 }
