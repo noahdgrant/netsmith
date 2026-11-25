@@ -121,9 +121,21 @@ pub(super) fn lock_info(target: &Target, name: &str) -> Option<PickLockInfo> {
     }
     let text = std::fs::read_to_string(&source.path).ok()?;
     let (loader, catalogs) = (target.loader().ok()?, target.catalogs().ok()?);
-    let found =
-        netsmith_pipeline::pick_lock::refresh(&source.path, name, &text, &loader, &catalogs)
-            .ok()?;
+    // The footprint libraries, as `project lock --check` reads them, so that a footprint that
+    // changed is told here too (issue #1683); a project whose libraries cannot be read keeps the
+    // footprints its lock records.
+    let libraries = target.libraries().ok();
+    let found = netsmith_pipeline::pick_lock::refresh_with(
+        &source.path,
+        name,
+        &text,
+        &loader,
+        &catalogs,
+        &netsmith_pipeline::pick_lock::Parts::All,
+        netsmith_pipeline::pick_lock::Numbering::Keep,
+        libraries.as_ref(),
+    )
+    .ok()?;
     Some(PickLockInfo {
         file: shown,
         exists: found.existed,

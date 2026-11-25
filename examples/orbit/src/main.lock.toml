@@ -4,6 +4,8 @@
 # with `netsmith project lock --update`, and number the parts again by path with `--renumber`.
 # Nothing in it is edited by hand but `held = "reason"`, which a person adds to a part's entry
 # to keep the part on its row, and a part's designator, which a renamed part takes by hand.
+# Each part's footprint has the hash of its pads and courtyard: a change to the footprint shows
+# here, and `netsmith project lock --update` takes it.
 version = 2
 
 [Orbit.providers."process"]
@@ -351,3 +353,57 @@ sku = { jlcpcb-assembly = "C19666", lcsc-retail = "C19666" }
 "v3v3_100n[2]" = "C16"
 "v3v3_100n[3]" = "C17"
 "v3v3_bulk" = "C18"
+
+[Orbit.footprints]
+"battery" = { footprint = "orbit_original:JST_PH_B2B-PH-SM4-TB_1x02-1MP_P2.00mm_Vertical", hash = "08b66d2213e05d9e" }
+"boot_pulldown" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"boot_switch" = { footprint = "orbit_original:K3-1270L-F1", hash = "4cd634f119477f86" }
+"buck_boost.divider.rbottom" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"buck_boost.divider.rtop" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"buck_boost.ic" = { footprint = "orbit_original:TPS63802DLAR", hash = "2adec6d86fbf522f" }
+"buck_boost.inductor" = { footprint = "orbit_original:INDC2016X120N", hash = "f591849105c1a886" }
+"buck_boost.input_cap" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"buck_boost.output_cap" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"buck_boost.pg_pullup.resistor" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"charger.ic" = { footprint = "Package_TO_SOT_SMD:SOT-23-5", hash = "be9c1939f4f267ac" }
+"charger.rprog" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"charger.status_led" = { footprint = "LED_SMD:LED_0603_1608Metric", hash = "2a500898dd78be5f" }
+"charger.status_resistor" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"charger.vbatt_cap" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"charger.vbus_cap" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"eeprom" = { footprint = "orbit_original:SOIC127P600X175-8N", hash = "a576c116b0b2a054" }
+"header_east" = { footprint = "Connector_PinHeader_2.54mm:PinHeader_1x08_P2.54mm_Vertical", hash = "5ff83164d2e8d510" }
+"header_west" = { footprint = "Connector_PinHeader_2.54mm:PinHeader_1x08_P2.54mm_Vertical", hash = "5ff83164d2e8d510" }
+"hole1" = { footprint = "orbit_small_parts:MountingHole_2.5mm_M2.5_Pad", hash = "4d9a19c0bb89f9b3" }
+"hole2" = { footprint = "orbit_small_parts:MountingHole_2.5mm_M2.5_Pad", hash = "4d9a19c0bb89f9b3" }
+"hole3" = { footprint = "orbit_small_parts:MountingHole_2.2mm_M2_Pad", hash = "0b8b8e2fe7b95516" }
+"hole4" = { footprint = "orbit_small_parts:MountingHole_2.5mm_M2.5_Pad", hash = "4d9a19c0bb89f9b3" }
+"i2c_pullups.scl_pullup" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"i2c_pullups.sda_pullup" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"led1" = { footprint = "LED_SMD:LED_0603_1608Metric", hash = "2a500898dd78be5f" }
+"led2" = { footprint = "LED_SMD:LED_0603_1608Metric", hash = "2a500898dd78be5f" }
+"led1_resistor" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"led2_resistor" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"mcu" = { footprint = "Package_QFP:LQFP-48_7x7mm_P0.5mm", hash = "7f377017507d1889" }
+"oscillator.crystal" = { footprint = "Crystal:Crystal_SMD_5032-2Pin_5.0x3.2mm", hash = "31306dbcd283da89" }
+"oscillator.load_in" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"oscillator.load_out" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"power_switch" = { footprint = "orbit_original:K3-1270L-F1", hash = "4cd634f119477f86" }
+"reset_button" = { footprint = "orbit_original:SW_Push_1P1T_NO_CK_KSC6xxJ", hash = "8f8c7b514987be7f" }
+"reset_cap" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"usb" = { footprint = "orbit_original:MINI-USB-SMD_MINI-5PTP", hash = "7a736501ccb21714" }
+"usb_uart.ic" = { footprint = "orbit_original:QFN28G_0.5-5X5MM", hash = "adb3c484bccf2489" }
+"usb_uart.vbus_100n" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"usb_uart.vbus_1u" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"usb_uart.vdd_100n" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"usb_uart.vdd_bulk" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"user_button" = { footprint = "orbit_original:SW_Push_1P1T_NO_CK_KSC6xxJ", hash = "8f8c7b514987be7f" }
+"user_node_cap" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"user_pin_cap" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"user_pulldown.resistor" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"user_series" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"v3v3_100n[0]" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"v3v3_100n[1]" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"v3v3_100n[2]" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"v3v3_100n[3]" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"v3v3_bulk" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }

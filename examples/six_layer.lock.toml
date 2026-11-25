@@ -4,6 +4,8 @@
 # with `netsmith project lock --update`, and number the parts again by path with `--renumber`.
 # Nothing in it is edited by hand but `held = "reason"`, which a person adds to a part's entry
 # to keep the part on its row, and a part's designator, which a renamed part takes by hand.
+# Each part's footprint has the hash of its pads and courtyard: a change to the footprint shows
+# here, and `netsmith project lock --update` takes it.
 version = 2
 
 [SixLayerExample.providers."process"]
@@ -46,3 +48,10 @@ sku = { jlcpcb-assembly = "C5446", lcsc-retail = "C5446" }
 "power_in" = "J1"
 "power_out" = "J2"
 "regulator" = "U1"
+
+[SixLayerExample.footprints]
+"input_cap" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"output_cap" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"power_in" = { footprint = "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical", hash = "4f0b767adeef1876" }
+"power_out" = { footprint = "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical", hash = "4f0b767adeef1876" }
+"regulator" = { footprint = "Package_TO_SOT_SMD:SOT-23", hash = "30dbca44a426f51f" }

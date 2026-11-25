@@ -18,6 +18,8 @@ netsmith-kicad = { path = "../netsmith-kicad" }
 # (`copper`, ADR 0105), and the design rules check's room and teardrops.
 netsmith-geom = { path = "../netsmith-geom" }
 serde = { version = "1.0.229", features = ["derive"] }
+# The hash of a footprint's geometry, which the pick lock records (`Footprint::geometry_hash`).
+sha2 = "0.11.1"
 # `float_roundtrip`: a board read back from JSON (a placed board, `netsmith dev route`) has the very
 # numbers it was written with, so it routes to the same copper.
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }

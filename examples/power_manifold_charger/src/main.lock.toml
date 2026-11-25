@@ -4,6 +4,8 @@
 # with `netsmith project lock --update`, and number the parts again by path with `--renumber`.
 # Nothing in it is edited by hand but `held = "reason"`, which a person adds to a part's entry
 # to keep the part on its row, and a part's designator, which a renamed part takes by hand.
+# Each part's footprint has the hash of its pads and courtyard: a change to the footprint shows
+# here, and `netsmith project lock --update` takes it.
 version = 2
 
 [PowerManifoldCharger.providers."process"]
@@ -604,3 +606,94 @@ sku = { jlcpcb-assembly = "C1523", lcsc-retail = "C1523" }
 "vout_divider_bottom" = "R26"
 "vout_divider_top" = "R27"
 "vout_sense_1n" = "C38"
+
+[PowerManifoldCharger.footprints]
+"boot1_cap" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"boot2_cap" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"cbias_100n" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"cc1_330p" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"cc2_330p" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"comp_cap" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"comp_cap_series" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"comp_resistor" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"comparator" = { footprint = "power_manifold_parts:SOT-23-THIN-8_TI_DDF0008A", hash = "8a6fa3dd6e08719a" }
+"converter" = { footprint = "power_manifold_ics:VQFN-HR-26_3.5x4mm_P0.5mm_TI_RPM0026A", hash = "e8efebf981297287" }
+"dither_10n" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"emi_vin_100n" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"emi_vin_100u" = { footprint = "power_manifold_parts:CP_Elec_6.3x7.7_SMD", hash = "66fe2b0c2fea3330" }
+"emi_vin_10u_a" = { footprint = "Capacitor_SMD:C_1206_3216Metric", hash = "1d874cdf8489d191" }
+"emi_vin_10u_b" = { footprint = "Capacitor_SMD:C_1206_3216Metric", hash = "1d874cdf8489d191" }
+"emi_vin_1u" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"en_pulldown" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"fault_pullup" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"flag_pullup" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"fsw_resistor" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"fuse" = { footprint = "power_manifold_parts:Fuse_Littelfuse_451_2410", hash = "12cc48d0ee7141e9" }
+"gate_47p" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"gate_high_resistor" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"gate_low_resistor" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"iana_100n" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"ilim_resistor" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"input_inductor" = { footprint = "power_manifold_parts:L_Sunlord_MWSA0603S", hash = "3bfca5357931915b" }
+"ldo" = { footprint = "Package_TO_SOT_SMD:SOT-23-5", hash = "be9c1939f4f267ac" }
+"ldo_bypass" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"led" = { footprint = "LED_SMD:LED_0603_1608Metric", hash = "2a500898dd78be5f" }
+"led_resistor" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"mcu" = { footprint = "power_manifold_ics:LQFP-48_7x7mm_P0.5mm_ST_DS12232", hash = "0b0a1ad2f6c955a4" }
+"mode_resistor" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"ntc_converter" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"ntc_converter_100n" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"ntc_converter_pullup" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"ntc_plug" = { footprint = "Resistor_SMD:R_0603_1608Metric", hash = "f3b73a45a68c6dba" }
+"ntc_plug_100n" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"ntc_plug_pullup" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"output_shunt" = { footprint = "Resistor_SMD:R_1206_3216Metric", hash = "da7afaffcf0e7101" }
+"ovp_ceil_bottom" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"ovp_ceil_top" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"ovp_ref_pulldown" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"port_shunt" = { footprint = "Resistor_SMD:R_1206_3216Metric", hash = "da7afaffcf0e7101" }
+"port_tvs" = { footprint = "power_manifold_parts:DFN1610-2_ST_ESDA25P35-1U1M", hash = "d4a631f7df754fae" }
+"power_inductor" = { footprint = "power_manifold_parts:L_Sunlord_MWSA1005S", hash = "c89bd1354240983f" }
+"protector" = { footprint = "power_manifold_ics:QFN-18-1EP_3.5x3.5mm_P0.5mm_EP2.2x2.2mm_ST", hash = "d9cd55e7df35032e" }
+"q_high" = { footprint = "power_manifold_parts:TDSON-8FL_Infineon_BSC059N04LS6", hash = "2db05c056d72f6d4" }
+"q_low" = { footprint = "power_manifold_parts:TDSON-8FL_Infineon_BSC059N04LS6", hash = "2db05c056d72f6d4" }
+"q_port_a" = { footprint = "power_manifold_parts:TDSON-8FL_Infineon_BSC059N04LS6", hash = "2db05c056d72f6d4" }
+"q_port_b" = { footprint = "power_manifold_parts:TDSON-8FL_Infineon_BSC059N04LS6", hash = "2db05c056d72f6d4" }
+"reset_100n" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"scl_pullup" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"sda_pullup" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"slot" = { footprint = "power_manifold_must_match:PCIe_x1_Edge_Fingers", hash = "9735cd25633f43bf" }
+"swd" = { footprint = "power_manifold_must_match:Tag-Connect_TC2030-IDC-NL_2x03_P1.27mm_Vertical", hash = "4f54d6db288d6300" }
+"tcpp_en_pulldown" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"tcpp_en_series" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"tp_gnd" = { footprint = "TestPoint:TestPoint_Pad_D1.5mm", hash = "f674a73c983c91cc" }
+"tp_rx" = { footprint = "TestPoint:TestPoint_Pad_D1.5mm", hash = "f674a73c983c91cc" }
+"tp_tx" = { footprint = "TestPoint:TestPoint_Pad_D1.5mm", hash = "f674a73c983c91cc" }
+"usb" = { footprint = "power_manifold_must_match:USB_C_Receptacle_GT-USB-7004", hash = "a060a64281e2741c" }
+"usb_esd" = { footprint = "Package_TO_SOT_SMD:SOT-23-6", hash = "b4d64133c8ac0117" }
+"usb_scl_pullup" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"usb_sda_pullup" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"v3v3_100n_a" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"v3v3_100n_b" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"v3v3_100n_c" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"v3v3_100n_d" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"v3v3_10u" = { footprint = "Capacitor_SMD:C_0805_2012Metric", hash = "57bea96f2863e6f2" }
+"v3v3_4u7" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"v5_100n" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"v5_1u" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"v5_4u7" = { footprint = "Capacitor_SMD:C_0603_1608Metric", hash = "d384a98f447ce066" }
+"vbus_2u2" = { footprint = "Capacitor_SMD:C_1206_3216Metric", hash = "1d874cdf8489d191" }
+"vbus_divider_bottom" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"vbus_divider_top" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"vbus_sense_10n" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"vcc_100n" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }
+"vcc_10u" = { footprint = "Capacitor_SMD:C_0805_2012Metric", hash = "57bea96f2863e6f2" }
+"vcc_bead" = { footprint = "Inductor_SMD:L_0603_1608Metric", hash = "2a500898dd78be5f" }
+"vout_conv_10u_a" = { footprint = "Capacitor_SMD:C_1206_3216Metric", hash = "1d874cdf8489d191" }
+"vout_conv_10u_b" = { footprint = "Capacitor_SMD:C_1206_3216Metric", hash = "1d874cdf8489d191" }
+"vout_conv_10u_c" = { footprint = "Capacitor_SMD:C_1206_3216Metric", hash = "1d874cdf8489d191" }
+"vout_conv_10u_d" = { footprint = "Capacitor_SMD:C_1206_3216Metric", hash = "1d874cdf8489d191" }
+"vout_conv_220u" = { footprint = "power_manifold_parts:CP_Elec_8x10_SMD", hash = "6d5c0d611d2e7da0" }
+"vout_divider_bottom" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"vout_divider_top" = { footprint = "Resistor_SMD:R_0402_1005Metric", hash = "1db463f93ba694f7" }
+"vout_sense_1n" = { footprint = "Capacitor_SMD:C_0402_1005Metric", hash = "ac8c765920c82bdf" }

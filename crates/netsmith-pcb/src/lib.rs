@@ -46,6 +46,7 @@ mod fill_islands;
 mod fill_report;
 mod fit_report;
 mod footprint;
+mod footprint_hash;
 mod generate;
 mod geometry;
 mod impedance;
