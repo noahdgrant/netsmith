@@ -63,7 +63,9 @@ use netsmith_router::{RIP_MOST, RIP_ROUNDS};
 
 use crate::routes::{Edit, Refusal, edit_all, with_routes};
 
+pub(crate) mod layer;
 pub(crate) mod through;
+pub use layer::{END_RINGS, END_STEP, END_TURNS, signal_layer};
 pub use through::{SAME_PLACE, Through, ViaAsked};
 
 /// The most times one try of `routes route` runs the router (each run routes one net): what
@@ -99,6 +101,9 @@ pub struct Ask {
     /// The vias the net is routed through (`--via`, issue #1642, [`through`]'s header): each
     /// pad joined to the nearest of them first, then the rest of the net.
     pub through: Vec<ViaAsked>,
+    /// The inner signal layer the net is routed on (`--layer`, issue #1656, [`layer`]'s
+    /// header): a via at each end, the rest of the net on that layer alone.
+    pub layer: Option<netsmith_pcb::CopperLayer>,
 }
 
 impl Ask {
@@ -144,6 +149,7 @@ impl Ask {
             weights: None,
             reroute: false,
             through: Vec::new(),
+            layer: None,
         })
     }
 }
@@ -203,8 +209,13 @@ pub struct Routed {
     pub refused: Option<String>,
     /// What `--reroute` found: the totals before and after, and whether the change is kept.
     pub rerouted: Option<Total>,
-    /// The vias asked for with `--via`, and the pads joined through each.
+    /// The vias asked for with `--via`, and the pads joined through each; with `--layer`, the
+    /// vias at the ends too.
     pub through: Vec<Through>,
+    /// The layer the net is routed on (`--layer`), and the places checked for its vias at the
+    /// ends ([`layer`]'s header).
+    pub layer: Option<String>,
+    pub end_checks: usize,
     /// The runs of the router in all, and the rounds of routing ripped nets again (of the try
     /// kept, or the last).
     pub runs: usize,
@@ -347,6 +358,8 @@ pub fn route_net(board: &Board, routes: &Routes, ask: &Ask) -> Result<Routed, St
         refused: None,
         rerouted: None,
         through: Vec::new(),
+        layer: ask.layer.map(|l| l.word().to_string()),
+        end_checks: 0,
         runs: 0,
         rounds: 0,
         routes: None,
@@ -491,6 +504,9 @@ impl Runs<'_> {
             }
         }
         let (real, _) = with_routes(self.board, routes)?;
+        if self.ask.layer.is_some() {
+            return self.layered(&real, routes, out);
+        }
         if !self.ask.through.is_empty() {
             return self.through(routes, out);
         }
@@ -1200,6 +1216,13 @@ impl Routed {
                 } else {
                     format!("pad(s) {} joined through it", t.pads.join(", "))
                 }
+            );
+        }
+        if let Some(l) = &self.layer {
+            let _ = writeln!(
+                s,
+                "on {l}: {} place(s) checked for the vias at the ends",
+                self.end_checks
             );
         }
         if self.refused.is_none() {

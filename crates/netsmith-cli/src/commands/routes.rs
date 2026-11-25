@@ -216,7 +216,7 @@ pub struct RouteArgs {
     /// routed together by the router's negotiation round the copper outside. Written only when
     /// no connection is left open that was made before and the copper costs no more by the
     /// weights (or fewer connections are open).
-    #[arg(long, value_name = "X,Y,W,H", value_parser = parse_rect, allow_hyphen_values = true, conflicts_with_all = ["net", "rip", "reroute", "via"])]
+    #[arg(long, value_name = "X,Y,W,H", value_parser = parse_rect, allow_hyphen_values = true, conflicts_with_all = ["net", "rip", "reroute", "via", "layer"])]
     pub region: Option<[f64; 4]>,
     /// Nets whose unlocked tracks and vias may be removed and routed again after it, `A,B`.
     #[arg(long, value_name = "NET,...", value_delimiter = ',')]
@@ -261,6 +261,16 @@ pub struct RouteArgs {
     /// of the net is routed. Not taken with `--rip`, `--reroute` or `--region`.
     #[arg(long = "via", value_name = "X,Y[,LAYER,LAYER]", value_parser = parse_via, allow_hyphen_values = true, action = clap::ArgAction::Append, conflicts_with_all = ["rip", "reroute"])]
     pub via: Vec<netsmith_fabricate::route_net::ViaAsked>,
+    /// Route on one inner signal layer, `inner2`, with a via at each end.
+    ///
+    /// KiCad's name, `In2.Cu`, is taken too. Each pad not on the layer gets a through via near it (the first legal place on rings
+    /// round it, as `check-via` judges one) and is joined to it; then the vias are joined on
+    /// that layer alone, round the copper there. Refused on an outer layer or a plane (one sheet
+    /// of copper on a net, which holds no track), naming the board's layers: an inner layer is
+    /// a signal layer when the process says so, `.process.inner2.use &= "signal"`. With `--via`
+    /// the vias named are the ends. Not taken with `--rip`, `--reroute` or `--region`.
+    #[arg(long, value_name = "LAYER", conflicts_with_all = ["rip", "reroute"])]
+    pub layer: Option<String>,
     /// Say what it would do, and write nothing.
     #[arg(long)]
     pub dry_run: bool,
@@ -934,8 +944,19 @@ fn route(args: &RouteArgs) -> ExitCode {
     let done = with_board(&args.target, |layout, board| {
         let file = routes_file(layout);
         let routes = lib::load(&file)?;
+        let layer = match args
+            .layer
+            .as_deref()
+            .map(|l| route_net::signal_layer(board, l))
+        {
+            None => None,
+            Some(Ok(l)) => Some(l),
+            Some(Err(lib::Refusal::Refused(e))) => return Ok(Err(e)),
+            Some(Err(lib::Refusal::Failed(e))) => return Err(e),
+        };
         let ask = match route_net::Ask::of(board, net, &args.rip) {
             Ok(ask) => route_net::Ask {
+                layer,
                 depth: args.rip_depth,
                 tries: args.tries,
                 weights,
@@ -1408,6 +1429,29 @@ mod tests {
         assert!(parse(&["routes", "route", "VCC", "--region", "1,2,3,4"]).is_err());
         assert!(parse(&["routes", "route", "--region", "1,2,3,4", "--rip", "A"]).is_err());
         assert!(parse(&["routes", "route", "--region", "1,2,0,4"]).is_err());
+    }
+
+    #[test]
+    fn route_takes_a_layer_with_a_via_and_not_with_rip_reroute_or_region() {
+        // Issue #1656: the layer is checked against the board's stack-up when it is built.
+        assert!(matches!(
+            parse(&["routes", "route", "SIG", "--layer", "In2.Cu", "--via", "1,2"]),
+            Ok(Leaf::Routes(routes::Args {
+                command: routes::Command::Route(routes::RouteArgs { layer: Some(l), .. })
+            })) if l == "In2.Cu"
+        ));
+        for other in [
+            &["--rip", "A"][..],
+            &["--reroute"][..],
+            &["--region", "1,2,3,4"][..],
+        ] {
+            let mut args = vec!["routes", "route", "--layer", "inner2"];
+            if other[0] != "--region" {
+                args.insert(2, "SIG");
+            }
+            args.extend_from_slice(other);
+            assert!(parse(&args).is_err(), "{args:?}");
+        }
     }
 
     #[test]
