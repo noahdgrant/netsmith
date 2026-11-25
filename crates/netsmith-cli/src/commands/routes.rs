@@ -61,7 +61,7 @@ pub enum Command {
     /// Add a via, or a group of vias side by side, to a net, refused if it breaks the design rules.
     #[command(
         name = "add-via",
-        after_long_help = "One via is checked alone: for a net whose current needs several vias side by side where it changes layer, a lone via is refused by the design rules check (`via_current`). A group is added and checked together, as the router's own group is, and is accepted or refused as a whole (the file is then as it was). Name the places of a group with `--at X,Y` once for each via, or give `--count N --pitch MM` with one `--at`: N vias in a row along x, PITCH mm between their centres, centred on that place. The vias of a group count as side by side when their copper is no more than the group gap apart (the process's least clearance, or the board's `.process.via_group_gap`), so a pitch above the via's diameter and that gap leaves them apart (and the check says so). All vias of a group share the net, `--diameter`, `--drill`, `--layers` and `--lock`; a group has at most 64 vias."
+        after_long_help = "One via is checked alone: for a net whose current needs several vias side by side where it changes layer, a lone via is refused by the design rules check (`via_current`). A group is added and checked together, as the router's own group is, and is accepted or refused as a whole (the file is then as it was). Name the places of a group with `--at X,Y` once for each via, or give `--count N --pitch MM` with one `--at`: N vias in a row along x, PITCH mm between their centres, centred on that place. The vias of a group count as side by side when their copper is no more than the group gap apart (the process's least clearance, or the board's `.process.via_group_gap`), so a pitch above the via's diameter and that gap leaves them apart (and the check says so). All vias of a group share the net, `--diameter`, `--drill`, `--layers` and `--lock`; a group has at most 64 vias. A via that cuts a pour, a plane or a zone into a new island that holds pads or vias of the fill's net (on the board cut to a box 3 mm beyond the via, as `routes sites` finds it) is added, with a note naming the layer, the fill, its net and what it cuts off."
     )]
     AddVia(AddViaArgs),
     /// Add a zone (copper area) of a net on a layer, refused if it breaks the design rules.
@@ -818,13 +818,17 @@ fn edit_all(target: &Target, changes: impl Fn(&Board) -> Vec<lib::Edit>) -> Exit
         |placed| {
             let (board, layout) = board_and_layout(placed)?;
             Ok(timings::stage("routes edit", &board.name, || {
-                lib::edit_file_all(&board, &routes_file(&layout), &changes(&board))
+                lib::edit_file_all_noting(&board, &routes_file(&layout), &changes(&board))
             }))
         },
     );
     match outcome {
-        Ok(Ok(said)) => {
+        Ok(Ok((said, pockets))) => {
             println!("{said}");
+            // A via the change adds that cuts a fill into a new island (issue #1668).
+            for p in &pockets {
+                println!("note: the via {}", p.text_moved([0.0, 0.0]));
+            }
             ExitCode::SUCCESS
         }
         Ok(Err(lib::Refusal::Refused(e))) => {

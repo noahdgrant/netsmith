@@ -24,9 +24,15 @@
 //!
 //! **Held.** A legal site is held when the check finds a new error with the via on the board
 //! with the routes file's copper: a track or a via of another net (of any net, with no
-//! `--net`) is too near. The nets and kinds the findings name are its holders. A pour, a plane or
-//! a zone holds no site: its fill is made round a via, as the check makes it. The copper the
-//! router lays when `fab` runs is not on the board: the sites are those of the routes file.
+//! `--net`) is too near. The tracks and vias the findings name are its holders, each with the
+//! rule and the space required and measured of its finding, as `routes check-via` gives them
+//! ([`crate::via_check::clash`], issue #1669). A pour, a plane or a zone holds no site: its
+//! fill is made round a via, as the check makes it. The copper the router lays when `fab` runs
+//! is not on the board: the sites are those of the routes file.
+//!
+//! **Pockets.** Each listed site says the new islands a via there would cut a pour, a plane or a
+//! zone into ([`crate::via_pockets`], issue #1668): a note, which [`Sites::zone_safe`] sets
+//! apart.
 //!
 //! The neighbours of a site are the pads of the board whose centres lie nearest it (within
 //! 0.01 mm of the nearest), with their nets and the distance from centre to centre. Each check
@@ -57,13 +63,25 @@ pub struct Neighbour {
     pub distance: f64,
 }
 
-/// Copper of the routes file that holds a site.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+/// Copper of the routes file that holds a site, with the rule it breaks with the via there and
+/// by how much: the figures of the check's finding, as `routes check-via` lists them
+/// ([`crate::via_check::Clash`]).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Holder {
     /// Its net.
     pub net: String,
     /// `track` or `via`.
     pub what: String,
+    /// The thing as the check names it (`Track [GND] on F.Cu, length 1.000 mm`).
+    pub item: String,
+    /// Where the check says it is (a track's start, a via's centre), in the routes file's frame.
+    pub at: [f64; 2],
+    /// The rule the via there breaks (`clearance`, `hole_clearance`, ...).
+    pub rule: String,
+    /// The space the rule asks for and the space measured, mm, and `required - measured`.
+    pub required: Option<f64>,
+    pub measured: Option<f64>,
+    pub shortfall: Option<f64>,
 }
 
 /// A site between pads.
@@ -74,8 +92,10 @@ pub struct Site {
     pub pads: Vec<Neighbour>,
     /// No copper of the routes file holds it.
     pub free: bool,
-    /// What holds it, when it is held.
+    /// What holds it, when it is held, the largest shortfall first.
     pub held_by: Vec<Holder>,
+    /// The new islands a via here would cut a pour, a plane or a zone into ([`crate::via_pockets`]).
+    pub pockets: Vec<crate::via_pockets::Pocket>,
 }
 
 /// A site in a pad.
@@ -91,6 +111,7 @@ pub struct InPad {
     pub why: Option<String>,
     pub free: bool,
     pub held_by: Vec<Holder>,
+    pub pockets: Vec<crate::via_pockets::Pocket>,
 }
 
 /// How many sites one rule refused.
@@ -123,8 +144,16 @@ pub struct Sites {
     pub tried: usize,
     /// The sites (between pads and in pads) the check refused, by the first rule of each.
     pub refused: Vec<RefusedBy>,
+    /// Whether the sites whose via would cut a fill into a new island are set apart
+    /// ([`Sites::zone_safe`]).
+    pub zone_safe: bool,
+    /// The sites set apart, between the pads and in them, when `zone_safe`.
+    pub cuts_zone: Vec<Site>,
+    pub cuts_zone_in_pad: Vec<InPad>,
     /// The design rules checks made.
     pub checks: usize,
+    /// The fills of the box round a site made to find the pockets ([`crate::via_pockets`]).
+    pub fills: usize,
 }
 
 impl Sites {
@@ -140,9 +169,71 @@ impl Sites {
         let net = |n: &Option<String>| n.clone().unwrap_or_else(|| "no net".to_string());
         let held = |h: &[Holder]| {
             h.iter()
-                .map(|h| format!("a {} of {}", h.what, h.net))
+                .map(|h| {
+                    let numbers = match (h.required, h.measured, h.shortfall) {
+                        (Some(r), Some(m), Some(s)) => {
+                            format!(": needs {r:.4} mm, has {m:.4} mm, short by {s:.4} mm")
+                        }
+                        _ => String::new(),
+                    };
+                    format!(
+                        "a {} of {} at {} ({}{numbers})",
+                        h.what,
+                        h.net,
+                        at(h.at),
+                        h.rule
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join(", ")
+        };
+        let pockets = |out: &mut String, ps: &[crate::via_pockets::Pocket]| {
+            for p in ps {
+                out.push_str(&format!("    a via here {}\n", p.text_moved(by)));
+            }
+        };
+        let between_line = |out: &mut String, s: &Site| {
+            let pads: Vec<String> = s
+                .pads
+                .iter()
+                .map(|p| format!("{} [{}]", p.pad, net(&p.net)))
+                .collect();
+            out.push_str(&format!(
+                "  {} {}  between {}",
+                if s.free { "free" } else { "held" },
+                at(s.at),
+                pads.join(", ")
+            ));
+            if !s.free {
+                out.push_str(&format!("  by {}", held(&s.held_by)));
+            }
+            if !s.pockets.is_empty() {
+                out.push_str("  cuts a fill");
+            }
+            out.push('\n');
+            pockets(out, &s.pockets);
+        };
+        let in_pad_line = |out: &mut String, s: &InPad| {
+            out.push_str(&format!(
+                "  {} {}  in {} [{}]  {}",
+                if s.free { "free" } else { "held" },
+                at(s.at),
+                s.pad,
+                net(&s.net),
+                if s.filled {
+                    "filled by the process"
+                } else {
+                    "not filled by the process"
+                }
+            ));
+            if !s.free {
+                out.push_str(&format!("  by {}", held(&s.held_by)));
+            }
+            if !s.pockets.is_empty() {
+                out.push_str("  cuts a fill");
+            }
+            out.push('\n');
+            pockets(out, &s.pockets);
         };
         let mut out = format!(
             "{} [{}]: {} of {} site(s) between its pads take a {:.3} mm via ({:.3} mm drill){}\n",
@@ -158,21 +249,7 @@ impl Sites {
             }
         );
         for s in &self.between {
-            let pads: Vec<String> = s
-                .pads
-                .iter()
-                .map(|p| format!("{} [{}]", p.pad, net(&p.net)))
-                .collect();
-            out.push_str(&format!(
-                "  {} {}  between {}",
-                if s.free { "free" } else { "held" },
-                at(s.at),
-                pads.join(", ")
-            ));
-            if !s.free {
-                out.push_str(&format!("  by {}", held(&s.held_by)));
-            }
-            out.push('\n');
+            between_line(&mut out, s);
         }
         if !self.in_pad.is_empty() {
             out.push_str(&format!(
@@ -180,22 +257,23 @@ impl Sites {
                 self.in_pad.len()
             ));
             for s in &self.in_pad {
+                in_pad_line(&mut out, s);
+            }
+        }
+        if self.zone_safe {
+            let apart = self.cuts_zone.len() + self.cuts_zone_in_pad.len();
+            if apart == 0 {
+                out.push_str("no site's via cuts a fill into a new island (`--zone-safe`)\n");
+            } else {
                 out.push_str(&format!(
-                    "  {} {}  in {} [{}]  {}",
-                    if s.free { "free" } else { "held" },
-                    at(s.at),
-                    s.pad,
-                    net(&s.net),
-                    if s.filled {
-                        "filled by the process"
-                    } else {
-                        "not filled by the process"
-                    }
+                    "{apart} site(s) set apart by `--zone-safe`: a via there cuts a fill into a new island\n"
                 ));
-                if !s.free {
-                    out.push_str(&format!("  by {}", held(&s.held_by)));
+                for s in &self.cuts_zone {
+                    between_line(&mut out, s);
                 }
-                out.push('\n');
+                for s in &self.cuts_zone_in_pad {
+                    in_pad_line(&mut out, s);
+                }
             }
         }
         if !self.refused.is_empty() {
@@ -210,10 +288,27 @@ impl Sites {
             ));
         }
         out.push_str(&format!(
-            "places in {frame} ({} design rules check(s))\n",
-            self.checks
+            "places in {frame} ({} design rules check(s), {} fill(s))\n",
+            self.checks, self.fills
         ));
         out
+    }
+
+    /// The sites with `zone_safe` set: those whose via would cut a fill into a new island
+    /// moved out of `between` and `in_pad` into `cuts_zone` and `cuts_zone_in_pad`.
+    pub fn zone_safe(mut self) -> Sites {
+        let (cut, kept): (Vec<Site>, Vec<Site>) = std::mem::take(&mut self.between)
+            .into_iter()
+            .partition(|s| !s.pockets.is_empty());
+        self.between = kept;
+        self.cuts_zone = cut;
+        let (cut, kept): (Vec<InPad>, Vec<InPad>) = std::mem::take(&mut self.in_pad)
+            .into_iter()
+            .partition(|s| !s.pockets.is_empty());
+        self.in_pad = kept;
+        self.cuts_zone_in_pad = cut;
+        self.zone_safe = true;
+        self
     }
 }
 
@@ -309,29 +404,61 @@ pub fn sites(
         }
         Ok(new)
     };
-    let holders = |found: &[netsmith_geom::DrcFinding], of: &str| {
-        let mut out: Vec<Holder> = found
-            .iter()
-            .flat_map(|f| &f.items)
-            .filter(|i| i.part.is_none())
-            .filter_map(|i| {
-                let what = if i.what.starts_with("Track") {
+    // The tracks and vias of other nets that the findings of the via at `at` name, each with
+    // the rule and the figures of its finding as `routes check-via` has them.
+    let holders = |found: &[netsmith_geom::DrcFinding], of: &str, at: Pt| {
+        let mut out: Vec<Holder> = Vec::new();
+        for f in found {
+            let c = crate::via_check::clash(f, at);
+            for i in f.items.iter().filter(|i| i.part.is_none()) {
+                let what = if i.what.starts_with("Track") || i.what.starts_with("Arc") {
                     "track"
                 } else if i.what.starts_with("Via") {
                     "via"
                 } else {
-                    return None;
+                    continue;
                 };
-                Some(Holder {
-                    net: i.net.clone().unwrap_or_default(),
+                let held_net = i.net.clone().unwrap_or_default();
+                if held_net == of {
+                    continue;
+                }
+                let p = Pt::new(i.at.x, i.at.y) - board.outline.min;
+                let h = Holder {
+                    net: held_net,
                     what: what.to_string(),
-                })
-            })
-            .filter(|h| h.net != of)
-            .collect();
-        out.sort();
-        out.dedup();
+                    item: i.what.clone(),
+                    at: [round(p.x), round(p.y)],
+                    rule: c.rule.clone(),
+                    required: c.required,
+                    measured: c.measured,
+                    shortfall: c.shortfall,
+                };
+                match out
+                    .iter_mut()
+                    .find(|o| o.item == h.item && o.at == h.at && o.rule == h.rule)
+                {
+                    Some(o) if o.shortfall < h.shortfall => *o = h,
+                    Some(_) => {}
+                    None => out.push(h),
+                }
+            }
+        }
+        out.sort_by(|a, b| {
+            b.shortfall
+                .unwrap_or(f64::INFINITY)
+                .total_cmp(&a.shortfall.unwrap_or(f64::INFINITY))
+                .then(a.net.cmp(&b.net))
+                .then(a.item.cmp(&b.item))
+        });
         out
+    };
+    let mut pockets = crate::via_pockets::Pockets::new();
+    let probe = |at: Pt, of: &str| Via {
+        net: of.to_string(),
+        at,
+        diameter: offer.diameter,
+        drill: offer.drill,
+        span: None,
     };
     let mut refused: Vec<RefusedBy> = Vec::new();
     let mut refuse_by = |found: &[netsmith_geom::DrcFinding]| {
@@ -417,12 +544,13 @@ pub fn sites(
             continue;
         }
         let found = new_near(&copper, &copper_before, at, &via_net, &mut checks)?;
-        let held_by = holders(&found, &via_net);
+        let held_by = holders(&found, &via_net, at);
         between.push(Site {
             at: file_place(at),
             pads: neighbours(at),
             free: found.is_empty(),
             held_by,
+            pockets: pockets.of_via(&routed, &probe(at, &via_net))?,
         });
     }
 
@@ -463,7 +591,8 @@ pub fn sites(
             filled: in_pad_rule.is_empty(),
             why: in_pad_rule.first().map(|f| f.message.clone()),
             free: held.is_empty(),
-            held_by: holders(&held, &of),
+            held_by: holders(&held, &of, at),
+            pockets: pockets.of_via(&routed, &probe(at, &of))?,
         });
     }
     refused.sort_by(|a, b| b.sites.cmp(&a.sites).then(a.rule.cmp(&b.rule)));
@@ -479,7 +608,11 @@ pub fn sites(
         in_pad,
         tried: candidates.len(),
         refused,
+        zone_safe: false,
+        cuts_zone: Vec::new(),
+        cuts_zone_in_pad: Vec::new(),
         checks,
+        fills: pockets.fills,
     })
 }
 

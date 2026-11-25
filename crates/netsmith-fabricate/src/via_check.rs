@@ -78,8 +78,13 @@ pub struct ViaCheck {
     pub notes: Vec<String>,
     /// The margin asked of the check, mm.
     pub margin: f64,
+    /// The new islands the via would cut a pour, a plane or a zone into, on a layer it passes
+    /// ([`crate::via_pockets`]): a note, which does not make the place illegal.
+    pub pockets: Vec<crate::via_pockets::Pocket>,
     /// The design rules checks made.
     pub checks: usize,
+    /// The fills of the box round the via made to find the pockets.
+    pub fills: usize,
 }
 
 impl ViaCheck {
@@ -156,9 +161,12 @@ impl ViaCheck {
         for n in &self.notes {
             out.push_str(&format!("  also: {n}\n"));
         }
+        for p in &self.pockets {
+            out.push_str(&format!("  note: the via {}\n", p.text_moved(by)));
+        }
         out.push_str(&format!(
-            "places in {frame} ({} design rules check(s))\n",
-            self.checks
+            "places in {frame} ({} design rules check(s), {} fill(s))\n",
+            self.checks, self.fills
         ));
         out
     }
@@ -194,6 +202,8 @@ pub fn check_via(
         span: offer.span,
     };
     let (routed, _) = with_routes(board, routes)?;
+    let mut pockets = crate::via_pockets::Pockets::new();
+    let cut_into = pockets.of_via(&routed, &probe)?;
     let reach = near::reach(board).max(near::reach(&routed));
     let margin = reach;
     let hood = Rect::new(probe.at, probe.at).expanded(probe.diameter / 2.0 + 2.0 * reach + margin);
@@ -239,35 +249,7 @@ pub fn check_via(
             None => added.push(f),
         }
     }
-    let is_probe = |i: &netsmith_geom::DrcItem| {
-        i.what.starts_with("Via")
-            && (i.at.x - probe.at.x).abs() < 1e-6
-            && (i.at.y - probe.at.y).abs() < 1e-6
-    };
-    let clash = |f: &DrcFinding| -> Clash {
-        let other = f.items.iter().find(|i| !is_probe(i));
-        let item = match (f.rule, other) {
-            (DrcRule::ItemsNotAllowed | DrcRule::NearRuleArea, _) => "keep-out",
-            (DrcRule::CopperEdgeClearance | DrcRule::HoleToEdge | DrcRule::VCutEdge, _) => {
-                "outline"
-            }
-            (DrcRule::SolderMaskBridge | DrcRule::MaskToTrack, _) => "mask",
-            (DrcRule::HoleToHole | DrcRule::PadHoleToHole, _) => "hole",
-            (_, None) => "process",
-            (_, Some(o)) => kind(&o.what),
-        };
-        let d = f.distance;
-        Clash {
-            rule: f.rule.id().to_string(),
-            item: item.to_string(),
-            what: other.map(|o| o.what.clone()).unwrap_or_default(),
-            net: other.and_then(|o| o.net.clone()),
-            required: d.map(|d| round(d.required)),
-            measured: d.map(|d| round(d.measured)),
-            shortfall: d.map(|d| round(d.shortfall())),
-            message: f.message.clone(),
-        }
-    };
+    let is_probe = |i: &netsmith_geom::DrcItem| is_via_at(i, probe.at);
     // A margin is a note of a rule whose own findings are not notes: one the margin brought in.
     let own_note = |r: DrcRule| r.default_severity() == Some(DrcSeverity::Note);
     let mut breaks = Vec::new();
@@ -276,9 +258,9 @@ pub fn check_via(
     for f in &added {
         let named = f.items.iter().any(is_probe);
         match f.severity {
-            DrcSeverity::Error => breaks.push(clash(f)),
+            DrcSeverity::Error => breaks.push(clash(f, probe.at)),
             DrcSeverity::Note if named && f.distance.is_some() && !own_note(f.rule) => {
-                let c = clash(f);
+                let c = clash(f, probe.at);
                 if !margins
                     .iter()
                     .any(|m| m.rule == c.rule && m.what == c.what && m.shortfall >= c.shortfall)
@@ -317,8 +299,41 @@ pub fn check_via(
         margins,
         notes,
         margin: round(margin),
+        pockets: cut_into,
         checks: 2,
+        fills: pockets.fills,
     })
+}
+
+/// Whether `i` is the via at `at` (the board file's frame).
+fn is_via_at(i: &netsmith_geom::DrcItem, at: Pt) -> bool {
+    i.what.starts_with("Via") && (i.at.x - at.x).abs() < 1e-6 && (i.at.y - at.y).abs() < 1e-6
+}
+
+/// The rule a finding of the via at `probe` (the board file's frame) says it breaks, with the
+/// thing in its way and the figures of the finding: what `routes check-via` and `routes sites`
+/// list.
+pub(crate) fn clash(f: &DrcFinding, probe: Pt) -> Clash {
+    let other = f.items.iter().find(|i| !is_via_at(i, probe));
+    let item = match (f.rule, other) {
+        (DrcRule::ItemsNotAllowed | DrcRule::NearRuleArea, _) => "keep-out",
+        (DrcRule::CopperEdgeClearance | DrcRule::HoleToEdge | DrcRule::VCutEdge, _) => "outline",
+        (DrcRule::SolderMaskBridge | DrcRule::MaskToTrack, _) => "mask",
+        (DrcRule::HoleToHole | DrcRule::PadHoleToHole, _) => "hole",
+        (_, None) => "process",
+        (_, Some(o)) => kind(&o.what),
+    };
+    let d = f.distance;
+    Clash {
+        rule: f.rule.id().to_string(),
+        item: item.to_string(),
+        what: other.map(|o| o.what.clone()).unwrap_or_default(),
+        net: other.and_then(|o| o.net.clone()),
+        required: d.map(|d| round(d.required)),
+        measured: d.map(|d| round(d.measured)),
+        shortfall: d.map(|d| round(d.shortfall())),
+        message: f.message.clone(),
+    }
 }
 
 /// The kind of a thing the check names, by the start of its name.
