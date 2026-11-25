@@ -29,7 +29,7 @@ fn easyduino_pcb_matches_the_original_where_it_must() {
         min_ok: 202,
         route_seconds: ROUTE_SECONDS,
         regenerate: "from examples/easyduino_esp32s3 run `netsmith board fab --locked`, then\n  netsmith \
-                     parity fab/EasyduinoEsp32s3/EasyduinoEsp32s3.kicad_pcb \
+                     dev parity fab/EasyduinoEsp32s3/EasyduinoEsp32s3.kicad_pcb \
                      --table reference/placements.toml --svg \
                      reference/parity-overlay.svg",
         known_failures: &[],
