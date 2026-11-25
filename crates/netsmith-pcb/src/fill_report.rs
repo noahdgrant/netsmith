@@ -409,27 +409,7 @@ impl FillReport {
             };
             for z in joins {
                 let net = art.zones[z.zone].net.clone().unwrap_or_default();
-                // A zone of the routes file restates a pour or a plane of its net; one of another
-                // net leaves the pour drawn round it (issue #1314), and so does a patch of its own
-                // net (issue #1608), which the board file raises above the pour, written at
-                // priority 0 ([`Board::zone_lift`]): a fill above 0 is the patch's.
-                let source = if board.replaced(layer, &net)
-                    || art.zones[z.zone].priority > 0
-                    || !board
-                        .pours
-                        .iter()
-                        .any(|p| p.layer.name() == layer && p.net == net)
-                        && !board
-                            .planes
-                            .iter()
-                            .any(|p| p.layer == *layer && p.net == net)
-                {
-                    FillSource::Zone
-                } else if matches!(copper, Some(CopperLayer::Inner(_))) {
-                    FillSource::Plane
-                } else {
-                    FillSource::Pour
-                };
+                let source = fill_source(board, layer, &net, art.zones[z.zone].priority);
                 let mut counts = JoinCounts::default();
                 let pads: Vec<FillPad> = z
                     .pads
@@ -689,6 +669,32 @@ impl FillReport {
     }
 }
 
+/// What the fill of a zone of the board file on `layer` of `net`, of the priority `priority`, is.
+/// A zone of the routes file restates a pour or a plane of its net; one of another net leaves the
+/// pour drawn round it (issue #1314), and so does a patch of its own net (issue #1608), which the
+/// board file raises above the pour, written at priority 0 ([`Board::zone_lift`]): a fill above 0
+/// is the patch's.
+pub(crate) fn fill_source(board: &Board, layer: &str, net: &str, priority: u32) -> FillSource {
+    let copper = CopperLayer::of_name(layer);
+    if board.replaced(layer, net)
+        || priority > 0
+        || !board
+            .pours
+            .iter()
+            .any(|p| p.layer.name() == layer && p.net == net)
+            && !board
+                .planes
+                .iter()
+                .any(|p| p.layer == *layer && p.net == net)
+    {
+        FillSource::Zone
+    } else if matches!(copper, Some(CopperLayer::Inner(_))) {
+        FillSource::Plane
+    } else {
+        FillSource::Pour
+    }
+}
+
 /// The ground pads of `board`'s switching regulators that a fill of their net holds and joins
 /// otherwise than with solid copper that reaches them, in the order of the fills.
 fn regulator_grounds(board: &Board, fills: &[FillArea]) -> Vec<RegulatorGround> {
@@ -725,7 +731,7 @@ fn regulator_grounds(board: &Board, fills: &[FillArea]) -> Vec<RegulatorGround> 
 
 /// A pad by its part and number, `U1.2`, or the part alone for a pad with no number (a
 /// fiducial's).
-fn pad_name(part: &str, pad: &str) -> String {
+pub(crate) fn pad_name(part: &str, pad: &str) -> String {
     if pad.is_empty() {
         part.to_string()
     } else {

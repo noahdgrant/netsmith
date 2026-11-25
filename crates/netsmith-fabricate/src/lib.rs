@@ -11,6 +11,7 @@ pub mod dependency_lock;
 pub mod drc;
 pub mod fab;
 mod fab_environment;
+pub mod fanout;
 pub mod gerber_compare;
 pub mod git_dependency;
 pub mod join_pad;

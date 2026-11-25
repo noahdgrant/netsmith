@@ -13,7 +13,7 @@ Every board goes through the same steps. Do them in this order and say what each
 
 1. `netsmith project init` in an empty directory makes the project (skip it in an existing one). After a netsmith upgrade `netsmith project refresh` updates the agent files you have not edited.
 2. Write or change `src/*.nsm`: the requirements as numbers, never part numbers (`netsmith-write-nsm`, `netsmith-design-a-board`).
-3. `netsmith board check` checks and solves the boards and writes nothing. Read the first error only, fix it and run it again (`netsmith-read-errors`).
+3. `netsmith board check` checks and solves the boards and writes nothing; with a layout file it also makes `fab`'s placement check of the parts the file places (courtyards, edge, keepouts), places nothing, and notes what it left to the placer. Read the first error only, fix it and run it again (`netsmith-read-errors`).
 4. `netsmith board build` does the same and writes the schematic to `out/`, the pick lock and the pin file. Run it before you say a design works.
 5. Look at what you made, with the commands that draw it; you read the picture with your image viewer:
    - `netsmith view schematic`: the schematic as a PDF, an SVG or a PNG.

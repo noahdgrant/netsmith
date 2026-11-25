@@ -130,6 +130,8 @@ const DEFAULT_CLEARANCE: f64 = 0.2;
 
 mod cut;
 pub(crate) use cut::{By, cuts};
+mod regions;
+pub use regions::{Bound as RegionBound, Bounding, Region, ZoneRegions, fill_regions};
 
 /// Whether a via joins a pour with thermal spokes (as a pad does) rather than solid copper:
 /// KiCad joins it solid (found by the cross-check, ADR 0034).
