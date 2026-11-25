@@ -387,3 +387,42 @@ fn the_help_of_the_catalog_commands_names_every_option_and_status() {
         assert!(age.contains(word), "`catalog age --help` lacks `{word}`");
     }
 }
+
+/// A record whose package field says `SOT-23` while its description says SOT323 (issue #1658):
+/// the number and the part are made up for the test.
+fn sot_323_listed_as_sot_23(_: &common::endpoints::Seen) -> Reply {
+    Reply::ok(
+        r#"{"code":200,"msg":null,"ok":true,"result":{"productCode":"C99901658","productModel":"TEST-SOT323","brandNameEn":"TEST","encapStandard":"SOT-23","stockNumber":10,"productNameEn":"MOSFET N-CH 60V 115mA SOT323","productIntroEn":"N-Channel 60V 115mA SOT323"}}"#,
+    )
+}
+
+#[test]
+fn add_refuses_a_package_its_description_contradicts_unless_told() {
+    let root = dir("command-add-package");
+    let fake = Fake::start(sot_323_listed_as_sot_23);
+    let to = write(&root, "n_mosfet.csv", "mpn,package,source\n");
+    let args = [
+        "catalog", "add", "--lcsc", "C99901658", "--to", "n_mosfet.csv", "--no-cache",
+    ];
+    // No terminal to ask on: nothing is written, and the message gives both packages.
+    let refused = netsmith(&root, &fake, &args);
+    assert_eq!(refused.status.code(), Some(1));
+    let err = String::from_utf8_lossy(&refused.stderr);
+    assert!(
+        err.contains("the package is `SOT-23`") && err.contains("`SOT-323`") && err.contains("--accept-package-mismatch"),
+        "{err}"
+    );
+    assert_eq!(fs::read_to_string(&to).unwrap(), "mpn,package,source\n");
+    assert!(!root.join("offers/lcsc.csv").exists());
+    // Told to: the row is written, and what was accepted is said.
+    let mut told: Vec<&str> = args.to_vec();
+    told.extend(["--accept-package-mismatch", "--format", "json"]);
+    let added = netsmith(&root, &fake, &told);
+    assert_eq!(added.status.code(), Some(0), "{}", String::from_utf8_lossy(&added.stderr));
+    let doc = json(&added);
+    let found = doc["package_check"].as_array().unwrap();
+    // One finding for each of the record's two descriptions.
+    assert_eq!(found.len(), 2, "{doc}");
+    assert!(found.iter().all(|f| f.as_str().unwrap().contains("SOT323")), "{doc}");
+    assert!(fs::read_to_string(&to).unwrap().contains("TEST-SOT323,SOT-23,"));
+}

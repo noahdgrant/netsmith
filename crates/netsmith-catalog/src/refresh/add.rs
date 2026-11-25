@@ -46,7 +46,15 @@ pub struct Added {
     pub filled: Vec<String>,
     /// The columns a person must fill from the datasheet or JLCPCB's page.
     pub to_fill: Vec<String>,
+    /// What the check of the package found and the person accepted ([`Vet`]): empty when the
+    /// package agrees with its footprint and the record's description.
+    pub package_check: Vec<String>,
 }
+
+/// The check `catalog add` makes before it writes a row (issue #1658): given the package the
+/// record states and the record's descriptions, `Ok` with what it found (empty when nothing)
+/// writes the row, and `Err` with why writes nothing ([`AddError::Refused`]).
+pub type Vet<'a> = &'a mut dyn FnMut(Option<&str>, &[&str]) -> Result<Vec<String>, String>;
 
 /// Why `catalog add` wrote nothing.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,7 +82,12 @@ pub type Files<'a> = ((&'a Path, &'a str), (&'a Path, &'a str));
 /// Ask LCSC for `lcsc` and, with `to`, append the row to that catalog file and its offer to the
 /// offers file `offers` (LCSC's, `offers/lcsc.csv`, made when it does not exist). `shown` is what
 /// messages call a file.
-pub fn add(lcsc: &str, to: Option<Files<'_>>, network: Network) -> Result<Added, AddError> {
+pub fn add(
+    lcsc: &str,
+    to: Option<Files<'_>>,
+    network: Network,
+    vet: Vet<'_>,
+) -> Result<Added, AddError> {
     let stopped = |e: String| AddError::Stopped(e);
     let (to, offers) = match to {
         Some((to, offers)) => (Some(to), Some(offers)),
@@ -167,6 +180,7 @@ pub fn add(lcsc: &str, to: Option<Files<'_>>, network: Network) -> Result<Added,
         offer: None,
         filled: Vec::new(),
         to_fill: Vec::new(),
+        package_check: Vec::new(),
     };
     let (Some((path, shown, file)), Some((offers_path, offers_shown, offers_file))) =
         (file, offers)
@@ -185,6 +199,9 @@ pub fn add(lcsc: &str, to: Option<Files<'_>>, network: Network) -> Result<Added,
             product.mpn
         )));
     }
+    let descriptions: Vec<&str> = product.descriptions.iter().map(String::as_str).collect();
+    added.package_check =
+        vet(product.package.as_deref(), &descriptions).map_err(AddError::Refused)?;
     let mut cells = Vec::new();
     let maker_written =
         header.iter().any(|h| h.trim() == "manufacturer") && product.manufacturer.is_some();
@@ -315,6 +332,9 @@ pub fn render_added(added: &Added) -> String {
             }
         }
     }
+    for found in &added.package_check {
+        out.push_str(&format!("package check (accepted): {found}\n"));
+    }
     out
 }
 
@@ -336,6 +356,7 @@ pub fn json_added(added: &Added) -> serde_json::Value {
         "offer": added.offer.as_ref().map(|(file, line)| json!({"file": file, "line": line})),
         "filled": added.filled,
         "to_fill": added.to_fill,
+        "package_check": added.package_check,
     })
 }
 
@@ -357,6 +378,7 @@ mod tests {
             manufacturer: Some("UNI-ROYAL".into()),
             mpn: "0402WGF3300TCE".into(),
             package: Some("0402".into()),
+            descriptions: Vec::new(),
             stock: None,
         };
         assert_eq!(

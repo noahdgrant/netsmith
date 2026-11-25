@@ -19,6 +19,13 @@ use crate::catalog::Catalogs;
 
 include!(concat!(env!("OUT_DIR"), "/catalogs.rs"));
 
+/// The catalog files that ship in the binary, `data/jlcpcb/catalog/*.csv`: each its catalog's
+/// name, the file as messages name it and its text (the made-up `data/sample/` files are not
+/// among them).
+pub fn built_in_files() -> &'static [(&'static str, &'static str, &'static str)] {
+    JLCPCB
+}
+
 /// The catalogs of a set of embedded files. The files are checked by this crate's tests, so
 /// one that cannot be read is a bug in the data and stops here with its line.
 pub(crate) fn embedded(
