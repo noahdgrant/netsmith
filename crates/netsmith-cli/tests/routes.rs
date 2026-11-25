@@ -854,7 +854,8 @@ fn board_nets_compares_a_tidied_routes_file_with_the_one_before_and_gates_on_a_w
         line.rsplit(' ').next().unwrap().parse().unwrap()
     };
     // The tidied file against the one before, from the routes file and from the JSON alike:
-    // every row printed with its change, the signal length down and the tracks up.
+    // every row printed with its change, the tracks up. The signal length moves by rounding only:
+    // what the tidy takes away lies in pads, which a net's length does not count (issue #1670).
     for against in ["before.routes.toml", "before.json"] {
         let run = nets(&["--compare", against, "--gate", "--max-unneeded", "9"]);
         let said = text(&run);
@@ -868,7 +869,7 @@ fn board_nets_compares_a_tidied_routes_file_with_the_one_before_and_gates_on_a_w
         ] {
             change(&said, words);
         }
-        assert!(change(&said, "signal length (mm)") < 0.0, "{said}");
+        assert!(change(&said, "signal length (mm)").abs() < 0.01, "{said}");
         assert!(change(&said, "tracks") > 0.0, "{said}");
         assert_eq!(change(&said, "design rules errors"), 0.0, "{said}");
         // More tracks is a worse row, and the gate fails on it.
@@ -877,7 +878,6 @@ fn board_nets_compares_a_tidied_routes_file_with_the_one_before_and_gates_on_a_w
             said.contains(&format!("quality gate: tracks worse than in {against}: 4 before")),
             "{said}"
         );
-        assert!(!said.contains("quality gate: length"), "{said}");
     }
     let run = nets(&["--compare", "before.routes.toml", "--format", "json"]);
     let json: serde_json::Value = serde_json::from_slice(&run.stdout).unwrap();
@@ -893,10 +893,18 @@ fn board_nets_compares_a_tidied_routes_file_with_the_one_before_and_gates_on_a_w
         "--compare", "before.routes.toml", "--gate", "--max-unneeded", "9", "--tolerance", &pct,
     ]));
 
-    // The other way round: the file before against the tidied one has the longer signal, and
-    // the gate fails on that row; without `--gate` the comparison judges nothing.
+    // A file whose GND goes a longer way, against the tidied one: the signal is longer, and the
+    // gate fails on that row; without `--gate` the comparison judges nothing.
     fs::write(dir.join("tidied.routes.toml"), &tidied).unwrap();
-    fs::copy(dir.join("before.routes.toml"), &file).unwrap();
+    let longer = fs::read_to_string(dir.join("before.routes.toml")).unwrap();
+    let way = "from = [2.75, 5.242049], to = [9.85, 5.3875] },";
+    assert!(longer.contains(way), "{longer}");
+    let longer = longer.replace(
+        way,
+        "from = [2.75, 5.242049], to = [6.0, 6.4] },\n  \
+         { layer = \"top\", width = 0.15, from = [6.0, 6.4], to = [9.85, 5.3875] },",
+    );
+    fs::write(&file, longer).unwrap();
     let run = nets(&["--compare", "tidied.routes.toml", "--gate", "--max-unneeded", "9"]);
     let said = text(&run);
     assert_eq!(run.status.code(), Some(1), "{said}");
@@ -905,7 +913,6 @@ fn board_nets_compares_a_tidied_routes_file_with_the_one_before_and_gates_on_a_w
         said.contains("quality gate: length worse than in tidied.routes.toml: "),
         "{said}"
     );
-    assert!(!said.contains("quality gate: tracks"), "{said}");
     ok(&nets(&["--compare", "tidied.routes.toml"]));
 }
 

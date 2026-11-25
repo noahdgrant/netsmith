@@ -49,14 +49,13 @@ export async function run(tools) {
     // The fixture's own short tracks inside a pad are the way into it, counted and not listed (issue 1511): the stub is the one run.
     const stub = gnd.notCounted.find((r) => r.kind === 'stub' && Math.abs(r.length - 1) < 1e-3);
     expect(!!stub && gnd.notCounted.length === 1, `one run, a dead stub of 1 mm (${JSON.stringify(gnd.notCounted)})`);
-    const runs = gnd.notCounted.reduce((sum, r) => sum + r.length, 0);
-    expect(Math.abs(gnd.copper - gnd.length - runs) < 1e-3, `the runs add up to the copper less the length (${runs}; ${gnd.length} of ${gnd.copper})`);
     expect(stub.pieces.length === 1 && stub.layer === 'F.Cu', `one piece, on the front (${JSON.stringify(stub.pieces)})`);
 
     step('the Summary tab says how much of the copper is not counted, and lists the run');
     const line = page.locator('[data-testid=summary-nets-uncounted][data-net=GND]');
     const text = await line.textContent();
-    const said = Math.round((gnd.copper - gnd.length) * 100) / 100;
+    // The line adds up the runs it lists: a net's length does not count copper inside a pad either (issue 1670).
+    const said = Math.round(gnd.notCounted.reduce((sum, r) => sum + r.length, 0) * 100) / 100;
     expect(text.includes(`GND: ${said} mm of its `) && text.includes('copper not counted in its length'), `the line of GND (${text})`);
     const chip = line.locator('button.uncounted-run[data-kind=stub]', { hasText: 'a dead stub of 1 mm on F.Cu at (' });
     expect((await chip.count()) === 1, 'a chip for the run');
