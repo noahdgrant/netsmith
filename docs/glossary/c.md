@@ -72,7 +72,7 @@ A corner of an island in which a regulator's input falls to nothing because its 
 _Avoid_: Brown-out, undervoltage (an input that is low but has an operating point is below the regulator's minimum, which its own relation reports), failure to start
 
 **Connection length**:
-The length of the copper that takes a net's pads to each other (issue #1487): for two pads the path from one to the other through tracks and vias, for more the branches its pads need. A **second way** (copper that joins pads the connection already joins by a shorter way, such as a duplicate track) and a **dead stub** (copper that leads to no pad) are not counted. The _Net table_ measures a net's length, a _Diff pair_'s _Skew_ and a _Length group_'s spread on it, and lists the copper it leaves out.
+The length of the copper that takes a net's pads to each other (issue #1487): for two pads the path from one to the other through tracks and vias, for more the branches its pads need, each leg into a pad measured to the pad's centre: the copper outside the pad and the straight distance from where the leg enters it to its centre, so the same copper outside the pads gives the same length wherever a leg enters (issue #1670). A **second way** (copper that joins pads the connection already joins by a shorter way, such as a duplicate track) and a **dead stub** (copper that leads to no pad) are not counted. The _Net table_ measures a net's length, a _Diff pair_'s _Skew_ and a _Length group_'s spread on it, and lists the copper it leaves out.
 _Avoid_: Track length (for the measure: a net's tracks may hold more copper than its connection), total copper
 
 **Connector**:

@@ -190,7 +190,9 @@ export function netGroupLine(g: NetsGroup): string {
 /** What a net's length leaves out (issue 1495), as `board nets` says it: `P: 10 mm of its 30 mm of copper not counted in its length`; empty for a net with nothing left out. */
 export function netUncountedLine(n: NetsRow): string {
   if (!n.notCounted?.length) return '';
-  return `${n.net}: ${mm(n.copper - n.length)} mm of its ${mm(n.copper)} mm of copper not counted in its length`;
+  // The runs, not the copper less the length: the length measures each leg to its pad's centre (issue 1670).
+  const runs = n.notCounted.reduce((sum, r) => sum + r.length, 0);
+  return `${n.net}: ${mm(runs)} mm of its ${mm(n.copper)} mm of copper not counted in its length`;
 }
 
 /** One run a net's length leaves out: `a second way of 10 mm on F.Cu at (12, 10)`. */
