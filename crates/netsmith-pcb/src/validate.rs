@@ -6,7 +6,8 @@
 //! does not work. Every disagreement is reported, naming both sides.
 //!
 //! What is checked (ADR 0021, accepted by the owner on 2026-11-04): every pad of the pinout is a
-//! numbered pad of the footprint and a pin of the symbol, and the other way round; the symbol pin
+//! numbered terminal pad of the footprint ([`crate::Pad::is_terminal`]: a number that only a
+//! paste aperture carries is none) and a pin of the symbol, and the other way round; the symbol pin
 //! on a pad has the datasheet name after the mapping's `pin_names` (case does not matter, a symbol
 //! pin named `~` is unnamed and accepted); the symbol pin's electrical type suits the kind. Every
 //! message names the part, the package and both sides. `build` and `fab` run it for every part with
@@ -107,12 +108,8 @@ pub fn validate_pinout(
     let mut problems = Vec::new();
     let mut say = |text: String| problems.push(format!("{subject}: {text}"));
 
-    // Unnumbered pads are not pins; several pads of one number are one.
-    let pads: Vec<&str> = footprint
-        .pad_numbers()
-        .into_iter()
-        .filter(|n| !n.is_empty())
-        .collect();
+    // Unnumbered pads and paste apertures are not pins; several pads of one number are one.
+    let pads = footprint.terminal_numbers();
     let mut symbol_pins: Vec<&str> = Vec::new();
     for pin in symbol.pins() {
         if !symbol_pins.contains(&pin.number.as_str()) {
@@ -142,11 +139,20 @@ pub fn validate_pinout(
         seen.push(pad);
         let pin = pinout.pin_on(pad).expect("the pad is in the pinout");
         if !pads.contains(&pad) {
-            say(format!(
-                "the pinout has pad {pad} ({}) but the footprint `{footprint_name}` has pads {} only{from}",
-                describe(pin),
-                list(&pads)
-            ));
+            // A number the footprint has, on no pad with copper: a paste aperture.
+            if footprint.pads.iter().any(|p| p.number == pad) {
+                say(format!(
+                    "the pinout has pad {pad} ({}) but pad {pad} of the footprint `{footprint_name}` has no copper (paste or mask only), so nothing can connect to it; its copper pads are {}{from}",
+                    describe(pin),
+                    list(&pads)
+                ));
+            } else {
+                say(format!(
+                    "the pinout has pad {pad} ({}) but the footprint `{footprint_name}` has pads {} only{from}",
+                    describe(pin),
+                    list(&pads)
+                ));
+            }
         }
         let Some(sym) = symbol.pin(pad) else {
             // KiCad's symbols leave a no-connect pad out; the footprint has it and the part
@@ -197,7 +203,7 @@ pub fn validate_pinout(
         }
     }
     // A paste aperture drawn with a number of its own needs no pin.
-    for pad in &footprint.terminal_numbers() {
+    for pad in &pads {
         if pinout.pin_on(pad).is_none() {
             say(format!(
                 "the footprint `{footprint_name}` has pad {pad}, which no pin of the part has; give it to a pin in the pinout{from}"
