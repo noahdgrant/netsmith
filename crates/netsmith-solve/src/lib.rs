@@ -43,7 +43,7 @@ pub use generic::{
     nearest, resolve,
 };
 pub use levels::NotEvaluated;
-pub use lock::{LockedProvider, LockedRow, PickLock};
+pub use lock::{Designators, LockedProvider, LockedRow, PickLock};
 pub use place::{PlaceOffset, Window, offsets, window};
 pub use preferred::Preferred;
 pub use solve::{
