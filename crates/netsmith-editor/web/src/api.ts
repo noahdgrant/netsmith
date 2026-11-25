@@ -1944,7 +1944,7 @@ starved: boolean,
 statedBy: string | null, 
 /**
  * The path of the IC's pin that has the pad (`reg.ic.gnd2`), whose `.pour_connection` the
- * fill takes for it (issue #1667), and the pads of the part that its setting reaches.
+ * fill takes for it, and the pads of the part that its setting reaches.
  */
 pin: string, pinPads: Array<string>, 
 /**
