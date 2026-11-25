@@ -127,6 +127,10 @@ pub(crate) fn run(out: &mut Out<'_>) {
                 items,
                 carrying: None,
                 source: None,
+                distance: Some(super::Distance {
+                    required: limit,
+                    measured: g,
+                }),
             });
             true
         };

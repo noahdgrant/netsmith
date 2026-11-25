@@ -49,6 +49,7 @@ impl Out<'_> {
                 items: Vec::new(),
                 carrying: None,
                 source,
+                distance: None,
             });
         }
     }
@@ -73,9 +74,52 @@ impl Out<'_> {
                 items,
                 carrying,
                 source: None,
+                distance: None,
             });
         }
     }
+
+    /// A finding of a rule that asks for a space, with the space asked for and the space
+    /// measured (issue #1643). A `breach` is the rule's finding; a pass within
+    /// [`super::Extras::margin`] of the space is a note, a probe's margin.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn push_measured(
+        &mut self,
+        rule: Rule,
+        message: String,
+        at: Pt,
+        layer: Option<&str>,
+        items: Vec<Item>,
+        distance: super::Distance,
+        breach: bool,
+    ) {
+        let Some(severity) = self.m.rules.severity(rule) else {
+            return;
+        };
+        if !breach && distance.measured > distance.required + self.m.extras.margin {
+            return;
+        }
+        self.findings.push(Finding {
+            rule,
+            severity: if breach {
+                severity
+            } else {
+                super::Severity::Note
+            },
+            message,
+            at,
+            layer: layer.map(str::to_string),
+            items,
+            carrying: None,
+            source: None,
+            distance: Some(distance),
+        });
+    }
+}
+
+/// The margin a probe asks for ([`super::Extras::margin`]): 0 for every other check.
+pub(crate) fn margin(m: &Model<'_>) -> f64 {
+    m.extras.margin.max(0.0)
 }
 
 pub(crate) fn run(m: &Model<'_>, findings: &mut Vec<Finding>) {
@@ -159,6 +203,7 @@ impl Model<'_> {
             .max(r.silk_clearance)
             .max(r.mask_web)
             .max(0.5)
+            + margin(self)
     }
 }
 
@@ -380,8 +425,12 @@ fn copper_clearance(out: &mut Out<'_>) {
                 .filter(|l| b.layers.contains(l))
                 .collect()
         };
+        let distance = super::Distance {
+            required: need,
+            measured: g.d,
+        };
         if g.d == 0.0 && both_nets && tracks {
-            out.push(
+            out.push_measured(
                 Rule::TracksCrossing,
                 format!(
                     "{} and {} cross; they are on nets {} and {}",
@@ -393,9 +442,11 @@ fn copper_clearance(out: &mut Out<'_>) {
                 g.middle(),
                 Some(&layer_name),
                 vec![a.item.clone(), b.item.clone()],
+                distance,
+                true,
             );
         } else if g.d == 0.0 && both_nets {
-            out.push(
+            out.push_measured(
                 Rule::ShortingItems,
                 format!(
                     "{} and {} touch; they are on nets {} and {}",
@@ -407,10 +458,12 @@ fn copper_clearance(out: &mut Out<'_>) {
                 g.middle(),
                 Some(&layer_name),
                 vec![a.item.clone(), b.item.clone()],
+                distance,
+                true,
             );
-        } else if g.d < need - EPS {
+        } else if g.d < need - EPS + margin(m) {
             for l in layers {
-                out.push(
+                out.push_measured(
                     Rule::Clearance,
                     format!(
                         "clearance is {:.4} mm between {} and {}; the least is {:.4} mm",
@@ -419,6 +472,8 @@ fn copper_clearance(out: &mut Out<'_>) {
                     g.middle(),
                     Some(m.layer_name(l)),
                     vec![a.item.clone(), b.item.clone()],
+                    distance,
+                    g.d < need - EPS,
                 );
             }
         }
@@ -441,8 +496,8 @@ fn holes(out: &mut Out<'_>) {
             continue;
         }
         let g = gap(&a.shape, &b.shape);
-        if g.d < r.hole_to_hole - EPS {
-            out.push(
+        if g.d < r.hole_to_hole - EPS + margin(m) {
+            out.push_measured(
                 Rule::HoleToHole,
                 format!(
                     "holes are {:.4} mm apart ({} and {}); the least is {:.4} mm",
@@ -451,6 +506,11 @@ fn holes(out: &mut Out<'_>) {
                 g.middle(),
                 None,
                 vec![a.item.clone(), b.item.clone()],
+                super::Distance {
+                    required: r.hole_to_hole,
+                    measured: g.d,
+                },
+                g.d < r.hole_to_hole - EPS,
             );
         }
     }
@@ -486,8 +546,8 @@ fn holes(out: &mut Out<'_>) {
                     _ => Some(g),
                 });
         let Some(g) = g else { continue };
-        if g.d < r.hole_clearance - EPS {
-            out.push(
+        if g.d < r.hole_clearance - EPS + margin(m) {
+            out.push_measured(
                 Rule::HoleClearance,
                 format!(
                     "hole clearance is {:.4} mm between {} and {}; the least is {:.4} mm",
@@ -496,6 +556,11 @@ fn holes(out: &mut Out<'_>) {
                 g.middle(),
                 None,
                 vec![c.item.clone(), h.item.clone()],
+                super::Distance {
+                    required: r.hole_clearance,
+                    measured: g.d,
+                },
+                g.d < r.hole_clearance - EPS,
             );
         }
     }
@@ -517,7 +582,7 @@ fn edges(out: &mut Out<'_>) {
     // The nearest edge for each copper item and each hole.
     let mut nearest_item: Vec<Option<(super::shape::Gap, usize)>> = vec![None; n];
     let mut nearest_hole: Vec<Option<(super::shape::Gap, usize)>> = vec![None; nh];
-    for (i, j) in near_pairs(&all, least) {
+    for (i, j) in near_pairs(&all, least + margin(m)) {
         if j < n + nh || i >= n + nh {
             continue;
         }
@@ -545,10 +610,10 @@ fn edges(out: &mut Out<'_>) {
     }
     for (i, near) in nearest_item.iter().enumerate() {
         let Some((g, e)) = near else { continue };
-        if g.d < least - EPS {
+        if g.d < least - EPS + margin(m) {
             let c = &m.items[i];
             let layer = c.layers.first().map(|l| m.layer_name(*l).to_string());
-            out.push(
+            out.push_measured(
                 Rule::CopperEdgeClearance,
                 format!(
                     "{} is {:.4} mm from the board edge; the least is {:.4} mm",
@@ -557,6 +622,11 @@ fn edges(out: &mut Out<'_>) {
                 g.middle(),
                 layer.as_deref(),
                 vec![m.edge[*e].1.clone(), c.item.clone()],
+                super::Distance {
+                    required: least,
+                    measured: g.d,
+                },
+                g.d < least - EPS,
             );
         }
     }
@@ -564,8 +634,8 @@ fn edges(out: &mut Out<'_>) {
         let Some((g, e)) = near else { continue };
         // A plated hole is inside its copper, which the rule above has measured already.
         let h = &m.holes[i];
-        if !h.plated && g.d < least - EPS {
-            out.push(
+        if !h.plated && g.d < least - EPS + margin(m) {
+            out.push_measured(
                 Rule::HoleToEdge,
                 format!(
                     "{} has its hole {:.4} mm from the board edge; the least is {:.4} mm",
@@ -574,6 +644,11 @@ fn edges(out: &mut Out<'_>) {
                 g.middle(),
                 None,
                 vec![m.edge[*e].1.clone(), h.item.clone()],
+                super::Distance {
+                    required: least,
+                    measured: g.d,
+                },
+                g.d < least - EPS,
             );
         }
     }
@@ -733,7 +808,7 @@ fn mask_bridges(out: &mut Out<'_>) {
             })
             .collect();
         let boxes: Vec<Bounds> = openings.iter().map(|o| o.2).collect();
-        for (i, j) in near_pairs(&boxes, web) {
+        for (i, j) in near_pairs(&boxes, web + margin(m)) {
             let (a, b) = (&m.art.pads[openings[i].0], &m.art.pads[openings[j].0]);
             // Two copper pads with no net are not of one net: solder that bridges them joins two
             // pins the design keeps apart, and KiCad reports them (issue #1185). The opening of a
@@ -763,7 +838,7 @@ fn mask_bridges(out: &mut Out<'_>) {
             } else {
                 g.depth > 1e-6
             };
-            if bridged {
+            if bridged || (web > 0.0 && g.d <= web + margin(m) && margin(m) > 0.0) {
                 let item = |p: &crate::artwork::Pad| Item {
                     what: format!(
                         "Pad {}{} of {}",
@@ -779,7 +854,7 @@ fn mask_bridges(out: &mut Out<'_>) {
                     pad: Some(p.number.clone()),
                     net: p.net.clone(),
                 };
-                out.push(
+                out.push_measured(
                     Rule::SolderMaskBridge,
                     format!(
                         "the solder mask openings of pad {} of {} and pad {} of {} (nets {} and {}) are {:.4} mm apart; the process leaves a web of at least {:.4} mm",
@@ -795,6 +870,11 @@ fn mask_bridges(out: &mut Out<'_>) {
                     g.middle(),
                     Some(layer),
                     vec![item(a), item(b)],
+                    super::Distance {
+                        required: web,
+                        measured: g.d,
+                    },
+                    bridged,
                 );
             }
         }

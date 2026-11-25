@@ -74,6 +74,7 @@ pub fn findings(replaced: &[ReplacedPour]) -> Vec<DrcFinding> {
             }],
             carrying: None,
             source: None,
+            distance: None,
         })
         .collect()
 }

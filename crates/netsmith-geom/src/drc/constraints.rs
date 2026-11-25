@@ -911,6 +911,7 @@ pub fn outcome_findings(outcomes: &[Outcome], severity: Severity) -> Vec<Finding
                 .collect(),
             carrying: None,
             source: None,
+            distance: None,
         })
         .collect()
 }

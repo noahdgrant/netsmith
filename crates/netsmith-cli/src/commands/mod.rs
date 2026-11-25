@@ -43,6 +43,7 @@ mod project_show;
 mod render;
 mod route;
 mod routes;
+mod routes_check_via;
 mod routes_sites;
 mod rules;
 mod schematic;

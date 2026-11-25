@@ -189,6 +189,7 @@ pub fn findings(stages: &[PowerStage]) -> Vec<DrcFinding> {
                     ],
                     carrying: None,
                     source: None,
+                    distance: None,
                 }
             })
         })

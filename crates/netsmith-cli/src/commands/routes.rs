@@ -86,6 +86,9 @@ pub enum Command {
     /// List the places between a part's pads where a via fits, and which net's copper holds each.
     #[command(after_long_help = super::routes_sites::LONG_HELP)]
     Sites(super::routes_sites::Args),
+    /// Say whether a via fits at a place, and what is in its way by how much.
+    #[command(name = "check-via", after_long_help = super::routes_check_via::LONG_HELP)]
+    CheckVia(super::routes_check_via::Args),
     /// Delete a net's record, or one of its shapes; a locked one is refused. A record of a net the board no longer has (a net renamed, say: `fab` names it) is deleted whole, even when locked.
     Delete(ShapeArgs),
     /// Lock a net (the router adds no copper to it) or one shape (kept when the net's pads move).
@@ -420,7 +423,7 @@ pub(super) fn parse_layer(text: &str) -> Result<CopperLayer, String> {
     })
 }
 
-fn parse_layer_pair(text: &str) -> Result<[CopperLayer; 2], String> {
+pub(super) fn parse_layer_pair(text: &str) -> Result<[CopperLayer; 2], String> {
     let (a, b) = text
         .split_once(',')
         .ok_or_else(|| format!("`{text}` is not two layers, `top,inner1`"))?;
@@ -523,6 +526,7 @@ pub fn run(args: Args) -> ExitCode {
         Command::Route(a) => route(&a),
         Command::JoinPad(a) => join_pad(&a),
         Command::Sites(a) => super::routes_sites::run(&a),
+        Command::CheckVia(a) => super::routes_check_via::run(&a),
         Command::Delete(a) => edit(&a.target, |_| lib::Edit::Delete {
             net: a.net.clone(),
             shape: shape(&a),
