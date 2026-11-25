@@ -471,3 +471,89 @@ fn reroute_lays_a_net_and_the_nets_ripped_again_and_keeps_it_only_when_shorter()
     let said = route_net(&board, &looped, &connection).unwrap();
     assert!(said.refused.unwrap().contains("whole"));
 }
+
+/// Issue #1642: `--via` routes a net through a via on the far side of another net's locked
+/// tracks (a wall from the top edge down past the net's pads, on both layers): the via is added,
+/// both pads are joined through it, and nothing the check finds is new. Asked again, the via is
+/// the routes file's and the net is joined already. A via on the wall is refused, naming its net.
+#[test]
+fn a_net_is_routed_through_a_via_on_the_far_side_of_an_obstacle() {
+    use netsmith_fabricate::route_net::ViaAsked;
+    let board = board();
+    let (target, wall) = nets(&board);
+    let p = pads_of(&board, &target);
+    let min = board.outline.min;
+    let x = (p[0].x + p[1].x) / 2.0 - min.x;
+    let edge = board.rules.copper_to_edge + 0.2;
+    let below = (p[0].y.max(p[1].y) - min.y + 1.5).min(board.outline.height() - edge - 2.0);
+    let width = board.track_width(&wall);
+    let track = |layer| RouteTrack {
+        layer,
+        width,
+        from: [x, edge],
+        mid: None,
+        to: [x, below],
+        lock: true,
+    };
+    let mut routes = Routes::default();
+    routes.boards.entry(board.name.clone()).or_default().nets.insert(
+        wall.clone(),
+        NetRoutes {
+            pads: pad_hash(&board, &wall).unwrap(),
+            lock: false,
+            tracks: vec![track(CopperLayer::Front), track(CopperLayer::Back)],
+            vias: Vec::new(),
+            zones: Vec::new(),
+        },
+    );
+    // The far side of the wall from the first pad, near the top edge.
+    let side = if p[0].x < p[1].x { 1.5 } else { -1.5 };
+    let at = [x + side, edge + 1.0];
+    let mut asked = ask(&board, &target, &[]);
+    asked.through = vec![ViaAsked { at, layers: None }];
+    let said = route_net(&board, &routes, &asked).unwrap();
+    assert_eq!(said.refused, None, "{}", said.text());
+    let after = said.routes.clone().unwrap();
+    assert_eq!(open(&board, &after, &target), 0, "{}", said.text());
+    let errors = drc_errors(&with_routes(&board, &after).unwrap().0).unwrap();
+    assert!(errors.is_empty(), "{errors:#?}");
+    assert_eq!(said.through.len(), 1);
+    assert!(said.through[0].added);
+    assert_eq!(said.through[0].pads.len(), 2, "{}", said.text());
+    // Each pad was a run of its own, and the via joins the net's tracks.
+    assert_eq!(said.runs, 2, "{}", said.text());
+    let record = &after.boards[&board.name].nets[&target];
+    let via = record
+        .vias
+        .iter()
+        .find(|v| (v.at[0] - at[0]).hypot(v.at[1] - at[1]) < 1e-6)
+        .expect("the via is in the record");
+    let ends = record
+        .tracks
+        .iter()
+        .flat_map(|t| [t.from, t.to])
+        .filter(|e| (e[0] - at[0]).hypot(e[1] - at[1]) < via.diameter / 2.0)
+        .count();
+    assert!(ends >= 2, "tracks end in the via from both pads: {record:#?}");
+    // The wall is untouched.
+    assert_eq!(after.boards[&board.name].nets[&wall], routes.boards[&board.name].nets[&wall]);
+    let text = said.text();
+    assert!(text.contains("added: pad(s)"), "{text}");
+
+    // Asked again: the via is the routes file's, and the net is joined through it already.
+    let again = route_net(&board, &after, &asked).unwrap();
+    assert!(again.joined, "{}", again.text());
+    assert!(!again.through[0].added);
+    assert_eq!(again.runs, 0);
+
+    // A via on the wall is refused, and what blocks it is named.
+    asked.through = vec![ViaAsked {
+        at: [x, edge + 1.0],
+        layers: None,
+    }];
+    let said = route_net(&board, &routes, &asked).unwrap();
+    let why = said.refused.clone().expect("a via on another net's track");
+    assert!(why.contains("refused") && why.contains(&wall), "{why}");
+    assert!(said.routes.is_none());
+    assert_eq!(said.runs, 0);
+}

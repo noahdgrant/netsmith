@@ -212,7 +212,7 @@ pub struct RouteArgs {
     /// routed together by the router's negotiation round the copper outside. Written only when
     /// no connection is left open that was made before and the copper costs no more by the
     /// weights (or fewer connections are open).
-    #[arg(long, value_name = "X,Y,W,H", value_parser = parse_rect, allow_hyphen_values = true, conflicts_with_all = ["net", "rip", "reroute"])]
+    #[arg(long, value_name = "X,Y,W,H", value_parser = parse_rect, allow_hyphen_values = true, conflicts_with_all = ["net", "rip", "reroute", "via"])]
     pub region: Option<[f64; 4]>,
     /// Nets whose unlocked tracks and vias may be removed and routed again after it, `A,B`.
     #[arg(long, value_name = "NET,...", value_delimiter = ',')]
@@ -247,6 +247,16 @@ pub struct RouteArgs {
     /// that went round its neighbour because the neighbour was laid first.
     #[arg(long)]
     pub reroute: bool,
+    /// Route the net through a via at `X,Y`, or a blind one at `X,Y,LAYER,LAYER`; repeatable.
+    ///
+    /// Places are mm in the routes file's frame (`--frame` changes only what is printed); a
+    /// blind via names the two layers it ends on, `3,4,top,inner1`. The net's via at that place is used when its record has one; else the via is added, of
+    /// the process's size, and refused, with nothing written, when the design rules check finds
+    /// an error with it (the refusal names what blocks it). Each pad of the net (of the
+    /// connection, for `NET:PAD-PAD`) is joined to the nearest of the vias first, then the rest
+    /// of the net is routed. Not taken with `--rip`, `--reroute` or `--region`.
+    #[arg(long = "via", value_name = "X,Y[,LAYER,LAYER]", value_parser = parse_via, allow_hyphen_values = true, action = clap::ArgAction::Append, conflicts_with_all = ["rip", "reroute"])]
+    pub via: Vec<netsmith_fabricate::route_net::ViaAsked>,
     /// Say what it would do, and write nothing.
     #[arg(long)]
     pub dry_run: bool,
@@ -255,6 +265,24 @@ pub struct RouteArgs {
     pub format: common::Format,
     #[command(flatten)]
     pub framing: crate::frame::Framing,
+}
+
+/// A via of `routes route --via` (issue #1642): `X,Y` or `X,Y,LAYER,LAYER`.
+fn parse_via(text: &str) -> Result<netsmith_fabricate::route_net::ViaAsked, String> {
+    let parts: Vec<&str> = text.split(',').collect();
+    let layers = match parts.len() {
+        2 => None,
+        4 => Some(parse_layer_pair(&format!("{},{}", parts[2], parts[3]))?),
+        _ => {
+            return Err(format!(
+                "`{text}` is not `X,Y` or `X,Y,LAYER,LAYER` (`3,4` or `3,4,top,inner1`)"
+            ));
+        }
+    };
+    Ok(netsmith_fabricate::route_net::ViaAsked {
+        at: parse_point(&format!("{},{}", parts[0], parts[1]))?,
+        layers,
+    })
 }
 
 /// How tracks turn (`--corner`, issue #1508): the variants of `std::sources::TrackCorner`.
@@ -907,6 +935,7 @@ fn route(args: &RouteArgs) -> ExitCode {
                 tries: args.tries,
                 weights,
                 reroute: args.reroute,
+                through: args.via.clone(),
                 ..ask
             },
             Err(lib::Refusal::Refused(e)) => return Ok(Err(e)),
