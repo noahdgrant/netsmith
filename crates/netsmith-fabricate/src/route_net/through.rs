@@ -251,7 +251,7 @@ fn at_said(at: [f64; 2]) -> String {
 
 /// The part that stands in for `via` (the `k`th asked for) in a run of the router: one plated
 /// pad of the via's size and drill, on its layers, where it is (the module's header).
-fn stand_in(board: &Board, via: &netsmith_pcb::Via, k: usize) -> netsmith_pcb::Placed {
+pub(crate) fn stand_in(board: &Board, via: &netsmith_pcb::Via, k: usize) -> netsmith_pcb::Placed {
     let layers: Vec<String> = board
         .via_layers(via)
         .iter()
