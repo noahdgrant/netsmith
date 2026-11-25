@@ -43,6 +43,7 @@ mod copper_areas;
 mod explain;
 mod export;
 mod fill_islands;
+mod fill_islands_compare;
 mod fill_report;
 mod fit_report;
 mod footprint;
@@ -126,6 +127,7 @@ pub use export::{
 pub use fill_islands::{
     FillRegion, FillRegions, IslandsReport, RegionBound, RegionBoundKind, RegionPad, RegionVia,
 };
+pub use fill_islands_compare::{IslandsComparison, RegionChanged, RegionOfFill};
 pub use fill_report::{
     ClearedPad, FillArea, FillIsland, FillPad, FillPolygon, FillReport, FillSource, JoinCounts,
     JoinKind, RegulatorFill, RegulatorGround, StarvedPad, UnjoinablePad,
