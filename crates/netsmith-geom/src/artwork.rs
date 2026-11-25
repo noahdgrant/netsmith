@@ -359,6 +359,9 @@ pub struct Footprint {
     pub angle: f64,
     /// On the back of the board.
     pub back: bool,
+    /// Not fitted: the footprint's `attr` says `dnp` (what a part that is not fitted is
+    /// written as, issue #1273), so its pads are not soldered.
+    pub not_fitted: bool,
 }
 
 impl Footprint {
@@ -1294,6 +1297,9 @@ impl<'a> Reader<'a> {
             at,
             angle,
             back: fp.find("layer").and_then(|l| l.items().get(1)?.text()) == Some("B.Cu"),
+            not_fitted: fp
+                .find("attr")
+                .is_some_and(|a| a.items().iter().any(|i| i.text() == Some("dnp"))),
         });
         for item in fp.items().iter().skip(2) {
             match item.head() {

@@ -352,7 +352,7 @@ fn a_part_new_to_the_design_is_added_and_the_rows_of_the_others_stay() {
     let kept = |text: &str| -> Vec<String> {
         text.split("\n\n")
             .filter(|t| t.contains("\"r1\"") || t.contains("\"led\"]"))
-            .filter(|t| !t.contains(".designators]"))
+            .filter(|t| !t.contains(".designators]") && !t.contains(".footprints]"))
             .map(|t| t.trim_end().to_string())
             .collect()
     };

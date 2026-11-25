@@ -18,9 +18,7 @@ use crate::geom::{Bounds, Pt};
 /// How much more than each rule's space new copper keeps, in mm.
 pub(super) const MARGIN: f64 = 0.001;
 
-/// A pad's solder mask opening on a face: the pad's net, the opening's shapes and their box, and
-/// the pad (an index into the artwork's pads).
-type Opening = (Option<String>, Vec<Shape>, Bounds, usize);
+use super::widen::{Opening, Widest};
 
 /// The first thing [`Room::fits_with`] found new copper too near: an index into what it was
 /// checked against, named only when someone asks ([`Room::in_the_way`]).
@@ -48,17 +46,7 @@ pub struct Room<'a> {
 impl<'a> Room<'a> {
     pub fn new(art: &'a Artwork, rules: &'a Rules, extras: &'a Extras) -> Room<'a> {
         let m = Model::new(art, rules, extras, false);
-        let opening = |front: bool| {
-            art.pads
-                .iter()
-                .enumerate()
-                .filter_map(|(i, p)| {
-                    let s = m.mask_opening(p, front);
-                    (!s.is_empty()).then(|| (p.net.clone(), s.clone(), Model::bounds_of(&s), i))
-                })
-                .collect::<Vec<_>>()
-        };
-        let openings = [opening(true), opening(false)];
+        let openings = super::widen::openings(&m);
         Room {
             m,
             openings,
@@ -85,6 +73,16 @@ impl<'a> Room<'a> {
     /// surface-mount pad, so that it keeps the space between such pads too.
     pub fn fits(&self, shape: &Shape, net: &str, layer: usize, smd: bool) -> bool {
         self.fits_with(shape, net, layer, smd, &[])
+    }
+
+    /// How wide track `track` (an index into the artwork's tracks) may be drawn where it lies,
+    /// up to `upto` mm (issue #1691): the widest width that keeps every space the check asks of
+    /// it from the board and from the copper kept so far, exactly (no [`MARGIN`]: a caller that
+    /// draws at it keeps its own), and each thing that allows less than `upto`, the one that
+    /// allows least first, with its net, place, rule and the space asked and measured. `None`
+    /// for a track of no net or on no copper layer.
+    pub fn widest(&self, track: usize, upto: f64) -> Option<Widest> {
+        super::widen::widest(&self.m, &self.openings, &self.kept.borrow(), track, upto)
     }
 
     /// The number of copper layers.

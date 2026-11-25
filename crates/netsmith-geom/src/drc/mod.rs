@@ -201,8 +201,10 @@ mod branches;
 mod checks;
 mod connect;
 pub(crate) mod constraints;
+mod exposed_pad;
 mod fab_rules;
 mod marks;
+mod mask_webs;
 mod model;
 mod near;
 mod pour;
@@ -217,6 +219,7 @@ mod v_cut;
 mod via_pad;
 mod vias;
 mod waivers;
+mod widen;
 
 use crate::artwork::Artwork;
 use crate::geom::Pt;
@@ -230,6 +233,7 @@ pub use rules_file::{PREFIX as RULES_FILE_PREFIX, kicad_dru, rules_file_of};
 pub use silk::FONT_MARGIN;
 pub use teardrop::{Teardrop, teardrops};
 pub use waivers::{PLACE_TOLERANCE as WAIVER_PLACE_TOLERANCE, Waived, Waiver};
+pub use widen::{Limit, Widest};
 
 /// How bad a finding is. A rule the project file says to ignore produces none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -437,10 +441,15 @@ pub enum Rule {
     /// its hole does not come within `.via_hole_pad_reach` (netsmith's, issue #1579;
     /// `via_pad.rs`): a weaker sign than [`Rule::ViaHoleNearPad`]. A note, which fails nothing.
     ViaRingNearPad,
+    /// An exposed pad of a part with no solder paste over its copper: no paste layer, no
+    /// paste-only pad or drawing of the footprint over it, or a paste margin or ratio that
+    /// leaves no opening (netsmith's, issue #1686; `exposed_pad.rs`). A note, which fails
+    /// nothing.
+    ExposedPadPaste,
 }
 
 impl Rule {
-    pub const ALL: [Rule; 66] = [
+    pub const ALL: [Rule; 67] = [
         Rule::Clearance,
         Rule::ShortingItems,
         Rule::TracksCrossing,
@@ -507,6 +516,7 @@ impl Rule {
         Rule::PourReplaced,
         Rule::ViaHoleNearPad,
         Rule::ViaRingNearPad,
+        Rule::ExposedPadPaste,
     ];
 
     /// KiCad's name for the rule (its `type` in a JSON report).
@@ -578,6 +588,7 @@ impl Rule {
             Rule::PourReplaced => "pour_replaced",
             Rule::ViaHoleNearPad => "via_hole_near_pad",
             Rule::ViaRingNearPad => "via_ring_near_pad",
+            Rule::ExposedPadPaste => "exposed_pad_paste",
         }
     }
 
@@ -626,6 +637,7 @@ impl Rule {
                 | Rule::PourReplaced
                 | Rule::ViaHoleNearPad
                 | Rule::ViaRingNearPad
+                | Rule::ExposedPadPaste
         )
     }
 
@@ -667,7 +679,8 @@ impl Rule {
             | Rule::SwitchNodeCopper
             | Rule::PourReplaced
             | Rule::ViaHoleNearPad
-            | Rule::ViaRingNearPad => Severity::Note,
+            | Rule::ViaRingNearPad
+            | Rule::ExposedPadPaste => Severity::Note,
             _ => Severity::Error,
         })
     }
@@ -738,6 +751,12 @@ pub struct Carrying {
     /// A track's width and the least width the current needs on its layer, in mm.
     pub width: Option<f64>,
     pub needed_width: Option<f64>,
+    /// For a track: the widest it may be drawn where it lies, up to `needed_width`, keeping
+    /// every space the check asks of it (issue #1691), mm; `needed_width` itself when that fits.
+    pub widest: Option<f64>,
+    /// For a track: each thing that allows it less than `needed_width`, the one that allows least
+    /// first; empty when the width needed fits.
+    pub held_by: Vec<Limit>,
     /// The vias side by side a cluster has and the number the current needs.
     pub vias: Option<usize>,
     pub needed_vias: Option<usize>,
@@ -1095,6 +1114,10 @@ pub struct Extras {
     /// Whether guidelines are errors for this run (`fab --strict`, `guidelines = "error"`):
     /// `pad_island_cut` is then an error, where it is otherwise a warning (issue #1509).
     pub strict_guidelines: bool,
+    /// Whether the `solder_mask_bridge` pairs of a part's own pads that the process cannot make
+    /// a web between are one finding for the part (`mask_webs.rs`, issue #1685): `fab`'s
+    /// extras set it; the cross-check with KiCad, which reports pair by pair, does not.
+    pub mask_web_summary: bool,
     /// The boxes a board cut to a neighbourhood was cut to, in the frame of the board file
     /// (the check of an edit, `routes add-track`): a piece of a fill that reaches the edge of
     /// one may go on outside it, so `pad_island_cut` does not judge it. Empty for a whole board.
@@ -1365,6 +1388,9 @@ pub fn check_artwork(
         v_cut,
     };
     waivers::apply(&mut report, &extras.waivers);
+    if extras.mask_web_summary {
+        mask_webs::summarise(&model, &mut report);
+    }
     report
 }
 
