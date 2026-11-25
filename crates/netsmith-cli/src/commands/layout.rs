@@ -44,9 +44,9 @@ pub enum Command {
         after_long_help = "Writes the entry of the part at PATH to the layout file (made if it does not exist), reading and writing the file as the editor does: every other table is kept, and so is a comment in the file (a comment goes with its entry and stays above it or after it). A part with no entry needs `--at`; for a part that has one, a flag left out keeps what the entry has. A new entry is written with `source = \"hand\"`, and an entry that exists keeps its `source`. Refused, with the file as it was: a PATH the board has no part at (the nearest names are listed), a turn that is not from 0 up to 360, and a part with no entry and no `--at`. A locked entry that breaks a requirement of the physical file is written and said as a warning; `layout check` says it again."
     )]
     Set(SetArgs),
-    /// Move one part's entry by an offset, refused when it makes courtyards overlap, and say which routes miss its pads.
+    /// Move or turn one part's entry, refused when it makes courtyards overlap, and say which routes miss its pads.
     #[command(
-        after_long_help = "Moves the entry of the part at PATH (its path in the design, or its designator) by `DX,DY` mm (x right, y down) in the layout file, keeping its turn, face, lock and source and every other table and comment of the file, as `set` writes. A part with no entry is refused: there is no place to move it from (`layout set PATH --at X,Y` or `layout capture` gives it one). The place is rounded to 0.01 mm, as every entry is. An offset is the same in every frame; `--frame` names the frame of the places printed.\n\nThe board is made as the layout file has it, before and after the move (nothing is placed, as `layout check`), and the move is refused, with the file as it was, when the placement check `fab` runs finds a fault about the part after it that it did not find before: courtyards that overlap, a part past the board's outline, in a keepout or a cutout, too tall, a hole too near (a fault the part had already does not refuse it, so a part can be moved out of an overlap in steps). Each fault is said in `fab`'s words.\n\nThe routes file beside the layout file is read and left as it is: each end of a track and each via of it whose copper ran into a pad of the part (as the ratsnest joins copper to a pad: half the track's width round the end, the via's radius, on the track's layer) is listed, as missing its pad after the move or as still on it. Run `netsmith routes delete` or `routes add` to mend the copper, and `board drc` to check it. With `--dry-run` nothing is written and the same is said.\n\n`--format json` prints one JSON document on stdout: `board`, `file`, `path`, `refdes`, `by`, `from`, `to`, `ok`, `findings` (as `layout check` has its `placement` findings), `routes` (the file read; left out when there is none), `missed` and `still_on` (each `net`, `shape`, `at`, `pad`) and `written`. The exit code is 0 when the part is moved (or would be, with `--dry-run`), 1 when it is refused (a part the board does not have or with no entry, a move that makes a fault), and 2 when it could not run."
+        after_long_help = "Moves the entry of the part at PATH (its path in the design, or its designator) by `DX,DY` mm (x right, y down) in the layout file, turns it by `--turn DEGREES`, or both, keeping its face, lock and source, its turn without `--turn`, and every other table and comment of the file, as `set` writes. A part with no entry is refused: there is no place to move it from (`layout set PATH --at X,Y` or `layout capture` gives it one). A moved place is rounded to 0.01 mm, as every entry is. An offset is the same in every frame; `--frame` names the frame of the places printed.\n\nThe turn is relative, counterclockwise on screen on either face: DEGREES is added to the entry's `rotation` (the key of the layout file that `show` and `set` call the turn) and the sum is kept from 0 up to 360, so `--turn 180` on a `rotation` of 270 writes 90. DEGREES is any angle from 0 up to 360, as `set --turn` takes (a quarter turn clockwise is 270). The part turns about its footprint's origin (`at`), and `DX,DY` may be left out or be `0,0`, which keeps `at` as the file has it. A designator the entry places does not turn.\n\nThe board is made as the layout file has it, before and after the move (nothing is placed, as `layout check`), and the move is refused, with the file as it was, when the placement check `fab` runs finds a fault about the part after it that it did not find before: courtyards that overlap, a part past the board's outline, in a keepout or a cutout, too tall, a hole too near (a fault the part had already does not refuse it, so a part can be moved out of an overlap in steps). Each fault is said in `fab`'s words.\n\nThe routes file beside the layout file is read and left as it is: each end of a track and each via of it whose copper ran into a pad of the part (as the ratsnest joins copper to a pad: half the track's width round the end, the via's radius, on the track's layer) is listed, as missing its pad after the move or as still on it. Run `netsmith routes delete` or `routes add` to mend the copper, and `board drc` to check it. With `--dry-run` nothing is written and the same is said.\n\n`--format json` prints one JSON document on stdout: `board`, `file`, `path`, `refdes`, `by`, `from`, `to`, `turn_by` (0 without `--turn`), `turn_from`, `turn_to`, `ok`, `findings` (as `layout check` has its `placement` findings), `routes` (the file read; left out when there is none), `missed` and `still_on` (each `net`, `shape`, `at`, `pad`) and `written`. The exit code is 0 when the part is moved (or would be, with `--dry-run`), 1 when it is refused (a part the board does not have or with no entry, a move that makes a fault), and 2 when it could not run."
     )]
     Move(MoveArgs),
     /// Say which parts have no entry, which entries name no part, and which locked entries break a requirement.
@@ -329,11 +329,14 @@ pub struct MoveArgs {
     /// The part, by its path in the design (`stage.output_cap`) or its designator.
     #[arg(value_name = "PATH")]
     pub path: String,
-    /// The offset, `DX,DY` in mm, x right and y down (`0.1,0`, `-0.25,0.5`).
-    #[arg(value_name = "DX,DY", value_parser = parse_point, allow_hyphen_values = true)]
-    pub by: [f64; 2],
+    /// The offset, `DX,DY` in mm, x right and y down (`0.1,0`); may be left out with `--turn`.
+    #[arg(value_name = "DX,DY", value_parser = parse_point, allow_hyphen_values = true, required_unless_present = "turn")]
+    pub by: Option<[f64; 2]>,
     #[command(flatten)]
     pub target: Target,
+    /// Turn the part by this many degrees too, counterclockwise on screen, from 0 up to 360.
+    #[arg(long, value_name = "DEGREES", value_parser = parse_turn, allow_hyphen_values = true)]
+    pub turn: Option<f64>,
     /// Write nothing: say what would be written.
     #[arg(long)]
     pub dry_run: bool,
@@ -1063,8 +1066,8 @@ fn set(args: &SetArgs) -> ExitCode {
     }
 }
 
-/// `layout move`: one entry moved by an offset, refused when it makes a fault, with the ends of
-/// the routes file that miss the part's pads after it.
+/// `layout move`: one entry moved by an offset and turned, refused when it makes a fault, with
+/// the ends of the routes file that miss the part's pads after it.
 fn move_part(args: &MoveArgs) -> ExitCode {
     use netsmith_fabricate::layout_move as lib;
     let proposed = with_design(&args.target, |design, file, libraries| {
@@ -1073,8 +1076,16 @@ fn move_part(args: &MoveArgs) -> ExitCode {
         let routes = routes_file
             .is_file()
             .then(|| (&routes, routes_file.display().to_string()));
-        lib::propose(design, file, libraries, routes, &args.path, args.by)
-            .map(|(moved, layout)| (moved, layout, file.to_path_buf()))
+        lib::propose(
+            design,
+            file,
+            libraries,
+            routes,
+            &args.path,
+            args.by.unwrap_or_default(),
+            args.turn.unwrap_or_default(),
+        )
+        .map(|(moved, layout)| (moved, layout, file.to_path_buf()))
     });
     let (moved, layout, file) = match proposed {
         Ok(proposed) => proposed,
@@ -1329,9 +1340,48 @@ mod tests {
         assert!(matches!(
             parse(&["layout", "move", "R1", "-0.1,0.25", "--dry-run", "--format", "json"]),
             Ok(Top::Layout(Args {
-                command: Command::Move(MoveArgs { ref path, by: [-0.1, 0.25], dry_run: true, format: common::Format::Json, .. })
+                command: Command::Move(MoveArgs { ref path, by: Some([-0.1, 0.25]), turn: None, dry_run: true, format: common::Format::Json, .. })
             })) if path == "R1"
         ));
+        // With a turn the offset may be left out, before the flags or between them.
+        assert!(matches!(
+            parse(&["layout", "move", "R1", "--turn", "180", "--dry-run"]),
+            Ok(Top::Layout(Args {
+                command: Command::Move(MoveArgs {
+                    by: None,
+                    turn: Some(180.0),
+                    dry_run: true,
+                    ..
+                })
+            }))
+        ));
+        assert!(matches!(
+            parse(&["layout", "move", "R1", "-0.1,0", "--turn", "90"]),
+            Ok(Top::Layout(Args {
+                command: Command::Move(MoveArgs {
+                    by: Some([-0.1, 0.0]),
+                    turn: Some(90.0),
+                    ..
+                })
+            }))
+        ));
+        assert!(matches!(
+            parse(&["layout", "move", "R1", "--turn", "90", "0,-1"]),
+            Ok(Top::Layout(Args {
+                command: Command::Move(MoveArgs {
+                    by: Some([0.0, -1.0]),
+                    turn: Some(90.0),
+                    ..
+                })
+            }))
+        ));
+        for turn in ["360", "-90", "ninety"] {
+            assert_eq!(
+                kind(&["layout", "move", "R1", "--turn", turn]),
+                ErrorKind::ValueValidation,
+                "{turn}"
+            );
+        }
         assert_eq!(
             kind(&["layout", "move", "R1"]),
             ErrorKind::MissingRequiredArgument

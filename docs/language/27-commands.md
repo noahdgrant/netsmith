@@ -60,7 +60,7 @@ Each command, what it was before, and its flags (a test walks `--help` of every 
 | `netsmith board nets` | new (#1223) | `--board`, `--lengths`, `--power-stage`, `--route`, `--route-timeout`, `--currents`, `--gate`, `--max-crossings`, `--max-duplicates`, `--max-unneeded`, `--max-short`, `--max-via-pairs`, `--compare`, `--tolerance`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
 | `netsmith layout show` | the same | `--file` (was `--into`), `--board`, `--format`, `--frame` |
 | `netsmith layout set` | the same | `--file` (was `--into`), `--board`, `--at`, `--turn`, `--side`, `--lock`, `--unlock`, `--designator`, `--format`, `--frame` |
-| `netsmith layout move` | new (#1627) | `--file`, `--board`, `--dry-run`, `--format`, `--frame` |
+| `netsmith layout move` | new (#1627) | `--file`, `--board`, `--turn` (#1704), `--dry-run`, `--format`, `--frame` |
 | `netsmith layout check` | the same | `--file` (was `--into`), `--board`, `--strict`, `--format`, `--frame` |
 | `netsmith layout summary` | the same | `--file` (was `--into`), `--board`, `--near`, `--within`, `--between`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |
 | `netsmith layout compare` | the same | `--file` (was `--into`), `--board`, `--place-seeds`, `--place-budget`, `--routing-objective`, `--format`, `--frame` |

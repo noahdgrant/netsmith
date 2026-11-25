@@ -1,8 +1,8 @@
-//! `netsmith layout move` (issue #1627): one part's entry in the layout file moved by an offset,
-//! refused when the move makes a fault of the placement check `fab` runs (courtyards that
-//! overlap, a part past the edge, in a keepout or a cutout), with what the move does to the
-//! copper of the routes file: the track ends and vias that ended in a pad of the part and miss it
-//! now, and those still on it.
+//! `netsmith layout move` (issue #1627): one part's entry in the layout file moved by an offset
+//! and turned by an angle (issue #1704), refused when the move makes a fault of the placement
+//! check `fab` runs (courtyards that overlap, a part past the edge, in a keepout or a cutout),
+//! with what the move does to the copper of the routes file: the track ends and vias that ended
+//! in a pad of the part and miss it now, and those still on it.
 //!
 //! Nothing is placed. The board is made twice as the layout file has it
 //! ([`Board::laid_out_entries`], as `layout check` makes it), once with the entry where it is and
@@ -12,7 +12,8 @@
 //! ([`netsmith_pcb::ratsnest_on_pad`]): its copper (half the track's width round the end, the
 //! via's radius) runs into the pad's box on the track's layer.
 //!
-//! The places are in the layout file's frame: mm from the outline's top left corner, y down.
+//! The places are in the layout file's frame: mm from the outline's top left corner, y down. A
+//! turn is the entry's `rotation`: degrees counterclockwise on screen, from 0 up to 360.
 
 use std::path::Path;
 
@@ -20,7 +21,7 @@ use netsmith_core::Design;
 use netsmith_pcb::{Board, Layout, PlacementFault, Pt, Routes};
 use serde::Serialize;
 
-use crate::layout_edit::{Finding, Severity, no_such_part, number, part_paths, read};
+use crate::layout_edit::{Finding, Severity, no_such_part, number, part_paths, read, turn_error};
 
 /// A track's end or a via of the routes file that ended in a pad of the moved part.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -64,6 +65,11 @@ pub struct Moved {
     /// The entry's place before and after, the footprint's origin.
     pub from: [f64; 2],
     pub to: [f64; 2],
+    /// The turn asked for, degrees counterclockwise on screen; 0 with none.
+    pub turn_by: f64,
+    /// The entry's `rotation` before and after.
+    pub turn_from: f64,
+    pub turn_to: f64,
     /// Whether the move makes no fault; when it does not, nothing is written.
     pub ok: bool,
     /// The faults the move makes, as `layout check` has its `placement` findings.
@@ -92,6 +98,14 @@ impl Moved {
             place(self.to),
             says,
         );
+        if self.turn_by != 0.0 {
+            out.push_str(&format!(
+                "turn by {} degrees counterclockwise: rotation {} to {}\n",
+                number(self.turn_by),
+                number(self.turn_from),
+                number(self.turn_to),
+            ));
+        }
         if !self.ok {
             out.push_str(&format!(
                 "the move makes {} fault(s) of the placement check, and {} is as it was:\n",
@@ -145,12 +159,24 @@ fn identity(fault: &PlacementFault) -> (&'static str, Vec<String>) {
     (fault.kind, parts)
 }
 
+/// `from` turned by `by`, both degrees: from 0 up to 360, to a ten thousandth. With no turn,
+/// `from` as the file has it.
+fn turned(from: f64, by: f64) -> f64 {
+    if by == 0.0 {
+        return from;
+    }
+    let to = ((from + by).rem_euclid(360.0) * 1e4).round() / 1e4;
+    if to < 360.0 { to } else { 0.0 }
+}
+
 /// The entry of the part at `path` (its path in the design or its designator) in the layout
-/// file at `file`, moved by `by` (mm), as a proposal: what it makes of the placement check and
-/// of the copper of the routes file `routes` (the one beside the layout file), with the file's
-/// layout moved, to write when the proposal is `ok`. Refused: a part the board has no part at
-/// (the nearest names), a part with no entry (there is no place to move from), an offset that
-/// is not a number.
+/// file at `file`, moved by `by` (mm) and turned by `turn` (degrees counterclockwise, from 0 up
+/// to 360, added to its `rotation`), as a proposal: what it makes of the placement check and of
+/// the copper of the routes file `routes` (the one beside the layout file), with the file's
+/// layout moved, to write when the proposal is `ok`. With an offset of zero the entry's place is
+/// kept as it is. Refused: a part the board has no part at (the nearest names), a part with no
+/// entry (there is no place to move from), an offset that is not a number, a turn that
+/// [`turn_error`] refuses.
 pub fn propose(
     design: &Design,
     file: &Path,
@@ -158,9 +184,13 @@ pub fn propose(
     routes: Option<(&Routes, String)>,
     path: &str,
     by: [f64; 2],
+    turn: f64,
 ) -> Result<(Moved, Layout), String> {
     if !by.iter().all(|v| v.is_finite()) {
         return Err("the offset is not a number".to_string());
+    }
+    if let Some(why) = turn_error(turn) {
+        return Err(why);
     }
     let part = design
         .parts
@@ -183,16 +213,24 @@ pub fn propose(
         .ok_or_else(no_entry)?
         .clone();
     let round = |v: f64| (v * 100.0).round() / 100.0;
-    let to = [round(old.at[0] + by[0]), round(old.at[1] + by[1])];
+    let to = if by == [0.0, 0.0] {
+        old.at
+    } else {
+        [round(old.at[0] + by[0]), round(old.at[1] + by[1])]
+    };
+    let turn_to = turned(old.rotation, turn);
     let mut next = layout.clone();
-    next.boards
+    let entry = next
+        .boards
         .get_mut(&design.name)
         .and_then(|t| t.parts.get_mut(&part.path))
-        .expect("the entry read above")
-        .at = to;
+        .expect("the entry read above");
+    entry.at = to;
+    entry.rotation = turn_to;
 
-    let options = netsmith_pcb::place_options(design, Some(&layout));
+    // Each board has the options of its own layout: a locked entry is a fixed part of them.
     let board_of = |layout: &Layout| {
+        let options = netsmith_pcb::place_options(design, Some(layout));
         Board::laid_out_entries(
             design,
             &libraries.mapping,
@@ -240,6 +278,9 @@ pub fn propose(
             by,
             from: old.at,
             to,
+            turn_by: turn,
+            turn_from: old.rotation,
+            turn_to,
             ok: findings.is_empty(),
             findings,
             routes: routes.map(|(_, name)| name),
@@ -322,4 +363,20 @@ fn pad_ends(
         }
     }
     (missed, still_on)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_turn_is_added_and_wraps_under_360() {
+        assert_eq!(turned(0.0, 180.0), 180.0);
+        assert_eq!(turned(270.0, 180.0), 90.0);
+        assert_eq!(turned(180.0, 180.0), 0.0);
+        assert_eq!(turned(359.9, 0.2), 0.1);
+        assert_eq!(turned(359.99999, 0.000001), 0.0);
+        // With no turn the file's spelling stays.
+        assert_eq!(turned(33.333333, 0.0), 33.333333);
+    }
 }
