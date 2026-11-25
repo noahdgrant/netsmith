@@ -9,7 +9,8 @@ use netsmith_geom::Artwork;
 use netsmith_pcb::{Board, kicad_pcb};
 
 /// The resistance of `net` between `from` and `to` on `board` as it stands, at `amps`, or at the
-/// net's current when `amps` is `None` (no current when the net has none known).
+/// net's current when `amps` is `None` (no current when the net has none known), its heat at
+/// the net's rms current where it has one.
 pub fn of_board(
     board: &Board,
     net: &str,
@@ -33,13 +34,19 @@ pub fn of_board(
             .max(0.0),
         plating: process.hole_plating,
     };
-    let current = amps.or_else(|| {
-        board
-            .net_currents
-            .iter()
-            .find(|c| c.net == net && c.current > 0.0)
-            .map(|c| c.current)
-    });
+    // The net's one current (issue #1584), its peak for the drop and its rms for the heat
+    // (issue #1690); a current given is both.
+    let known = board
+        .net_currents
+        .iter()
+        .find(|c| c.net == net && c.current > 0.0);
+    let current = amps.or_else(|| known.map(|c| c.current));
+    let heating = match amps {
+        Some(_) => None,
+        None => known
+            .map(|c| c.heating())
+            .filter(|&h| h < known.map_or(0.0, |c| c.current)),
+    };
     resistance::of(
         &art,
         &Ask {
@@ -47,6 +54,7 @@ pub fn of_board(
             from,
             to,
             current,
+            heating,
             copper,
             sizing: netsmith_design::guidelines::sizing_of(process),
         },

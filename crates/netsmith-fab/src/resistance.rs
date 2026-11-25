@@ -69,6 +69,10 @@ pub struct Ask<'a> {
     pub from: &'a [String],
     pub to: &'a [String],
     pub current: Option<f64>,
+    /// The current that heats the copper, in amperes, where it is less than `current`: the
+    /// net's rms current (issue #1690), which the heat is judged at while the drop stays at
+    /// `current`.
+    pub heating: Option<f64>,
     pub copper: Copper,
     pub sizing: Option<TrackSizing>,
 }
@@ -98,7 +102,8 @@ pub struct Segment {
     pub resistance: f64,
     /// The share of the current it carries.
     pub share: f64,
-    /// The current, in amperes, and what it drops, in volts, when the current is known.
+    /// The current, in amperes, and what it drops, in volts, when the current is known; its
+    /// rise is at its share of the heating current where the net has one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -139,6 +144,9 @@ pub struct Resistance {
     /// The current, in amperes, and the voltage it drops, in volts, when it is known.
     pub current: Option<f64>,
     pub drop: Option<f64>,
+    /// The rms current the heat is judged at, in amperes, where it is less than `current`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heating: Option<f64>,
     /// The temperature rise the board allows, in kelvin: what `over` is judged against.
     pub allowed_rise: Option<f64>,
     /// The narrowest track on the paths the current takes, if it passes any.
@@ -271,8 +279,8 @@ pub fn of(art: &Artwork, ask: &Ask<'_>) -> Result<Resistance, String> {
     // The edges, and the joins of no resistance (a piece of no length, a via of no copper).
     let mut edges: Vec<Edge> = Vec::new();
     let mut union = Union::new(g.node.len());
-    for k in 0..g.node.len() {
-        union.join(k, g.node[k]);
+    for (k, &root) in g.node.iter().enumerate() {
+        union.join(k, root);
     }
     for (e, s) in g.pieces.iter().enumerate() {
         let (u, v) = (g.node[2 * e], g.node[2 * e + 1]);
@@ -438,6 +446,7 @@ pub fn of(art: &Artwork, ask: &Ask<'_>) -> Result<Resistance, String> {
         s.current = Some(i);
         s.drop = Some(i * s.resistance);
         let Some(sizing) = ask.sizing else { continue };
+        let i = ask.heating.map_or(i, |h| h * s.share);
         match s.kind {
             Kind::Track => {
                 let inner = s.layer.starts_with("In");
@@ -495,6 +504,7 @@ pub fn of(art: &Artwork, ask: &Ask<'_>) -> Result<Resistance, String> {
         resistance,
         current: ask.current,
         drop: ask.current.map(|i| i * resistance),
+        heating: ask.heating,
         allowed_rise: rise_allowed,
         narrowest,
         vias: segments.iter().filter(|s| s.kind == Kind::Via).count(),
@@ -642,6 +652,9 @@ impl Resistance {
         match (self.current, self.drop) {
             (Some(i), Some(v)) => {
                 let _ = writeln!(out, "  at {}: {:.3} mV", amps(i), v * 1e3);
+                if let Some(h) = self.heating {
+                    let _ = writeln!(out, "  the heat at the net's rms current, {}", amps(h));
+                }
             }
             _ => {
                 let _ = writeln!(

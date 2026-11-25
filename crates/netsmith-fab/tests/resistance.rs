@@ -32,6 +32,7 @@ fn measure(b: &mut Pcb, from: &str, to: &str, current: Option<f64>) -> Result<Re
             from: &[from.to_string()],
             to: &[to.to_string()],
             current,
+            heating: None,
             copper: Copper {
                 outer: COPPER,
                 inner: COPPER,
