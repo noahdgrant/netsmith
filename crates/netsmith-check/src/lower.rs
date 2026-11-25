@@ -830,6 +830,9 @@ impl Checker<'_> {
             (Res::Field(f), _) if self.is_branch_off_part(f) => {
                 self.refuse_branch_off_part(f, p, c);
             }
+            (Res::Field(f), _) if self.is_pad_setting_off_part(f) => {
+                self.refuse_pad_setting_off_part(f, p, c.span);
+            }
             (Res::Field(f), rhs) => {
                 self.refuse_own_statement(f, symbol, c.span);
                 if let Some(t) = &rhs {

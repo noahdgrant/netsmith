@@ -248,6 +248,9 @@ pub(crate) struct Checker<'a> {
     /// The joins with a peripheral that is an end of a bus, whose pins are joined once every
     /// function is chosen (ADR 0129).
     pub(crate) periph_joins: Vec<crate::periph_join::PeripheralJoin>,
+    /// The pad settings stated on a pin that is not a part's (issue #1674), reported once the
+    /// nets are known.
+    pub(crate) pad_settings_off_part: Vec<crate::pad_setting::PadSettingOffPart>,
 }
 
 /// The pin file of the top-level source (ADR 0101): where it is among the loaded files, and
@@ -328,6 +331,7 @@ impl<'a> Checker<'a> {
             stating_row_limits: false,
             joining: false,
             periph_joins: Vec::new(),
+            pad_settings_off_part: Vec::new(),
             stated: HashSet::new(),
             unused_stmts: Vec::new(),
             touches: Vec::new(),

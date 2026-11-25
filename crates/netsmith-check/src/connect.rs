@@ -793,6 +793,7 @@ impl Checker<'_> {
         }
         built.sort_by(|a, b| a.name.cmp(&b.name));
         self.model.nets = built;
+        self.report_pad_settings_off_part();
         self.chain_currents();
         self.analyse_mates();
         self.check_isolated_grounds();

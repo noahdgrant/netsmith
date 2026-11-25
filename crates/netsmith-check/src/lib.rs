@@ -27,6 +27,7 @@ mod mate;
 mod model;
 mod module_physical;
 mod optional;
+mod pad_setting;
 mod pads;
 mod params;
 mod periph_join;
